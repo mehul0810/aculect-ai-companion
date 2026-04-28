@@ -33,11 +33,25 @@ $autoload = QUARK_PLUGIN_DIR . 'vendor/autoload.php';
 
 if (file_exists($autoload)) {
     require_once $autoload;
+} else {
+    spl_autoload_register(static function (string $class): void {
+        $prefix = __NAMESPACE__ . '\\';
+
+        if (0 !== strpos($class, $prefix)) {
+            return;
+        }
+
+        $relative_class = substr($class, strlen($prefix));
+        $file           = QUARK_PLUGIN_DIR . 'src/' . str_replace('\\', '/', $relative_class) . '.php';
+
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    });
 }
 
-if (! class_exists(Plugin::class)) {
-    return;
-}
+register_activation_hook(__FILE__, [Plugin::class, 'activate']);
+register_deactivation_hook(__FILE__, [Plugin::class, 'deactivate']);
 
 add_action('plugins_loaded', static function (): void {
     Plugin::instance()->boot();

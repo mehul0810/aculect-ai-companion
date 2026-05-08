@@ -45,6 +45,7 @@ final class Plugin
         add_action('admin_post_quark_mark_connected', [$this, 'handle_mark_connected']);
         add_action('admin_post_quark_revoke_connection', [$this, 'handle_revoke_connection']);
         add_action('admin_post_quark_save_advanced', [$this, 'handle_save_advanced']);
+        add_action('admin_post_quark_save_chatgpt_oauth', [$this, 'handle_save_chatgpt_oauth']);
     }
 
     public function register_routes(): void
@@ -93,5 +94,10 @@ final class Plugin
     public function handle_save_advanced(): void
     {
         (new SettingsPage())->handle_save_advanced();
+    }
+
+    public function handle_save_chatgpt_oauth(): void
+    {
+        (new SettingsPage())->handle_save_chatgpt_oauth();
     }
 }

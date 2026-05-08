@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Quark\Connectors\ChatGPT\Rest;
 
 use Quark\Auth\Access;
+use Quark\Connectors\ChatGPT\Auth\OAuthClientRegistry;
 use Quark\Connectors\ChatGPT\Auth\OAuthWebFlow;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -12,7 +13,6 @@ use WP_REST_Server;
 
 final class OAuthController
 {
-    private const OPTION_CLIENTS = 'quark_oauth_clients';
     private const RESOURCE_METADATA = 'oauth-protected-resource';
     private const AUTHORIZATION_METADATA = 'oauth-authorization-server';
     private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
@@ -88,18 +88,29 @@ final class OAuthController
 
     public function oauth_metadata(): WP_REST_Response
     {
-        return new WP_REST_Response([
+        $registry = new OAuthClientRegistry();
+        $settings = $registry->settings();
+        $metadata = [
             'issuer' => $this->issuer(),
             'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
-            'registration_endpoint' => rest_url('quark/v1/oauth/register'),
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'response_types_supported' => ['code'],
-            'token_endpoint_auth_methods_supported' => ['none'],
+            'token_endpoint_auth_methods_supported' => [
+                OAuthClientRegistry::AUTH_NONE,
+                OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
+                OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
+            ],
             'code_challenge_methods_supported' => ['S256'],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_indicators_supported' => true,
-        ], 200);
+        ];
+
+        if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
+            $metadata['registration_endpoint'] = rest_url('quark/v1/oauth/register');
+        }
+
+        return new WP_REST_Response($metadata, 200);
     }
 
     public function protected_resource_metadata(): WP_REST_Response
@@ -109,7 +120,11 @@ final class OAuthController
             'authorization_servers' => [$this->issuer()],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
-            'token_endpoint_auth_methods_supported' => ['none'],
+            'token_endpoint_auth_methods_supported' => [
+                OAuthClientRegistry::AUTH_NONE,
+                OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
+                OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
+            ],
         ], 200);
     }
 
@@ -128,7 +143,7 @@ final class OAuthController
         $normalized = [];
         foreach ($redirect_uris as $uri) {
             $value = esc_url_raw((string) $uri);
-            if ('' === $value || ! $this->is_allowed_chatgpt_redirect($value)) {
+            if ('' === $value || ! (new OAuthClientRegistry())->is_chatgpt_redirect($value)) {
                 continue;
             }
             $normalized[] = $value;
@@ -144,7 +159,7 @@ final class OAuthController
         }
 
         $client_id = 'quark_' . wp_generate_password(20, false, false);
-        $clients = get_option(self::OPTION_CLIENTS, []);
+        $clients = get_option(OAuthClientRegistry::OPTION_DCR_CLIENTS, []);
         $clients[$client_id] = [
             'redirect_uris' => array_values(array_unique($normalized)),
             'grant_types' => ['authorization_code', 'refresh_token'],
@@ -153,7 +168,7 @@ final class OAuthController
             'client_name' => sanitize_text_field((string) ($payload['client_name'] ?? 'ChatGPT')),
             'scope' => $scope,
         ];
-        update_option(self::OPTION_CLIENTS, $clients, false);
+        update_option(OAuthClientRegistry::OPTION_DCR_CLIENTS, $clients, false);
 
         return new WP_REST_Response([
             'client_id' => $client_id,
@@ -198,6 +213,20 @@ final class OAuthController
     public function token(WP_REST_Request $request): WP_REST_Response
     {
         $grant_type = (string) $request->get_param('grant_type');
+        $client_id = (string) $request->get_param('client_id');
+        $registry = new OAuthClientRegistry();
+        if ('' === $client_id) {
+            $client_id = $registry->client_id_from_authorization_header((string) $request->get_header('authorization'));
+        }
+
+        if (! $registry->verify_token_endpoint_auth(
+            $client_id,
+            (string) $request->get_param('client_secret'),
+            (string) $request->get_header('authorization')
+        )) {
+            return new WP_REST_Response(['error' => 'invalid_client'], 401);
+        }
+
         $access = new Access();
         if ('authorization_code' === $grant_type) {
             $resource = (string) $request->get_param('resource');
@@ -207,7 +236,7 @@ final class OAuthController
 
             $tokens = $access->exchange_code(
                 (string) $request->get_param('code'),
-                (string) $request->get_param('client_id'),
+                $client_id,
                 (string) $request->get_param('code_verifier'),
                 $resource
             );
@@ -230,25 +259,6 @@ final class OAuthController
     private function issuer(): string
     {
         return untrailingslashit(home_url('/'));
-    }
-
-    private function is_allowed_chatgpt_redirect(string $uri): bool
-    {
-        $parts = wp_parse_url($uri);
-        if (! is_array($parts)) {
-            return false;
-        }
-
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host = strtolower((string) ($parts['host'] ?? ''));
-        $path = (string) ($parts['path'] ?? '');
-
-        return 'https' === $scheme
-            && 'chatgpt.com' === $host
-            && (
-                str_starts_with($path, '/connector/oauth/')
-                || '/connector_platform_oauth_redirect' === $path
-            );
     }
 
     private function has_supported_scopes(string $scope): bool

@@ -9,6 +9,7 @@ import {
 	FlexBlock,
 	FlexItem,
 	Notice,
+	SelectControl,
 	ToggleControl,
 	TabPanel,
 	TextControl,
@@ -19,6 +20,8 @@ function SettingsApp() {
 	const [copied, setCopied] = useState(false);
 	const [removeDataOnUninstall, setRemoveDataOnUninstall] = useState(Boolean(data.removeDataOnUninstall));
 	const [openConnector, setOpenConnector] = useState(null);
+	const [oauthSettings, setOauthSettings] = useState(data.oauthSettings || {});
+	const [manualClientSecret, setManualClientSecret] = useState('');
 	const isConnected = Boolean(data.isConnected);
 	const statusClass = isConnected ? 'quark-pill quark-pill--status is-connected' : 'quark-pill quark-pill--status is-disconnected';
 	const changelog = data.changelog && typeof data.changelog === 'object' ? data.changelog : {};
@@ -81,6 +84,11 @@ function SettingsApp() {
 			{data.advancedSaved === '1' && (
 				<Notice status="success" isDismissible={false}>
 					Advanced settings saved.
+				</Notice>
+			)}
+			{data.oauthSaved === '1' && (
+				<Notice status="success" isDismissible={false}>
+					ChatGPT OAuth settings saved.
 				</Notice>
 			)}
 
@@ -200,8 +208,72 @@ function SettingsApp() {
 												<Button href={data.createAppUrl} variant="primary" target="_blank">
 													Connect to ChatGPT
 												</Button>
-												<h4>Step 2: Add OAuth app details</h4>
-												<p>Choose OAuth 2.1 with Dynamic Client Registration and PKCE (S256), then paste values from the right panel.</p>
+												<h4>Step 2: Select registration method</h4>
+												<p>Choose the same registration method in ChatGPT and Quark, then paste values from the right panel.</p>
+												<form method="post" action={data.actions?.adminPostUrl} className="quark-oauth-settings-form">
+													<input type="hidden" name="action" value={data.actions?.saveOauthAction} />
+													<input type="hidden" name="_wpnonce" value={data.actions?.saveOauthNonce} />
+													<SelectControl
+														label="Registration Method"
+														name="registration_method"
+														value={oauthSettings.registrationMethod || 'dcr'}
+														options={(data.registrationMethods || []).map((method) => ({
+															label: method.label,
+															value: method.value,
+														}))}
+														onChange={(value) => setOauthSettings({ ...oauthSettings, registrationMethod: value })}
+													/>
+													<div className="quark-registration-methods">
+														{(data.registrationMethods || []).map((method) => (
+															<div
+																key={method.value}
+																className={`quark-registration-method ${oauthSettings.registrationMethod === method.value ? 'is-active' : ''}`}
+															>
+																<strong>{method.label}</strong>
+																<span>{method.description}</span>
+															</div>
+														))}
+													</div>
+													{oauthSettings.registrationMethod === 'user_defined' && (
+														<div className="quark-manual-client-fields">
+															<TextControl
+																label="Client ID"
+																name="manual_client_id"
+																value={oauthSettings.manualClientId || ''}
+																onChange={(value) => setOauthSettings({ ...oauthSettings, manualClientId: value })}
+															/>
+															<TextControl
+																label="Client Secret"
+																name="manual_client_secret"
+																type="password"
+																value={manualClientSecret}
+																placeholder={oauthSettings.manualClientSecretPreview ? `Stored: ${oauthSettings.manualClientSecretPreview}` : ''}
+																onChange={setManualClientSecret}
+															/>
+															<SelectControl
+																label="Token Endpoint Auth Method"
+																name="manual_token_endpoint_auth_method"
+																value={oauthSettings.manualTokenEndpointAuthMethod || 'client_secret_post'}
+																options={oauthSettings.tokenEndpointAuthMethods || []}
+																onChange={(value) => setOauthSettings({ ...oauthSettings, manualTokenEndpointAuthMethod: value })}
+															/>
+														</div>
+													)}
+													{oauthSettings.registrationMethod === 'cmid' && (
+														<TextControl
+															label="Client Identifier Metadata Document URL"
+															name="cmid_url"
+															value={oauthSettings.cmidUrl || ''}
+															onChange={(value) => setOauthSettings({ ...oauthSettings, cmidUrl: value })}
+															help="CMID is draft/experimental. Keep DCR enabled for current ChatGPT production compatibility."
+														/>
+													)}
+													<div className="quark-form-actions">
+														<Button type="submit" variant="secondary">
+															Save OAuth Method
+														</Button>
+													</div>
+												</form>
 												<h4>Step 3: Validate and confirm</h4>
 												<p>Complete one OAuth authorization in ChatGPT, then confirm here.</p>
 												<div className="quark-connector-actions">

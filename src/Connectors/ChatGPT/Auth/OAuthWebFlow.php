@@ -8,7 +8,6 @@ use Quark\Auth\Access;
 
 final class OAuthWebFlow
 {
-    private const OPTION_CLIENTS = 'quark_oauth_clients';
     private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
 
     public function build_authorize_context(array $params): array
@@ -22,7 +21,8 @@ final class OAuthWebFlow
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? 'S256');
 
-        $clients = get_option(self::OPTION_CLIENTS, []);
+        $registry = new OAuthClientRegistry();
+        $client = $registry->find_client($client_id);
 
         if (
             '' === $client_id ||
@@ -33,15 +33,12 @@ final class OAuthWebFlow
             rest_url('quark/v1/mcp') !== $resource ||
             ! $this->has_supported_scopes($scope) ||
             'S256' !== $code_challenge_method ||
-            ! is_array($clients) ||
-            ! isset($clients[$client_id])
+            [] === $client
         ) {
             return ['valid' => false];
         }
 
-        $client = $clients[$client_id];
-        $allowed = $client['redirect_uris'] ?? [];
-        if (! is_array($allowed) || ! in_array($redirect_uri, $allowed, true)) {
+        if (! $registry->client_redirect_allowed($client, $redirect_uri)) {
             return ['valid' => false];
         }
 

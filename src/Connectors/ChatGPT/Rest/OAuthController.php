@@ -191,12 +191,24 @@ final class OAuthController
             $client_id = $registry->client_id_from_authorization_header((string) $request->get_header('authorization'));
         }
 
+        if (! $this->check_rate_limit($client_id, (string) $request->get_header('x-forwarded-for'))) {
+            return $this->oauth_error(
+                'slow_down',
+                'Too many authentication attempts. Try again later.',
+                429
+            );
+        }
+
         if (! $registry->verify_token_endpoint_auth(
             $client_id,
             (string) $request->get_param('client_secret'),
             (string) $request->get_header('authorization')
         )) {
-            return new WP_REST_Response(['error' => 'invalid_client'], 401);
+            return $this->oauth_error(
+                'invalid_client',
+                'Client authentication failed. Verify the configured client ID and client secret.',
+                401
+            );
         }
 
         $access = new Access();
@@ -206,7 +218,11 @@ final class OAuthController
                 $resource = rest_url('quark/v1/mcp');
             }
             if (rest_url('quark/v1/mcp') !== $resource) {
-                return new WP_REST_Response(['error' => 'invalid_target'], 400);
+                return $this->oauth_error(
+                    'invalid_target',
+                    'The requested resource does not match this MCP server.',
+                    400
+                );
             }
 
             $tokens = $access->exchange_code(
@@ -215,7 +231,10 @@ final class OAuthController
                 (string) $request->get_param('code_verifier'),
                 $resource
             );
-            return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
+            return new WP_REST_Response(
+                $tokens ?: $this->oauth_error_payload('invalid_grant', 'Authorization code exchange failed.'),
+                $tokens ? 200 : 400
+            );
         }
 
         if ('refresh_token' === $grant_type) {
@@ -224,14 +243,25 @@ final class OAuthController
                 $resource = rest_url('quark/v1/mcp');
             }
             if (rest_url('quark/v1/mcp') !== $resource) {
-                return new WP_REST_Response(['error' => 'invalid_target'], 400);
+                return $this->oauth_error(
+                    'invalid_target',
+                    'The requested resource does not match this MCP server.',
+                    400
+                );
             }
 
             $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource, $client_id);
-            return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
+            return new WP_REST_Response(
+                $tokens ?: $this->oauth_error_payload('invalid_grant', 'Refresh token exchange failed.'),
+                $tokens ? 200 : 400
+            );
         }
 
-        return new WP_REST_Response(['error' => 'unsupported_grant_type'], 400);
+        return $this->oauth_error(
+            'unsupported_grant_type',
+            'Only authorization_code and refresh_token grants are supported.',
+            400
+        );
     }
 
     private function issuer(): string
@@ -286,5 +316,40 @@ final class OAuthController
     {
         $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
         return home_url($uri);
+    }
+
+    private function check_rate_limit(string $client_id, string $forwarded_for): bool
+    {
+        $identifier = '' !== $client_id ? $client_id : $forwarded_for;
+        if ('' === $identifier) {
+            $identifier = 'anonymous';
+        }
+
+        $cache_key = 'quark_oauth_rate_' . md5($identifier);
+        $attempts = (int) get_transient($cache_key);
+
+        if ($attempts >= 10) {
+            return false;
+        }
+
+        set_transient($cache_key, $attempts + 1, MINUTE_IN_SECONDS);
+
+        return true;
+    }
+
+    private function oauth_error(string $error, string $description, int $status): WP_REST_Response
+    {
+        return new WP_REST_Response(
+            $this->oauth_error_payload($error, $description),
+            $status
+        );
+    }
+
+    private function oauth_error_payload(string $error, string $description): array
+    {
+        return [
+            'error' => $error,
+            'error_description' => $description,
+        ];
     }
 }

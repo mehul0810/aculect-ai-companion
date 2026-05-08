@@ -75,6 +75,48 @@
     margin-bottom: 0;
   }
 
+  .quark-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .quark-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(16, 24, 40, 0.52);
+  }
+
+  .quark-modal__content {
+    position: relative;
+    width: min(100%, 440px);
+    padding: 24px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 24px 48px rgba(16, 24, 40, 0.18);
+  }
+
+  .quark-modal__title {
+    margin: 0 0 8px;
+    font-size: 20px;
+    line-height: 1.2;
+  }
+
+  .quark-modal__copy {
+    margin: 0 0 18px;
+    color: #50575e;
+  }
+
+  .quark-modal__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
   .quark-section-title {
     margin-top: 0;
   }

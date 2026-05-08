@@ -1,4 +1,4 @@
-import { render, useState } from '@wordpress/element';
+import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
 import {
 	Button,
@@ -17,16 +17,33 @@ import {
 function SettingsApp() {
 	const data = window.quarkSettingsData || {};
 	const [copied, setCopied] = useState(false);
+	const [confirmRevoke, setConfirmRevoke] = useState(false);
 	const [removeDataOnUninstall, setRemoveDataOnUninstall] = useState(Boolean(data.removeDataOnUninstall));
 	const [openConnector, setOpenConnector] = useState(null);
 	const isConnected = Boolean(data.isConnected);
 	const statusClass = isConnected ? 'quark-pill quark-pill--status is-connected' : 'quark-pill quark-pill--status is-disconnected';
 	const changelog = data.changelog && typeof data.changelog === 'object' ? data.changelog : {};
+	const copyTimeoutRef = useRef(null);
+
+	useEffect(() => () => {
+		if (copyTimeoutRef.current) {
+			clearTimeout(copyTimeoutRef.current);
+		}
+	}, []);
+
+	const showCopiedState = () => {
+		if (copyTimeoutRef.current) {
+			clearTimeout(copyTimeoutRef.current);
+		}
+
+		setCopied(true);
+		copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+	};
 
 	const copyConfig = async () => {
 		try {
 			await navigator.clipboard.writeText(data.copyAll || '');
-			setCopied(true);
+			showCopiedState();
 		} catch (error) {
 			setCopied(false);
 		}
@@ -37,7 +54,7 @@ function SettingsApp() {
 	const copyValue = async (value) => {
 		try {
 			await navigator.clipboard.writeText(String(value || ''));
-			setCopied(true);
+			showCopiedState();
 		} catch (error) {
 			setCopied(false);
 		}
@@ -68,25 +85,43 @@ function SettingsApp() {
 			</div>
 
 			{data.status === 'connected' && (
-				<Notice status="success" isDismissible={false}>
+				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
 					ChatGPT connection marked active.
 				</Notice>
 			)}
 			{data.status === 'revoked' && (
-				<Notice status="warning" isDismissible={false}>
+				<Notice status="warning" isDismissible={false} role="status" aria-live="polite">
 					ChatGPT connection revoked.
 				</Notice>
 			)}
 
 			{data.advancedSaved === '1' && (
-				<Notice status="success" isDismissible={false}>
+				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
 					Advanced settings saved.
 				</Notice>
 			)}
 			{data.oauthSaved === '1' && (
-				<Notice status="success" isDismissible={false}>
+				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
 					ChatGPT OAuth client credentials regenerated.
 				</Notice>
+			)}
+
+			{confirmRevoke && (
+				<div className="quark-modal" role="dialog" aria-modal="true" aria-labelledby="quark-revoke-title">
+					<div className="quark-modal__backdrop" onClick={() => setConfirmRevoke(false)} />
+					<div className="quark-modal__content">
+						<h2 id="quark-revoke-title" className="quark-modal__title">Revoke ChatGPT Connection?</h2>
+						<p className="quark-modal__copy">
+							This will disconnect ChatGPT and revoke all active tokens issued by Quark.
+						</p>
+						<div className="quark-modal__actions">
+							{renderActionForm(data.actions?.revokeAction, data.actions?.revokeNonce, 'Yes, Revoke', true)}
+							<Button variant="secondary" onClick={() => setConfirmRevoke(false)}>
+								Cancel
+							</Button>
+						</div>
+					</div>
+				</div>
 			)}
 
 			<TabPanel className="quark-tabs" tabs={[{ name: 'about', title: 'About' }, { name: 'connectors', title: 'Connectors' }, { name: 'changelog', title: 'Changelog' }, { name: 'advanced', title: 'Advanced' }]}>
@@ -227,7 +262,15 @@ function SettingsApp() {
 												<p>After creating the app in ChatGPT, trigger one OAuth authorization. Once ChatGPT successfully completes the authorization flow, confirm here.</p>
 												<div className="quark-connector-actions">
 													{renderActionForm(data.actions?.markConnectedAction, data.actions?.markConnectedNonce, 'Added The App')}
-													{isConnected && renderActionForm(data.actions?.revokeAction, data.actions?.revokeNonce, 'Revoke Connection', true)}
+													{isConnected && (
+														<Button
+															variant="secondary"
+															isDestructive
+															onClick={() => setConfirmRevoke(true)}
+														>
+															Revoke Connection
+														</Button>
+													)}
 												</div>
 											</div>
 											<div className="quark-connector-fields">
@@ -250,6 +293,7 @@ function SettingsApp() {
 																	<FlexItem>
 																		<Button
 																			className="quark-copy-button"
+																			aria-label={`Copy ${field.label} to clipboard`}
 																			label={`Copy ${field.label}`}
 																			icon="admin-page"
 																			onClick={() => copyValue(field.value)}

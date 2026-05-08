@@ -38,6 +38,7 @@ final class Plugin
     {
         add_action('init', [$this, 'register_well_known_routes']);
         add_filter('query_vars', [$this, 'register_query_vars']);
+        add_filter('redirect_canonical', [$this, 'filter_canonical_redirect'], 10, 2);
         add_action('template_redirect', [$this, 'render_browser_authorize'], 1);
         add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);
@@ -77,6 +78,23 @@ final class Plugin
     public function render_browser_authorize(): void
     {
         (new OAuthController())->maybe_render_browser_authorize();
+    }
+
+    public function filter_canonical_redirect($redirect_url, $requested_url)
+    {
+        if (! is_string($requested_url)) {
+            return $redirect_url;
+        }
+
+        $path = (string) wp_parse_url($requested_url, PHP_URL_PATH);
+        if (
+            '/.well-known/oauth-authorization-server' === $path
+            || '/.well-known/oauth-protected-resource/wp-json/quark/v1/mcp' === $path
+        ) {
+            return false;
+        }
+
+        return $redirect_url;
     }
 
     public function register_admin(): void

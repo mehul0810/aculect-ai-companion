@@ -233,6 +233,7 @@ final class SettingsPage
                         'key' => 'client_secret',
                         'label' => 'Client Secret',
                         'value' => (string) $settings['manual_client_secret'],
+                        'displayType' => 'password',
                     ],
                 ],
             ],

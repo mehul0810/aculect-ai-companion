@@ -240,7 +240,12 @@ function SettingsApp() {
 															{(section.fields || []).map((field) => (
 																<Flex key={field.key} align="flex-end" gap={2} className="quark-config-row">
 																	<FlexBlock>
-																		<TextControl label={field.label} value={String(field.value ?? '')} readOnly />
+																		<TextControl
+																			label={field.label}
+																			type={field.displayType === 'password' ? 'password' : 'text'}
+																			value={String(field.value ?? '')}
+																			readOnly
+																		/>
 																	</FlexBlock>
 																	<FlexItem>
 																		<Button

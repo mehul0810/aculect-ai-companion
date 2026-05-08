@@ -49,7 +49,9 @@ final class SettingsPage
     public function handle_save_chatgpt_oauth(): void
     {
         $this->guard_action('quark_save_chatgpt_oauth');
-        (new OAuthClientRegistry())->save_settings(wp_unslash($_POST));
+        (new OAuthClientRegistry())->regenerate_credentials();
+        (new Access())->revoke_all_tokens();
+        update_option(self::OPTION_CONNECTION_STATE, ['active' => false, 'updated_at' => time()], false);
         wp_safe_redirect(add_query_arg(['page' => 'quark', 'oauth_saved' => '1'], admin_url('options-general.php')));
         exit;
     }
@@ -116,27 +118,6 @@ final class SettingsPage
             'oauthSaved' => isset($_GET['oauth_saved']) ? '1' : '0',
             'removeDataOnUninstall' => $this->remove_data_on_uninstall_enabled(),
             'createAppUrl' => 'https://chatgpt.com/apps#settings/Connectors',
-            'oauthSettings' => $this->oauth_settings_data(),
-            'registrationMethods' => [
-                [
-                    'label' => 'User-Defined OAuth Client',
-                    'value' => OAuthClientRegistry::MODE_USER_DEFINED,
-                    'description' => 'Use a fixed client ID and client secret configured in Quark.',
-                    'available' => true,
-                ],
-                [
-                    'label' => 'Dynamic Client Registration (DCR)',
-                    'value' => OAuthClientRegistry::MODE_DCR,
-                    'description' => 'Let ChatGPT register a fresh client automatically. Recommended by current OpenAI Apps SDK docs.',
-                    'available' => true,
-                ],
-                [
-                    'label' => 'Client Identifier Metadata Document (CMID)',
-                    'value' => OAuthClientRegistry::MODE_CMID,
-                    'description' => 'Supported in Quark, but not currently available in the ChatGPT create-app UI.',
-                    'available' => false,
-                ],
-            ],
             'chatgptFormSections' => $this->chatgpt_form_sections(),
             'copyAll' => wp_json_encode($this->chatgpt_copy_fields(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'actions' => [
@@ -179,18 +160,18 @@ final class SettingsPage
                         'label' => 'Authentication',
                         'value' => 'OAuth',
                     ],
+                    [
+                        'key' => 'oauth_client_type',
+                        'label' => 'OAuth Client Type',
+                        'value' => 'User-Defined OAuth Client',
+                    ],
                 ],
             ],
             [
                 'key' => 'advanced_oauth',
                 'title' => 'Advanced OAuth Settings',
                 'description' => 'Use these values in ChatGPT Advanced OAuth settings when fields are shown manually.',
-                'fields' => array_values(array_filter([
-                    [
-                        'key' => 'registration_method',
-                        'label' => 'Registration Method',
-                        'value' => $this->registration_method_label((string) $settings['registration_method']),
-                    ],
+                'fields' => [
                     [
                         'key' => 'authorization_server_base',
                         'label' => 'Authorization Server Base',
@@ -212,10 +193,9 @@ final class SettingsPage
                         'value' => rest_url('quark/v1/oauth/token'),
                     ],
                     [
-                        'key' => 'oauth_dynamic_client_registration_endpoint',
-                        'label' => 'Registration Endpoint',
-                        'value' => rest_url('quark/v1/oauth/register'),
-                        'modes' => [OAuthClientRegistry::MODE_DCR],
+                        'key' => 'token_endpoint_auth_method',
+                        'label' => 'Token Endpoint Auth Method',
+                        'value' => OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
                     ],
                     [
                         'key' => 'oauth_metadata_url',
@@ -237,21 +217,12 @@ final class SettingsPage
                         'label' => 'Scopes',
                         'value' => 'content:read content:draft',
                     ],
-                ], static function (array $field) use ($settings): bool {
-                    if (! isset($field['modes']) || ! is_array($field['modes'])) {
-                        return true;
-                    }
-
-                    return in_array((string) $settings['registration_method'], $field['modes'], true);
-                })),
+                ],
             ],
-        ];
-
-        if (OAuthClientRegistry::MODE_USER_DEFINED === $settings['registration_method']) {
-            $sections[] = [
+            [
                 'key' => 'user_defined_client',
                 'title' => 'User-Defined OAuth Client',
-                'description' => 'These values are only needed when ChatGPT is set to User-Defined OAuth Client.',
+                'description' => 'Quark generates these credentials automatically. Copy them into ChatGPT exactly once when creating the app.',
                 'fields' => [
                     [
                         'key' => 'client_id',
@@ -259,28 +230,13 @@ final class SettingsPage
                         'value' => (string) $settings['manual_client_id'],
                     ],
                     [
-                        'key' => 'token_endpoint_auth_method',
-                        'label' => 'Token Endpoint Auth Method',
-                        'value' => (string) $settings['manual_token_endpoint_auth_method'],
+                        'key' => 'client_secret',
+                        'label' => 'Client Secret',
+                        'value' => (string) $settings['manual_client_secret'],
                     ],
                 ],
-            ];
-        }
-
-        if (OAuthClientRegistry::MODE_CMID === $settings['registration_method']) {
-            $sections[] = [
-                'key' => 'cmid',
-                'title' => 'CMID',
-                'description' => 'Quark can expose CMID configuration, but ChatGPT currently does not show CMID as available.',
-                'fields' => [
-                    [
-                        'key' => 'cmid_url',
-                        'label' => 'Client Identifier Metadata Document URL',
-                        'value' => (string) $settings['cmid_url'],
-                    ],
-                ],
-            ];
-        }
+            ],
+        ];
 
         return $sections;
     }
@@ -296,42 +252,6 @@ final class SettingsPage
         }
 
         return $fields;
-    }
-
-    private function registration_method_label(string $method): string
-    {
-        return match ($method) {
-            OAuthClientRegistry::MODE_USER_DEFINED => 'User-Defined OAuth Client',
-            OAuthClientRegistry::MODE_CMID => 'Client Identifier Metadata Document (CMID)',
-            default => 'Dynamic Client Registration (DCR)',
-        };
-    }
-
-    private function oauth_settings_data(): array
-    {
-        $settings = (new OAuthClientRegistry())->settings();
-
-        return [
-            'registrationMethod' => (string) $settings['registration_method'],
-            'manualClientId' => (string) $settings['manual_client_id'],
-            'manualClientSecretPreview' => (string) $settings['manual_client_secret_preview'],
-            'manualTokenEndpointAuthMethod' => (string) $settings['manual_token_endpoint_auth_method'],
-            'cmidUrl' => (string) $settings['cmid_url'],
-            'tokenEndpointAuthMethods' => [
-                [
-                    'label' => 'None (PKCE public client)',
-                    'value' => OAuthClientRegistry::AUTH_NONE,
-                ],
-                [
-                    'label' => 'Client Secret POST',
-                    'value' => OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
-                ],
-                [
-                    'label' => 'Client Secret Basic',
-                    'value' => OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
-                ],
-            ],
-        ];
     }
 
     private function load_changelog(): array

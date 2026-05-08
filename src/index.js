@@ -9,7 +9,6 @@ import {
 	FlexBlock,
 	FlexItem,
 	Notice,
-	SelectControl,
 	ToggleControl,
 	TabPanel,
 	TextControl,
@@ -20,8 +19,6 @@ function SettingsApp() {
 	const [copied, setCopied] = useState(false);
 	const [removeDataOnUninstall, setRemoveDataOnUninstall] = useState(Boolean(data.removeDataOnUninstall));
 	const [openConnector, setOpenConnector] = useState(null);
-	const [oauthSettings, setOauthSettings] = useState(data.oauthSettings || {});
-	const [manualClientSecret, setManualClientSecret] = useState('');
 	const isConnected = Boolean(data.isConnected);
 	const statusClass = isConnected ? 'quark-pill quark-pill--status is-connected' : 'quark-pill quark-pill--status is-disconnected';
 	const changelog = data.changelog && typeof data.changelog === 'object' ? data.changelog : {};
@@ -36,8 +33,6 @@ function SettingsApp() {
 	};
 
 	const formSections = Array.isArray(data.chatgptFormSections) ? data.chatgptFormSections : [];
-	const selectedRegistrationMethod = oauthSettings.registrationMethod || 'dcr';
-	const registrationMethodMeta = (data.registrationMethods || []).find((method) => method.value === selectedRegistrationMethod);
 
 	const copyValue = async (value) => {
 		try {
@@ -90,7 +85,7 @@ function SettingsApp() {
 			)}
 			{data.oauthSaved === '1' && (
 				<Notice status="success" isDismissible={false}>
-					ChatGPT OAuth settings saved.
+					ChatGPT OAuth client credentials regenerated.
 				</Notice>
 			)}
 
@@ -210,74 +205,21 @@ function SettingsApp() {
 												<Button href={data.createAppUrl} variant="primary" target="_blank">
 													Connect to ChatGPT
 												</Button>
-												<h4>Step 2: Select registration method</h4>
-												<p>Choose the same registration method in ChatGPT and Quark. Use the right panel fields exactly as labeled in the ChatGPT create-app screen.</p>
+												<h4>Step 2: Add the OAuth client</h4>
+												<p>In ChatGPT, choose OAuth with User-Defined OAuth Client and copy the credentials and endpoints from the right panel.</p>
 												<form method="post" action={data.actions?.adminPostUrl} className="quark-oauth-settings-form">
 													<input type="hidden" name="action" value={data.actions?.saveOauthAction} />
 													<input type="hidden" name="_wpnonce" value={data.actions?.saveOauthNonce} />
-													<SelectControl
-														label="Registration Method"
-														name="registration_method"
-														value={oauthSettings.registrationMethod || 'dcr'}
-														options={(data.registrationMethods || []).map((method) => ({
-															label: method.label,
-															value: method.value,
-														}))}
-														onChange={(value) => setOauthSettings({ ...oauthSettings, registrationMethod: value })}
-													/>
-													<div className="quark-registration-methods">
-														{(data.registrationMethods || []).map((method) => (
-															<div
-																key={method.value}
-																className={`quark-registration-method ${oauthSettings.registrationMethod === method.value ? 'is-active' : ''}`}
-															>
-																<strong>{method.label}</strong>
-																<span>{method.description}</span>
-															</div>
-														))}
-													</div>
-													{registrationMethodMeta && registrationMethodMeta.available === false && (
-														<Notice status="warning" isDismissible={false}>
-															{registrationMethodMeta.label} is supported in Quark, but ChatGPT does not currently expose it as an available registration method in the create-app UI.
-														</Notice>
-													)}
-													{oauthSettings.registrationMethod === 'user_defined' && (
-														<div className="quark-manual-client-fields">
-															<TextControl
-																label="Client ID"
-																name="manual_client_id"
-																value={oauthSettings.manualClientId || ''}
-																onChange={(value) => setOauthSettings({ ...oauthSettings, manualClientId: value })}
-															/>
-															<TextControl
-																label="Client Secret"
-																name="manual_client_secret"
-																type="password"
-																value={manualClientSecret}
-																placeholder={oauthSettings.manualClientSecretPreview ? `Stored: ${oauthSettings.manualClientSecretPreview}` : ''}
-																onChange={setManualClientSecret}
-															/>
-															<SelectControl
-																label="Token Endpoint Auth Method"
-																name="manual_token_endpoint_auth_method"
-																value={oauthSettings.manualTokenEndpointAuthMethod || 'client_secret_post'}
-																options={oauthSettings.tokenEndpointAuthMethods || []}
-																onChange={(value) => setOauthSettings({ ...oauthSettings, manualTokenEndpointAuthMethod: value })}
-															/>
-														</div>
-													)}
-													{oauthSettings.registrationMethod === 'cmid' && (
-														<TextControl
-															label="Client Identifier Metadata Document URL"
-															name="cmid_url"
-															value={oauthSettings.cmidUrl || ''}
-															onChange={(value) => setOauthSettings({ ...oauthSettings, cmidUrl: value })}
-															help="CMID is draft/experimental. Keep DCR enabled for current ChatGPT production compatibility."
-														/>
-													)}
+													<p className="quark-copy quark-copy--first">
+														Quark now supports a single OAuth path for ChatGPT: generated client credentials with
+														`client_secret_post` token authentication.
+													</p>
+													<p className="quark-copy quark-copy--last">
+														If you regenerate the credentials, update the app in ChatGPT before authorizing again.
+													</p>
 													<div className="quark-form-actions">
 														<Button type="submit" variant="secondary">
-															Save OAuth Method
+															Regenerate Client Credentials
 														</Button>
 													</div>
 												</form>

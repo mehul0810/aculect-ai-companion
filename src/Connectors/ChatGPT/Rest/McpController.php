@@ -27,14 +27,15 @@ final class McpController
 
     public function describe(): array
     {
-        $resource_metadata_url = home_url('/.well-known/oauth-protected-resource');
+        $oauth = new OAuthController();
+        $resource_metadata_url = $oauth->protected_resource_metadata_url();
         $mcp_url = rest_url('quark/v1/mcp');
 
         return [
             'name' => 'Quark MCP',
             'protocol' => 'mcp',
             'version' => QUARK_VERSION,
-            'transport' => 'http-jsonrpc',
+            'transport' => 'streamable-http',
             'auth' => 'oauth2.1',
             'authentication' => [
                 'type' => 'oauth2.1',
@@ -42,7 +43,7 @@ final class McpController
                 'resource_metadata_url' => $resource_metadata_url,
             ],
             'endpoints' => [
-                'rpc' => $mcp_url,
+                'http' => $mcp_url,
             ],
         ];
     }
@@ -59,7 +60,8 @@ final class McpController
 
         switch ($method) {
             case 'initialize':
-                $resource_metadata_url = home_url('/.well-known/oauth-protected-resource');
+                $oauth = new OAuthController();
+                $resource_metadata_url = $oauth->protected_resource_metadata_url();
                 $mcp_url = rest_url('quark/v1/mcp');
                 return $this->rpc_result($id, [
                     'protocolVersion' => '2024-11-05',
@@ -91,13 +93,15 @@ final class McpController
                     return $this->auth_required_result($id);
                 }
                 wp_set_current_user((int) $auth['user_id']);
+                $result = $this->call_tool($body['params'] ?? []);
                 return $this->rpc_result($id, [
                     'content' => [
                         [
                             'type' => 'text',
-                            'text' => (string) wp_json_encode($this->call_tool($body['params'] ?? [])),
+                            'text' => (string) wp_json_encode($result),
                         ],
                     ],
+                    'structuredContent' => $result,
                 ]);
         }
 
@@ -115,8 +119,9 @@ final class McpController
                     'name' => 'site.list_post_types',
                     'title' => 'List Post Types',
                     'description' => 'List readable post types',
-                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
@@ -127,12 +132,18 @@ final class McpController
                         'type' => 'object',
                         'properties' => [
                             'post_type' => ['type' => 'string'],
-                            'status' => ['type' => ['string', 'array']],
+                            'status' => [
+                                'oneOf' => [
+                                    ['type' => 'string'],
+                                    ['type' => 'array', 'items' => ['type' => 'string']],
+                                ],
+                            ],
                             'page' => ['type' => 'integer'],
                             'per_page' => ['type' => 'integer'],
                         ],
                     ],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
@@ -145,6 +156,7 @@ final class McpController
                         'properties' => ['id' => ['type' => 'integer']],
                     ],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
@@ -160,14 +172,16 @@ final class McpController
                         ],
                     ],
                     'securitySchemes' => $draft_security,
+                    '_meta' => ['securitySchemes' => $draft_security],
                     'annotations' => ['readOnlyHint' => false],
                 ],
                 [
                     'name' => 'taxonomy.list_taxonomies',
                     'title' => 'List Taxonomies',
                     'description' => 'List taxonomies',
-                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
@@ -179,6 +193,7 @@ final class McpController
                         'properties' => ['taxonomy' => ['type' => 'string']],
                     ],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
@@ -193,14 +208,16 @@ final class McpController
                         ],
                     ],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'site.get_settings',
                     'title' => 'Get Site Settings',
                     'description' => 'Read safe site settings',
-                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
                     'securitySchemes' => $read_security,
+                    '_meta' => ['securitySchemes' => $read_security],
                     'annotations' => ['readOnlyHint' => true],
                 ],
             ]
@@ -294,6 +311,8 @@ final class McpController
 
     private function auth_required_result($id): array
     {
+        $resource_metadata_url = (new OAuthController())->protected_resource_metadata_url();
+
         return $this->rpc_result($id, [
             'content' => [
                 [
@@ -301,9 +320,10 @@ final class McpController
                     'text' => 'Authentication required.',
                 ],
             ],
+            'structuredContent' => new \stdClass(),
             '_meta' => [
                 'mcp/www_authenticate' => [
-                    'Bearer resource_metadata="' . home_url('/.well-known/oauth-protected-resource') . '", error="insufficient_scope", error_description="Authorize Quark to continue"',
+                    'Bearer resource_metadata="' . $resource_metadata_url . '", error="insufficient_scope", error_description="Authorize Quark to continue"',
                 ],
             ],
             'isError' => true,
@@ -319,6 +339,7 @@ final class McpController
                     'text' => $message,
                 ],
             ],
+            'structuredContent' => new \stdClass(),
             'isError' => true,
         ]);
     }

@@ -14,6 +14,7 @@ final class OAuthClientRegistry
     public const AUTH_NONE = 'none';
     public const AUTH_CLIENT_SECRET_POST = 'client_secret_post';
     public const AUTH_CLIENT_SECRET_BASIC = 'client_secret_basic';
+    public const DCR_TTL = DAY_IN_SECONDS;
 
     private const DEFAULT_SETTINGS = [
         'registration_method' => self::MODE_DCR,
@@ -95,12 +96,43 @@ final class OAuthClientRegistry
             ];
         }
 
-        $clients = get_option(self::OPTION_DCR_CLIENTS, []);
-        if (is_array($clients) && isset($clients[$client_id]) && is_array($clients[$client_id])) {
+        $clients = $this->cleanup_expired_dcr_clients();
+        if (isset($clients[$client_id]) && is_array($clients[$client_id])) {
             return array_merge(['client_id' => $client_id, 'manual' => false], $clients[$client_id]);
         }
 
         return [];
+    }
+
+    public function cleanup_expired_dcr_clients(): array
+    {
+        $clients = get_option(self::OPTION_DCR_CLIENTS, []);
+        if (! is_array($clients) || [] === $clients) {
+            return [];
+        }
+
+        $now = time();
+        $changed = false;
+
+        foreach ($clients as $client_id => $client) {
+            if (! is_array($client)) {
+                unset($clients[$client_id]);
+                $changed = true;
+                continue;
+            }
+
+            $issued_at = (int) ($client['client_id_issued_at'] ?? 0);
+            if ($issued_at > 0 && ($issued_at + self::DCR_TTL) < $now) {
+                unset($clients[$client_id]);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            update_option(self::OPTION_DCR_CLIENTS, $clients, false);
+        }
+
+        return $clients;
     }
 
     public function client_redirect_allowed(array $client, string $redirect_uri): bool

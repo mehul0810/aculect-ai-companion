@@ -188,6 +188,25 @@
     gap: 10px;
   }
 
+  .quark-config-section + .quark-config-section {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid #eaecf0;
+  }
+
+  .quark-config-section-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .quark-config-section-description {
+    margin: 0 0 12px;
+    color: #50575e;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
   .quark-form-actions {
     margin-top: 12px;
   }

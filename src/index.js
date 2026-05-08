@@ -35,7 +35,9 @@ function SettingsApp() {
 		}
 	};
 
-	const configFields = Array.isArray(data.configFields) ? data.configFields : [];
+	const formSections = Array.isArray(data.chatgptFormSections) ? data.chatgptFormSections : [];
+	const selectedRegistrationMethod = oauthSettings.registrationMethod || 'dcr';
+	const registrationMethodMeta = (data.registrationMethods || []).find((method) => method.value === selectedRegistrationMethod);
 
 	const copyValue = async (value) => {
 		try {
@@ -209,7 +211,7 @@ function SettingsApp() {
 													Connect to ChatGPT
 												</Button>
 												<h4>Step 2: Select registration method</h4>
-												<p>Choose the same registration method in ChatGPT and Quark, then paste values from the right panel.</p>
+												<p>Choose the same registration method in ChatGPT and Quark. Use the right panel fields exactly as labeled in the ChatGPT create-app screen.</p>
 												<form method="post" action={data.actions?.adminPostUrl} className="quark-oauth-settings-form">
 													<input type="hidden" name="action" value={data.actions?.saveOauthAction} />
 													<input type="hidden" name="_wpnonce" value={data.actions?.saveOauthNonce} />
@@ -234,6 +236,11 @@ function SettingsApp() {
 															</div>
 														))}
 													</div>
+													{registrationMethodMeta && registrationMethodMeta.available === false && (
+														<Notice status="warning" isDismissible={false}>
+															{registrationMethodMeta.label} is supported in Quark, but ChatGPT does not currently expose it as an available registration method in the create-app UI.
+														</Notice>
+													)}
 													{oauthSettings.registrationMethod === 'user_defined' && (
 														<div className="quark-manual-client-fields">
 															<TextControl
@@ -275,7 +282,7 @@ function SettingsApp() {
 													</div>
 												</form>
 												<h4>Step 3: Validate and confirm</h4>
-												<p>Complete one OAuth authorization in ChatGPT, then confirm here.</p>
+												<p>After creating the app in ChatGPT, trigger one OAuth authorization. Once ChatGPT successfully completes the authorization flow, confirm here.</p>
 												<div className="quark-connector-actions">
 													{renderActionForm(data.actions?.markConnectedAction, data.actions?.markConnectedNonce, 'Added The App')}
 													{isConnected && renderActionForm(data.actions?.revokeAction, data.actions?.revokeNonce, 'Revoke Connection', true)}
@@ -283,24 +290,30 @@ function SettingsApp() {
 											</div>
 											<div className="quark-connector-fields">
 												<h4>Copy Fields</h4>
-												<div className="quark-config-grid">
-													{configFields.map((field) => (
-														<Flex key={field.key} align="flex-end" gap={2} className="quark-config-row">
-															<FlexBlock>
-																<TextControl label={field.label} value={String(field.value ?? '')} readOnly />
-															</FlexBlock>
-															<FlexItem>
-																<Button
-																	className="quark-copy-button"
-																	label={`Copy ${field.label}`}
-																	icon="admin-page"
-																	onClick={() => copyValue(field.value)}
-																	variant="secondary"
-																/>
-															</FlexItem>
-														</Flex>
-													))}
-												</div>
+												{formSections.map((section) => (
+													<div key={section.key} className="quark-config-section">
+														<h5 className="quark-config-section-title">{section.title}</h5>
+														{section.description && <p className="quark-config-section-description">{section.description}</p>}
+														<div className="quark-config-grid">
+															{(section.fields || []).map((field) => (
+																<Flex key={field.key} align="flex-end" gap={2} className="quark-config-row">
+																	<FlexBlock>
+																		<TextControl label={field.label} value={String(field.value ?? '')} readOnly />
+																	</FlexBlock>
+																	<FlexItem>
+																		<Button
+																			className="quark-copy-button"
+																			label={`Copy ${field.label}`}
+																			icon="admin-page"
+																			onClick={() => copyValue(field.value)}
+																			variant="secondary"
+																		/>
+																	</FlexItem>
+																</Flex>
+															))}
+														</div>
+													</div>
+												))}
 												<div className="quark-form-actions">
 													<Button onClick={copyConfig} variant="tertiary">
 														{copied ? 'Copied' : 'Copy All'}

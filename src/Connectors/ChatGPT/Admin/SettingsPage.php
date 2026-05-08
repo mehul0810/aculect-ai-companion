@@ -133,11 +133,11 @@ final class SettingsPage
                 [
                     'label' => 'Client Identifier Metadata Document (CMID)',
                     'value' => OAuthClientRegistry::MODE_CMID,
-                    'description' => 'Prepare for stable client metadata documents. Draft/experimental in the current MCP ecosystem.',
-                    'available' => true,
+                    'description' => 'Supported in Quark, but not currently available in the ChatGPT create-app UI.',
+                    'available' => false,
                 ],
             ],
-            'configFields' => $this->chatgpt_config_fields(),
+            'chatgptFormSections' => $this->chatgpt_form_sections(),
             'copyAll' => wp_json_encode($this->chatgpt_copy_fields(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'actions' => [
                 'adminPostUrl' => admin_url('admin-post.php'),
@@ -154,100 +154,145 @@ final class SettingsPage
         ]);
     }
 
-    private function chatgpt_config_fields(): array
+    private function chatgpt_form_sections(): array
     {
         $settings = (new OAuthClientRegistry())->settings();
-        $fields = [
+        $oauth = new \Quark\Connectors\ChatGPT\Rest\OAuthController();
+        $sections = [
             [
-                'key' => 'app_name',
-                'label' => 'App Name',
-                'value' => 'Quark',
+                'key' => 'basic',
+                'title' => 'Basic Connector Fields',
+                'description' => 'Paste these into the main ChatGPT create-app form.',
+                'fields' => [
+                    [
+                        'key' => 'app_name',
+                        'label' => 'Name',
+                        'value' => 'Quark',
+                    ],
+                    [
+                        'key' => 'mcp_server_url',
+                        'label' => 'MCP Server URL',
+                        'value' => rest_url('quark/v1/mcp'),
+                    ],
+                    [
+                        'key' => 'authentication',
+                        'label' => 'Authentication',
+                        'value' => 'OAuth',
+                    ],
+                ],
             ],
             [
-                'key' => 'registration_method',
-                'label' => 'Registration Method',
-                'value' => $this->registration_method_label((string) $settings['registration_method']),
-            ],
-            [
-                'key' => 'mcp_server_url',
-                'label' => 'MCP Server URL',
-                'value' => rest_url('quark/v1/mcp'),
-            ],
-            [
-                'key' => 'oauth_authorization_endpoint',
-                'label' => 'OAuth Authorization Endpoint',
-                'value' => rest_url('quark/v1/oauth/authorize'),
-            ],
-            [
-                'key' => 'oauth_token_endpoint',
-                'label' => 'OAuth Token Endpoint',
-                'value' => rest_url('quark/v1/oauth/token'),
+                'key' => 'advanced_oauth',
+                'title' => 'Advanced OAuth Settings',
+                'description' => 'Use these values in ChatGPT Advanced OAuth settings when fields are shown manually.',
+                'fields' => array_values(array_filter([
+                    [
+                        'key' => 'registration_method',
+                        'label' => 'Registration Method',
+                        'value' => $this->registration_method_label((string) $settings['registration_method']),
+                    ],
+                    [
+                        'key' => 'authorization_server_base',
+                        'label' => 'Authorization Server Base',
+                        'value' => untrailingslashit(home_url('/')),
+                    ],
+                    [
+                        'key' => 'resource',
+                        'label' => 'Resource',
+                        'value' => rest_url('quark/v1/mcp'),
+                    ],
+                    [
+                        'key' => 'oauth_authorization_endpoint',
+                        'label' => 'Authorization Endpoint',
+                        'value' => rest_url('quark/v1/oauth/authorize'),
+                    ],
+                    [
+                        'key' => 'oauth_token_endpoint',
+                        'label' => 'Token Endpoint',
+                        'value' => rest_url('quark/v1/oauth/token'),
+                    ],
+                    [
+                        'key' => 'oauth_dynamic_client_registration_endpoint',
+                        'label' => 'Registration Endpoint',
+                        'value' => rest_url('quark/v1/oauth/register'),
+                        'modes' => [OAuthClientRegistry::MODE_DCR],
+                    ],
+                    [
+                        'key' => 'oauth_metadata_url',
+                        'label' => 'Authorization Server Metadata URL',
+                        'value' => home_url('/.well-known/oauth-authorization-server'),
+                    ],
+                    [
+                        'key' => 'oauth_protected_resource_metadata_url',
+                        'label' => 'Protected Resource Metadata URL',
+                        'value' => $oauth->protected_resource_metadata_url(),
+                    ],
+                    [
+                        'key' => 'pkce_method',
+                        'label' => 'PKCE Code Challenge Method',
+                        'value' => 'S256',
+                    ],
+                    [
+                        'key' => 'scopes',
+                        'label' => 'Scopes',
+                        'value' => 'content:read content:draft',
+                    ],
+                ], static function (array $field) use ($settings): bool {
+                    if (! isset($field['modes']) || ! is_array($field['modes'])) {
+                        return true;
+                    }
+
+                    return in_array((string) $settings['registration_method'], $field['modes'], true);
+                })),
             ],
         ];
 
-        if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
-            $fields[] = [
-                'key' => 'oauth_dynamic_client_registration_endpoint',
-                'label' => 'OAuth Dynamic Client Registration Endpoint',
-                'value' => rest_url('quark/v1/oauth/register'),
-            ];
-        }
-
         if (OAuthClientRegistry::MODE_USER_DEFINED === $settings['registration_method']) {
-            $fields[] = [
-                'key' => 'client_id',
-                'label' => 'Client ID',
-                'value' => (string) $settings['manual_client_id'],
-            ];
-            $fields[] = [
-                'key' => 'token_endpoint_auth_method',
-                'label' => 'Token Endpoint Auth Method',
-                'value' => (string) $settings['manual_token_endpoint_auth_method'],
+            $sections[] = [
+                'key' => 'user_defined_client',
+                'title' => 'User-Defined OAuth Client',
+                'description' => 'These values are only needed when ChatGPT is set to User-Defined OAuth Client.',
+                'fields' => [
+                    [
+                        'key' => 'client_id',
+                        'label' => 'Client ID',
+                        'value' => (string) $settings['manual_client_id'],
+                    ],
+                    [
+                        'key' => 'token_endpoint_auth_method',
+                        'label' => 'Token Endpoint Auth Method',
+                        'value' => (string) $settings['manual_token_endpoint_auth_method'],
+                    ],
+                ],
             ];
         }
 
         if (OAuthClientRegistry::MODE_CMID === $settings['registration_method']) {
-            $fields[] = [
-                'key' => 'cmid_url',
-                'label' => 'Client Identifier Metadata Document URL',
-                'value' => (string) $settings['cmid_url'],
+            $sections[] = [
+                'key' => 'cmid',
+                'title' => 'CMID',
+                'description' => 'Quark can expose CMID configuration, but ChatGPT currently does not show CMID as available.',
+                'fields' => [
+                    [
+                        'key' => 'cmid_url',
+                        'label' => 'Client Identifier Metadata Document URL',
+                        'value' => (string) $settings['cmid_url'],
+                    ],
+                ],
             ];
         }
 
-        return array_merge($fields, [
-                [
-                    'key' => 'oauth_metadata_url',
-                    'label' => 'OAuth Authorization Server Metadata URL',
-                    'value' => home_url('/.well-known/oauth-authorization-server'),
-                ],
-                [
-                    'key' => 'oauth_protected_resource_metadata_url',
-                    'label' => 'OAuth Protected Resource Metadata URL',
-                    'value' => home_url('/.well-known/oauth-protected-resource'),
-                ],
-                [
-                    'key' => 'resource',
-                    'label' => 'Resource',
-                    'value' => rest_url('quark/v1/mcp'),
-                ],
-                [
-                    'key' => 'pkce_method',
-                    'label' => 'PKCE Code Challenge Method',
-                    'value' => 'S256',
-                ],
-                [
-                    'key' => 'scopes',
-                    'label' => 'Scopes',
-                    'value' => 'content:read content:draft',
-                ],
-        ]);
+        return $sections;
     }
 
     private function chatgpt_copy_fields(): array
     {
-        $fields = ['name' => 'Quark'];
-        foreach ($this->chatgpt_config_fields() as $field) {
-            $fields[(string) $field['key']] = (string) $field['value'];
+        $fields = [];
+
+        foreach ($this->chatgpt_form_sections() as $section) {
+            foreach ((array) ($section['fields'] ?? []) as $field) {
+                $fields[(string) $field['key']] = (string) ($field['value'] ?? '');
+            }
         }
 
         return $fields;

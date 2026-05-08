@@ -20,8 +20,14 @@ final class OAuthController
     public function add_rewrite_rules(): void
     {
         add_rewrite_rule(
-            '^\.well-known/(oauth-protected-resource|oauth-authorization-server)/?$',
-            'index.php?quark_well_known=$matches[1]',
+            '^\.well-known/oauth-protected-resource(/.+)?/?$',
+            'index.php?quark_well_known=' . self::RESOURCE_METADATA . '&quark_well_known_resource_path=$matches[1]',
+            'top'
+        );
+
+        add_rewrite_rule(
+            '^\.well-known/oauth-authorization-server/?$',
+            'index.php?quark_well_known=' . self::AUTHORIZATION_METADATA,
             'top'
         );
     }
@@ -29,11 +35,18 @@ final class OAuthController
     public function render_well_known_metadata(): void
     {
         $document = (string) get_query_var('quark_well_known');
+        $resource_path = (string) get_query_var('quark_well_known_resource_path');
+
         if ('' === $document) {
             $path = wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
-            $document = is_string($path) && preg_match('#/\.well-known/(oauth-protected-resource|oauth-authorization-server)/?$#', $path, $matches)
-                ? (string) $matches[1]
-                : '';
+            if (is_string($path)) {
+                if (preg_match('#/\.well-known/oauth-protected-resource(?P<resource_path>/.+)?/?$#', $path, $matches)) {
+                    $document = self::RESOURCE_METADATA;
+                    $resource_path = (string) ($matches['resource_path'] ?? '');
+                } elseif (preg_match('#/\.well-known/oauth-authorization-server/?$#', $path)) {
+                    $document = self::AUTHORIZATION_METADATA;
+                }
+            }
         }
 
         if ('' === $document) {
@@ -41,7 +54,7 @@ final class OAuthController
         }
 
         $response = match ($document) {
-            self::RESOURCE_METADATA => $this->protected_resource_metadata(),
+            self::RESOURCE_METADATA => $this->protected_resource_metadata($resource_path),
             self::AUTHORIZATION_METADATA => $this->oauth_metadata(),
             default => null,
         };
@@ -88,43 +101,38 @@ final class OAuthController
 
     public function oauth_metadata(): WP_REST_Response
     {
-        $registry = new OAuthClientRegistry();
-        $settings = $registry->settings();
         $metadata = [
             'issuer' => $this->issuer(),
             'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'response_types_supported' => ['code'],
-            'token_endpoint_auth_methods_supported' => [
-                OAuthClientRegistry::AUTH_NONE,
-                OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
-                OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
-            ],
+            'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
             'code_challenge_methods_supported' => ['S256'],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_indicators_supported' => true,
+            'protected_resources' => [rest_url('quark/v1/mcp')],
+            'registration_endpoint' => rest_url('quark/v1/oauth/register'),
         ];
-
-        if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
-            $metadata['registration_endpoint'] = rest_url('quark/v1/oauth/register');
-        }
 
         return new WP_REST_Response($metadata, 200);
     }
 
-    public function protected_resource_metadata(): WP_REST_Response
+    public function protected_resource_metadata(string $requested_resource_path = ''): WP_REST_Response
     {
+        $resource = rest_url('quark/v1/mcp');
+        $resource_path = (string) wp_parse_url($resource, PHP_URL_PATH);
+
+        if ('' !== $requested_resource_path && $resource_path !== untrailingslashit($requested_resource_path)) {
+            return new WP_REST_Response(['error' => 'invalid_target'], 404);
+        }
+
         return new WP_REST_Response([
-            'resource' => rest_url('quark/v1/mcp'),
+            'resource' => $resource,
             'authorization_servers' => [$this->issuer()],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
-            'token_endpoint_auth_methods_supported' => [
-                OAuthClientRegistry::AUTH_NONE,
-                OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
-                OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
-            ],
+            'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
         ], 200);
     }
 
@@ -135,6 +143,9 @@ final class OAuthController
             return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
         }
 
+        $registry = new OAuthClientRegistry();
+        $registry->cleanup_expired_dcr_clients();
+
         $redirect_uris = $payload['redirect_uris'] ?? [];
         if (! is_array($redirect_uris) || [] === $redirect_uris) {
             return new WP_REST_Response(['error' => 'invalid_redirect_uri'], 400);
@@ -143,7 +154,7 @@ final class OAuthController
         $normalized = [];
         foreach ($redirect_uris as $uri) {
             $value = esc_url_raw((string) $uri);
-            if ('' === $value || ! (new OAuthClientRegistry())->is_chatgpt_redirect($value)) {
+            if ('' === $value || ! $registry->is_chatgpt_redirect($value)) {
                 continue;
             }
             $normalized[] = $value;
@@ -158,25 +169,51 @@ final class OAuthController
             return new WP_REST_Response(['error' => 'invalid_scope'], 400);
         }
 
+        $grant_types = $payload['grant_types'] ?? ['authorization_code', 'refresh_token'];
+        if (! is_array($grant_types)) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+        $grant_types = array_values(array_unique(array_map('strval', $grant_types)));
+        sort($grant_types);
+        if ($grant_types !== ['authorization_code', 'refresh_token']) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+
+        $response_types = $payload['response_types'] ?? ['code'];
+        if (! is_array($response_types)) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+        $response_types = array_values(array_unique(array_map('strval', $response_types)));
+        if ($response_types !== ['code']) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+
+        $token_endpoint_auth_method = sanitize_key((string) ($payload['token_endpoint_auth_method'] ?? OAuthClientRegistry::AUTH_NONE));
+        if (OAuthClientRegistry::AUTH_NONE !== $token_endpoint_auth_method) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+
+        $issued_at = time();
         $client_id = 'quark_' . wp_generate_password(20, false, false);
         $clients = get_option(OAuthClientRegistry::OPTION_DCR_CLIENTS, []);
         $clients[$client_id] = [
             'redirect_uris' => array_values(array_unique($normalized)),
             'grant_types' => ['authorization_code', 'refresh_token'],
             'response_types' => ['code'],
-            'token_endpoint_auth_method' => 'none',
+            'token_endpoint_auth_method' => OAuthClientRegistry::AUTH_NONE,
             'client_name' => sanitize_text_field((string) ($payload['client_name'] ?? 'ChatGPT')),
             'scope' => $scope,
+            'client_id_issued_at' => $issued_at,
         ];
         update_option(OAuthClientRegistry::OPTION_DCR_CLIENTS, $clients, false);
 
         return new WP_REST_Response([
             'client_id' => $client_id,
-            'client_id_issued_at' => time(),
+            'client_id_issued_at' => $issued_at,
             'redirect_uris' => $clients[$client_id]['redirect_uris'],
             'grant_types' => $clients[$client_id]['grant_types'],
             'response_types' => $clients[$client_id]['response_types'],
-            'token_endpoint_auth_method' => 'none',
+            'token_endpoint_auth_method' => OAuthClientRegistry::AUTH_NONE,
             'client_name' => $clients[$client_id]['client_name'],
             'scope' => $clients[$client_id]['scope'],
         ], 201);
@@ -249,7 +286,7 @@ final class OAuthController
                 return new WP_REST_Response(['error' => 'invalid_target'], 400);
             }
 
-            $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource);
+            $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource, $client_id);
             return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
         }
 
@@ -259,6 +296,23 @@ final class OAuthController
     private function issuer(): string
     {
         return untrailingslashit(home_url('/'));
+    }
+
+    public function protected_resource_metadata_url(?string $resource = null): string
+    {
+        $resource = $resource ?: rest_url('quark/v1/mcp');
+        $parts = wp_parse_url($resource);
+
+        if (! is_array($parts)) {
+            return home_url('/.well-known/' . self::RESOURCE_METADATA);
+        }
+
+        $scheme = (string) ($parts['scheme'] ?? 'https');
+        $host = (string) ($parts['host'] ?? '');
+        $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+        $path = untrailingslashit((string) ($parts['path'] ?? ''));
+
+        return $scheme . '://' . $host . $port . '/.well-known/' . self::RESOURCE_METADATA . $path;
     }
 
     private function has_supported_scopes(string $scope): bool
@@ -275,5 +329,21 @@ final class OAuthController
         }
 
         return true;
+    }
+
+    private function supported_token_endpoint_auth_methods(): array
+    {
+        $methods = [OAuthClientRegistry::AUTH_NONE];
+        $settings = (new OAuthClientRegistry())->settings();
+        $manual_method = (string) ($settings['manual_token_endpoint_auth_method'] ?? OAuthClientRegistry::AUTH_NONE);
+
+        if (in_array($manual_method, [
+            OAuthClientRegistry::AUTH_CLIENT_SECRET_POST,
+            OAuthClientRegistry::AUTH_CLIENT_SECRET_BASIC,
+        ], true)) {
+            $methods[] = $manual_method;
+        }
+
+        return $methods;
     }
 }

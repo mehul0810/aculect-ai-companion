@@ -63,6 +63,7 @@ final class Plugin
     public function register_query_vars(array $vars): array
     {
         $vars[] = 'quark_well_known';
+        $vars[] = 'quark_well_known_resource_path';
         return $vars;
     }
 

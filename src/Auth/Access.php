@@ -50,16 +50,17 @@ final class Access
             return [];
         }
 
-        return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource);
+        return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource, $client_id);
     }
 
-    public function issue_tokens(int $user_id, string $scope, string $resource): array
+    public function issue_tokens(int $user_id, string $scope, string $resource, string $client_id): array
     {
         $access_token = wp_generate_uuid4() . wp_generate_uuid4();
         $refresh_token = wp_generate_uuid4() . wp_generate_uuid4();
         $tokens = get_option(self::OPTION_TOKENS, []);
         $tokens[hash('sha256', $access_token)] = [
             'user_id' => $user_id,
+            'client_id' => $client_id,
             'scope' => $scope,
             'resource' => $resource,
             'refresh_hash' => hash('sha256', $refresh_token),
@@ -77,7 +78,7 @@ final class Access
         ];
     }
 
-    public function refresh(string $refresh_token, string $resource): array
+    public function refresh(string $refresh_token, string $resource, string $client_id): array
     {
         $tokens = get_option(self::OPTION_TOKENS, []);
         if (! is_array($tokens)) {
@@ -93,11 +94,14 @@ final class Access
             unset($tokens[$access_hash]);
             update_option(self::OPTION_TOKENS, $tokens, false);
 
-            if ((string) ($record['resource'] ?? '') !== $resource) {
+            if (
+                (string) ($record['resource'] ?? '') !== $resource
+                || (string) ($record['client_id'] ?? '') !== $client_id
+            ) {
                 return [];
             }
 
-            return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource);
+            return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource, $client_id);
         }
 
         return [];
@@ -126,6 +130,7 @@ final class Access
 
         return [
             'user_id' => (int) $record['user_id'],
+            'client_id' => (string) ($record['client_id'] ?? ''),
             'scope' => (string) ($record['scope'] ?? ''),
             'scopes' => preg_split('/\s+/', trim((string) ($record['scope'] ?? ''))) ?: [],
             'resource' => (string) ($record['resource'] ?? ''),

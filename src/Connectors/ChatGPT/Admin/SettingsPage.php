@@ -68,9 +68,9 @@ final class SettingsPage
         echo '<div id="quark-settings-app-root" class="quark-settings-app-root"></div>';
     }
 
-    public function enqueue_assets(string $hook_suffix): void
+    public function enqueue_assets($hook_suffix): void
     {
-        if ('settings_page_quark' !== $hook_suffix) {
+        if ('settings_page_quark' !== (string) $hook_suffix) {
             return;
         }
 

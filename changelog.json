@@ -14,7 +14,8 @@
       "POST nonce-based admin actions for improved reliability over nonce links",
       "Selectable ChatGPT OAuth registration method for user-defined clients or Dynamic Client Registration",
       "Mode-aware OAuth metadata so ChatGPT sees only the active client registration flow",
-      "Streamable HTTP MCP endpoint behavior with SSE negotiation support"
+      "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
+      "Requester-scoped DCR rate limiting to prevent false 429 errors during ChatGPT app setup"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

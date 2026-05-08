@@ -144,7 +144,7 @@ final class OAuthController
 
     public function register_client(WP_REST_Request $request): WP_REST_Response
     {
-        if (! $this->check_rate_limit('dcr', (string) $request->get_header('x-forwarded-for'))) {
+        if (! $this->check_rate_limit('dcr:' . $this->rate_limit_identity($request), 120, HOUR_IN_SECONDS)) {
             return $this->oauth_error(
                 'slow_down',
                 'Too many dynamic client registration attempts. Try again later.',
@@ -232,7 +232,8 @@ final class OAuthController
             $client_id = $registry->client_id_from_authorization_header((string) $request->get_header('authorization'));
         }
 
-        if (! $this->check_rate_limit($client_id, (string) $request->get_header('x-forwarded-for'))) {
+        $rate_limit_key = '' !== $client_id ? $client_id : $this->rate_limit_identity($request);
+        if (! $this->check_rate_limit($rate_limit_key, 10, MINUTE_IN_SECONDS)) {
             return $this->oauth_error(
                 'slow_down',
                 'Too many authentication attempts. Try again later.',
@@ -363,9 +364,8 @@ final class OAuthController
         return home_url($uri);
     }
 
-    private function check_rate_limit(string $client_id, string $forwarded_for): bool
+    private function check_rate_limit(string $identifier, int $max_attempts, int $ttl): bool
     {
-        $identifier = '' !== $client_id ? $client_id : $forwarded_for;
         if ('' === $identifier) {
             $identifier = 'anonymous';
         }
@@ -373,13 +373,32 @@ final class OAuthController
         $cache_key = 'quark_oauth_rate_' . md5($identifier);
         $attempts = (int) get_transient($cache_key);
 
-        if ($attempts >= 10) {
+        if ($attempts >= $max_attempts) {
             return false;
         }
 
-        set_transient($cache_key, $attempts + 1, MINUTE_IN_SECONDS);
+        set_transient($cache_key, $attempts + 1, $ttl);
 
         return true;
+    }
+
+    private function rate_limit_identity(WP_REST_Request $request): string
+    {
+        $ip_headers = [
+            (string) $request->get_header('cf-connecting-ip'),
+            (string) $request->get_header('x-real-ip'),
+            (string) $request->get_header('x-forwarded-for'),
+            isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash((string) $_SERVER['REMOTE_ADDR'])) : '',
+        ];
+
+        foreach ($ip_headers as $header) {
+            $candidate = sanitize_text_field(trim(explode(',', $header)[0]));
+            if ('' !== $candidate) {
+                return $candidate;
+            }
+        }
+
+        return 'anonymous';
     }
 
     private function oauth_error(string $error, string $description, int $status): WP_REST_Response

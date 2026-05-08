@@ -27,14 +27,22 @@ final class McpController
 
     public function describe(): array
     {
+        $resource_metadata_url = rest_url('quark/v1/.well-known/oauth-protected-resource');
+        $mcp_url = rest_url('quark/v1/mcp');
+
         return [
             'name' => 'Quark MCP',
             'protocol' => 'mcp',
             'version' => QUARK_VERSION,
             'transport' => 'http-jsonrpc',
             'auth' => 'oauth2.1',
+            'authentication' => [
+                'type' => 'oauth2.1',
+                'resource' => $mcp_url,
+                'resource_metadata_url' => $resource_metadata_url,
+            ],
             'endpoints' => [
-                'rpc' => rest_url('quark/v1/mcp'),
+                'rpc' => $mcp_url,
             ],
         ];
     }
@@ -51,6 +59,8 @@ final class McpController
 
         switch ($method) {
             case 'initialize':
+                $resource_metadata_url = rest_url('quark/v1/.well-known/oauth-protected-resource');
+                $mcp_url = rest_url('quark/v1/mcp');
                 return $this->rpc_result($id, [
                     'protocolVersion' => '2024-11-05',
                     'serverInfo' => [
@@ -59,6 +69,11 @@ final class McpController
                     ],
                     'capabilities' => [
                         'tools' => new \stdClass(),
+                        'authentication' => [
+                            'type' => 'oauth2.1',
+                            'resource' => $mcp_url,
+                            'resource_metadata_url' => $resource_metadata_url,
+                        ],
                     ],
                 ]);
 

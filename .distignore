@@ -1,0 +1,17 @@
+.git/
+.github/
+node_modules/
+tests/
+vendor/bin/
+src/admin-settings.js
+.editorconfig
+.gitignore
+phpcs.xml.dist
+phpstan.neon.dist
+AGENTS.md
+package-lock.json
+package.json
+README.md
+*.log
+.DS_Store
+dist/

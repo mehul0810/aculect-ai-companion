@@ -13,33 +13,75 @@ final class McpController
     public function register_routes(): void
     {
         register_rest_route('quark/v1', '/mcp', [
+            'methods'  => WP_REST_Server::READABLE,
+            'callback' => [$this, 'describe'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('quark/v1', '/mcp', [
             'methods'  => WP_REST_Server::CREATABLE,
-            'callback' => [$this, 'handle'],
+            'callback' => [$this, 'handle_rpc'],
             'permission_callback' => '__return_true',
         ]);
     }
 
-    public function handle(WP_REST_Request $request)
+    public function describe(): array
+    {
+        return [
+            'name' => 'Quark MCP',
+            'protocol' => 'mcp',
+            'version' => QUARK_VERSION,
+            'transport' => 'http-jsonrpc',
+            'auth' => 'oauth2.1',
+            'endpoints' => [
+                'rpc' => rest_url('quark/v1/mcp'),
+            ],
+        ];
+    }
+
+    public function handle_rpc(WP_REST_Request $request): array
     {
         $body = $request->get_json_params();
+        if (! is_array($body)) {
+            return $this->rpc_error(null, -32600, 'Invalid Request');
+        }
+
+        $id = $body['id'] ?? null;
         $method = $body['method'] ?? '';
 
         switch ($method) {
+            case 'initialize':
+                return $this->rpc_result($id, [
+                    'protocolVersion' => '2024-11-05',
+                    'serverInfo' => [
+                        'name' => 'Quark MCP',
+                        'version' => QUARK_VERSION,
+                    ],
+                    'capabilities' => [
+                        'tools' => new \stdClass(),
+                    ],
+                ]);
+
             case 'tools/list':
-                return $this->list_tools();
+                return $this->rpc_result($id, $this->list_tools());
 
             case 'tools/call':
                 $user_id = $this->authenticate($request);
                 if ($user_id < 1) {
-                    return ['error' => 'Unauthorized'];
+                    return $this->rpc_error($id, -32001, 'Unauthorized');
                 }
                 wp_set_current_user($user_id);
-                return $this->call_tool($body['params'] ?? []);
+                return $this->rpc_result($id, [
+                    'content' => [
+                        [
+                            'type' => 'text',
+                            'text' => wp_json_encode($this->call_tool($body['params'] ?? [])),
+                        ],
+                    ],
+                ]);
         }
 
-        return [
-            'error' => 'Invalid MCP method'
-        ];
+        return $this->rpc_error($id, -32601, 'Method not found');
     }
 
     private function list_tools(): array
@@ -48,21 +90,80 @@ final class McpController
             'tools' => [
                 [
                     'name' => 'site.list_post_types',
-                    'description' => 'List readable post types'
+                    'description' => 'List readable post types',
+                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'content.list_items',
-                    'description' => 'List content items with pagination'
+                    'description' => 'List content items with pagination',
+                    'inputSchema' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'post_type' => ['type' => 'string'],
+                            'status' => ['type' => ['string', 'array']],
+                            'page' => ['type' => 'integer'],
+                            'per_page' => ['type' => 'integer'],
+                        ],
+                    ],
+                    'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'content.get_item',
-                    'description' => 'Read one content item by ID'
+                    'description' => 'Read one content item by ID',
+                    'inputSchema' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer']],
+                    ],
+                    'annotations' => ['readOnlyHint' => true],
                 ],
-                ['name' => 'content.create_draft', 'description' => 'Create a draft content item'],
-                ['name' => 'taxonomy.list_taxonomies', 'description' => 'List taxonomies'],
-                ['name' => 'taxonomy.list_terms', 'description' => 'List terms in a taxonomy'],
-                ['name' => 'media.list_items', 'description' => 'List media items'],
-                ['name' => 'site.get_settings', 'description' => 'Read safe site settings'],
+                [
+                    'name' => 'content.create_draft',
+                    'description' => 'Create a draft content item',
+                    'inputSchema' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'post_type' => ['type' => 'string'],
+                            'title' => ['type' => 'string'],
+                            'content' => ['type' => 'string'],
+                        ],
+                    ],
+                    'annotations' => ['readOnlyHint' => false],
+                ],
+                [
+                    'name' => 'taxonomy.list_taxonomies',
+                    'description' => 'List taxonomies',
+                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'annotations' => ['readOnlyHint' => true],
+                ],
+                [
+                    'name' => 'taxonomy.list_terms',
+                    'description' => 'List terms in a taxonomy',
+                    'inputSchema' => [
+                        'type' => 'object',
+                        'properties' => ['taxonomy' => ['type' => 'string']],
+                    ],
+                    'annotations' => ['readOnlyHint' => true],
+                ],
+                [
+                    'name' => 'media.list_items',
+                    'description' => 'List media items',
+                    'inputSchema' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'page' => ['type' => 'integer'],
+                            'per_page' => ['type' => 'integer'],
+                        ],
+                    ],
+                    'annotations' => ['readOnlyHint' => true],
+                ],
+                [
+                    'name' => 'site.get_settings',
+                    'description' => 'Read safe site settings',
+                    'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'annotations' => ['readOnlyHint' => true],
+                ],
             ]
         ];
     }
@@ -99,5 +200,26 @@ final class McpController
             return 0;
         }
         return (new Access())->user_from_bearer($token);
+    }
+
+    private function rpc_result($id, array $result): array
+    {
+        return [
+            'jsonrpc' => '2.0',
+            'id' => $id,
+            'result' => $result,
+        ];
+    }
+
+    private function rpc_error($id, int $code, string $message): array
+    {
+        return [
+            'jsonrpc' => '2.0',
+            'id' => $id,
+            'error' => [
+                'code' => $code,
+                'message' => $message,
+            ],
+        ];
     }
 }

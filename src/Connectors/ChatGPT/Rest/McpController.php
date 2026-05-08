@@ -68,7 +68,11 @@ final class McpController
             case 'tools/call':
                 $user_id = $this->authenticate($request);
                 if ($user_id < 1) {
-                    return $this->rpc_error($id, -32001, 'Unauthorized');
+                    return $this->rpc_error($id, -32001, 'Unauthorized', [
+                        '_meta' => [
+                            'mcp/www_authenticate' => 'Bearer resource_metadata="' . rest_url('quark/v1/.well-known/oauth-protected-resource') . '"',
+                        ],
+                    ]);
                 }
                 wp_set_current_user($user_id);
                 return $this->rpc_result($id, [
@@ -211,15 +215,20 @@ final class McpController
         ];
     }
 
-    private function rpc_error($id, int $code, string $message): array
+    private function rpc_error($id, int $code, string $message, array $data = []): array
     {
+        $error = [
+            'code' => $code,
+            'message' => $message,
+        ];
+        if ([] !== $data) {
+            $error['data'] = $data;
+        }
+
         return [
             'jsonrpc' => '2.0',
             'id' => $id,
-            'error' => [
-                'code' => $code,
-                'message' => $message,
-            ],
+            'error' => $error,
         ];
     }
 }

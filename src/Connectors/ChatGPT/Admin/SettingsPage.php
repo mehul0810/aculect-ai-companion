@@ -138,6 +138,16 @@ final class SettingsPage
                     'value' => rest_url('quark/v1/.well-known/oauth-authorization-server'),
                 ],
                 [
+                    'key' => 'oauth_protected_resource_metadata_url',
+                    'label' => 'OAuth Protected Resource Metadata URL',
+                    'value' => rest_url('quark/v1/.well-known/oauth-protected-resource'),
+                ],
+                [
+                    'key' => 'resource',
+                    'label' => 'Resource',
+                    'value' => rest_url('quark/v1/mcp'),
+                ],
+                [
                     'key' => 'openid_metadata_url',
                     'label' => 'OpenID Configuration URL',
                     'value' => rest_url('quark/v1/.well-known/openid-configuration'),
@@ -160,6 +170,8 @@ final class SettingsPage
                 'oauth_token_endpoint' => rest_url('quark/v1/oauth/token'),
                 'oauth_dynamic_client_registration_endpoint' => rest_url('quark/v1/oauth/register'),
                 'oauth_metadata_url' => rest_url('quark/v1/.well-known/oauth-authorization-server'),
+                'oauth_protected_resource_metadata_url' => rest_url('quark/v1/.well-known/oauth-protected-resource'),
+                'resource' => rest_url('quark/v1/mcp'),
                 'openid_metadata_url' => rest_url('quark/v1/.well-known/openid-configuration'),
                 'pkce_method' => 'S256',
                 'scopes' => 'content:read content:draft',
@@ -213,6 +225,7 @@ final class SettingsPage
         $scope = sanitize_text_field((string) ($_GET['scope'] ?? ''));
         $code_challenge = sanitize_text_field((string) ($_GET['code_challenge'] ?? ''));
         $code_challenge_method = sanitize_text_field((string) ($_GET['code_challenge_method'] ?? 'S256'));
+        $resource = esc_url_raw((string) ($_GET['resource'] ?? rest_url('quark/v1/mcp')));
 
         echo '<h1>Quark OAuth Consent</h1>';
         echo '<p>Approve this request to connect ChatGPT to your WordPress account.</p>';
@@ -220,6 +233,7 @@ final class SettingsPage
         echo '<tr><td><strong>Client ID</strong></td><td><code>' . esc_html($client_id) . '</code></td></tr>';
         echo '<tr><td><strong>Redirect URI</strong></td><td><code>' . esc_html($redirect_uri) . '</code></td></tr>';
         echo '<tr><td><strong>Requested Scope</strong></td><td><code>' . esc_html($scope) . '</code></td></tr>';
+        echo '<tr><td><strong>Resource</strong></td><td><code>' . esc_html($resource) . '</code></td></tr>';
         echo '</tbody></table>';
 
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
@@ -231,6 +245,7 @@ final class SettingsPage
         echo '<input type="hidden" name="scope" value="' . esc_attr($scope) . '" />';
         echo '<input type="hidden" name="code_challenge" value="' . esc_attr($code_challenge) . '" />';
         echo '<input type="hidden" name="code_challenge_method" value="' . esc_attr($code_challenge_method) . '" />';
+        echo '<input type="hidden" name="resource" value="' . esc_attr($resource) . '" />';
         submit_button('Approve', 'primary', 'decision', false, ['value' => 'approve']);
         echo ' ';
         submit_button('Deny', 'secondary', 'decision', false, ['value' => 'deny']);

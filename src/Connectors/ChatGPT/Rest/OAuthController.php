@@ -16,6 +16,11 @@ final class OAuthController
 
     public function register_routes(): void
     {
+        register_rest_route('quark/v1', '/.well-known/oauth-protected-resource', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'protected_resource_metadata'],
+            'permission_callback' => '__return_true',
+        ]);
         register_rest_route('quark/v1', '/.well-known/oauth-authorization-server', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'oauth_metadata'],
@@ -60,6 +65,16 @@ final class OAuthController
         ], 200);
     }
 
+    public function protected_resource_metadata(): WP_REST_Response
+    {
+        return new WP_REST_Response([
+            'resource' => rest_url('quark/v1/mcp'),
+            'authorization_servers' => [untrailingslashit(rest_url('quark/v1'))],
+            'scopes_supported' => ['content:read', 'content:draft'],
+            'resource_documentation' => 'https://github.com/mehul0810/quark',
+        ], 200);
+    }
+
     public function openid_metadata(): WP_REST_Response
     {
         $issuer = $this->issuer();
@@ -81,17 +96,47 @@ final class OAuthController
 
     public function register_client(WP_REST_Request $request): WP_REST_Response
     {
-        $redirect_uri = (string) $request->get_param('redirect_uri');
-        if ('' === $redirect_uri) {
-            return new WP_REST_Response(['error' => 'redirect_uri is required'], 400);
+        $payload = $request->get_json_params();
+        if (! is_array($payload)) {
+            return new WP_REST_Response(['error' => 'invalid_client_metadata'], 400);
+        }
+
+        $redirect_uris = $payload['redirect_uris'] ?? [];
+        if (! is_array($redirect_uris) || [] === $redirect_uris) {
+            return new WP_REST_Response(['error' => 'invalid_redirect_uri'], 400);
+        }
+
+        $normalized = [];
+        foreach ($redirect_uris as $uri) {
+            $value = esc_url_raw((string) $uri);
+            if ('' === $value) {
+                continue;
+            }
+            $normalized[] = $value;
+        }
+
+        if ([] === $normalized) {
+            return new WP_REST_Response(['error' => 'invalid_redirect_uri'], 400);
         }
 
         $client_id = 'quark_' . wp_generate_password(20, false, false);
         $clients = get_option(self::OPTION_CLIENTS, []);
-        $clients[$client_id] = ['redirect_uri' => $redirect_uri];
+        $clients[$client_id] = [
+            'redirect_uris' => array_values(array_unique($normalized)),
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'response_types' => ['code'],
+            'token_endpoint_auth_method' => 'none',
+        ];
         update_option(self::OPTION_CLIENTS, $clients, false);
 
-        return new WP_REST_Response(['client_id' => $client_id], 201);
+        return new WP_REST_Response([
+            'client_id' => $client_id,
+            'client_id_issued_at' => time(),
+            'redirect_uris' => $clients[$client_id]['redirect_uris'],
+            'grant_types' => $clients[$client_id]['grant_types'],
+            'response_types' => $clients[$client_id]['response_types'],
+            'token_endpoint_auth_method' => 'none',
+        ], 201);
     }
 
     public function authorize(WP_REST_Request $request): WP_REST_Response
@@ -115,6 +160,7 @@ final class OAuthController
             'scope' => (string) $context['scope'],
             'code_challenge' => (string) $context['code_challenge'],
             'code_challenge_method' => 'S256',
+            'resource' => (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp')),
         ], admin_url('options-general.php'));
 
         return new WP_REST_Response(['consent_url' => $consent_url], 200);
@@ -125,16 +171,19 @@ final class OAuthController
         $grant_type = (string) $request->get_param('grant_type');
         $access = new Access();
         if ('authorization_code' === $grant_type) {
+            $resource = (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp'));
             $tokens = $access->exchange_code(
                 (string) $request->get_param('code'),
                 (string) $request->get_param('client_id'),
-                (string) $request->get_param('code_verifier')
+                (string) $request->get_param('code_verifier'),
+                $resource
             );
             return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
         }
 
         if ('refresh_token' === $grant_type) {
-            $tokens = $access->refresh((string) $request->get_param('refresh_token'));
+            $resource = (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp'));
+            $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource);
             return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
         }
 

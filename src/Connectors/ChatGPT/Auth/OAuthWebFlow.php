@@ -16,6 +16,7 @@ final class OAuthWebFlow
         $redirect_uri = (string) ($params['redirect_uri'] ?? '');
         $state = (string) ($params['state'] ?? '');
         $scope = (string) ($params['scope'] ?? 'content:read content:draft');
+        $resource = (string) ($params['resource'] ?? rest_url('quark/v1/mcp'));
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? 'S256');
 
@@ -28,9 +29,14 @@ final class OAuthWebFlow
             '' === $code_challenge ||
             'S256' !== $code_challenge_method ||
             ! is_array($clients) ||
-            ! isset($clients[$client_id]) ||
-            (string) $clients[$client_id]['redirect_uri'] !== $redirect_uri
+            ! isset($clients[$client_id])
         ) {
+            return ['valid' => false];
+        }
+
+        $client = $clients[$client_id];
+        $allowed = $client['redirect_uris'] ?? [];
+        if (! is_array($allowed) || ! in_array($redirect_uri, $allowed, true)) {
             return ['valid' => false];
         }
 
@@ -41,6 +47,7 @@ final class OAuthWebFlow
             'state' => $state,
             'scope' => $scope,
             'code_challenge' => $code_challenge,
+            'resource' => $resource,
         ];
     }
 
@@ -66,7 +73,8 @@ final class OAuthWebFlow
             get_current_user_id(),
             (string) $context['client_id'],
             (string) $context['scope'],
-            (string) $context['code_challenge']
+            (string) $context['code_challenge'],
+            (string) $context['resource']
         );
 
         $this->redirect_with_code(

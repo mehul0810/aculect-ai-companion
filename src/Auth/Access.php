@@ -9,7 +9,7 @@ final class Access
     private const OPTION_CODES = 'quark_oauth_codes';
     private const OPTION_TOKENS = 'quark_oauth_tokens';
 
-    public function issue_code(int $user_id, string $client_id, string $scope, string $code_challenge): string
+    public function issue_code(int $user_id, string $client_id, string $scope, string $code_challenge, string $resource): string
     {
         $code = wp_generate_uuid4() . wp_generate_uuid4();
         $items = get_option(self::OPTION_CODES, []);
@@ -18,6 +18,7 @@ final class Access
             'client_id' => $client_id,
             'scope' => $scope,
             'code_challenge' => $code_challenge,
+            'resource' => $resource,
             'expires' => time() + 300,
         ];
         update_option(self::OPTION_CODES, $items, false);
@@ -25,7 +26,7 @@ final class Access
         return $code;
     }
 
-    public function exchange_code(string $code, string $client_id, string $code_verifier): array
+    public function exchange_code(string $code, string $client_id, string $code_verifier, string $resource): array
     {
         $codes = get_option(self::OPTION_CODES, []);
         if (! is_array($codes) || ! isset($codes[$code])) {
@@ -36,7 +37,11 @@ final class Access
         unset($codes[$code]);
         update_option(self::OPTION_CODES, $codes, false);
 
-        if ((int) $record['expires'] < time() || $record['client_id'] !== $client_id) {
+        if (
+            (int) $record['expires'] < time() ||
+            $record['client_id'] !== $client_id ||
+            (string) ($record['resource'] ?? '') !== $resource
+        ) {
             return [];
         }
 
@@ -45,10 +50,10 @@ final class Access
             return [];
         }
 
-        return $this->issue_tokens((int) $record['user_id'], (string) $record['scope']);
+        return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource);
     }
 
-    public function issue_tokens(int $user_id, string $scope): array
+    public function issue_tokens(int $user_id, string $scope, string $resource): array
     {
         $access_token = wp_generate_uuid4() . wp_generate_uuid4();
         $refresh_token = wp_generate_uuid4() . wp_generate_uuid4();
@@ -56,6 +61,7 @@ final class Access
         $tokens[hash('sha256', $access_token)] = [
             'user_id' => $user_id,
             'scope' => $scope,
+            'resource' => $resource,
             'refresh_hash' => hash('sha256', $refresh_token),
             'expires' => time() + HOUR_IN_SECONDS,
         ];
@@ -67,10 +73,11 @@ final class Access
             'token_type' => 'Bearer',
             'expires_in' => HOUR_IN_SECONDS,
             'scope' => $scope,
+            'resource' => $resource,
         ];
     }
 
-    public function refresh(string $refresh_token): array
+    public function refresh(string $refresh_token, string $resource): array
     {
         $tokens = get_option(self::OPTION_TOKENS, []);
         if (! is_array($tokens)) {
@@ -86,7 +93,11 @@ final class Access
             unset($tokens[$access_hash]);
             update_option(self::OPTION_TOKENS, $tokens, false);
 
-            return $this->issue_tokens((int) $record['user_id'], (string) $record['scope']);
+            if ((string) ($record['resource'] ?? '') !== $resource) {
+                return [];
+            }
+
+            return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource);
         }
 
         return [];

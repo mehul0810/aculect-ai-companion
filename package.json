@@ -1,0 +1,16 @@
+{
+  "name": "quark",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quark WordPress plugin assets tooling",
+  "scripts": {
+    "build": "wp-scripts build",
+    "start": "wp-scripts start",
+    "lint:js": "wp-scripts lint-js",
+    "lint:css": "wp-scripts lint-style",
+    "format": "wp-scripts format"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^30.0.0"
+  }
+}

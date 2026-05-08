@@ -6,6 +6,7 @@ namespace Quark;
 
 use Quark\Rest\McpController;
 use Quark\Rest\ContentController;
+use Quark\Rest\OAuthController;
 
 final class Plugin
 {
@@ -37,6 +38,7 @@ final class Plugin
 
     public function register_routes(): void
     {
+        (new OAuthController())->register_routes();
         (new McpController())->register_routes();
         (new ContentController())->register_routes();
     }

@@ -4,53 +4,52 @@ declare(strict_types=1);
 
 namespace Quark\Rest;
 
+use Quark\Abilities\AbilitiesService;
+
 final class ContentController
 {
     public function register_routes(): void
     {
-        // Internal use via MCP only
+        // Internal MCP tools only.
     }
 
-    public function create_post(array $data): array
+    public function list_post_types(): array
     {
-        $post_id = wp_insert_post([
-            'post_title'   => $data['title'] ?? '',
-            'post_content' => $data['content'] ?? '',
-            'post_status'  => $data['status'] ?? 'draft',
-        ]);
-
-        return [
-            'post_id' => $post_id,
-        ];
+        return ['items' => (new AbilitiesService())->list_post_types()];
     }
 
-    public function update_post(array $data): array
+    public function list_items(array $data): array
     {
-        $post_id = $data['id'] ?? 0;
-
-        wp_update_post([
-            'ID'           => $post_id,
-            'post_title'   => $data['title'] ?? '',
-            'post_content' => $data['content'] ?? '',
-        ]);
-
-        return [
-            'post_id' => $post_id,
-        ];
+        return (new AbilitiesService())->list_items($data);
     }
 
-    public function audit_posts(): array
+    public function get_item(array $data): array
     {
-        $posts = get_posts([
-            'numberposts' => 5,
-        ]);
+        return (new AbilitiesService())->get_item((int) ($data['id'] ?? 0));
+    }
 
-        return array_map(function ($post) {
-            return [
-                'id' => $post->ID,
-                'title' => $post->post_title,
-                'status' => $post->post_status,
-            ];
-        }, $posts);
+    public function create_draft(array $data): array
+    {
+        return (new AbilitiesService())->create_draft($data);
+    }
+
+    public function list_taxonomies(): array
+    {
+        return ['items' => (new AbilitiesService())->list_taxonomies()];
+    }
+
+    public function list_terms(array $data): array
+    {
+        return ['items' => (new AbilitiesService())->list_terms((string) ($data['taxonomy'] ?? 'category'))];
+    }
+
+    public function list_media(array $data): array
+    {
+        return (new AbilitiesService())->list_media($data);
+    }
+
+    public function get_settings(): array
+    {
+        return (new AbilitiesService())->get_settings();
     }
 }

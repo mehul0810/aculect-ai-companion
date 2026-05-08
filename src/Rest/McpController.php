@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Quark\Rest;
 
+use Quark\Auth\Access;
 use WP_REST_Server;
 use WP_REST_Request;
 
@@ -21,7 +22,6 @@ final class McpController
     public function handle(WP_REST_Request $request)
     {
         $body = $request->get_json_params();
-
         $method = $body['method'] ?? '';
 
         switch ($method) {
@@ -29,6 +29,11 @@ final class McpController
                 return $this->list_tools();
 
             case 'tools/call':
+                $user_id = $this->authenticate($request);
+                if ($user_id < 1) {
+                    return ['error' => 'Unauthorized'];
+                }
+                wp_set_current_user($user_id);
                 return $this->call_tool($body['params'] ?? []);
         }
 
@@ -42,17 +47,22 @@ final class McpController
         return [
             'tools' => [
                 [
-                    'name' => 'content.create_post',
-                    'description' => 'Create a new WordPress post'
+                    'name' => 'site.list_post_types',
+                    'description' => 'List readable post types'
                 ],
                 [
-                    'name' => 'content.update_post',
-                    'description' => 'Update an existing post'
+                    'name' => 'content.list_items',
+                    'description' => 'List content items with pagination'
                 ],
                 [
-                    'name' => 'content.audit_posts',
-                    'description' => 'Audit existing content'
-                ]
+                    'name' => 'content.get_item',
+                    'description' => 'Read one content item by ID'
+                ],
+                ['name' => 'content.create_draft', 'description' => 'Create a draft content item'],
+                ['name' => 'taxonomy.list_taxonomies', 'description' => 'List taxonomies'],
+                ['name' => 'taxonomy.list_terms', 'description' => 'List terms in a taxonomy'],
+                ['name' => 'media.list_items', 'description' => 'List media items'],
+                ['name' => 'site.get_settings', 'description' => 'Read safe site settings'],
             ]
         ];
     }
@@ -63,18 +73,31 @@ final class McpController
         $args = $params['arguments'] ?? [];
 
         switch ($tool) {
-            case 'content.create_post':
-                return (new ContentController())->create_post($args);
-
-            case 'content.update_post':
-                return (new ContentController())->update_post($args);
-
-            case 'content.audit_posts':
-                return (new ContentController())->audit_posts();
+            case 'site.list_post_types': return (new ContentController())->list_post_types();
+            case 'content.list_items': return (new ContentController())->list_items($args);
+            case 'content.get_item': return (new ContentController())->get_item($args);
+            case 'content.create_draft': return (new ContentController())->create_draft($args);
+            case 'taxonomy.list_taxonomies': return (new ContentController())->list_taxonomies();
+            case 'taxonomy.list_terms': return (new ContentController())->list_terms($args);
+            case 'media.list_items': return (new ContentController())->list_media($args);
+            case 'site.get_settings': return (new ContentController())->get_settings();
         }
 
         return [
             'error' => 'Unknown tool'
         ];
+    }
+
+    private function authenticate(WP_REST_Request $request): int
+    {
+        $header = (string) $request->get_header('authorization');
+        if (! str_starts_with(strtolower($header), 'bearer ')) {
+            return 0;
+        }
+        $token = trim(substr($header, 7));
+        if ('' === $token) {
+            return 0;
+        }
+        return (new Access())->user_from_bearer($token);
     }
 }

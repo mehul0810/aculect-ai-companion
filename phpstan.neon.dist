@@ -1,0 +1,9 @@
+parameters:
+  level: 6
+  paths:
+    - src
+    - quark.php
+  bootstrapFiles:
+    - vendor/autoload.php
+  ignoreErrors:
+    - '#Function .* not found#'

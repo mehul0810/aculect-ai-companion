@@ -202,6 +202,9 @@ final class OAuthController
         $access = new Access();
         if ('authorization_code' === $grant_type) {
             $resource = (string) $request->get_param('resource');
+            if ('' === $resource) {
+                $resource = rest_url('quark/v1/mcp');
+            }
             if (rest_url('quark/v1/mcp') !== $resource) {
                 return new WP_REST_Response(['error' => 'invalid_target'], 400);
             }
@@ -217,6 +220,9 @@ final class OAuthController
 
         if ('refresh_token' === $grant_type) {
             $resource = (string) $request->get_param('resource');
+            if ('' === $resource) {
+                $resource = rest_url('quark/v1/mcp');
+            }
             if (rest_url('quark/v1/mcp') !== $resource) {
                 return new WP_REST_Response(['error' => 'invalid_target'], 400);
             }

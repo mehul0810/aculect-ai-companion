@@ -17,22 +17,22 @@ final class OAuthWebFlow
         $response_type = (string) ($params['response_type'] ?? 'code');
         $state = (string) ($params['state'] ?? '');
         $scope = (string) ($params['scope'] ?? 'content:read content:draft');
-        $resource = (string) ($params['resource'] ?? '');
+        $resource = (string) ($params['resource'] ?? rest_url('quark/v1/mcp'));
         $code_challenge = (string) ($params['code_challenge'] ?? '');
-        $code_challenge_method = (string) ($params['code_challenge_method'] ?? 'S256');
+        $code_challenge_method = (string) ($params['code_challenge_method'] ?? '');
 
         $registry = new OAuthClientRegistry();
         $client = $registry->find_client($client_id);
+        $uses_pkce = '' !== $code_challenge;
 
         if (
             '' === $client_id ||
             '' === $redirect_uri ||
             'code' !== $response_type ||
             '' === $state ||
-            '' === $code_challenge ||
             rest_url('quark/v1/mcp') !== $resource ||
             ! $this->has_supported_scopes($scope) ||
-            'S256' !== $code_challenge_method ||
+            ($uses_pkce && 'S256' !== $code_challenge_method) ||
             [] === $client
         ) {
             return ['valid' => false];

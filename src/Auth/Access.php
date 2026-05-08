@@ -45,9 +45,12 @@ final class Access
             return [];
         }
 
-        $hash = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
-        if (! hash_equals((string) $record['code_challenge'], $hash)) {
-            return [];
+        $stored_code_challenge = (string) ($record['code_challenge'] ?? '');
+        if ('' !== $stored_code_challenge) {
+            $hash = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
+            if (! hash_equals($stored_code_challenge, $hash)) {
+                return [];
+            }
         }
 
         return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource, $client_id);

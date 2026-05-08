@@ -9,14 +9,16 @@ use Quark\Auth\Access;
 final class OAuthWebFlow
 {
     private const OPTION_CLIENTS = 'quark_oauth_clients';
+    private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
 
     public function build_authorize_context(array $params): array
     {
         $client_id = (string) ($params['client_id'] ?? '');
         $redirect_uri = (string) ($params['redirect_uri'] ?? '');
+        $response_type = (string) ($params['response_type'] ?? 'code');
         $state = (string) ($params['state'] ?? '');
         $scope = (string) ($params['scope'] ?? 'content:read content:draft');
-        $resource = (string) ($params['resource'] ?? rest_url('quark/v1/mcp'));
+        $resource = (string) ($params['resource'] ?? '');
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? 'S256');
 
@@ -25,8 +27,11 @@ final class OAuthWebFlow
         if (
             '' === $client_id ||
             '' === $redirect_uri ||
+            'code' !== $response_type ||
             '' === $state ||
             '' === $code_challenge ||
+            rest_url('quark/v1/mcp') !== $resource ||
+            ! $this->has_supported_scopes($scope) ||
             'S256' !== $code_challenge_method ||
             ! is_array($clients) ||
             ! isset($clients[$client_id])
@@ -46,6 +51,7 @@ final class OAuthWebFlow
             'redirect_uri' => $redirect_uri,
             'state' => $state,
             'scope' => $scope,
+            'response_type' => $response_type,
             'code_challenge' => $code_challenge,
             'resource' => $resource,
         ];
@@ -84,23 +90,39 @@ final class OAuthWebFlow
         );
     }
 
-    public function redirect_with_code(string $redirect_uri, string $state, string $code): void
+    private function has_supported_scopes(string $scope): bool
+    {
+        $requested = preg_split('/\s+/', trim($scope)) ?: [];
+        if ([] === $requested) {
+            return false;
+        }
+
+        foreach ($requested as $item) {
+            if (! in_array($item, self::SUPPORTED_SCOPES, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function redirect_with_code(string $redirect_uri, string $state, string $code): void
     {
         $url = add_query_arg([
             'code' => $code,
             'state' => $state,
         ], $redirect_uri);
-        wp_safe_redirect($url, 302, 'Quark OAuth');
+        wp_redirect(esc_url_raw($url), 302, 'Quark OAuth');
         exit;
     }
 
-    public function redirect_with_error(string $redirect_uri, string $state, string $error): void
+    private function redirect_with_error(string $redirect_uri, string $state, string $error): void
     {
         $url = add_query_arg([
             'error' => $error,
             'state' => $state,
         ], $redirect_uri);
-        wp_safe_redirect($url, 302, 'Quark OAuth');
+        wp_redirect(esc_url_raw($url), 302, 'Quark OAuth');
         exit;
     }
 }

@@ -82,6 +82,10 @@ final class McpController
 
             case 'tools/call':
                 $tool = (string) (($body['params']['name'] ?? ''));
+                if (! $this->is_known_tool($tool)) {
+                    return $this->tool_error_result($id, 'Unknown tool.');
+                }
+
                 $auth = $this->authenticate($request, $tool);
                 if (empty($auth['user_id'])) {
                     return $this->auth_required_result($id);
@@ -91,7 +95,7 @@ final class McpController
                     'content' => [
                         [
                             'type' => 'text',
-                            'text' => wp_json_encode($this->call_tool($body['params'] ?? [])),
+                            'text' => (string) wp_json_encode($this->call_tool($body['params'] ?? [])),
                         ],
                     ],
                 ]);
@@ -224,6 +228,20 @@ final class McpController
         ];
     }
 
+    private function is_known_tool(string $tool): bool
+    {
+        return in_array($tool, [
+            'site.list_post_types',
+            'content.list_items',
+            'content.get_item',
+            'content.create_draft',
+            'taxonomy.list_taxonomies',
+            'taxonomy.list_terms',
+            'media.list_items',
+            'site.get_settings',
+        ], true);
+    }
+
     private function authenticate(WP_REST_Request $request, string $tool): array
     {
         $header = (string) $request->get_header('authorization');
@@ -286,6 +304,19 @@ final class McpController
             '_meta' => [
                 'mcp/www_authenticate' => [
                     'Bearer resource_metadata="' . home_url('/.well-known/oauth-protected-resource') . '", error="insufficient_scope", error_description="Authorize Quark to continue"',
+                ],
+            ],
+            'isError' => true,
+        ]);
+    }
+
+    private function tool_error_result($id, string $message): array
+    {
+        return $this->rpc_result($id, [
+            'content' => [
+                [
+                    'type' => 'text',
+                    'text' => $message,
                 ],
             ],
             'isError' => true,

@@ -15,12 +15,12 @@ final class OAuthController
     private const OPTION_CLIENTS = 'quark_oauth_clients';
     private const RESOURCE_METADATA = 'oauth-protected-resource';
     private const AUTHORIZATION_METADATA = 'oauth-authorization-server';
-    private const OPENID_METADATA = 'openid-configuration';
+    private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
 
     public function add_rewrite_rules(): void
     {
         add_rewrite_rule(
-            '^\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)/?$',
+            '^\.well-known/(oauth-protected-resource|oauth-authorization-server)/?$',
             'index.php?quark_well_known=$matches[1]',
             'top'
         );
@@ -31,7 +31,7 @@ final class OAuthController
         $document = (string) get_query_var('quark_well_known');
         if ('' === $document) {
             $path = wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
-            $document = is_string($path) && preg_match('#/\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)/?$#', $path, $matches)
+            $document = is_string($path) && preg_match('#/\.well-known/(oauth-protected-resource|oauth-authorization-server)/?$#', $path, $matches)
                 ? (string) $matches[1]
                 : '';
         }
@@ -43,7 +43,6 @@ final class OAuthController
         $response = match ($document) {
             self::RESOURCE_METADATA => $this->protected_resource_metadata(),
             self::AUTHORIZATION_METADATA => $this->oauth_metadata(),
-            self::OPENID_METADATA => $this->openid_metadata(),
             default => null,
         };
 
@@ -68,11 +67,6 @@ final class OAuthController
         register_rest_route('quark/v1', '/.well-known/oauth-authorization-server', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'oauth_metadata'],
-            'permission_callback' => '__return_true',
-        ]);
-        register_rest_route('quark/v1', '/.well-known/openid-configuration', [
-            'methods' => WP_REST_Server::READABLE,
-            'callback' => [$this, 'openid_metadata'],
             'permission_callback' => '__return_true',
         ]);
         register_rest_route('quark/v1', '/oauth/register', [
@@ -119,24 +113,6 @@ final class OAuthController
         ], 200);
     }
 
-    public function openid_metadata(): WP_REST_Response
-    {
-        return new WP_REST_Response([
-            'issuer' => $this->issuer(),
-            'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
-            'token_endpoint' => rest_url('quark/v1/oauth/token'),
-            'registration_endpoint' => rest_url('quark/v1/oauth/register'),
-            'grant_types_supported' => ['authorization_code', 'refresh_token'],
-            'response_types_supported' => ['code'],
-            'subject_types_supported' => ['public'],
-            'id_token_signing_alg_values_supported' => ['RS256'],
-            'token_endpoint_auth_methods_supported' => ['none'],
-            'code_challenge_methods_supported' => ['S256'],
-            'scopes_supported' => ['content:read', 'content:draft'],
-            'resource_indicators_supported' => true,
-        ], 200);
-    }
-
     public function register_client(WP_REST_Request $request): WP_REST_Response
     {
         $payload = $request->get_json_params();
@@ -152,7 +128,7 @@ final class OAuthController
         $normalized = [];
         foreach ($redirect_uris as $uri) {
             $value = esc_url_raw((string) $uri);
-            if ('' === $value) {
+            if ('' === $value || ! $this->is_allowed_chatgpt_redirect($value)) {
                 continue;
             }
             $normalized[] = $value;
@@ -160,6 +136,11 @@ final class OAuthController
 
         if ([] === $normalized) {
             return new WP_REST_Response(['error' => 'invalid_redirect_uri'], 400);
+        }
+
+        $scope = sanitize_text_field((string) ($payload['scope'] ?? 'content:read content:draft'));
+        if (! $this->has_supported_scopes($scope)) {
+            return new WP_REST_Response(['error' => 'invalid_scope'], 400);
         }
 
         $client_id = 'quark_' . wp_generate_password(20, false, false);
@@ -170,7 +151,7 @@ final class OAuthController
             'response_types' => ['code'],
             'token_endpoint_auth_method' => 'none',
             'client_name' => sanitize_text_field((string) ($payload['client_name'] ?? 'ChatGPT')),
-            'scope' => sanitize_text_field((string) ($payload['scope'] ?? 'content:read content:draft')),
+            'scope' => $scope,
         ];
         update_option(self::OPTION_CLIENTS, $clients, false);
 
@@ -207,7 +188,7 @@ final class OAuthController
             'scope' => (string) $context['scope'],
             'code_challenge' => (string) $context['code_challenge'],
             'code_challenge_method' => 'S256',
-            'resource' => (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp')),
+            'resource' => (string) $context['resource'],
         ], admin_url('options-general.php'));
 
         wp_safe_redirect($consent_url, 302, 'Quark OAuth');
@@ -219,7 +200,11 @@ final class OAuthController
         $grant_type = (string) $request->get_param('grant_type');
         $access = new Access();
         if ('authorization_code' === $grant_type) {
-            $resource = (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp'));
+            $resource = (string) $request->get_param('resource');
+            if (rest_url('quark/v1/mcp') !== $resource) {
+                return new WP_REST_Response(['error' => 'invalid_target'], 400);
+            }
+
             $tokens = $access->exchange_code(
                 (string) $request->get_param('code'),
                 (string) $request->get_param('client_id'),
@@ -230,7 +215,11 @@ final class OAuthController
         }
 
         if ('refresh_token' === $grant_type) {
-            $resource = (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp'));
+            $resource = (string) $request->get_param('resource');
+            if (rest_url('quark/v1/mcp') !== $resource) {
+                return new WP_REST_Response(['error' => 'invalid_target'], 400);
+            }
+
             $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource);
             return new WP_REST_Response($tokens ?: ['error' => 'invalid_grant'], $tokens ? 200 : 400);
         }
@@ -241,5 +230,40 @@ final class OAuthController
     private function issuer(): string
     {
         return untrailingslashit(home_url('/'));
+    }
+
+    private function is_allowed_chatgpt_redirect(string $uri): bool
+    {
+        $parts = wp_parse_url($uri);
+        if (! is_array($parts)) {
+            return false;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+
+        return 'https' === $scheme
+            && 'chatgpt.com' === $host
+            && (
+                str_starts_with($path, '/connector/oauth/')
+                || '/connector_platform_oauth_redirect' === $path
+            );
+    }
+
+    private function has_supported_scopes(string $scope): bool
+    {
+        $requested = preg_split('/\s+/', trim($scope)) ?: [];
+        if ([] === $requested) {
+            return false;
+        }
+
+        foreach ($requested as $item) {
+            if (! in_array($item, self::SUPPORTED_SCOPES, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

@@ -148,11 +148,6 @@ final class SettingsPage
                     'value' => rest_url('quark/v1/mcp'),
                 ],
                 [
-                    'key' => 'openid_metadata_url',
-                    'label' => 'OpenID Configuration URL',
-                    'value' => home_url('/.well-known/openid-configuration'),
-                ],
-                [
                     'key' => 'pkce_method',
                     'label' => 'PKCE Code Challenge Method',
                     'value' => 'S256',
@@ -172,7 +167,6 @@ final class SettingsPage
                 'oauth_metadata_url' => home_url('/.well-known/oauth-authorization-server'),
                 'oauth_protected_resource_metadata_url' => home_url('/.well-known/oauth-protected-resource'),
                 'resource' => rest_url('quark/v1/mcp'),
-                'openid_metadata_url' => home_url('/.well-known/openid-configuration'),
                 'pkce_method' => 'S256',
                 'scopes' => 'content:read content:draft',
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),

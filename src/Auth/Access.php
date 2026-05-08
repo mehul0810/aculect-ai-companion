@@ -105,20 +105,32 @@ final class Access
 
     public function user_from_bearer(string $access_token): int
     {
+        $context = $this->context_from_bearer($access_token);
+        return (int) ($context['user_id'] ?? 0);
+    }
+
+    public function context_from_bearer(string $access_token): array
+    {
         $tokens = get_option(self::OPTION_TOKENS, []);
         $key = hash('sha256', $access_token);
         if (! is_array($tokens) || ! isset($tokens[$key])) {
-            return 0;
+            return [];
         }
 
         $record = $tokens[$key];
         if ((int) $record['expires'] < time()) {
             unset($tokens[$key]);
             update_option(self::OPTION_TOKENS, $tokens, false);
-            return 0;
+            return [];
         }
 
-        return (int) $record['user_id'];
+        return [
+            'user_id' => (int) $record['user_id'],
+            'scope' => (string) ($record['scope'] ?? ''),
+            'scopes' => preg_split('/\s+/', trim((string) ($record['scope'] ?? ''))) ?: [],
+            'resource' => (string) ($record['resource'] ?? ''),
+            'expires' => (int) ($record['expires'] ?? 0),
+        ];
     }
 
     public function has_active_tokens(): bool

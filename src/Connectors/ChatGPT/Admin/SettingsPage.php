@@ -135,12 +135,12 @@ final class SettingsPage
                 [
                     'key' => 'oauth_metadata_url',
                     'label' => 'OAuth Authorization Server Metadata URL',
-                    'value' => rest_url('quark/v1/.well-known/oauth-authorization-server'),
+                    'value' => home_url('/.well-known/oauth-authorization-server'),
                 ],
                 [
                     'key' => 'oauth_protected_resource_metadata_url',
                     'label' => 'OAuth Protected Resource Metadata URL',
-                    'value' => rest_url('quark/v1/.well-known/oauth-protected-resource'),
+                    'value' => home_url('/.well-known/oauth-protected-resource'),
                 ],
                 [
                     'key' => 'resource',
@@ -150,7 +150,7 @@ final class SettingsPage
                 [
                     'key' => 'openid_metadata_url',
                     'label' => 'OpenID Configuration URL',
-                    'value' => rest_url('quark/v1/.well-known/openid-configuration'),
+                    'value' => home_url('/.well-known/openid-configuration'),
                 ],
                 [
                     'key' => 'pkce_method',
@@ -169,10 +169,10 @@ final class SettingsPage
                 'oauth_authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
                 'oauth_token_endpoint' => rest_url('quark/v1/oauth/token'),
                 'oauth_dynamic_client_registration_endpoint' => rest_url('quark/v1/oauth/register'),
-                'oauth_metadata_url' => rest_url('quark/v1/.well-known/oauth-authorization-server'),
-                'oauth_protected_resource_metadata_url' => rest_url('quark/v1/.well-known/oauth-protected-resource'),
+                'oauth_metadata_url' => home_url('/.well-known/oauth-authorization-server'),
+                'oauth_protected_resource_metadata_url' => home_url('/.well-known/oauth-protected-resource'),
                 'resource' => rest_url('quark/v1/mcp'),
-                'openid_metadata_url' => rest_url('quark/v1/.well-known/openid-configuration'),
+                'openid_metadata_url' => home_url('/.well-known/openid-configuration'),
                 'pkce_method' => 'S256',
                 'scopes' => 'content:read content:draft',
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),

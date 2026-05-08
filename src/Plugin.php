@@ -25,6 +25,7 @@ final class Plugin
 
     public static function activate(): void
     {
+        (new OAuthController())->add_rewrite_rules();
         flush_rewrite_rules();
     }
 
@@ -35,6 +36,9 @@ final class Plugin
 
     public function boot(): void
     {
+        add_action('init', [$this, 'register_well_known_routes']);
+        add_filter('query_vars', [$this, 'register_query_vars']);
+        add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);
         add_action('admin_menu', [$this, 'register_admin']);
         add_action('admin_post_quark_oauth_authorize', [$this, 'handle_oauth_authorize']);
@@ -48,6 +52,22 @@ final class Plugin
         (new OAuthController())->register_routes();
         (new McpController())->register_routes();
         (new ContentController())->register_routes();
+    }
+
+    public function register_well_known_routes(): void
+    {
+        (new OAuthController())->add_rewrite_rules();
+    }
+
+    public function register_query_vars(array $vars): array
+    {
+        $vars[] = 'quark_well_known';
+        return $vars;
+    }
+
+    public function render_well_known_metadata(): void
+    {
+        (new OAuthController())->render_well_known_metadata();
     }
 
     public function register_admin(): void

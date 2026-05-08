@@ -13,6 +13,50 @@ use WP_REST_Server;
 final class OAuthController
 {
     private const OPTION_CLIENTS = 'quark_oauth_clients';
+    private const RESOURCE_METADATA = 'oauth-protected-resource';
+    private const AUTHORIZATION_METADATA = 'oauth-authorization-server';
+    private const OPENID_METADATA = 'openid-configuration';
+
+    public function add_rewrite_rules(): void
+    {
+        add_rewrite_rule(
+            '^\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)/?$',
+            'index.php?quark_well_known=$matches[1]',
+            'top'
+        );
+    }
+
+    public function render_well_known_metadata(): void
+    {
+        $document = (string) get_query_var('quark_well_known');
+        if ('' === $document) {
+            $path = wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+            $document = is_string($path) && preg_match('#/\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)/?$#', $path, $matches)
+                ? (string) $matches[1]
+                : '';
+        }
+
+        if ('' === $document) {
+            return;
+        }
+
+        $response = match ($document) {
+            self::RESOURCE_METADATA => $this->protected_resource_metadata(),
+            self::AUTHORIZATION_METADATA => $this->oauth_metadata(),
+            self::OPENID_METADATA => $this->openid_metadata(),
+            default => null,
+        };
+
+        if (! $response instanceof WP_REST_Response) {
+            return;
+        }
+
+        status_header($response->get_status());
+        nocache_headers();
+        header('Content-Type: application/json; charset=' . get_option('blog_charset'));
+        echo wp_json_encode($response->get_data(), JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 
     public function register_routes(): void
     {
@@ -50,10 +94,8 @@ final class OAuthController
 
     public function oauth_metadata(): WP_REST_Response
     {
-        $issuer = $this->issuer();
-
         return new WP_REST_Response([
-            'issuer' => $issuer,
+            'issuer' => $this->issuer(),
             'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
             'registration_endpoint' => rest_url('quark/v1/oauth/register'),
@@ -62,6 +104,7 @@ final class OAuthController
             'token_endpoint_auth_methods_supported' => ['none'],
             'code_challenge_methods_supported' => ['S256'],
             'scopes_supported' => ['content:read', 'content:draft'],
+            'resource_indicators_supported' => true,
         ], 200);
     }
 
@@ -69,18 +112,17 @@ final class OAuthController
     {
         return new WP_REST_Response([
             'resource' => rest_url('quark/v1/mcp'),
-            'authorization_servers' => [untrailingslashit(rest_url('quark/v1'))],
+            'authorization_servers' => [$this->issuer()],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
+            'token_endpoint_auth_methods_supported' => ['none'],
         ], 200);
     }
 
     public function openid_metadata(): WP_REST_Response
     {
-        $issuer = $this->issuer();
-
         return new WP_REST_Response([
-            'issuer' => $issuer,
+            'issuer' => $this->issuer(),
             'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
             'registration_endpoint' => rest_url('quark/v1/oauth/register'),
@@ -91,6 +133,7 @@ final class OAuthController
             'token_endpoint_auth_methods_supported' => ['none'],
             'code_challenge_methods_supported' => ['S256'],
             'scopes_supported' => ['content:read', 'content:draft'],
+            'resource_indicators_supported' => true,
         ], 200);
     }
 
@@ -126,6 +169,8 @@ final class OAuthController
             'grant_types' => ['authorization_code', 'refresh_token'],
             'response_types' => ['code'],
             'token_endpoint_auth_method' => 'none',
+            'client_name' => sanitize_text_field((string) ($payload['client_name'] ?? 'ChatGPT')),
+            'scope' => sanitize_text_field((string) ($payload['scope'] ?? 'content:read content:draft')),
         ];
         update_option(self::OPTION_CLIENTS, $clients, false);
 
@@ -136,6 +181,8 @@ final class OAuthController
             'grant_types' => $clients[$client_id]['grant_types'],
             'response_types' => $clients[$client_id]['response_types'],
             'token_endpoint_auth_method' => 'none',
+            'client_name' => $clients[$client_id]['client_name'],
+            'scope' => $clients[$client_id]['scope'],
         ], 201);
     }
 
@@ -163,7 +210,8 @@ final class OAuthController
             'resource' => (string) ($request->get_param('resource') ?: rest_url('quark/v1/mcp')),
         ], admin_url('options-general.php'));
 
-        return new WP_REST_Response(['consent_url' => $consent_url], 200);
+        wp_safe_redirect($consent_url, 302, 'Quark OAuth');
+        exit;
     }
 
     public function token(WP_REST_Request $request): WP_REST_Response
@@ -192,6 +240,6 @@ final class OAuthController
 
     private function issuer(): string
     {
-        return untrailingslashit(rest_url('quark/v1'));
+        return untrailingslashit(home_url('/'));
     }
 }

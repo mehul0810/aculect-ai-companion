@@ -27,7 +27,7 @@ final class McpController
 
     public function describe(): array
     {
-        $resource_metadata_url = rest_url('quark/v1/.well-known/oauth-protected-resource');
+        $resource_metadata_url = home_url('/.well-known/oauth-protected-resource');
         $mcp_url = rest_url('quark/v1/mcp');
 
         return [
@@ -59,7 +59,7 @@ final class McpController
 
         switch ($method) {
             case 'initialize':
-                $resource_metadata_url = rest_url('quark/v1/.well-known/oauth-protected-resource');
+                $resource_metadata_url = home_url('/.well-known/oauth-protected-resource');
                 $mcp_url = rest_url('quark/v1/mcp');
                 return $this->rpc_result($id, [
                     'protocolVersion' => '2024-11-05',
@@ -81,15 +81,12 @@ final class McpController
                 return $this->rpc_result($id, $this->list_tools());
 
             case 'tools/call':
-                $user_id = $this->authenticate($request);
-                if ($user_id < 1) {
-                    return $this->rpc_error($id, -32001, 'Unauthorized', [
-                        '_meta' => [
-                            'mcp/www_authenticate' => 'Bearer resource_metadata="' . rest_url('quark/v1/.well-known/oauth-protected-resource') . '"',
-                        ],
-                    ]);
+                $tool = (string) (($body['params']['name'] ?? ''));
+                $auth = $this->authenticate($request, $tool);
+                if (empty($auth['user_id'])) {
+                    return $this->auth_required_result($id);
                 }
-                wp_set_current_user($user_id);
+                wp_set_current_user((int) $auth['user_id']);
                 return $this->rpc_result($id, [
                     'content' => [
                         [
@@ -105,16 +102,22 @@ final class McpController
 
     private function list_tools(): array
     {
+        $read_security = $this->security_schemes(['content:read']);
+        $draft_security = $this->security_schemes(['content:draft']);
+
         return [
             'tools' => [
                 [
                     'name' => 'site.list_post_types',
+                    'title' => 'List Post Types',
                     'description' => 'List readable post types',
                     'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'content.list_items',
+                    'title' => 'List Content Items',
                     'description' => 'List content items with pagination',
                     'inputSchema' => [
                         'type' => 'object',
@@ -125,20 +128,24 @@ final class McpController
                             'per_page' => ['type' => 'integer'],
                         ],
                     ],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'content.get_item',
+                    'title' => 'Get Content Item',
                     'description' => 'Read one content item by ID',
                     'inputSchema' => [
                         'type' => 'object',
                         'required' => ['id'],
                         'properties' => ['id' => ['type' => 'integer']],
                     ],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'content.create_draft',
+                    'title' => 'Create Draft',
                     'description' => 'Create a draft content item',
                     'inputSchema' => [
                         'type' => 'object',
@@ -148,25 +155,31 @@ final class McpController
                             'content' => ['type' => 'string'],
                         ],
                     ],
+                    'securitySchemes' => $draft_security,
                     'annotations' => ['readOnlyHint' => false],
                 ],
                 [
                     'name' => 'taxonomy.list_taxonomies',
+                    'title' => 'List Taxonomies',
                     'description' => 'List taxonomies',
                     'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'taxonomy.list_terms',
+                    'title' => 'List Terms',
                     'description' => 'List terms in a taxonomy',
                     'inputSchema' => [
                         'type' => 'object',
                         'properties' => ['taxonomy' => ['type' => 'string']],
                     ],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'media.list_items',
+                    'title' => 'List Media Items',
                     'description' => 'List media items',
                     'inputSchema' => [
                         'type' => 'object',
@@ -175,12 +188,15 @@ final class McpController
                             'per_page' => ['type' => 'integer'],
                         ],
                     ],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
                 [
                     'name' => 'site.get_settings',
+                    'title' => 'Get Site Settings',
                     'description' => 'Read safe site settings',
                     'inputSchema' => ['type' => 'object', 'properties' => []],
+                    'securitySchemes' => $read_security,
                     'annotations' => ['readOnlyHint' => true],
                 ],
             ]
@@ -208,17 +224,72 @@ final class McpController
         ];
     }
 
-    private function authenticate(WP_REST_Request $request): int
+    private function authenticate(WP_REST_Request $request, string $tool): array
     {
         $header = (string) $request->get_header('authorization');
         if (! str_starts_with(strtolower($header), 'bearer ')) {
-            return 0;
+            return [];
         }
         $token = trim(substr($header, 7));
         if ('' === $token) {
-            return 0;
+            return [];
         }
-        return (new Access())->user_from_bearer($token);
+
+        $context = (new Access())->context_from_bearer($token);
+        if (empty($context['user_id'])) {
+            return [];
+        }
+
+        if (rest_url('quark/v1/mcp') !== ($context['resource'] ?? '')) {
+            return [];
+        }
+
+        $required_scopes = $this->required_scopes($tool);
+        $token_scopes = array_filter(array_map('strval', $context['scopes'] ?? []));
+        foreach ($required_scopes as $scope) {
+            if (! in_array($scope, $token_scopes, true)) {
+                return [];
+            }
+        }
+
+        return $context;
+    }
+
+    private function required_scopes(string $tool): array
+    {
+        if ('content.create_draft' === $tool) {
+            return ['content:draft'];
+        }
+
+        return ['content:read'];
+    }
+
+    private function security_schemes(array $scopes): array
+    {
+        return [
+            [
+                'type' => 'oauth2',
+                'scopes' => $scopes,
+            ],
+        ];
+    }
+
+    private function auth_required_result($id): array
+    {
+        return $this->rpc_result($id, [
+            'content' => [
+                [
+                    'type' => 'text',
+                    'text' => 'Authentication required.',
+                ],
+            ],
+            '_meta' => [
+                'mcp/www_authenticate' => [
+                    'Bearer resource_metadata="' . home_url('/.well-known/oauth-protected-resource') . '", error="insufficient_scope", error_description="Authorize Quark to continue"',
+                ],
+            ],
+            'isError' => true,
+        ]);
     }
 
     private function rpc_result($id, array $result): array

@@ -1,8 +1,8 @@
-name: Build Plugin Pre-Release
+name: Build Plugin Release
 
 on:
   release:
-    types: [prereleased]
+    types: [released]
 
 jobs:
   build:

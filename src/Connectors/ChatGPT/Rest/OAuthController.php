@@ -16,6 +16,16 @@ final class OAuthController
 
     public function register_routes(): void
     {
+        register_rest_route('quark/v1', '/.well-known/oauth-authorization-server', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'oauth_metadata'],
+            'permission_callback' => '__return_true',
+        ]);
+        register_rest_route('quark/v1', '/.well-known/openid-configuration', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'openid_metadata'],
+            'permission_callback' => '__return_true',
+        ]);
         register_rest_route('quark/v1', '/oauth/register', [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => [$this, 'register_client'],
@@ -31,6 +41,42 @@ final class OAuthController
             'callback' => [$this, 'token'],
             'permission_callback' => '__return_true',
         ]);
+    }
+
+    public function oauth_metadata(): WP_REST_Response
+    {
+        $issuer = $this->issuer();
+
+        return new WP_REST_Response([
+            'issuer' => $issuer,
+            'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
+            'token_endpoint' => rest_url('quark/v1/oauth/token'),
+            'registration_endpoint' => rest_url('quark/v1/oauth/register'),
+            'grant_types_supported' => ['authorization_code', 'refresh_token'],
+            'response_types_supported' => ['code'],
+            'token_endpoint_auth_methods_supported' => ['none'],
+            'code_challenge_methods_supported' => ['S256'],
+            'scopes_supported' => ['content:read', 'content:draft'],
+        ], 200);
+    }
+
+    public function openid_metadata(): WP_REST_Response
+    {
+        $issuer = $this->issuer();
+
+        return new WP_REST_Response([
+            'issuer' => $issuer,
+            'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
+            'token_endpoint' => rest_url('quark/v1/oauth/token'),
+            'registration_endpoint' => rest_url('quark/v1/oauth/register'),
+            'grant_types_supported' => ['authorization_code', 'refresh_token'],
+            'response_types_supported' => ['code'],
+            'subject_types_supported' => ['public'],
+            'id_token_signing_alg_values_supported' => ['RS256'],
+            'token_endpoint_auth_methods_supported' => ['none'],
+            'code_challenge_methods_supported' => ['S256'],
+            'scopes_supported' => ['content:read', 'content:draft'],
+        ], 200);
     }
 
     public function register_client(WP_REST_Request $request): WP_REST_Response
@@ -93,5 +139,10 @@ final class OAuthController
         }
 
         return new WP_REST_Response(['error' => 'unsupported_grant_type'], 400);
+    }
+
+    private function issuer(): string
+    {
+        return untrailingslashit(rest_url('quark/v1'));
     }
 }

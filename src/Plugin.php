@@ -40,6 +40,7 @@ final class Plugin
         add_action('admin_post_quark_oauth_authorize', [$this, 'handle_oauth_authorize']);
         add_action('admin_post_quark_mark_connected', [$this, 'handle_mark_connected']);
         add_action('admin_post_quark_revoke_connection', [$this, 'handle_revoke_connection']);
+        add_action('admin_post_quark_save_advanced', [$this, 'handle_save_advanced']);
     }
 
     public function register_routes(): void
@@ -67,5 +68,10 @@ final class Plugin
     public function handle_revoke_connection(): void
     {
         (new SettingsPage())->handle_revoke_connection();
+    }
+
+    public function handle_save_advanced(): void
+    {
+        (new SettingsPage())->handle_save_advanced();
     }
 }

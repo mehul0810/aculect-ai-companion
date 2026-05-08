@@ -1,0 +1,23 @@
+{
+  "0.1.0": {
+    "New": [
+      "MCP endpoint for ChatGPT connector integration",
+      "OAuth authorization, token exchange, and refresh flow",
+      "Connector-aware architecture under src/Connectors/ChatGPT",
+      "Quark admin settings app with About, Connectors, and Advanced tabs",
+      "Advanced option to remove plugin data on uninstall"
+    ],
+    "Improved": [
+      "Settings UI migrated to class-based markup with dedicated stylesheet",
+      "Connector setup experience redesigned with accordion-style Configure flow",
+      "Field-level copy actions for connector configuration values",
+      "POST nonce-based admin actions for improved reliability over nonce links"
+    ],
+    "Dev": [
+      "Added prerelease GitHub Action to build Composer and npm artifacts on release",
+      "Added .distignore for production artifact packaging",
+      "Added .editorconfig for consistent formatting rules",
+      "Added AGENTS.md standards for planning-first workflow and release discipline"
+    ]
+  }
+}

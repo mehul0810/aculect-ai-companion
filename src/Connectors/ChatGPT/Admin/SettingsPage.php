@@ -9,7 +9,9 @@ use Quark\Auth\Access;
 final class SettingsPage
 {
     private const OPTION_CONNECTION_STATE = 'quark_chatgpt_connection_state';
+    private const OPTION_REMOVE_DATA_ON_UNINSTALL = 'quark_remove_data_on_uninstall';
     private const ASSET_HANDLE = 'quark-settings-app';
+    private const STYLE_HANDLE = 'quark-settings-style';
 
     public function register(): void
     {
@@ -34,6 +36,15 @@ final class SettingsPage
         exit;
     }
 
+    public function handle_save_advanced(): void
+    {
+        $this->guard_action('quark_save_advanced');
+        $enabled = isset($_POST['remove_data_on_uninstall']) && '1' === (string) $_POST['remove_data_on_uninstall'];
+        update_option(self::OPTION_REMOVE_DATA_ON_UNINSTALL, $enabled ? '1' : '0', false);
+        wp_safe_redirect(add_query_arg(['page' => 'quark', 'advanced_saved' => '1'], admin_url('options-general.php')));
+        exit;
+    }
+
     public function render(): void
     {
         if (! current_user_can('manage_options')) {
@@ -54,7 +65,7 @@ final class SettingsPage
 
     private function render_settings(): void
     {
-        echo '<div id="quark-settings-app-root"></div>';
+        echo '<div id="quark-settings-app-root" class="quark-settings-app-root"></div>';
     }
 
     public function enqueue_assets(string $hook_suffix): void
@@ -78,11 +89,22 @@ final class SettingsPage
         );
         wp_enqueue_script(self::ASSET_HANDLE);
         wp_enqueue_style('wp-components');
+        $style_path = QUARK_PLUGIN_DIR . 'build/style-index.css';
+        if (file_exists($style_path)) {
+            wp_enqueue_style(
+                self::STYLE_HANDLE,
+                QUARK_PLUGIN_URL . 'build/style-index.css',
+                [],
+                (string) $asset['version']
+            );
+        }
 
         wp_localize_script(self::ASSET_HANDLE, 'quarkSettingsData', [
             'version' => QUARK_VERSION,
             'isConnected' => $this->is_chatgpt_connected(),
             'status' => isset($_GET['connected']) ? 'connected' : (isset($_GET['revoked']) ? 'revoked' : ''),
+            'advancedSaved' => isset($_GET['advanced_saved']) ? '1' : '0',
+            'removeDataOnUninstall' => $this->remove_data_on_uninstall_enabled(),
             'createAppUrl' => 'https://chatgpt.com/apps#settings/Connectors',
             'configFields' => [
                 [
@@ -143,10 +165,37 @@ final class SettingsPage
                 'scopes' => 'content:read content:draft',
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'actions' => [
-                'markConnected' => wp_nonce_url(admin_url('admin-post.php?action=quark_mark_connected'), 'quark_mark_connected'),
-                'revoke' => wp_nonce_url(admin_url('admin-post.php?action=quark_revoke_connection'), 'quark_revoke_connection'),
+                'adminPostUrl' => admin_url('admin-post.php'),
+                'markConnectedAction' => 'quark_mark_connected',
+                'revokeAction' => 'quark_revoke_connection',
+                'saveAdvancedAction' => 'quark_save_advanced',
+                'markConnectedNonce' => wp_create_nonce('quark_mark_connected'),
+                'revokeNonce' => wp_create_nonce('quark_revoke_connection'),
+                'saveAdvancedNonce' => wp_create_nonce('quark_save_advanced'),
             ],
+            'changelog' => $this->load_changelog(),
         ]);
+    }
+
+    private function load_changelog(): array
+    {
+        $file = QUARK_PLUGIN_DIR . 'changelog.json';
+        if (! file_exists($file)) {
+            return [];
+        }
+
+        $json = file_get_contents($file);
+        if (false === $json || '' === $json) {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function remove_data_on_uninstall_enabled(): bool
+    {
+        return '1' === (string) get_option(self::OPTION_REMOVE_DATA_ON_UNINSTALL, '0');
     }
 
     private function is_chatgpt_connected(): bool

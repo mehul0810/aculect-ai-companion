@@ -204,7 +204,7 @@ final class SettingsPage
                     [
                         'key' => 'oauth_authorization_endpoint',
                         'label' => 'Authorization Endpoint',
-                        'value' => rest_url('quark/v1/oauth/authorize'),
+                        'value' => $oauth->authorization_endpoint(),
                     ],
                     [
                         'key' => 'oauth_token_endpoint',

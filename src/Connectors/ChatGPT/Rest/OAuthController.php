@@ -16,6 +16,7 @@ final class OAuthController
     private const RESOURCE_METADATA = 'oauth-protected-resource';
     private const AUTHORIZATION_METADATA = 'oauth-authorization-server';
     private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
+    private const AUTHORIZE_QUERY_VAR = 'quark_oauth_authorize';
 
     public function add_rewrite_rules(): void
     {
@@ -28,6 +29,12 @@ final class OAuthController
         add_rewrite_rule(
             '^\.well-known/oauth-authorization-server/?$',
             'index.php?quark_well_known=' . self::AUTHORIZATION_METADATA,
+            'top'
+        );
+
+        add_rewrite_rule(
+            '^quark/oauth/authorize/?$',
+            'index.php?' . self::AUTHORIZE_QUERY_VAR . '=1',
             'top'
         );
     }
@@ -103,7 +110,7 @@ final class OAuthController
     {
         $metadata = [
             'issuer' => $this->issuer(),
-            'authorization_endpoint' => rest_url('quark/v1/oauth/authorize'),
+            'authorization_endpoint' => $this->authorization_endpoint(),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'response_types_supported' => ['code'],
@@ -221,14 +228,33 @@ final class OAuthController
 
     public function authorize(WP_REST_Request $request): WP_REST_Response
     {
+        $params = $request->get_params();
+        $target = add_query_arg(
+            array_map(
+                static fn ($value): string => is_scalar($value) ? (string) $value : '',
+                $params
+            ),
+            $this->authorization_endpoint()
+        );
+
+        wp_safe_redirect($target, 302, 'Quark OAuth');
+        exit;
+    }
+
+    public function maybe_render_browser_authorize(): void
+    {
+        if ('1' !== (string) get_query_var(self::AUTHORIZE_QUERY_VAR)) {
+            return;
+        }
+
         if (! is_user_logged_in()) {
-            auth_redirect();
+            wp_safe_redirect(wp_login_url($this->current_request_url()), 302, 'Quark OAuth');
             exit;
         }
 
-        $context = (new OAuthWebFlow())->build_authorize_context($request->get_params());
+        $context = (new OAuthWebFlow())->build_authorize_context(wp_unslash($_GET));
         if (! $context['valid']) {
-            return new WP_REST_Response(['error' => 'invalid_client'], 400);
+            wp_die('Invalid OAuth authorization request.', 400);
         }
 
         $consent_url = add_query_arg([
@@ -298,6 +324,11 @@ final class OAuthController
         return untrailingslashit(home_url('/'));
     }
 
+    public function authorization_endpoint(): string
+    {
+        return home_url('/quark/oauth/authorize');
+    }
+
     public function protected_resource_metadata_url(?string $resource = null): string
     {
         $resource = $resource ?: rest_url('quark/v1/mcp');
@@ -345,5 +376,11 @@ final class OAuthController
         }
 
         return $methods;
+    }
+
+    private function current_request_url(): string
+    {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        return home_url($uri);
     }
 }

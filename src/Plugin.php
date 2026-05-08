@@ -38,6 +38,7 @@ final class Plugin
     {
         add_action('init', [$this, 'register_well_known_routes']);
         add_filter('query_vars', [$this, 'register_query_vars']);
+        add_action('template_redirect', [$this, 'render_browser_authorize'], 1);
         add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);
         add_action('admin_menu', [$this, 'register_admin']);
@@ -64,12 +65,18 @@ final class Plugin
     {
         $vars[] = 'quark_well_known';
         $vars[] = 'quark_well_known_resource_path';
+        $vars[] = 'quark_oauth_authorize';
         return $vars;
     }
 
     public function render_well_known_metadata(): void
     {
         (new OAuthController())->render_well_known_metadata();
+    }
+
+    public function render_browser_authorize(): void
+    {
+        (new OAuthController())->maybe_render_browser_authorize();
     }
 
     public function register_admin(): void

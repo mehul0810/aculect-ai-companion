@@ -94,10 +94,16 @@ final class OAuthController
             'callback' => [$this, 'token'],
             'permission_callback' => '__return_true',
         ]);
+        register_rest_route('quark/v1', '/oauth/register', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'register_client'],
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     public function oauth_metadata(): WP_REST_Response
     {
+        $settings = (new OAuthClientRegistry())->settings();
         $metadata = [
             'issuer' => $this->issuer(),
             'authorization_endpoint' => $this->authorization_endpoint(),
@@ -110,6 +116,10 @@ final class OAuthController
             'resource_indicators_supported' => true,
             'protected_resources' => [rest_url('quark/v1/mcp')],
         ];
+
+        if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
+            $metadata['registration_endpoint'] = rest_url('quark/v1/oauth/register');
+        }
 
         return new WP_REST_Response($metadata, 200);
     }
@@ -130,6 +140,37 @@ final class OAuthController
             'resource_documentation' => 'https://github.com/mehul0810/quark',
             'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
         ], 200);
+    }
+
+    public function register_client(WP_REST_Request $request): WP_REST_Response
+    {
+        if (! $this->check_rate_limit('dcr', (string) $request->get_header('x-forwarded-for'))) {
+            return $this->oauth_error(
+                'slow_down',
+                'Too many dynamic client registration attempts. Try again later.',
+                429
+            );
+        }
+
+        $payload = $request->get_json_params();
+        if (! is_array($payload)) {
+            return $this->oauth_error(
+                'invalid_client_metadata',
+                'Dynamic client registration requires a JSON object request body.',
+                400
+            );
+        }
+
+        $client = (new OAuthClientRegistry())->register_client($payload);
+        if ([] === $client) {
+            return $this->oauth_error(
+                'invalid_client_metadata',
+                'Dynamic client registration is disabled or the client metadata is not supported.',
+                400
+            );
+        }
+
+        return new WP_REST_Response($client, 201);
     }
 
     public function authorize(WP_REST_Request $request): WP_REST_Response
@@ -309,7 +350,11 @@ final class OAuthController
 
     private function supported_token_endpoint_auth_methods(): array
     {
-        return [OAuthClientRegistry::AUTH_CLIENT_SECRET_POST];
+        $settings = (new OAuthClientRegistry())->settings();
+
+        return OAuthClientRegistry::MODE_DCR === $settings['registration_method']
+            ? [OAuthClientRegistry::AUTH_NONE]
+            : [OAuthClientRegistry::AUTH_CLIENT_SECRET_POST];
     }
 
     private function current_request_url(): string

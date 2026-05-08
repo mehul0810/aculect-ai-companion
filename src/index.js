@@ -1,3 +1,5 @@
+/* global navigator */
+
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
 import {
@@ -9,6 +11,7 @@ import {
 	FlexBlock,
 	FlexItem,
 	Notice,
+	SelectControl,
 	ToggleControl,
 	TabPanel,
 	TextControl,
@@ -16,56 +19,84 @@ import {
 
 function SettingsApp() {
 	const data = window.quarkSettingsData || {};
-	const [copied, setCopied] = useState(false);
-	const [confirmRevoke, setConfirmRevoke] = useState(false);
-	const [removeDataOnUninstall, setRemoveDataOnUninstall] = useState(Boolean(data.removeDataOnUninstall));
-	const [openConnector, setOpenConnector] = useState(null);
-	const isConnected = Boolean(data.isConnected);
-	const statusClass = isConnected ? 'quark-pill quark-pill--status is-connected' : 'quark-pill quark-pill--status is-disconnected';
-	const changelog = data.changelog && typeof data.changelog === 'object' ? data.changelog : {};
-	const copyTimeoutRef = useRef(null);
+	const [ copied, setCopied ] = useState( false );
+	const [ confirmRevoke, setConfirmRevoke ] = useState( false );
+	const [ removeDataOnUninstall, setRemoveDataOnUninstall ] = useState(
+		Boolean( data.removeDataOnUninstall )
+	);
+	const [ openConnector, setOpenConnector ] = useState( null );
+	const [ registrationMethod, setRegistrationMethod ] = useState(
+		data.oauthSettings?.registrationMethod || 'user_defined'
+	);
+	const isConnected = Boolean( data.isConnected );
+	const statusClass = isConnected
+		? 'quark-pill quark-pill--status is-connected'
+		: 'quark-pill quark-pill--status is-disconnected';
+	const changelog =
+		data.changelog && typeof data.changelog === 'object'
+			? data.changelog
+			: {};
+	const copyTimeoutRef = useRef( null );
 
-	useEffect(() => () => {
-		if (copyTimeoutRef.current) {
-			clearTimeout(copyTimeoutRef.current);
-		}
-	}, []);
+	useEffect(
+		() => () => {
+			if ( copyTimeoutRef.current ) {
+				clearTimeout( copyTimeoutRef.current );
+			}
+		},
+		[]
+	);
 
 	const showCopiedState = () => {
-		if (copyTimeoutRef.current) {
-			clearTimeout(copyTimeoutRef.current);
+		if ( copyTimeoutRef.current ) {
+			clearTimeout( copyTimeoutRef.current );
 		}
 
-		setCopied(true);
-		copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+		setCopied( true );
+		copyTimeoutRef.current = setTimeout( () => setCopied( false ), 2000 );
 	};
 
 	const copyConfig = async () => {
 		try {
-			await navigator.clipboard.writeText(data.copyAll || '');
+			await navigator.clipboard.writeText( data.copyAll || '' );
 			showCopiedState();
-		} catch (error) {
-			setCopied(false);
+		} catch ( error ) {
+			setCopied( false );
 		}
 	};
 
-	const formSections = Array.isArray(data.chatgptFormSections) ? data.chatgptFormSections : [];
+	const formSections = Array.isArray( data.chatgptFormSections )
+		? data.chatgptFormSections
+		: [];
 
-	const copyValue = async (value) => {
+	const copyValue = async ( value ) => {
 		try {
-			await navigator.clipboard.writeText(String(value || ''));
+			await navigator.clipboard.writeText( String( value || '' ) );
 			showCopiedState();
-		} catch (error) {
-			setCopied(false);
+		} catch ( error ) {
+			setCopied( false );
 		}
 	};
 
-	const renderActionForm = (actionName, nonce, label, destructive = false) => (
-		<form method="post" action={data.actions?.adminPostUrl} className="quark-action-form">
-			<input type="hidden" name="action" value={actionName} />
-			<input type="hidden" name="_wpnonce" value={nonce} />
-			<Button variant={destructive ? 'secondary' : 'primary'} isDestructive={destructive} type="submit">
-				{label}
+	const renderActionForm = (
+		actionName,
+		nonce,
+		label,
+		destructive = false
+	) => (
+		<form
+			method="post"
+			action={ data.actions?.adminPostUrl }
+			className="quark-action-form"
+		>
+			<input type="hidden" name="action" value={ actionName } />
+			<input type="hidden" name="_wpnonce" value={ nonce } />
+			<Button
+				variant={ destructive ? 'secondary' : 'primary' }
+				isDestructive={ destructive }
+				type="submit"
+			>
+				{ label }
 			</Button>
 		</form>
 	);
@@ -76,67 +107,122 @@ function SettingsApp() {
 				<div className="quark-app-branding">
 					<h1 className="quark-app-title">Quark</h1>
 					<span className="quark-pill quark-pill--version">
-						{data.version || '0.1.0'}
+						{ data.version || '0.1.0' }
 					</span>
 				</div>
-				<span className={statusClass}>
-					{isConnected ? 'ChatGPT Connected' : 'Not Connected'}
+				<span className={ statusClass }>
+					{ isConnected ? 'ChatGPT Connected' : 'Not Connected' }
 				</span>
 			</div>
 
-			{data.status === 'connected' && (
-				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
+			{ data.status === 'connected' && (
+				<Notice
+					status="success"
+					isDismissible={ false }
+					role="status"
+					aria-live="polite"
+				>
 					ChatGPT connection marked active.
 				</Notice>
-			)}
-			{data.status === 'revoked' && (
-				<Notice status="warning" isDismissible={false} role="status" aria-live="polite">
+			) }
+			{ data.status === 'revoked' && (
+				<Notice
+					status="warning"
+					isDismissible={ false }
+					role="status"
+					aria-live="polite"
+				>
 					ChatGPT connection revoked.
 				</Notice>
-			)}
+			) }
 
-			{data.advancedSaved === '1' && (
-				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
+			{ data.advancedSaved === '1' && (
+				<Notice
+					status="success"
+					isDismissible={ false }
+					role="status"
+					aria-live="polite"
+				>
 					Advanced settings saved.
 				</Notice>
-			)}
-			{data.oauthSaved === '1' && (
-				<Notice status="success" isDismissible={false} role="status" aria-live="polite">
-					ChatGPT OAuth client credentials regenerated.
+			) }
+			{ data.oauthSaved === '1' && (
+				<Notice
+					status="success"
+					isDismissible={ false }
+					role="status"
+					aria-live="polite"
+				>
+					ChatGPT OAuth settings saved.
 				</Notice>
-			)}
+			) }
 
-			{confirmRevoke && (
-				<div className="quark-modal" role="dialog" aria-modal="true" aria-labelledby="quark-revoke-title">
-					<div className="quark-modal__backdrop" onClick={() => setConfirmRevoke(false)} />
+			{ confirmRevoke && (
+				<div
+					className="quark-modal"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="quark-revoke-title"
+				>
+					<button
+						type="button"
+						className="quark-modal__backdrop"
+						aria-label="Close modal"
+						onClick={ () => setConfirmRevoke( false ) }
+					/>
 					<div className="quark-modal__content">
-						<h2 id="quark-revoke-title" className="quark-modal__title">Revoke ChatGPT Connection?</h2>
+						<h2
+							id="quark-revoke-title"
+							className="quark-modal__title"
+						>
+							Revoke ChatGPT Connection?
+						</h2>
 						<p className="quark-modal__copy">
-							This will disconnect ChatGPT and revoke all active tokens issued by Quark.
+							This will disconnect ChatGPT and revoke all active
+							tokens issued by Quark.
 						</p>
 						<div className="quark-modal__actions">
-							{renderActionForm(data.actions?.revokeAction, data.actions?.revokeNonce, 'Yes, Revoke', true)}
-							<Button variant="secondary" onClick={() => setConfirmRevoke(false)}>
+							{ renderActionForm(
+								data.actions?.revokeAction,
+								data.actions?.revokeNonce,
+								'Yes, Revoke',
+								true
+							) }
+							<Button
+								variant="secondary"
+								onClick={ () => setConfirmRevoke( false ) }
+							>
 								Cancel
 							</Button>
 						</div>
 					</div>
 				</div>
-			)}
+			) }
 
-			<TabPanel className="quark-tabs" tabs={[{ name: 'about', title: 'About' }, { name: 'connectors', title: 'Connectors' }, { name: 'changelog', title: 'Changelog' }, { name: 'advanced', title: 'Advanced' }]}>
-				{(tab) => {
-					if (tab.name === 'about') {
+			<TabPanel
+				className="quark-tabs"
+				tabs={ [
+					{ name: 'about', title: 'About' },
+					{ name: 'connectors', title: 'Connectors' },
+					{ name: 'changelog', title: 'Changelog' },
+					{ name: 'advanced', title: 'Advanced' },
+				] }
+			>
+				{ ( tab ) => {
+					if ( tab.name === 'about' ) {
 						return (
 							<Card className="quark-card">
 								<CardHeader>About Quark</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Quark connects WordPress with ChatGPT through MCP tools, OAuth, and structured
-										content capabilities for posts, taxonomies, media, and site operations.
+										Quark connects WordPress with ChatGPT
+										through MCP tools, OAuth, and structured
+										content capabilities for posts,
+										taxonomies, media, and site operations.
 									</p>
 									<p className="quark-copy quark-copy--last">
-										Use the Connectors tab to configure integrations and Advanced for lifecycle
+										Use the Connectors tab to configure
+										integrations and Advanced for lifecycle
 										behavior controls.
 									</p>
 								</CardBody>
@@ -144,27 +230,54 @@ function SettingsApp() {
 						);
 					}
 
-					if (tab.name === 'advanced') {
+					if ( tab.name === 'advanced' ) {
 						return (
 							<Card className="quark-card">
 								<CardHeader>Advanced Settings</CardHeader>
 								<CardBody>
-									<form method="post" action={data.actions?.adminPostUrl} className="quark-form quark-form--advanced">
-										<input type="hidden" name="action" value={data.actions?.saveAdvancedAction} />
-										<input type="hidden" name="_wpnonce" value={data.actions?.saveAdvancedNonce} />
+									<form
+										method="post"
+										action={ data.actions?.adminPostUrl }
+										className="quark-form quark-form--advanced"
+									>
+										<input
+											type="hidden"
+											name="action"
+											value={
+												data.actions?.saveAdvancedAction
+											}
+										/>
+										<input
+											type="hidden"
+											name="_wpnonce"
+											value={
+												data.actions?.saveAdvancedNonce
+											}
+										/>
 										<ToggleControl
 											label="Remove Data on Uninstall"
-											checked={removeDataOnUninstall}
-											onChange={(value) => setRemoveDataOnUninstall(Boolean(value))}
+											checked={ removeDataOnUninstall }
+											onChange={ ( value ) =>
+												setRemoveDataOnUninstall(
+													Boolean( value )
+												)
+											}
 											help="When enabled, Quark deletes stored plugin data during uninstall."
 										/>
 										<input
 											type="hidden"
 											name="remove_data_on_uninstall"
-											value={removeDataOnUninstall ? '1' : '0'}
+											value={
+												removeDataOnUninstall
+													? '1'
+													: '0'
+											}
 										/>
 										<div className="quark-form-actions">
-											<Button type="submit" variant="primary">
+											<Button
+												type="submit"
+												variant="primary"
+											>
 												Save Advanced Settings
 											</Button>
 										</div>
@@ -174,34 +287,73 @@ function SettingsApp() {
 						);
 					}
 
-					if (tab.name === 'changelog') {
-						const versions = Object.entries(changelog).slice(0, 3);
+					if ( tab.name === 'changelog' ) {
+						const versions = Object.entries( changelog ).slice(
+							0,
+							3
+						);
 						return (
 							<Card className="quark-card">
 								<CardHeader>Changelog</CardHeader>
 								<CardBody>
-									{versions.length === 0 ? (
-										<p className="quark-copy quark-copy--first">No changelog entries found.</p>
+									{ versions.length === 0 ? (
+										<p className="quark-copy quark-copy--first">
+											No changelog entries found.
+										</p>
 									) : (
 										<div className="quark-changelog">
-											{versions.map(([version, groups]) => (
-												<div key={version} className="quark-changelog-version">
-													<h3 className="quark-changelog-version-title">{version}</h3>
-													{Object.entries(groups || {}).map(([group, items]) => (
-														<div key={`${version}-${group}`} className="quark-changelog-group">
-															<h4 className="quark-changelog-group-title">{group}</h4>
-															<ul className="quark-changelog-list">
-																{Array.isArray(items) &&
-																	items.map((item, index) => (
-																		<li key={`${version}-${group}-${index}`}>{item}</li>
-																	))}
-															</ul>
-														</div>
-													))}
-												</div>
-											))}
+											{ versions.map(
+												( [ version, groups ] ) => (
+													<div
+														key={ version }
+														className="quark-changelog-version"
+													>
+														<h3 className="quark-changelog-version-title">
+															{ version }
+														</h3>
+														{ Object.entries(
+															groups || {}
+														).map(
+															( [
+																group,
+																items,
+															] ) => (
+																<div
+																	key={ `${ version }-${ group }` }
+																	className="quark-changelog-group"
+																>
+																	<h4 className="quark-changelog-group-title">
+																		{
+																			group
+																		}
+																	</h4>
+																	<ul className="quark-changelog-list">
+																		{ Array.isArray(
+																			items
+																		) &&
+																			items.map(
+																				(
+																					item,
+																					index
+																				) => (
+																					<li
+																						key={ `${ version }-${ group }-${ index }` }
+																					>
+																						{
+																							item
+																						}
+																					</li>
+																				)
+																			) }
+																	</ul>
+																</div>
+															)
+														) }
+													</div>
+												)
+											) }
 										</div>
-									)}
+									) }
 									<p className="quark-changelog-footer">
 										<a
 											href="https://github.com/mehul0810/quark/blob/main/changelog.json"
@@ -222,108 +374,274 @@ function SettingsApp() {
 								<CardBody>
 									<div className="quark-connector-row">
 										<div className="quark-connector-name-wrap">
-											<h3 className="quark-connector-name">ChatGPT</h3>
-											{isConnected && <span className="quark-connector-state">Connected</span>}
+											<h3 className="quark-connector-name">
+												ChatGPT
+											</h3>
+											{ isConnected && (
+												<span className="quark-connector-state">
+													Connected
+												</span>
+											) }
 										</div>
 										<Button
 											variant="link"
-											onClick={() => setOpenConnector(openConnector === 'chatgpt' ? null : 'chatgpt')}
+											onClick={ () =>
+												setOpenConnector(
+													openConnector === 'chatgpt'
+														? null
+														: 'chatgpt'
+												)
+											}
 										>
-											{openConnector === 'chatgpt' ? 'Close' : 'Configure'}
+											{ openConnector === 'chatgpt'
+												? 'Close'
+												: 'Configure' }
 										</Button>
 									</div>
-									{openConnector === 'chatgpt' && (
+									{ openConnector === 'chatgpt' && (
 										<div className="quark-connector-panel">
 											<div className="quark-connector-instructions">
 												<h4>Step 1: Open setup</h4>
-												<p>Open ChatGPT connector settings from the button below.</p>
-												<Button href={data.createAppUrl} variant="primary" target="_blank">
+												<p>
+													Open ChatGPT connector
+													settings from the button
+													below.
+												</p>
+												<Button
+													href={ data.createAppUrl }
+													variant="primary"
+													target="_blank"
+												>
 													Connect to ChatGPT
 												</Button>
-												<h4>Step 2: Add the OAuth client</h4>
-												<p>In ChatGPT, choose OAuth with User-Defined OAuth Client and copy the credentials and endpoints from the right panel.</p>
-												<form method="post" action={data.actions?.adminPostUrl} className="quark-oauth-settings-form">
-													<input type="hidden" name="action" value={data.actions?.saveOauthAction} />
-													<input type="hidden" name="_wpnonce" value={data.actions?.saveOauthNonce} />
+												<h4>
+													Step 2: Add the OAuth client
+												</h4>
+												<p>
+													Select how ChatGPT should
+													obtain its OAuth client,
+													save the choice, then copy
+													the matching values from the
+													right panel.
+												</p>
+												<form
+													method="post"
+													action={
+														data.actions
+															?.adminPostUrl
+													}
+													className="quark-oauth-settings-form"
+												>
+													<input
+														type="hidden"
+														name="action"
+														value={
+															data.actions
+																?.saveOauthAction
+														}
+													/>
+													<input
+														type="hidden"
+														name="_wpnonce"
+														value={
+															data.actions
+																?.saveOauthNonce
+														}
+													/>
+													<input
+														type="hidden"
+														name="registration_method"
+														value={
+															registrationMethod
+														}
+													/>
+													<SelectControl
+														label="OAuth Registration Method"
+														value={
+															registrationMethod
+														}
+														options={
+															data.oauthSettings
+																?.registrationMethods ||
+															[]
+														}
+														onChange={
+															setRegistrationMethod
+														}
+														help="User-defined uses generated static client credentials. DCR lets ChatGPT register a public OAuth client and use PKCE."
+													/>
 													<p className="quark-copy quark-copy--first">
-														Quark now supports a single OAuth path for ChatGPT: generated client credentials with
-														`client_secret_post` token authentication.
+														OpenAI docs support
+														static OAuth credentials
+														and Dynamic Client
+														Registration. Quark
+														advertises only the
+														method selected here.
 													</p>
 													<p className="quark-copy quark-copy--last">
-														If you regenerate the credentials, update the app in ChatGPT before authorizing again.
+														Changing this method
+														revokes active ChatGPT
+														tokens so the next
+														authorization uses the
+														correct metadata.
 													</p>
 													<div className="quark-form-actions">
-														<Button type="submit" variant="secondary">
-															Regenerate Client Credentials
+														<Button
+															type="submit"
+															variant="primary"
+														>
+															Save OAuth Method
 														</Button>
+														{ registrationMethod ===
+															'user_defined' && (
+															<Button
+																type="submit"
+																name="regenerate_client_credentials"
+																value="1"
+																variant="secondary"
+															>
+																Regenerate
+																Client
+																Credentials
+															</Button>
+														) }
 													</div>
 												</form>
-												<h4>Step 3: Validate and confirm</h4>
-												<p>After creating the app in ChatGPT, trigger one OAuth authorization. Once ChatGPT successfully completes the authorization flow, confirm here.</p>
+												<h4>
+													Step 3: Validate and confirm
+												</h4>
+												<p>
+													After creating the app in
+													ChatGPT, trigger one OAuth
+													authorization. Once ChatGPT
+													successfully completes the
+													authorization flow, confirm
+													here.
+												</p>
 												<div className="quark-connector-actions">
-													{renderActionForm(data.actions?.markConnectedAction, data.actions?.markConnectedNonce, 'Added The App')}
-													{isConnected && (
+													{ renderActionForm(
+														data.actions
+															?.markConnectedAction,
+														data.actions
+															?.markConnectedNonce,
+														'Added The App'
+													) }
+													{ isConnected && (
 														<Button
 															variant="secondary"
 															isDestructive
-															onClick={() => setConfirmRevoke(true)}
+															onClick={ () =>
+																setConfirmRevoke(
+																	true
+																)
+															}
 														>
 															Revoke Connection
 														</Button>
-													)}
+													) }
 												</div>
 											</div>
 											<div className="quark-connector-fields">
 												<h4>Copy Fields</h4>
-												{formSections.map((section) => (
-													<div key={section.key} className="quark-config-section">
-														<h5 className="quark-config-section-title">{section.title}</h5>
-														{section.description && <p className="quark-config-section-description">{section.description}</p>}
-														<div className="quark-config-grid">
-															{(section.fields || []).map((field) => (
-																<Flex key={field.key} align="flex-end" gap={2} className="quark-config-row">
-																	<FlexBlock>
-																		<TextControl
-																			label={field.label}
-																			type={field.displayType === 'password' ? 'password' : 'text'}
-																			value={String(field.value ?? '')}
-																			readOnly
-																		/>
-																	</FlexBlock>
-																	<FlexItem>
-																		<Button
-																			className="quark-copy-button"
-																			aria-label={`Copy ${field.label} to clipboard`}
-																			label={`Copy ${field.label}`}
-																			icon="admin-page"
-																			onClick={() => copyValue(field.value)}
-																			variant="secondary"
-																		/>
-																	</FlexItem>
-																</Flex>
-															))}
+												{ formSections.map(
+													( section ) => (
+														<div
+															key={ section.key }
+															className="quark-config-section"
+														>
+															<h5 className="quark-config-section-title">
+																{
+																	section.title
+																}
+															</h5>
+															{ section.description && (
+																<p className="quark-config-section-description">
+																	{
+																		section.description
+																	}
+																</p>
+															) }
+															<div className="quark-config-grid">
+																{ (
+																	section.fields ||
+																	[]
+																).map(
+																	(
+																		field
+																	) => (
+																		<Flex
+																			key={
+																				field.key
+																			}
+																			align="flex-end"
+																			gap={
+																				2
+																			}
+																			className="quark-config-row"
+																		>
+																			<FlexBlock>
+																				<TextControl
+																					label={
+																						field.label
+																					}
+																					type={
+																						field.displayType ===
+																						'password'
+																							? 'password'
+																							: 'text'
+																					}
+																					value={ String(
+																						field.value ??
+																							''
+																					) }
+																					readOnly
+																				/>
+																			</FlexBlock>
+																			<FlexItem>
+																				<Button
+																					className="quark-copy-button"
+																					aria-label={ `Copy ${ field.label } to clipboard` }
+																					label={ `Copy ${ field.label }` }
+																					icon="admin-page"
+																					onClick={ () =>
+																						copyValue(
+																							field.value
+																						)
+																					}
+																					variant="secondary"
+																				/>
+																			</FlexItem>
+																		</Flex>
+																	)
+																) }
+															</div>
 														</div>
-													</div>
-												))}
+													)
+												) }
 												<div className="quark-form-actions">
-													<Button onClick={copyConfig} variant="tertiary">
-														{copied ? 'Copied' : 'Copy All'}
+													<Button
+														onClick={ copyConfig }
+														variant="tertiary"
+													>
+														{ copied
+															? 'Copied'
+															: 'Copy All' }
 													</Button>
 												</div>
 											</div>
 										</div>
-									)}
+									) }
 								</CardBody>
 							</Card>
 						</div>
 					);
-				}}
+				} }
 			</TabPanel>
 		</div>
 	);
 }
 
-const root = document.getElementById('quark-settings-app-root');
-if (root) {
-	render(<SettingsApp />, root);
+const root = document.getElementById( 'quark-settings-app-root' );
+if ( root ) {
+	render( <SettingsApp />, root );
 }

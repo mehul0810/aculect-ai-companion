@@ -24,6 +24,7 @@ final class OAuthWebFlow
         $registry = new OAuthClientRegistry();
         $client = $registry->find_client($client_id);
         $uses_pkce = '' !== $code_challenge;
+        $requires_pkce = OAuthClientRegistry::AUTH_NONE === (string) ($client['token_endpoint_auth_method'] ?? '');
 
         if (
             '' === $client_id ||
@@ -32,6 +33,7 @@ final class OAuthWebFlow
             '' === $state ||
             rest_url('quark/v1/mcp') !== $resource ||
             ! $this->has_supported_scopes($scope) ||
+            ($requires_pkce && ! $uses_pkce) ||
             ($uses_pkce && 'S256' !== $code_challenge_method) ||
             [] === $client
         ) {

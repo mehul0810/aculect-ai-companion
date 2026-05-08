@@ -7,6 +7,7 @@ namespace Quark\Connectors\ChatGPT\Rest;
 use Quark\Auth\Access;
 use WP_REST_Server;
 use WP_REST_Request;
+use WP_REST_Response;
 
 final class McpController
 {
@@ -25,8 +26,12 @@ final class McpController
         ]);
     }
 
-    public function describe(): array
+    public function describe(WP_REST_Request $request)
     {
+        if (str_contains((string) $request->get_header('accept'), 'text/event-stream')) {
+            $this->send_event_stream();
+        }
+
         $oauth = new OAuthController();
         $resource_metadata_url = $oauth->protected_resource_metadata_url();
         $mcp_url = rest_url('quark/v1/mcp');
@@ -48,7 +53,7 @@ final class McpController
         ];
     }
 
-    public function handle_rpc(WP_REST_Request $request): array
+    public function handle_rpc(WP_REST_Request $request)
     {
         $body = $request->get_json_params();
         if (! is_array($body)) {
@@ -57,6 +62,9 @@ final class McpController
 
         $id = $body['id'] ?? null;
         $method = $body['method'] ?? '';
+        if (! array_key_exists('id', $body) && str_starts_with((string) $method, 'notifications/')) {
+            return new WP_REST_Response(null, 202);
+        }
 
         switch ($method) {
             case 'initialize':
@@ -64,7 +72,7 @@ final class McpController
                 $resource_metadata_url = $oauth->protected_resource_metadata_url();
                 $mcp_url = rest_url('quark/v1/mcp');
                 return $this->rpc_result($id, [
-                    'protocolVersion' => '2024-11-05',
+                    'protocolVersion' => '2025-06-18',
                     'serverInfo' => [
                         'name' => 'Quark MCP',
                         'version' => QUARK_VERSION,
@@ -106,6 +114,17 @@ final class McpController
         }
 
         return $this->rpc_error($id, -32601, 'Method not found');
+    }
+
+    private function send_event_stream(): void
+    {
+        status_header(200);
+        nocache_headers();
+        header('Content-Type: text/event-stream; charset=' . get_option('blog_charset'));
+        header('X-Accel-Buffering: no');
+        echo ": quark-mcp-stream\n\n";
+        flush();
+        exit;
     }
 
     private function list_tools(): array

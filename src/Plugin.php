@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Quark;
 
-use Quark\Rest\McpController;
-use Quark\Rest\ContentController;
-use Quark\Rest\OAuthController;
+use Quark\Connectors\ChatGPT\Admin\SettingsPage;
+use Quark\Connectors\ChatGPT\Auth\OAuthWebFlow;
+use Quark\Connectors\ChatGPT\Rest\ContentController;
+use Quark\Connectors\ChatGPT\Rest\McpController;
+use Quark\Connectors\ChatGPT\Rest\OAuthController;
 
 final class Plugin
 {
@@ -34,6 +36,10 @@ final class Plugin
     public function boot(): void
     {
         add_action('rest_api_init', [$this, 'register_routes']);
+        add_action('admin_menu', [$this, 'register_admin']);
+        add_action('admin_post_quark_oauth_authorize', [$this, 'handle_oauth_authorize']);
+        add_action('admin_post_quark_mark_connected', [$this, 'handle_mark_connected']);
+        add_action('admin_post_quark_revoke_connection', [$this, 'handle_revoke_connection']);
     }
 
     public function register_routes(): void
@@ -41,5 +47,25 @@ final class Plugin
         (new OAuthController())->register_routes();
         (new McpController())->register_routes();
         (new ContentController())->register_routes();
+    }
+
+    public function register_admin(): void
+    {
+        (new SettingsPage())->register();
+    }
+
+    public function handle_oauth_authorize(): void
+    {
+        (new OAuthWebFlow())->handle_authorize();
+    }
+
+    public function handle_mark_connected(): void
+    {
+        (new SettingsPage())->handle_mark_connected();
+    }
+
+    public function handle_revoke_connection(): void
+    {
+        (new SettingsPage())->handle_revoke_connection();
     }
 }

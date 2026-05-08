@@ -109,4 +109,30 @@ final class Access
 
         return (int) $record['user_id'];
     }
+
+    public function has_active_tokens(): bool
+    {
+        $tokens = get_option(self::OPTION_TOKENS, []);
+        if (! is_array($tokens) || [] === $tokens) {
+            return false;
+        }
+
+        $now = time();
+        foreach ($tokens as $key => $record) {
+            if ((int) ($record['expires'] ?? 0) >= $now) {
+                return true;
+            }
+
+            unset($tokens[$key]);
+        }
+
+        update_option(self::OPTION_TOKENS, $tokens, false);
+        return false;
+    }
+
+    public function revoke_all_tokens(): void
+    {
+        update_option(self::OPTION_TOKENS, [], false);
+        update_option(self::OPTION_CODES, [], false);
+    }
 }

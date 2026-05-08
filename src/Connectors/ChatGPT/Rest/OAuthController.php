@@ -32,11 +32,6 @@ final class OAuthController
             'top'
         );
 
-        add_rewrite_rule(
-            '^quark/oauth/authorize/?$',
-            'index.php?' . self::AUTHORIZE_QUERY_VAR . '=1',
-            'top'
-        );
     }
 
     public function render_well_known_metadata(): void
@@ -154,7 +149,10 @@ final class OAuthController
 
     public function maybe_render_browser_authorize(): void
     {
-        if ('1' !== (string) get_query_var(self::AUTHORIZE_QUERY_VAR)) {
+        $is_authorize_request = '1' === (string) get_query_var(self::AUTHORIZE_QUERY_VAR)
+            || '1' === (string) ($_GET[self::AUTHORIZE_QUERY_VAR] ?? '');
+
+        if (! $is_authorize_request) {
             return;
         }
 
@@ -237,7 +235,7 @@ final class OAuthController
 
     public function authorization_endpoint(): string
     {
-        return home_url('/quark/oauth/authorize');
+        return add_query_arg(self::AUTHORIZE_QUERY_VAR, '1', home_url('/'));
     }
 
     public function protected_resource_metadata_url(?string $resource = null): string

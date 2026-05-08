@@ -15,7 +15,8 @@
       "Selectable ChatGPT OAuth registration method for user-defined clients or Dynamic Client Registration",
       "Mode-aware OAuth metadata so ChatGPT sees only the active client registration flow",
       "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
-      "Requester-scoped DCR rate limiting to prevent false 429 errors during ChatGPT app setup"
+      "Requester-scoped DCR rate limiting to prevent false 429 errors during ChatGPT app setup",
+      "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

@@ -20,6 +20,8 @@ final class OAuthWebFlow
         $resource = (string) ($params['resource'] ?? rest_url('quark/v1/mcp'));
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? '');
+        $issuer = (string) ($params['quark_oauth_issuer'] ?? rest_url('quark/v1/mcp'));
+        $issuer = rawurldecode($issuer);
 
         $registry = new OAuthClientRegistry();
         $client = $registry->find_client($client_id);
@@ -53,6 +55,7 @@ final class OAuthWebFlow
             'response_type' => $response_type,
             'code_challenge' => $code_challenge,
             'resource' => $resource,
+            'issuer' => $issuer,
         ];
     }
 
@@ -85,7 +88,8 @@ final class OAuthWebFlow
         $this->redirect_with_code(
             (string) $context['redirect_uri'],
             (string) $context['state'],
-            $code
+            $code,
+            (string) $context['issuer']
         );
     }
 
@@ -105,11 +109,12 @@ final class OAuthWebFlow
         return true;
     }
 
-    private function redirect_with_code(string $redirect_uri, string $state, string $code): void
+    private function redirect_with_code(string $redirect_uri, string $state, string $code, string $issuer): void
     {
         $url = add_query_arg([
             'code' => $code,
             'state' => $state,
+            'iss' => $issuer,
         ], $redirect_uri);
         wp_redirect(esc_url_raw($url), 302, 'Quark OAuth');
         exit;

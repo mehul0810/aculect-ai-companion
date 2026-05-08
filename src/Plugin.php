@@ -66,6 +66,7 @@ final class Plugin
     {
         $vars[] = 'quark_well_known';
         $vars[] = 'quark_well_known_resource_path';
+        $vars[] = 'quark_well_known_issuer_path';
         $vars[] = 'quark_oauth_authorize';
         return $vars;
     }
@@ -87,10 +88,7 @@ final class Plugin
         }
 
         $path = (string) wp_parse_url($requested_url, PHP_URL_PATH);
-        if (
-            '/.well-known/oauth-authorization-server' === $path
-            || '/.well-known/oauth-protected-resource/wp-json/quark/v1/mcp' === $path
-        ) {
+        if (str_starts_with($path, '/.well-known/oauth-')) {
             return false;
         }
 

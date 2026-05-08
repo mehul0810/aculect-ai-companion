@@ -27,8 +27,8 @@ final class OAuthController
         );
 
         add_rewrite_rule(
-            '^\.well-known/oauth-authorization-server/?$',
-            'index.php?quark_well_known=' . self::AUTHORIZATION_METADATA,
+            '^\.well-known/oauth-authorization-server(/.+)?/?$',
+            'index.php?quark_well_known=' . self::AUTHORIZATION_METADATA . '&quark_well_known_issuer_path=$matches[1]',
             'top'
         );
 
@@ -38,6 +38,7 @@ final class OAuthController
     {
         $document = (string) get_query_var('quark_well_known');
         $resource_path = (string) get_query_var('quark_well_known_resource_path');
+        $issuer_path = (string) get_query_var('quark_well_known_issuer_path');
 
         if ('' === $document) {
             $path = wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
@@ -45,8 +46,9 @@ final class OAuthController
                 if (preg_match('#/\.well-known/oauth-protected-resource(?P<resource_path>/.+)?/?$#', $path, $matches)) {
                     $document = self::RESOURCE_METADATA;
                     $resource_path = (string) ($matches['resource_path'] ?? '');
-                } elseif (preg_match('#/\.well-known/oauth-authorization-server/?$#', $path)) {
+                } elseif (preg_match('#/\.well-known/oauth-authorization-server(?P<issuer_path>/.+)?/?$#', $path, $matches)) {
                     $document = self::AUTHORIZATION_METADATA;
+                    $issuer_path = (string) ($matches['issuer_path'] ?? '');
                 }
             }
         }
@@ -57,7 +59,7 @@ final class OAuthController
 
         $response = match ($document) {
             self::RESOURCE_METADATA => $this->protected_resource_metadata($resource_path),
-            self::AUTHORIZATION_METADATA => $this->oauth_metadata(),
+            self::AUTHORIZATION_METADATA => $this->oauth_metadata($issuer_path),
             default => null,
         };
 
@@ -84,6 +86,11 @@ final class OAuthController
             'callback' => [$this, 'oauth_metadata'],
             'permission_callback' => '__return_true',
         ]);
+        register_rest_route('quark/v1', '/mcp/.well-known/oauth-authorization-server', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'resource_oauth_metadata'],
+            'permission_callback' => '__return_true',
+        ]);
         register_rest_route('quark/v1', '/oauth/authorize', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'authorize'],
@@ -101,12 +108,17 @@ final class OAuthController
         ]);
     }
 
-    public function oauth_metadata(): WP_REST_Response
+    public function oauth_metadata($requested_issuer_path = ''): WP_REST_Response
     {
+        if ($requested_issuer_path instanceof WP_REST_Request) {
+            $requested_issuer_path = '';
+        }
+
         $settings = (new OAuthClientRegistry())->settings();
+        $issuer = $this->issuer_for_path((string) $requested_issuer_path);
         $metadata = [
-            'issuer' => $this->issuer(),
-            'authorization_endpoint' => $this->authorization_endpoint(),
+            'issuer' => $issuer,
+            'authorization_endpoint' => $this->authorization_endpoint($issuer),
             'token_endpoint' => rest_url('quark/v1/oauth/token'),
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'response_types_supported' => ['code'],
@@ -124,10 +136,17 @@ final class OAuthController
         return new WP_REST_Response($metadata, 200);
     }
 
+    public function resource_oauth_metadata($request = null): WP_REST_Response
+    {
+        unset($request);
+
+        return $this->oauth_metadata($this->resource_path());
+    }
+
     public function protected_resource_metadata(string $requested_resource_path = ''): WP_REST_Response
     {
-        $resource = rest_url('quark/v1/mcp');
-        $resource_path = (string) wp_parse_url($resource, PHP_URL_PATH);
+        $resource = $this->resource_issuer();
+        $resource_path = $this->resource_path();
 
         if ('' !== $requested_resource_path && $resource_path !== untrailingslashit($requested_resource_path)) {
             return new WP_REST_Response(['error' => 'invalid_target'], 404);
@@ -135,7 +154,7 @@ final class OAuthController
 
         return new WP_REST_Response([
             'resource' => $resource,
-            'authorization_servers' => [$this->issuer()],
+            'authorization_servers' => [$this->resource_issuer(), $this->issuer()],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
             'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
@@ -217,6 +236,7 @@ final class OAuthController
             'code_challenge' => (string) $context['code_challenge'],
             'code_challenge_method' => 'S256',
             'resource' => (string) $context['resource'],
+            'quark_oauth_issuer' => (string) $context['issuer'],
         ], admin_url('options-general.php'));
 
         wp_safe_redirect($consent_url, 302, 'Quark OAuth');
@@ -311,9 +331,22 @@ final class OAuthController
         return untrailingslashit(home_url('/'));
     }
 
-    public function authorization_endpoint(): string
+    public function authorization_endpoint(?string $issuer = null): string
     {
-        return add_query_arg(self::AUTHORIZE_QUERY_VAR, '1', home_url('/'));
+        return add_query_arg([
+            self::AUTHORIZE_QUERY_VAR => '1',
+            'quark_oauth_issuer' => $issuer ?: $this->resource_issuer(),
+        ], home_url('/'));
+    }
+
+    public function resource_issuer(): string
+    {
+        return rest_url('quark/v1/mcp');
+    }
+
+    public function resource_authorization_metadata_url(): string
+    {
+        return home_url('/.well-known/' . self::AUTHORIZATION_METADATA . $this->resource_path());
     }
 
     public function protected_resource_metadata_url(?string $resource = null): string
@@ -331,6 +364,18 @@ final class OAuthController
         $path = untrailingslashit((string) ($parts['path'] ?? ''));
 
         return $scheme . '://' . $host . $port . '/.well-known/' . self::RESOURCE_METADATA . $path;
+    }
+
+    private function resource_path(): string
+    {
+        return untrailingslashit((string) wp_parse_url($this->resource_issuer(), PHP_URL_PATH));
+    }
+
+    private function issuer_for_path(string $requested_issuer_path): string
+    {
+        $requested_issuer_path = untrailingslashit($requested_issuer_path);
+
+        return $this->resource_path() === $requested_issuer_path ? $this->resource_issuer() : $this->issuer();
     }
 
     private function has_supported_scopes(string $scope): bool

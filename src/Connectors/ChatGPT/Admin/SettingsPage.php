@@ -164,11 +164,13 @@ final class SettingsPage
         $registration_methods = $registry->registration_methods();
         $registration_label = (string) ($registration_methods[(string) $settings['registration_method']] ?? $registration_methods[OAuthClientRegistry::MODE_USER_DEFINED]);
         $mcp_url = rest_url('quark/v1/mcp');
+        $authorization_server_base = $is_dcr ? $oauth->resource_issuer() : untrailingslashit(home_url('/'));
+        $authorization_metadata_url = $is_dcr ? $oauth->resource_authorization_metadata_url() : home_url('/.well-known/oauth-authorization-server');
         $advanced_fields = [
             [
                 'key' => 'authorization_server_base',
                 'label' => 'Authorization Server Base',
-                'value' => untrailingslashit(home_url('/')),
+                'value' => $authorization_server_base,
             ],
             [
                 'key' => 'resource',
@@ -178,7 +180,7 @@ final class SettingsPage
             [
                 'key' => 'oauth_authorization_endpoint',
                 'label' => 'Authorization Endpoint',
-                'value' => $oauth->authorization_endpoint(),
+                'value' => $oauth->authorization_endpoint($authorization_server_base),
             ],
             [
                 'key' => 'oauth_token_endpoint',
@@ -204,7 +206,7 @@ final class SettingsPage
             [
                 'key' => 'oauth_metadata_url',
                 'label' => 'Authorization Server Metadata URL',
-                'value' => home_url('/.well-known/oauth-authorization-server'),
+                'value' => $authorization_metadata_url,
             ],
             [
                 'key' => 'oauth_protected_resource_metadata_url',
@@ -359,6 +361,7 @@ final class SettingsPage
         $code_challenge = sanitize_text_field((string) ($_GET['code_challenge'] ?? ''));
         $code_challenge_method = sanitize_text_field((string) ($_GET['code_challenge_method'] ?? 'S256'));
         $resource = esc_url_raw((string) ($_GET['resource'] ?? rest_url('quark/v1/mcp')));
+        $issuer = esc_url_raw(rawurldecode((string) ($_GET['quark_oauth_issuer'] ?? rest_url('quark/v1/mcp'))));
 
         echo '<h1>Quark OAuth Consent</h1>';
         echo '<p>Approve this request to connect ChatGPT to your WordPress account.</p>';
@@ -367,6 +370,7 @@ final class SettingsPage
         echo '<tr><td><strong>Redirect URI</strong></td><td><code>' . esc_html($redirect_uri) . '</code></td></tr>';
         echo '<tr><td><strong>Requested Scope</strong></td><td><code>' . esc_html($scope) . '</code></td></tr>';
         echo '<tr><td><strong>Resource</strong></td><td><code>' . esc_html($resource) . '</code></td></tr>';
+        echo '<tr><td><strong>Issuer</strong></td><td><code>' . esc_html($issuer) . '</code></td></tr>';
         echo '</tbody></table>';
 
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
@@ -379,6 +383,7 @@ final class SettingsPage
         echo '<input type="hidden" name="code_challenge" value="' . esc_attr($code_challenge) . '" />';
         echo '<input type="hidden" name="code_challenge_method" value="' . esc_attr($code_challenge_method) . '" />';
         echo '<input type="hidden" name="resource" value="' . esc_attr($resource) . '" />';
+        echo '<input type="hidden" name="quark_oauth_issuer" value="' . esc_attr($issuer) . '" />';
         submit_button('Approve', 'primary', 'decision', false, ['value' => 'approve']);
         echo ' ';
         submit_button('Deny', 'secondary', 'decision', false, ['value' => 'deny']);

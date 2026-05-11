@@ -20,7 +20,9 @@
       "OAuth approval callback and token exchange resilience for assistant connector setup",
       "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
       "More tolerant dynamic client registration rate limit for assistant OAuth retry behavior",
-      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, resource-scoped setup values, and MCP auth challenges"
+      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, resource-scoped setup values, and MCP auth challenges",
+      "ChatGPT discovery compatibility by advertising the MCP endpoint as the primary authorization server issuer while preserving site-root metadata fallback",
+      "Dynamic Client Registration retry tolerance to avoid ChatGPT setup failures from repeated registration attempts"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

@@ -16,6 +16,10 @@ final class Helpers {
 		return self::normalize_url( self::external_base_url() );
 	}
 
+	public static function authorization_server_issuer(): string {
+		return self::mcp_resource();
+	}
+
 	public static function mcp_resource(): string {
 		return self::normalize_url( self::external_rest_url( self::MCP_ROUTE ) );
 	}
@@ -39,13 +43,17 @@ final class Helpers {
 	}
 
 	public static function authorization_metadata_url( ?string $issuer = null ): string {
-		$issuer = self::normalize_url( null !== $issuer && '' !== $issuer ? $issuer : self::issuer() );
+		$issuer = self::normalize_url( null !== $issuer && '' !== $issuer ? $issuer : self::authorization_server_issuer() );
 		$path   = (string) wp_parse_url( $issuer, PHP_URL_PATH );
 		return self::origin_from_url( $issuer ) . '/.well-known/' . self::AUTHORIZATION_METADATA . untrailingslashit( $path );
 	}
 
 	public static function protected_resource_metadata_url( ?string $resource = null ): string {
-		$resource = self::normalize_url( null !== $resource && '' !== $resource ? $resource : self::mcp_resource() );
+		if ( null === $resource || '' === $resource ) {
+			return self::origin_from_url( self::mcp_resource() ) . '/.well-known/' . self::PROTECTED_RESOURCE_METADATA;
+		}
+
+		$resource = self::normalize_url( $resource );
 		return self::origin_from_url( $resource ) . '/.well-known/' . self::PROTECTED_RESOURCE_METADATA . self::resource_path( $resource );
 	}
 

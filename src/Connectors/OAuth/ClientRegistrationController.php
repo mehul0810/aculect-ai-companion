@@ -26,10 +26,6 @@ final class ClientRegistrationController {
 	}
 
 	public function register_client( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		if ( ! $this->rate_limit( $request ) ) {
-			return new WP_Error( 'rate_limit_exceeded', 'Too many registration requests. Please try again later.', array( 'status' => 429 ) );
-		}
-
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
 			$body = array();
@@ -39,6 +35,10 @@ final class ClientRegistrationController {
 		$redirect_uris = $this->redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
 		if ( array() === $redirect_uris ) {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
+		}
+
+		if ( ! $this->rate_limit( $request ) ) {
+			return new WP_Error( 'rate_limit_exceeded', 'Too many registration requests. Please try again later.', array( 'status' => 429 ) );
 		}
 
 		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, true, null );
@@ -81,10 +81,10 @@ final class ClientRegistrationController {
 
 	private function rate_limit( WP_REST_Request $request ): bool {
 		$identity = $this->request_ip( $request );
-		$key      = 'quark_dcr_' . md5( $identity );
+		$key      = 'quark_dcr_v2_' . md5( $identity );
 		$attempts = (int) get_transient( $key );
 
-		if ( $attempts >= 120 ) {
+		if ( $attempts >= 2000 ) {
 			return false;
 		}
 

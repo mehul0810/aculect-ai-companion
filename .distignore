@@ -1,6 +1,7 @@
 .git/
 .github/
 .codex/
+.claude/
 .phpunit.cache/
 node_modules/
 tests/
@@ -14,8 +15,6 @@ phpstan.neon.dist
 phpstan-bootstrap.php
 AGENTS.md
 package-lock.json
-package.json
-README.md
 *.log
 .DS_Store
 dist/

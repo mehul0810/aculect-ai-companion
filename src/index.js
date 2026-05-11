@@ -1,4 +1,4 @@
-/* global MutationObserver, navigator */
+/* global navigator */
 
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
@@ -110,66 +110,6 @@ function SettingsApp() {
 		},
 		[]
 	);
-
-	useEffect( () => {
-		const target = document.getElementById( 'wpbody-content' );
-		if ( ! target ) {
-			return undefined;
-		}
-
-		const removeExternalAdminNotices = () => {
-			const notices = document.querySelectorAll(
-				[
-					'#wpbody-content > .notice',
-					'#wpbody-content > .updated',
-					'#wpbody-content > .error',
-					'#wpbody-content > .update-nag',
-					'.quark-settings-wrap > .notice',
-					'.quark-settings-wrap > .updated',
-					'.quark-settings-wrap > .error',
-					'.quark-settings-wrap > .update-nag',
-					'.quark-app-root .notice',
-					'.quark-app-root .updated',
-					'.quark-app-root .error',
-					'.quark-app-root .update-nag',
-				].join( ',' )
-			);
-
-			notices.forEach( ( notice ) => {
-				if (
-					notice.closest( '.components-notice' ) ||
-					notice.getAttribute( 'data-quark-notice' ) === 'true'
-				) {
-					return;
-				}
-
-				notice.remove();
-			} );
-		};
-
-		let scheduled = false;
-		const scheduleMove = () => {
-			if ( scheduled ) {
-				return;
-			}
-
-			scheduled = true;
-			window.requestAnimationFrame( () => {
-				scheduled = false;
-				removeExternalAdminNotices();
-			} );
-		};
-
-		removeExternalAdminNotices();
-
-		const observer = new MutationObserver( scheduleMove );
-		observer.observe( target, {
-			childList: true,
-			subtree: true,
-		} );
-
-		return () => observer.disconnect();
-	}, [] );
 
 	const copyValue = async ( value, label = 'Copied' ) => {
 		try {

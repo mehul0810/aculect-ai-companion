@@ -7,8 +7,7 @@
       "Custom OAuth tables for clients, authorization codes, access tokens, refresh tokens, and active sessions",
       "Connector-neutral architecture for OAuth, MCP, Claude, and ChatGPT provider modules",
       "OAuth authorization, consent, token exchange, refresh, and session revocation flow",
-      "Quark admin settings app with About, Connectors, Changelog, and Advanced tabs",
-      "Advanced option to remove plugin data on uninstall",
+      "Quark admin settings app with About, Connectors, Connections, Abilities, and Changelog tabs",
       "Configurable AI Abilities tab for enabling or disabling MCP tools after a site is connected"
     ],
     "Improved": [
@@ -27,12 +26,12 @@
       "OAuth login return flow now lands on the Quark admin consent screen instead of resuming through the REST authorize URL",
       "Dynamic Client Registration no longer returns plugin-level 429 responses for valid assistant registration attempts",
       "MCP content and taxonomy tools now support read, create, and update operations across supported custom post types and custom taxonomies",
-      "Non-Quark admin notices are now suppressed on the Quark settings screen so unrelated plugin notices do not break the app layout",
       "Connector setup UI now avoids duplicate MCP endpoint sections and uses compact icon-only copy controls",
       "About tab now explains Quark features without showing setup fields",
       "About tab copy now uses the full available section width",
       "Advanced tab removed from the Quark settings app",
-      "MCP tool names are now Claude-safe while legacy dotted tool aliases remain callable"
+      "MCP tool names are now Claude-safe while legacy dotted tool aliases remain callable",
+      "Quark settings now preserve WordPress admin notices instead of removing unrelated notices"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",
@@ -40,7 +39,9 @@
       "Added .editorconfig for consistent formatting rules",
       "Added AGENTS.md standards for planning-first workflow and release discipline",
       "Added PHPUnit unit test setup for fast connector regression coverage",
-      "Documented MCP tool-name compatibility rules and the test suite layout"
+      "Documented MCP tool-name compatibility rules and the test suite layout",
+      "Added WordPress.org readme.txt with external service disclosures",
+      "Added Plugin Check gating before release artifacts are generated"
     ]
   }
 }

@@ -35,9 +35,19 @@ jobs:
       - name: Build assets
         run: npm run build
 
-      - name: Generate plugin artifact
+      - name: Prepare plugin package
         run: |
           rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" release/ --delete --delete-excluded
+
+      - name: Run Plugin Check
+        uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: "./release"
+          slug: "quark"
+          ignore-warnings: true
+
+      - name: Generate plugin artifact
+        run: |
           cd "${GITHUB_WORKSPACE}/release" || exit 1
           zip -r "${GITHUB_WORKSPACE}/${{ github.event.repository.name }}.zip" .
 

@@ -9,7 +9,14 @@ final class Access
     private const OPTION_CODES = 'quark_oauth_codes';
     private const OPTION_TOKENS = 'quark_oauth_tokens';
 
-    public function issue_code(int $user_id, string $client_id, string $scope, string $code_challenge, string $resource): string
+    public function issue_code(
+        int $user_id,
+        string $client_id,
+        string $scope,
+        string $code_challenge,
+        string $resource,
+        string $redirect_uri = ''
+    ): string
     {
         $code = wp_generate_uuid4() . wp_generate_uuid4();
         $items = get_option(self::OPTION_CODES, []);
@@ -19,6 +26,7 @@ final class Access
             'scope' => $scope,
             'code_challenge' => $code_challenge,
             'resource' => $resource,
+            'redirect_uri' => $redirect_uri,
             'expires' => time() + 300,
         ];
         update_option(self::OPTION_CODES, $items, false);
@@ -26,7 +34,13 @@ final class Access
         return $code;
     }
 
-    public function exchange_code(string $code, string $client_id, string $code_verifier, string $resource): array
+    public function exchange_code(
+        string $code,
+        string $client_id,
+        string $code_verifier,
+        string $resource,
+        string $redirect_uri = ''
+    ): array
     {
         $codes = get_option(self::OPTION_CODES, []);
         if (! is_array($codes) || ! isset($codes[$code])) {
@@ -34,13 +48,25 @@ final class Access
         }
 
         $record = $codes[$code];
-        unset($codes[$code]);
-        update_option(self::OPTION_CODES, $codes, false);
+
+        if ((int) $record['expires'] < time()) {
+            unset($codes[$code]);
+            update_option(self::OPTION_CODES, $codes, false);
+            return [];
+        }
 
         if (
-            (int) $record['expires'] < time() ||
             $record['client_id'] !== $client_id ||
             (string) ($record['resource'] ?? '') !== $resource
+        ) {
+            return [];
+        }
+
+        $stored_redirect_uri = (string) ($record['redirect_uri'] ?? '');
+        if (
+            '' !== $stored_redirect_uri &&
+            '' !== $redirect_uri &&
+            ! hash_equals($stored_redirect_uri, $redirect_uri)
         ) {
             return [];
         }
@@ -52,6 +78,9 @@ final class Access
                 return [];
             }
         }
+
+        unset($codes[$code]);
+        update_option(self::OPTION_CODES, $codes, false);
 
         return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource, $client_id);
     }

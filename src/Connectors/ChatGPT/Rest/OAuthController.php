@@ -189,7 +189,10 @@ final class OAuthController
             );
         }
 
-        return new WP_REST_Response($client, 201);
+        $response = $client;
+        unset($response['manual']);
+
+        return new WP_REST_Response($response, 201);
     }
 
     public function authorize(WP_REST_Request $request): WP_REST_Response
@@ -275,10 +278,7 @@ final class OAuthController
 
         $access = new Access();
         if ('authorization_code' === $grant_type) {
-            $resource = (string) $request->get_param('resource');
-            if ('' === $resource) {
-                $resource = rest_url('quark/v1/mcp');
-            }
+            $resource = $this->resource_from_request($request);
             if (rest_url('quark/v1/mcp') !== $resource) {
                 return $this->oauth_error(
                     'invalid_target',
@@ -291,7 +291,8 @@ final class OAuthController
                 (string) $request->get_param('code'),
                 $client_id,
                 (string) $request->get_param('code_verifier'),
-                $resource
+                $resource,
+                (string) $request->get_param('redirect_uri')
             );
             return new WP_REST_Response(
                 $tokens ?: $this->oauth_error_payload('invalid_grant', 'Authorization code exchange failed.'),
@@ -300,10 +301,7 @@ final class OAuthController
         }
 
         if ('refresh_token' === $grant_type) {
-            $resource = (string) $request->get_param('resource');
-            if ('' === $resource) {
-                $resource = rest_url('quark/v1/mcp');
-            }
+            $resource = $this->resource_from_request($request);
             if (rest_url('quark/v1/mcp') !== $resource) {
                 return $this->oauth_error(
                     'invalid_target',
@@ -401,6 +399,16 @@ final class OAuthController
         return OAuthClientRegistry::MODE_DCR === $settings['registration_method']
             ? [OAuthClientRegistry::AUTH_NONE]
             : [OAuthClientRegistry::AUTH_CLIENT_SECRET_POST];
+    }
+
+    private function resource_from_request(WP_REST_Request $request): string
+    {
+        $resource = (string) $request->get_param('resource');
+        if ('' === $resource) {
+            $resource = (string) $request->get_param('audience');
+        }
+
+        return '' !== $resource ? untrailingslashit($resource) : rest_url('quark/v1/mcp');
     }
 
     private function current_request_url(): string

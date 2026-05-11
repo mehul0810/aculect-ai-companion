@@ -16,7 +16,8 @@
       "Mode-aware OAuth metadata so ChatGPT sees only the active client registration flow",
       "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
       "Requester-scoped DCR rate limiting to prevent false 429 errors during ChatGPT app setup",
-      "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base"
+      "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base",
+      "OAuth approval callback and token exchange resilience for ChatGPT DCR connector setup"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

@@ -82,14 +82,14 @@ final class OAuthWebFlow
             (string) $context['client_id'],
             (string) $context['scope'],
             (string) $context['code_challenge'],
-            (string) $context['resource']
+            (string) $context['resource'],
+            (string) $context['redirect_uri']
         );
 
         $this->redirect_with_code(
             (string) $context['redirect_uri'],
             (string) $context['state'],
-            $code,
-            (string) $context['issuer']
+            $code
         );
     }
 
@@ -109,12 +109,11 @@ final class OAuthWebFlow
         return true;
     }
 
-    private function redirect_with_code(string $redirect_uri, string $state, string $code, string $issuer): void
+    private function redirect_with_code(string $redirect_uri, string $state, string $code): void
     {
         $url = add_query_arg([
             'code' => $code,
             'state' => $state,
-            'iss' => $issuer,
         ], $redirect_uri);
         wp_redirect(esc_url_raw($url), 302, 'Quark OAuth');
         exit;

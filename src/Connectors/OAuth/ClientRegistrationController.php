@@ -37,10 +37,6 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
-		if ( ! $this->rate_limit( $request ) ) {
-			return new WP_Error( 'rate_limit_exceeded', 'Too many registration requests. Please try again later.', array( 'status' => 429 ) );
-		}
-
 		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, true, null );
 		if ( ! is_array( $client ) ) {
 			return new WP_Error( 'registration_failed', 'Unable to register OAuth client.', array( 'status' => 500 ) );
@@ -77,29 +73,5 @@ final class ClientRegistrationController {
 		}
 
 		return array_values( array_unique( $valid ) );
-	}
-
-	private function rate_limit( WP_REST_Request $request ): bool {
-		$identity = $this->request_ip( $request );
-		$key      = 'quark_dcr_v2_' . md5( $identity );
-		$attempts = (int) get_transient( $key );
-
-		if ( $attempts >= 2000 ) {
-			return false;
-		}
-
-		set_transient( $key, $attempts + 1, HOUR_IN_SECONDS );
-		return true;
-	}
-
-	private function request_ip( WP_REST_Request $request ): string {
-		foreach ( array( 'cf-connecting-ip', 'x-real-ip', 'x-forwarded-for' ) as $header ) {
-			$value = trim( (string) $request->get_header( $header ) );
-			if ( '' !== $value ) {
-				return sanitize_text_field( explode( ',', $value )[0] );
-			}
-		}
-
-		return isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) ) : 'anonymous';
 	}
 }

@@ -1,4 +1,4 @@
-/* global navigator */
+/* global MutationObserver, navigator */
 
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
@@ -79,6 +79,7 @@ function SettingsApp() {
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
 	);
 	const copyTimeoutRef = useRef( null );
+	const adminNoticesRef = useRef( null );
 
 	useEffect(
 		() => () => {
@@ -88,6 +89,64 @@ function SettingsApp() {
 		},
 		[]
 	);
+
+	useEffect( () => {
+		const container = adminNoticesRef.current;
+		const target = document.getElementById( 'wpbody-content' );
+		if ( ! container || ! target ) {
+			return undefined;
+		}
+
+		const moveAdminNotices = () => {
+			const notices = document.querySelectorAll(
+				[
+					'#wpbody-content > .notice',
+					'#wpbody-content > .updated',
+					'#wpbody-content > .error',
+					'.quark-settings-wrap > .notice',
+					'.quark-settings-wrap > .updated',
+					'.quark-settings-wrap > .error',
+					'.quark-app-root .notice',
+					'.quark-app-root .updated',
+					'.quark-app-root .error',
+				].join( ',' )
+			);
+
+			notices.forEach( ( notice ) => {
+				if (
+					container.contains( notice ) ||
+					notice.closest( '.components-notice' )
+				) {
+					return;
+				}
+
+				container.appendChild( notice );
+			} );
+		};
+
+		let scheduled = false;
+		const scheduleMove = () => {
+			if ( scheduled ) {
+				return;
+			}
+
+			scheduled = true;
+			window.requestAnimationFrame( () => {
+				scheduled = false;
+				moveAdminNotices();
+			} );
+		};
+
+		moveAdminNotices();
+
+		const observer = new MutationObserver( scheduleMove );
+		observer.observe( target, {
+			childList: true,
+			subtree: true,
+		} );
+
+		return () => observer.disconnect();
+	}, [] );
 
 	const copyValue = async ( value, label = 'Copied' ) => {
 		try {
@@ -147,6 +206,11 @@ function SettingsApp() {
 					{ data.isConnected ? 'Connected' : 'Ready to connect' }
 				</span>
 			</div>
+			<div
+				ref={ adminNoticesRef }
+				className="quark-admin-notices"
+				aria-live="polite"
+			/>
 
 			{ copied && (
 				<Notice status="success" isDismissible={ false }>

@@ -68,6 +68,31 @@
 	color: var(--quark-green);
 }
 
+.quark-admin-notices {
+	display: grid;
+	gap: 10px;
+	margin: -8px 0 22px;
+}
+
+.quark-admin-notices:empty {
+	display: none;
+}
+
+.quark-admin-notices .notice,
+.quark-admin-notices .updated,
+.quark-admin-notices .error {
+	margin: 0;
+	border-radius: 10px;
+	background: #fff;
+	box-shadow: none;
+}
+
+.quark-admin-notices .notice p,
+.quark-admin-notices .updated p,
+.quark-admin-notices .error p {
+	margin: 0.65em 0;
+}
+
 .quark-tabs .components-tab-panel__tabs {
 	margin-bottom: 18px;
 	border-bottom: 1px solid var(--quark-border);

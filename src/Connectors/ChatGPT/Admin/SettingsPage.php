@@ -185,7 +185,7 @@ final class SettingsPage
             [
                 'key' => 'oauth_token_endpoint',
                 'label' => 'Token Endpoint',
-                'value' => rest_url('quark/v1/oauth/token'),
+                'value' => $oauth->token_endpoint(),
             ],
             [
                 'key' => 'token_endpoint_auth_method',
@@ -198,7 +198,7 @@ final class SettingsPage
             $advanced_fields[] = [
                 'key' => 'oauth_dynamic_client_registration_endpoint',
                 'label' => 'Dynamic Client Registration Endpoint',
-                'value' => rest_url('quark/v1/oauth/register'),
+                'value' => $oauth->registration_endpoint(),
             ];
         }
 

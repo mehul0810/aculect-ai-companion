@@ -19,7 +19,8 @@
       "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base",
       "OAuth approval callback and token exchange resilience for ChatGPT DCR connector setup",
       "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
-      "More tolerant token endpoint rate limit for ChatGPT OAuth retry behavior"
+      "More tolerant token endpoint rate limit for ChatGPT OAuth retry behavior",
+      "Conventional OAuth endpoint aliases for ChatGPT flows that use /oauth/authorize, /oauth/token, and /oauth/register"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

@@ -17,6 +17,8 @@ final class OAuthController
     private const AUTHORIZATION_METADATA = 'oauth-authorization-server';
     private const SUPPORTED_SCOPES = ['content:read', 'content:draft'];
     private const AUTHORIZE_QUERY_VAR = 'quark_oauth_authorize';
+    private const TOKEN_QUERY_VAR = 'quark_oauth_token';
+    private const REGISTER_QUERY_VAR = 'quark_oauth_register';
 
     public function add_rewrite_rules(): void
     {
@@ -32,6 +34,23 @@ final class OAuthController
             'top'
         );
 
+        add_rewrite_rule(
+            '^oauth/authorize/?$',
+            'index.php?' . self::AUTHORIZE_QUERY_VAR . '=1',
+            'top'
+        );
+
+        add_rewrite_rule(
+            '^oauth/token/?$',
+            'index.php?' . self::TOKEN_QUERY_VAR . '=1',
+            'top'
+        );
+
+        add_rewrite_rule(
+            '^oauth/register/?$',
+            'index.php?' . self::REGISTER_QUERY_VAR . '=1',
+            'top'
+        );
     }
 
     public function render_well_known_metadata(): void
@@ -119,7 +138,7 @@ final class OAuthController
         $metadata = [
             'issuer' => $issuer,
             'authorization_endpoint' => $this->authorization_endpoint($issuer),
-            'token_endpoint' => rest_url('quark/v1/oauth/token'),
+            'token_endpoint' => $this->token_endpoint(),
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'response_types_supported' => ['code'],
             'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
@@ -130,7 +149,7 @@ final class OAuthController
         ];
 
         if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
-            $metadata['registration_endpoint'] = rest_url('quark/v1/oauth/register');
+            $metadata['registration_endpoint'] = $this->registration_endpoint();
         }
 
         return new WP_REST_Response($metadata, 200);
@@ -212,8 +231,10 @@ final class OAuthController
 
     public function maybe_render_browser_authorize(): void
     {
+        $path = $this->current_request_path();
         $is_authorize_request = '1' === (string) get_query_var(self::AUTHORIZE_QUERY_VAR)
-            || '1' === (string) ($_GET[self::AUTHORIZE_QUERY_VAR] ?? '');
+            || '1' === (string) ($_GET[self::AUTHORIZE_QUERY_VAR] ?? '')
+            || '/oauth/authorize' === $path;
 
         if (! $is_authorize_request) {
             return;
@@ -244,6 +265,29 @@ final class OAuthController
 
         wp_safe_redirect($consent_url, 302, 'Quark OAuth');
         exit;
+    }
+
+    public function maybe_handle_oauth_endpoint_aliases(): void
+    {
+        $path = $this->current_request_path();
+        $is_token_request = '1' === (string) get_query_var(self::TOKEN_QUERY_VAR) || '/oauth/token' === $path;
+        $is_register_request = '1' === (string) get_query_var(self::REGISTER_QUERY_VAR) || '/oauth/register' === $path;
+
+        if (! $is_token_request && ! $is_register_request) {
+            return;
+        }
+
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ('POST' !== $method) {
+            $this->send_json_response($this->oauth_error(
+                'invalid_request',
+                'This OAuth endpoint requires POST.',
+                405
+            ));
+        }
+
+        $request = $this->request_from_current_http($is_token_request ? '/quark/v1/oauth/token' : '/quark/v1/oauth/register');
+        $this->send_json_response($is_token_request ? $this->token($request) : $this->register_client($request));
     }
 
     public function token(WP_REST_Request $request): WP_REST_Response
@@ -332,9 +376,18 @@ final class OAuthController
     public function authorization_endpoint(?string $issuer = null): string
     {
         return add_query_arg([
-            self::AUTHORIZE_QUERY_VAR => '1',
             'quark_oauth_issuer' => $issuer ?: $this->resource_issuer(),
-        ], home_url('/'));
+        ], home_url('/oauth/authorize'));
+    }
+
+    public function token_endpoint(): string
+    {
+        return home_url('/oauth/token');
+    }
+
+    public function registration_endpoint(): string
+    {
+        return home_url('/oauth/register');
     }
 
     public function resource_issuer(): string
@@ -415,6 +468,77 @@ final class OAuthController
     {
         $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
         return home_url($uri);
+    }
+
+    private function current_request_path(): string
+    {
+        $path = wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+        if (! is_string($path)) {
+            return '';
+        }
+
+        return untrailingslashit($path);
+    }
+
+    private function request_from_current_http(string $route): WP_REST_Request
+    {
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $request = new WP_REST_Request($method, $route);
+
+        foreach ($this->current_http_headers() as $name => $value) {
+            $request->set_header($name, $value);
+        }
+
+        $request->set_query_params(wp_unslash($_GET));
+
+        if (! empty($_POST)) {
+            $request->set_body_params(wp_unslash($_POST));
+        }
+
+        $body = file_get_contents('php://input');
+        if (is_string($body) && '' !== $body) {
+            $request->set_body($body);
+        }
+
+        return $request;
+    }
+
+    private function current_http_headers(): array
+    {
+        $headers = [];
+
+        foreach ($_SERVER as $key => $value) {
+            if (! is_string($value)) {
+                continue;
+            }
+
+            if ('CONTENT_TYPE' === $key || 'CONTENT_LENGTH' === $key) {
+                $name = str_replace('_', '-', strtolower($key));
+                $headers[$name] = $value;
+                continue;
+            }
+
+            if (! str_starts_with($key, 'HTTP_')) {
+                continue;
+            }
+
+            $name = str_replace('_', '-', strtolower(substr($key, 5)));
+            $headers[$name] = $value;
+        }
+
+        return $headers;
+    }
+
+    private function send_json_response(WP_REST_Response $response): void
+    {
+        status_header($response->get_status());
+        nocache_headers();
+        foreach ($response->get_headers() as $name => $value) {
+            header($name . ': ' . $value);
+        }
+        header('Content-Type: application/json; charset=' . get_option('blog_charset'));
+        echo wp_json_encode($response->get_data(), JSON_UNESCAPED_SLASHES);
+        exit;
     }
 
     private function check_rate_limit(string $identifier, int $max_attempts, int $ttl): bool

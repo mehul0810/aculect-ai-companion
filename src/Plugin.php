@@ -40,6 +40,7 @@ final class Plugin
         add_filter('query_vars', [$this, 'register_query_vars']);
         add_filter('redirect_canonical', [$this, 'filter_canonical_redirect'], 10, 2);
         add_action('parse_request', [$this, 'render_well_known_metadata'], 0, 0);
+        add_action('parse_request', [$this, 'handle_oauth_endpoint_aliases'], 0, 0);
         add_action('template_redirect', [$this, 'render_browser_authorize'], 1);
         add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);
@@ -69,6 +70,8 @@ final class Plugin
         $vars[] = 'quark_well_known_resource_path';
         $vars[] = 'quark_well_known_issuer_path';
         $vars[] = 'quark_oauth_authorize';
+        $vars[] = 'quark_oauth_token';
+        $vars[] = 'quark_oauth_register';
         return $vars;
     }
 
@@ -82,6 +85,11 @@ final class Plugin
         (new OAuthController())->maybe_render_browser_authorize();
     }
 
+    public function handle_oauth_endpoint_aliases(): void
+    {
+        (new OAuthController())->maybe_handle_oauth_endpoint_aliases();
+    }
+
     public function filter_canonical_redirect($redirect_url, $requested_url)
     {
         if (! is_string($requested_url)) {
@@ -89,7 +97,7 @@ final class Plugin
         }
 
         $path = (string) wp_parse_url($requested_url, PHP_URL_PATH);
-        if (str_starts_with($path, '/.well-known/oauth-')) {
+        if (str_starts_with($path, '/.well-known/oauth-') || str_starts_with($path, '/oauth/')) {
             return false;
         }
 

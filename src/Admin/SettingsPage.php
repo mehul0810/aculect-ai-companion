@@ -21,7 +21,26 @@ final class SettingsPage {
 
 	public function register(): void {
 		add_options_page( 'Quark Settings', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
+		add_action( 'load-settings_page_quark', array( $this, 'suppress_external_admin_notices' ), 20 );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+	}
+
+	public function suppress_external_admin_notices(): void {
+		foreach ( array( 'admin_notices', 'all_admin_notices', 'network_admin_notices', 'user_admin_notices' ) as $hook_name ) {
+			remove_all_actions( $hook_name );
+		}
+
+		add_action( 'admin_notices', array( $this, 'render_quark_admin_notices' ) );
+	}
+
+	public function render_quark_admin_notices(): void {
+		/**
+		 * Fires in the reserved Quark notice slot after third-party admin notices
+		 * are suppressed on the Quark settings screen.
+		 *
+		 * @since 0.1.0
+		 */
+		do_action( 'quark_admin_notices' );
 	}
 
 	public function render(): void {

@@ -79,7 +79,6 @@ function SettingsApp() {
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
 	);
 	const copyTimeoutRef = useRef( null );
-	const adminNoticesRef = useRef( null );
 
 	useEffect(
 		() => () => {
@@ -91,36 +90,38 @@ function SettingsApp() {
 	);
 
 	useEffect( () => {
-		const container = adminNoticesRef.current;
 		const target = document.getElementById( 'wpbody-content' );
-		if ( ! container || ! target ) {
+		if ( ! target ) {
 			return undefined;
 		}
 
-		const moveAdminNotices = () => {
+		const removeExternalAdminNotices = () => {
 			const notices = document.querySelectorAll(
 				[
 					'#wpbody-content > .notice',
 					'#wpbody-content > .updated',
 					'#wpbody-content > .error',
+					'#wpbody-content > .update-nag',
 					'.quark-settings-wrap > .notice',
 					'.quark-settings-wrap > .updated',
 					'.quark-settings-wrap > .error',
+					'.quark-settings-wrap > .update-nag',
 					'.quark-app-root .notice',
 					'.quark-app-root .updated',
 					'.quark-app-root .error',
+					'.quark-app-root .update-nag',
 				].join( ',' )
 			);
 
 			notices.forEach( ( notice ) => {
 				if (
-					container.contains( notice ) ||
-					notice.closest( '.components-notice' )
+					notice.closest( '.components-notice' ) ||
+					notice.getAttribute( 'data-quark-notice' ) === 'true'
 				) {
 					return;
 				}
 
-				container.appendChild( notice );
+				notice.remove();
 			} );
 		};
 
@@ -133,11 +134,11 @@ function SettingsApp() {
 			scheduled = true;
 			window.requestAnimationFrame( () => {
 				scheduled = false;
-				moveAdminNotices();
+				removeExternalAdminNotices();
 			} );
 		};
 
-		moveAdminNotices();
+		removeExternalAdminNotices();
 
 		const observer = new MutationObserver( scheduleMove );
 		observer.observe( target, {
@@ -206,11 +207,6 @@ function SettingsApp() {
 					{ data.isConnected ? 'Connected' : 'Ready to connect' }
 				</span>
 			</div>
-			<div
-				ref={ adminNoticesRef }
-				className="quark-admin-notices"
-				aria-live="polite"
-			/>
 
 			{ copied && (
 				<Notice status="success" isDismissible={ false }>

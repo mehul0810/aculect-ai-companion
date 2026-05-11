@@ -27,7 +27,7 @@
       "OAuth login return flow now lands on the Quark admin consent screen instead of resuming through the REST authorize URL",
       "Dynamic Client Registration no longer returns plugin-level 429 responses for valid assistant registration attempts",
       "MCP content and taxonomy tools now support read, create, and update operations across supported custom post types and custom taxonomies",
-      "Third-party admin notices are now moved into a dedicated notice area on the Quark settings screen instead of breaking the app header"
+      "Non-Quark admin notices are now suppressed on the Quark settings screen so unrelated plugin notices do not break the app layout"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

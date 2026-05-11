@@ -6,6 +6,7 @@
 - Prefer WordPress core APIs over custom SQL or duplicated helpers.
 - Follow least privilege and avoid exposing secrets or private options.
 - Minimum PHP version is 8.2.
+- Project-local WordPress agent skills are installed in `.codex/skills`; use `wordpress-router` first for broad WordPress tasks, then the most relevant domain skill.
 
 ## PHP and WordPress Coding
 - Follow WPCS (`WordPress-Core`, `WordPress-Docs`, `WordPress-Extra`).

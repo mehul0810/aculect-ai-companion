@@ -1,5 +1,6 @@
 .git/
 .github/
+.codex/
 node_modules/
 tests/
 vendor/bin/

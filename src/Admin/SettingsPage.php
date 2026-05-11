@@ -7,7 +7,6 @@ namespace Quark\Admin;
 use Quark\Connectors\Helpers;
 use Quark\Connectors\MCP\AbilitiesRegistry;
 use Quark\Connectors\OAuth\AuthorizationController;
-use Quark\Connectors\OAuth\DiscoveryController;
 use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Quark\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Quark\Connectors\Providers\Claude\Provider as ClaudeProvider;
@@ -15,9 +14,8 @@ use Quark\Connectors\Providers\ProviderInterface;
 
 final class SettingsPage {
 
-	private const OPTION_REMOVE_DATA_ON_UNINSTALL = 'quark_remove_data_on_uninstall';
-	private const ASSET_HANDLE                    = 'quark-settings-app';
-	private const STYLE_HANDLE                    = 'quark-settings-style';
+	private const ASSET_HANDLE = 'quark-settings-app';
+	private const STYLE_HANDLE = 'quark-settings-style';
 
 	public function register(): void {
 		add_options_page( 'Quark Settings', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
@@ -93,47 +91,26 @@ final class SettingsPage {
 			self::ASSET_HANDLE,
 			'quarkSettingsData',
 			array(
-				'version'               => QUARK_VERSION,
-				'isConnected'           => ( new AccessTokenRepository() )->has_active_tokens(),
-				'mcpUrl'                => Helpers::mcp_resource(),
-				'providers'             => $this->providers(),
-				'sessions'              => ( new AccessTokenRepository() )->list_active_sessions(),
-				'abilities'             => ( new AbilitiesRegistry() )->public_definitions(),
-				'enabledAbilities'      => ( new AbilitiesRegistry() )->enabled_ids(),
-				'diagnostics'           => ( new DiscoveryController() )->diagnostics(),
-				'status'                => $this->status(),
-				'removeDataOnUninstall' => $this->remove_data_on_uninstall_enabled(),
-				'actions'               => array(
+				'version'          => QUARK_VERSION,
+				'isConnected'      => ( new AccessTokenRepository() )->has_active_tokens(),
+				'mcpUrl'           => Helpers::mcp_resource(),
+				'providers'        => $this->providers(),
+				'sessions'         => ( new AccessTokenRepository() )->list_active_sessions(),
+				'abilities'        => ( new AbilitiesRegistry() )->public_definitions(),
+				'enabledAbilities' => ( new AbilitiesRegistry() )->enabled_ids(),
+				'status'           => $this->status(),
+				'actions'          => array(
 					'adminPostUrl'        => admin_url( 'admin-post.php' ),
-					'saveAdvancedAction'  => 'quark_save_advanced',
 					'saveAbilitiesAction' => 'quark_save_abilities',
 					'revokeSessionAction' => 'quark_revoke_session',
 					'revokeAllAction'     => 'quark_revoke_all_sessions',
-					'saveAdvancedNonce'   => wp_create_nonce( 'quark_save_advanced' ),
 					'saveAbilitiesNonce'  => wp_create_nonce( 'quark_save_abilities' ),
 					'revokeSessionNonce'  => wp_create_nonce( 'quark_revoke_session' ),
 					'revokeAllNonce'      => wp_create_nonce( 'quark_revoke_all_sessions' ),
 				),
-				'changelog'             => $this->load_changelog(),
+				'changelog'        => $this->load_changelog(),
 			)
 		);
-	}
-
-	public function handle_save_advanced(): void {
-		$this->guard_action( 'quark_save_advanced' );
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['remove_data_on_uninstall'] ) && '1' === (string) $_POST['remove_data_on_uninstall'];
-		update_option( self::OPTION_REMOVE_DATA_ON_UNINSTALL, $enabled ? '1' : '0', false );
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'           => 'quark',
-					'advanced_saved' => '1',
-				),
-				admin_url( 'options-general.php' )
-			)
-		);
-		exit;
 	}
 
 	public function handle_save_abilities(): void {
@@ -215,10 +192,6 @@ final class SettingsPage {
 
 	private function status(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
-		if ( isset( $_GET['advanced_saved'] ) ) {
-			return 'advanced_saved';
-		}
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {
 			return 'abilities_saved';
 		}
@@ -248,10 +221,6 @@ final class SettingsPage {
 
 		$decoded = json_decode( $json, true );
 		return is_array( $decoded ) ? $decoded : array();
-	}
-
-	private function remove_data_on_uninstall_enabled(): bool {
-		return '1' === (string) get_option( self::OPTION_REMOVE_DATA_ON_UNINSTALL, '0' );
 	}
 
 	private function is_oauth_consent_view(): bool {

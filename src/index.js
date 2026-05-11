@@ -10,7 +10,6 @@ import {
 	CheckboxControl,
 	Notice,
 	TabPanel,
-	ToggleControl,
 } from '@wordpress/components';
 
 function CopyField( { label, value, secret = false, onCopy } ) {
@@ -94,13 +93,9 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
-	const diagnostics = data.diagnostics || {};
 	const [ copied, setCopied ] = useState( '' );
 	const [ openProvider, setOpenProvider ] = useState(
 		providers[ 0 ]?.id || 'claude'
-	);
-	const [ removeDataOnUninstall, setRemoveDataOnUninstall ] = useState(
-		Boolean( data.removeDataOnUninstall )
 	);
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
@@ -200,10 +195,7 @@ function SettingsApp() {
 	if ( data.isConnected ) {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
 	}
-	tabs.push(
-		{ name: 'changelog', title: 'Changelog' },
-		{ name: 'advanced', title: 'Advanced' }
-	);
+	tabs.push( { name: 'changelog', title: 'Changelog' } );
 	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
 		const group = ability.group || 'Other';
 		return {
@@ -238,11 +230,6 @@ function SettingsApp() {
 			{ copied && (
 				<Notice status="success" isDismissible={ false }>
 					{ copied }
-				</Notice>
-			) }
-			{ data.status === 'advanced_saved' && (
-				<Notice status="success" isDismissible={ false }>
-					Advanced settings saved.
 				</Notice>
 			) }
 			{ data.status === 'abilities_saved' && (
@@ -783,79 +770,7 @@ function SettingsApp() {
 						);
 					}
 
-					return (
-						<Card className="quark-card quark-advanced-card">
-							<CardHeader>Advanced</CardHeader>
-							<CardBody>
-								<form
-									method="post"
-									action={ data.actions?.adminPostUrl }
-									className="quark-form quark-form--advanced"
-								>
-									<input
-										type="hidden"
-										name="action"
-										value={
-											data.actions?.saveAdvancedAction
-										}
-									/>
-									<input
-										type="hidden"
-										name="_wpnonce"
-										value={
-											data.actions?.saveAdvancedNonce
-										}
-									/>
-									<ToggleControl
-										label="Remove Data on Uninstall"
-										checked={ removeDataOnUninstall }
-										onChange={ ( value ) =>
-											setRemoveDataOnUninstall(
-												Boolean( value )
-											)
-										}
-										help="When enabled, Quark deletes stored OAuth and plugin data during uninstall."
-									/>
-									<input
-										type="hidden"
-										name="remove_data_on_uninstall"
-										value={
-											removeDataOnUninstall ? '1' : '0'
-										}
-									/>
-									<Button type="submit" variant="primary">
-										Save Advanced Settings
-									</Button>
-								</form>
-								<div className="quark-diagnostics">
-									<h3 className="quark-section-heading">
-										Protocol Diagnostics
-									</h3>
-									{ Object.entries( diagnostics )
-										.filter(
-											( [ , value ] ) =>
-												typeof value !== 'object'
-										)
-										.map( ( [ key, value ] ) => (
-											<CopyField
-												key={ key }
-												label={ key.replaceAll(
-													'_',
-													' '
-												) }
-												value={ value }
-												onCopy={ ( copiedValue ) =>
-													copyValue(
-														copiedValue,
-														`${ key } copied.`
-													)
-												}
-											/>
-										) ) }
-								</div>
-							</CardBody>
-						</Card>
-					);
+					return null;
 				} }
 			</TabPanel>
 		</div>

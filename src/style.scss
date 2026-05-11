@@ -187,8 +187,7 @@
 }
 
 .quark-provider-actions,
-.quark-danger-zone,
-.quark-diagnostics {
+.quark-danger-zone {
 	margin-top: 18px;
 }
 
@@ -340,14 +339,6 @@
 	color: var(--quark-muted);
 	font-size: 12px;
 	font-weight: 700;
-}
-
-.quark-form--advanced {
-	display: grid;
-	gap: 16px;
-	max-width: 620px;
-	padding-bottom: 20px;
-	border-bottom: 1px solid var(--quark-border);
 }
 
 .quark-changelog-version {

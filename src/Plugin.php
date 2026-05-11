@@ -49,7 +49,6 @@ final class Plugin {
 		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
-		add_action( 'admin_post_quark_save_advanced', array( $this, 'handle_save_advanced' ) );
 		add_action( 'admin_post_quark_save_abilities', array( $this, 'handle_save_abilities' ) );
 		add_action( 'admin_post_quark_revoke_session', array( $this, 'handle_revoke_session' ) );
 		add_action( 'admin_post_quark_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
@@ -125,10 +124,6 @@ final class Plugin {
 
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
-	}
-
-	public function handle_save_advanced(): void {
-		( new SettingsPage() )->handle_save_advanced();
 	}
 
 	public function handle_save_abilities(): void {

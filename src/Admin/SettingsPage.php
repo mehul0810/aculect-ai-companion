@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Quark\Admin;
 
 use Quark\Connectors\Helpers;
+use Quark\Connectors\OAuth\AuthorizationController;
 use Quark\Connectors\OAuth\DiscoveryController;
 use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Quark\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
@@ -27,11 +28,21 @@ final class SettingsPage {
 			wp_die( esc_html__( 'Insufficient permissions.', 'quark' ) );
 		}
 
+		if ( $this->is_oauth_consent_view() ) {
+			( new AuthorizationController() )->render_admin_consent();
+			return;
+		}
+
 		echo '<div class="wrap quark-settings-wrap"><div id="quark-settings-app-root" class="quark-settings-app-root"></div></div>';
 	}
 
 	public function enqueue_assets( string $hook_suffix ): void {
 		if ( 'settings_page_quark' !== $hook_suffix ) {
+			return;
+		}
+
+		if ( $this->is_oauth_consent_view() ) {
+			wp_enqueue_style( 'quark-oauth-consent', QUARK_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), QUARK_VERSION );
 			return;
 		}
 
@@ -191,6 +202,11 @@ final class SettingsPage {
 
 	private function remove_data_on_uninstall_enabled(): bool {
 		return '1' === (string) get_option( self::OPTION_REMOVE_DATA_ON_UNINSTALL, '0' );
+	}
+
+	private function is_oauth_consent_view(): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing flag for the settings page.
+		return isset( $_GET['view'] ) && 'oauth-consent' === sanitize_key( wp_unslash( (string) $_GET['view'] ) );
 	}
 
 	private function guard_action( string $nonce_action ): void {

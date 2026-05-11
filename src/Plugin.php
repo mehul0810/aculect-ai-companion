@@ -52,6 +52,8 @@ final class Plugin {
 		add_action( 'admin_post_quark_save_advanced', array( $this, 'handle_save_advanced' ) );
 		add_action( 'admin_post_quark_revoke_session', array( $this, 'handle_revoke_session' ) );
 		add_action( 'admin_post_quark_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
+		add_action( 'admin_post_quark_oauth_consent', array( $this, 'handle_oauth_consent' ) );
+		add_action( 'admin_post_nopriv_quark_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 
 		OAuthInstaller::install();
 	}
@@ -134,6 +136,10 @@ final class Plugin {
 
 	public function handle_revoke_all_sessions(): void {
 		( new SettingsPage() )->handle_revoke_all_sessions();
+	}
+
+	public function handle_oauth_consent(): void {
+		( new AuthorizationController() )->handle_admin_consent();
 	}
 
 	private static function add_rewrite_rules(): void {

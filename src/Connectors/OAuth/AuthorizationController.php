@@ -12,7 +12,6 @@ use Quark\Connectors\OAuth\Repositories\ClientRepository;
 use Quark\Connectors\OAuth\Server\AuthorizationServerFactory;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
-use WP_REST_Response;
 use WP_REST_Server;
 
 final class AuthorizationController {
@@ -39,47 +38,49 @@ final class AuthorizationController {
 	}
 
 	public function authorize( WP_REST_Request $request ): void {
-		$params   = $this->params( $request );
-		$resource = $this->resource_from_params( $params );
+		$params = $this->params( $request );
+		$this->authorization_context( $params, false );
 
-		if ( Helpers::mcp_resource() !== $resource ) {
-			$this->render_error( 'Invalid resource', 'The requested OAuth resource does not match this Quark MCP server.', 400 );
-		}
-
-		if ( 'S256' !== (string) ( $params['code_challenge_method'] ?? '' ) ) {
-			$this->render_error( 'PKCE required', 'Quark requires PKCE with the S256 code challenge method.', 400 );
-		}
-
-		$client = ( new ClientRepository() )->getClientEntity( (string) ( $params['client_id'] ?? '' ) );
-		if ( ! $client instanceof ClientEntity ) {
-			$this->render_error( 'Unknown application', 'The application requesting access is not registered with this site.', 400 );
-		}
-
-		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
-		if ( ! $this->redirect_uri_allowed( $client, $redirect_uri ) ) {
-			$this->render_error( 'Invalid redirect URI', 'The redirect URI is not allowed for this OAuth client.', 400 );
-		}
-
+		$consent_url = $this->admin_consent_url( $params );
 		if ( ! is_user_logged_in() ) {
-			wp_safe_redirect( wp_login_url( $this->current_url( $request ) ), 302, 'Quark OAuth' );
+			wp_safe_redirect( wp_login_url( $consent_url ), 302, 'Quark OAuth' );
 			exit;
 		}
 
-		if ( 'POST' === $request->get_method() ) {
-			$this->handle_decision( $params, $client, $resource );
-		}
-
-		$this->render_consent( $params, $client, $resource );
+		wp_safe_redirect( $consent_url, 302, 'Quark OAuth' );
+		exit;
 	}
 
-	private function handle_decision( array $params, ClientEntity $client, string $resource ): never {
+	public function render_admin_consent(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- OAuth consent GET parameters are validated below before rendering.
+		$params  = $this->params_from_array( wp_unslash( $_GET ) );
+		$context = $this->authorization_context( $params, true );
+
+		$this->render_consent_markup( $context['params'], $context['client'], $context['resource'] );
+	}
+
+	public function handle_admin_consent(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- OAuth POST parameters are nonce-checked below before authorization is completed.
+		$params = $this->params_from_array( wp_unslash( $_POST ) );
+
+		if ( ! is_user_logged_in() ) {
+			wp_safe_redirect( wp_login_url( $this->admin_consent_url( $params ) ), 302, 'Quark OAuth' );
+			exit;
+		}
+
 		if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( (string) $_POST['_wpnonce'] ) ), self::NONCE_ACTION ) ) {
 			$this->render_error( 'Invalid request', 'The authorization request failed a security check.', 400 );
 		}
 
+		$context  = $this->authorization_context( $params, false );
+		$decision = sanitize_key( (string) ( $_POST['decision'] ?? '' ) );
+
+		$this->handle_decision( $context['params'], $context['client'], $context['resource'], $decision );
+	}
+
+	private function handle_decision( array $params, ClientEntity $client, string $resource, string $decision ): never {
 		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
 		$state        = sanitize_text_field( (string) ( $params['state'] ?? '' ) );
-		$decision     = sanitize_key( (string) ( $_POST['decision'] ?? '' ) );
 
 		if ( 'approve' !== $decision ) {
 			$this->redirect_to_client(
@@ -119,8 +120,8 @@ final class AuthorizationController {
 				$this->render_error( 'Authorization failed', 'Quark could not complete the OAuth authorization request.', 500 );
 			}
 
-				// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-				wp_redirect( $location, 302, 'Quark OAuth' );
+			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
+			wp_redirect( $location, 302, 'Quark OAuth' );
 			exit;
 		} catch ( OAuthServerException $exception ) {
 			$this->redirect_to_client(
@@ -138,28 +139,17 @@ final class AuthorizationController {
 		}
 	}
 
-	private function render_consent( array $params, ClientEntity $client, string $resource ): never {
+	private function render_consent_markup( array $params, ClientEntity $client, string $resource ): void {
 		$current_user = wp_get_current_user();
 		$site_name    = get_bloginfo( 'name' );
 		$scope        = $this->scope_from_params( $params );
 
 		nocache_headers();
-		status_header( 200 );
-		header( 'Content-Type: text/html; charset=' . get_option( 'blog_charset' ) );
-		wp_register_style( 'quark-oauth-consent', QUARK_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), QUARK_VERSION );
 		?>
-<!DOCTYPE html>
-<html <?php language_attributes(); ?>>
-<head>
-	<meta charset="<?php bloginfo( 'charset' ); ?>">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title><?php echo esc_html__( 'Authorize Quark Connection', 'quark' ); ?> - <?php echo esc_html( $site_name ); ?></title>
-		<?php wp_print_styles( 'quark-oauth-consent' ); ?>
-</head>
-<body class="quark-oauth-page">
-	<main class="quark-oauth-card" role="main">
+<div class="quark-oauth-page quark-oauth-page--admin">
+	<div class="quark-oauth-card" role="main" aria-labelledby="quark-oauth-title">
 		<div class="quark-oauth-brand">Quark</div>
-		<h1 class="quark-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'quark' ); ?></h1>
+		<h1 id="quark-oauth-title" class="quark-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'quark' ); ?></h1>
 		<p class="quark-oauth-copy">
 			<?php echo esc_html( $client->getName() ); ?> <?php echo esc_html__( 'wants to connect to this WordPress site through Quark MCP.', 'quark' ); ?>
 		</p>
@@ -169,16 +159,18 @@ final class AuthorizationController {
 			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Scopes', 'quark' ); ?></dt><dd><code><?php echo esc_html( $scope ); ?></code></dd></div>
 			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Resource', 'quark' ); ?></dt><dd><code><?php echo esc_html( $resource ); ?></code></dd></div>
 		</dl>
-		<form class="quark-oauth-actions" method="post" action="<?php echo esc_url( add_query_arg( $params, Helpers::authorization_endpoint() ) ); ?>">
+		<form class="quark-oauth-actions" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="quark_oauth_consent">
+			<?php foreach ( $this->persisted_params( $params ) as $name => $value ) : ?>
+				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>">
+			<?php endforeach; ?>
 			<?php wp_nonce_field( self::NONCE_ACTION ); ?>
 			<button class="quark-oauth-button quark-oauth-button--secondary" type="submit" name="decision" value="deny"><?php echo esc_html__( 'Deny', 'quark' ); ?></button>
 			<button class="quark-oauth-button quark-oauth-button--primary" type="submit" name="decision" value="approve"><?php echo esc_html__( 'Approve', 'quark' ); ?></button>
 		</form>
-	</main>
-</body>
-</html>
+	</div>
+</div>
 		<?php
-		exit;
 	}
 
 	private function render_error( string $title, string $message, int $status ): never {
@@ -206,6 +198,16 @@ final class AuthorizationController {
 		exit;
 	}
 
+	private function render_admin_error( string $title, string $message, int $status ): never {
+		wp_die(
+			esc_html( $message ),
+			esc_html( $title ),
+			array(
+				'response' => absint( $status ),
+			)
+		);
+	}
+
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
 		$params = array_filter( $params, static fn( $value ): bool => '' !== (string) $value );
 		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
@@ -213,8 +215,48 @@ final class AuthorizationController {
 		exit;
 	}
 
+	private function authorization_context( array $params, bool $admin_context ): array {
+		$resource = $this->resource_from_params( $params );
+
+		if ( Helpers::mcp_resource() !== $resource ) {
+			$this->fail( 'Invalid resource', 'The requested OAuth resource does not match this Quark MCP server.', 400, $admin_context );
+		}
+
+		if ( 'S256' !== (string) ( $params['code_challenge_method'] ?? '' ) ) {
+			$this->fail( 'PKCE required', 'Quark requires PKCE with the S256 code challenge method.', 400, $admin_context );
+		}
+
+		$client = ( new ClientRepository() )->getClientEntity( (string) ( $params['client_id'] ?? '' ) );
+		if ( ! $client instanceof ClientEntity ) {
+			$this->fail( 'Unknown application', 'The application requesting access is not registered with this site.', 400, $admin_context );
+		}
+
+		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
+		if ( ! $this->redirect_uri_allowed( $client, $redirect_uri ) ) {
+			$this->fail( 'Invalid redirect URI', 'The redirect URI is not allowed for this OAuth client.', 400, $admin_context );
+		}
+
+		return array(
+			'params'   => $params,
+			'client'   => $client,
+			'resource' => $resource,
+		);
+	}
+
+	private function fail( string $title, string $message, int $status, bool $admin_context ): never {
+		if ( $admin_context ) {
+			$this->render_admin_error( $title, $message, $status );
+		}
+
+		$this->render_error( $title, $message, $status );
+	}
+
 	private function params( WP_REST_Request $request ): array {
 		$params = array_merge( $request->get_query_params(), $request->get_body_params() );
+		return $this->params_from_array( $params );
+	}
+
+	private function params_from_array( array $params ): array {
 		return array_map( static fn( $value ): string => is_scalar( $value ) ? (string) $value : '', $params );
 	}
 
@@ -238,9 +280,38 @@ final class AuthorizationController {
 		return in_array( $redirect_uri, $allowed, true );
 	}
 
-	private function current_url( WP_REST_Request $request ): string {
-		$url    = rest_url( ltrim( $request->get_route(), '/' ) );
-		$params = $request->get_query_params();
-		return array() === $params ? $url : add_query_arg( $params, $url );
+	private function admin_consent_url( array $params ): string {
+		return add_query_arg(
+			array_merge(
+				array(
+					'page' => 'quark',
+					'view' => 'oauth-consent',
+				),
+				$this->persisted_params( $params )
+			),
+			admin_url( 'options-general.php' )
+		);
+	}
+
+	private function persisted_params( array $params ): array {
+		$allowed = array(
+			'response_type',
+			'client_id',
+			'redirect_uri',
+			'scope',
+			'state',
+			'code_challenge',
+			'code_challenge_method',
+			'resource',
+		);
+		$output  = array();
+
+		foreach ( $allowed as $key ) {
+			if ( isset( $params[ $key ] ) && '' !== (string) $params[ $key ] ) {
+				$output[ $key ] = (string) $params[ $key ];
+			}
+		}
+
+		return $output;
 	}
 }

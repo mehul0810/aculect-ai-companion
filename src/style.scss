@@ -106,8 +106,31 @@
 	margin-top: 0;
 }
 
-.quark-endpoint-hero {
-	margin-top: 18px;
+.quark-feature-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 24px;
+}
+
+.quark-feature-card {
+	padding: 18px;
+	border: 1px solid var(--quark-border);
+	border-radius: 14px;
+	background: var(--quark-soft);
+}
+
+.quark-feature-card__title {
+	margin: 0 0 8px;
+	font-size: 16px;
+	font-weight: 800;
+	line-height: 1.25;
+}
+
+.quark-feature-card__copy {
+	margin: 0;
+	color: var(--quark-muted);
+	line-height: 1.55;
 }
 
 .quark-provider-list {
@@ -347,6 +370,7 @@
 @media (max-width: 900px) {
 
 	.quark-app-header,
+	.quark-feature-grid,
 	.quark-provider-panel,
 	.quark-session-row {
 		grid-template-columns: 1fr;

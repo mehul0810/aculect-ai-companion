@@ -269,26 +269,87 @@ function SettingsApp() {
 								<CardHeader>About Quark</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Quark turns WordPress into an MCP server
-										for AI assistants.
+										Quark turns WordPress into a secure MCP
+										server for AI assistants, so tools like
+										ChatGPT and Claude can work with your
+										site through a controlled WordPress
+										consent flow.
 									</p>
 									<p className="quark-copy">
-										The connector flow is endpoint-only:
-										copy the MCP URL, add it to Claude or
-										ChatGPT, then approve the WordPress
-										OAuth consent screen.
+										It is designed for practical site
+										operations: connecting assistants,
+										exposing approved abilities, and letting
+										site owners decide exactly what AI
+										clients are allowed to read or change.
 									</p>
-									<div className="quark-endpoint-hero">
-										<CopyField
-											label="MCP Endpoint URL"
-											value={ data.mcpUrl }
-											onCopy={ ( value ) =>
-												copyValue(
-													value,
-													'MCP endpoint copied.'
-												)
-											}
-										/>
+
+									<div className="quark-feature-grid">
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												Endpoint-only setup
+											</h3>
+											<p className="quark-feature-card__copy">
+												Connect supported assistants
+												with one MCP endpoint, then
+												complete approval inside
+												WordPress.
+											</p>
+										</div>
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												OAuth protected access
+											</h3>
+											<p className="quark-feature-card__copy">
+												Connections use user-approved
+												OAuth sessions with scoped
+												access and revocation controls.
+											</p>
+										</div>
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												Content abilities
+											</h3>
+											<p className="quark-feature-card__copy">
+												Enable read, create, and update
+												actions for posts, pages, custom
+												post types, categories, tags,
+												and custom taxonomies.
+											</p>
+										</div>
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												Site-owner controls
+											</h3>
+											<p className="quark-feature-card__copy">
+												Review active connections,
+												revoke assistant sessions, and
+												turn individual abilities on or
+												off from the admin screen.
+											</p>
+										</div>
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												WordPress-native permissions
+											</h3>
+											<p className="quark-feature-card__copy">
+												Tool actions respect WordPress
+												capabilities, scoped tokens,
+												pagination limits, and safe
+												response shapes.
+											</p>
+										</div>
+										<div className="quark-feature-card">
+											<h3 className="quark-feature-card__title">
+												Built to maintain
+											</h3>
+											<p className="quark-feature-card__copy">
+												The plugin targets PHP 8.2, uses
+												WordPress components, and
+												follows the project standards
+												for linting, static analysis,
+												and production builds.
+											</p>
+										</div>
 									</div>
 								</CardBody>
 							</Card>

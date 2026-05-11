@@ -10,26 +10,53 @@ import {
 	CheckboxControl,
 	Notice,
 	TabPanel,
-	TextControl,
 	ToggleControl,
 } from '@wordpress/components';
 
 function CopyField( { label, value, secret = false, onCopy } ) {
+	const inputId = useRef(
+		`quark-copy-field-${ String( label )
+			.toLowerCase()
+			.replace( /[^a-z0-9]+/g, '-' ) }-${ Math.random()
+			.toString( 36 )
+			.slice( 2 ) }`
+	);
+
 	return (
 		<div className="quark-copy-field">
-			<TextControl
-				label={ label }
-				type={ secret ? 'password' : 'text' }
-				value={ String( value || '' ) }
-				readOnly
-			/>
-			<Button
-				variant="secondary"
-				className="quark-copy-field__button"
-				onClick={ () => onCopy( value ) }
+			<label
+				className="quark-copy-field__label"
+				htmlFor={ inputId.current }
 			>
-				Copy
-			</Button>
+				{ label }
+			</label>
+			<div className="quark-copy-field__control">
+				<input
+					id={ inputId.current }
+					className="quark-copy-field__input"
+					type={ secret ? 'password' : 'text' }
+					value={ String( value || '' ) }
+					readOnly
+					aria-label={ label }
+				/>
+				<Button
+					variant="secondary"
+					className="quark-copy-field__button"
+					onClick={ () => onCopy( value ) }
+					aria-label={ `Copy ${ label }` }
+				>
+					<span className="quark-copy-field__icon" aria-hidden="true">
+						<svg
+							viewBox="0 0 24 24"
+							width="18"
+							height="18"
+							focusable="false"
+						>
+							<path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z" />
+						</svg>
+					</span>
+				</Button>
+			</div>
 		</div>
 	);
 }
@@ -270,146 +297,115 @@ function SettingsApp() {
 
 					if ( tab.name === 'connectors' ) {
 						return (
-							<div className="quark-connectors-layout">
-								<Card className="quark-card quark-endpoint-card">
-									<CardHeader>One URL Setup</CardHeader>
-									<CardBody>
-										<p className="quark-copy quark-copy--first">
-											Use this single endpoint for
-											ChatGPT, Claude, and other MCP
-											clients that support OAuth
-											discovery.
-										</p>
-										<CopyField
-											label="MCP Endpoint URL"
-											value={ data.mcpUrl }
-											onCopy={ ( value ) =>
-												copyValue(
-													value,
-													'MCP endpoint copied.'
-												)
-											}
-										/>
-									</CardBody>
-								</Card>
-
-								<div className="quark-provider-list">
-									{ providers.map( ( provider ) => (
-										<Card
-											key={ provider.id }
-											className={ `quark-card quark-provider-card ${
-												openProvider === provider.id
-													? 'is-open'
-													: ''
-											}` }
-										>
-											<CardBody>
-												<div className="quark-provider-card__header">
-													<div className="quark-provider-card__title-wrap">
-														<h3 className="quark-provider-card__title">
-															{ provider.label }
-														</h3>
-														<p className="quark-provider-card__description">
-															{
-																provider.description
-															}
-														</p>
-													</div>
-													<Button
-														variant="link"
-														onClick={ () =>
-															setOpenProvider(
-																openProvider ===
-																	provider.id
-																	? ''
-																	: provider.id
-															)
-														}
-													>
-														{ openProvider ===
-														provider.id
-															? 'Close'
-															: 'Configure' }
-													</Button>
+							<div className="quark-provider-list">
+								{ providers.map( ( provider ) => (
+									<Card
+										key={ provider.id }
+										className={ `quark-card quark-provider-card ${
+											openProvider === provider.id
+												? 'is-open'
+												: ''
+										}` }
+									>
+										<CardBody>
+											<div className="quark-provider-card__header">
+												<div className="quark-provider-card__title-wrap">
+													<h3 className="quark-provider-card__title">
+														{ provider.label }
+													</h3>
+													<p className="quark-provider-card__description">
+														{ provider.description }
+													</p>
 												</div>
+												<Button
+													variant="link"
+													onClick={ () =>
+														setOpenProvider(
+															openProvider ===
+																provider.id
+																? ''
+																: provider.id
+														)
+													}
+												>
+													{ openProvider ===
+													provider.id
+														? 'Close'
+														: 'Configure' }
+												</Button>
+											</div>
 
-												{ openProvider ===
-													provider.id && (
-													<div className="quark-provider-panel">
-														<div className="quark-provider-steps">
-															<h4 className="quark-section-heading">
-																Setup Steps
-															</h4>
-															<ol className="quark-steps">
-																{ (
-																	provider.setupSteps ||
-																	[]
-																).map(
-																	(
-																		step,
-																		index
-																	) => (
-																		<li
-																			key={ `${ provider.id }-${ index }` }
-																		>
-																			{
-																				step
-																			}
-																		</li>
-																	)
-																) }
-															</ol>
-															<div className="quark-provider-actions">
-																<Button
-																	href={
-																		provider.primaryActionUrl
-																	}
-																	target="_blank"
-																	rel="noreferrer"
-																	variant="primary"
-																>
-																	{ provider.id ===
-																	'chatgpt'
-																		? 'Open ChatGPT'
-																		: 'Open Docs' }
-																</Button>
-															</div>
-														</div>
-														<div className="quark-provider-fields">
-															<h4 className="quark-section-heading">
-																Copy
-															</h4>
+											{ openProvider === provider.id && (
+												<div className="quark-provider-panel">
+													<div className="quark-provider-steps">
+														<h4 className="quark-section-heading">
+															Setup Steps
+														</h4>
+														<ol className="quark-steps">
 															{ (
-																provider.copyFields ||
+																provider.setupSteps ||
 																[]
 															).map(
-																( field ) => (
-																	<CopyField
-																		key={ `${ provider.id }-${ field.label }` }
-																		label={
-																			field.label
-																		}
-																		value={
-																			field.value
-																		}
-																		onCopy={ (
-																			value
-																		) =>
-																			copyValue(
-																				value,
-																				`${ field.label } copied.`
-																			)
-																		}
-																	/>
+																(
+																	step,
+																	index
+																) => (
+																	<li
+																		key={ `${ provider.id }-${ index }` }
+																	>
+																		{ step }
+																	</li>
 																)
 															) }
+														</ol>
+														<div className="quark-provider-actions">
+															<Button
+																href={
+																	provider.primaryActionUrl
+																}
+																target="_blank"
+																rel="noreferrer"
+																variant="primary"
+															>
+																{ provider.id ===
+																'chatgpt'
+																	? 'Open ChatGPT'
+																	: 'Open Docs' }
+															</Button>
 														</div>
 													</div>
-												) }
-											</CardBody>
-										</Card>
-									) ) }
-								</div>
+													<div className="quark-provider-fields">
+														<h4 className="quark-section-heading">
+															Copy
+														</h4>
+														{ (
+															provider.copyFields ||
+															[]
+														).map( ( field ) => (
+															<CopyField
+																key={ `${ provider.id }-${ field.label }` }
+																label={
+																	field.label
+																}
+																value={
+																	field.value
+																}
+																onCopy={ (
+																	value
+																) =>
+																	copyValue(
+																		value,
+																		`${ field.label } copied.`
+																	)
+																}
+															/>
+														) ) }
+													</div>
+												</div>
+											) }
+										</CardBody>
+									</Card>
+								) ) }
 							</div>
 						);
 					}

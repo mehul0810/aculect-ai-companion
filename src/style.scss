@@ -106,15 +106,8 @@
 	margin-top: 0;
 }
 
-.quark-endpoint-hero,
-.quark-endpoint-card .components-card__body {
+.quark-endpoint-hero {
 	margin-top: 18px;
-}
-
-.quark-connectors-layout {
-	display: grid;
-	grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.35fr);
-	gap: 18px;
 }
 
 .quark-provider-list {
@@ -172,24 +165,58 @@
 }
 
 .quark-copy-field {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	align-items: end;
-	gap: 10px;
 	margin-bottom: 14px;
 }
 
-.quark-copy-field .components-base-control {
-	margin-bottom: 0;
+.quark-copy-field__label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
 }
 
-.quark-copy-field input[readonly] {
+.quark-copy-field__control {
+	display: flex;
+	max-width: 100%;
+}
+
+.quark-copy-field__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 40px;
+	margin: 0;
+	border: 1px solid var(--quark-border);
+	border-right: 0;
+	border-radius: 8px 0 0 8px;
 	background: #fff;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.quark-copy-field__button {
-	min-height: 36px;
+.quark-copy-field__button.components-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	min-width: 44px;
+	height: 40px;
+	min-height: 40px;
+	padding: 0;
+	border-radius: 0 8px 8px 0;
+}
+
+.quark-copy-field__button.components-button.is-secondary {
+	box-shadow: inset 0 0 0 1px var(--quark-border);
+}
+
+.quark-copy-field__icon {
+	display: inline-flex;
+	color: currentcolor;
+}
+
+.quark-copy-field__icon svg {
+	fill: currentcolor;
 }
 
 .quark-session-list {
@@ -320,7 +347,6 @@
 @media (max-width: 900px) {
 
 	.quark-app-header,
-	.quark-connectors-layout,
 	.quark-provider-panel,
 	.quark-session-row {
 		grid-template-columns: 1fr;
@@ -340,9 +366,5 @@
 
 	.quark-app-header {
 		padding: 22px;
-	}
-
-	.quark-copy-field {
-		grid-template-columns: 1fr;
 	}
 }

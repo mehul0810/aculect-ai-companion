@@ -154,7 +154,7 @@ final class OAuthController
 
         return new WP_REST_Response([
             'resource' => $resource,
-            'authorization_servers' => [$this->resource_issuer(), $this->issuer()],
+            'authorization_servers' => [$this->resource_issuer()],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
             'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
@@ -256,7 +256,7 @@ final class OAuthController
         }
 
         $rate_limit_key = '' !== $client_id ? $client_id : $this->rate_limit_identity($request);
-        if (! $this->check_rate_limit($rate_limit_key, 10, MINUTE_IN_SECONDS)) {
+        if (! $this->check_rate_limit($rate_limit_key, 60, MINUTE_IN_SECONDS)) {
             return $this->oauth_error(
                 'slow_down',
                 'Too many authentication attempts. Try again later.',

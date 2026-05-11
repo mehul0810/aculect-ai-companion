@@ -39,6 +39,7 @@ final class Plugin
         add_action('init', [$this, 'register_well_known_routes']);
         add_filter('query_vars', [$this, 'register_query_vars']);
         add_filter('redirect_canonical', [$this, 'filter_canonical_redirect'], 10, 2);
+        add_action('parse_request', [$this, 'render_well_known_metadata'], 0, 0);
         add_action('template_redirect', [$this, 'render_browser_authorize'], 1);
         add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);

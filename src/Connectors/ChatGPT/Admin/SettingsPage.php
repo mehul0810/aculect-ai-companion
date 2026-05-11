@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Quark\Connectors\ChatGPT\Admin;
 
 use Quark\Auth\Access;
-use Quark\Connectors\ChatGPT\Auth\OAuthClientRegistry;
+use Quark\Connectors\ChatGPT\Helper;
+use Quark\Connectors\ChatGPT\UserDefined\ClientCredentials;
+use Quark\Connectors\ChatGPT\UserDefined\OAuthController;
 
 final class SettingsPage
 {
@@ -46,31 +48,13 @@ final class SettingsPage
         exit;
     }
 
-    public function handle_save_chatgpt_oauth(): void
+    public function handle_regenerate_chatgpt_credentials(): void
     {
-        $this->guard_action('quark_save_chatgpt_oauth');
-        $registry = new OAuthClientRegistry();
-        $previous_method = (string) $registry->settings()['registration_method'];
-        $method = isset($_POST['registration_method'])
-            ? sanitize_key((string) wp_unslash($_POST['registration_method']))
-            : OAuthClientRegistry::MODE_USER_DEFINED;
-        $settings = $registry->save_registration_method($method);
-
-        $regenerated = false;
-        if (
-            OAuthClientRegistry::MODE_USER_DEFINED === $settings['registration_method']
-            && isset($_POST['regenerate_client_credentials'])
-        ) {
-            $registry->regenerate_credentials();
-            $regenerated = true;
-        }
-
-        if ($previous_method !== $settings['registration_method'] || $regenerated) {
-            (new Access())->revoke_all_tokens();
-            update_option(self::OPTION_CONNECTION_STATE, ['active' => false, 'updated_at' => time()], false);
-        }
-
-        wp_safe_redirect(add_query_arg(['page' => 'quark', 'oauth_saved' => '1'], admin_url('options-general.php')));
+        $this->guard_action('quark_regenerate_chatgpt_credentials');
+        (new ClientCredentials())->regenerate_credentials();
+        (new Access())->revoke_all_tokens();
+        update_option(self::OPTION_CONNECTION_STATE, ['active' => false, 'updated_at' => time()], false);
+        wp_safe_redirect(add_query_arg(['page' => 'quark', 'credentials_regenerated' => '1'], admin_url('options-general.php')));
         exit;
     }
 
@@ -90,11 +74,6 @@ final class SettingsPage
         }
 
         echo '</div>';
-    }
-
-    private function render_settings(): void
-    {
-        echo '<div id="quark-settings-app-root" class="quark-settings-app-root"></div>';
     }
 
     public function enqueue_assets($hook_suffix): void
@@ -118,6 +97,7 @@ final class SettingsPage
         );
         wp_enqueue_script(self::ASSET_HANDLE);
         wp_enqueue_style('wp-components');
+
         $style_path = QUARK_PLUGIN_DIR . 'build/style-index.css';
         if (file_exists($style_path)) {
             wp_enqueue_style(
@@ -133,122 +113,53 @@ final class SettingsPage
             'isConnected' => $this->is_chatgpt_connected(),
             'status' => isset($_GET['connected']) ? 'connected' : (isset($_GET['revoked']) ? 'revoked' : ''),
             'advancedSaved' => isset($_GET['advanced_saved']) ? '1' : '0',
-            'oauthSaved' => isset($_GET['oauth_saved']) ? '1' : '0',
+            'credentialsRegenerated' => isset($_GET['credentials_regenerated']) ? '1' : '0',
             'removeDataOnUninstall' => $this->remove_data_on_uninstall_enabled(),
             'createAppUrl' => 'https://chatgpt.com/apps#settings/Connectors',
             'chatgptFormSections' => $this->chatgpt_form_sections(),
             'copyAll' => wp_json_encode($this->chatgpt_copy_fields(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            'oauthSettings' => $this->oauth_settings_payload(),
             'actions' => [
                 'adminPostUrl' => admin_url('admin-post.php'),
                 'markConnectedAction' => 'quark_mark_connected',
                 'revokeAction' => 'quark_revoke_connection',
                 'saveAdvancedAction' => 'quark_save_advanced',
-                'saveOauthAction' => 'quark_save_chatgpt_oauth',
+                'regenerateCredentialsAction' => 'quark_regenerate_chatgpt_credentials',
                 'markConnectedNonce' => wp_create_nonce('quark_mark_connected'),
                 'revokeNonce' => wp_create_nonce('quark_revoke_connection'),
                 'saveAdvancedNonce' => wp_create_nonce('quark_save_advanced'),
-                'saveOauthNonce' => wp_create_nonce('quark_save_chatgpt_oauth'),
+                'regenerateCredentialsNonce' => wp_create_nonce('quark_regenerate_chatgpt_credentials'),
             ],
             'changelog' => $this->load_changelog(),
         ]);
     }
 
+    private function render_settings(): void
+    {
+        echo '<div id="quark-settings-app-root" class="quark-settings-app-root"></div>';
+    }
+
     private function chatgpt_form_sections(): array
     {
-        $registry = new OAuthClientRegistry();
-        $settings = $registry->settings();
-        $oauth = new \Quark\Connectors\ChatGPT\Rest\OAuthController();
-        $is_dcr = OAuthClientRegistry::MODE_DCR === $settings['registration_method'];
-        $is_cimd = OAuthClientRegistry::MODE_CIMD === $settings['registration_method'];
-        $token_auth_method = ($is_dcr || $is_cimd) ? OAuthClientRegistry::AUTH_NONE : OAuthClientRegistry::AUTH_CLIENT_SECRET_POST;
-        $registration_methods = $registry->registration_methods();
-        $registration_label = (string) ($registration_methods[(string) $settings['registration_method']] ?? $registration_methods[OAuthClientRegistry::MODE_USER_DEFINED]);
-        $mcp_url = rest_url('quark/v1/mcp');
-        $authorization_server_base = $oauth->resource_issuer();
-        $authorization_metadata_url = $oauth->resource_authorization_metadata_url();
-        $advanced_fields = [
-            [
-                'key' => 'authorization_server_base',
-                'label' => 'Authorization Server Base',
-                'value' => $authorization_server_base,
-            ],
-            [
-                'key' => 'resource',
-                'label' => 'Resource',
-                'value' => $mcp_url,
-            ],
-            [
-                'key' => 'oauth_authorization_endpoint',
-                'label' => 'Authorization Endpoint',
-                'value' => $oauth->authorization_endpoint($authorization_server_base),
-            ],
-            [
-                'key' => 'oauth_token_endpoint',
-                'label' => 'Token Endpoint',
-                'value' => $oauth->token_endpoint(),
-            ],
-            [
-                'key' => 'token_endpoint_auth_method',
-                'label' => 'Token Endpoint Auth Method',
-                'value' => $token_auth_method,
-            ],
-        ];
+        $credentials = (new ClientCredentials())->settings();
+        $oauth = new OAuthController();
+        $site_name = trim((string) get_bloginfo('name'));
+        $app_name = '' === $site_name ? 'Quark' : 'Quark - ' . $site_name;
 
-        if ($is_cimd) {
-            $advanced_fields[] = [
-                'key' => 'client_id_metadata_document_supported',
-                'label' => 'Client ID Metadata Document Supported',
-                'value' => 'true',
-            ];
-        }
-
-        if ($is_dcr) {
-            $advanced_fields[] = [
-                'key' => 'oauth_dynamic_client_registration_endpoint',
-                'label' => 'Dynamic Client Registration Endpoint',
-                'value' => $oauth->registration_endpoint(),
-            ];
-        }
-
-        $advanced_fields = array_merge($advanced_fields, [
+        return [
             [
-                'key' => 'oauth_metadata_url',
-                'label' => 'Authorization Server Metadata URL',
-                'value' => $authorization_metadata_url,
-            ],
-            [
-                'key' => 'oauth_protected_resource_metadata_url',
-                'label' => 'Protected Resource Metadata URL',
-                'value' => $oauth->protected_resource_metadata_url(),
-            ],
-            [
-                'key' => 'pkce_method',
-                'label' => 'PKCE Code Challenge Method',
-                'value' => 'S256',
-            ],
-            [
-                'key' => 'scopes',
-                'label' => 'Scopes',
-                'value' => 'content:read content:draft',
-            ],
-        ]);
-
-        $sections = [
-            [
-                'key' => 'basic',
-                'title' => 'Basic Connector Fields',
-                'description' => 'Paste these into the main ChatGPT create-app form. Quark uses the Streamable HTTP MCP endpoint supported by ChatGPT.',
+                'key' => 'app_setup',
+                'title' => 'App Setup',
+                'description' => 'Paste these values into the main ChatGPT create-app form.',
                 'fields' => [
                     [
                         'key' => 'app_name',
                         'label' => 'Name',
-                        'value' => 'Quark',
+                        'value' => $app_name,
                     ],
                     [
                         'key' => 'mcp_server_url',
                         'label' => 'MCP Server URL',
-                        'value' => $mcp_url,
+                        'value' => Helper::mcp_resource(),
                     ],
                     [
                         'key' => 'mcp_protocol',
@@ -263,71 +174,70 @@ final class SettingsPage
                     [
                         'key' => 'oauth_client_type',
                         'label' => 'OAuth Client Type',
-                        'value' => $registration_label,
+                        'value' => 'User-Defined OAuth Client',
                     ],
                 ],
             ],
             [
-                'key' => 'advanced_oauth',
-                'title' => 'Advanced OAuth Settings',
-                'description' => $this->registration_method_description((string) $settings['registration_method']),
-                'fields' => $advanced_fields,
-            ],
-        ];
-
-        if (! $is_dcr) {
-            $sections[] = [
-                'key' => 'user_defined_client',
-                'title' => 'User-Defined OAuth Client',
-                'description' => 'Quark generates these credentials automatically. Copy them into ChatGPT exactly once when creating the app.',
+                'key' => 'oauth_client',
+                'title' => 'OAuth Client',
+                'description' => 'Quark generates one static OAuth client for ChatGPT. Regenerate only when you want to recreate the ChatGPT app connection.',
                 'fields' => [
                     [
                         'key' => 'client_id',
                         'label' => 'Client ID',
-                        'value' => (string) $settings['manual_client_id'],
+                        'value' => (string) $credentials['client_id'],
                     ],
                     [
                         'key' => 'client_secret',
                         'label' => 'Client Secret',
-                        'value' => (string) $settings['manual_client_secret'],
+                        'value' => (string) $credentials['client_secret'],
                         'displayType' => 'password',
                     ],
+                    [
+                        'key' => 'token_endpoint_auth_method',
+                        'label' => 'Token Endpoint Auth Method',
+                        'value' => ClientCredentials::AUTH_CLIENT_SECRET_POST,
+                    ],
                 ],
-            ];
-        }
-
-        return $sections;
-    }
-
-    private function registration_method_description(string $method): string
-    {
-        if (OAuthClientRegistry::MODE_CIMD === $method) {
-            return 'CIMD mode advertises client_id_metadata_document_supported so ChatGPT can use its HTTPS Client ID Metadata Document URL as the client ID. Quark validates that document and uses PKCE without a client secret.';
-        }
-
-        if (OAuthClientRegistry::MODE_DCR === $method) {
-            return 'DCR mode advertises the registration endpoint so ChatGPT can create its own public OAuth client with PKCE.';
-        }
-
-        return 'User-defined mode uses the same resource-scoped authorization server metadata but hides automated registration and expects ChatGPT to use the generated static client credentials.';
-    }
-
-    private function oauth_settings_payload(): array
-    {
-        $registry = new OAuthClientRegistry();
-        $settings = $registry->settings();
-        $methods = [];
-
-        foreach ($registry->registration_methods() as $value => $label) {
-            $methods[] = [
-                'label' => $label,
-                'value' => $value,
-            ];
-        }
-
-        return [
-            'registrationMethod' => (string) $settings['registration_method'],
-            'registrationMethods' => $methods,
+            ],
+            [
+                'key' => 'oauth_endpoints',
+                'title' => 'OAuth Endpoints',
+                'description' => 'Use these values in ChatGPT advanced OAuth settings when it does not auto-discover them from the MCP server.',
+                'fields' => [
+                    [
+                        'key' => 'authorization_server_base',
+                        'label' => 'Authorization Server Base',
+                        'value' => $oauth->resource_issuer(),
+                    ],
+                    [
+                        'key' => 'resource',
+                        'label' => 'Resource',
+                        'value' => $oauth->resource_issuer(),
+                    ],
+                    [
+                        'key' => 'oauth_authorization_endpoint',
+                        'label' => 'Authorization Endpoint',
+                        'value' => $oauth->authorization_endpoint(),
+                    ],
+                    [
+                        'key' => 'oauth_token_endpoint',
+                        'label' => 'Token Endpoint',
+                        'value' => $oauth->token_endpoint(),
+                    ],
+                    [
+                        'key' => 'pkce_method',
+                        'label' => 'PKCE Code Challenge Method',
+                        'value' => 'S256',
+                    ],
+                    [
+                        'key' => 'scopes',
+                        'label' => 'Scopes',
+                        'value' => ClientCredentials::SCOPES,
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -380,12 +290,12 @@ final class SettingsPage
         $scope = sanitize_text_field((string) ($_GET['scope'] ?? ''));
         $code_challenge = sanitize_text_field((string) ($_GET['code_challenge'] ?? ''));
         $code_challenge_method = sanitize_text_field((string) ($_GET['code_challenge_method'] ?? 'S256'));
-        $resource = esc_url_raw((string) ($_GET['resource'] ?? rest_url('quark/v1/mcp')));
-        $issuer = esc_url_raw(rawurldecode((string) ($_GET['quark_oauth_issuer'] ?? rest_url('quark/v1/mcp'))));
+        $resource = esc_url_raw((string) ($_GET['resource'] ?? Helper::mcp_resource()));
+        $issuer = esc_url_raw(rawurldecode((string) ($_GET['quark_oauth_issuer'] ?? Helper::mcp_resource())));
 
-        echo '<h1>Quark OAuth Consent</h1>';
-        echo '<p>Approve this request to connect ChatGPT to your WordPress account.</p>';
-        echo '<table class="widefat striped" style="max-width:1100px;margin-bottom:20px"><tbody>';
+        echo '<h1 class="quark-oauth-consent-title">Quark OAuth Consent</h1>';
+        echo '<p class="quark-oauth-consent-copy">Approve this request to connect ChatGPT to your WordPress account.</p>';
+        echo '<table class="widefat striped quark-oauth-consent-table"><tbody>';
         echo '<tr><td><strong>Client ID</strong></td><td><code>' . esc_html($client_id) . '</code></td></tr>';
         echo '<tr><td><strong>Redirect URI</strong></td><td><code>' . esc_html($redirect_uri) . '</code></td></tr>';
         echo '<tr><td><strong>Requested Scope</strong></td><td><code>' . esc_html($scope) . '</code></td></tr>';
@@ -393,7 +303,7 @@ final class SettingsPage
         echo '<tr><td><strong>Issuer</strong></td><td><code>' . esc_html($issuer) . '</code></td></tr>';
         echo '</tbody></table>';
 
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<form class="quark-oauth-consent-form" method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
         wp_nonce_field('quark_oauth_authorize');
         echo '<input type="hidden" name="action" value="quark_oauth_authorize" />';
         echo '<input type="hidden" name="client_id" value="' . esc_attr($client_id) . '" />';
@@ -417,5 +327,4 @@ final class SettingsPage
         }
         check_admin_referer($nonce_action);
     }
-
 }

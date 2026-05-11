@@ -2,9 +2,10 @@
   "0.1.0": {
     "New": [
       "MCP endpoint for ChatGPT connector integration",
+      "User-defined OAuth client flow with generated client ID and client secret",
       "OAuth authorization, token exchange, and refresh flow",
       "Connector-aware architecture under src/Connectors/ChatGPT",
-      "Quark admin settings app with About, Connectors, and Advanced tabs",
+      "Quark admin settings app with About, Connectors, Changelog, and Advanced tabs",
       "Advanced option to remove plugin data on uninstall"
     ],
     "Improved": [
@@ -12,17 +13,13 @@
       "Connector setup experience redesigned with accordion-style Configure flow",
       "Field-level copy actions for connector configuration values",
       "POST nonce-based admin actions for improved reliability over nonce links",
-      "Selectable ChatGPT OAuth registration method for user-defined clients or Dynamic Client Registration",
-      "Mode-aware OAuth metadata so ChatGPT sees only the active client registration flow",
+      "ChatGPT OAuth settings simplified to one deterministic user-defined client path",
       "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
-      "Requester-scoped DCR rate limiting to prevent false 429 errors during ChatGPT app setup",
       "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base",
-      "OAuth approval callback and token exchange resilience for ChatGPT DCR connector setup",
+      "OAuth approval callback and token exchange resilience for ChatGPT connector setup",
       "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
       "More tolerant token endpoint rate limit for ChatGPT OAuth retry behavior",
-      "Conventional OAuth endpoint aliases for ChatGPT flows that use /oauth/authorize, /oauth/token, and /oauth/register",
-      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, and resource-scoped setup values for ChatGPT connector creation",
-      "Client ID Metadata Document (CIMD) OAuth registration mode for ChatGPT Apps"
+      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, and resource-scoped setup values for ChatGPT connector creation"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

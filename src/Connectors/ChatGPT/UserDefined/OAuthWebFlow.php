@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\ChatGPT\Auth;
+namespace Quark\Connectors\ChatGPT\UserDefined;
 
 use Quark\Auth\Access;
+use Quark\Connectors\ChatGPT\Helper;
 
 final class OAuthWebFlow
 {
@@ -16,30 +17,26 @@ final class OAuthWebFlow
         $redirect_uri = (string) ($params['redirect_uri'] ?? '');
         $response_type = (string) ($params['response_type'] ?? 'code');
         $state = (string) ($params['state'] ?? '');
-        $scope = (string) ($params['scope'] ?? 'content:read content:draft');
-        $resource = $this->normalize_resource((string) ($params['resource'] ?? rest_url('quark/v1/mcp')));
+        $scope = (string) ($params['scope'] ?? ClientCredentials::SCOPES);
+        $resource = Helper::normalize_resource((string) ($params['resource'] ?? Helper::mcp_resource()));
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? '');
-        $issuer = (string) ($params['quark_oauth_issuer'] ?? $resource);
-        $issuer = rawurldecode($issuer);
+        $issuer = rawurldecode((string) ($params['quark_oauth_issuer'] ?? $resource));
 
-        $registry = new OAuthClientRegistry();
-        $client = $registry->find_client($client_id);
+        $credentials = new ClientCredentials();
+        $client = $credentials->find_client($client_id);
 
         if (
-            '' === $client_id ||
-            '' === $redirect_uri ||
-            'code' !== $response_type ||
-            '' === $state ||
-            $this->normalize_resource(rest_url('quark/v1/mcp')) !== $resource ||
-            ! $this->has_supported_scopes($scope) ||
-            ! $this->has_valid_pkce_challenge($code_challenge, $code_challenge_method) ||
-            [] === $client
+            '' === $client_id
+            || '' === $redirect_uri
+            || 'code' !== $response_type
+            || '' === $state
+            || Helper::mcp_resource() !== $resource
+            || ! $this->has_supported_scopes($scope)
+            || ! $this->has_valid_pkce_challenge($code_challenge, $code_challenge_method)
+            || [] === $client
+            || ! $credentials->client_redirect_allowed($client, $redirect_uri)
         ) {
-            return ['valid' => false];
-        }
-
-        if (! $registry->client_redirect_allowed($client, $redirect_uri)) {
             return ['valid' => false];
         }
 
@@ -64,7 +61,7 @@ final class OAuthWebFlow
 
         check_admin_referer('quark_oauth_authorize');
 
-        $context = $this->build_authorize_context($_POST);
+        $context = $this->build_authorize_context(wp_unslash($_POST));
         if (! $context['valid']) {
             wp_die('Invalid OAuth authorization request.', 400);
         }
@@ -110,11 +107,6 @@ final class OAuthWebFlow
     {
         return 'S256' === $code_challenge_method
             && 1 === preg_match('/^[A-Za-z0-9._~-]{43,128}$/', $code_challenge);
-    }
-
-    private function normalize_resource(string $resource): string
-    {
-        return untrailingslashit(esc_url_raw($resource));
     }
 
     private function redirect_with_code(string $redirect_uri, string $state, string $code): void

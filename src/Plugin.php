@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Quark;
 
 use Quark\Connectors\ChatGPT\Admin\SettingsPage;
-use Quark\Connectors\ChatGPT\Auth\OAuthWebFlow;
 use Quark\Connectors\ChatGPT\Rest\ContentController;
 use Quark\Connectors\ChatGPT\Rest\McpController;
-use Quark\Connectors\ChatGPT\Rest\OAuthController;
+use Quark\Connectors\ChatGPT\UserDefined\OAuthController;
+use Quark\Connectors\ChatGPT\UserDefined\OAuthWebFlow;
 
 final class Plugin
 {
@@ -40,8 +40,6 @@ final class Plugin
         add_filter('query_vars', [$this, 'register_query_vars']);
         add_filter('redirect_canonical', [$this, 'filter_canonical_redirect'], 10, 2);
         add_action('parse_request', [$this, 'render_well_known_metadata'], 0, 0);
-        add_action('parse_request', [$this, 'handle_oauth_endpoint_aliases'], 0, 0);
-        add_action('template_redirect', [$this, 'render_browser_authorize'], 1);
         add_action('template_redirect', [$this, 'render_well_known_metadata']);
         add_action('rest_api_init', [$this, 'register_routes']);
         add_action('admin_menu', [$this, 'register_admin']);
@@ -49,7 +47,7 @@ final class Plugin
         add_action('admin_post_quark_mark_connected', [$this, 'handle_mark_connected']);
         add_action('admin_post_quark_revoke_connection', [$this, 'handle_revoke_connection']);
         add_action('admin_post_quark_save_advanced', [$this, 'handle_save_advanced']);
-        add_action('admin_post_quark_save_chatgpt_oauth', [$this, 'handle_save_chatgpt_oauth']);
+        add_action('admin_post_quark_regenerate_chatgpt_credentials', [$this, 'handle_regenerate_chatgpt_credentials']);
     }
 
     public function register_routes(): void
@@ -69,25 +67,12 @@ final class Plugin
         $vars[] = 'quark_well_known';
         $vars[] = 'quark_well_known_resource_path';
         $vars[] = 'quark_well_known_issuer_path';
-        $vars[] = 'quark_oauth_authorize';
-        $vars[] = 'quark_oauth_token';
-        $vars[] = 'quark_oauth_register';
         return $vars;
     }
 
     public function render_well_known_metadata(): void
     {
         (new OAuthController())->render_well_known_metadata();
-    }
-
-    public function render_browser_authorize(): void
-    {
-        (new OAuthController())->maybe_render_browser_authorize();
-    }
-
-    public function handle_oauth_endpoint_aliases(): void
-    {
-        (new OAuthController())->maybe_handle_oauth_endpoint_aliases();
     }
 
     public function filter_canonical_redirect($redirect_url, $requested_url)
@@ -97,7 +82,7 @@ final class Plugin
         }
 
         $path = (string) wp_parse_url($requested_url, PHP_URL_PATH);
-        if (str_starts_with($path, '/.well-known/oauth-') || str_starts_with($path, '/oauth/')) {
+        if (str_starts_with($path, '/.well-known/oauth-')) {
             return false;
         }
 
@@ -129,8 +114,8 @@ final class Plugin
         (new SettingsPage())->handle_save_advanced();
     }
 
-    public function handle_save_chatgpt_oauth(): void
+    public function handle_regenerate_chatgpt_credentials(): void
     {
-        (new SettingsPage())->handle_save_chatgpt_oauth();
+        (new SettingsPage())->handle_regenerate_chatgpt_credentials();
     }
 }

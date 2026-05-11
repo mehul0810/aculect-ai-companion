@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Quark\Connectors\ChatGPT\Rest;
 
 use Quark\Auth\Access;
+use Quark\Connectors\ChatGPT\Helper;
+use Quark\Connectors\ChatGPT\UserDefined\OAuthController;
 use WP_REST_Server;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -34,7 +36,7 @@ final class McpController
 
         $oauth = new OAuthController();
         $resource_metadata_url = $oauth->protected_resource_metadata_url();
-        $mcp_url = rest_url('quark/v1/mcp');
+        $mcp_url = Helper::mcp_resource();
 
         return [
             'name' => 'Quark MCP',
@@ -70,7 +72,7 @@ final class McpController
             case 'initialize':
                 $oauth = new OAuthController();
                 $resource_metadata_url = $oauth->protected_resource_metadata_url();
-                $mcp_url = rest_url('quark/v1/mcp');
+                $mcp_url = Helper::mcp_resource();
                 return $this->rpc_result($id, [
                     'protocolVersion' => '2025-06-18',
                     'serverInfo' => [
@@ -330,12 +332,12 @@ final class McpController
 
     private function resource_identifier(): string
     {
-        return $this->normalize_resource(rest_url('quark/v1/mcp'));
+        return Helper::mcp_resource();
     }
 
     private function normalize_resource(string $resource): string
     {
-        return untrailingslashit(esc_url_raw($resource));
+        return Helper::normalize_resource($resource);
     }
 
     private function auth_required_result($id): array

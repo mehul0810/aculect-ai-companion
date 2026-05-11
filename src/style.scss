@@ -189,7 +189,7 @@
 		margin-top: 10px;
 	}
 
-	.quark-oauth-settings-form {
+	.quark-credentials-form {
 		display: grid;
 		gap: 12px;
 		margin: 12px 0 18px;
@@ -197,36 +197,6 @@
 		background: #f6f7f7;
 		border: 1px solid #dcdcde;
 		border-radius: 8px;
-	}
-
-	.quark-registration-methods {
-		display: grid;
-		gap: 8px;
-	}
-
-	.quark-registration-method {
-		display: grid;
-		gap: 3px;
-		padding: 9px 10px;
-		background: #fff;
-		border: 1px solid #dcdcde;
-		border-radius: 6px;
-	}
-
-	.quark-registration-method.is-active {
-		border-color: #2271b1;
-		box-shadow: inset 3px 0 0 #2271b1;
-	}
-
-	.quark-registration-method span {
-		color: #50575e;
-		font-size: 12px;
-		line-height: 1.45;
-	}
-
-	.quark-manual-client-fields {
-		display: grid;
-		gap: 10px;
 	}
 
 	.quark-config-grid {
@@ -308,4 +278,9 @@
 			grid-template-columns: 1fr;
 		}
 	}
+}
+
+.quark-oauth-consent-table {
+	max-width: 1100px;
+	margin-bottom: 20px;
 }

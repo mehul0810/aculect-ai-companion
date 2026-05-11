@@ -11,7 +11,6 @@ import {
 	FlexBlock,
 	FlexItem,
 	Notice,
-	SelectControl,
 	ToggleControl,
 	TabPanel,
 	TextControl,
@@ -25,9 +24,6 @@ function SettingsApp() {
 		Boolean( data.removeDataOnUninstall )
 	);
 	const [ openConnector, setOpenConnector ] = useState( null );
-	const [ registrationMethod, setRegistrationMethod ] = useState(
-		data.oauthSettings?.registrationMethod || 'user_defined'
-	);
 	const isConnected = Boolean( data.isConnected );
 	const statusClass = isConnected
 		? 'quark-pill quark-pill--status is-connected'
@@ -146,14 +142,15 @@ function SettingsApp() {
 					Advanced settings saved.
 				</Notice>
 			) }
-			{ data.oauthSaved === '1' && (
+			{ data.credentialsRegenerated === '1' && (
 				<Notice
 					status="success"
 					isDismissible={ false }
 					role="status"
 					aria-live="polite"
 				>
-					ChatGPT OAuth settings saved.
+					ChatGPT OAuth credentials regenerated. Recreate the ChatGPT
+					app connection with the new values.
 				</Notice>
 			) }
 
@@ -418,11 +415,11 @@ function SettingsApp() {
 													Step 2: Add the OAuth client
 												</h4>
 												<p>
-													Select how ChatGPT should
-													obtain its OAuth client,
-													save the choice, then copy
-													the matching values from the
-													right panel.
+													Choose User-Defined OAuth
+													Client in ChatGPT, then copy
+													the client credentials and
+													endpoints from the right
+													panel.
 												</p>
 												<form
 													method="post"
@@ -430,14 +427,14 @@ function SettingsApp() {
 														data.actions
 															?.adminPostUrl
 													}
-													className="quark-oauth-settings-form"
+													className="quark-credentials-form"
 												>
 													<input
 														type="hidden"
 														name="action"
 														value={
 															data.actions
-																?.saveOauthAction
+																?.regenerateCredentialsAction
 														}
 													/>
 													<input
@@ -445,68 +442,32 @@ function SettingsApp() {
 														name="_wpnonce"
 														value={
 															data.actions
-																?.saveOauthNonce
+																?.regenerateCredentialsNonce
 														}
-													/>
-													<input
-														type="hidden"
-														name="registration_method"
-														value={
-															registrationMethod
-														}
-													/>
-													<SelectControl
-														label="OAuth Registration Method"
-														value={
-															registrationMethod
-														}
-														options={
-															data.oauthSettings
-																?.registrationMethods ||
-															[]
-														}
-														onChange={
-															setRegistrationMethod
-														}
-														help="CIMD is the preferred OpenAI/MCP method. DCR lets ChatGPT register a public client. User-defined uses generated static client credentials."
 													/>
 													<p className="quark-copy quark-copy--first">
-														OpenAI docs support
-														Client ID Metadata
-														Documents, Dynamic
-														Client Registration, and
-														static OAuth
-														credentials. Quark
-														advertises only the
-														selected method.
+														Quark now advertises
+														only one OAuth path:
+														user-defined client
+														credentials with
+														client_secret_post and
+														PKCE S256.
 													</p>
 													<p className="quark-copy quark-copy--last">
-														Changing this method
+														Regenerating credentials
 														revokes active ChatGPT
-														tokens so the next
-														authorization uses the
-														correct metadata.
+														tokens and requires
+														recreating the ChatGPT
+														app connection.
 													</p>
 													<div className="quark-form-actions">
 														<Button
 															type="submit"
-															variant="primary"
+															variant="secondary"
 														>
-															Save OAuth Method
+															Regenerate Client
+															Credentials
 														</Button>
-														{ registrationMethod ===
-															'user_defined' && (
-															<Button
-																type="submit"
-																name="regenerate_client_credentials"
-																value="1"
-																variant="secondary"
-															>
-																Regenerate
-																Client
-																Credentials
-															</Button>
-														) }
 													</div>
 												</form>
 												<h4>

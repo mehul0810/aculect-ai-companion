@@ -468,15 +468,17 @@ function SettingsApp() {
 														onChange={
 															setRegistrationMethod
 														}
-														help="User-defined uses generated static client credentials. DCR lets ChatGPT register a public OAuth client and use PKCE."
+														help="CIMD is the preferred OpenAI/MCP method. DCR lets ChatGPT register a public client. User-defined uses generated static client credentials."
 													/>
 													<p className="quark-copy quark-copy--first">
 														OpenAI docs support
-														static OAuth credentials
-														and Dynamic Client
-														Registration. Quark
+														Client ID Metadata
+														Documents, Dynamic
+														Client Registration, and
+														static OAuth
+														credentials. Quark
 														advertises only the
-														method selected here.
+														selected method.
 													</p>
 													<p className="quark-copy quark-copy--last">
 														Changing this method

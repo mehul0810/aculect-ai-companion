@@ -153,6 +153,10 @@ final class OAuthController
             $metadata['registration_endpoint'] = $this->registration_endpoint();
         }
 
+        if (OAuthClientRegistry::MODE_CIMD === $settings['registration_method']) {
+            $metadata['client_id_metadata_document_supported'] = true;
+        }
+
         return new WP_REST_Response($metadata, 200);
     }
 
@@ -450,7 +454,7 @@ final class OAuthController
     {
         $settings = (new OAuthClientRegistry())->settings();
 
-        return OAuthClientRegistry::MODE_DCR === $settings['registration_method']
+        return in_array($settings['registration_method'], [OAuthClientRegistry::MODE_CIMD, OAuthClientRegistry::MODE_DCR], true)
             ? [OAuthClientRegistry::AUTH_NONE]
             : [OAuthClientRegistry::AUTH_CLIENT_SECRET_POST];
     }

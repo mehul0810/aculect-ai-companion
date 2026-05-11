@@ -160,7 +160,8 @@ final class SettingsPage
         $settings = $registry->settings();
         $oauth = new \Quark\Connectors\ChatGPT\Rest\OAuthController();
         $is_dcr = OAuthClientRegistry::MODE_DCR === $settings['registration_method'];
-        $token_auth_method = $is_dcr ? OAuthClientRegistry::AUTH_NONE : OAuthClientRegistry::AUTH_CLIENT_SECRET_POST;
+        $is_cimd = OAuthClientRegistry::MODE_CIMD === $settings['registration_method'];
+        $token_auth_method = ($is_dcr || $is_cimd) ? OAuthClientRegistry::AUTH_NONE : OAuthClientRegistry::AUTH_CLIENT_SECRET_POST;
         $registration_methods = $registry->registration_methods();
         $registration_label = (string) ($registration_methods[(string) $settings['registration_method']] ?? $registration_methods[OAuthClientRegistry::MODE_USER_DEFINED]);
         $mcp_url = rest_url('quark/v1/mcp');
@@ -193,6 +194,14 @@ final class SettingsPage
                 'value' => $token_auth_method,
             ],
         ];
+
+        if ($is_cimd) {
+            $advanced_fields[] = [
+                'key' => 'client_id_metadata_document_supported',
+                'label' => 'Client ID Metadata Document Supported',
+                'value' => 'true',
+            ];
+        }
 
         if ($is_dcr) {
             $advanced_fields[] = [
@@ -261,9 +270,7 @@ final class SettingsPage
             [
                 'key' => 'advanced_oauth',
                 'title' => 'Advanced OAuth Settings',
-                'description' => $is_dcr
-                    ? 'DCR mode advertises the registration endpoint so ChatGPT can create its own public OAuth client with PKCE.'
-                    : 'User-defined mode uses the same resource-scoped authorization server metadata but hides the registration endpoint and expects ChatGPT to use the generated static client credentials.',
+                'description' => $this->registration_method_description((string) $settings['registration_method']),
                 'fields' => $advanced_fields,
             ],
         ];
@@ -290,6 +297,19 @@ final class SettingsPage
         }
 
         return $sections;
+    }
+
+    private function registration_method_description(string $method): string
+    {
+        if (OAuthClientRegistry::MODE_CIMD === $method) {
+            return 'CIMD mode advertises client_id_metadata_document_supported so ChatGPT can use its HTTPS Client ID Metadata Document URL as the client ID. Quark validates that document and uses PKCE without a client secret.';
+        }
+
+        if (OAuthClientRegistry::MODE_DCR === $method) {
+            return 'DCR mode advertises the registration endpoint so ChatGPT can create its own public OAuth client with PKCE.';
+        }
+
+        return 'User-defined mode uses the same resource-scoped authorization server metadata but hides automated registration and expects ChatGPT to use the generated static client credentials.';
     }
 
     private function oauth_settings_payload(): array

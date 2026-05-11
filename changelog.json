@@ -21,7 +21,8 @@
       "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
       "More tolerant token endpoint rate limit for ChatGPT OAuth retry behavior",
       "Conventional OAuth endpoint aliases for ChatGPT flows that use /oauth/authorize, /oauth/token, and /oauth/register",
-      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, and resource-scoped setup values for ChatGPT connector creation"
+      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, and resource-scoped setup values for ChatGPT connector creation",
+      "Client ID Metadata Document (CIMD) OAuth registration mode for ChatGPT Apps"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

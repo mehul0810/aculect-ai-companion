@@ -7,9 +7,11 @@ namespace Quark\Connectors\ChatGPT\Auth;
 final class OAuthClientRegistry
 {
     private const DCR_OPTION = 'quark_oauth_clients';
+    private const CIMD_CACHE_PREFIX = 'quark_cimd_client_';
     public const OPTION_SETTINGS = 'quark_chatgpt_oauth_settings';
     public const MODE_USER_DEFINED = 'user_defined';
     public const MODE_DCR = 'dcr';
+    public const MODE_CIMD = 'cimd';
     public const AUTH_NONE = 'none';
     public const AUTH_CLIENT_SECRET_POST = 'client_secret_post';
 
@@ -37,6 +39,7 @@ final class OAuthClientRegistry
     {
         return [
             self::MODE_USER_DEFINED => 'User-Defined OAuth Client',
+            self::MODE_CIMD => 'Client ID Metadata Document (CIMD)',
             self::MODE_DCR => 'Dynamic Client Registration (DCR)',
         ];
     }
@@ -73,6 +76,10 @@ final class OAuthClientRegistry
                 'scope' => 'content:read content:draft',
                 'manual' => true,
             ];
+        }
+
+        if (self::MODE_CIMD === $settings['registration_method']) {
+            return $this->client_from_metadata_document($client_id);
         }
 
         $clients = $this->dcr_clients();
@@ -219,6 +226,106 @@ final class OAuthClientRegistry
         return is_array($clients) ? $clients : [];
     }
 
+    private function client_from_metadata_document(string $client_id): array
+    {
+        if (! $this->is_supported_cimd_url($client_id)) {
+            return [];
+        }
+
+        $cache_key = self::CIMD_CACHE_PREFIX . md5($client_id);
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $response = wp_safe_remote_get($client_id, [
+            'timeout' => 5,
+            'redirection' => 0,
+            'reject_unsafe_urls' => true,
+            'headers' => [
+                'Accept' => 'application/json',
+            ],
+        ]);
+        if (is_wp_error($response) || 200 !== (int) wp_remote_retrieve_response_code($response)) {
+            return [];
+        }
+
+        $metadata = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (! is_array($metadata) || (string) ($metadata['client_id'] ?? '') !== $client_id) {
+            return [];
+        }
+
+        $redirect_uris = $this->sanitize_redirect_uris($metadata['redirect_uris'] ?? []);
+        if ('' === (string) ($metadata['client_name'] ?? '') || [] === $redirect_uris) {
+            return [];
+        }
+
+        $auth_method = sanitize_key((string) ($metadata['token_endpoint_auth_method'] ?? self::AUTH_NONE));
+        if (self::AUTH_NONE !== $auth_method) {
+            return [];
+        }
+
+        $grant_types = $this->sanitize_supported_values(
+            $metadata['grant_types'] ?? ['authorization_code', 'refresh_token'],
+            ['authorization_code', 'refresh_token']
+        );
+        $response_types = $this->sanitize_supported_values(
+            $metadata['response_types'] ?? ['code'],
+            ['code']
+        );
+        $scope = $this->sanitize_scope((string) ($metadata['scope'] ?? 'content:read content:draft'));
+        if ('' === $scope || [] === $grant_types || [] === $response_types) {
+            return [];
+        }
+
+        $client = [
+            'client_id' => $client_id,
+            'client_name' => sanitize_text_field((string) $metadata['client_name']),
+            'redirect_uris' => $redirect_uris,
+            'grant_types' => $grant_types,
+            'response_types' => $response_types,
+            'token_endpoint_auth_method' => self::AUTH_NONE,
+            'scope' => $scope,
+            'metadata_document' => true,
+        ];
+
+        set_transient($cache_key, $client, $this->metadata_cache_ttl($response));
+
+        return $client;
+    }
+
+    private function is_supported_cimd_url(string $client_id): bool
+    {
+        $parts = wp_parse_url($client_id);
+        if (! is_array($parts)) {
+            return false;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+
+        return 'https' === $scheme
+            && 'chatgpt.com' === $host
+            && str_starts_with($path, '/oauth/')
+            && str_ends_with($path, '/client.json');
+    }
+
+    private function metadata_cache_ttl(array $response): int
+    {
+        $cache_control = wp_remote_retrieve_header($response, 'cache-control');
+        if (is_array($cache_control)) {
+            $cache_control = implode(',', array_map('strval', $cache_control));
+        }
+        $cache_control = (string) $cache_control;
+
+        if (preg_match('/max-age=(\d+)/i', $cache_control, $matches)) {
+            return max(300, min(DAY_IN_SECONDS, (int) $matches[1]));
+        }
+
+        return HOUR_IN_SECONDS;
+    }
+
     private function sanitize_redirect_uris($redirect_uris): array
     {
         $redirect_uris = is_array($redirect_uris) ? $redirect_uris : [];
@@ -266,7 +373,7 @@ final class OAuthClientRegistry
 
     private function valid_registration_method(string $method): string
     {
-        return in_array($method, [self::MODE_USER_DEFINED, self::MODE_DCR], true)
+        return in_array($method, [self::MODE_USER_DEFINED, self::MODE_CIMD, self::MODE_DCR], true)
             ? $method
             : self::MODE_USER_DEFINED;
     }

@@ -39,6 +39,7 @@ The MCP endpoint must be the only primary value shown to users. Metadata and OAu
 - Connector settings UI data: `src/Admin/SettingsPage.php`
 - Shared URL/resource helpers: `src/Connectors/Helpers.php`
 - MCP endpoint and OAuth challenges: `src/Connectors/MCP/McpController.php`
+- MCP ability definitions and enabled/disabled state: `src/Connectors/MCP/AbilitiesRegistry.php`
 - OAuth metadata/discovery: `src/Connectors/OAuth/DiscoveryController.php`
 - DCR endpoint: `src/Connectors/OAuth/ClientRegistrationController.php`
 - OAuth authorize and consent handoff: `src/Connectors/OAuth/AuthorizationController.php`
@@ -124,6 +125,12 @@ Possible causes:
 - Consent posted back to the wrong endpoint.
 
 Regression check: approve consent and confirm ChatGPT reaches token exchange without a WordPress login loop or invalid authorization request.
+
+### Expected Tools Do Not Show In ChatGPT
+
+Possible cause: the ability is disabled under `Settings > Quark > Abilities`.
+
+Fix: enable the relevant ability and save. `tools/list` only advertises enabled abilities, and `tools/call` rejects disabled abilities even if a client cached an older tool list.
 
 ## Required Smoke Tests Before ChatGPT OAuth Betas
 

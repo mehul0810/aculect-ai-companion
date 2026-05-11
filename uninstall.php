@@ -44,3 +44,4 @@ if ( file_exists( $autoload ) ) {
 delete_option( 'quark_remove_data_on_uninstall' );
 delete_option( 'quark_rewrite_version' );
 delete_option( 'quark_chatgpt_connection_state' );
+delete_option( 'quark_enabled_abilities' );

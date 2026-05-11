@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Quark\Admin;
 
 use Quark\Connectors\Helpers;
+use Quark\Connectors\MCP\AbilitiesRegistry;
 use Quark\Connectors\OAuth\AuthorizationController;
 use Quark\Connectors\OAuth\DiscoveryController;
 use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
@@ -78,15 +79,19 @@ final class SettingsPage {
 				'mcpUrl'                => Helpers::mcp_resource(),
 				'providers'             => $this->providers(),
 				'sessions'              => ( new AccessTokenRepository() )->list_active_sessions(),
+				'abilities'             => ( new AbilitiesRegistry() )->public_definitions(),
+				'enabledAbilities'      => ( new AbilitiesRegistry() )->enabled_ids(),
 				'diagnostics'           => ( new DiscoveryController() )->diagnostics(),
 				'status'                => $this->status(),
 				'removeDataOnUninstall' => $this->remove_data_on_uninstall_enabled(),
 				'actions'               => array(
 					'adminPostUrl'        => admin_url( 'admin-post.php' ),
 					'saveAdvancedAction'  => 'quark_save_advanced',
+					'saveAbilitiesAction' => 'quark_save_abilities',
 					'revokeSessionAction' => 'quark_revoke_session',
 					'revokeAllAction'     => 'quark_revoke_all_sessions',
 					'saveAdvancedNonce'   => wp_create_nonce( 'quark_save_advanced' ),
+					'saveAbilitiesNonce'  => wp_create_nonce( 'quark_save_abilities' ),
 					'revokeSessionNonce'  => wp_create_nonce( 'quark_revoke_session' ),
 					'revokeAllNonce'      => wp_create_nonce( 'quark_revoke_all_sessions' ),
 				),
@@ -105,6 +110,28 @@ final class SettingsPage {
 				array(
 					'page'           => 'quark',
 					'advanced_saved' => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	public function handle_save_abilities(): void {
+		$this->guard_action( 'quark_save_abilities' );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$enabled = isset( $_POST['enabled_abilities'] ) && is_array( $_POST['enabled_abilities'] )
+			? array_map( 'wp_unslash', $_POST['enabled_abilities'] )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		( new AbilitiesRegistry() )->save_enabled_ids( $enabled );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'quark',
+					'abilities_saved' => '1',
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -171,6 +198,10 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['advanced_saved'] ) ) {
 			return 'advanced_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['abilities_saved'] ) ) {
+			return 'abilities_saved';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['revoked_all'] ) ) {

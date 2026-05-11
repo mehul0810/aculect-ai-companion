@@ -228,6 +228,65 @@
 	margin: 0;
 }
 
+.quark-form--abilities {
+	display: grid;
+	gap: 20px;
+}
+
+.quark-ability-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.quark-ability-groups {
+	display: grid;
+	gap: 22px;
+}
+
+.quark-ability-list {
+	display: grid;
+	gap: 12px;
+}
+
+.quark-ability-row {
+	padding: 16px;
+	border: 1px solid var(--quark-border);
+	border-radius: 12px;
+	background: var(--quark-soft);
+}
+
+.quark-ability-row .components-base-control {
+	margin-bottom: 0;
+}
+
+.quark-ability-row .components-checkbox-control__label {
+	font-weight: 700;
+}
+
+.quark-ability-row__description {
+	margin: 8px 0 12px 28px;
+	color: var(--quark-muted);
+	line-height: 1.5;
+}
+
+.quark-ability-row__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-left: 28px;
+}
+
+.quark-ability-row__meta code,
+.quark-ability-row__meta span {
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: #fff;
+	color: var(--quark-muted);
+	font-size: 12px;
+	font-weight: 700;
+}
+
 .quark-form--advanced {
 	display: grid;
 	gap: 16px;

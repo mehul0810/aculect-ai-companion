@@ -22,8 +22,16 @@ final class ContentController {
 		return ( new AbilitiesService() )->get_item( (int) ( $data['id'] ?? 0 ) );
 	}
 
+	public function create_item( array $data ): array {
+		return ( new AbilitiesService() )->create_item( $data );
+	}
+
 	public function create_draft( array $data ): array {
 		return ( new AbilitiesService() )->create_draft( $data );
+	}
+
+	public function update_item( array $data ): array {
+		return ( new AbilitiesService() )->update_item( $data );
 	}
 
 	public function list_taxonomies(): array {
@@ -31,7 +39,15 @@ final class ContentController {
 	}
 
 	public function list_terms( array $data ): array {
-		return array( 'items' => ( new AbilitiesService() )->list_terms( (string) ( $data['taxonomy'] ?? 'category' ) ) );
+		return ( new AbilitiesService() )->list_terms( $data );
+	}
+
+	public function create_term( array $data ): array {
+		return ( new AbilitiesService() )->create_term( $data );
+	}
+
+	public function update_term( array $data ): array {
+		return ( new AbilitiesService() )->update_term( $data );
 	}
 
 	public function list_media( array $data ): array {

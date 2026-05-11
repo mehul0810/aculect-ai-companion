@@ -7,6 +7,7 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
+	CheckboxControl,
 	Notice,
 	TabPanel,
 	TextControl,
@@ -65,6 +66,7 @@ function SettingsApp() {
 	const data = window.quarkSettingsData || {};
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
+	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
 	const diagnostics = data.diagnostics || {};
 	const [ copied, setCopied ] = useState( '' );
 	const [ openProvider, setOpenProvider ] = useState(
@@ -72,6 +74,9 @@ function SettingsApp() {
 	);
 	const [ removeDataOnUninstall, setRemoveDataOnUninstall ] = useState(
 		Boolean( data.removeDataOnUninstall )
+	);
+	const [ enabledAbilities, setEnabledAbilities ] = useState(
+		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
 	);
 	const copyTimeoutRef = useRef( null );
 
@@ -100,6 +105,34 @@ function SettingsApp() {
 	const statusClass = data.isConnected
 		? 'quark-pill quark-pill--status is-connected'
 		: 'quark-pill quark-pill--status is-disconnected';
+	const tabs = [
+		{ name: 'about', title: 'About' },
+		{ name: 'connectors', title: 'Connectors' },
+		{ name: 'connections', title: 'Connections' },
+	];
+	if ( data.isConnected ) {
+		tabs.push( { name: 'abilities', title: 'Abilities' } );
+	}
+	tabs.push(
+		{ name: 'changelog', title: 'Changelog' },
+		{ name: 'advanced', title: 'Advanced' }
+	);
+	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
+		const group = ability.group || 'Other';
+		return {
+			...groups,
+			[ group ]: [ ...( groups[ group ] || [] ), ability ],
+		};
+	}, {} );
+	const toggleAbility = ( id, checked ) => {
+		setEnabledAbilities( ( current ) => {
+			if ( checked ) {
+				return Array.from( new Set( [ ...current, id ] ) );
+			}
+
+			return current.filter( ( item ) => item !== id );
+		} );
+	};
 
 	return (
 		<div className="quark-app-root">
@@ -125,6 +158,11 @@ function SettingsApp() {
 					Advanced settings saved.
 				</Notice>
 			) }
+			{ data.status === 'abilities_saved' && (
+				<Notice status="success" isDismissible={ false }>
+					Abilities saved.
+				</Notice>
+			) }
 			{ data.status === 'revoked' && (
 				<Notice status="warning" isDismissible={ false }>
 					Connection revoked.
@@ -136,16 +174,7 @@ function SettingsApp() {
 				</Notice>
 			) }
 
-			<TabPanel
-				className="quark-tabs"
-				tabs={ [
-					{ name: 'about', title: 'About' },
-					{ name: 'connectors', title: 'Connectors' },
-					{ name: 'connections', title: 'Connections' },
-					{ name: 'changelog', title: 'Changelog' },
-					{ name: 'advanced', title: 'Advanced' },
-				] }
-			>
+			<TabPanel className="quark-tabs" tabs={ tabs }>
 				{ ( tab ) => {
 					if ( tab.name === 'about' ) {
 						return (
@@ -399,6 +428,154 @@ function SettingsApp() {
 											/>
 										</div>
 									) }
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'abilities' ) {
+						return (
+							<Card className="quark-card quark-abilities-card">
+								<CardHeader>AI Abilities</CardHeader>
+								<CardBody>
+									<p className="quark-copy quark-copy--first">
+										Choose which MCP abilities connected AI
+										apps can see and call. WordPress
+										capabilities are still checked on every
+										request.
+									</p>
+									<form
+										method="post"
+										action={ data.actions?.adminPostUrl }
+										className="quark-form quark-form--abilities"
+									>
+										<input
+											type="hidden"
+											name="action"
+											value={
+												data.actions
+													?.saveAbilitiesAction
+											}
+										/>
+										<input
+											type="hidden"
+											name="_wpnonce"
+											value={
+												data.actions?.saveAbilitiesNonce
+											}
+										/>
+										{ enabledAbilities.map( ( id ) => (
+											<input
+												key={ id }
+												type="hidden"
+												name="enabled_abilities[]"
+												value={ id }
+											/>
+										) ) }
+										<div className="quark-ability-toolbar">
+											<Button
+												type="button"
+												variant="secondary"
+												onClick={ () =>
+													setEnabledAbilities(
+														abilities.map(
+															( ability ) =>
+																ability.id
+														)
+													)
+												}
+											>
+												Enable All
+											</Button>
+											<Button
+												type="button"
+												variant="secondary"
+												onClick={ () =>
+													setEnabledAbilities( [] )
+												}
+											>
+												Disable All
+											</Button>
+											<Button
+												type="submit"
+												variant="primary"
+											>
+												Save Abilities
+											</Button>
+										</div>
+										<div className="quark-ability-groups">
+											{ Object.entries(
+												groupedAbilities
+											).map(
+												( [
+													group,
+													groupAbilities,
+												] ) => (
+													<div
+														key={ group }
+														className="quark-ability-group"
+													>
+														<h3 className="quark-section-heading">
+															{ group }
+														</h3>
+														<div className="quark-ability-list">
+															{ groupAbilities.map(
+																( ability ) => (
+																	<div
+																		key={
+																			ability.id
+																		}
+																		className="quark-ability-row"
+																	>
+																		<CheckboxControl
+																			label={
+																				ability.title
+																			}
+																			checked={ enabledAbilities.includes(
+																				ability.id
+																			) }
+																			onChange={ (
+																				checked
+																			) =>
+																				toggleAbility(
+																					ability.id,
+																					Boolean(
+																						checked
+																					)
+																				)
+																			}
+																		/>
+																		<p className="quark-ability-row__description">
+																			{
+																				ability.description
+																			}
+																		</p>
+																		<div className="quark-ability-row__meta">
+																			<code>
+																				{
+																					ability.id
+																				}
+																			</code>
+																			<span>
+																				{
+																					ability.scope
+																				}
+																			</span>
+																			<span>
+																				{ ability.readOnly
+																					? 'Read'
+																					: 'Write' }
+																			</span>
+																		</div>
+																	</div>
+																)
+															) }
+														</div>
+													</div>
+												)
+											) }
+										</div>
+									</form>
 								</CardBody>
 							</Card>
 						);

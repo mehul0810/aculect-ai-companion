@@ -109,6 +109,10 @@ final class McpController {
 					return $this->tool_error_result( $id, 'Unknown tool.' );
 				}
 
+				if ( ! ( new AbilitiesRegistry() )->is_enabled( $tool ) ) {
+					return $this->tool_error_result( $id, 'This ability is disabled in Quark settings.' );
+				}
+
 				$required = $this->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
@@ -143,130 +147,121 @@ final class McpController {
 	}
 
 	private function list_tools(): array {
-		$read_security  = $this->security_schemes( array( 'content:read' ) );
-		$draft_security = $this->security_schemes( array( 'content:draft' ) );
+		$registry = new AbilitiesRegistry();
 
 		return array(
-			'tools' => array(
-				array(
-					'name'            => 'site.list_post_types',
-					'title'           => 'List Post Types',
-					'description'     => 'List readable post types.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => new \stdClass(),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'content.list_items',
-					'title'           => 'List Content Items',
-					'description'     => 'List content items with pagination.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => array(
-							'post_type' => array( 'type' => 'string' ),
-							'status'    => array(
-								'oneOf' => array(
-									array( 'type' => 'string' ),
-									array(
-										'type'  => 'array',
-										'items' => array( 'type' => 'string' ),
-									),
-								),
+			'tools' => array_values( array_map( array( $this, 'tool_from_definition' ), $registry->enabled_definitions() ) ),
+		);
+	}
+
+	private function tool_from_definition( array $definition ): array {
+		$scopes   = array( (string) $definition['scope'] );
+		$security = $this->security_schemes( $scopes );
+
+		return array(
+			'name'            => (string) $definition['id'],
+			'title'           => (string) $definition['title'],
+			'description'     => (string) $definition['description'],
+			'inputSchema'     => $this->input_schema_for_tool( (string) $definition['id'] ),
+			'securitySchemes' => $security,
+			'_meta'           => array( 'securitySchemes' => $security ),
+			'annotations'     => array( 'readOnlyHint' => (bool) $definition['readOnly'] ),
+		);
+	}
+
+	private function input_schema_for_tool( string $tool ): array {
+		return match ( $tool ) {
+			'content.list_items' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_type' => array( 'type' => 'string' ),
+					'status'    => array(
+						'oneOf' => array(
+							array( 'type' => 'string' ),
+							array(
+								'type'  => 'array',
+								'items' => array( 'type' => 'string' ),
 							),
-							'page'      => array( 'type' => 'integer' ),
-							'per_page'  => array( 'type' => 'integer' ),
 						),
 					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'content.get_item',
-					'title'           => 'Get Content Item',
-					'description'     => 'Read one content item by ID.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'required'   => array( 'id' ),
-						'properties' => array( 'id' => array( 'type' => 'integer' ) ),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'content.create_draft',
-					'title'           => 'Create Draft',
-					'description'     => 'Create a draft content item.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => array(
-							'post_type' => array( 'type' => 'string' ),
-							'title'     => array( 'type' => 'string' ),
-							'content'   => array( 'type' => 'string' ),
-						),
-					),
-					'securitySchemes' => $draft_security,
-					'_meta'           => array( 'securitySchemes' => $draft_security ),
-					'annotations'     => array( 'readOnlyHint' => false ),
-				),
-				array(
-					'name'            => 'taxonomy.list_taxonomies',
-					'title'           => 'List Taxonomies',
-					'description'     => 'List taxonomies.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => new \stdClass(),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'taxonomy.list_terms',
-					'title'           => 'List Terms',
-					'description'     => 'List terms in a taxonomy.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => array( 'taxonomy' => array( 'type' => 'string' ) ),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'media.list_items',
-					'title'           => 'List Media Items',
-					'description'     => 'List media items.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => array(
-							'page'     => array( 'type' => 'integer' ),
-							'per_page' => array( 'type' => 'integer' ),
-						),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
-				),
-				array(
-					'name'            => 'site.get_settings',
-					'title'           => 'Get Site Settings',
-					'description'     => 'Read safe site settings.',
-					'inputSchema'     => array(
-						'type'       => 'object',
-						'properties' => new \stdClass(),
-					),
-					'securitySchemes' => $read_security,
-					'_meta'           => array( 'securitySchemes' => $read_security ),
-					'annotations'     => array( 'readOnlyHint' => true ),
+					'page'      => array( 'type' => 'integer' ),
+					'per_page'  => array( 'type' => 'integer' ),
 				),
 			),
-		);
+			'content.get_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array( 'id' => array( 'type' => 'integer' ) ),
+			),
+			'content.create_item' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_type' => array( 'type' => 'string' ),
+					'title'     => array( 'type' => 'string' ),
+					'content'   => array( 'type' => 'string' ),
+					'excerpt'   => array( 'type' => 'string' ),
+					'slug'      => array( 'type' => 'string' ),
+					'status'    => array( 'type' => 'string' ),
+				),
+			),
+			'content.update_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id'      => array( 'type' => 'integer' ),
+					'title'   => array( 'type' => 'string' ),
+					'content' => array( 'type' => 'string' ),
+					'excerpt' => array( 'type' => 'string' ),
+					'slug'    => array( 'type' => 'string' ),
+					'status'  => array( 'type' => 'string' ),
+				),
+			),
+			'taxonomy.list_terms' => array(
+				'type'       => 'object',
+				'required'   => array( 'taxonomy' ),
+				'properties' => array(
+					'taxonomy'   => array( 'type' => 'string' ),
+					'page'       => array( 'type' => 'integer' ),
+					'per_page'   => array( 'type' => 'integer' ),
+					'search'     => array( 'type' => 'string' ),
+					'hide_empty' => array( 'type' => 'boolean' ),
+				),
+			),
+			'taxonomy.create_term' => array(
+				'type'       => 'object',
+				'required'   => array( 'taxonomy', 'name' ),
+				'properties' => array(
+					'taxonomy'    => array( 'type' => 'string' ),
+					'name'        => array( 'type' => 'string' ),
+					'slug'        => array( 'type' => 'string' ),
+					'description' => array( 'type' => 'string' ),
+					'parent'      => array( 'type' => 'integer' ),
+				),
+			),
+			'taxonomy.update_term' => array(
+				'type'       => 'object',
+				'required'   => array( 'taxonomy', 'term_id' ),
+				'properties' => array(
+					'taxonomy'    => array( 'type' => 'string' ),
+					'term_id'     => array( 'type' => 'integer' ),
+					'name'        => array( 'type' => 'string' ),
+					'slug'        => array( 'type' => 'string' ),
+					'description' => array( 'type' => 'string' ),
+					'parent'      => array( 'type' => 'integer' ),
+				),
+			),
+			'media.list_items' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+				),
+			),
+			default => array(
+				'type'       => 'object',
+				'properties' => new \stdClass(),
+			),
+		};
 	}
 
 	private function call_tool( array $params ): array {
@@ -278,9 +273,13 @@ final class McpController {
 			'site.list_post_types' => $content->list_post_types(),
 			'content.list_items' => $content->list_items( $args ),
 			'content.get_item' => $content->get_item( $args ),
+			'content.create_item' => $content->create_item( $args ),
 			'content.create_draft' => $content->create_draft( $args ),
+			'content.update_item' => $content->update_item( $args ),
 			'taxonomy.list_taxonomies' => $content->list_taxonomies(),
 			'taxonomy.list_terms' => $content->list_terms( $args ),
+			'taxonomy.create_term' => $content->create_term( $args ),
+			'taxonomy.update_term' => $content->update_term( $args ),
 			'media.list_items' => $content->list_media( $args ),
 			'site.get_settings' => $content->get_settings(),
 			default => array( 'error' => 'Unknown tool' ),
@@ -288,24 +287,11 @@ final class McpController {
 	}
 
 	private function is_known_tool( string $tool ): bool {
-		return in_array(
-			$tool,
-			array(
-				'site.list_post_types',
-				'content.list_items',
-				'content.get_item',
-				'content.create_draft',
-				'taxonomy.list_taxonomies',
-				'taxonomy.list_terms',
-				'media.list_items',
-				'site.get_settings',
-			),
-			true
-		);
+		return ( new AbilitiesRegistry() )->is_known( $tool );
 	}
 
 	private function required_scopes( string $tool ): array {
-		return 'content.create_draft' === $tool ? array( 'content:draft' ) : array( 'content:read' );
+		return ( new AbilitiesRegistry() )->required_scopes( $tool );
 	}
 
 	private function has_scopes( array $token_scopes, array $required ): bool {

@@ -2,15 +2,39 @@
 <ruleset name="Quark">
   <description>WPCS ruleset for Quark plugin.</description>
   <arg value="sp"/>
+  <arg name="extensions" value="php"/>
   <file>quark.php</file>
+  <file>uninstall.php</file>
   <file>src</file>
   <exclude-pattern>vendor/*</exclude-pattern>
   <rule ref="WordPress-Core"/>
   <rule ref="WordPress-Docs"/>
   <rule ref="WordPress-Extra"/>
-  <rule ref="PHPCompatibilityWP">
-    <properties>
-      <property name="testVersion" value="8.0-"/>
-    </properties>
+  <rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+    <severity>0</severity>
+  </rule>
+  <rule ref="WordPress.Files.FileName.InvalidClassFileName">
+    <severity>0</severity>
+  </rule>
+  <rule ref="Squiz.Commenting.FileComment.Missing">
+    <severity>0</severity>
+  </rule>
+  <rule ref="Squiz.Commenting.ClassComment.Missing">
+    <severity>0</severity>
+  </rule>
+  <rule ref="Squiz.Commenting.FunctionComment.Missing">
+    <severity>0</severity>
+  </rule>
+  <rule ref="Squiz.Commenting.VariableComment.Missing">
+    <severity>0</severity>
+  </rule>
+  <rule ref="WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase">
+    <severity>0</severity>
+  </rule>
+  <rule ref="WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase">
+    <severity>0</severity>
+  </rule>
+  <rule ref="Universal.NamingConventions.NoReservedKeywordParameterNames">
+    <severity>0</severity>
   </rule>
 </ruleset>

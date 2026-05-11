@@ -4,118 +4,140 @@ declare(strict_types=1);
 
 namespace Quark;
 
-use Quark\Connectors\ChatGPT\Admin\SettingsPage;
-use Quark\Connectors\ChatGPT\Rest\ContentController;
-use Quark\Connectors\ChatGPT\Rest\McpController;
-use Quark\Connectors\ChatGPT\UserDefined\OAuthController;
-use Quark\Connectors\ChatGPT\UserDefined\OAuthWebFlow;
+use Quark\Admin\SettingsPage;
+use Quark\Connectors\Helpers;
+use Quark\Connectors\MCP\McpController;
+use Quark\Connectors\OAuth\AuthorizationController;
+use Quark\Connectors\OAuth\ClientRegistrationController;
+use Quark\Connectors\OAuth\Database\Installer as OAuthInstaller;
+use Quark\Connectors\OAuth\DiscoveryController;
+use Quark\Connectors\OAuth\TokenController;
 
-final class Plugin
-{
-    private static ?self $instance = null;
+final class Plugin {
 
-    public static function instance(): self
-    {
-        if (null === self::$instance) {
-            self::$instance = new self();
-        }
+	private const REWRITE_VERSION        = '2026.05.11.1';
+	private const OPTION_REWRITE_VERSION = 'quark_rewrite_version';
 
-        return self::$instance;
-    }
+	private static ?self $instance = null;
 
-    public static function activate(): void
-    {
-        (new OAuthController())->add_rewrite_rules();
-        flush_rewrite_rules();
-    }
+	public static function instance(): self {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
 
-    public static function deactivate(): void
-    {
-        flush_rewrite_rules();
-    }
+		return self::$instance;
+	}
 
-    public function boot(): void
-    {
-        add_action('init', [$this, 'register_well_known_routes']);
-        add_filter('query_vars', [$this, 'register_query_vars']);
-        add_filter('redirect_canonical', [$this, 'filter_canonical_redirect'], 10, 2);
-        add_action('parse_request', [$this, 'render_well_known_metadata'], 0, 0);
-        add_action('template_redirect', [$this, 'render_well_known_metadata']);
-        add_action('rest_api_init', [$this, 'register_routes']);
-        add_action('admin_menu', [$this, 'register_admin']);
-        add_action('admin_post_quark_oauth_authorize', [$this, 'handle_oauth_authorize']);
-        add_action('admin_post_quark_mark_connected', [$this, 'handle_mark_connected']);
-        add_action('admin_post_quark_revoke_connection', [$this, 'handle_revoke_connection']);
-        add_action('admin_post_quark_save_advanced', [$this, 'handle_save_advanced']);
-        add_action('admin_post_quark_regenerate_chatgpt_credentials', [$this, 'handle_regenerate_chatgpt_credentials']);
-    }
+	public static function activate(): void {
+		OAuthInstaller::activate();
+		self::add_rewrite_rules();
+		flush_rewrite_rules();
+		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
+	}
 
-    public function register_routes(): void
-    {
-        (new OAuthController())->register_routes();
-        (new McpController())->register_routes();
-        (new ContentController())->register_routes();
-    }
+	public static function deactivate(): void {
+		flush_rewrite_rules();
+	}
 
-    public function register_well_known_routes(): void
-    {
-        (new OAuthController())->add_rewrite_rules();
-    }
+	public function boot(): void {
+		add_action( 'init', array( $this, 'register_rewrite_rules' ) );
+		add_action( 'init', array( $this, 'maybe_flush_rewrite_rules' ), 20 );
+		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
+		add_filter( 'redirect_canonical', array( $this, 'filter_canonical_redirect' ), 10, 2 );
+		add_action( 'parse_request', array( $this, 'maybe_redirect_root_authorize' ), 0, 0 );
+		add_action( 'parse_request', array( $this, 'render_well_known_metadata' ), 0, 0 );
+		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
+		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		add_action( 'admin_menu', array( $this, 'register_admin' ) );
+		add_action( 'admin_post_quark_save_advanced', array( $this, 'handle_save_advanced' ) );
+		add_action( 'admin_post_quark_revoke_session', array( $this, 'handle_revoke_session' ) );
+		add_action( 'admin_post_quark_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
 
-    public function register_query_vars(array $vars): array
-    {
-        $vars[] = 'quark_well_known';
-        $vars[] = 'quark_well_known_resource_path';
-        $vars[] = 'quark_well_known_issuer_path';
-        return $vars;
-    }
+		OAuthInstaller::install();
+	}
 
-    public function render_well_known_metadata(): void
-    {
-        (new OAuthController())->render_well_known_metadata();
-    }
+	public function register_routes(): void {
+		( new DiscoveryController() )->register_rest_routes();
+		( new ClientRegistrationController() )->register_routes();
+		( new AuthorizationController() )->register_routes();
+		( new TokenController() )->register_routes();
+		( new McpController() )->register_routes();
+	}
 
-    public function filter_canonical_redirect($redirect_url, $requested_url)
-    {
-        if (! is_string($requested_url)) {
-            return $redirect_url;
-        }
+	public function register_rewrite_rules(): void {
+		self::add_rewrite_rules();
+	}
 
-        $path = (string) wp_parse_url($requested_url, PHP_URL_PATH);
-        if (str_starts_with($path, '/.well-known/oauth-')) {
-            return false;
-        }
+	public function maybe_flush_rewrite_rules(): void {
+		if ( self::REWRITE_VERSION === (string) get_option( self::OPTION_REWRITE_VERSION, '' ) ) {
+			return;
+		}
 
-        return $redirect_url;
-    }
+		self::add_rewrite_rules();
+		flush_rewrite_rules();
+		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
+	}
 
-    public function register_admin(): void
-    {
-        (new SettingsPage())->register();
-    }
+	public function register_query_vars( array $vars ): array {
+		$vars[] = 'quark_well_known';
+		$vars[] = 'quark_well_known_resource_path';
+		$vars[] = 'quark_well_known_issuer_path';
+		$vars[] = 'quark_oauth_authorize';
 
-    public function handle_oauth_authorize(): void
-    {
-        (new OAuthWebFlow())->handle_authorize();
-    }
+		return $vars;
+	}
 
-    public function handle_mark_connected(): void
-    {
-        (new SettingsPage())->handle_mark_connected();
-    }
+	public function maybe_redirect_root_authorize(): void {
+		if ( ! get_query_var( 'quark_oauth_authorize' ) ) {
+			return;
+		}
 
-    public function handle_revoke_connection(): void
-    {
-        (new SettingsPage())->handle_revoke_connection();
-    }
+		$params = array();
+		foreach ( $_GET as $key => $value ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( is_scalar( $value ) ) {
+				$params[ sanitize_key( (string) $key ) ] = sanitize_text_field( wp_unslash( (string) $value ) );
+			}
+		}
 
-    public function handle_save_advanced(): void
-    {
-        (new SettingsPage())->handle_save_advanced();
-    }
+		wp_safe_redirect( add_query_arg( $params, Helpers::authorization_endpoint() ), 302, 'Quark OAuth' );
+		exit;
+	}
 
-    public function handle_regenerate_chatgpt_credentials(): void
-    {
-        (new SettingsPage())->handle_regenerate_chatgpt_credentials();
-    }
+	public function render_well_known_metadata(): void {
+		( new DiscoveryController() )->render_well_known_metadata();
+	}
+
+	public function filter_canonical_redirect( mixed $redirect_url, mixed $requested_url ): mixed {
+		if ( ! is_string( $requested_url ) ) {
+			return $redirect_url;
+		}
+
+		$path = (string) wp_parse_url( $requested_url, PHP_URL_PATH );
+		if ( str_starts_with( $path, '/.well-known/oauth-' ) || '/oauth/authorize' === untrailingslashit( $path ) ) {
+			return false;
+		}
+
+		return $redirect_url;
+	}
+
+	public function register_admin(): void {
+		( new SettingsPage() )->register();
+	}
+
+	public function handle_save_advanced(): void {
+		( new SettingsPage() )->handle_save_advanced();
+	}
+
+	public function handle_revoke_session(): void {
+		( new SettingsPage() )->handle_revoke_session();
+	}
+
+	public function handle_revoke_all_sessions(): void {
+		( new SettingsPage() )->handle_revoke_all_sessions();
+	}
+
+	private static function add_rewrite_rules(): void {
+		( new DiscoveryController() )->add_rewrite_rules();
+		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?quark_oauth_authorize=1', 'top' );
+	}
 }

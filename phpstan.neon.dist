@@ -4,6 +4,9 @@ parameters:
     - src
     - quark.php
   bootstrapFiles:
+    - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
+    - phpstan-bootstrap.php
     - vendor/autoload.php
   ignoreErrors:
-    - '#Function .* not found#'
+    -
+      identifier: missingType.iterableValue

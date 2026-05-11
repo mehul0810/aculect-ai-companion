@@ -5,6 +5,7 @@
 - Keep classes focused, testable, and small.
 - Prefer WordPress core APIs over custom SQL or duplicated helpers.
 - Follow least privilege and avoid exposing secrets or private options.
+- Minimum PHP version is 8.2.
 
 ## PHP and WordPress Coding
 - Follow WPCS (`WordPress-Core`, `WordPress-Docs`, `WordPress-Extra`).
@@ -16,6 +17,8 @@
 
 ## Security and OAuth
 - Use OAuth 2.1 style flows with PKCE for user-authorized access.
+- Primary connector UX must be endpoint-only: paste the MCP endpoint into ChatGPT or Claude, then complete WordPress OAuth consent.
+- Support Dynamic Client Registration (DCR) for plug-and-play clients; do not expose manual OAuth fields in the primary UX.
 - Store token material hashed at rest.
 - Use short-lived access tokens and rotating refresh tokens.
 - Do not log tokens, secrets, personal data, or sensitive request bodies.
@@ -42,3 +45,4 @@
 - Run: `composer test` and JS lint/build before releases.
 - Keep README and route/tool schema docs updated with behavior changes.
 - Maintain backward compatibility for public tool names and response shapes where practical.
+- Commit and push completed changes frequently, including small fixes, after validation passes.

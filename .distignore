@@ -8,6 +8,7 @@ src/admin-settings.js
 .gitignore
 phpcs.xml.dist
 phpstan.neon.dist
+phpstan-bootstrap.php
 AGENTS.md
 package-lock.json
 package.json

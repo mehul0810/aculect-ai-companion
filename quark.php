@@ -5,7 +5,7 @@
  * Description: Your AI assistant for WordPress. Connect WordPress to ChatGPT and manage your site using AI.
  * Version: 0.1.0
  * Requires at least: 6.5
- * Requires PHP: 8.0
+ * Requires PHP: 8.2
  * Author: Mehul Gohil
  * Author URI: https://mehulgohil.com
  * Text Domain: quark
@@ -20,39 +20,44 @@ declare(strict_types=1);
 
 namespace Quark;
 
-if (! defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
-define('QUARK_VERSION', '0.1.0');
-define('QUARK_PLUGIN_FILE', __FILE__);
-define('QUARK_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('QUARK_PLUGIN_URL', plugin_dir_url(__FILE__));
+define( 'QUARK_VERSION', '0.1.0' );
+define( 'QUARK_PLUGIN_FILE', __FILE__ );
+define( 'QUARK_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'QUARK_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 $autoload = QUARK_PLUGIN_DIR . 'vendor/autoload.php';
 
-if (file_exists($autoload)) {
-    require_once $autoload;
+if ( file_exists( $autoload ) ) {
+	require_once $autoload;
 } else {
-    spl_autoload_register(static function (string $class): void {
-        $prefix = __NAMESPACE__ . '\\';
+	spl_autoload_register(
+		static function ( string $class_name ): void {
+			$prefix = __NAMESPACE__ . '\\';
 
-        if (0 !== strpos($class, $prefix)) {
-            return;
-        }
+			if ( 0 !== strpos( $class_name, $prefix ) ) {
+				return;
+			}
 
-        $relative_class = substr($class, strlen($prefix));
-        $file           = QUARK_PLUGIN_DIR . 'src/' . str_replace('\\', '/', $relative_class) . '.php';
+			$relative_class = substr( $class_name, strlen( $prefix ) );
+			$file           = QUARK_PLUGIN_DIR . 'src/' . str_replace( '\\', '/', $relative_class ) . '.php';
 
-        if (file_exists($file)) {
-            require_once $file;
-        }
-    });
+			if ( file_exists( $file ) ) {
+				require_once $file;
+			}
+		}
+	);
 }
 
-register_activation_hook(__FILE__, [Plugin::class, 'activate']);
-register_deactivation_hook(__FILE__, [Plugin::class, 'deactivate']);
+register_activation_hook( __FILE__, array( Plugin::class, 'activate' ) );
+register_deactivation_hook( __FILE__, array( Plugin::class, 'deactivate' ) );
 
-add_action('plugins_loaded', static function (): void {
-    Plugin::instance()->boot();
-});
+add_action(
+	'plugins_loaded',
+	static function (): void {
+		Plugin::instance()->boot();
+	}
+);

@@ -3,7 +3,12 @@
   "description": "AI assistant plugin for WordPress",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
-  "require": {},
+  "require": {
+    "php": "^8.2",
+    "league/oauth2-server": "^9.3",
+    "nyholm/psr7": "^1.8",
+    "phpseclib/phpseclib": "^3.0"
+  },
   "require-dev": {
     "phpcompatibility/php-compatibility": "^9.3",
     "phpcompatibility/phpcompatibility-wp": "^2.1",
@@ -20,11 +25,19 @@
   "scripts": {
     "lint:php": "find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
     "lint:wpcs": "phpcs --standard=phpcs.xml.dist",
-    "analyse": "phpstan analyse --configuration=phpstan.neon.dist",
+    "analyse": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G",
     "test": [
       "@lint:php",
       "@lint:wpcs",
       "@analyse"
     ]
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    },
+    "platform": {
+      "php": "8.2.0"
+    }
   }
 }

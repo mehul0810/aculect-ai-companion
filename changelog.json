@@ -1,25 +1,26 @@
 {
   "0.1.0": {
     "New": [
-      "MCP endpoint for ChatGPT connector integration",
-      "User-defined OAuth client flow with generated client ID and client secret",
-      "OAuth authorization, token exchange, and refresh flow",
-      "Connector-aware architecture under src/Connectors/ChatGPT",
+      "Endpoint-only connector setup for Claude and ChatGPT with one MCP URL",
+      "OAuth 2.1 Dynamic Client Registration and PKCE flow backed by league/oauth2-server",
+      "OAuth discovery endpoints for protected resource and authorization server metadata",
+      "Custom OAuth tables for clients, authorization codes, access tokens, refresh tokens, and active sessions",
+      "Connector-neutral architecture for OAuth, MCP, Claude, and ChatGPT provider modules",
+      "OAuth authorization, consent, token exchange, refresh, and session revocation flow",
       "Quark admin settings app with About, Connectors, Changelog, and Advanced tabs",
       "Advanced option to remove plugin data on uninstall"
     ],
     "Improved": [
       "Settings UI migrated to class-based markup with dedicated stylesheet",
-      "Connector setup experience redesigned with accordion-style Configure flow",
-      "Field-level copy actions for connector configuration values",
+      "Connector setup experience redesigned around one MCP endpoint and provider cards",
+      "Field-level copy actions for the MCP endpoint and Claude command",
       "POST nonce-based admin actions for improved reliability over nonce links",
-      "ChatGPT OAuth settings simplified to one deterministic user-defined client path",
       "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
-      "Resource-scoped OAuth metadata support for ChatGPT setups using the MCP URL as authorization server base",
-      "OAuth approval callback and token exchange resilience for ChatGPT connector setup",
+      "Resource-scoped OAuth metadata support for assistant connector setup",
+      "OAuth approval callback and token exchange resilience for assistant connector setup",
       "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
-      "More tolerant token endpoint rate limit for ChatGPT OAuth retry behavior",
-      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, and resource-scoped setup values for ChatGPT connector creation"
+      "More tolerant dynamic client registration rate limit for assistant OAuth retry behavior",
+      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, resource-scoped setup values, and MCP auth challenges"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

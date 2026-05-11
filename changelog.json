@@ -31,7 +31,8 @@
       "Connector setup UI now avoids duplicate MCP endpoint sections and uses compact icon-only copy controls",
       "About tab now explains Quark features without showing setup fields",
       "About tab copy now uses the full available section width",
-      "Advanced tab removed from the Quark settings app"
+      "Advanced tab removed from the Quark settings app",
+      "MCP tool names are now Claude-safe while legacy dotted tool aliases remain callable"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

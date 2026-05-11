@@ -46,6 +46,18 @@ The MCP endpoint must be the only primary value shown to users. Metadata and OAu
 - Token exchange: `src/Connectors/OAuth/TokenController.php`
 - Token validation for MCP calls: `src/Connectors/OAuth/TokenValidator.php`
 
+## Claude Compatibility
+
+Claude requires exposed tool names to match `^[a-zA-Z0-9_-]{1,64}$`. Do not expose internal ability IDs such as `content.list_items` or WordPress-style IDs with `/` as MCP tool names.
+
+Current rule:
+
+- Keep internal ability IDs stable for settings and dispatch.
+- Expose Claude-safe MCP tool names in `tools/list`, for example `content_list_items`.
+- Accept both Claude-safe names and legacy dotted aliases in `tools/call` so cached clients do not break immediately.
+
+Regression check: inspect `tools/list` and confirm every returned `tools[].name` matches `^[a-zA-Z0-9_-]{1,64}$`.
+
 ## Key Fixes That Made The Flow Work
 
 ### Endpoint-Only Setup

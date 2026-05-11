@@ -7,6 +7,7 @@ namespace Quark\Connectors\MCP;
 final class AbilitiesRegistry {
 
 	public const OPTION_ENABLED_ABILITIES = 'quark_enabled_abilities';
+	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
 
 	public function definitions(): array {
 		return array(
@@ -104,8 +105,9 @@ final class AbilitiesRegistry {
 	public function public_definitions(): array {
 		$enabled = $this->enabled_ids();
 		return array_map(
-			static function ( array $definition ) use ( $enabled ): array {
-				$definition['enabled'] = in_array( (string) $definition['id'], $enabled, true );
+			function ( array $definition ) use ( $enabled ): array {
+				$definition['enabled']  = in_array( (string) $definition['id'], $enabled, true );
+				$definition['toolName'] = $this->tool_name( (string) $definition['id'] );
 				return $definition;
 			},
 			array_values( $this->definitions() )
@@ -132,21 +134,59 @@ final class AbilitiesRegistry {
 	}
 
 	public function is_known( string $id ): bool {
-		return array_key_exists( $this->normalize_alias( $id ), $this->definitions() );
+		return array_key_exists( $this->internal_id( $id ), $this->definitions() );
 	}
 
 	public function is_enabled( string $id ): bool {
-		return in_array( $this->normalize_alias( $id ), $this->enabled_ids(), true );
+		return in_array( $this->internal_id( $id ), $this->enabled_ids(), true );
 	}
 
 	public function required_scopes( string $id ): array {
-		$definition = $this->definitions()[ $this->normalize_alias( $id ) ] ?? array();
+		$definition = $this->definitions()[ $this->internal_id( $id ) ] ?? array();
 		$scope      = (string) ( $definition['scope'] ?? 'content:read' );
 		return array( $scope );
 	}
 
+	public function internal_id( string $id ): string {
+		$id = $this->normalize_alias( $id );
+		if ( array_key_exists( $id, $this->definitions() ) ) {
+			return $id;
+		}
+
+		foreach ( array_keys( $this->definitions() ) as $definition_id ) {
+			if ( hash_equals( $this->tool_name( (string) $definition_id ), $id ) ) {
+				return (string) $definition_id;
+			}
+		}
+
+		return $id;
+	}
+
+	public function tool_name( string $id ): string {
+		$id        = $this->normalize_alias( $id );
+		$tool_name = preg_replace( '/[^a-zA-Z0-9_-]+/', '_', $id );
+		$tool_name = trim( (string) $tool_name, '_-' );
+
+		if ( '' === $tool_name ) {
+			$tool_name = 'quark_tool';
+		}
+
+		$tool_name = substr( $tool_name, 0, 64 );
+
+		return $this->is_valid_tool_name( $tool_name ) ? $tool_name : 'quark_tool';
+	}
+
+	public function is_valid_tool_name( string $name ): bool {
+		return 1 === preg_match( self::TOOL_NAME_PATTERN, $name );
+	}
+
 	public function normalize_alias( string $id ): string {
-		return 'content.create_draft' === $id ? 'content.create_item' : $id;
+		$aliases = array(
+			'content.create_draft' => 'content.create_item',
+			'content_create_draft' => 'content.create_item',
+		);
+
+		return $aliases[ $id ] ?? $id;
 	}
 
 	private function sanitize_ids( array $ids ): array {
@@ -159,7 +199,7 @@ final class AbilitiesRegistry {
 			}
 
 			$id = preg_replace( '/[^a-zA-Z0-9:_\-.]/', '', (string) $id );
-			$id = $this->normalize_alias( (string) $id );
+			$id = $this->internal_id( (string) $id );
 			if ( array_key_exists( $id, $definitions ) ) {
 				$sanitized[] = $id;
 			}

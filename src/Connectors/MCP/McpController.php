@@ -104,21 +104,22 @@ final class McpController {
 
 				wp_set_current_user( (int) $auth['user_id'] );
 
-				$tool = (string) ( $body['params']['name'] ?? '' );
-				if ( ! $this->is_known_tool( $tool ) ) {
+				$registry = new AbilitiesRegistry();
+				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
+				if ( ! $registry->is_known( $tool ) ) {
 					return $this->tool_error_result( $id, 'Unknown tool.' );
 				}
 
-				if ( ! ( new AbilitiesRegistry() )->is_enabled( $tool ) ) {
+				if ( ! $registry->is_enabled( $tool ) ) {
 					return $this->tool_error_result( $id, 'This ability is disabled in Quark settings.' );
 				}
 
-				$required = $this->required_scopes( $tool );
+				$required = $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
-				$result = $this->call_tool( (array) ( $body['params'] ?? array() ) );
+				$result = $this->call_tool( $tool, (array) ( $body['params']['arguments'] ?? array() ) );
 				return $this->rpc_result(
 					$id,
 					array(
@@ -155,14 +156,16 @@ final class McpController {
 	}
 
 	private function tool_from_definition( array $definition ): array {
-		$scopes   = array( (string) $definition['scope'] );
-		$security = $this->security_schemes( $scopes );
+		$registry    = new AbilitiesRegistry();
+		$internal_id = (string) $definition['id'];
+		$scopes      = array( (string) $definition['scope'] );
+		$security    = $this->security_schemes( $scopes );
 
 		return array(
-			'name'            => (string) $definition['id'],
+			'name'            => $registry->tool_name( $internal_id ),
 			'title'           => (string) $definition['title'],
 			'description'     => (string) $definition['description'],
-			'inputSchema'     => $this->input_schema_for_tool( (string) $definition['id'] ),
+			'inputSchema'     => $this->input_schema_for_tool( $internal_id ),
 			'securitySchemes' => $security,
 			'_meta'           => array( 'securitySchemes' => $security ),
 			'annotations'     => array( 'readOnlyHint' => (bool) $definition['readOnly'] ),
@@ -170,6 +173,8 @@ final class McpController {
 	}
 
 	private function input_schema_for_tool( string $tool ): array {
+		$tool = ( new AbilitiesRegistry() )->internal_id( $tool );
+
 		return match ( $tool ) {
 			'content.list_items' => array(
 				'type'       => 'object',
@@ -264,9 +269,7 @@ final class McpController {
 		};
 	}
 
-	private function call_tool( array $params ): array {
-		$tool    = (string) ( $params['name'] ?? '' );
-		$args    = (array) ( $params['arguments'] ?? array() );
+	private function call_tool( string $tool, array $args ): array {
 		$content = new ContentController();
 
 		return match ( $tool ) {
@@ -284,14 +287,6 @@ final class McpController {
 			'site.get_settings' => $content->get_settings(),
 			default => array( 'error' => 'Unknown tool' ),
 		};
-	}
-
-	private function is_known_tool( string $tool ): bool {
-		return ( new AbilitiesRegistry() )->is_known( $tool );
-	}
-
-	private function required_scopes( string $tool ): array {
-		return ( new AbilitiesRegistry() )->required_scopes( $tool );
 	}
 
 	private function has_scopes( array $token_scopes, array $required ): bool {

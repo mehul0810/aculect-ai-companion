@@ -30,6 +30,8 @@
 - Scope bearer tokens and enforce scope/capability before every tool action.
 
 ## MCP and Abilities API
+- MCP `tools/list` names must match Claude's tool-name constraint: `^[a-zA-Z0-9_-]{1,64}$`.
+- Keep internal ability IDs separate from public MCP tool names; accept legacy aliases in `tools/call` where practical.
 - Keep tool outputs structured and deterministic.
 - Add pagination and max limits for list endpoints.
 - Disallow unbounded scans and expensive queries by default.

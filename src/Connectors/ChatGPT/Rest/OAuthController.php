@@ -135,6 +135,7 @@ final class OAuthController
 
         $settings = (new OAuthClientRegistry())->settings();
         $issuer = $this->issuer_for_path((string) $requested_issuer_path);
+        $resource = $this->resource_issuer();
         $metadata = [
             'issuer' => $issuer,
             'authorization_endpoint' => $this->authorization_endpoint($issuer),
@@ -145,7 +146,7 @@ final class OAuthController
             'code_challenge_methods_supported' => ['S256'],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_indicators_supported' => true,
-            'protected_resources' => [rest_url('quark/v1/mcp')],
+            'protected_resources' => [$resource],
         ];
 
         if (OAuthClientRegistry::MODE_DCR === $settings['registration_method']) {
@@ -173,7 +174,7 @@ final class OAuthController
 
         return new WP_REST_Response([
             'resource' => $resource,
-            'authorization_servers' => [$this->resource_issuer()],
+            'authorization_servers' => [$resource],
             'scopes_supported' => ['content:read', 'content:draft'],
             'resource_documentation' => 'https://github.com/mehul0810/quark',
             'token_endpoint_auth_methods_supported' => $this->supported_token_endpoint_auth_methods(),
@@ -323,7 +324,7 @@ final class OAuthController
         $access = new Access();
         if ('authorization_code' === $grant_type) {
             $resource = $this->resource_from_request($request);
-            if (rest_url('quark/v1/mcp') !== $resource) {
+            if ($this->resource_issuer() !== $resource) {
                 return $this->oauth_error(
                     'invalid_target',
                     'The requested resource does not match this MCP server.',
@@ -338,7 +339,7 @@ final class OAuthController
                 $resource,
                 (string) $request->get_param('redirect_uri')
             );
-            return new WP_REST_Response(
+            return $this->token_response(
                 $tokens ?: $this->oauth_error_payload('invalid_grant', 'Authorization code exchange failed.'),
                 $tokens ? 200 : 400
             );
@@ -346,7 +347,7 @@ final class OAuthController
 
         if ('refresh_token' === $grant_type) {
             $resource = $this->resource_from_request($request);
-            if (rest_url('quark/v1/mcp') !== $resource) {
+            if ($this->resource_issuer() !== $resource) {
                 return $this->oauth_error(
                     'invalid_target',
                     'The requested resource does not match this MCP server.',
@@ -355,7 +356,7 @@ final class OAuthController
             }
 
             $tokens = $access->refresh((string) $request->get_param('refresh_token'), $resource, $client_id);
-            return new WP_REST_Response(
+            return $this->token_response(
                 $tokens ?: $this->oauth_error_payload('invalid_grant', 'Refresh token exchange failed.'),
                 $tokens ? 200 : 400
             );
@@ -375,9 +376,9 @@ final class OAuthController
 
     public function authorization_endpoint(?string $issuer = null): string
     {
-        return add_query_arg([
-            'quark_oauth_issuer' => $issuer ?: $this->resource_issuer(),
-        ], home_url('/oauth/authorize'));
+        unset($issuer);
+
+        return home_url('/oauth/authorize');
     }
 
     public function token_endpoint(): string
@@ -392,7 +393,7 @@ final class OAuthController
 
     public function resource_issuer(): string
     {
-        return rest_url('quark/v1/mcp');
+        return $this->normalize_resource(rest_url('quark/v1/mcp'));
     }
 
     public function resource_authorization_metadata_url(): string
@@ -402,7 +403,7 @@ final class OAuthController
 
     public function protected_resource_metadata_url(?string $resource = null): string
     {
-        $resource = $resource ?: rest_url('quark/v1/mcp');
+        $resource = $this->normalize_resource($resource ?: $this->resource_issuer());
         $parts = wp_parse_url($resource);
 
         if (! is_array($parts)) {
@@ -461,7 +462,12 @@ final class OAuthController
             $resource = (string) $request->get_param('audience');
         }
 
-        return '' !== $resource ? untrailingslashit($resource) : rest_url('quark/v1/mcp');
+        return '' !== $resource ? $this->normalize_resource($resource) : $this->resource_issuer();
+    }
+
+    private function normalize_resource(string $resource): string
+    {
+        return untrailingslashit(esc_url_raw($resource));
     }
 
     private function current_request_url(): string
@@ -580,10 +586,23 @@ final class OAuthController
 
     private function oauth_error(string $error, string $description, int $status): WP_REST_Response
     {
-        return new WP_REST_Response(
+        $response = new WP_REST_Response(
             $this->oauth_error_payload($error, $description),
             $status
         );
+        $response->header('Cache-Control', 'no-store');
+        $response->header('Pragma', 'no-cache');
+
+        return $response;
+    }
+
+    private function token_response(array $payload, int $status): WP_REST_Response
+    {
+        $response = new WP_REST_Response($payload, $status);
+        $response->header('Cache-Control', 'no-store');
+        $response->header('Pragma', 'no-cache');
+
+        return $response;
     }
 
     private function oauth_error_payload(string $error, string $description): array

@@ -294,7 +294,7 @@ final class McpController
             return [];
         }
 
-        if (rest_url('quark/v1/mcp') !== ($context['resource'] ?? '')) {
+        if ($this->resource_identifier() !== $this->normalize_resource((string) ($context['resource'] ?? ''))) {
             return [];
         }
 
@@ -326,6 +326,16 @@ final class McpController
                 'scopes' => $scopes,
             ],
         ];
+    }
+
+    private function resource_identifier(): string
+    {
+        return $this->normalize_resource(rest_url('quark/v1/mcp'));
+    }
+
+    private function normalize_resource(string $resource): string
+    {
+        return untrailingslashit(esc_url_raw($resource));
     }
 
     private function auth_required_result($id): array

@@ -164,8 +164,8 @@ final class SettingsPage
         $registration_methods = $registry->registration_methods();
         $registration_label = (string) ($registration_methods[(string) $settings['registration_method']] ?? $registration_methods[OAuthClientRegistry::MODE_USER_DEFINED]);
         $mcp_url = rest_url('quark/v1/mcp');
-        $authorization_server_base = $is_dcr ? $oauth->resource_issuer() : untrailingslashit(home_url('/'));
-        $authorization_metadata_url = $is_dcr ? $oauth->resource_authorization_metadata_url() : home_url('/.well-known/oauth-authorization-server');
+        $authorization_server_base = $oauth->resource_issuer();
+        $authorization_metadata_url = $oauth->resource_authorization_metadata_url();
         $advanced_fields = [
             [
                 'key' => 'authorization_server_base',
@@ -263,7 +263,7 @@ final class SettingsPage
                 'title' => 'Advanced OAuth Settings',
                 'description' => $is_dcr
                     ? 'DCR mode advertises the registration endpoint so ChatGPT can create its own public OAuth client with PKCE.'
-                    : 'User-defined mode hides the registration endpoint and expects ChatGPT to use the generated static client credentials.',
+                    : 'User-defined mode uses the same resource-scoped authorization server metadata but hides the registration endpoint and expects ChatGPT to use the generated static client credentials.',
                 'fields' => $advanced_fields,
             ],
         ];

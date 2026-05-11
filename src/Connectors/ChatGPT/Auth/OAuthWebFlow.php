@@ -17,26 +17,23 @@ final class OAuthWebFlow
         $response_type = (string) ($params['response_type'] ?? 'code');
         $state = (string) ($params['state'] ?? '');
         $scope = (string) ($params['scope'] ?? 'content:read content:draft');
-        $resource = (string) ($params['resource'] ?? rest_url('quark/v1/mcp'));
+        $resource = $this->normalize_resource((string) ($params['resource'] ?? rest_url('quark/v1/mcp')));
         $code_challenge = (string) ($params['code_challenge'] ?? '');
         $code_challenge_method = (string) ($params['code_challenge_method'] ?? '');
-        $issuer = (string) ($params['quark_oauth_issuer'] ?? rest_url('quark/v1/mcp'));
+        $issuer = (string) ($params['quark_oauth_issuer'] ?? $resource);
         $issuer = rawurldecode($issuer);
 
         $registry = new OAuthClientRegistry();
         $client = $registry->find_client($client_id);
-        $uses_pkce = '' !== $code_challenge;
-        $requires_pkce = OAuthClientRegistry::AUTH_NONE === (string) ($client['token_endpoint_auth_method'] ?? '');
 
         if (
             '' === $client_id ||
             '' === $redirect_uri ||
             'code' !== $response_type ||
             '' === $state ||
-            rest_url('quark/v1/mcp') !== $resource ||
+            $this->normalize_resource(rest_url('quark/v1/mcp')) !== $resource ||
             ! $this->has_supported_scopes($scope) ||
-            ($requires_pkce && ! $uses_pkce) ||
-            ($uses_pkce && 'S256' !== $code_challenge_method) ||
+            ! $this->has_valid_pkce_challenge($code_challenge, $code_challenge_method) ||
             [] === $client
         ) {
             return ['valid' => false];
@@ -107,6 +104,17 @@ final class OAuthWebFlow
         }
 
         return true;
+    }
+
+    private function has_valid_pkce_challenge(string $code_challenge, string $code_challenge_method): bool
+    {
+        return 'S256' === $code_challenge_method
+            && 1 === preg_match('/^[A-Za-z0-9._~-]{43,128}$/', $code_challenge);
+    }
+
+    private function normalize_resource(string $resource): string
+    {
+        return untrailingslashit(esc_url_raw($resource));
     }
 
     private function redirect_with_code(string $redirect_uri, string $state, string $code): void

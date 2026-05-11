@@ -19,8 +19,9 @@ final class Access
     ): string
     {
         $code = wp_generate_uuid4() . wp_generate_uuid4();
+        $code_hash = hash('sha256', $code);
         $items = get_option(self::OPTION_CODES, []);
-        $items[$code] = [
+        $items[$code_hash] = [
             'user_id' => $user_id,
             'client_id' => $client_id,
             'scope' => $scope,
@@ -43,14 +44,16 @@ final class Access
     ): array
     {
         $codes = get_option(self::OPTION_CODES, []);
-        if (! is_array($codes) || ! isset($codes[$code])) {
+        $code_hash = hash('sha256', $code);
+        if (! is_array($codes) || (! isset($codes[$code_hash]) && ! isset($codes[$code]))) {
             return [];
         }
 
-        $record = $codes[$code];
+        $code_key = isset($codes[$code_hash]) ? $code_hash : $code;
+        $record = $codes[$code_key];
 
         if ((int) $record['expires'] < time()) {
-            unset($codes[$code]);
+            unset($codes[$code_key]);
             update_option(self::OPTION_CODES, $codes, false);
             return [];
         }
@@ -73,13 +76,17 @@ final class Access
 
         $stored_code_challenge = (string) ($record['code_challenge'] ?? '');
         if ('' !== $stored_code_challenge) {
+            if (1 !== preg_match('/^[A-Za-z0-9._~-]{43,128}$/', $code_verifier)) {
+                return [];
+            }
+
             $hash = rtrim(strtr(base64_encode(hash('sha256', $code_verifier, true)), '+/', '-_'), '=');
             if (! hash_equals($stored_code_challenge, $hash)) {
                 return [];
             }
         }
 
-        unset($codes[$code]);
+        unset($codes[$code_key]);
         update_option(self::OPTION_CODES, $codes, false);
 
         return $this->issue_tokens((int) $record['user_id'], (string) $record['scope'], $resource, $client_id);

@@ -4,11 +4,23 @@ declare(strict_types=1);
 
 namespace Quark\Connectors\MCP;
 
+/**
+ * Registry of Quark abilities exposed through MCP tools.
+ *
+ * Internal IDs intentionally use dotted namespaces for maintainability. Public
+ * MCP tool names are generated separately because clients such as Claude reject
+ * tool names that do not match a stricter identifier pattern.
+ */
 final class AbilitiesRegistry {
 
 	public const OPTION_ENABLED_ABILITIES = 'quark_enabled_abilities';
 	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
 
+	/**
+	 * Return all abilities Quark can expose to assistant clients.
+	 *
+	 * @return array<string, array<string, bool|string>>
+	 */
 	public function definitions(): array {
 		return array(
 			'site.list_post_types'     => array(
@@ -102,6 +114,11 @@ final class AbilitiesRegistry {
 		);
 	}
 
+	/**
+	 * Return ability definitions formatted for the admin UI.
+	 *
+	 * @return list<array<string, bool|string>>
+	 */
 	public function public_definitions(): array {
 		$enabled = $this->enabled_ids();
 		return array_map(
@@ -114,12 +131,22 @@ final class AbilitiesRegistry {
 		);
 	}
 
+	/**
+	 * Return only definitions enabled for MCP exposure.
+	 *
+	 * @return array<string, array<string, bool|string>>
+	 */
 	public function enabled_definitions(): array {
 		$enabled     = $this->enabled_ids();
 		$definitions = $this->definitions();
 		return array_intersect_key( $definitions, array_flip( $enabled ) );
 	}
 
+	/**
+	 * Return enabled internal ability IDs.
+	 *
+	 * @return list<string>
+	 */
 	public function enabled_ids(): array {
 		$stored = get_option( self::OPTION_ENABLED_ABILITIES, null );
 		if ( ! is_array( $stored ) ) {
@@ -129,24 +156,50 @@ final class AbilitiesRegistry {
 		return $this->sanitize_ids( $stored );
 	}
 
+	/**
+	 * Persist enabled ability IDs after normalizing aliases and public names.
+	 *
+	 * @param array $ids Ability IDs or public tool names.
+	 */
 	public function save_enabled_ids( array $ids ): void {
 		update_option( self::OPTION_ENABLED_ABILITIES, $this->sanitize_ids( $ids ), false );
 	}
 
+	/**
+	 * Check whether an ability exists.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
 	public function is_known( string $id ): bool {
 		return array_key_exists( $this->internal_id( $id ), $this->definitions() );
 	}
 
+	/**
+	 * Check whether an ability is enabled.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
 	public function is_enabled( string $id ): bool {
 		return in_array( $this->internal_id( $id ), $this->enabled_ids(), true );
 	}
 
+	/**
+	 * Return OAuth scopes required for an ability.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 * @return list<string>
+	 */
 	public function required_scopes( string $id ): array {
 		$definition = $this->definitions()[ $this->internal_id( $id ) ] ?? array();
 		$scope      = (string) ( $definition['scope'] ?? 'content:read' );
 		return array( $scope );
 	}
 
+	/**
+	 * Convert a public tool name or legacy alias back to the internal ID.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
 	public function internal_id( string $id ): string {
 		$id = $this->normalize_alias( $id );
 		if ( array_key_exists( $id, $this->definitions() ) ) {
@@ -162,6 +215,11 @@ final class AbilitiesRegistry {
 		return $id;
 	}
 
+	/**
+	 * Build a client-safe MCP tool name for an internal ability ID.
+	 *
+	 * @param string $id Internal ID or legacy alias.
+	 */
 	public function tool_name( string $id ): string {
 		$id        = $this->normalize_alias( $id );
 		$tool_name = preg_replace( '/[^a-zA-Z0-9_-]+/', '_', $id );
@@ -176,10 +234,20 @@ final class AbilitiesRegistry {
 		return $this->is_valid_tool_name( $tool_name ) ? $tool_name : 'quark_tool';
 	}
 
+	/**
+	 * Validate an MCP tool name against the stricter client-safe pattern.
+	 *
+	 * @param string $name Public MCP tool name.
+	 */
 	public function is_valid_tool_name( string $name ): bool {
 		return 1 === preg_match( self::TOOL_NAME_PATTERN, $name );
 	}
 
+	/**
+	 * Normalize deprecated ability names to the current internal ID.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
 	public function normalize_alias( string $id ): string {
 		$aliases = array(
 			'content.create_draft' => 'content.create_item',
@@ -189,6 +257,12 @@ final class AbilitiesRegistry {
 		return $aliases[ $id ] ?? $id;
 	}
 
+	/**
+	 * Sanitize persisted enabled IDs and drop unknown values.
+	 *
+	 * @param array $ids Ability IDs or public tool names.
+	 * @return list<string>
+	 */
 	private function sanitize_ids( array $ids ): array {
 		$definitions = $this->definitions();
 		$sanitized   = array();

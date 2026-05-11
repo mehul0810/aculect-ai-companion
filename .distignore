@@ -1,6 +1,7 @@
 .git/
 .github/
 .codex/
+.phpunit.cache/
 node_modules/
 tests/
 vendor/bin/
@@ -8,6 +9,7 @@ src/admin-settings.js
 .editorconfig
 .gitignore
 phpcs.xml.dist
+phpunit.xml.dist
 phpstan.neon.dist
 phpstan-bootstrap.php
 AGENTS.md

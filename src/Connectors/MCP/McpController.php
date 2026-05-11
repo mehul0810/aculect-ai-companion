@@ -10,8 +10,14 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 
+/**
+ * Handles the streamable HTTP MCP endpoint.
+ */
 final class McpController {
 
+	/**
+	 * Register the public MCP endpoint.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
@@ -34,6 +40,12 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Describe the authenticated MCP endpoint.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return WP_REST_Response|array<string, mixed>
+	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
 		$auth = ( new TokenValidator() )->authenticate( $request );
 		if ( array() === $auth ) {
@@ -61,6 +73,12 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Handle JSON-RPC messages sent to the MCP endpoint.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return WP_REST_Response|array<string, mixed>
+	 */
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
@@ -137,6 +155,9 @@ final class McpController {
 		return $this->rpc_error( $id, -32601, 'Method not found' );
 	}
 
+	/**
+	 * Return a minimal server-sent event stream for clients probing SSE support.
+	 */
 	private function send_event_stream(): void {
 		status_header( 200 );
 		nocache_headers();
@@ -147,6 +168,11 @@ final class McpController {
 		exit;
 	}
 
+	/**
+	 * Build the MCP tools/list payload from enabled Quark abilities.
+	 *
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
 	private function list_tools(): array {
 		$registry = new AbilitiesRegistry();
 
@@ -155,6 +181,15 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Convert an internal ability definition into an MCP tool descriptor.
+	 *
+	 * The `name` field uses the public, client-safe identifier while schemas and
+	 * dispatch continue to use Quark's internal dotted ability IDs.
+	 *
+	 * @param array<string, bool|string> $definition Ability definition.
+	 * @return array<string, mixed>
+	 */
 	private function tool_from_definition( array $definition ): array {
 		$registry    = new AbilitiesRegistry();
 		$internal_id = (string) $definition['id'];
@@ -172,6 +207,12 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Return the input schema for a tool.
+	 *
+	 * @param string $tool Internal ID, legacy alias, or public tool name.
+	 * @return array<string, mixed>
+	 */
 	private function input_schema_for_tool( string $tool ): array {
 		$tool = ( new AbilitiesRegistry() )->internal_id( $tool );
 
@@ -269,6 +310,13 @@ final class McpController {
 		};
 	}
 
+	/**
+	 * Dispatch an MCP tool call to the content controller.
+	 *
+	 * @param string       $tool Internal ability ID.
+	 * @param array<mixed> $args Tool arguments.
+	 * @return array<mixed>
+	 */
 	private function call_tool( string $tool, array $args ): array {
 		$content = new ContentController();
 

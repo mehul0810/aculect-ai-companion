@@ -15,7 +15,8 @@
     "phpstan/phpstan": "^1.11",
     "php-stubs/wordpress-stubs": "^6.6",
     "squizlabs/php_codesniffer": "^3.10",
-    "wp-coding-standards/wpcs": "^3.1"
+    "wp-coding-standards/wpcs": "^3.1",
+    "phpunit/phpunit": "^10.5"
   },
   "autoload": {
     "psr-4": {
@@ -26,10 +27,12 @@
     "lint:php": "find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
     "lint:wpcs": "phpcs --standard=phpcs.xml.dist",
     "analyse": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G",
+    "test:unit": "phpunit --configuration=phpunit.xml.dist",
     "test": [
       "@lint:php",
       "@lint:wpcs",
-      "@analyse"
+      "@analyse",
+      "@test:unit"
     ]
   },
   "config": {

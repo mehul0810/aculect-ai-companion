@@ -38,7 +38,9 @@
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",
       "Added .distignore for production artifact packaging",
       "Added .editorconfig for consistent formatting rules",
-      "Added AGENTS.md standards for planning-first workflow and release discipline"
+      "Added AGENTS.md standards for planning-first workflow and release discipline",
+      "Added PHPUnit unit test setup for fast connector regression coverage",
+      "Documented MCP tool-name compatibility rules and the test suite layout"
     ]
   }
 }

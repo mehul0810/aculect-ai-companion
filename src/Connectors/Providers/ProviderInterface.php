@@ -14,7 +14,7 @@ interface ProviderInterface {
 
 	public function primary_action_url(): string;
 
-	public function setup_steps( string $mcp_url ): array;
+	public function primary_action_label(): string;
 
-	public function copy_fields( string $mcp_url ): array;
+	public function setup_sections( string $mcp_url ): array;
 }

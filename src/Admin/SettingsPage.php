@@ -156,12 +156,12 @@ final class SettingsPage {
 		return array_map(
 			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
 				return array(
-					'id'               => $provider->id(),
-					'label'            => $provider->label(),
-					'description'      => $provider->description(),
-					'primaryActionUrl' => $provider->primary_action_url(),
-					'setupSteps'       => $provider->setup_steps( $mcp_url ),
-					'copyFields'       => $provider->copy_fields( $mcp_url ),
+					'id'                 => $provider->id(),
+					'label'              => $provider->label(),
+					'description'        => $provider->description(),
+					'primaryActionUrl'   => $provider->primary_action_url(),
+					'primaryActionLabel' => $provider->primary_action_label(),
+					'setupSections'      => $provider->setup_sections( $mcp_url ),
 				);
 			},
 			array(

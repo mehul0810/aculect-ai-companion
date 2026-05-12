@@ -21,25 +21,40 @@ final class Provider implements ProviderInterface {
 	}
 
 	public function primary_action_url(): string {
-		return 'https://chatgpt.com/apps#settings/Connectors';
+		return 'https://chatgpt.com/#settings/Connectors';
 	}
 
-	public function setup_steps( string $mcp_url ): array {
+	public function primary_action_label(): string {
+		return 'Open ChatGPT Connectors';
+	}
+
+	public function setup_sections( string $mcp_url ): array {
 		unset( $mcp_url );
 
 		return array(
-			'Open ChatGPT connector settings.',
-			'Create a new custom MCP connector.',
-			'Paste the Quark MCP endpoint URL only.',
-			'When ChatGPT opens WordPress, log in and approve the consent screen.',
-		);
-	}
-
-	public function copy_fields( string $mcp_url ): array {
-		return array(
 			array(
-				'label' => 'MCP Endpoint URL',
-				'value' => $mcp_url,
+				'title'       => 'ChatGPT app / Developer Mode',
+				'description' => 'Use this for the ChatGPT web app connector flow. Quark supports the HTTPS MCP endpoint with OAuth discovery and Dynamic Client Registration.',
+				'steps'       => array(
+					'In ChatGPT, enable Developer mode under Settings > Apps & Connectors > Advanced settings.',
+					'Open Settings > Connectors and click Create to add a connector.',
+					'Paste the MCP endpoint URL shown above, then name the connector Quark.',
+					'Create the connector and approve the WordPress OAuth consent screen when ChatGPT starts authentication.',
+					'Open a new chat, choose Developer mode from the + menu, and enable the Quark connector for the conversation.',
+				),
+				'actionLabel' => $this->primary_action_label(),
+				'actionUrl'   => $this->primary_action_url(),
+			),
+			array(
+				'title'       => 'OpenAI API / Responses API',
+				'description' => 'Use this when your own application calls the OpenAI API with a remote MCP server. Your application is responsible for obtaining and passing the OAuth access token.',
+				'steps'       => array(
+					'Use the MCP endpoint URL shown above as the remote MCP server_url.',
+					'If the request is authenticated, include a Quark OAuth access token in the authorization field.',
+					'Set a stable server_label such as quark and configure tool approval according to your application risk model.',
+				),
+				'actionLabel' => 'Open OpenAI MCP API Docs',
+				'actionUrl'   => 'https://developers.openai.com/api/docs/guides/tools-connectors-mcp',
 			),
 		);
 	}

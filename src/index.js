@@ -88,6 +88,71 @@ function ActionForm( {
 	);
 }
 
+function SetupSection( { provider, section, sectionIndex, onCopy } ) {
+	const steps = Array.isArray( section.steps ) ? section.steps : [];
+	const copyFields = Array.isArray( section.copyFields )
+		? section.copyFields
+		: [];
+
+	return (
+		<div
+			className={ `quark-setup-method ${
+				copyFields.length > 0 ? 'has-copy-fields' : ''
+			}` }
+		>
+			<div className="quark-setup-method__content">
+				<h4 className="quark-setup-method__title">
+					{ section.title || 'Setup' }
+				</h4>
+				{ section.description && (
+					<p className="quark-setup-method__description">
+						{ section.description }
+					</p>
+				) }
+				{ steps.length > 0 && (
+					<ol className="quark-steps">
+						{ steps.map( ( step, index ) => (
+							<li
+								key={ `${ provider.id }-${ sectionIndex }-${ index }` }
+							>
+								{ step }
+							</li>
+						) ) }
+					</ol>
+				) }
+				{ section.actionUrl && (
+					<div className="quark-provider-actions">
+						<Button
+							href={ section.actionUrl }
+							target="_blank"
+							rel="noreferrer"
+							variant="secondary"
+						>
+							{ section.actionLabel || 'Open Docs' }
+						</Button>
+					</div>
+				) }
+			</div>
+			{ copyFields.length > 0 && (
+				<div className="quark-setup-method__fields">
+					<h5 className="quark-section-heading">Copy</h5>
+					{ copyFields.map( ( field ) => (
+						<CopyField
+							key={ `${ provider.id }-${ sectionIndex }-${ field.label }` }
+							label={ field.label }
+							value={ field.value }
+							secret={ Boolean( field.secret ) }
+							onCopy={ ( value ) =>
+								onCopy( value, `${ field.label } copied.` )
+							}
+						/>
+					) ) }
+				</div>
+			) }
+		</div>
+	);
+}
+
 function SettingsApp() {
 	const data = window.quarkSettingsData || {};
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
@@ -285,115 +350,117 @@ function SettingsApp() {
 
 					if ( tab.name === 'connectors' ) {
 						return (
-							<div className="quark-provider-list">
-								{ providers.map( ( provider ) => (
-									<Card
-										key={ provider.id }
-										className={ `quark-card quark-provider-card ${
-											openProvider === provider.id
-												? 'is-open'
-												: ''
-										}` }
-									>
-										<CardBody>
-											<div className="quark-provider-card__header">
-												<div className="quark-provider-card__title-wrap">
-													<h3 className="quark-provider-card__title">
-														{ provider.label }
-													</h3>
-													<p className="quark-provider-card__description">
-														{ provider.description }
-													</p>
-												</div>
-												<Button
-													variant="link"
-													onClick={ () =>
-														setOpenProvider(
-															openProvider ===
-																provider.id
-																? ''
-																: provider.id
-														)
-													}
-												>
-													{ openProvider ===
-													provider.id
-														? 'Close'
-														: 'Configure' }
-												</Button>
-											</div>
+							<div className="quark-connectors">
+								<Card className="quark-card quark-endpoint-card">
+									<CardHeader>MCP Endpoint URL</CardHeader>
+									<CardBody>
+										<p className="quark-copy quark-copy--first">
+											Use this endpoint when adding Quark
+											to any supported MCP client. Quark
+											handles OAuth discovery, Dynamic
+											Client Registration, and WordPress
+											consent from this endpoint.
+										</p>
+										<CopyField
+											label="MCP Endpoint URL"
+											value={ data.mcpUrl }
+											onCopy={ ( value ) =>
+												copyValue(
+													value,
+													'MCP endpoint copied.'
+												)
+											}
+										/>
+										<p className="quark-help-text">
+											For remote clients, the URL must be
+											publicly reachable over HTTPS.
+										</p>
+									</CardBody>
+								</Card>
 
-											{ openProvider === provider.id && (
-												<div className="quark-provider-panel">
-													<div className="quark-provider-steps">
-														<h4 className="quark-section-heading">
-															Setup Steps
-														</h4>
-														<ol className="quark-steps">
-															{ (
-																provider.setupSteps ||
-																[]
-															).map(
-																(
-																	step,
-																	index
-																) => (
-																	<li
-																		key={ `${ provider.id }-${ index }` }
-																	>
-																		{ step }
-																	</li>
-																)
-															) }
-														</ol>
-														<div className="quark-provider-actions">
-															<Button
-																href={
-																	provider.primaryActionUrl
+								<div className="quark-provider-list">
+									{ providers.map( ( provider ) => {
+										const setupSections = Array.isArray(
+											provider.setupSections
+										)
+											? provider.setupSections
+											: [];
+
+										return (
+											<Card
+												key={ provider.id }
+												className={ `quark-card quark-provider-card ${
+													openProvider === provider.id
+														? 'is-open'
+														: ''
+												}` }
+											>
+												<CardBody>
+													<div className="quark-provider-card__header">
+														<div className="quark-provider-card__title-wrap">
+															<h3 className="quark-provider-card__title">
+																{
+																	provider.label
 																}
-																target="_blank"
-																rel="noreferrer"
-																variant="primary"
-															>
-																{ provider.id ===
-																'chatgpt'
-																	? 'Open ChatGPT'
-																	: 'Open Docs' }
-															</Button>
+															</h3>
+															<p className="quark-provider-card__description">
+																{
+																	provider.description
+																}
+															</p>
 														</div>
+														<Button
+															variant="link"
+															onClick={ () =>
+																setOpenProvider(
+																	openProvider ===
+																		provider.id
+																		? ''
+																		: provider.id
+																)
+															}
+														>
+															{ openProvider ===
+															provider.id
+																? 'Close'
+																: 'Configure' }
+														</Button>
 													</div>
-													<div className="quark-provider-fields">
-														<h4 className="quark-section-heading">
-															Copy
-														</h4>
-														{ (
-															provider.copyFields ||
-															[]
-														).map( ( field ) => (
-															<CopyField
-																key={ `${ provider.id }-${ field.label }` }
-																label={
-																	field.label
-																}
-																value={
-																	field.value
-																}
-																onCopy={ (
-																	value
-																) =>
-																	copyValue(
-																		value,
-																		`${ field.label } copied.`
+
+													{ openProvider ===
+														provider.id && (
+														<div className="quark-provider-panel">
+															<div className="quark-setup-method-list">
+																{ setupSections.map(
+																	(
+																		section,
+																		index
+																	) => (
+																		<SetupSection
+																			key={ `${ provider.id }-${ index }` }
+																			provider={
+																				provider
+																			}
+																			section={
+																				section
+																			}
+																			sectionIndex={
+																				index
+																			}
+																			onCopy={
+																				copyValue
+																			}
+																		/>
 																	)
-																}
-															/>
-														) ) }
-													</div>
-												</div>
-											) }
-										</CardBody>
-									</Card>
-								) ) }
+																) }
+															</div>
+														</div>
+													) }
+												</CardBody>
+											</Card>
+										);
+									} ) }
+								</div>
 							</div>
 						);
 					}

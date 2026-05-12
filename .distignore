@@ -7,6 +7,8 @@ node_modules/
 tests/
 vendor/bin/
 src/admin-settings.js
+.distignore
+.editorconfig
 .gitignore
 phpcs.xml.dist
 phpunit.xml.dist

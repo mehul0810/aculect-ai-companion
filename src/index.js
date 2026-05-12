@@ -12,6 +12,37 @@ import {
 	TabPanel,
 } from '@wordpress/components';
 
+const TAB_QUERY_PARAM = 'quark_tab';
+
+function hasTab( tabs, tabName ) {
+	return tabs.some( ( tab ) => tab.name === tabName );
+}
+
+function initialTabName( tabs ) {
+	const defaultTab = tabs[ 0 ]?.name || 'about';
+
+	try {
+		const url = new URL( window.location.href );
+		const requestedTab = url.searchParams.get( TAB_QUERY_PARAM );
+
+		return requestedTab && hasTab( tabs, requestedTab )
+			? requestedTab
+			: defaultTab;
+	} catch ( error ) {
+		return defaultTab;
+	}
+}
+
+function persistTabName( tabName ) {
+	try {
+		const url = new URL( window.location.href );
+		url.searchParams.set( TAB_QUERY_PARAM, tabName );
+		window.history.replaceState( {}, '', url.toString() );
+	} catch ( error ) {
+		// URL state is progressive enhancement; tab navigation still works.
+	}
+}
+
 function CopyField( { label, value, secret = false, onCopy } ) {
 	const inputId = useRef(
 		`quark-copy-field-${ String( label )
@@ -201,6 +232,7 @@ function SettingsApp() {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
 	}
 	tabs.push( { name: 'changelog', title: 'Changelog' } );
+	const selectedTab = initialTabName( tabs );
 	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
 		const group = ability.group || 'Other';
 		return {
@@ -253,7 +285,12 @@ function SettingsApp() {
 				</Notice>
 			) }
 
-			<TabPanel className="quark-tabs" tabs={ tabs }>
+			<TabPanel
+				className="quark-tabs"
+				initialTabName={ selectedTab }
+				onSelect={ persistTabName }
+				tabs={ tabs }
+			>
 				{ ( tab ) => {
 					if ( tab.name === 'about' ) {
 						return (

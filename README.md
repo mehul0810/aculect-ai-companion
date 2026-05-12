@@ -1,31 +1,39 @@
 # Quark
 
-Quark turns WordPress into an MCP server for AI assistants.
+Quark helps site owners manage WordPress with AI. Connect Claude or ChatGPT, approve access in WordPress, then use plain English to create posts, update pages, moderate comments, upload media, and check site information.
+
+## Tagline
+
+Manage your WordPress site with AI.
 
 ## Requirements
 
 - WordPress 6.5 or later
 - PHP 8.2 or later
 
-## Connector Setup
+## User Setup
 
-Quark uses an endpoint-only OAuth setup. Open `Settings > Quark`, copy the MCP endpoint URL, and add that URL to Claude or ChatGPT.
+Open `Settings > Quark` in WordPress and follow the setup flow:
 
-- Claude: run the command shown in `Settings > Quark > Connectors`.
-- ChatGPT: open connector settings, create a custom MCP connector, and paste only the MCP endpoint URL.
+1. Copy your connection URL.
+2. Open Claude or ChatGPT and add a new connector.
+3. Paste the URL when prompted.
+4. Approve the connection on the screen that appears.
 
-When the assistant starts authentication, WordPress shows a Quark OAuth consent screen. Approving the request completes the connection.
+## Features
 
-## Current Abilities
+- Create, edit, and publish posts and pages.
+- Manage categories, tags, and content groups.
+- Moderate and reply to comments.
+- Upload and list media.
+- View site settings, active plugins, and themes.
+- Connect and disconnect AI assistants.
 
-- Read, create, and update posts, pages, and supported custom post types.
-- Read, create, and update terms in supported built-in and custom taxonomies.
-- List and moderate comments, including creating and updating comments as the connected user.
-- List media library items and upload media from public URLs.
-- Read safe site settings, site information, plugin inventory, and theme inventory.
-- Discover, inspect, and run public WordPress Abilities API actions registered by WordPress core or plugins.
+## Developer Notes
 
-## Public Endpoints
+Quark implements a remote MCP interface secured by OAuth-style authorization with automatic client setup for compatible assistants. Those protocol details are intentionally hidden from the primary WordPress admin experience so non-technical users only need the connection URL.
+
+### Public Interfaces
 
 - MCP: `/wp-json/quark/v1/mcp`
 - OAuth registration: `/wp-json/quark/v1/oauth/register`

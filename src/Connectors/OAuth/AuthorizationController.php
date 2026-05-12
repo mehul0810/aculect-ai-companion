@@ -142,7 +142,7 @@ final class AuthorizationController {
 			);
 			$location = $response->getHeaderLine( 'Location' );
 			if ( '' === $location ) {
-				$this->render_error( 'Authorization failed', 'Quark could not complete the OAuth authorization request.', 500 );
+				$this->render_error( 'Connection approval failed', 'Quark could not complete the approval request.', 500 );
 			}
 
 			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
@@ -175,22 +175,23 @@ final class AuthorizationController {
 		$current_user = wp_get_current_user();
 		$site_name    = get_bloginfo( 'name' );
 		$scope        = $this->scope_from_params( $params );
+		$actions      = $this->scope_summary( $scope );
 
 		nocache_headers();
 		?>
 <div class="quark-oauth-page quark-oauth-page--admin">
 	<div class="quark-oauth-card" role="main" aria-labelledby="quark-oauth-title">
 		<div class="quark-oauth-brand">Quark</div>
-		<h1 id="quark-oauth-title" class="quark-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'quark' ); ?></h1>
-		<p class="quark-oauth-copy">
-			<?php echo esc_html( $client->getName() ); ?> <?php echo esc_html__( 'wants to connect to this WordPress site through Quark MCP.', 'quark' ); ?>
-		</p>
-		<dl class="quark-oauth-details">
-			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Site', 'quark' ); ?></dt><dd><?php echo esc_html( $site_name ); ?></dd></div>
-			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'WordPress User', 'quark' ); ?></dt><dd><?php echo esc_html( $current_user->display_name ); ?></dd></div>
-			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Scopes', 'quark' ); ?></dt><dd><code><?php echo esc_html( $scope ); ?></code></dd></div>
-			<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Resource', 'quark' ); ?></dt><dd><code><?php echo esc_html( $resource ); ?></code></dd></div>
-		</dl>
+			<h1 id="quark-oauth-title" class="quark-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'quark' ); ?></h1>
+			<p class="quark-oauth-copy">
+				<?php echo esc_html( $client->getName() ); ?> <?php echo esc_html__( 'wants to connect to this WordPress site through Quark.', 'quark' ); ?>
+			</p>
+			<dl class="quark-oauth-details">
+				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Site', 'quark' ); ?></dt><dd><?php echo esc_html( $site_name ); ?></dd></div>
+				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'WordPress User', 'quark' ); ?></dt><dd><?php echo esc_html( $current_user->display_name ); ?></dd></div>
+				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Allowed actions', 'quark' ); ?></dt><dd><?php echo esc_html( $actions ); ?></dd></div>
+				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Connection URL', 'quark' ); ?></dt><dd><code><?php echo esc_html( $resource ); ?></code></dd></div>
+			</dl>
 		<form class="quark-oauth-actions" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="quark_oauth_consent">
 			<?php foreach ( $this->persisted_params( $params ) as $name => $value ) : ?>
@@ -203,6 +204,32 @@ final class AuthorizationController {
 	</div>
 </div>
 		<?php
+	}
+
+	/**
+	 * Convert approved protocol scopes into user-facing action labels.
+	 *
+	 * @param string $scope Space-delimited scope string from the request.
+	 */
+	private function scope_summary( string $scope ): string {
+		$labels = array();
+		$scopes = preg_split( '/\s+/', trim( $scope ) );
+
+		foreach ( is_array( $scopes ) ? $scopes : array() as $item ) {
+			if ( 'content:read' === $item ) {
+				$labels[] = __( 'Read site content and safe site information', 'quark' );
+			}
+
+			if ( 'content:draft' === $item ) {
+				$labels[] = __( 'Create and update content, terms, comments, and media', 'quark' );
+			}
+		}
+
+		if ( array() === $labels ) {
+			return __( 'Use approved Quark actions', 'quark' );
+		}
+
+		return implode( ', ', array_unique( $labels ) );
 	}
 
 	/**
@@ -278,7 +305,7 @@ final class AuthorizationController {
 		$resource = $this->resource_from_params( $params );
 
 		if ( Helpers::mcp_resource() !== $resource ) {
-			$this->fail( 'Invalid resource', 'The requested OAuth resource does not match this Quark MCP server.', 400, $admin_context );
+			$this->fail( 'Invalid connection URL', 'The requested connection URL does not match this WordPress site.', 400, $admin_context );
 		}
 
 		if ( 'S256' !== (string) ( $params['code_challenge_method'] ?? '' ) ) {
@@ -292,7 +319,7 @@ final class AuthorizationController {
 
 		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
 		if ( ! $this->redirect_uri_allowed( $client, $redirect_uri ) ) {
-			$this->fail( 'Invalid redirect URI', 'The redirect URI is not allowed for this OAuth client.', 400, $admin_context );
+			$this->fail( 'Invalid return URL', 'The return URL is not allowed for this AI assistant.', 400, $admin_context );
 		}
 
 		return array(

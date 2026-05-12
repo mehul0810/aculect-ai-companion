@@ -1,39 +1,23 @@
 {
   "0.1.0": {
     "New": [
-      "Endpoint-only connector setup for Claude and ChatGPT with one MCP URL",
-      "OAuth 2.1 Dynamic Client Registration and PKCE flow backed by league/oauth2-server",
-      "OAuth discovery endpoints for protected resource and authorization server metadata",
-      "Custom OAuth tables for clients, authorization codes, access tokens, refresh tokens, and active sessions",
-      "Connector-neutral architecture for OAuth, MCP, Claude, and ChatGPT provider modules",
-      "OAuth authorization, consent, token exchange, refresh, and session revocation flow",
-      "Quark admin settings app with About, Connectors, Connections, Abilities, and Changelog tabs",
-      "Configurable AI Abilities tab for enabling or disabling MCP tools after a site is connected"
+      "One connection URL for adding Quark to Claude and ChatGPT",
+      "WordPress approval screen for AI assistant connections",
+      "Connection management for reviewing and disconnecting AI assistants",
+      "Admin settings app with About, Connect, Connections, Actions, and Changelog tabs",
+      "Configurable actions that can be enabled or disabled after a site is connected"
     ],
     "Improved": [
-      "Settings UI migrated to class-based markup with dedicated stylesheet",
-      "Connector setup experience redesigned around one MCP endpoint and provider cards",
-      "Field-level copy actions for the MCP endpoint and Claude command",
-      "POST nonce-based admin actions for improved reliability over nonce links",
-      "Streamable HTTP MCP endpoint behavior with SSE negotiation support",
-      "Resource-scoped OAuth metadata support for assistant connector setup",
-      "OAuth approval callback and token exchange resilience for assistant connector setup",
-      "Early well-known metadata handling to avoid WordPress canonical redirects serving HTML to ChatGPT",
-      "More tolerant dynamic client registration rate limit for assistant OAuth retry behavior",
-      "OpenAI docs-aligned OAuth metadata, PKCE enforcement, resource-scoped setup values, and MCP auth challenges",
-      "ChatGPT discovery compatibility by advertising the MCP endpoint as the primary authorization server issuer while preserving site-root metadata fallback",
-      "Dynamic Client Registration retry tolerance to avoid ChatGPT setup failures from repeated registration attempts",
-      "OAuth login return flow now lands on the Quark admin consent screen instead of resuming through the REST authorize URL",
-      "Dynamic Client Registration no longer returns plugin-level 429 responses for valid assistant registration attempts",
-      "MCP content and taxonomy tools now support read, create, and update operations across supported custom post types and custom taxonomies",
-      "Connector setup UI now avoids duplicate MCP endpoint sections and uses compact icon-only copy controls",
+      "Settings UI now focuses on the simple user setup flow instead of protocol details",
+      "Copy controls make the connection URL and Claude command easier to use",
+      "Connection setup avoids duplicate URL sections and keeps provider instructions focused",
       "About tab now explains Quark features without showing setup fields",
       "About tab copy now uses the full available section width",
       "Advanced tab removed from the Quark settings app",
-      "MCP tool names are now Claude-safe while legacy dotted tool aliases remain callable",
       "Quark settings now preserve WordPress admin notices instead of removing unrelated notices",
-      "Added controlled MCP abilities for comments, media upload, site information, plugin inventory, and theme inventory",
-      "Added WordPress Abilities API bridge tools to discover, inspect, and run public WordPress/plugin abilities"
+      "Action names are compatible with Claude while older internal aliases remain callable",
+      "Added actions for comments, media upload, site information, plugin inventory, and theme inventory",
+      "Added bridge actions for supported actions registered by WordPress and other plugins"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",
@@ -41,7 +25,7 @@
       "Added .editorconfig for consistent formatting rules",
       "Added AGENTS.md standards for planning-first workflow and release discipline",
       "Added PHPUnit unit test setup for fast connector regression coverage",
-      "Documented MCP tool-name compatibility rules and the test suite layout",
+      "Documented tool-name compatibility rules and the test suite layout",
       "Added WordPress.org readme.txt with external service disclosures",
       "Added Plugin Check gating before release artifacts are generated"
     ]

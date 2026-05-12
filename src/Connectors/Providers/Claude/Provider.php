@@ -29,7 +29,7 @@ final class Provider implements ProviderInterface {
 	 * Return the provider description.
 	 */
 	public function description(): string {
-		return 'Connect Claude, Claude Desktop, Claude Code, or Claude API clients to WordPress through Quark MCP.';
+		return 'Use Claude, Claude Desktop, Claude Code, or your own Claude integration to manage WordPress through Quark.';
 	}
 
 	/**
@@ -56,12 +56,12 @@ final class Provider implements ProviderInterface {
 		return array(
 			array(
 				'title'       => 'Claude app, Claude Desktop, Cowork, and mobile',
-				'description' => 'Use Claude custom connectors when you want the normal Claude app experience. Your MCP endpoint must be publicly reachable over HTTPS because Claude connects from Anthropic infrastructure.',
+				'description' => 'Use Claude custom connectors when you want the normal Claude app experience. Your connection URL must be publicly reachable over HTTPS because Claude connects from outside your WordPress site.',
 				'steps'       => array(
 					'Open Claude connector settings. Team and Enterprise owners can use Organization settings > Connectors.',
 					'Choose Add custom connector, or Custom > Web when adding it for an organization.',
-					'Paste the MCP endpoint URL shown above.',
-					'Finish adding the connector, then click Connect and approve the WordPress consent screen.',
+					'Paste your connection URL from above.',
+					'Finish adding the connector, then click Connect and approve the connection on the WordPress screen that appears.',
 					'Enable the connector for the conversation from the + menu > Connectors.',
 				),
 				'actionLabel' => 'Open Claude Connectors',
@@ -69,14 +69,14 @@ final class Provider implements ProviderInterface {
 			),
 			array(
 				'title'       => 'Claude Code',
-				'description' => 'Use this for terminal-based development workflows. Claude Code discovers Quark OAuth from the MCP endpoint and opens the WordPress consent flow from /mcp.',
+				'description' => 'Use this for terminal-based development workflows.',
 				'steps'       => array(
 					'Copy the Claude Code command below.',
 					'Run it in a terminal where Claude Code is available.',
-					'In Claude Code, run /mcp and choose Quark to authenticate.',
-					'Approve the WordPress consent screen and return to Claude Code.',
+					'When Claude Code asks you to connect Quark, approve the connection on the WordPress screen that appears.',
+					'Return to Claude Code and continue working with your site.',
 				),
-				'actionLabel' => 'Open Claude Code MCP Docs',
+				'actionLabel' => 'Open Claude Code Docs',
 				'actionUrl'   => 'https://code.claude.com/docs/en/mcp',
 				'copyFields'  => array(
 					array(
@@ -86,14 +86,14 @@ final class Provider implements ProviderInterface {
 				),
 			),
 			array(
-				'title'       => 'Claude API',
-				'description' => 'Use this only when you are building an application with the Claude Messages API. The API MCP connector expects your application to obtain and refresh an OAuth access token before sending requests.',
+				'title'       => 'Claude API developers',
+				'description' => 'Use this only when you are building your own Claude integration.',
 				'steps'       => array(
-					'Use the MCP endpoint URL shown above as the mcp_servers URL.',
-					'Obtain a Quark OAuth access token through your own OAuth client flow or the MCP Inspector.',
-					'Send the access token as authorization_token and reference the server from one MCP toolset.',
+					'Use your connection URL from above as the remote server URL in your application.',
+					'Follow Claude developer documentation for the authorization details your application must handle.',
+					'Keep destructive site actions behind explicit user approval in your application.',
 				),
-				'actionLabel' => 'Open Claude API MCP Docs',
+				'actionLabel' => 'Open Claude API Docs',
 				'actionUrl'   => 'https://docs.anthropic.com/en/docs/agents-and-tools/mcp-connector',
 			),
 		);

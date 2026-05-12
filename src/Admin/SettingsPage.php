@@ -26,7 +26,7 @@ final class SettingsPage {
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
-		add_options_page( 'Quark Settings', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
+		add_options_page( 'Connect your AI assistant', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 	}
 

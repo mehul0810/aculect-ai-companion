@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Quark
  * Plugin URI: https://github.com/mehul0810/quark
- * Description: Your AI assistant for WordPress. Connect WordPress to ChatGPT and manage your site using AI.
+ * Description: Manage your WordPress site with AI. Talk to Claude or ChatGPT to create posts, update pages, moderate comments, and more -- no coding required.
  * Version: 0.1.0
  * Requires at least: 6.5
  * Requires PHP: 8.2

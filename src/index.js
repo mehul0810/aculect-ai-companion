@@ -225,11 +225,11 @@ function SettingsApp() {
 		: 'quark-pill quark-pill--status is-disconnected';
 	const tabs = [
 		{ name: 'about', title: 'About' },
-		{ name: 'connectors', title: 'Connectors' },
+		{ name: 'connectors', title: 'Connect' },
 		{ name: 'connections', title: 'Connections' },
 	];
 	if ( data.isConnected ) {
-		tabs.push( { name: 'abilities', title: 'Abilities' } );
+		tabs.push( { name: 'abilities', title: 'Actions' } );
 	}
 	tabs.push( { name: 'changelog', title: 'Changelog' } );
 	const selectedTab = initialTabName( tabs );
@@ -254,7 +254,15 @@ function SettingsApp() {
 		<div className="quark-app-root">
 			<div className="quark-app-header">
 				<div className="quark-app-branding">
-					<h1 className="quark-app-title">Quark</h1>
+					<div className="quark-app-heading">
+						<p className="quark-app-kicker">Quark</p>
+						<h1 className="quark-app-title">
+							Connect your AI assistant
+						</h1>
+						<p className="quark-app-tagline">
+							Manage your WordPress site with AI.
+						</p>
+					</div>
 					<span className="quark-pill quark-pill--version">
 						{ data.version || '0.1.0' }
 					</span>
@@ -271,17 +279,17 @@ function SettingsApp() {
 			) }
 			{ data.status === 'abilities_saved' && (
 				<Notice status="success" isDismissible={ false }>
-					Abilities saved.
+					Actions saved.
 				</Notice>
 			) }
 			{ data.status === 'revoked' && (
 				<Notice status="warning" isDismissible={ false }>
-					Connection revoked.
+					AI assistant disconnected.
 				</Notice>
 			) }
 			{ data.status === 'revoked_all' && (
 				<Notice status="warning" isDismissible={ false }>
-					All sessions revoked.
+					All AI assistants disconnected.
 				</Notice>
 			) }
 
@@ -298,85 +306,81 @@ function SettingsApp() {
 								<CardHeader>About Quark</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Quark turns WordPress into a secure MCP
-										server for AI assistants, so tools like
-										ChatGPT and Claude can work with your
-										site through a controlled WordPress
-										consent flow.
+										Quark lets you manage WordPress with AI
+										assistants like Claude and ChatGPT.
+										Instead of navigating menus, you can ask
+										your AI assistant to create posts,
+										update pages, moderate comments, upload
+										media, and review site information.
 									</p>
 									<p className="quark-copy">
-										It is designed for practical site
-										operations: connecting assistants,
-										exposing approved abilities, and letting
-										site owners decide exactly what AI
-										clients are allowed to read or change.
+										Quark keeps you in control. You approve
+										each connection in WordPress, decide
+										what actions are available, and can
+										disconnect an assistant whenever needed.
 									</p>
 
 									<div className="quark-feature-grid">
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Endpoint-only setup
+												Create, edit, and publish posts
+												and pages
 											</h3>
 											<p className="quark-feature-card__copy">
-												Connect supported assistants
-												with one MCP endpoint, then
-												complete approval inside
-												WordPress.
+												Ask your AI assistant to draft,
+												update, schedule, or publish
+												WordPress content.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												OAuth protected access
+												Manage categories, tags, and
+												content groups
 											</h3>
 											<p className="quark-feature-card__copy">
-												Connections use user-approved
-												OAuth sessions with scoped
-												access and revocation controls.
+												Organize content without digging
+												through taxonomy screens.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Content abilities
+												Moderate and reply to comments
 											</h3>
 											<p className="quark-feature-card__copy">
-												Enable read, create, and update
-												actions for posts, pages, custom
-												post types, categories, tags,
-												and custom taxonomies.
+												Review, approve, update, and
+												reply to site comments with help
+												from your AI assistant.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Site-owner controls
+												Upload and list media
 											</h3>
 											<p className="quark-feature-card__copy">
-												Review active connections,
-												revoke assistant sessions, and
-												turn individual abilities on or
-												off from the admin screen.
+												Add images from public URLs and
+												review media library items.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												WordPress-native permissions
+												View site settings, active
+												plugins, and themes
 											</h3>
 											<p className="quark-feature-card__copy">
-												Tool actions respect WordPress
-												capabilities, scoped tokens,
-												pagination limits, and safe
-												response shapes.
+												Check safe site details and
+												inventory without exposing
+												private options.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Built to maintain
+												Connect and disconnect AI
+												assistants
 											</h3>
 											<p className="quark-feature-card__copy">
-												The plugin targets PHP 8.2, uses
-												WordPress components, and
-												follows the project standards
-												for linting, static analysis,
-												and production builds.
+												Add Claude or ChatGPT with one
+												URL, then disconnect access from
+												WordPress at any time.
 											</p>
 										</div>
 									</div>
@@ -389,28 +393,40 @@ function SettingsApp() {
 						return (
 							<div className="quark-connectors">
 								<Card className="quark-card quark-endpoint-card">
-									<CardHeader>MCP Endpoint URL</CardHeader>
+									<CardHeader>
+										Connect your AI assistant
+									</CardHeader>
 									<CardBody>
-										<p className="quark-copy quark-copy--first">
-											Use this endpoint when adding Quark
-											to any supported MCP client. Quark
-											handles OAuth discovery, Dynamic
-											Client Registration, and WordPress
-											consent from this endpoint.
-										</p>
+										<ol className="quark-steps quark-steps--primary">
+											<li>
+												Copy your connection URL below.
+											</li>
+											<li>
+												Open Claude or ChatGPT and add a
+												new connector.
+											</li>
+											<li>
+												Paste the URL when prompted.
+											</li>
+											<li>
+												Approve the connection on the
+												screen that appears.
+											</li>
+										</ol>
 										<CopyField
-											label="MCP Endpoint URL"
+											label="Your connection URL"
 											value={ data.mcpUrl }
 											onCopy={ ( value ) =>
 												copyValue(
 													value,
-													'MCP endpoint copied.'
+													'Connection URL copied.'
 												)
 											}
 										/>
 										<p className="quark-help-text">
-											For remote clients, the URL must be
-											publicly reachable over HTTPS.
+											The URL must be publicly reachable
+											over HTTPS for Claude or ChatGPT to
+											connect.
 										</p>
 									</CardBody>
 								</Card>
@@ -509,10 +525,11 @@ function SettingsApp() {
 								<CardBody>
 									{ sessions.length === 0 ? (
 										<p className="quark-copy quark-copy--first">
-											No active assistant sessions yet.
-											Add the MCP endpoint to Claude or
-											ChatGPT and approve the WordPress
-											consent screen.
+											No AI assistants are connected yet.
+											Add Quark in Claude or ChatGPT with
+											your connection URL, then approve
+											the connection on the screen that
+											appears.
 										</p>
 									) : (
 										<div className="quark-session-list">
@@ -524,18 +541,12 @@ function SettingsApp() {
 													<div className="quark-session-row__main">
 														<strong>
 															{ session.client_name ||
-																'MCP Client' }
+																'AI Assistant' }
 														</strong>
 														<span>
 															{ session.provider }{ ' ' }
 															· { session.user }
 														</span>
-														<code>
-															{ (
-																session.scopes ||
-																[]
-															).join( ' ' ) }
-														</code>
 													</div>
 													<ActionForm
 														data={ data }
@@ -547,7 +558,7 @@ function SettingsApp() {
 															data.actions
 																?.revokeSessionNonce
 														}
-														label="Revoke"
+														label="Disconnect"
 														destructive
 													>
 														<input
@@ -571,7 +582,7 @@ function SettingsApp() {
 												nonce={
 													data.actions?.revokeAllNonce
 												}
-												label="Revoke All Sessions"
+												label="Disconnect All"
 												destructive
 											/>
 										</div>
@@ -584,13 +595,14 @@ function SettingsApp() {
 					if ( tab.name === 'abilities' ) {
 						return (
 							<Card className="quark-card quark-abilities-card">
-								<CardHeader>AI Abilities</CardHeader>
+								<CardHeader>What your AI can do</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Choose which MCP abilities connected AI
-										apps can see and call. WordPress
-										capabilities are still checked on every
-										request.
+										Choose which actions connected AI
+										assistants can use. WordPress
+										permissions are still checked every time
+										your AI assistant asks Quark to do
+										something.
 									</p>
 									<form
 										method="post"
@@ -633,7 +645,7 @@ function SettingsApp() {
 													)
 												}
 											>
-												Enable All
+												Enable All Actions
 											</Button>
 											<Button
 												type="button"
@@ -642,13 +654,13 @@ function SettingsApp() {
 													setEnabledAbilities( [] )
 												}
 											>
-												Disable All
+												Disable All Actions
 											</Button>
 											<Button
 												type="submit"
 												variant="primary"
 											>
-												Save Abilities
+												Save Actions
 											</Button>
 										</div>
 										<div className="quark-ability-groups">
@@ -698,23 +710,6 @@ function SettingsApp() {
 																				ability.description
 																			}
 																		</p>
-																		<div className="quark-ability-row__meta">
-																			<code>
-																				{
-																					ability.id
-																				}
-																			</code>
-																			<span>
-																				{
-																					ability.scope
-																				}
-																			</span>
-																			<span>
-																				{ ability.readOnly
-																					? 'Read'
-																					: 'Write' }
-																			</span>
-																		</div>
 																	</div>
 																)
 															) }

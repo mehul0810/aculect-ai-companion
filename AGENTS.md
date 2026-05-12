@@ -52,4 +52,5 @@
 - Run: `composer test` and JS lint/build before releases.
 - Keep README and route/tool schema docs updated with behavior changes.
 - Maintain backward compatibility for public tool names and response shapes where practical.
-- Commit and push completed changes frequently, including small fixes, after validation passes.
+- Commit even minor completed changes and push once the whole task is done, after validation passes.
+- Never create a GitHub release or prerelease unless the user explicitly asks for one.

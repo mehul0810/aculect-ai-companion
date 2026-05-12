@@ -95,6 +95,13 @@ final class McpController {
 			return new WP_REST_Response( null, 202 );
 		}
 
+		$auth = ( new TokenValidator() )->authenticate( $request );
+		if ( array() === $auth ) {
+			return $this->auth_challenge_response( $id, 'content:read', 401, 'invalid_token' );
+		}
+
+		wp_set_current_user( (int) $auth['user_id'] );
+
 		switch ( $method ) {
 			case 'initialize':
 				return $this->rpc_result(
@@ -115,13 +122,6 @@ final class McpController {
 				return $this->rpc_result( $id, $this->list_tools() );
 
 			case 'tools/call':
-				$auth = ( new TokenValidator() )->authenticate( $request );
-				if ( array() === $auth ) {
-					return $this->auth_challenge_response( $id, 'content:read', 401, 'invalid_token' );
-				}
-
-				wp_set_current_user( (int) $auth['user_id'] );
-
 				$registry = new AbilitiesRegistry();
 				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
 				if ( ! $registry->is_known( $tool ) ) {

@@ -17,7 +17,7 @@ final class Provider implements ProviderInterface {
 	}
 
 	public function description(): string {
-		return 'Connect Claude to WordPress through Quark MCP. Claude will open WordPress for OAuth consent when authentication starts.';
+		return 'Connect Claude Code to WordPress through Quark MCP. Claude Code will open WordPress for OAuth consent when authentication starts.';
 	}
 
 	public function primary_action_url(): string {
@@ -28,17 +28,17 @@ final class Provider implements ProviderInterface {
 		unset( $mcp_url );
 
 		return array(
-			'Copy the Claude command from this card.',
+			'Copy the Claude Code command from this card.',
 			'Run it in your terminal where Claude Code is available.',
-			'In Claude, run /mcp and choose Quark to authenticate.',
-			'Approve the WordPress consent screen and return to Claude.',
+			'In Claude Code, run /mcp and choose Quark to authenticate.',
+			'Approve the WordPress consent screen and return to Claude Code.',
 		);
 	}
 
 	public function copy_fields( string $mcp_url ): array {
 		return array(
 			array(
-				'label' => 'Claude Command',
+				'label' => 'Claude Code Command',
 				'value' => 'claude mcp add --transport http quark ' . $mcp_url,
 			),
 			array(

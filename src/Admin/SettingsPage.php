@@ -12,6 +12,8 @@ use Quark\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Quark\Connectors\Providers\Claude\Provider as ClaudeProvider;
 use Quark\Connectors\Providers\ProviderInterface;
 
+defined( 'ABSPATH' ) || exit;
+
 final class SettingsPage {
 
 	private const ASSET_HANDLE = 'quark-settings-app';

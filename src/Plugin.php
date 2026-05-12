@@ -13,6 +13,8 @@ use Quark\Connectors\OAuth\Database\Installer as OAuthInstaller;
 use Quark\Connectors\OAuth\DiscoveryController;
 use Quark\Connectors\OAuth\TokenController;
 
+defined( 'ABSPATH' ) || exit;
+
 final class Plugin {
 
 	private const REWRITE_VERSION        = '2026.05.11.1';

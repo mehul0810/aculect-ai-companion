@@ -1,6 +1,6 @@
 === Quark ===
 Contributors: mehul0810
-Tags: ai, content, comments, media, automation
+Tags: ai, content, comments, media, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2

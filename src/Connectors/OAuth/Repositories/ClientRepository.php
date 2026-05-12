@@ -11,9 +11,22 @@ use Quark\Connectors\OAuth\Entities\ClientEntity;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
 
-// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
+/**
+ * Persists OAuth clients registered through Dynamic Client Registration.
+ *
+ * Clients are stored in a custom table so redirect URIs, provider labels, and
+ * revocation can be managed independently of WordPress users and options.
+ */
 final class ClientRepository implements ClientRepositoryInterface {
 
+	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
+
+	/**
+	 * Load a non-revoked OAuth client entity by client ID.
+	 *
+	 * @param string $clientIdentifier OAuth client ID.
+	 * @return ClientEntityInterface|null
+	 */
 	public function getClientEntity( string $clientIdentifier ): ?ClientEntityInterface {
 		global $wpdb;
 
@@ -26,6 +39,14 @@ final class ClientRepository implements ClientRepositoryInterface {
 		return is_array( $row ) ? $this->hydrate( $row ) : null;
 	}
 
+	/**
+	 * Validate a public or confidential OAuth client.
+	 *
+	 * @param string      $clientIdentifier OAuth client ID.
+	 * @param string|null $clientSecret     Raw client secret, if supplied.
+	 * @param string|null $grantType        Requested grant type.
+	 * @return bool
+	 */
 	public function validateClient( string $clientIdentifier, ?string $clientSecret, ?string $grantType ): bool {
 		unset( $grantType );
 
@@ -46,6 +67,15 @@ final class ClientRepository implements ClientRepositoryInterface {
 		return wp_check_password( (string) $clientSecret, (string) $secret_hash );
 	}
 
+	/**
+	 * Create a DCR client and return its one-time plaintext credentials.
+	 *
+	 * @param string   $name          Client display name.
+	 * @param string[] $redirect_uris Valid redirect URIs.
+	 * @param bool     $confidential  Whether the client receives a secret.
+	 * @param int|null $user_id       Optional owning WordPress user.
+	 * @return array<string, string|null>|null
+	 */
 	public function create_client( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ?array {
 		global $wpdb;
 
@@ -86,6 +116,11 @@ final class ClientRepository implements ClientRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Return registered, non-revoked clients for diagnostics.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function list_clients(): array {
 		global $wpdb;
 
@@ -98,6 +133,11 @@ final class ClientRepository implements ClientRepositoryInterface {
 		return is_array( $rows ) ? array_map( array( $this, 'public_row' ), $rows ) : array();
 	}
 
+	/**
+	 * Revoke one OAuth client.
+	 *
+	 * @param string $client_id OAuth client ID.
+	 */
 	public function revoke_client( string $client_id ): void {
 		global $wpdb;
 
@@ -105,6 +145,12 @@ final class ClientRepository implements ClientRepositoryInterface {
 		$wpdb->update( $table, array( 'revoked' => 1 ), array( 'client_id' => $client_id ), array( '%d' ), array( '%s' ) );
 	}
 
+	/**
+	 * Convert a database row into a League OAuth client entity.
+	 *
+	 * @param array<string, mixed> $row Client row.
+	 * @return ClientEntity
+	 */
 	private function hydrate( array $row ): ClientEntity {
 		$client = new ClientEntity();
 		$client->setIdentifier( (string) $row['client_id'] );
@@ -122,6 +168,12 @@ final class ClientRepository implements ClientRepositoryInterface {
 		return $client;
 	}
 
+	/**
+	 * Convert a client row into safe public diagnostics data.
+	 *
+	 * @param array<string, mixed> $row Client row.
+	 * @return array<string, mixed>
+	 */
 	private function public_row( array $row ): array {
 		return array(
 			'client_id'     => (string) $row['client_id'],
@@ -132,6 +184,12 @@ final class ClientRepository implements ClientRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Decode redirect URIs stored as JSON.
+	 *
+	 * @param array<string, mixed> $row Client row.
+	 * @return string[]
+	 */
 	private function redirect_uris_from_row( array $row ): array {
 		$decoded = json_decode( (string) ( $row['redirect_uris'] ?? '[]' ), true );
 		if ( ! is_array( $decoded ) ) {
@@ -141,10 +199,16 @@ final class ClientRepository implements ClientRepositoryInterface {
 		return array_values( array_filter( array_map( 'strval', $decoded ) ) );
 	}
 
+	/**
+	 * Generate a stable-prefixed random client ID.
+	 */
 	private function generate_client_id(): string {
 		return 'quark_dcr_' . bin2hex( random_bytes( 16 ) );
 	}
 
+	/**
+	 * Generate a high-entropy client secret for confidential clients.
+	 */
 	private function generate_client_secret(): string {
 		return bin2hex( random_bytes( 32 ) );
 	}

@@ -11,9 +11,25 @@ use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
-// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth token repositories use dedicated custom tables and must read/write fresh token state.
+/**
+ * Persists OAuth access tokens and active connector session state.
+ *
+ * Access tokens are stored by SHA-256 hash only. Reads intentionally bypass
+ * object cache because MCP authorization and revocation decisions must reflect
+ * the latest database state on every request.
+ */
 final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 
+	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth token repositories use dedicated custom tables and must read/write fresh token state.
+
+	/**
+	 * Create an access token entity for league/oauth2-server.
+	 *
+	 * @param ClientEntityInterface $clientEntity   OAuth client.
+	 * @param array                 $scopes         Granted scope entities.
+	 * @param string|null           $userIdentifier WordPress user ID, when user-bound.
+	 * @return AccessTokenEntityInterface
+	 */
 	public function getNewToken(
 		ClientEntityInterface $clientEntity,
 		array $scopes,
@@ -33,6 +49,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		return $token;
 	}
 
+	/**
+	 * Store a newly issued access token by hash, resource, scopes, and expiry.
+	 *
+	 * @param AccessTokenEntityInterface $accessTokenEntity Issued token entity.
+	 */
 	public function persistNewAccessToken( AccessTokenEntityInterface $accessTokenEntity ): void {
 		global $wpdb;
 
@@ -57,6 +78,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Revoke an access token and the refresh tokens linked to it.
+	 *
+	 * @param string $tokenId Raw OAuth token identifier.
+	 */
 	public function revokeAccessToken( string $tokenId ): void {
 		global $wpdb;
 
@@ -65,6 +91,12 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		( new RefreshTokenRepository() )->revoke_by_access_token_id( $tokenId );
 	}
 
+	/**
+	 * Check whether an access token is missing, revoked, or expired.
+	 *
+	 * @param string $tokenId Raw OAuth token identifier.
+	 * @return bool
+	 */
 	public function isAccessTokenRevoked( string $tokenId ): bool {
 		global $wpdb;
 
@@ -85,6 +117,12 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		return strtotime( (string) $row['expires_at'] ) < time();
 	}
 
+	/**
+	 * Return MCP authorization context for a validated access-token identifier.
+	 *
+	 * @param string $token_id Raw OAuth token identifier.
+	 * @return array<string, mixed>
+	 */
 	public function context_from_token_id( string $token_id ): array {
 		global $wpdb;
 
@@ -122,6 +160,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 	}
 
+	/**
+	 * List active connector sessions for the admin settings screen.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function list_active_sessions(): array {
 		global $wpdb;
 
@@ -169,6 +212,9 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Determine whether at least one non-expired session is active.
+	 */
 	public function has_active_tokens(): bool {
 		global $wpdb;
 
@@ -184,6 +230,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		return (int) $count > 0;
 	}
 
+	/**
+	 * Revoke one admin-visible connector session.
+	 *
+	 * @param int $session_id Access-token table primary key.
+	 */
 	public function revoke_session( int $session_id ): void {
 		global $wpdb;
 
@@ -201,6 +252,9 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		$wpdb->update( $tables['refresh_tokens'], array( 'revoked' => 1 ), array( 'access_token_hash' => (string) $row['token_hash'] ), array( '%d' ), array( '%s' ) );
 	}
 
+	/**
+	 * Revoke every active access and refresh token.
+	 */
 	public function revoke_all(): void {
 		global $wpdb;
 
@@ -209,6 +263,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		$wpdb->update( $tables['refresh_tokens'], array( 'revoked' => 1 ), array( 'revoked' => 0 ), array( '%d' ), array( '%d' ) );
 	}
 
+	/**
+	 * Record last token usage for the admin connection list.
+	 *
+	 * @param string $token_id Raw OAuth token identifier.
+	 */
 	private function touch( string $token_id ): void {
 		global $wpdb;
 
@@ -222,6 +281,12 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Hash raw token material before database lookup or storage.
+	 *
+	 * @param string $identifier Raw protocol identifier.
+	 * @return string
+	 */
 	private function hash_identifier( string $identifier ): string {
 		return hash( 'sha256', $identifier );
 	}

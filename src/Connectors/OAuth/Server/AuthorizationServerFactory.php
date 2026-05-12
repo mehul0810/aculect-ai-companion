@@ -15,10 +15,16 @@ use League\OAuth2\Server\CryptKey;
 use League\OAuth2\Server\Grant\AuthCodeGrant;
 use League\OAuth2\Server\Grant\RefreshTokenGrant;
 
+/**
+ * Creates the configured OAuth authorization server singleton.
+ */
 final class AuthorizationServerFactory {
 
 	private static ?AuthorizationServer $instance = null;
 
+	/**
+	 * Return an authorization server configured for auth-code and refresh grants.
+	 */
 	public static function create(): AuthorizationServer {
 		if ( self::$instance instanceof AuthorizationServer ) {
 			return self::$instance;

@@ -10,13 +10,28 @@ use Quark\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AuthCodeEntityInterface;
 use League\OAuth2\Server\Repositories\AuthCodeRepositoryInterface;
 
-// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth auth codes use a dedicated custom table and must not be cached.
+/**
+ * Stores short-lived authorization codes for the OAuth authorization flow.
+ *
+ * Codes are stored only as hashes and are checked directly from the custom
+ * table so single-use and expiration decisions are always current.
+ */
 final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 
+	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth auth codes use a dedicated custom table and must not be cached.
+
+	/**
+	 * Create a new authorization code entity for league/oauth2-server.
+	 */
 	public function getNewAuthCode(): AuthCodeEntityInterface {
 		return new AuthCodeEntity();
 	}
 
+	/**
+	 * Store an issued authorization code by hash, user, scopes, resource, and expiry.
+	 *
+	 * @param AuthCodeEntityInterface $authCodeEntity Issued authorization code.
+	 */
 	public function persistNewAuthCode( AuthCodeEntityInterface $authCodeEntity ): void {
 		global $wpdb;
 
@@ -41,6 +56,11 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 		);
 	}
 
+	/**
+	 * Mark an authorization code as used or revoked.
+	 *
+	 * @param string $codeId Raw authorization code identifier.
+	 */
 	public function revokeAuthCode( string $codeId ): void {
 		global $wpdb;
 
@@ -48,6 +68,12 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 		$wpdb->update( $table, array( 'revoked' => 1 ), array( 'code_hash' => $this->hash_identifier( $codeId ) ), array( '%d' ), array( '%s' ) );
 	}
 
+	/**
+	 * Check whether an authorization code is missing, used, or expired.
+	 *
+	 * @param string $codeId Raw authorization code identifier.
+	 * @return bool
+	 */
 	public function isAuthCodeRevoked( string $codeId ): bool {
 		global $wpdb;
 
@@ -68,6 +94,12 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 		return strtotime( (string) $row['expires_at'] ) < time();
 	}
 
+	/**
+	 * Hash raw code material before database lookup or storage.
+	 *
+	 * @param string $identifier Raw protocol identifier.
+	 * @return string
+	 */
 	private function hash_identifier( string $identifier ): string {
 		return hash( 'sha256', $identifier );
 	}

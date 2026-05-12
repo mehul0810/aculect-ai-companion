@@ -11,8 +11,14 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 
+/**
+ * Handles OAuth Dynamic Client Registration for MCP clients.
+ */
 final class ClientRegistrationController {
 
+	/**
+	 * Register the client registration REST endpoint.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
@@ -25,6 +31,12 @@ final class ClientRegistrationController {
 		);
 	}
 
+	/**
+	 * Register a confidential OAuth client from validated DCR metadata.
+	 *
+	 * @param WP_REST_Request $request Registration request.
+	 * @return WP_REST_Response|WP_Error
+	 */
 	public function register_client( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
@@ -59,6 +71,12 @@ final class ClientRegistrationController {
 		);
 	}
 
+	/**
+	 * Validate and de-duplicate redirect URIs supplied by the client.
+	 *
+	 * @param array<int, mixed> $uris Raw redirect URI values.
+	 * @return string[]
+	 */
 	private function redirect_uris( array $uris ): array {
 		$valid = array();
 		foreach ( $uris as $uri ) {

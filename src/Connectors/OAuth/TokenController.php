@@ -12,8 +12,14 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 
+/**
+ * Handles OAuth token exchange and refresh requests.
+ */
 final class TokenController {
 
+	/**
+	 * Register the OAuth token REST endpoint.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
@@ -26,6 +32,12 @@ final class TokenController {
 		);
 	}
 
+	/**
+	 * Exchange authorization codes or refresh tokens for access tokens.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 * @return WP_REST_Response
+	 */
 	public function token( WP_REST_Request $request ): WP_REST_Response {
 		$resource = $this->resource_from_request( $request );
 		if ( Helpers::mcp_resource() !== $resource ) {
@@ -49,6 +61,12 @@ final class TokenController {
 		}
 	}
 
+	/**
+	 * Resolve and normalize the requested resource indicator.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 * @return string
+	 */
 	private function resource_from_request( WP_REST_Request $request ): string {
 		$resource = (string) $request->get_param( 'resource' );
 		if ( '' === $resource ) {
@@ -58,6 +76,14 @@ final class TokenController {
 		return '' === $resource ? Helpers::mcp_resource() : Helpers::normalize_resource( $resource );
 	}
 
+	/**
+	 * Build an OAuth JSON error response with no-store headers.
+	 *
+	 * @param string $error       OAuth error code.
+	 * @param string $description Human-readable description.
+	 * @param int    $status      HTTP status code.
+	 * @return WP_REST_Response
+	 */
 	private function error( string $error, string $description, int $status ): WP_REST_Response {
 		$response = new WP_REST_Response(
 			array(

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Quark\Connectors;
 
+/**
+ * Shared connector URL, metadata, and provider helpers.
+ */
 final class Helpers {
 
 	public const REST_NAMESPACE              = 'quark/v1';
@@ -12,42 +15,78 @@ final class Helpers {
 	public const PROTECTED_RESOURCE_METADATA = 'oauth-protected-resource';
 	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft' );
 
+	/**
+	 * Return the external site issuer used by OAuth metadata.
+	 */
 	public static function issuer(): string {
 		return self::normalize_url( self::external_base_url() );
 	}
 
+	/**
+	 * Return the authorization-server issuer used for MCP resource metadata.
+	 */
 	public static function authorization_server_issuer(): string {
 		return self::mcp_resource();
 	}
 
+	/**
+	 * Return the canonical MCP resource URL.
+	 */
 	public static function mcp_resource(): string {
 		return self::normalize_url( self::external_rest_url( self::MCP_ROUTE ) );
 	}
 
+	/**
+	 * Return the path component for a resource URL.
+	 *
+	 * @param string|null $resource Optional resource URL.
+	 * @return string
+	 */
 	public static function resource_path( ?string $resource = null ): string {
 		$resource_url = null !== $resource && '' !== $resource ? $resource : self::mcp_resource();
 		$path         = (string) wp_parse_url( $resource_url, PHP_URL_PATH );
 		return untrailingslashit( $path );
 	}
 
+	/**
+	 * Return the OAuth authorization endpoint URL.
+	 */
 	public static function authorization_endpoint(): string {
 		return self::external_rest_url( self::REST_NAMESPACE . '/oauth/authorize' );
 	}
 
+	/**
+	 * Return the OAuth token endpoint URL.
+	 */
 	public static function token_endpoint(): string {
 		return self::external_rest_url( self::REST_NAMESPACE . '/oauth/token' );
 	}
 
+	/**
+	 * Return the OAuth Dynamic Client Registration endpoint URL.
+	 */
 	public static function registration_endpoint(): string {
 		return self::external_rest_url( self::REST_NAMESPACE . '/oauth/register' );
 	}
 
+	/**
+	 * Return the OAuth authorization-server metadata URL.
+	 *
+	 * @param string|null $issuer Optional issuer URL.
+	 * @return string
+	 */
 	public static function authorization_metadata_url( ?string $issuer = null ): string {
 		$issuer = self::normalize_url( null !== $issuer && '' !== $issuer ? $issuer : self::authorization_server_issuer() );
 		$path   = (string) wp_parse_url( $issuer, PHP_URL_PATH );
 		return self::origin_from_url( $issuer ) . '/.well-known/' . self::AUTHORIZATION_METADATA . untrailingslashit( $path );
 	}
 
+	/**
+	 * Return the OAuth protected-resource metadata URL.
+	 *
+	 * @param string|null $resource Optional resource URL.
+	 * @return string
+	 */
 	public static function protected_resource_metadata_url( ?string $resource = null ): string {
 		if ( null === $resource || '' === $resource ) {
 			return self::origin_from_url( self::mcp_resource() ) . '/.well-known/' . self::PROTECTED_RESOURCE_METADATA;
@@ -57,6 +96,11 @@ final class Helpers {
 		return self::origin_from_url( $resource ) . '/.well-known/' . self::PROTECTED_RESOURCE_METADATA . self::resource_path( $resource );
 	}
 
+	/**
+	 * Return supported OAuth scopes, allowing extension by filter.
+	 *
+	 * @return string[]
+	 */
 	public static function supported_scopes(): array {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
 		$scopes = apply_filters( 'quark/connectors/supported_scopes', self::DEFAULT_SCOPES );
@@ -77,14 +121,29 @@ final class Helpers {
 		return array() === $scopes ? self::DEFAULT_SCOPES : $scopes;
 	}
 
+	/**
+	 * Normalize a URL for comparison and metadata output.
+	 *
+	 * @param string $url URL to normalize.
+	 * @return string
+	 */
 	public static function normalize_url( string $url ): string {
 		return untrailingslashit( esc_url_raw( $url ) );
 	}
 
+	/**
+	 * Normalize an OAuth resource URL.
+	 *
+	 * @param string $resource Resource URL.
+	 * @return string
+	 */
 	public static function normalize_resource( string $resource ): string {
 		return self::normalize_url( $resource );
 	}
 
+	/**
+	 * Return the externally reachable site base URL.
+	 */
 	public static function external_base_url(): string {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
 		$external_url = (string) apply_filters( 'quark/connectors/external_url', '' );
@@ -106,10 +165,22 @@ final class Helpers {
 		return untrailingslashit( home_url( '/' ) );
 	}
 
+	/**
+	 * Build an externally reachable REST URL.
+	 *
+	 * @param string $path REST path without the /wp-json prefix.
+	 * @return string
+	 */
 	public static function external_rest_url( string $path ): string {
 		return self::external_base_url() . '/wp-json/' . ltrim( $path, '/' );
 	}
 
+	/**
+	 * Return the origin portion of a URL.
+	 *
+	 * @param string $url URL to parse.
+	 * @return string
+	 */
 	public static function origin_from_url( string $url ): string {
 		$parts = wp_parse_url( $url );
 		if ( ! is_array( $parts ) ) {
@@ -123,6 +194,12 @@ final class Helpers {
 		return '' === $host ? self::external_base_url() : $scheme . '://' . $host . $port;
 	}
 
+	/**
+	 * Validate redirect URIs accepted during Dynamic Client Registration.
+	 *
+	 * @param string $uri Redirect URI supplied by the OAuth client.
+	 * @return bool
+	 */
 	public static function is_allowed_redirect_uri( string $uri ): bool {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
 		$allowed = apply_filters( 'quark/connectors/allowed_redirect_uri', null, $uri );
@@ -154,6 +231,13 @@ final class Helpers {
 		return false;
 	}
 
+	/**
+	 * Infer provider label from the DCR client metadata.
+	 *
+	 * @param string   $client_name   Client display name.
+	 * @param string[] $redirect_uris Redirect URIs.
+	 * @return string
+	 */
 	public static function provider_from_client( string $client_name, array $redirect_uris ): string {
 		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
 

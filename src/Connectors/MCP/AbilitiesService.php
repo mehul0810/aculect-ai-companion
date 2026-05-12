@@ -4,11 +4,19 @@ declare(strict_types=1);
 
 namespace Quark\Connectors\MCP;
 
+/**
+ * Implements WordPress content, taxonomy, media, comment, and site abilities.
+ */
 final class AbilitiesService {
 
 	private const DEFAULT_POST_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
 	private const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish' );
 
+	/**
+	 * List readable post types, including supported custom post types.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function list_post_types(): array {
 		$types = get_post_types( array(), 'objects' );
 		$items = array();
@@ -32,6 +40,12 @@ final class AbilitiesService {
 		return $items;
 	}
 
+	/**
+	 * List content items for a supported post type with pagination.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_items( array $args ): array {
 		$per_page         = max( 1, min( 100, (int) ( $args['per_page'] ?? 20 ) ) );
 		$page             = max( 1, (int) ( $args['page'] ?? 1 ) );
@@ -68,6 +82,12 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Read one content item by post ID.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array<string, mixed>
+	 */
 	public function get_item( int $post_id ): array {
 		$post = get_post( $post_id );
 		if ( ! $post ) {
@@ -82,6 +102,12 @@ final class AbilitiesService {
 		return $this->map_post( $post );
 	}
 
+	/**
+	 * Create a post, page, or custom post type item.
+	 *
+	 * @param array<string, mixed> $data Content fields.
+	 * @return array<string, mixed>
+	 */
 	public function create_item( array $data ): array {
 		$post_type        = sanitize_key( (string) ( $data['post_type'] ?? 'post' ) );
 		$post_type_object = get_post_type_object( $post_type );
@@ -117,11 +143,23 @@ final class AbilitiesService {
 		return $this->get_item( (int) $post_id );
 	}
 
+	/**
+	 * Create a draft content item.
+	 *
+	 * @param array<string, mixed> $data Content fields.
+	 * @return array<string, mixed>
+	 */
 	public function create_draft( array $data ): array {
 		$data['status'] = 'draft';
 		return $this->create_item( $data );
 	}
 
+	/**
+	 * Update an existing content item.
+	 *
+	 * @param array<string, mixed> $data Content fields.
+	 * @return array<string, mixed>
+	 */
 	public function update_item( array $data ): array {
 		$post_id = absint( $data['id'] ?? 0 );
 		$post    = get_post( $post_id );
@@ -164,6 +202,11 @@ final class AbilitiesService {
 		return $this->get_item( $post_id );
 	}
 
+	/**
+	 * List supported taxonomies, including custom taxonomies.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function list_taxonomies(): array {
 		$taxonomies = get_taxonomies( array(), 'objects' );
 		$items      = array();
@@ -188,6 +231,12 @@ final class AbilitiesService {
 		return $items;
 	}
 
+	/**
+	 * List terms in a supported taxonomy with pagination.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_terms( array $args ): array {
 		$taxonomy = sanitize_key( (string) ( $args['taxonomy'] ?? 'category' ) );
 		$object   = get_taxonomy( $taxonomy );
@@ -229,6 +278,12 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Create a term in a supported taxonomy.
+	 *
+	 * @param array<string, mixed> $data Term fields.
+	 * @return array<string, mixed>
+	 */
 	public function create_term( array $data ): array {
 		$taxonomy = sanitize_key( (string) ( $data['taxonomy'] ?? '' ) );
 		$object   = get_taxonomy( $taxonomy );
@@ -251,6 +306,12 @@ final class AbilitiesService {
 		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => (int) $result['term_id'] );
 	}
 
+	/**
+	 * Update a term in a supported taxonomy.
+	 *
+	 * @param array<string, mixed> $data Term fields.
+	 * @return array<string, mixed>
+	 */
 	public function update_term( array $data ): array {
 		$taxonomy = sanitize_key( (string) ( $data['taxonomy'] ?? '' ) );
 		$term_id  = absint( $data['term_id'] ?? 0 );
@@ -273,10 +334,22 @@ final class AbilitiesService {
 		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
 	}
 
+	/**
+	 * List media attachments by delegating to content listing.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_media( array $args ): array {
 		return $this->list_items( array_merge( $args, array( 'post_type' => 'attachment' ) ) );
 	}
 
+	/**
+	 * Sideload media from a public HTTP(S) URL.
+	 *
+	 * @param array<string, mixed> $data Upload fields.
+	 * @return array<string, mixed>
+	 */
 	public function upload_media( array $data ): array {
 		if ( ! current_user_can( 'upload_files' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to upload media.' );
@@ -337,6 +410,12 @@ final class AbilitiesService {
 		return $attachment instanceof \WP_Post ? $this->map_post( $attachment ) : array( 'id' => (int) $attachment_id );
 	}
 
+	/**
+	 * List comments with pagination and optional filters.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_comments( array $args ): array {
 		if ( ! current_user_can( 'moderate_comments' ) && ! current_user_can( 'edit_posts' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to list comments.' );
@@ -382,6 +461,12 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Read one comment.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
 	public function get_comment( array $data ): array {
 		$comment = get_comment( absint( $data['id'] ?? 0 ) );
 		if ( ! $comment instanceof \WP_Comment ) {
@@ -395,6 +480,12 @@ final class AbilitiesService {
 		return $this->map_comment( $comment );
 	}
 
+	/**
+	 * Create a comment on an editable post.
+	 *
+	 * @param array<string, mixed> $data Comment fields.
+	 * @return array<string, mixed>
+	 */
 	public function create_comment( array $data ): array {
 		$post_id = absint( $data['post_id'] ?? 0 );
 		$post    = get_post( $post_id );
@@ -434,6 +525,12 @@ final class AbilitiesService {
 		return $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => (int) $comment_id );
 	}
 
+	/**
+	 * Update comment content or moderation status.
+	 *
+	 * @param array<string, mixed> $data Comment fields.
+	 * @return array<string, mixed>
+	 */
 	public function update_comment( array $data ): array {
 		$comment_id = absint( $data['id'] ?? 0 );
 		$comment    = get_comment( $comment_id );
@@ -466,6 +563,11 @@ final class AbilitiesService {
 		return $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => $comment_id );
 	}
 
+	/**
+	 * Return a safe subset of site settings.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function get_settings(): array {
 		return array(
 			'name'                => get_option( 'blogname' ),
@@ -481,6 +583,11 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Return site, WordPress, PHP, theme, and connector metadata.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function get_site_info(): array {
 		$theme = wp_get_theme();
 
@@ -513,6 +620,11 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * List installed plugins for users who can activate plugins.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function list_plugins(): array {
 		if ( ! current_user_can( 'activate_plugins' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to list plugins.' );
@@ -542,6 +654,11 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * List installed themes for users who can switch themes.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function list_themes(): array {
 		if ( ! current_user_can( 'switch_themes' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to list themes.' );
@@ -567,6 +684,13 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Normalize requested post statuses against registered WordPress statuses.
+	 *
+	 * @param array<string, mixed> $args    Tool arguments.
+	 * @param string[]             $default Default statuses.
+	 * @return string[]
+	 */
 	private function statuses_from_args( array $args, array $default ): array {
 		$statuses = $args['status'] ?? $default;
 		$statuses = is_array( $statuses ) ? $statuses : array( $statuses );
@@ -582,11 +706,24 @@ final class AbilitiesService {
 		return array() === $statuses ? $default : $statuses;
 	}
 
+	/**
+	 * Restrict writes to statuses Quark explicitly supports.
+	 *
+	 * @param string $status Requested status.
+	 * @return string
+	 */
 	private function writable_status( string $status ): string {
 		$status = sanitize_key( $status );
 		return in_array( $status, self::WRITABLE_POST_STATUSES, true ) ? $status : 'draft';
 	}
 
+	/**
+	 * Build a sanitized term payload for insert/update calls.
+	 *
+	 * @param array<string, mixed> $data     Term fields.
+	 * @param \WP_Taxonomy         $taxonomy Taxonomy object.
+	 * @return array<string, mixed>
+	 */
 	private function term_payload( array $data, \WP_Taxonomy $taxonomy ): array {
 		$payload = array();
 
@@ -606,15 +743,33 @@ final class AbilitiesService {
 		return $payload;
 	}
 
+	/**
+	 * Check whether the current user can read a post type.
+	 *
+	 * @param \WP_Post_Type $post_type Post type object.
+	 * @return bool
+	 */
 	private function can_read_post_type( \WP_Post_Type $post_type ): bool {
 		return current_user_can( $post_type->cap->edit_posts ) || ( $post_type->public && current_user_can( 'read' ) );
 	}
 
+	/**
+	 * Check whether the current user can create posts for a post type.
+	 *
+	 * @param \WP_Post_Type $post_type Post type object.
+	 * @return bool
+	 */
 	private function can_create_post_type( \WP_Post_Type $post_type ): bool {
 		$capability = property_exists( $post_type->cap, 'create_posts' ) ? $post_type->cap->create_posts : $post_type->cap->edit_posts;
 		return current_user_can( $capability );
 	}
 
+	/**
+	 * Check whether a post type is safe to expose through MCP.
+	 *
+	 * @param mixed $post_type Candidate post type object.
+	 * @return bool
+	 */
 	private function is_supported_post_type( mixed $post_type ): bool {
 		if ( ! $post_type instanceof \WP_Post_Type ) {
 			return false;
@@ -627,6 +782,12 @@ final class AbilitiesService {
 		return (bool) $post_type->public || (bool) $post_type->show_ui || (bool) $post_type->show_in_rest;
 	}
 
+	/**
+	 * Check whether a taxonomy is safe to expose through MCP.
+	 *
+	 * @param mixed $taxonomy Candidate taxonomy object.
+	 * @return bool
+	 */
 	private function is_supported_taxonomy( mixed $taxonomy ): bool {
 		if ( ! $taxonomy instanceof \WP_Taxonomy ) {
 			return false;
@@ -639,12 +800,25 @@ final class AbilitiesService {
 		return (bool) $taxonomy->public || (bool) $taxonomy->show_ui || (bool) $taxonomy->show_in_rest;
 	}
 
+	/**
+	 * Check whether the current user can read a comment.
+	 *
+	 * @param \WP_Comment $comment Comment object.
+	 * @return bool
+	 */
 	private function can_read_comment( \WP_Comment $comment ): bool {
 		return current_user_can( 'moderate_comments' )
 			|| current_user_can( 'edit_comment', (int) $comment->comment_ID )
 			|| current_user_can( 'edit_post', (int) $comment->comment_post_ID );
 	}
 
+	/**
+	 * Normalize comment status arguments.
+	 *
+	 * @param string $status    Requested status.
+	 * @param bool   $allow_all Whether the "all" status is allowed.
+	 * @return string
+	 */
 	private function comment_status( string $status, bool $allow_all ): string {
 		$status  = sanitize_key( $status );
 		$allowed = $allow_all ? array( 'all', 'hold', 'approve', 'spam', 'trash' ) : array( 'hold', 'approve', 'spam', 'trash' );
@@ -652,6 +826,12 @@ final class AbilitiesService {
 		return in_array( $status, $allowed, true ) ? $status : ( $allow_all ? 'all' : 'hold' );
 	}
 
+	/**
+	 * Validate that a remote media URL resolves to public HTTP(S) addresses.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return bool
+	 */
 	private function is_public_http_url( string $url ): bool {
 		if ( '' === $url || false === wp_http_validate_url( $url ) ) {
 			return false;
@@ -695,6 +875,12 @@ final class AbilitiesService {
 		return true;
 	}
 
+	/**
+	 * Map a post object into deterministic MCP output.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array<string, mixed>
+	 */
 	private function map_post( \WP_Post $post ): array {
 		$item = array(
 			'id'           => (int) $post->ID,
@@ -719,6 +905,12 @@ final class AbilitiesService {
 		return $item;
 	}
 
+	/**
+	 * Map a term object into deterministic MCP output.
+	 *
+	 * @param \WP_Term $term Term object.
+	 * @return array<string, mixed>
+	 */
 	private function map_term( \WP_Term $term ): array {
 		return array(
 			'id'          => (int) $term->term_id,
@@ -731,6 +923,12 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Map a comment object into deterministic MCP output.
+	 *
+	 * @param \WP_Comment $comment Comment object.
+	 * @return array<string, mixed>
+	 */
 	private function map_comment( \WP_Comment $comment ): array {
 		return array(
 			'id'          => (int) $comment->comment_ID,
@@ -748,6 +946,13 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Return a consistent empty paginated collection.
+	 *
+	 * @param int $page     Page number.
+	 * @param int $per_page Items per page.
+	 * @return array<string, mixed>
+	 */
 	private function empty_collection( int $page, int $per_page ): array {
 		return array(
 			'items'    => array(),
@@ -757,6 +962,13 @@ final class AbilitiesService {
 		);
 	}
 
+	/**
+	 * Return a structured tool error payload.
+	 *
+	 * @param string $code    Machine-readable error code.
+	 * @param string $message Human-readable message.
+	 * @return array<string, string>
+	 */
 	private function error( string $code, string $message ): array {
 		return array(
 			'error'   => $code,

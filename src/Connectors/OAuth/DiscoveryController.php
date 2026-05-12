@@ -9,8 +9,14 @@ use Quark\Connectors\OAuth\Repositories\ClientRepository;
 use WP_REST_Response;
 use WP_REST_Server;
 
+/**
+ * Serves OAuth discovery metadata for MCP protected resources.
+ */
 final class DiscoveryController {
 
+	/**
+	 * Register root-level well-known rewrite rules.
+	 */
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule(
 			'^\.well-known/oauth-protected-resource(/.+)?/?$',
@@ -25,6 +31,9 @@ final class DiscoveryController {
 		);
 	}
 
+	/**
+	 * Register REST aliases for OAuth metadata documents.
+	 */
 	public function register_rest_routes(): void {
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
@@ -67,6 +76,12 @@ final class DiscoveryController {
 		);
 	}
 
+	/**
+	 * Return OAuth protected-resource metadata.
+	 *
+	 * @param string $requested_resource_path Optional path from well-known URL.
+	 * @return WP_REST_Response
+	 */
 	public function protected_resource_metadata( string $requested_resource_path = '' ): WP_REST_Response {
 		$resource                = Helpers::mcp_resource();
 		$resource_path           = Helpers::resource_path( $resource );
@@ -95,6 +110,12 @@ final class DiscoveryController {
 		return $response;
 	}
 
+	/**
+	 * Return OAuth authorization-server metadata.
+	 *
+	 * @param string $requested_issuer_path Optional issuer path from well-known URL.
+	 * @return WP_REST_Response
+	 */
 	public function authorization_server_metadata( string $requested_issuer_path = '' ): WP_REST_Response {
 		$site_issuer_path      = untrailingslashit( (string) wp_parse_url( Helpers::issuer(), PHP_URL_PATH ) );
 		$mcp_issuer_path       = untrailingslashit( Helpers::resource_path( Helpers::authorization_server_issuer() ) );
@@ -128,6 +149,9 @@ final class DiscoveryController {
 		return $response;
 	}
 
+	/**
+	 * Render well-known metadata for non-REST root-level requests.
+	 */
 	public function render_well_known_metadata(): void {
 		$document      = (string) get_query_var( 'quark_well_known' );
 		$resource_path = (string) get_query_var( 'quark_well_known_resource_path' );
@@ -161,6 +185,11 @@ final class DiscoveryController {
 		exit;
 	}
 
+	/**
+	 * Return metadata diagnostics for the admin UI.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function diagnostics(): array {
 		return array(
 			'mcp_url'                           => Helpers::mcp_resource(),

@@ -135,6 +135,7 @@ final class WordPressAbilitiesBridge {
 	 * Find an ability by ID/name.
 	 *
 	 * @param string $name Ability name.
+	 * @return object|null
 	 */
 	private function find_ability( string $name ): ?object {
 		$name = sanitize_text_field( $name );
@@ -182,6 +183,7 @@ final class WordPressAbilitiesBridge {
 	 * Return an ability name from a WP_Ability-like object.
 	 *
 	 * @param object $ability Ability object.
+	 * @return string
 	 */
 	private function ability_name( object $ability ): string {
 		return $this->method_string( $ability, 'get_name' );
@@ -201,6 +203,7 @@ final class WordPressAbilitiesBridge {
 	 * Determine whether an ability should be exposed to remote MCP clients.
 	 *
 	 * @param object $ability Ability object.
+	 * @return bool
 	 */
 	private function is_public_ability( object $ability ): bool {
 		$meta = $this->ability_meta( $ability );
@@ -219,6 +222,7 @@ final class WordPressAbilitiesBridge {
 	 * Determine if an ability is informational.
 	 *
 	 * @param array<string, mixed> $meta Ability metadata.
+	 * @return bool
 	 */
 	private function is_readonly( array $meta ): bool {
 		if ( isset( $meta['readonly'] ) ) {
@@ -237,6 +241,7 @@ final class WordPressAbilitiesBridge {
 	 *
 	 * @param object $object Ability object.
 	 * @param string $method Getter method.
+	 * @return string
 	 */
 	private function method_string( object $object, string $method ): string {
 		if ( ! method_exists( $object, $method ) ) {

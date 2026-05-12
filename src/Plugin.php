@@ -15,6 +15,9 @@ use Quark\Connectors\OAuth\TokenController;
 
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Main plugin loader and hook registry.
+ */
 final class Plugin {
 
 	private const REWRITE_VERSION        = '2026.05.11.1';
@@ -22,6 +25,9 @@ final class Plugin {
 
 	private static ?self $instance = null;
 
+	/**
+	 * Return the singleton plugin instance.
+	 */
 	public static function instance(): self {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
@@ -30,6 +36,9 @@ final class Plugin {
 		return self::$instance;
 	}
 
+	/**
+	 * Run activation tasks that require immediate persistence.
+	 */
 	public static function activate(): void {
 		OAuthInstaller::activate();
 		self::add_rewrite_rules();
@@ -37,10 +46,16 @@ final class Plugin {
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
 	}
 
+	/**
+	 * Flush rewrite rules when the plugin is deactivated.
+	 */
 	public static function deactivate(): void {
 		flush_rewrite_rules();
 	}
 
+	/**
+	 * Register runtime hooks.
+	 */
 	public function boot(): void {
 		add_action( 'init', array( $this, 'register_rewrite_rules' ) );
 		add_action( 'init', array( $this, 'maybe_flush_rewrite_rules' ), 20 );
@@ -60,6 +75,9 @@ final class Plugin {
 		OAuthInstaller::install();
 	}
 
+	/**
+	 * Register REST routes for discovery, OAuth, and MCP.
+	 */
 	public function register_routes(): void {
 		( new DiscoveryController() )->register_rest_routes();
 		( new ClientRegistrationController() )->register_routes();
@@ -68,10 +86,16 @@ final class Plugin {
 		( new McpController() )->register_routes();
 	}
 
+	/**
+	 * Register public rewrite rules used by OAuth discovery endpoints.
+	 */
 	public function register_rewrite_rules(): void {
 		self::add_rewrite_rules();
 	}
 
+	/**
+	 * Flush rewrite rules when the internal rewrite version changes.
+	 */
 	public function maybe_flush_rewrite_rules(): void {
 		if ( self::REWRITE_VERSION === (string) get_option( self::OPTION_REWRITE_VERSION, '' ) ) {
 			return;
@@ -82,6 +106,12 @@ final class Plugin {
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
 	}
 
+	/**
+	 * Add query variables used by root-level OAuth routes.
+	 *
+	 * @param string[] $vars Existing query variables.
+	 * @return string[]
+	 */
 	public function register_query_vars( array $vars ): array {
 		$vars[] = 'quark_well_known';
 		$vars[] = 'quark_well_known_resource_path';
@@ -91,6 +121,9 @@ final class Plugin {
 		return $vars;
 	}
 
+	/**
+	 * Redirect the root /oauth/authorize route to the REST authorization handler.
+	 */
 	public function maybe_redirect_root_authorize(): void {
 		if ( ! get_query_var( 'quark_oauth_authorize' ) ) {
 			return;
@@ -107,10 +140,20 @@ final class Plugin {
 		exit;
 	}
 
+	/**
+	 * Render well-known metadata when WordPress matched a rewrite rule.
+	 */
 	public function render_well_known_metadata(): void {
 		( new DiscoveryController() )->render_well_known_metadata();
 	}
 
+	/**
+	 * Disable canonical redirects for OAuth discovery and authorize routes.
+	 *
+	 * @param mixed $redirect_url  Candidate canonical redirect URL.
+	 * @param mixed $requested_url Requested URL.
+	 * @return mixed
+	 */
 	public function filter_canonical_redirect( mixed $redirect_url, mixed $requested_url ): mixed {
 		if ( ! is_string( $requested_url ) ) {
 			return $redirect_url;
@@ -124,26 +167,44 @@ final class Plugin {
 		return $redirect_url;
 	}
 
+	/**
+	 * Register the Settings > Quark admin page.
+	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
 	}
 
+	/**
+	 * Proxy abilities-save form handling to the settings controller.
+	 */
 	public function handle_save_abilities(): void {
 		( new SettingsPage() )->handle_save_abilities();
 	}
 
+	/**
+	 * Proxy single-session revocation to the settings controller.
+	 */
 	public function handle_revoke_session(): void {
 		( new SettingsPage() )->handle_revoke_session();
 	}
 
+	/**
+	 * Proxy all-session revocation to the settings controller.
+	 */
 	public function handle_revoke_all_sessions(): void {
 		( new SettingsPage() )->handle_revoke_all_sessions();
 	}
 
+	/**
+	 * Proxy OAuth consent submission to the authorization controller.
+	 */
 	public function handle_oauth_consent(): void {
 		( new AuthorizationController() )->handle_admin_consent();
 	}
 
+	/**
+	 * Register root-level rewrite rules that cannot be expressed as REST routes.
+	 */
 	private static function add_rewrite_rules(): void {
 		( new DiscoveryController() )->add_rewrite_rules();
 		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?quark_oauth_authorize=1', 'top' );

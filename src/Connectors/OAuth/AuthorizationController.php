@@ -14,10 +14,16 @@ use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Server;
 
+/**
+ * Handles the redirect-based OAuth authorization and consent flow.
+ */
 final class AuthorizationController {
 
 	private const NONCE_ACTION = 'quark_oauth_authorize';
 
+	/**
+	 * Register the authorization endpoint.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
@@ -37,6 +43,11 @@ final class AuthorizationController {
 		);
 	}
 
+	/**
+	 * Validate an authorization request and redirect to WordPress consent.
+	 *
+	 * @param WP_REST_Request $request Authorization request.
+	 */
 	public function authorize( WP_REST_Request $request ): void {
 		$params = $this->params( $request );
 		$this->authorization_context( $params, false );
@@ -51,6 +62,9 @@ final class AuthorizationController {
 		exit;
 	}
 
+	/**
+	 * Render the admin-hosted OAuth consent screen.
+	 */
 	public function render_admin_consent(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- OAuth consent GET parameters are validated below before rendering.
 		$params  = $this->params_from_array( wp_unslash( $_GET ) );
@@ -59,6 +73,9 @@ final class AuthorizationController {
 		$this->render_consent_markup( $context['params'], $context['client'], $context['resource'] );
 	}
 
+	/**
+	 * Process an approve or deny decision from the consent screen.
+	 */
 	public function handle_admin_consent(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- OAuth POST parameters are nonce-checked below before authorization is completed.
 		$params = $this->params_from_array( wp_unslash( $_POST ) );
@@ -78,6 +95,14 @@ final class AuthorizationController {
 		$this->handle_decision( $context['params'], $context['client'], $context['resource'], $decision );
 	}
 
+	/**
+	 * Complete or deny the authorization request and redirect back to the client.
+	 *
+	 * @param array<string, string> $params   Validated authorization parameters.
+	 * @param ClientEntity          $client   Registered OAuth client.
+	 * @param string                $resource MCP resource URL.
+	 * @param string                $decision User decision.
+	 */
 	private function handle_decision( array $params, ClientEntity $client, string $resource, string $decision ): never {
 		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
 		$state        = sanitize_text_field( (string) ( $params['state'] ?? '' ) );
@@ -139,6 +164,13 @@ final class AuthorizationController {
 		}
 	}
 
+	/**
+	 * Render the consent form details and hidden OAuth request parameters.
+	 *
+	 * @param array<string, string> $params   Authorization parameters.
+	 * @param ClientEntity          $client   Registered OAuth client.
+	 * @param string                $resource MCP resource URL.
+	 */
 	private function render_consent_markup( array $params, ClientEntity $client, string $resource ): void {
 		$current_user = wp_get_current_user();
 		$site_name    = get_bloginfo( 'name' );
@@ -173,6 +205,13 @@ final class AuthorizationController {
 		<?php
 	}
 
+	/**
+	 * Render a standalone OAuth error page.
+	 *
+	 * @param string $title   Error title.
+	 * @param string $message Error message.
+	 * @param int    $status  HTTP status code.
+	 */
 	private function render_error( string $title, string $message, int $status ): never {
 		nocache_headers();
 		status_header( $status );
@@ -198,6 +237,13 @@ final class AuthorizationController {
 		exit;
 	}
 
+	/**
+	 * Render an admin-context OAuth validation error.
+	 *
+	 * @param string $title   Error title.
+	 * @param string $message Error message.
+	 * @param int    $status  HTTP status code.
+	 */
 	private function render_admin_error( string $title, string $message, int $status ): never {
 		wp_die(
 			esc_html( $message ),
@@ -208,6 +254,12 @@ final class AuthorizationController {
 		);
 	}
 
+	/**
+	 * Redirect back to a validated OAuth client redirect URI.
+	 *
+	 * @param string                $redirect_uri Registered redirect URI.
+	 * @param array<string, string> $params       Response query parameters.
+	 */
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
 		$params = array_filter( $params, static fn( $value ): bool => '' !== (string) $value );
 		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
@@ -215,6 +267,13 @@ final class AuthorizationController {
 		exit;
 	}
 
+	/**
+	 * Validate request parameters and return the consent context.
+	 *
+	 * @param array<string, string> $params        Authorization parameters.
+	 * @param bool                  $admin_context Whether errors render inside wp-admin.
+	 * @return array{params: array<string, string>, client: ClientEntity, resource: string}
+	 */
 	private function authorization_context( array $params, bool $admin_context ): array {
 		$resource = $this->resource_from_params( $params );
 
@@ -243,6 +302,14 @@ final class AuthorizationController {
 		);
 	}
 
+	/**
+	 * Render an OAuth validation failure in the correct context.
+	 *
+	 * @param string $title         Error title.
+	 * @param string $message       Error message.
+	 * @param int    $status        HTTP status code.
+	 * @param bool   $admin_context Whether errors render inside wp-admin.
+	 */
 	private function fail( string $title, string $message, int $status, bool $admin_context ): never {
 		if ( $admin_context ) {
 			$this->render_admin_error( $title, $message, $status );
@@ -251,25 +318,56 @@ final class AuthorizationController {
 		$this->render_error( $title, $message, $status );
 	}
 
+	/**
+	 * Collect authorization parameters from a REST request.
+	 *
+	 * @param WP_REST_Request $request Authorization request.
+	 * @return array<string, string>
+	 */
 	private function params( WP_REST_Request $request ): array {
 		$params = array_merge( $request->get_query_params(), $request->get_body_params() );
 		return $this->params_from_array( $params );
 	}
 
+	/**
+	 * Coerce request parameters to scalar strings.
+	 *
+	 * @param array<string, mixed> $params Raw parameters.
+	 * @return array<string, string>
+	 */
 	private function params_from_array( array $params ): array {
 		return array_map( static fn( $value ): string => is_scalar( $value ) ? (string) $value : '', $params );
 	}
 
+	/**
+	 * Resolve the requested OAuth resource.
+	 *
+	 * @param array<string, string> $params Authorization parameters.
+	 * @return string
+	 */
 	private function resource_from_params( array $params ): string {
 		$resource = (string) ( $params['resource'] ?? '' );
 		return '' === $resource ? Helpers::mcp_resource() : Helpers::normalize_resource( $resource );
 	}
 
+	/**
+	 * Resolve requested scopes, defaulting to read-only content access.
+	 *
+	 * @param array<string, string> $params Authorization parameters.
+	 * @return string
+	 */
 	private function scope_from_params( array $params ): string {
 		$scope = trim( (string) ( $params['scope'] ?? '' ) );
 		return '' === $scope ? 'content:read' : preg_replace( '/\s+/', ' ', $scope );
 	}
 
+	/**
+	 * Verify the redirect URI matches the registered client.
+	 *
+	 * @param ClientEntity $client       OAuth client.
+	 * @param string       $redirect_uri Redirect URI from the request.
+	 * @return bool
+	 */
 	private function redirect_uri_allowed( ClientEntity $client, string $redirect_uri ): bool {
 		if ( '' === $redirect_uri || ! Helpers::is_allowed_redirect_uri( $redirect_uri ) ) {
 			return false;
@@ -280,6 +378,12 @@ final class AuthorizationController {
 		return in_array( $redirect_uri, $allowed, true );
 	}
 
+	/**
+	 * Build the wp-admin consent URL for login redirects and rendering.
+	 *
+	 * @param array<string, string> $params Authorization parameters.
+	 * @return string
+	 */
 	private function admin_consent_url( array $params ): string {
 		return add_query_arg(
 			array_merge(
@@ -293,6 +397,12 @@ final class AuthorizationController {
 		);
 	}
 
+	/**
+	 * Return only OAuth parameters that must survive login and consent.
+	 *
+	 * @param array<string, string> $params Authorization parameters.
+	 * @return array<string, string>
+	 */
 	private function persisted_params( array $params ): array {
 		$allowed = array(
 			'response_type',

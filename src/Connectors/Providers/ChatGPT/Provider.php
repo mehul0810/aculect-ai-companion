@@ -6,28 +6,52 @@ namespace Quark\Connectors\Providers\ChatGPT;
 
 use Quark\Connectors\Providers\ProviderInterface;
 
+/**
+ * Provides ChatGPT-specific connector setup guidance.
+ */
 final class Provider implements ProviderInterface {
 
+	/**
+	 * Return the provider slug.
+	 */
 	public function id(): string {
 		return 'chatgpt';
 	}
 
+	/**
+	 * Return the provider label.
+	 */
 	public function label(): string {
 		return 'ChatGPT';
 	}
 
+	/**
+	 * Return the provider description.
+	 */
 	public function description(): string {
 		return 'Connect ChatGPT to WordPress through Quark MCP with OAuth discovery and Dynamic Client Registration.';
 	}
 
+	/**
+	 * Return the ChatGPT connector setup URL.
+	 */
 	public function primary_action_url(): string {
 		return 'https://chatgpt.com/#settings/Connectors';
 	}
 
+	/**
+	 * Return the primary action label.
+	 */
 	public function primary_action_label(): string {
 		return 'Open ChatGPT Connectors';
 	}
 
+	/**
+	 * Return ChatGPT setup sections for the admin UI.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function setup_sections( string $mcp_url ): array {
 		unset( $mcp_url );
 

@@ -14,16 +14,25 @@ use Quark\Connectors\Providers\ProviderInterface;
 
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Admin settings page controller for connector setup and session management.
+ */
 final class SettingsPage {
 
 	private const ASSET_HANDLE = 'quark-settings-app';
 	private const STYLE_HANDLE = 'quark-settings-style';
 
+	/**
+	 * Register the settings page and page-specific assets.
+	 */
 	public function register(): void {
 		add_options_page( 'Quark Settings', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 	}
 
+	/**
+	 * Render the settings page shell or the OAuth consent screen.
+	 */
 	public function render(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Insufficient permissions.', 'quark' ) );
@@ -37,6 +46,11 @@ final class SettingsPage {
 		echo '<div class="wrap quark-settings-wrap"><div id="quark-settings-app-root" class="quark-settings-app-root"></div></div>';
 	}
 
+	/**
+	 * Enqueue settings-page assets and hydrate the React application.
+	 *
+	 * @param string $hook_suffix Current admin screen hook suffix.
+	 */
 	public function enqueue_assets( string $hook_suffix ): void {
 		if ( 'settings_page_quark' !== $hook_suffix ) {
 			return;
@@ -96,6 +110,9 @@ final class SettingsPage {
 		);
 	}
 
+	/**
+	 * Persist enabled MCP abilities from the admin form.
+	 */
 	public function handle_save_abilities(): void {
 		$this->guard_action( 'quark_save_abilities' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
@@ -118,6 +135,9 @@ final class SettingsPage {
 		exit;
 	}
 
+	/**
+	 * Revoke a single active connector session.
+	 */
 	public function handle_revoke_session(): void {
 		$this->guard_action( 'quark_revoke_session' );
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
@@ -138,6 +158,9 @@ final class SettingsPage {
 		exit;
 	}
 
+	/**
+	 * Revoke every active connector session.
+	 */
 	public function handle_revoke_all_sessions(): void {
 		$this->guard_action( 'quark_revoke_all_sessions' );
 		( new AccessTokenRepository() )->revoke_all();
@@ -153,6 +176,11 @@ final class SettingsPage {
 		exit;
 	}
 
+	/**
+	 * Return provider setup definitions for the React settings app.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	private function providers(): array {
 		$mcp_url = Helpers::mcp_resource();
 		return array_map(
@@ -173,6 +201,9 @@ final class SettingsPage {
 		);
 	}
 
+	/**
+	 * Return admin status flags from the current request.
+	 */
 	private function status(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {
@@ -190,6 +221,11 @@ final class SettingsPage {
 		return '';
 	}
 
+	/**
+	 * Load the bundled changelog data.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
 	private function load_changelog(): array {
 		$file = QUARK_PLUGIN_DIR . 'changelog.json';
 		if ( ! file_exists( $file ) ) {
@@ -206,11 +242,19 @@ final class SettingsPage {
 		return is_array( $decoded ) ? $decoded : array();
 	}
 
+	/**
+	 * Determine whether the settings page should render OAuth consent.
+	 */
 	private function is_oauth_consent_view(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing flag for the settings page.
 		return isset( $_GET['view'] ) && 'oauth-consent' === sanitize_key( wp_unslash( (string) $_GET['view'] ) );
 	}
 
+	/**
+	 * Require manage_options and verify the form nonce.
+	 *
+	 * @param string $nonce_action Expected nonce action.
+	 */
 	private function guard_action( string $nonce_action ): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Insufficient permissions.', 'quark' ) );

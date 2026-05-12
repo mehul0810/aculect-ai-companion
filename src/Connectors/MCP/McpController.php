@@ -430,6 +430,13 @@ final class McpController {
 		};
 	}
 
+	/**
+	 * Check whether a token includes every required scope.
+	 *
+	 * @param string[] $token_scopes Granted token scopes.
+	 * @param string[] $required     Required scopes.
+	 * @return bool
+	 */
 	private function has_scopes( array $token_scopes, array $required ): bool {
 		$token_scopes = array_map( 'strval', $token_scopes );
 		foreach ( $required as $scope ) {
@@ -441,6 +448,12 @@ final class McpController {
 		return true;
 	}
 
+	/**
+	 * Build OAuth security scheme metadata for an MCP tool.
+	 *
+	 * @param string[] $scopes Required scopes.
+	 * @return array<int, array<string, mixed>>
+	 */
 	private function security_schemes( array $scopes ): array {
 		return array(
 			array(
@@ -450,6 +463,15 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Return a JSON-RPC authorization challenge response.
+	 *
+	 * @param string|int|null $id     JSON-RPC request ID.
+	 * @param string          $scope  Required scope.
+	 * @param int             $status HTTP status.
+	 * @param string          $error  OAuth error code.
+	 * @return WP_REST_Response
+	 */
 	private function auth_challenge_response( string|int|null $id, string $scope, int $status, string $error ): WP_REST_Response {
 		$response = new WP_REST_Response(
 			$this->rpc_result(
@@ -475,6 +497,13 @@ final class McpController {
 		return $response;
 	}
 
+	/**
+	 * Return a JSON-RPC tool error result.
+	 *
+	 * @param string|int|null $id      JSON-RPC request ID.
+	 * @param string          $message Error message.
+	 * @return array<string, mixed>
+	 */
 	private function tool_error_result( string|int|null $id, string $message ): array {
 		return $this->rpc_result(
 			$id,
@@ -491,6 +520,13 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Wrap a JSON-RPC result.
+	 *
+	 * @param string|int|null     $id     JSON-RPC request ID.
+	 * @param array<string,mixed> $result Result payload.
+	 * @return array<string, mixed>
+	 */
 	private function rpc_result( string|int|null $id, array $result ): array {
 		return array(
 			'jsonrpc' => '2.0',
@@ -499,6 +535,15 @@ final class McpController {
 		);
 	}
 
+	/**
+	 * Build a JSON-RPC error response.
+	 *
+	 * @param string|int|null     $id      JSON-RPC request ID.
+	 * @param int                 $code    JSON-RPC error code.
+	 * @param string              $message Error message.
+	 * @param array<string,mixed> $data    Optional error data.
+	 * @return array<string, mixed>
+	 */
 	private function rpc_error( string|int|null $id, int $code, string $message, array $data = array() ): array {
 		$error = array(
 			'code'    => $code,

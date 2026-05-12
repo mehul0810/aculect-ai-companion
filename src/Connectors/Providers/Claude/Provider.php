@@ -6,28 +6,52 @@ namespace Quark\Connectors\Providers\Claude;
 
 use Quark\Connectors\Providers\ProviderInterface;
 
+/**
+ * Provides Claude-specific connector setup guidance.
+ */
 final class Provider implements ProviderInterface {
 
+	/**
+	 * Return the provider slug.
+	 */
 	public function id(): string {
 		return 'claude';
 	}
 
+	/**
+	 * Return the provider label.
+	 */
 	public function label(): string {
 		return 'Claude';
 	}
 
+	/**
+	 * Return the provider description.
+	 */
 	public function description(): string {
 		return 'Connect Claude, Claude Desktop, Claude Code, or Claude API clients to WordPress through Quark MCP.';
 	}
 
+	/**
+	 * Return the Claude connector setup URL.
+	 */
 	public function primary_action_url(): string {
 		return 'https://claude.ai/settings/connectors';
 	}
 
+	/**
+	 * Return the primary action label.
+	 */
 	public function primary_action_label(): string {
 		return 'Open Claude Connectors';
 	}
 
+	/**
+	 * Return Claude setup sections for app, CLI, and API usage.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function setup_sections( string $mcp_url ): array {
 		return array(
 			array(

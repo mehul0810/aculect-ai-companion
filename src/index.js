@@ -12,7 +12,7 @@ import {
 	TabPanel,
 } from '@wordpress/components';
 
-const TAB_QUERY_PARAM = 'quark_tab';
+const TAB_QUERY_PARAM = 'tab';
 
 function hasTab( tabs, tabName ) {
 	return tabs.some( ( tab ) => tab.name === tabName );

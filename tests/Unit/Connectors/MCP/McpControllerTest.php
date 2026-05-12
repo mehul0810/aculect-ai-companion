@@ -55,6 +55,23 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey('post_type', $public_schema['properties']);
 	}
 
+	public function test_expanded_tool_schemas_are_available(): void {
+		$controller = new McpController();
+
+		$media_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'media_upload_item' ) );
+		self::assertSame('object', $media_schema['type']);
+		self::assertSame(array('url'), $media_schema['required']);
+		self::assertArrayHasKey('alt_text', $media_schema['properties']);
+
+		$comments_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_update_item' ) );
+		self::assertSame(array('id'), $comments_schema['required']);
+		self::assertArrayHasKey('status', $comments_schema['properties']);
+
+		$abilities_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'wp_abilities_run' ) );
+		self::assertSame(array('id'), $abilities_schema['required']);
+		self::assertArrayHasKey('arguments', $abilities_schema['properties']);
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *

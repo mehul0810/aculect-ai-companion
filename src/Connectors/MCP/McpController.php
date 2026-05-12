@@ -303,6 +303,88 @@ final class McpController {
 					'per_page' => array( 'type' => 'integer' ),
 				),
 			),
+			'media.upload_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'url' ),
+				'properties' => array(
+					'url'         => array(
+						'type'        => 'string',
+						'description' => 'Public HTTP or HTTPS media URL to upload.',
+					),
+					'title'       => array( 'type' => 'string' ),
+					'alt_text'    => array( 'type' => 'string' ),
+					'caption'     => array( 'type' => 'string' ),
+					'description' => array( 'type' => 'string' ),
+					'post_id'     => array( 'type' => 'integer' ),
+				),
+			),
+			'comments.list_items' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'status'   => array(
+						'type'        => 'string',
+						'description' => 'Comment status: all, hold, approve, spam, or trash.',
+					),
+					'post_id'  => array( 'type' => 'integer' ),
+					'search'   => array( 'type' => 'string' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+				),
+			),
+			'comments.get_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array( 'id' => array( 'type' => 'integer' ) ),
+			),
+			'comments.create_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'post_id', 'content' ),
+				'properties' => array(
+					'post_id' => array( 'type' => 'integer' ),
+					'content' => array( 'type' => 'string' ),
+					'status'  => array(
+						'type'        => 'string',
+						'description' => 'Optional status for moderators: hold or approve.',
+					),
+				),
+			),
+			'comments.update_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id'      => array( 'type' => 'integer' ),
+					'content' => array( 'type' => 'string' ),
+					'status'  => array(
+						'type'        => 'string',
+						'description' => 'Comment status: hold, approve, spam, or trash.',
+					),
+				),
+			),
+			'wp_abilities.discover' => array(
+				'type'       => 'object',
+				'properties' => array(
+					'search'   => array( 'type' => 'string' ),
+					'category' => array( 'type' => 'string' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+				),
+			),
+			'wp_abilities.get_info' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array( 'id' => array( 'type' => 'string' ) ),
+			),
+			'wp_abilities.run' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id'        => array( 'type' => 'string' ),
+					'arguments' => array(
+						'type'                 => 'object',
+						'additionalProperties' => true,
+					),
+				),
+			),
 			default => array(
 				'type'       => 'object',
 				'properties' => new \stdClass(),
@@ -332,7 +414,18 @@ final class McpController {
 			'taxonomy.create_term' => $content->create_term( $args ),
 			'taxonomy.update_term' => $content->update_term( $args ),
 			'media.list_items' => $content->list_media( $args ),
+			'media.upload_item' => $content->upload_media( $args ),
+			'comments.list_items' => $content->list_comments( $args ),
+			'comments.get_item' => $content->get_comment( $args ),
+			'comments.create_item' => $content->create_comment( $args ),
+			'comments.update_item' => $content->update_comment( $args ),
 			'site.get_settings' => $content->get_settings(),
+			'site.get_info' => $content->get_site_info(),
+			'site.list_plugins' => $content->list_plugins(),
+			'site.list_themes' => $content->list_themes(),
+			'wp_abilities.discover' => $content->discover_wp_abilities( $args ),
+			'wp_abilities.get_info' => $content->get_wp_ability_info( $args ),
+			'wp_abilities.run' => $content->run_wp_ability( $args ),
 			default => array( 'error' => 'Unknown tool' ),
 		};
 	}

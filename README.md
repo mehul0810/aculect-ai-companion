@@ -16,6 +16,15 @@ Quark uses an endpoint-only OAuth setup. Open `Settings > Quark`, copy the MCP e
 
 When the assistant starts authentication, WordPress shows a Quark OAuth consent screen. Approving the request completes the connection.
 
+## Current Abilities
+
+- Read, create, and update posts, pages, and supported custom post types.
+- Read, create, and update terms in supported built-in and custom taxonomies.
+- List and moderate comments, including creating and updating comments as the connected user.
+- List media library items and upload media from public URLs.
+- Read safe site settings, site information, plugin inventory, and theme inventory.
+- Discover, inspect, and run public WordPress Abilities API actions registered by WordPress core or plugins.
+
 ## Public Endpoints
 
 - MCP: `/wp-json/quark/v1/mcp`

@@ -31,7 +31,9 @@
       "About tab copy now uses the full available section width",
       "Advanced tab removed from the Quark settings app",
       "MCP tool names are now Claude-safe while legacy dotted tool aliases remain callable",
-      "Quark settings now preserve WordPress admin notices instead of removing unrelated notices"
+      "Quark settings now preserve WordPress admin notices instead of removing unrelated notices",
+      "Added controlled MCP abilities for comments, media upload, site information, plugin inventory, and theme inventory",
+      "Added WordPress Abilities API bridge tools to discover, inspect, and run public WordPress/plugin abilities"
     ],
     "Dev": [
       "Added prerelease GitHub Action to build Composer and npm artifacts on release",

@@ -277,6 +277,195 @@ final class AbilitiesService {
 		return $this->list_items( array_merge( $args, array( 'post_type' => 'attachment' ) ) );
 	}
 
+	public function upload_media( array $data ): array {
+		if ( ! current_user_can( 'upload_files' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to upload media.' );
+		}
+
+		$url = esc_url_raw( (string) ( $data['url'] ?? '' ) );
+		if ( ! $this->is_public_http_url( $url ) ) {
+			return $this->error( 'invalid_url', 'A public HTTP or HTTPS media URL is required.' );
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+
+		$tmp = download_url( $url, 30 );
+		if ( is_wp_error( $tmp ) ) {
+			return $this->error( $tmp->get_error_code(), $tmp->get_error_message() );
+		}
+
+		$filename = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
+		if ( '' === $filename || '.' === $filename || '..' === $filename ) {
+			$filename = 'quark-media-upload';
+		}
+
+		$file = array(
+			'name'     => sanitize_file_name( $filename ),
+			'tmp_name' => $tmp,
+		);
+
+		$post_id       = absint( $data['post_id'] ?? 0 );
+		$attachment_id = media_handle_sideload( $file, $post_id );
+
+		if ( is_wp_error( $attachment_id ) ) {
+			wp_delete_file( $tmp );
+			return $this->error( $attachment_id->get_error_code(), $attachment_id->get_error_message() );
+		}
+
+		$update = array( 'ID' => (int) $attachment_id );
+		if ( isset( $data['title'] ) ) {
+			$update['post_title'] = sanitize_text_field( (string) $data['title'] );
+		}
+		if ( isset( $data['caption'] ) ) {
+			$update['post_excerpt'] = wp_kses_post( (string) $data['caption'] );
+		}
+		if ( isset( $data['description'] ) ) {
+			$update['post_content'] = wp_kses_post( (string) $data['description'] );
+		}
+
+		if ( count( $update ) > 1 ) {
+			wp_update_post( $update );
+		}
+
+		if ( isset( $data['alt_text'] ) ) {
+			update_post_meta( (int) $attachment_id, '_wp_attachment_image_alt', sanitize_text_field( (string) $data['alt_text'] ) );
+		}
+
+		$attachment = get_post( (int) $attachment_id );
+		return $attachment instanceof \WP_Post ? $this->map_post( $attachment ) : array( 'id' => (int) $attachment_id );
+	}
+
+	public function list_comments( array $args ): array {
+		if ( ! current_user_can( 'moderate_comments' ) && ! current_user_can( 'edit_posts' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to list comments.' );
+		}
+
+		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
+		$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 50 ) ) );
+		$status   = $this->comment_status( (string) ( $args['status'] ?? 'all' ), true );
+
+		$query = array(
+			'number'  => $per_page,
+			'offset'  => ( $page - 1 ) * $per_page,
+			'status'  => $status,
+			'orderby' => 'comment_date_gmt',
+			'order'   => 'DESC',
+		);
+
+		if ( ! empty( $args['post_id'] ) ) {
+			$query['post_id'] = absint( $args['post_id'] );
+		}
+
+		if ( ! empty( $args['search'] ) ) {
+			$query['search'] = sanitize_text_field( (string) $args['search'] );
+		}
+
+		$comments = get_comments( $query );
+		$total    = get_comments(
+			array_merge(
+				$query,
+				array(
+					'count'  => true,
+					'number' => 0,
+					'offset' => 0,
+				)
+			)
+		);
+
+		return array(
+			'items'    => array_map( array( $this, 'map_comment' ), is_array( $comments ) ? $comments : array() ),
+			'total'    => is_numeric( $total ) ? (int) $total : 0,
+			'page'     => $page,
+			'per_page' => $per_page,
+		);
+	}
+
+	public function get_comment( array $data ): array {
+		$comment = get_comment( absint( $data['id'] ?? 0 ) );
+		if ( ! $comment instanceof \WP_Comment ) {
+			return $this->error( 'not_found', 'Comment not found.' );
+		}
+
+		if ( ! $this->can_read_comment( $comment ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to read this comment.' );
+		}
+
+		return $this->map_comment( $comment );
+	}
+
+	public function create_comment( array $data ): array {
+		$post_id = absint( $data['post_id'] ?? 0 );
+		$post    = get_post( $post_id );
+
+		if ( ! $post instanceof \WP_Post || ! current_user_can( 'edit_post', $post_id ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to comment on this post.' );
+		}
+
+		$content = wp_kses_post( (string) ( $data['content'] ?? '' ) );
+		if ( '' === trim( wp_strip_all_tags( $content ) ) ) {
+			return $this->error( 'invalid_comment', 'Comment content is required.' );
+		}
+
+		$user        = wp_get_current_user();
+		$author_name = '' !== $user->display_name ? $user->display_name : $user->user_login;
+		$approved    = 'hold';
+		if ( current_user_can( 'moderate_comments' ) ) {
+			$approved = $this->comment_status( (string) ( $data['status'] ?? 'approve' ), false );
+		}
+
+		$comment_id = wp_insert_comment(
+			array(
+				'comment_post_ID'      => $post_id,
+				'comment_content'      => $content,
+				'comment_approved'     => 'approve' === $approved ? '1' : '0',
+				'user_id'              => get_current_user_id(),
+				'comment_author'       => sanitize_text_field( $author_name ),
+				'comment_author_email' => sanitize_email( $user->user_email ),
+			)
+		);
+
+		if ( ! $comment_id ) {
+			return $this->error( 'comment_failed', 'Comment could not be created.' );
+		}
+
+		$comment = get_comment( (int) $comment_id );
+		return $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => (int) $comment_id );
+	}
+
+	public function update_comment( array $data ): array {
+		$comment_id = absint( $data['id'] ?? 0 );
+		$comment    = get_comment( $comment_id );
+
+		if ( ! $comment instanceof \WP_Comment ) {
+			return $this->error( 'not_found', 'Comment not found.' );
+		}
+
+		if ( ! current_user_can( 'edit_comment', $comment_id ) && ! current_user_can( 'moderate_comments' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to update this comment.' );
+		}
+
+		$update = array( 'comment_ID' => $comment_id );
+		if ( array_key_exists( 'content', $data ) ) {
+			$update['comment_content'] = wp_kses_post( (string) $data['content'] );
+		}
+
+		if ( count( $update ) > 1 && false === wp_update_comment( $update ) ) {
+			return $this->error( 'comment_failed', 'Comment could not be updated.' );
+		}
+
+		if ( array_key_exists( 'status', $data ) ) {
+			$status = $this->comment_status( (string) $data['status'], false );
+			if ( ! wp_set_comment_status( $comment_id, $status ) ) {
+				return $this->error( 'comment_status_failed', 'Comment status could not be updated.' );
+			}
+		}
+
+		$comment = get_comment( $comment_id );
+		return $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => $comment_id );
+	}
+
 	public function get_settings(): array {
 		return array(
 			'name'                => get_option( 'blogname' ),
@@ -289,6 +478,92 @@ final class AbilitiesService {
 			'time_format'         => get_option( 'time_format' ),
 			'permalink_structure' => (string) get_option( 'permalink_structure' ),
 			'theme'               => wp_get_theme()->get( 'Name' ),
+		);
+	}
+
+	public function get_site_info(): array {
+		$theme = wp_get_theme();
+
+		return array(
+			'name'             => get_option( 'blogname' ),
+			'description'      => get_option( 'blogdescription' ),
+			'home_url'         => home_url( '/' ),
+			'site_url'         => site_url( '/' ),
+			'wordpress'        => array(
+				'version'          => get_bloginfo( 'version' ),
+				'multisite'        => is_multisite(),
+				'environment_type' => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production',
+			),
+			'php'              => array(
+				'version' => PHP_VERSION,
+			),
+			'active_theme'     => array(
+				'name'       => $theme->get( 'Name' ),
+				'stylesheet' => $theme->get_stylesheet(),
+				'template'   => $theme->get_template(),
+				'version'    => $theme->get( 'Version' ),
+			),
+			'active_plugins'   => count( (array) get_option( 'active_plugins', array() ) ),
+			'locale'           => get_locale(),
+			'timezone'         => wp_timezone_string(),
+			'rest_url'         => rest_url(),
+			'abilities_api'    => function_exists( 'wp_get_abilities' ),
+			'quark_version'    => QUARK_VERSION,
+			'mcp_endpoint_url' => \Quark\Connectors\Helpers::mcp_resource(),
+		);
+	}
+
+	public function list_plugins(): array {
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to list plugins.' );
+		}
+
+		if ( ! function_exists( 'get_plugins' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		$plugins = get_plugins();
+		$items   = array();
+		foreach ( $plugins as $file => $plugin ) {
+			$items[] = array(
+				'file'        => (string) $file,
+				'name'        => (string) ( $plugin['Name'] ?? '' ),
+				'version'     => (string) ( $plugin['Version'] ?? '' ),
+				'description' => wp_strip_all_tags( (string) ( $plugin['Description'] ?? '' ) ),
+				'author'      => wp_strip_all_tags( (string) ( $plugin['Author'] ?? '' ) ),
+				'active'      => is_plugin_active( (string) $file ),
+				'network'     => is_multisite() && is_plugin_active_for_network( (string) $file ),
+			);
+		}
+
+		return array(
+			'items' => $items,
+			'total' => count( $items ),
+		);
+	}
+
+	public function list_themes(): array {
+		if ( ! current_user_can( 'switch_themes' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to list themes.' );
+		}
+
+		$active = wp_get_theme();
+		$items  = array();
+		foreach ( wp_get_themes() as $stylesheet => $theme ) {
+			$items[] = array(
+				'stylesheet'  => (string) $stylesheet,
+				'name'        => $theme->get( 'Name' ),
+				'version'     => $theme->get( 'Version' ),
+				'description' => wp_strip_all_tags( $theme->get( 'Description' ) ),
+				'template'    => $theme->get_template(),
+				'parent'      => $theme->parent() ? $theme->parent()->get( 'Name' ) : '',
+				'active'      => $active->get_stylesheet() === (string) $stylesheet,
+			);
+		}
+
+		return array(
+			'items' => $items,
+			'total' => count( $items ),
 		);
 	}
 
@@ -364,8 +639,64 @@ final class AbilitiesService {
 		return (bool) $taxonomy->public || (bool) $taxonomy->show_ui || (bool) $taxonomy->show_in_rest;
 	}
 
+	private function can_read_comment( \WP_Comment $comment ): bool {
+		return current_user_can( 'moderate_comments' )
+			|| current_user_can( 'edit_comment', (int) $comment->comment_ID )
+			|| current_user_can( 'edit_post', (int) $comment->comment_post_ID );
+	}
+
+	private function comment_status( string $status, bool $allow_all ): string {
+		$status  = sanitize_key( $status );
+		$allowed = $allow_all ? array( 'all', 'hold', 'approve', 'spam', 'trash' ) : array( 'hold', 'approve', 'spam', 'trash' );
+
+		return in_array( $status, $allowed, true ) ? $status : ( $allow_all ? 'all' : 'hold' );
+	}
+
+	private function is_public_http_url( string $url ): bool {
+		if ( '' === $url || false === wp_http_validate_url( $url ) ) {
+			return false;
+		}
+
+		$scheme = (string) wp_parse_url( $url, PHP_URL_SCHEME );
+		$host   = (string) wp_parse_url( $url, PHP_URL_HOST );
+		if ( ! in_array( strtolower( $scheme ), array( 'http', 'https' ), true ) || '' === $host ) {
+			return false;
+		}
+
+		if ( in_array( strtolower( $host ), array( 'localhost', 'localhost.localdomain' ), true ) ) {
+			return false;
+		}
+
+		$ips = gethostbynamel( $host );
+		if ( false === $ips ) {
+			$ips = array();
+		}
+		if ( function_exists( 'dns_get_record' ) ) {
+			$records = dns_get_record( $host, DNS_AAAA );
+			if ( is_array( $records ) ) {
+				foreach ( $records as $record ) {
+					if ( isset( $record['ipv6'] ) ) {
+						$ips[] = (string) $record['ipv6'];
+					}
+				}
+			}
+		}
+
+		if ( array() === $ips ) {
+			return false;
+		}
+
+		foreach ( array_unique( $ips ) as $ip ) {
+			if ( false === filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	private function map_post( \WP_Post $post ): array {
-		return array(
+		$item = array(
 			'id'           => (int) $post->ID,
 			'type'         => $post->post_type,
 			'title'        => get_the_title( $post ),
@@ -378,6 +709,14 @@ final class AbilitiesService {
 			'modified_gmt' => $post->post_modified_gmt,
 			'link'         => get_permalink( $post ),
 		);
+
+		if ( 'attachment' === $post->post_type ) {
+			$item['mime_type']  = $post->post_mime_type;
+			$item['source_url'] = wp_get_attachment_url( $post->ID );
+			$item['alt_text']   = get_post_meta( $post->ID, '_wp_attachment_image_alt', true );
+		}
+
+		return $item;
 	}
 
 	private function map_term( \WP_Term $term ): array {
@@ -389,6 +728,23 @@ final class AbilitiesService {
 			'description' => $term->description,
 			'parent'      => (int) $term->parent,
 			'count'       => (int) $term->count,
+		);
+	}
+
+	private function map_comment( \WP_Comment $comment ): array {
+		return array(
+			'id'          => (int) $comment->comment_ID,
+			'post_id'     => (int) $comment->comment_post_ID,
+			'author_name' => $comment->comment_author,
+			'author_url'  => esc_url_raw( $comment->comment_author_url ),
+			'user_id'     => (int) $comment->user_id,
+			'content'     => $comment->comment_content,
+			'status'      => wp_get_comment_status( $comment ),
+			'type'        => $comment->comment_type,
+			'parent'      => (int) $comment->comment_parent,
+			'date_gmt'    => $comment->comment_date_gmt,
+			'karma'       => (int) $comment->comment_karma,
+			'link'        => get_comment_link( $comment ),
 		);
 	}
 

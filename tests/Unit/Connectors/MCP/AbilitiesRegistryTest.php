@@ -57,6 +57,33 @@ final class AbilitiesRegistryTest extends TestCase {
 		}
 	}
 
+	public function test_requested_expansion_abilities_are_registered(): void {
+		$definitions = $this->registry->definitions();
+
+		foreach (
+			array(
+				'wp_abilities.discover',
+				'wp_abilities.get_info',
+				'wp_abilities.run',
+				'comments.list_items',
+				'comments.get_item',
+				'comments.create_item',
+				'comments.update_item',
+				'media.upload_item',
+				'site.get_info',
+				'site.list_plugins',
+				'site.list_themes',
+			) as $ability_id
+		) {
+			self::assertArrayHasKey($ability_id, $definitions);
+			self::assertTrue($this->registry->is_known($this->registry->tool_name($ability_id)));
+		}
+
+		self::assertSame(array('content:draft'), $this->registry->required_scopes('wp_abilities.run'));
+		self::assertSame(array('content:draft'), $this->registry->required_scopes('media.upload_item'));
+		self::assertSame(array('content:read'), $this->registry->required_scopes('site.list_plugins'));
+	}
+
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {
 		$this->registry->save_enabled_ids(
 			array(

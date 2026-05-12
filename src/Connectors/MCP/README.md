@@ -14,3 +14,23 @@ When adding or changing tools:
 - Update PHPUnit coverage for tool-name mapping and `tools/list` output.
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
+
+## WordPress Abilities Bridge
+
+Quark exposes the WordPress Abilities API through three controlled MCP tools:
+
+- `wp_abilities_discover`: Lists public abilities registered by WordPress core and plugins.
+- `wp_abilities_get_info`: Returns schema and metadata for a single public ability.
+- `wp_abilities_run`: Executes a public ability as the connected WordPress user.
+
+The bridge intentionally does not expose a generic REST proxy. Execution still
+flows through WordPress ability permissions, Quark ability toggles, and OAuth
+scopes. Keep `wp_abilities_run` treated as write-capable because third-party
+abilities may modify data even when their names are not obvious.
+
+## Content Surface
+
+Quark's built-in MCP tools cover posts/pages/custom post types, taxonomies,
+comments, media library listing/upload, safe site settings, site information,
+and plugin/theme inventory. New tool groups should stay deterministic,
+paginated where applicable, and capability-checked at execution time.

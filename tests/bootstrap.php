@@ -11,8 +11,10 @@
 
 declare(strict_types=1);
 
-if ( ! defined( 'ABSPATH' ) && 'cli' !== PHP_SAPI ) {
-	exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	if ( 'cli' !== PHP_SAPI ) {
+		exit;
+	}
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';

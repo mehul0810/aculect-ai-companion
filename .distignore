@@ -15,6 +15,9 @@ phpunit.xml.dist
 phpstan.neon.dist
 phpstan-bootstrap.php
 AGENTS.md
+composer.json
+composer.lock
+package.json
 package-lock.json
 *.log
 .DS_Store

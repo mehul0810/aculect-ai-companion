@@ -6,6 +6,10 @@ Quark helps site owners manage WordPress with AI. Connect Claude or ChatGPT, app
 
 Manage your WordPress site with AI.
 
+## Pre-production Notice
+
+Quark is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so use it on development or staging sites until the integration has been tested for your workflow and approved by the site owner.
+
 ## Requirements
 
 - WordPress 6.5 or later
@@ -32,6 +36,10 @@ Open `Settings > Quark` in WordPress and follow the setup flow:
 ## Developer Notes
 
 Quark implements a remote MCP interface secured by OAuth-style authorization with automatic client setup for compatible assistants. Those protocol details are intentionally hidden from the primary WordPress admin experience so non-technical users only need the connection URL.
+
+### Release Packaging
+
+Production ZIP files include built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` stay in the GitHub repository but are excluded from release artifacts with `.distignore`. The generated `build/index.asset.php` file is required by WordPress for script dependencies and is shipped.
 
 ### Public Interfaces
 

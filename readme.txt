@@ -12,6 +12,10 @@ Manage your WordPress site with AI. Talk to Claude or ChatGPT to create posts, u
 
 == Description ==
 
+= Pre-production Notice =
+
+Quark is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so test it only on development or staging sites and enable it only with explicit approval from the site owner.
+
 Quark lets site owners manage their WordPress site using AI assistants like Claude and ChatGPT. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
 
 Setup is designed to be simple:
@@ -79,12 +83,18 @@ Yes. Quark can work with supported custom post types and custom taxonomies when 
 
 == Development ==
 
-The source files for the built admin assets are included in the plugin package under `src/`. To rebuild assets from source, use:
+The production package ships built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` are intentionally excluded from release ZIP files.
+
+For source code, build tooling, and exact dependency manifests, use the public GitHub repository:
+
+https://github.com/mehul0810/quark
+
+From the repository checkout, rebuild assets with:
 
 `npm install`
 `npm run build`
 
-Composer dependencies are installed for production releases with:
+Composer dependencies for production releases are installed with:
 
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 

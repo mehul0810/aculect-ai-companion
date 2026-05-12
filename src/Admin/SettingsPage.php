@@ -99,8 +99,8 @@ final class SettingsPage {
 	public function handle_save_abilities(): void {
 		$this->guard_action( 'quark_save_abilities' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['enabled_abilities'] ) && is_array( $_POST['enabled_abilities'] )
-			? array_map( 'wp_unslash', $_POST['enabled_abilities'] )
+		$enabled = isset( $_POST['enabled_abilities'] )
+			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_abilities'] ) )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 

@@ -10,6 +10,7 @@ use Quark\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AuthCodeEntityInterface;
 use League\OAuth2\Server\Repositories\AuthCodeRepositoryInterface;
 
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth auth codes use a dedicated custom table and must not be cached.
 final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 
 	public function getNewAuthCode(): AuthCodeEntityInterface {

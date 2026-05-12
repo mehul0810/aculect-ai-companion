@@ -15,10 +15,10 @@ if ( '1' !== (string) get_option( 'quark_remove_data_on_uninstall', '0' ) ) {
 	return;
 }
 
-$autoload = __DIR__ . '/vendor/autoload.php';
+$quark_autoload = __DIR__ . '/vendor/autoload.php';
 
-if ( file_exists( $autoload ) ) {
-	require_once $autoload;
+if ( file_exists( $quark_autoload ) ) {
+	require_once $quark_autoload;
 } else {
 	spl_autoload_register(
 		static function ( string $class_name ): void {

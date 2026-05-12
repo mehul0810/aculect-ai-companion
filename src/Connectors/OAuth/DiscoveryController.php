@@ -134,7 +134,8 @@ final class DiscoveryController {
 		$issuer_path   = (string) get_query_var( 'quark_well_known_issuer_path' );
 
 		if ( '' === $document ) {
-			$path = (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+			$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+			$path        = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
 			if ( preg_match( '#/\.well-known/oauth-protected-resource(?P<resource_path>/.+)?/?$#', $path, $matches ) ) {
 				$document      = Helpers::PROTECTED_RESOURCE_METADATA;
 				$resource_path = (string) ( $matches['resource_path'] ?? '' );

@@ -29,10 +29,10 @@ define( 'QUARK_PLUGIN_FILE', __FILE__ );
 define( 'QUARK_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'QUARK_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-$autoload = QUARK_PLUGIN_DIR . 'vendor/autoload.php';
+$quark_autoload = QUARK_PLUGIN_DIR . 'vendor/autoload.php';
 
-if ( file_exists( $autoload ) ) {
-	require_once $autoload;
+if ( file_exists( $quark_autoload ) ) {
+	require_once $quark_autoload;
 } else {
 	spl_autoload_register(
 		static function ( string $class_name ): void {

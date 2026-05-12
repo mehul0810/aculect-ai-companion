@@ -11,7 +11,11 @@
 
 declare(strict_types=1);
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+if ( ! defined( 'ABSPATH' ) && 'cli' !== PHP_SAPI ) {
+	exit;
+}
+
+require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 if ( ! defined( 'QUARK_VERSION' ) ) {
 	define( 'QUARK_VERSION', '0.1.0' );
@@ -19,6 +23,7 @@ if ( ! defined( 'QUARK_VERSION' ) ) {
 
 $GLOBALS['quark_test_options'] = array();
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
 	/**
 	 * Return a test option value.
@@ -49,3 +54,4 @@ if ( ! function_exists( 'update_option' ) ) {
 		return true;
 	}
 }
+// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames

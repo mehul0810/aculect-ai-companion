@@ -11,6 +11,7 @@ use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth token repositories use dedicated custom tables and must read/write fresh token state.
 final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 
 	public function getNewToken(

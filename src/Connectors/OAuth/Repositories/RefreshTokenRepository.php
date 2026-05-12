@@ -9,6 +9,7 @@ use Quark\Connectors\OAuth\Entities\RefreshTokenEntity;
 use League\OAuth2\Server\Entities\RefreshTokenEntityInterface;
 use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth refresh tokens use a dedicated custom table and must read/write fresh token state.
 final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 
 	public function getNewRefreshToken(): ?RefreshTokenEntityInterface {

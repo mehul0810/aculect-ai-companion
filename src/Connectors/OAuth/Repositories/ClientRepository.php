@@ -11,6 +11,7 @@ use Quark\Connectors\OAuth\Entities\ClientEntity;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
 
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
 final class ClientRepository implements ClientRepositoryInterface {
 
 	public function getClientEntity( string $clientIdentifier ): ?ClientEntityInterface {

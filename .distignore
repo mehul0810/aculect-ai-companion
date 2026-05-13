@@ -3,10 +3,13 @@
 .codex/
 .claude/
 .phpunit.cache/
+bin/
 node_modules/
 tests/
 vendor/bin/
 vendor/paragonie/random_compat/build-phar.sh
+vendor/paragonie/random_compat/other/build_phar.php
+vendor/paragonie/random_compat/psalm.xml
 src/admin-settings.js
 .distignore
 .editorconfig

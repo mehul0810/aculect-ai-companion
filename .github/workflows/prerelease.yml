@@ -39,6 +39,9 @@ jobs:
         run: |
           rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" release/ --delete --delete-excluded
 
+      - name: Verify production package contents
+        run: php bin/verify-production-package.php release
+
       - name: Run Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:

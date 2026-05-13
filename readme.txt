@@ -48,9 +48,9 @@ Quark currently includes setup guidance for:
 
 Claude and ChatGPT must be able to reach your WordPress site over HTTPS to connect.
 
-= Supported Actions =
+= Supported Abilities =
 
-Admins can enable or disable these actions from Settings > Quark > Actions after the first assistant connection is active.
+Admins can enable or disable these abilities from Settings > Quark > Abilities after the first assistant connection is active.
 
 Content:
 
@@ -86,11 +86,11 @@ Site information:
 * List installed plugins and active state for users who can manage plugins
 * List installed themes and active state for users who can manage themes
 
-WordPress actions:
+WordPress abilities:
 
-* Discover supported public WordPress actions registered by WordPress and plugins
-* Inspect one supported public WordPress action
-* Run a supported public WordPress action using the connected user's permissions
+* Discover supported public WordPress abilities registered by WordPress and plugins
+* Inspect one supported public WordPress ability
+* Run a supported public WordPress ability using the connected user's permissions
 
 == Third Party Services ==
 
@@ -127,7 +127,7 @@ Yes. Open Settings > Quark > Connections and disconnect one AI assistant or all 
 
 = Can I control what my AI assistant can do? =
 
-Yes. After a connection exists, open Settings > Quark > Actions and enable or disable individual actions. WordPress permissions are still checked every time your AI assistant asks Quark to do something.
+Yes. After a connection exists, open Settings > Quark > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Quark to do something.
 
 = Does Quark require an account with a third-party service? =
 

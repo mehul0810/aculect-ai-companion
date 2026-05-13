@@ -11,6 +11,17 @@ import {
 } from '@wordpress/components';
 
 const TAB_QUERY_PARAM = 'tab';
+const ADMIN_NOTICE_SELECTOR = [
+	'#wpbody-content > .notice',
+	'#wpbody-content > .updated',
+	'#wpbody-content > .error',
+	'.quark-settings-wrap > .notice',
+	'.quark-settings-wrap > .updated',
+	'.quark-settings-wrap > .error',
+	'.quark-app-header .notice',
+	'.quark-app-header .updated',
+	'.quark-app-header .error',
+].join( ',' );
 
 function hasTab( tabs, tabName ) {
 	return tabs.some( ( tab ) => tab.name === tabName );
@@ -39,6 +50,21 @@ function persistTabName( tabName ) {
 	} catch {
 		// URL state is progressive enhancement; tab navigation still works.
 	}
+}
+
+function relocateAdminNotices( target ) {
+	if ( ! target ) {
+		return;
+	}
+
+	document.querySelectorAll( ADMIN_NOTICE_SELECTOR ).forEach( ( notice ) => {
+		if ( notice.closest( '.quark-admin-notices' ) ) {
+			return;
+		}
+
+		notice.classList.add( 'quark-admin-notice' );
+		target.appendChild( notice );
+	} );
 }
 
 function CopyField( { label, value, secret = false, onCopy } ) {
@@ -194,6 +220,7 @@ function SettingsApp() {
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
 	);
+	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 
 	useEffect(
@@ -204,6 +231,35 @@ function SettingsApp() {
 		},
 		[]
 	);
+
+	useEffect( () => {
+		const target = adminNoticesRef.current;
+		if ( ! target ) {
+			return undefined;
+		}
+
+		let scheduled = false;
+		const moveNotices = () => {
+			scheduled = false;
+			relocateAdminNotices( target );
+		};
+		const scheduleMove = () => {
+			if ( scheduled ) {
+				return;
+			}
+
+			scheduled = true;
+			window.requestAnimationFrame( moveNotices );
+		};
+		const observer = new window.MutationObserver( scheduleMove );
+		const container =
+			document.getElementById( 'wpbody-content' ) || document.body;
+
+		moveNotices();
+		observer.observe( container, { childList: true, subtree: true } );
+
+		return () => observer.disconnect();
+	}, [] );
 
 	const copyValue = async ( value, label = 'Copied' ) => {
 		try {
@@ -269,6 +325,12 @@ function SettingsApp() {
 					{ data.isConnected ? 'Connected' : 'Ready to connect' }
 				</span>
 			</div>
+
+			<div
+				className="quark-admin-notices"
+				ref={ adminNoticesRef }
+				aria-live="polite"
+			/>
 
 			{ copied && (
 				<Notice status="success" isDismissible={ false }>

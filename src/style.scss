@@ -92,6 +92,28 @@
 	color: var(--quark-green);
 }
 
+.quark-admin-notices {
+	margin: -10px 0 22px;
+}
+
+.quark-admin-notices:empty {
+	display: none;
+}
+
+.quark-admin-notices .notice,
+.quark-admin-notices .updated,
+.quark-admin-notices .error {
+	box-sizing: border-box;
+	margin: 0 0 10px;
+	width: 100%;
+}
+
+.quark-admin-notices .notice:last-child,
+.quark-admin-notices .updated:last-child,
+.quark-admin-notices .error:last-child {
+	margin-bottom: 0;
+}
+
 .quark-tabs .components-tab-panel__tabs {
 	margin-bottom: 18px;
 	border-bottom: 1px solid var(--quark-border);

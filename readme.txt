@@ -8,7 +8,7 @@ Stable tag: 0.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Manage your WordPress site with AI. Talk to Claude or ChatGPT to create posts, update pages, moderate comments, and more -- no coding required.
+Connect WordPress with AI. Quark helps you manage content, comments, media, and more with your AI assistant.
 
 == Description ==
 
@@ -16,12 +16,12 @@ Manage your WordPress site with AI. Talk to Claude or ChatGPT to create posts, u
 
 Quark is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so test it only on development or staging sites and enable it only with explicit approval from the site owner.
 
-Quark lets site owners manage their WordPress site using AI assistants like Claude and ChatGPT. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
+Quark lets site owners manage their WordPress site using an AI assistant. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
 
 Setup is designed to be simple:
 
 1. Copy your connection URL from Settings > Quark.
-2. Open Claude or ChatGPT and add a new connector.
+2. Open your AI tool and add a new connector.
 3. Paste the URL when prompted.
 4. Approve the connection on the screen that appears.
 
@@ -46,7 +46,7 @@ Quark currently includes setup guidance for:
 * Claude Code
 * Claude API integrations that support remote connectors
 
-Claude and ChatGPT must be able to reach your WordPress site over HTTPS to connect.
+Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 = Supported Abilities =
 
@@ -111,7 +111,7 @@ Administrators should review the terms and privacy policy for the AI assistant t
 2. Activate Quark from the Plugins screen.
 3. Open Settings > Quark.
 4. Copy your connection URL.
-5. Open Claude or ChatGPT and add a new connector.
+5. Open your AI tool and add a new connector.
 6. Paste the URL when prompted.
 7. Approve the connection on the screen that appears.
 
@@ -131,7 +131,7 @@ Yes. After a connection exists, open Settings > Quark > Abilities and enable or 
 
 = Does Quark require an account with a third-party service? =
 
-Quark itself does not require a Quark account. To use Quark with ChatGPT, Claude, or another AI assistant, you may need an account with that external service.
+Quark itself does not require a Quark account. To use Quark with an external AI assistant, you may need an account with that external service.
 
 = Are custom post types and custom taxonomies supported? =
 
@@ -166,7 +166,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.1.0 =
 
-* Connect Claude or ChatGPT by copying one connection URL from WordPress.
+* Connect a supported AI assistant by copying one connection URL from WordPress.
 * Approve each AI assistant in WordPress before it can access your site.
 * Choose which abilities your AI assistant can use after it is connected.
 * See connected AI assistants and disconnect them whenever needed.

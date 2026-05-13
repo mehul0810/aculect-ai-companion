@@ -314,7 +314,7 @@ function SettingsApp() {
 							Connect your AI assistant
 						</h1>
 						<p className="quark-app-tagline">
-							Manage your WordPress site with AI.
+							Connect WordPress with AI.
 						</p>
 					</div>
 					<span className="quark-pill quark-pill--version">
@@ -366,10 +366,11 @@ function SettingsApp() {
 								<CardHeader>About Quark</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Quark lets you use Claude or ChatGPT to
-										help manage your WordPress site. You can
-										ask in plain English, and Quark turns
-										that request into WordPress tasks.
+										Quark helps you manage content,
+										comments, media, and more with your AI
+										assistant. You can ask in plain English,
+										and Quark turns that request into
+										WordPress tasks.
 									</p>
 									<p className="quark-copy">
 										You stay in control. WordPress asks for
@@ -462,8 +463,8 @@ function SettingsApp() {
 												Copy your connection URL below.
 											</li>
 											<li>
-												Open Claude or ChatGPT and add a
-												new connector.
+												Open your AI tool and add a new
+												connector.
 											</li>
 											<li>
 												Paste the URL when prompted.
@@ -485,7 +486,7 @@ function SettingsApp() {
 										/>
 										<p className="quark-help-text">
 											The URL must be publicly reachable
-											over HTTPS for Claude or ChatGPT to
+											over HTTPS for your AI tool to
 											connect.
 										</p>
 									</CardBody>
@@ -586,9 +587,9 @@ function SettingsApp() {
 									{ sessions.length === 0 ? (
 										<p className="quark-copy quark-copy--first">
 											No AI assistants are connected yet.
-											Add Quark in Claude or ChatGPT with
-											your connection URL, then approve
-											the connection on the screen that
+											Add Quark in your AI tool with your
+											connection URL, then approve the
+											connection on the screen that
 											appears.
 										</p>
 									) : (

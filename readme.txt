@@ -36,6 +36,62 @@ After approval, Quark checks the connected WordPress user's permissions before e
 * View site settings, active plugins, and themes
 * Connect and disconnect AI assistants
 
+= Supported AI Tools =
+
+Quark currently includes setup guidance for:
+
+* ChatGPT app with Developer Mode connectors
+* OpenAI API integrations that support remote connectors
+* Claude app, Claude Desktop, Claude Cowork, and Claude mobile
+* Claude Code
+* Claude API integrations that support remote connectors
+
+Claude and ChatGPT must be able to reach your WordPress site over HTTPS to connect.
+
+= Supported Actions =
+
+Admins can enable or disable these actions from Settings > Quark > Actions after the first assistant connection is active.
+
+Content:
+
+* List readable content types, including custom post types
+* List posts, pages, and custom content items with pagination
+* Read one content item by ID
+* Create a post, page, or custom content item
+* Update title, content, excerpt, slug, or status for an existing item
+
+Content groups:
+
+* List available categories, tags, and custom content groups
+* List terms for a supported taxonomy with pagination
+* Create a category, tag, or custom content group
+* Update a category, tag, or custom content group
+
+Comments:
+
+* List comments for review with pagination
+* Read one comment by ID
+* Reply to a comment as the connected WordPress user
+* Moderate comment content or status
+
+Media:
+
+* List media library attachments with pagination
+* Upload media from a public URL with server-side request checks
+
+Site information:
+
+* View safe, non-secret site settings
+* View WordPress version, PHP version, active theme, and basic site metadata
+* List installed plugins and active state for users who can manage plugins
+* List installed themes and active state for users who can manage themes
+
+WordPress actions:
+
+* Discover supported public WordPress actions registered by WordPress and plugins
+* Inspect one supported public WordPress action
+* Run a supported public WordPress action using the connected user's permissions
+
 == Third Party Services ==
 
 Quark does not send site data to an external service on activation, page load, cron, or without a site administrator connecting an AI assistant.

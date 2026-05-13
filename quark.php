@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Quark
- * Plugin URI: https://github.com/mehul0810/quark
+ * Plugin URI: https://quarkwp.com
  * Description: Manage your WordPress site with AI. Talk to Claude or ChatGPT to create posts, update pages, moderate comments, and more -- no coding required.
  * Version: 0.1.0
  * Requires at least: 6.5

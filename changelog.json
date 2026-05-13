@@ -1,33 +1,24 @@
 {
   "0.1.0": {
     "New": [
-      "One connection URL for adding Quark to Claude and ChatGPT",
-      "WordPress approval screen for AI assistant connections",
-      "Connection management for reviewing and disconnecting AI assistants",
-      "Admin settings app with About, Connect, Connections, Actions, and Changelog tabs",
-      "Configurable actions that can be enabled or disabled after a site is connected"
+      "Connect Claude or ChatGPT by copying one connection URL from WordPress.",
+      "Approve each AI assistant in WordPress before it can access your site.",
+      "See connected AI assistants and disconnect them whenever needed.",
+      "Choose which abilities your AI assistant can use after it is connected."
     ],
     "Improved": [
-      "Settings UI now focuses on the simple user setup flow instead of protocol details",
-      "Copy controls make the connection URL and Claude command easier to use",
-      "Connection setup avoids duplicate URL sections and keeps provider instructions focused",
-      "About tab now explains Quark features without showing setup fields",
-      "About tab copy now uses the full available section width",
-      "Advanced tab removed from the Quark settings app",
-      "Quark settings now preserve WordPress admin notices instead of removing unrelated notices",
-      "Action names are compatible with Claude while older internal aliases remain callable",
-      "Added actions for comments, media upload, site information, plugin inventory, and theme inventory",
-      "Added bridge actions for supported actions registered by WordPress and other plugins"
+      "Setup instructions now focus on the steps users need, not technical details.",
+      "Copy buttons make connection details easier to use.",
+      "The About page now explains Quark in plain language.",
+      "WordPress notices now appear below the Quark header so the page is easier to read.",
+      "Claude connections now work more reliably.",
+      "Quark can now help with comments, media, site information, plugins, and themes."
     ],
-    "Dev": [
-      "Added prerelease GitHub Action to build Composer and npm artifacts on release",
-      "Added .distignore for production artifact packaging",
-      "Added .editorconfig for consistent formatting rules",
-      "Added AGENTS.md standards for planning-first workflow and release discipline",
-      "Added PHPUnit unit test setup for fast connector regression coverage",
-      "Documented tool-name compatibility rules and the test suite layout",
-      "Added WordPress.org readme.txt with external service disclosures",
-      "Added Plugin Check gating before release artifacts are generated"
+    "Reliability": [
+      "Added extra checks to catch problems before test releases are shared.",
+      "Added connection checks to reduce setup issues.",
+      "Prepared release downloads so they include only the files users need.",
+      "Added clear privacy and external service notes for WordPress users."
     ]
   }
 }

@@ -166,11 +166,12 @@ Composer dependencies for production releases are installed with:
 
 = 0.1.0 =
 
-* Initial MVP for connecting Claude and ChatGPT to WordPress with one connection URL.
-* Added WordPress approval flow for AI assistant connections.
-* Added configurable abilities for content, categories, tags, comments, media, and safe site information.
-* Added active connection management and disconnect controls.
-* Added WordPress.org plugin guideline disclosures and Plugin Check release gating.
+* Connect Claude or ChatGPT by copying one connection URL from WordPress.
+* Approve each AI assistant in WordPress before it can access your site.
+* Choose which abilities your AI assistant can use after it is connected.
+* See connected AI assistants and disconnect them whenever needed.
+* Ask your AI assistant to help with content, comments, media, site information, plugins, and themes.
+* Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
 

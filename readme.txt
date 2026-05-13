@@ -96,7 +96,7 @@ WordPress abilities:
 
 Quark does not send site data to an external service on activation, page load, cron, or without a site administrator connecting an AI assistant.
 
-When a site administrator copies the connection URL into an external AI assistant and approves the connection screen in WordPress, that assistant can request the enabled actions. Depending on the enabled actions and the connected WordPress user's permissions, requested data may include post titles, post content, excerpts, slugs, statuses, authors, dates, permalinks, category and tag names, media metadata, comments, and safe site settings such as site name, description, URLs, locale, timezone, date format, time format, permalink structure, and active theme name.
+When a site administrator copies the connection URL into an external AI assistant and approves the connection screen in WordPress, that assistant can request the enabled abilities. Depending on the enabled abilities and the connected WordPress user's permissions, requested data may include post titles, post content, excerpts, slugs, statuses, authors, dates, permalinks, category and tag names, media metadata, comments, and safe site settings such as site name, description, URLs, locale, timezone, date format, time format, permalink structure, and active theme name.
 
 The external service that receives this data is the AI assistant selected and configured by the administrator. Quark's built-in setup UI includes links for:
 
@@ -168,7 +168,7 @@ Composer dependencies for production releases are installed with:
 
 * Initial MVP for connecting Claude and ChatGPT to WordPress with one connection URL.
 * Added WordPress approval flow for AI assistant connections.
-* Added configurable actions for content, categories, tags, comments, media, and safe site information.
+* Added configurable abilities for content, categories, tags, comments, media, and safe site information.
 * Added active connection management and disconnect controls.
 * Added WordPress.org plugin guideline disclosures and Plugin Check release gating.
 

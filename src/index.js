@@ -227,7 +227,7 @@ function SettingsApp() {
 		{ name: 'connections', title: 'Connections' },
 	];
 	if ( data.isConnected ) {
-		tabs.push( { name: 'abilities', title: 'Actions' } );
+		tabs.push( { name: 'abilities', title: 'Abilities' } );
 	}
 	tabs.push( { name: 'changelog', title: 'Changelog' } );
 	const selectedTab = initialTabName( tabs );
@@ -277,7 +277,7 @@ function SettingsApp() {
 			) }
 			{ data.status === 'abilities_saved' && (
 				<Notice status="success" isDismissible={ false }>
-					Actions saved.
+					Abilities saved.
 				</Notice>
 			) }
 			{ data.status === 'revoked' && (
@@ -304,81 +304,81 @@ function SettingsApp() {
 								<CardHeader>About Quark</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Quark lets you manage WordPress with AI
-										assistants like Claude and ChatGPT.
-										Instead of navigating menus, you can ask
-										your AI assistant to create posts,
-										update pages, moderate comments, upload
-										media, and review site information.
+										Quark lets you use Claude or ChatGPT to
+										help manage your WordPress site. You can
+										ask in plain English, and Quark turns
+										that request into WordPress tasks.
 									</p>
 									<p className="quark-copy">
-										Quark keeps you in control. You approve
-										each connection in WordPress, decide
-										what actions are available, and can
-										disconnect an assistant whenever needed.
+										You stay in control. WordPress asks for
+										your approval before an AI assistant can
+										connect, you choose which abilities are
+										available, and you can disconnect access
+										at any time.
 									</p>
 
 									<div className="quark-feature-grid">
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Create, edit, and publish posts
-												and pages
+												Create and update content
 											</h3>
 											<p className="quark-feature-card__copy">
-												Ask your AI assistant to draft,
-												update, schedule, or publish
-												WordPress content.
+												Draft posts, update pages,
+												change titles, edit excerpts,
+												and publish when you are ready.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
+												Organize your site
+											</h3>
+											<p className="quark-feature-card__copy">
 												Manage categories, tags, and
-												content groups
-											</h3>
-											<p className="quark-feature-card__copy">
-												Organize content without digging
-												through taxonomy screens.
+												other content groups without
+												searching through WordPress
+												screens.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Moderate and reply to comments
+												Handle comments
 											</h3>
 											<p className="quark-feature-card__copy">
-												Review, approve, update, and
-												reply to site comments with help
-												from your AI assistant.
+												Review comments, approve or
+												trash them, and prepare replies
+												without opening every comment
+												manually.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Upload and list media
+												Work with media
 											</h3>
 											<p className="quark-feature-card__copy">
 												Add images from public URLs and
-												review media library items.
+												find items already in your media
+												library.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												View site settings, active
-												plugins, and themes
+												Check site details
 											</h3>
 											<p className="quark-feature-card__copy">
-												Check safe site details and
-												inventory without exposing
-												private options.
+												Ask for safe site information,
+												including active plugins,
+												themes, and basic settings.
 											</p>
 										</div>
 										<div className="quark-feature-card">
 											<h3 className="quark-feature-card__title">
-												Connect and disconnect AI
-												assistants
+												Control what AI can do
 											</h3>
 											<p className="quark-feature-card__copy">
-												Add Claude or ChatGPT with one
-												URL, then disconnect access from
-												WordPress at any time.
+												Turn abilities on or off from
+												Settings &gt; Quark &gt;
+												Abilities and disconnect
+												assistants whenever needed.
 											</p>
 										</div>
 									</div>
@@ -596,7 +596,7 @@ function SettingsApp() {
 								<CardHeader>What your AI can do</CardHeader>
 								<CardBody>
 									<p className="quark-copy quark-copy--first">
-										Choose which actions connected AI
+										Choose which abilities connected AI
 										assistants can use. WordPress
 										permissions are still checked every time
 										your AI assistant asks Quark to do
@@ -643,7 +643,7 @@ function SettingsApp() {
 													)
 												}
 											>
-												Enable All Actions
+												Enable All Abilities
 											</Button>
 											<Button
 												type="button"
@@ -652,13 +652,13 @@ function SettingsApp() {
 													setEnabledAbilities( [] )
 												}
 											>
-												Disable All Actions
+												Disable All Abilities
 											</Button>
 											<Button
 												type="submit"
 												variant="primary"
 											>
-												Save Actions
+												Save Abilities
 											</Button>
 										</div>
 										<div className="quark-ability-groups">

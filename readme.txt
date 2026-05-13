@@ -89,6 +89,14 @@ For source code, build tooling, and exact dependency manifests, use the public G
 
 https://github.com/mehul0810/quark
 
+Contributing guidelines:
+
+https://github.com/mehul0810/quark/blob/main/CONTRIBUTING.md
+
+Security policy:
+
+https://github.com/mehul0810/quark/security/policy
+
 From the repository checkout, rebuild assets with:
 
 `npm install`

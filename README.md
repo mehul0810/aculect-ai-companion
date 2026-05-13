@@ -1,5 +1,10 @@
 # Quark
 
+[![CodeQL](https://github.com/mehul0810/quark/actions/workflows/codeql.yml/badge.svg)](https://github.com/mehul0810/quark/actions/workflows/codeql.yml)
+![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4.svg)
+![WordPress 6.5+](https://img.shields.io/badge/WordPress-6.5%2B-21759b.svg)
+![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)
+
 Quark helps site owners manage WordPress with AI. Connect Claude or ChatGPT, approve access in WordPress, then use plain English to create posts, update pages, moderate comments, upload media, and check site information.
 
 ## Tagline
@@ -32,6 +37,11 @@ Open `Settings > Quark` in WordPress and follow the setup flow:
 - Upload and list media.
 - View site settings, active plugins, and themes.
 - Connect and disconnect AI assistants.
+
+## Project Docs
+
+- [Contributing guidelines](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## Developer Notes
 

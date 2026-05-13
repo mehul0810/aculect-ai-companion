@@ -10,7 +10,22 @@
     "lint:css": "wp-scripts lint-style",
     "format": "wp-scripts format"
   },
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10"
+  },
   "devDependencies": {
-    "@wordpress/scripts": "^30.0.0"
+    "@wordpress/components": "^33.0.0",
+    "@wordpress/element": "^6.45.0",
+    "@wordpress/scripts": "^32.1.0"
+  },
+  "overrides": {
+    "copy-webpack-plugin": {
+      "serialize-javascript": "^7.0.5"
+    },
+    "markdownlint-cli": {
+      "minimatch": "^3.1.5"
+    },
+    "webpack-dev-server": "^5.2.2"
   }
 }

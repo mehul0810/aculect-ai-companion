@@ -1,5 +1,3 @@
-/* global navigator */
-
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
 import {
@@ -28,7 +26,7 @@ function initialTabName( tabs ) {
 		return requestedTab && hasTab( tabs, requestedTab )
 			? requestedTab
 			: defaultTab;
-	} catch ( error ) {
+	} catch {
 		return defaultTab;
 	}
 }
@@ -38,7 +36,7 @@ function persistTabName( tabName ) {
 		const url = new URL( window.location.href );
 		url.searchParams.set( TAB_QUERY_PARAM, tabName );
 		window.history.replaceState( {}, '', url.toString() );
-	} catch ( error ) {
+	} catch {
 		// URL state is progressive enhancement; tab navigation still works.
 	}
 }
@@ -215,7 +213,7 @@ function SettingsApp() {
 				clearTimeout( copyTimeoutRef.current );
 			}
 			copyTimeoutRef.current = setTimeout( () => setCopied( '' ), 2000 );
-		} catch ( error ) {
+		} catch {
 			setCopied( '' );
 		}
 	};

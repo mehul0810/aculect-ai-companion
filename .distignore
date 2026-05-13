@@ -9,6 +9,8 @@ vendor/bin/
 src/admin-settings.js
 .distignore
 .editorconfig
+.nvmrc
+eslint.config.cjs
 .gitignore
 phpcs.xml.dist
 phpunit.xml.dist

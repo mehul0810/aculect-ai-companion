@@ -17,6 +17,7 @@ phpunit.xml.dist
 phpstan.neon.dist
 phpstan-bootstrap.php
 AGENTS.md
+CONTRIBUTING.md
 composer.json
 composer.lock
 package.json

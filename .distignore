@@ -6,6 +6,7 @@
 node_modules/
 tests/
 vendor/bin/
+vendor/paragonie/random_compat/build-phar.sh
 src/admin-settings.js
 .distignore
 .editorconfig

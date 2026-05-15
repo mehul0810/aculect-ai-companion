@@ -15,12 +15,12 @@ const ADMIN_NOTICE_SELECTOR = [
 	'#wpbody-content > .notice',
 	'#wpbody-content > .updated',
 	'#wpbody-content > .error',
-	'.quark-settings-wrap > .notice',
-	'.quark-settings-wrap > .updated',
-	'.quark-settings-wrap > .error',
-	'.quark-app-header .notice',
-	'.quark-app-header .updated',
-	'.quark-app-header .error',
+	'.aculect-ai-companion-settings-wrap > .notice',
+	'.aculect-ai-companion-settings-wrap > .updated',
+	'.aculect-ai-companion-settings-wrap > .error',
+	'.aculect-ai-companion-app-header .notice',
+	'.aculect-ai-companion-app-header .updated',
+	'.aculect-ai-companion-app-header .error',
 ].join( ',' );
 
 function hasTab( tabs, tabName ) {
@@ -58,18 +58,18 @@ function relocateAdminNotices( target ) {
 	}
 
 	document.querySelectorAll( ADMIN_NOTICE_SELECTOR ).forEach( ( notice ) => {
-		if ( notice.closest( '.quark-admin-notices' ) ) {
+		if ( notice.closest( '.aculect-ai-companion-admin-notices' ) ) {
 			return;
 		}
 
-		notice.classList.add( 'quark-admin-notice' );
+		notice.classList.add( 'aculect-ai-companion-admin-notice' );
 		target.appendChild( notice );
 	} );
 }
 
 function CopyField( { label, value, secret = false, onCopy } ) {
 	const inputId = useRef(
-		`quark-copy-field-${ String( label )
+		`aculect-ai-companion-copy-field-${ String( label )
 			.toLowerCase()
 			.replace( /[^a-z0-9]+/g, '-' ) }-${ Math.random()
 			.toString( 36 )
@@ -77,17 +77,17 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 	);
 
 	return (
-		<div className="quark-copy-field">
+		<div className="aculect-ai-companion-copy-field">
 			<label
-				className="quark-copy-field__label"
+				className="aculect-ai-companion-copy-field__label"
 				htmlFor={ inputId.current }
 			>
 				{ label }
 			</label>
-			<div className="quark-copy-field__control">
+			<div className="aculect-ai-companion-copy-field__control">
 				<input
 					id={ inputId.current }
-					className="quark-copy-field__input"
+					className="aculect-ai-companion-copy-field__input"
 					type={ secret ? 'password' : 'text' }
 					value={ String( value || '' ) }
 					readOnly
@@ -95,11 +95,14 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 				/>
 				<Button
 					variant="secondary"
-					className="quark-copy-field__button"
+					className="aculect-ai-companion-copy-field__button"
 					onClick={ () => onCopy( value ) }
 					aria-label={ `Copy ${ label }` }
 				>
-					<span className="quark-copy-field__icon" aria-hidden="true">
+					<span
+						className="aculect-ai-companion-copy-field__icon"
+						aria-hidden="true"
+					>
 						<svg
 							viewBox="0 0 24 24"
 							width="18"
@@ -127,7 +130,7 @@ function ActionForm( {
 		<form
 			method="post"
 			action={ data.actions?.adminPostUrl }
-			className="quark-action-form"
+			className="aculect-ai-companion-action-form"
 		>
 			<input type="hidden" name="action" value={ action } />
 			<input type="hidden" name="_wpnonce" value={ nonce } />
@@ -151,21 +154,21 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 
 	return (
 		<div
-			className={ `quark-setup-method ${
+			className={ `aculect-ai-companion-setup-method ${
 				copyFields.length > 0 ? 'has-copy-fields' : ''
 			}` }
 		>
-			<div className="quark-setup-method__content">
-				<h4 className="quark-setup-method__title">
+			<div className="aculect-ai-companion-setup-method__content">
+				<h4 className="aculect-ai-companion-setup-method__title">
 					{ section.title || 'Setup' }
 				</h4>
 				{ section.description && (
-					<p className="quark-setup-method__description">
+					<p className="aculect-ai-companion-setup-method__description">
 						{ section.description }
 					</p>
 				) }
 				{ steps.length > 0 && (
-					<ol className="quark-steps">
+					<ol className="aculect-ai-companion-steps">
 						{ steps.map( ( step, index ) => (
 							<li
 								key={ `${ provider.id }-${ sectionIndex }-${ index }` }
@@ -176,7 +179,7 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 					</ol>
 				) }
 				{ section.actionUrl && (
-					<div className="quark-provider-actions">
+					<div className="aculect-ai-companion-provider-actions">
 						<Button
 							href={ section.actionUrl }
 							target="_blank"
@@ -189,8 +192,10 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 				) }
 			</div>
 			{ copyFields.length > 0 && (
-				<div className="quark-setup-method__fields">
-					<h5 className="quark-section-heading">Copy</h5>
+				<div className="aculect-ai-companion-setup-method__fields">
+					<h5 className="aculect-ai-companion-section-heading">
+						Copy
+					</h5>
 					{ copyFields.map( ( field ) => (
 						<CopyField
 							key={ `${ provider.id }-${ sectionIndex }-${ field.label }` }
@@ -209,7 +214,7 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 }
 
 function SettingsApp() {
-	const data = window.quarkSettingsData || {};
+	const data = window.aculectAICompanionSettingsData || {};
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
@@ -275,8 +280,8 @@ function SettingsApp() {
 	};
 
 	const statusClass = data.isConnected
-		? 'quark-pill quark-pill--status is-connected'
-		: 'quark-pill quark-pill--status is-disconnected';
+		? 'aculect-ai-companion-pill aculect-ai-companion-pill--status is-connected'
+		: 'aculect-ai-companion-pill aculect-ai-companion-pill--status is-disconnected';
 	const tabs = [
 		{ name: 'about', title: 'About' },
 		{ name: 'connectors', title: 'Connect' },
@@ -305,19 +310,21 @@ function SettingsApp() {
 	};
 
 	return (
-		<div className="quark-app-root">
-			<div className="quark-app-header">
-				<div className="quark-app-branding">
-					<div className="quark-app-heading">
-						<p className="quark-app-kicker">Quark</p>
-						<h1 className="quark-app-title">
+		<div className="aculect-ai-companion-app-root">
+			<div className="aculect-ai-companion-app-header">
+				<div className="aculect-ai-companion-app-branding">
+					<div className="aculect-ai-companion-app-heading">
+						<p className="aculect-ai-companion-app-kicker">
+							Aculect AI Companion
+						</p>
+						<h1 className="aculect-ai-companion-app-title">
 							Connect your AI assistant
 						</h1>
-						<p className="quark-app-tagline">
+						<p className="aculect-ai-companion-app-tagline">
 							Connect WordPress with AI.
 						</p>
 					</div>
-					<span className="quark-pill quark-pill--version">
+					<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
 						{ data.version || '0.1.0' }
 					</span>
 				</div>
@@ -327,7 +334,7 @@ function SettingsApp() {
 			</div>
 
 			<div
-				className="quark-admin-notices"
+				className="aculect-ai-companion-admin-notices"
 				ref={ adminNoticesRef }
 				aria-live="polite"
 			/>
@@ -354,7 +361,7 @@ function SettingsApp() {
 			) }
 
 			<TabPanel
-				className="quark-tabs"
+				className="aculect-ai-companion-tabs"
 				initialTabName={ selectedTab }
 				onSelect={ persistTabName }
 				tabs={ tabs }
@@ -362,17 +369,19 @@ function SettingsApp() {
 				{ ( tab ) => {
 					if ( tab.name === 'about' ) {
 						return (
-							<Card className="quark-card quark-about-card">
-								<CardHeader>About Quark</CardHeader>
+							<Card className="aculect-ai-companion-card aculect-ai-companion-about-card">
+								<CardHeader>
+									About Aculect AI Companion
+								</CardHeader>
 								<CardBody>
-									<p className="quark-copy quark-copy--first">
-										Quark helps you manage content,
-										comments, media, and more with your AI
-										assistant. You can ask in plain English,
-										and Quark turns that request into
-										WordPress tasks.
+									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+										Aculect AI Companion helps you manage
+										content, comments, media, and more with
+										your AI assistant. You can ask in plain
+										English, and Aculect AI Companion turns
+										that request into WordPress tasks.
 									</p>
-									<p className="quark-copy">
+									<p className="aculect-ai-companion-copy">
 										You stay in control. WordPress asks for
 										your approval before an AI assistant can
 										connect, you choose which abilities are
@@ -380,68 +389,69 @@ function SettingsApp() {
 										at any time.
 									</p>
 
-									<div className="quark-feature-grid">
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+									<div className="aculect-ai-companion-feature-grid">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Create and update content
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Draft posts, update pages,
 												change titles, edit excerpts,
 												and publish when you are ready.
 											</p>
 										</div>
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Organize your site
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Manage categories, tags, and
 												other content groups without
 												searching through WordPress
 												screens.
 											</p>
 										</div>
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Handle comments
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Review comments, approve or
 												trash them, and prepare replies
 												without opening every comment
 												manually.
 											</p>
 										</div>
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Work with media
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Add images from public URLs and
 												find items already in your media
 												library.
 											</p>
 										</div>
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Check site details
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Ask for safe site information,
 												including active plugins,
 												themes, and basic settings.
 											</p>
 										</div>
-										<div className="quark-feature-card">
-											<h3 className="quark-feature-card__title">
+										<div className="aculect-ai-companion-feature-card">
+											<h3 className="aculect-ai-companion-feature-card__title">
 												Control what AI can do
 											</h3>
-											<p className="quark-feature-card__copy">
+											<p className="aculect-ai-companion-feature-card__copy">
 												Turn abilities on or off from
-												Settings &gt; Quark &gt;
-												Abilities and disconnect
-												assistants whenever needed.
+												Settings &gt; Aculect AI
+												Companion &gt; Abilities and
+												disconnect assistants whenever
+												needed.
 											</p>
 										</div>
 									</div>
@@ -452,13 +462,13 @@ function SettingsApp() {
 
 					if ( tab.name === 'connectors' ) {
 						return (
-							<div className="quark-connectors">
-								<Card className="quark-card quark-endpoint-card">
+							<div className="aculect-ai-companion-connectors">
+								<Card className="aculect-ai-companion-card aculect-ai-companion-endpoint-card">
 									<CardHeader>
 										Connect your AI assistant
 									</CardHeader>
 									<CardBody>
-										<ol className="quark-steps quark-steps--primary">
+										<ol className="aculect-ai-companion-steps aculect-ai-companion-steps--primary">
 											<li>
 												Copy your connection URL below.
 											</li>
@@ -484,7 +494,7 @@ function SettingsApp() {
 												)
 											}
 										/>
-										<p className="quark-help-text">
+										<p className="aculect-ai-companion-help-text">
 											The URL must be publicly reachable
 											over HTTPS for your AI tool to
 											connect.
@@ -492,7 +502,7 @@ function SettingsApp() {
 									</CardBody>
 								</Card>
 
-								<div className="quark-provider-list">
+								<div className="aculect-ai-companion-provider-list">
 									{ providers.map( ( provider ) => {
 										const setupSections = Array.isArray(
 											provider.setupSections
@@ -503,21 +513,21 @@ function SettingsApp() {
 										return (
 											<Card
 												key={ provider.id }
-												className={ `quark-card quark-provider-card ${
+												className={ `aculect-ai-companion-card aculect-ai-companion-provider-card ${
 													openProvider === provider.id
 														? 'is-open'
 														: ''
 												}` }
 											>
 												<CardBody>
-													<div className="quark-provider-card__header">
-														<div className="quark-provider-card__title-wrap">
-															<h3 className="quark-provider-card__title">
+													<div className="aculect-ai-companion-provider-card__header">
+														<div className="aculect-ai-companion-provider-card__title-wrap">
+															<h3 className="aculect-ai-companion-provider-card__title">
 																{
 																	provider.label
 																}
 															</h3>
-															<p className="quark-provider-card__description">
+															<p className="aculect-ai-companion-provider-card__description">
 																{
 																	provider.description
 																}
@@ -543,8 +553,8 @@ function SettingsApp() {
 
 													{ openProvider ===
 														provider.id && (
-														<div className="quark-provider-panel">
-															<div className="quark-setup-method-list">
+														<div className="aculect-ai-companion-provider-panel">
+															<div className="aculect-ai-companion-setup-method-list">
 																{ setupSections.map(
 																	(
 																		section,
@@ -581,25 +591,25 @@ function SettingsApp() {
 
 					if ( tab.name === 'connections' ) {
 						return (
-							<Card className="quark-card quark-sessions-card">
+							<Card className="aculect-ai-companion-card aculect-ai-companion-sessions-card">
 								<CardHeader>Active Connections</CardHeader>
 								<CardBody>
 									{ sessions.length === 0 ? (
-										<p className="quark-copy quark-copy--first">
+										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
 											No AI assistants are connected yet.
-											Add Quark in your AI tool with your
-											connection URL, then approve the
-											connection on the screen that
-											appears.
+											Add Aculect AI Companion in your AI
+											tool with your connection URL, then
+											approve the connection on the screen
+											that appears.
 										</p>
 									) : (
-										<div className="quark-session-list">
+										<div className="aculect-ai-companion-session-list">
 											{ sessions.map( ( session ) => (
 												<div
 													key={ session.id }
-													className="quark-session-row"
+													className="aculect-ai-companion-session-row"
 												>
-													<div className="quark-session-row__main">
+													<div className="aculect-ai-companion-session-row__main">
 														<strong>
 															{ session.client_name ||
 																'AI Assistant' }
@@ -633,7 +643,7 @@ function SettingsApp() {
 										</div>
 									) }
 									{ sessions.length > 0 && (
-										<div className="quark-danger-zone">
+										<div className="aculect-ai-companion-danger-zone">
 											<ActionForm
 												data={ data }
 												action={
@@ -655,20 +665,20 @@ function SettingsApp() {
 
 					if ( tab.name === 'abilities' ) {
 						return (
-							<Card className="quark-card quark-abilities-card">
+							<Card className="aculect-ai-companion-card aculect-ai-companion-abilities-card">
 								<CardHeader>What your AI can do</CardHeader>
 								<CardBody>
-									<p className="quark-copy quark-copy--first">
+									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
 										Choose which abilities connected AI
 										assistants can use. WordPress
 										permissions are still checked every time
-										your AI assistant asks Quark to do
-										something.
+										your AI assistant asks Aculect AI
+										Companion to do something.
 									</p>
 									<form
 										method="post"
 										action={ data.actions?.adminPostUrl }
-										className="quark-form quark-form--abilities"
+										className="aculect-ai-companion-form aculect-ai-companion-form--abilities"
 									>
 										<input
 											type="hidden"
@@ -693,7 +703,7 @@ function SettingsApp() {
 												value={ id }
 											/>
 										) ) }
-										<div className="quark-ability-toolbar">
+										<div className="aculect-ai-companion-ability-toolbar">
 											<Button
 												type="button"
 												variant="secondary"
@@ -724,7 +734,7 @@ function SettingsApp() {
 												Save Abilities
 											</Button>
 										</div>
-										<div className="quark-ability-groups">
+										<div className="aculect-ai-companion-ability-groups">
 											{ Object.entries(
 												groupedAbilities
 											).map(
@@ -734,19 +744,19 @@ function SettingsApp() {
 												] ) => (
 													<div
 														key={ group }
-														className="quark-ability-group"
+														className="aculect-ai-companion-ability-group"
 													>
-														<h3 className="quark-section-heading">
+														<h3 className="aculect-ai-companion-section-heading">
 															{ group }
 														</h3>
-														<div className="quark-ability-list">
+														<div className="aculect-ai-companion-ability-list">
 															{ groupAbilities.map(
 																( ability ) => (
 																	<div
 																		key={
 																			ability.id
 																		}
-																		className="quark-ability-row"
+																		className="aculect-ai-companion-ability-row"
 																	>
 																		<CheckboxControl
 																			label={
@@ -766,7 +776,7 @@ function SettingsApp() {
 																				)
 																			}
 																		/>
-																		<p className="quark-ability-row__description">
+																		<p className="aculect-ai-companion-ability-row__description">
 																			{
 																				ability.description
 																			}
@@ -795,22 +805,22 @@ function SettingsApp() {
 							3
 						);
 						return (
-							<Card className="quark-card">
+							<Card className="aculect-ai-companion-card">
 								<CardHeader>Changelog</CardHeader>
 								<CardBody>
 									{ versions.length === 0 ? (
-										<p className="quark-copy quark-copy--first">
+										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
 											No changelog entries found.
 										</p>
 									) : (
-										<div className="quark-changelog">
+										<div className="aculect-ai-companion-changelog">
 											{ versions.map(
 												( [ version, groups ] ) => (
 													<div
 														key={ version }
-														className="quark-changelog-version"
+														className="aculect-ai-companion-changelog-version"
 													>
-														<h3 className="quark-changelog-version-title">
+														<h3 className="aculect-ai-companion-changelog-version-title">
 															{ version }
 														</h3>
 														{ Object.entries(
@@ -822,14 +832,14 @@ function SettingsApp() {
 															] ) => (
 																<div
 																	key={ `${ version }-${ group }` }
-																	className="quark-changelog-group"
+																	className="aculect-ai-companion-changelog-group"
 																>
-																	<h4 className="quark-changelog-group-title">
+																	<h4 className="aculect-ai-companion-changelog-group-title">
 																		{
 																			group
 																		}
 																	</h4>
-																	<ul className="quark-changelog-list">
+																	<ul className="aculect-ai-companion-changelog-list">
 																		{ Array.isArray(
 																			items
 																		) &&
@@ -856,9 +866,9 @@ function SettingsApp() {
 											) }
 										</div>
 									) }
-									<p className="quark-changelog-footer">
+									<p className="aculect-ai-companion-changelog-footer">
 										<a
-											href="https://github.com/mehul0810/quark/blob/main/changelog.json"
+											href="https://github.com/mehul0810/aculect-ai-companion/blob/main/changelog.json"
 											target="_blank"
 											rel="noopener noreferrer"
 										>
@@ -877,7 +887,9 @@ function SettingsApp() {
 	);
 }
 
-const root = document.getElementById( 'quark-settings-app-root' );
+const root = document.getElementById(
+	'aculect-ai-companion-settings-app-root'
+);
 if ( root ) {
 	render( <SettingsApp />, root );
 }

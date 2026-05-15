@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\Providers\ChatGPT;
+namespace Aculect\AICompanion\Connectors\Providers\ChatGPT;
 
-use Quark\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 
 /**
  * Provides ChatGPT-specific connector setup guidance.
@@ -29,7 +29,7 @@ final class Provider implements ProviderInterface {
 	 * Return the provider description.
 	 */
 	public function description(): string {
-		return 'Use ChatGPT to create, update, and manage WordPress content through Quark.';
+		return 'Use ChatGPT to create, update, and manage WordPress content through Aculect AI Companion.';
 	}
 
 	/**
@@ -62,9 +62,9 @@ final class Provider implements ProviderInterface {
 				'steps'       => array(
 					'In ChatGPT, enable Developer mode under Settings > Apps & Connectors > Advanced settings.',
 					'Open Settings > Connectors and click Create to add a connector.',
-					'Paste your connection URL from above, then name the connector Quark.',
+					'Paste your connection URL from above, then name the connector Aculect AI Companion.',
 					'Create the connector and approve the connection on the WordPress screen that appears.',
-					'Open a new chat, choose Developer mode from the + menu, and enable the Quark connector for the conversation.',
+					'Open a new chat, choose Developer mode from the + menu, and enable the Aculect AI Companion connector for the conversation.',
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),

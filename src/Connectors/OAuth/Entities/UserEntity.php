@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Entities;
+namespace Aculect\AICompanion\Connectors\OAuth\Entities;
 
 use League\OAuth2\Server\Entities\UserEntityInterface;
 

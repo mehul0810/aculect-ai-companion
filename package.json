@@ -1,8 +1,8 @@
 {
-  "name": "quark",
+  "name": "aculect-ai-companion",
   "version": "0.1.0",
   "private": true,
-  "description": "Quark WordPress plugin assets tooling",
+  "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {
     "build": "wp-scripts build",
     "start": "wp-scripts start",

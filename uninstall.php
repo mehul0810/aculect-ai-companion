@@ -1,8 +1,8 @@
 <?php
 /**
- * Cleanup Quark data when explicitly enabled by the site owner.
+ * Cleanup Aculect AI Companion data when explicitly enabled by the site owner.
  *
- * @package Quark
+ * @package Aculect_AI_Companion
  */
 
 declare(strict_types=1);
@@ -11,18 +11,18 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
-if ( '1' !== (string) get_option( 'quark_remove_data_on_uninstall', '0' ) ) {
+if ( '1' !== (string) get_option( 'aculect_ai_companion_remove_data_on_uninstall', '0' ) ) {
 	return;
 }
 
-$quark_autoload = __DIR__ . '/vendor/autoload.php';
+$aculect_ai_companion_autoload = __DIR__ . '/vendor/autoload.php';
 
-if ( file_exists( $quark_autoload ) ) {
-	require_once $quark_autoload;
+if ( file_exists( $aculect_ai_companion_autoload ) ) {
+	require_once $aculect_ai_companion_autoload;
 } else {
 	spl_autoload_register(
 		static function ( string $class_name ): void {
-			$prefix = 'Quark\\';
+			$prefix = 'Aculect\AICompanion\\';
 
 			if ( ! str_starts_with( $class_name, $prefix ) ) {
 				return;
@@ -38,10 +38,10 @@ if ( file_exists( $quark_autoload ) ) {
 	);
 }
 
-\Quark\Connectors\OAuth\Database\Installer::uninstall();
-\Quark\Connectors\OAuth\Server\KeyManager::delete_keys();
+\Aculect\AICompanion\Connectors\OAuth\Database\Installer::uninstall();
+\Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
 
-delete_option( 'quark_remove_data_on_uninstall' );
-delete_option( 'quark_rewrite_version' );
-delete_option( 'quark_chatgpt_connection_state' );
-delete_option( 'quark_enabled_abilities' );
+delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );
+delete_option( 'aculect_ai_companion_rewrite_version' );
+delete_option( 'aculect_ai_companion_chatgpt_connection_state' );
+delete_option( 'aculect_ai_companion_enabled_abilities' );

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Server\AuthorizationServerFactory;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -41,7 +41,7 @@ final class TokenController {
 	public function token( WP_REST_Request $request ): WP_REST_Response {
 		$resource = $this->resource_from_request( $request );
 		if ( Helpers::mcp_resource() !== $resource ) {
-			return $this->error( 'invalid_target', 'The requested resource does not match this Quark MCP server.', 400 );
+			return $this->error( 'invalid_target', 'The requested resource does not match this Aculect AI Companion MCP server.', 400 );
 		}
 
 		try {

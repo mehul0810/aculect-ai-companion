@@ -2,16 +2,16 @@
 /**
  * Tests for MCP protocol responses that do not require a WordPress runtime.
  *
- * @package Quark\Tests\Unit\Connectors\MCP
+ * @package Aculect\AICompanion\Tests\Unit\Connectors\MCP
  */
 
 declare(strict_types=1);
 
-namespace Quark\Tests\Unit\Connectors\MCP;
+namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use PHPUnit\Framework\TestCase;
-use Quark\Connectors\MCP\AbilitiesRegistry;
-use Quark\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\McpController;
 use ReflectionMethod;
 
 /**
@@ -22,7 +22,7 @@ final class McpControllerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['quark_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_options'] = array();
 	}
 
 	public function test_tools_list_exposes_safe_public_tool_names(): void {

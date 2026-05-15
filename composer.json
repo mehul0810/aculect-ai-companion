@@ -1,5 +1,5 @@
 {
-  "name": "mehul/quark",
+  "name": "mehul/aculect-ai-companion",
   "description": "AI assistant plugin for WordPress",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
@@ -20,7 +20,7 @@
   },
   "autoload": {
     "psr-4": {
-      "Quark\\": "src/"
+      "Aculect\\AICompanion\\": "src/"
     }
   },
   "scripts": {

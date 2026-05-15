@@ -9,10 +9,10 @@
     "Improved": [
       "Setup instructions now focus on the steps users need, not technical details.",
       "Copy buttons make connection details easier to use.",
-      "The About page now explains Quark in plain language.",
-      "WordPress notices now appear below the Quark header so the page is easier to read.",
+      "The About page now explains Aculect AI Companion in plain language.",
+      "WordPress notices now appear below the Aculect AI Companion header so the page is easier to read.",
       "AI assistant connections now work more reliably.",
-      "Quark can now help with comments, media, site information, plugins, and themes."
+      "Aculect AI Companion can now help with comments, media, site information, plugins, and themes."
     ],
     "Reliability": [
       "Added extra checks to catch problems before test releases are shared.",

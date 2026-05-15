@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\Providers;
+namespace Aculect\AICompanion\Connectors\Providers;
 
 /**
  * Defines setup metadata shown for an MCP client provider.

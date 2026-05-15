@@ -2,15 +2,15 @@
 /**
  * Tests for MCP ability registration and public tool-name mapping.
  *
- * @package Quark\Tests\Unit\Connectors\MCP
+ * @package Aculect\AICompanion\Tests\Unit\Connectors\MCP
  */
 
 declare(strict_types=1);
 
-namespace Quark\Tests\Unit\Connectors\MCP;
+namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use PHPUnit\Framework\TestCase;
-use Quark\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 
 /**
  * Verifies the internal ability IDs remain decoupled from MCP-safe tool names.
@@ -22,7 +22,7 @@ final class AbilitiesRegistryTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['quark_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_options'] = array();
 		$this->registry                = new AbilitiesRegistry();
 	}
 

@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Quark;
+namespace Aculect\AICompanion;
 
-use Quark\Admin\SettingsPage;
-use Quark\Connectors\Helpers;
-use Quark\Connectors\MCP\McpController;
-use Quark\Connectors\OAuth\AuthorizationController;
-use Quark\Connectors\OAuth\ClientRegistrationController;
-use Quark\Connectors\OAuth\Database\Installer as OAuthInstaller;
-use Quark\Connectors\OAuth\DiscoveryController;
-use Quark\Connectors\OAuth\TokenController;
+use Aculect\AICompanion\Admin\SettingsPage;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
+use Aculect\AICompanion\Connectors\OAuth\DiscoveryController;
+use Aculect\AICompanion\Connectors\OAuth\TokenController;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,7 +21,7 @@ defined( 'ABSPATH' ) || exit;
 final class Plugin {
 
 	private const REWRITE_VERSION        = '2026.05.11.1';
-	private const OPTION_REWRITE_VERSION = 'quark_rewrite_version';
+	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
 
@@ -66,11 +66,11 @@ final class Plugin {
 		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
-		add_action( 'admin_post_quark_save_abilities', array( $this, 'handle_save_abilities' ) );
-		add_action( 'admin_post_quark_revoke_session', array( $this, 'handle_revoke_session' ) );
-		add_action( 'admin_post_quark_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
-		add_action( 'admin_post_quark_oauth_consent', array( $this, 'handle_oauth_consent' ) );
-		add_action( 'admin_post_nopriv_quark_oauth_consent', array( $this, 'handle_oauth_consent' ) );
+		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
+		add_action( 'admin_post_aculect_ai_companion_revoke_session', array( $this, 'handle_revoke_session' ) );
+		add_action( 'admin_post_aculect_ai_companion_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
+		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
+		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 
 		OAuthInstaller::install();
 	}
@@ -113,10 +113,10 @@ final class Plugin {
 	 * @return string[]
 	 */
 	public function register_query_vars( array $vars ): array {
-		$vars[] = 'quark_well_known';
-		$vars[] = 'quark_well_known_resource_path';
-		$vars[] = 'quark_well_known_issuer_path';
-		$vars[] = 'quark_oauth_authorize';
+		$vars[] = 'aculect_ai_companion_well_known';
+		$vars[] = 'aculect_ai_companion_well_known_resource_path';
+		$vars[] = 'aculect_ai_companion_well_known_issuer_path';
+		$vars[] = 'aculect_ai_companion_oauth_authorize';
 
 		return $vars;
 	}
@@ -125,7 +125,7 @@ final class Plugin {
 	 * Redirect the root /oauth/authorize route to the REST authorization handler.
 	 */
 	public function maybe_redirect_root_authorize(): void {
-		if ( ! get_query_var( 'quark_oauth_authorize' ) ) {
+		if ( ! get_query_var( 'aculect_ai_companion_oauth_authorize' ) ) {
 			return;
 		}
 
@@ -136,7 +136,7 @@ final class Plugin {
 			}
 		}
 
-		wp_safe_redirect( add_query_arg( $params, Helpers::authorization_endpoint() ), 302, 'Quark OAuth' );
+		wp_safe_redirect( add_query_arg( $params, Helpers::authorization_endpoint() ), 302, 'Aculect AI Companion OAuth' );
 		exit;
 	}
 
@@ -168,7 +168,7 @@ final class Plugin {
 	}
 
 	/**
-	 * Register the Settings > Quark admin page.
+	 * Register the Settings > Aculect AI Companion admin page.
 	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
@@ -207,6 +207,6 @@ final class Plugin {
 	 */
 	private static function add_rewrite_rules(): void {
 		( new DiscoveryController() )->add_rewrite_rules();
-		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?quark_oauth_authorize=1', 'top' );
+		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?aculect_ai_companion_oauth_authorize=1', 'top' );
 	}
 }

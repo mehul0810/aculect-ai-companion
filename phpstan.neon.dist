@@ -2,7 +2,7 @@ parameters:
   level: 6
   paths:
     - src
-    - quark.php
+    - aculect-ai-companion.php
   bootstrapFiles:
     - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     - phpstan-bootstrap.php

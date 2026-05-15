@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Entities\ClientEntity;
-use Quark\Connectors\OAuth\Entities\UserEntity;
-use Quark\Connectors\OAuth\Repositories\ClientRepository;
-use Quark\Connectors\OAuth\Server\AuthorizationServerFactory;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\Entities\UserEntity;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Server;
@@ -19,7 +19,7 @@ use WP_REST_Server;
  */
 final class AuthorizationController {
 
-	private const NONCE_ACTION = 'quark_oauth_authorize';
+	private const NONCE_ACTION = 'aculect_ai_companion_oauth_authorize';
 
 	/**
 	 * Register the authorization endpoint.
@@ -54,11 +54,11 @@ final class AuthorizationController {
 
 		$consent_url = $this->admin_consent_url( $params );
 		if ( ! is_user_logged_in() ) {
-			wp_safe_redirect( wp_login_url( $consent_url ), 302, 'Quark OAuth' );
+			wp_safe_redirect( wp_login_url( $consent_url ), 302, 'Aculect AI Companion OAuth' );
 			exit;
 		}
 
-		wp_safe_redirect( $consent_url, 302, 'Quark OAuth' );
+		wp_safe_redirect( $consent_url, 302, 'Aculect AI Companion OAuth' );
 		exit;
 	}
 
@@ -81,7 +81,7 @@ final class AuthorizationController {
 		$params = $this->params_from_array( wp_unslash( $_POST ) );
 
 		if ( ! is_user_logged_in() ) {
-			wp_safe_redirect( wp_login_url( $this->admin_consent_url( $params ) ), 302, 'Quark OAuth' );
+			wp_safe_redirect( wp_login_url( $this->admin_consent_url( $params ) ), 302, 'Aculect AI Companion OAuth' );
 			exit;
 		}
 
@@ -142,11 +142,11 @@ final class AuthorizationController {
 			);
 			$location = $response->getHeaderLine( 'Location' );
 			if ( '' === $location ) {
-				$this->render_error( 'Connection approval failed', 'Quark could not complete the approval request.', 500 );
+				$this->render_error( 'Connection approval failed', 'Aculect AI Companion could not complete the approval request.', 500 );
 			}
 
 			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-			wp_redirect( $location, 302, 'Quark OAuth' );
+			wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
 			exit;
 		} catch ( OAuthServerException $exception ) {
 			$this->redirect_to_client(
@@ -179,27 +179,27 @@ final class AuthorizationController {
 
 		nocache_headers();
 		?>
-<div class="quark-oauth-page quark-oauth-page--admin">
-	<div class="quark-oauth-card" role="main" aria-labelledby="quark-oauth-title">
-		<div class="quark-oauth-brand">Quark</div>
-			<h1 id="quark-oauth-title" class="quark-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'quark' ); ?></h1>
-			<p class="quark-oauth-copy">
-				<?php echo esc_html( $client->getName() ); ?> <?php echo esc_html__( 'wants to connect to this WordPress site through Quark.', 'quark' ); ?>
+<div class="aculect-ai-companion-oauth-page aculect-ai-companion-oauth-page--admin">
+	<div class="aculect-ai-companion-oauth-card" role="main" aria-labelledby="aculect-ai-companion-oauth-title">
+		<div class="aculect-ai-companion-oauth-brand">Aculect AI Companion</div>
+			<h1 id="aculect-ai-companion-oauth-title" class="aculect-ai-companion-oauth-title"><?php echo esc_html__( 'Approve AI assistant access', 'aculect-ai-companion' ); ?></h1>
+			<p class="aculect-ai-companion-oauth-copy">
+				<?php echo esc_html( $client->getName() ); ?> <?php echo esc_html__( 'wants to connect to this WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
 			</p>
-			<dl class="quark-oauth-details">
-				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Site', 'quark' ); ?></dt><dd><?php echo esc_html( $site_name ); ?></dd></div>
-				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'WordPress User', 'quark' ); ?></dt><dd><?php echo esc_html( $current_user->display_name ); ?></dd></div>
-				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Allowed actions', 'quark' ); ?></dt><dd><?php echo esc_html( $actions ); ?></dd></div>
-				<div class="quark-oauth-detail"><dt><?php echo esc_html__( 'Connection URL', 'quark' ); ?></dt><dd><code><?php echo esc_html( $resource ); ?></code></dd></div>
+			<dl class="aculect-ai-companion-oauth-details">
+				<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Site', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $site_name ); ?></dd></div>
+				<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'WordPress User', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $current_user->display_name ); ?></dd></div>
+				<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Allowed actions', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $actions ); ?></dd></div>
+				<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Connection URL', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $resource ); ?></code></dd></div>
 			</dl>
-		<form class="quark-oauth-actions" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="quark_oauth_consent">
+		<form class="aculect-ai-companion-oauth-actions" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="aculect_ai_companion_oauth_consent">
 			<?php foreach ( $this->persisted_params( $params ) as $name => $value ) : ?>
 				<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>">
 			<?php endforeach; ?>
 			<?php wp_nonce_field( self::NONCE_ACTION ); ?>
-			<button class="quark-oauth-button quark-oauth-button--secondary" type="submit" name="decision" value="deny"><?php echo esc_html__( 'Deny', 'quark' ); ?></button>
-			<button class="quark-oauth-button quark-oauth-button--primary" type="submit" name="decision" value="approve"><?php echo esc_html__( 'Approve', 'quark' ); ?></button>
+			<button class="aculect-ai-companion-oauth-button aculect-ai-companion-oauth-button--secondary" type="submit" name="decision" value="deny"><?php echo esc_html__( 'Deny', 'aculect-ai-companion' ); ?></button>
+			<button class="aculect-ai-companion-oauth-button aculect-ai-companion-oauth-button--primary" type="submit" name="decision" value="approve"><?php echo esc_html__( 'Approve', 'aculect-ai-companion' ); ?></button>
 		</form>
 	</div>
 </div>
@@ -217,16 +217,16 @@ final class AuthorizationController {
 
 		foreach ( is_array( $scopes ) ? $scopes : array() as $item ) {
 			if ( 'content:read' === $item ) {
-				$labels[] = __( 'Read site content and safe site information', 'quark' );
+				$labels[] = __( 'Read site content and safe site information', 'aculect-ai-companion' );
 			}
 
 			if ( 'content:draft' === $item ) {
-				$labels[] = __( 'Create and update content, terms, comments, and media', 'quark' );
+				$labels[] = __( 'Create and update content, terms, comments, and media', 'aculect-ai-companion' );
 			}
 		}
 
 		if ( array() === $labels ) {
-			return __( 'Use approved Quark actions', 'quark' );
+			return __( 'Use approved Aculect AI Companion actions', 'aculect-ai-companion' );
 		}
 
 		return implode( ', ', array_unique( $labels ) );
@@ -243,7 +243,7 @@ final class AuthorizationController {
 		nocache_headers();
 		status_header( $status );
 		header( 'Content-Type: text/html; charset=' . get_option( 'blog_charset' ) );
-		wp_register_style( 'quark-oauth-consent', QUARK_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), QUARK_VERSION );
+		wp_register_style( 'aculect-ai-companion-oauth-consent', ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), ACULECT_AI_COMPANION_VERSION );
 		?>
 <!DOCTYPE html>
 <html <?php language_attributes(); ?>>
@@ -251,12 +251,12 @@ final class AuthorizationController {
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title><?php echo esc_html( $title ); ?></title>
-		<?php wp_print_styles( 'quark-oauth-consent' ); ?>
+		<?php wp_print_styles( 'aculect-ai-companion-oauth-consent' ); ?>
 </head>
-<body class="quark-oauth-page">
-	<main class="quark-oauth-card" role="main">
-		<h1 class="quark-oauth-title"><?php echo esc_html( $title ); ?></h1>
-		<p class="quark-oauth-copy"><?php echo esc_html( $message ); ?></p>
+<body class="aculect-ai-companion-oauth-page">
+	<main class="aculect-ai-companion-oauth-card" role="main">
+		<h1 class="aculect-ai-companion-oauth-title"><?php echo esc_html( $title ); ?></h1>
+		<p class="aculect-ai-companion-oauth-copy"><?php echo esc_html( $message ); ?></p>
 	</main>
 </body>
 </html>
@@ -290,7 +290,7 @@ final class AuthorizationController {
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
 		$params = array_filter( $params, static fn( $value ): bool => '' !== (string) $value );
 		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-		wp_redirect( add_query_arg( $params, $redirect_uri ), 302, 'Quark OAuth' );
+		wp_redirect( add_query_arg( $params, $redirect_uri ), 302, 'Aculect AI Companion OAuth' );
 		exit;
 	}
 
@@ -309,7 +309,7 @@ final class AuthorizationController {
 		}
 
 		if ( 'S256' !== (string) ( $params['code_challenge_method'] ?? '' ) ) {
-			$this->fail( 'PKCE required', 'Quark requires PKCE with the S256 code challenge method.', 400, $admin_context );
+			$this->fail( 'PKCE required', 'Aculect AI Companion requires PKCE with the S256 code challenge method.', 400, $admin_context );
 		}
 
 		$client = ( new ClientRepository() )->getClientEntity( (string) ( $params['client_id'] ?? '' ) );
@@ -415,7 +415,7 @@ final class AuthorizationController {
 		return add_query_arg(
 			array_merge(
 				array(
-					'page' => 'quark',
+					'page' => 'aculect-ai-companion',
 					'view' => 'oauth-consent',
 				),
 				$this->persisted_params( $params )

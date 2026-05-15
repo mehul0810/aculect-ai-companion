@@ -6,7 +6,7 @@
  * unit tests. Integration tests should load a real WordPress test environment
  * instead of extending this file.
  *
- * @package Quark\Tests
+ * @package Aculect\AICompanion\Tests
  */
 
 declare(strict_types=1);
@@ -19,11 +19,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-if ( ! defined( 'QUARK_VERSION' ) ) {
-	define( 'QUARK_VERSION', '0.1.0' );
+if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
+	define( 'ACULECT_AI_COMPANION_VERSION', '0.1.0' );
 }
 
-$GLOBALS['quark_test_options'] = array();
+$GLOBALS['aculect_ai_companion_test_options'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -35,7 +35,7 @@ if ( ! function_exists( 'get_option' ) ) {
 	 * @return mixed
 	 */
 	function get_option( string $option, mixed $default = false ): mixed {
-		return array_key_exists( $option, $GLOBALS['quark_test_options'] ) ? $GLOBALS['quark_test_options'][ $option ] : $default;
+		return array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_options'] ) ? $GLOBALS['aculect_ai_companion_test_options'][ $option ] : $default;
 	}
 }
 
@@ -51,7 +51,7 @@ if ( ! function_exists( 'update_option' ) ) {
 	function update_option( string $option, mixed $value, mixed $autoload = null ): bool {
 		unset( $autoload );
 
-		$GLOBALS['quark_test_options'][ $option ] = $value;
+		$GLOBALS['aculect_ai_companion_test_options'][ $option ] = $value;
 
 		return true;
 	}

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Repositories;
+namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use DateTimeImmutable;
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Database\Installer;
-use Quark\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
 
@@ -203,7 +203,7 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * Generate a stable-prefixed random client ID.
 	 */
 	private function generate_client_id(): string {
-		return 'quark_dcr_' . bin2hex( random_bytes( 16 ) );
+		return 'aculect_ai_companion_dcr_' . bin2hex( random_bytes( 16 ) );
 	}
 
 	/**

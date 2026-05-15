@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\MCP;
+namespace Aculect\AICompanion\Connectors\MCP;
 
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\TokenValidator;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -57,9 +57,9 @@ final class McpController {
 		}
 
 		return array(
-			'name'           => 'Quark MCP',
+			'name'           => 'Aculect AI Companion MCP',
 			'protocol'       => 'mcp',
-			'version'        => QUARK_VERSION,
+			'version'        => ACULECT_AI_COMPANION_VERSION,
 			'transport'      => 'streamable-http',
 			'auth'           => 'oauth2.1',
 			'authentication' => array(
@@ -109,8 +109,8 @@ final class McpController {
 					array(
 						'protocolVersion' => '2025-06-18',
 						'serverInfo'      => array(
-							'name'    => 'Quark MCP',
-							'version' => QUARK_VERSION,
+							'name'    => 'Aculect AI Companion MCP',
+							'version' => ACULECT_AI_COMPANION_VERSION,
 						),
 						'capabilities'    => array(
 							'tools' => new \stdClass(),
@@ -129,7 +129,7 @@ final class McpController {
 				}
 
 				if ( ! $registry->is_enabled( $tool ) ) {
-					return $this->tool_error_result( $id, 'This ability is disabled in Quark settings.' );
+					return $this->tool_error_result( $id, 'This ability is disabled in Aculect AI Companion settings.' );
 				}
 
 				$required = $registry->required_scopes( $tool );
@@ -163,13 +163,13 @@ final class McpController {
 		nocache_headers();
 		header( 'Content-Type: text/event-stream; charset=' . get_option( 'blog_charset' ) );
 		header( 'X-Accel-Buffering: no' );
-		echo ": quark-mcp-stream\n\n";
+		echo ": aculect-ai-companion-mcp-stream\n\n";
 		flush();
 		exit;
 	}
 
 	/**
-	 * Build the MCP tools/list payload from enabled Quark abilities.
+	 * Build the MCP tools/list payload from enabled Aculect AI Companion abilities.
 	 *
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
@@ -185,7 +185,7 @@ final class McpController {
 	 * Convert an internal ability definition into an MCP tool descriptor.
 	 *
 	 * The `name` field uses the public, client-safe identifier while schemas and
-	 * dispatch continue to use Quark's internal dotted ability IDs.
+	 * dispatch continue to use Aculect AI Companion's internal dotted ability IDs.
 	 *
 	 * @param array<string, bool|string> $definition Ability definition.
 	 * @return array<string, mixed>

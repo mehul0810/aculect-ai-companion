@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Entities;
+namespace Aculect\AICompanion\Connectors\OAuth\Entities;
 
 use DateTimeImmutable;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
@@ -10,7 +10,7 @@ use League\OAuth2\Server\Entities\Traits\ClientTrait;
 use League\OAuth2\Server\Entities\Traits\EntityTrait;
 
 /**
- * League OAuth client entity with Quark-specific metadata.
+ * League OAuth client entity with Aculect AI Companion-specific metadata.
  */
 final class ClientEntity implements ClientEntityInterface {
 

@@ -3,7 +3,7 @@
 /**
  * Verify that a prepared plugin package contains production files only.
  *
- * @package Quark
+ * @package Aculect_AI_Companion
  */
 
 declare(strict_types=1);

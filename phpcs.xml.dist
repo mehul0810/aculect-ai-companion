@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
-<ruleset name="Quark">
-  <description>WPCS ruleset for Quark plugin.</description>
+<ruleset name="Aculect AI Companion">
+  <description>WPCS ruleset for Aculect AI Companion plugin.</description>
   <arg value="sp"/>
   <arg name="extensions" value="php"/>
-  <file>quark.php</file>
+  <file>aculect-ai-companion.php</file>
   <file>uninstall.php</file>
   <file>src</file>
   <exclude-pattern>vendor/*</exclude-pattern>

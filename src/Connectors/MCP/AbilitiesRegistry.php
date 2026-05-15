@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\MCP;
+namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
- * Registry of Quark abilities exposed through MCP tools.
+ * Registry of Aculect AI Companion abilities exposed through MCP tools.
  *
  * Internal IDs intentionally use dotted namespaces for maintainability. Public
  * MCP tool names are generated separately because clients such as Claude reject
@@ -13,11 +13,11 @@ namespace Quark\Connectors\MCP;
  */
 final class AbilitiesRegistry {
 
-	public const OPTION_ENABLED_ABILITIES = 'quark_enabled_abilities';
+	public const OPTION_ENABLED_ABILITIES = 'aculect_ai_companion_enabled_abilities';
 	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
 
 	/**
-	 * Return all abilities Quark can expose to assistant clients.
+	 * Return all abilities Aculect AI Companion can expose to assistant clients.
 	 *
 	 * @return array<string, array<string, bool|string>>
 	 */
@@ -314,12 +314,12 @@ final class AbilitiesRegistry {
 		$tool_name = trim( (string) $tool_name, '_-' );
 
 		if ( '' === $tool_name ) {
-			$tool_name = 'quark_tool';
+			$tool_name = 'aculect_ai_companion_tool';
 		}
 
 		$tool_name = substr( $tool_name, 0, 64 );
 
-		return $this->is_valid_tool_name( $tool_name ) ? $tool_name : 'quark_tool';
+		return $this->is_valid_tool_name( $tool_name ) ? $tool_name : 'aculect_ai_companion_tool';
 	}
 
 	/**

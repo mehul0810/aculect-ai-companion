@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Entities;
+namespace Aculect\AICompanion\Connectors\OAuth\Entities;
 
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\Traits\AccessTokenTrait;
@@ -10,7 +10,7 @@ use League\OAuth2\Server\Entities\Traits\EntityTrait;
 use League\OAuth2\Server\Entities\Traits\TokenEntityTrait;
 
 /**
- * League OAuth access-token entity used by Quark.
+ * League OAuth access-token entity used by Aculect AI Companion.
  */
 final class AccessTokenEntity implements AccessTokenEntityInterface {
 

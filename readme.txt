@@ -1,4 +1,4 @@
-=== Quark ===
+=== Aculect AI Companion ===
 Contributors: mehul0810
 Tags: ai, content, claude, media, chatgpt
 Requires at least: 6.5
@@ -8,24 +8,24 @@ Stable tag: 0.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect WordPress with AI. Quark helps you manage content, comments, media, and more with your AI assistant.
+Connect WordPress with AI. Aculect AI Companion helps you manage content, comments, media, and more with your AI assistant.
 
 == Description ==
 
 = Pre-production Notice =
 
-Quark is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so test it only on development or staging sites and enable it only with explicit approval from the site owner.
+Aculect AI Companion is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so test it only on development or staging sites and enable it only with explicit approval from the site owner.
 
-Quark lets site owners manage their WordPress site using an AI assistant. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
+Aculect AI Companion lets site owners manage their WordPress site using an AI assistant. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
 
 Setup is designed to be simple:
 
-1. Copy your connection URL from Settings > Quark.
+1. Copy your connection URL from Settings > Aculect AI Companion.
 2. Open your AI tool and add a new connector.
 3. Paste the URL when prompted.
 4. Approve the connection on the screen that appears.
 
-After approval, Quark checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI can do and disconnect assistants at any time.
+After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI can do and disconnect assistants at any time.
 
 = Features =
 
@@ -38,7 +38,7 @@ After approval, Quark checks the connected WordPress user's permissions before e
 
 = Supported AI Tools =
 
-Quark currently includes setup guidance for:
+Aculect AI Companion currently includes setup guidance for:
 
 * ChatGPT app with Developer Mode connectors
 * OpenAI API integrations that support remote connectors
@@ -50,7 +50,7 @@ Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 = Supported Abilities =
 
-Admins can enable or disable these abilities from Settings > Quark > Abilities after the first assistant connection is active.
+Admins can enable or disable these abilities from Settings > Aculect AI Companion > Abilities after the first assistant connection is active.
 
 Content:
 
@@ -94,22 +94,22 @@ WordPress abilities:
 
 == Third Party Services ==
 
-Quark does not send site data to an external service on activation, page load, cron, or without a site administrator connecting an AI assistant.
+Aculect AI Companion does not send site data to an external service on activation, page load, cron, or without a site administrator connecting an AI assistant.
 
 When a site administrator copies the connection URL into an external AI assistant and approves the connection screen in WordPress, that assistant can request the enabled abilities. Depending on the enabled abilities and the connected WordPress user's permissions, requested data may include post titles, post content, excerpts, slugs, statuses, authors, dates, permalinks, category and tag names, media metadata, comments, and safe site settings such as site name, description, URLs, locale, timezone, date format, time format, permalink structure, and active theme name.
 
-The external service that receives this data is the AI assistant selected and configured by the administrator. Quark's built-in setup UI includes links for:
+The external service that receives this data is the AI assistant selected and configured by the administrator. Aculect AI Companion's built-in setup UI includes links for:
 
 * ChatGPT by OpenAI: https://chatgpt.com/, terms at https://openai.com/policies/terms-of-use/, and privacy policy at https://openai.com/policies/row-privacy-policy/
 * Claude by Anthropic: https://claude.ai/, terms at https://www.anthropic.com/legal/consumer-terms, and privacy policy at https://www.anthropic.com/legal/privacy
 
-Administrators should review the terms and privacy policy for the AI assistant they connect. Quark controls the WordPress-side approval and permissions checks; it does not control how a connected external assistant processes data after the administrator authorizes access.
+Administrators should review the terms and privacy policy for the AI assistant they connect. Aculect AI Companion controls the WordPress-side approval and permissions checks; it does not control how a connected external assistant processes data after the administrator authorizes access.
 
 == Installation ==
 
-1. Upload the `quark` folder to the `/wp-content/plugins/` directory, or install the plugin ZIP from WordPress.
-2. Activate Quark from the Plugins screen.
-3. Open Settings > Quark.
+1. Upload the `aculect-ai-companion` folder to the `/wp-content/plugins/` directory, or install the plugin ZIP from WordPress.
+2. Activate Aculect AI Companion from the Plugins screen.
+3. Open Settings > Aculect AI Companion.
 4. Copy your connection URL.
 5. Open your AI tool and add a new connector.
 6. Paste the URL when prompted.
@@ -117,25 +117,25 @@ Administrators should review the terms and privacy policy for the AI assistant t
 
 == Frequently Asked Questions ==
 
-= Does Quark send my data automatically? =
+= Does Aculect AI Companion send my data automatically? =
 
-No. Quark does not send site data on activation or admin page load. Data is only available to an AI assistant after an administrator connects that assistant and approves access in WordPress.
+No. Aculect AI Companion does not send site data on activation or admin page load. Data is only available to an AI assistant after an administrator connects that assistant and approves access in WordPress.
 
 = Can I disconnect access? =
 
-Yes. Open Settings > Quark > Connections and disconnect one AI assistant or all active AI assistants.
+Yes. Open Settings > Aculect AI Companion > Connections and disconnect one AI assistant or all active AI assistants.
 
 = Can I control what my AI assistant can do? =
 
-Yes. After a connection exists, open Settings > Quark > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Quark to do something.
+Yes. After a connection exists, open Settings > Aculect AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
 
-= Does Quark require an account with a third-party service? =
+= Does Aculect AI Companion require an account with a third-party service? =
 
-Quark itself does not require a Quark account. To use Quark with an external AI assistant, you may need an account with that external service.
+Aculect AI Companion does not require a separate product account. To use it with an external AI assistant, you may need an account with that external service.
 
 = Are custom post types and custom taxonomies supported? =
 
-Yes. Quark can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.
+Yes. Aculect AI Companion can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.
 
 == Development ==
 
@@ -143,15 +143,15 @@ The production package ships built assets and Composer dependencies. Development
 
 For source code, build tooling, and exact dependency manifests, use the public GitHub repository:
 
-https://github.com/mehul0810/quark
+https://github.com/mehul0810/aculect-ai-companion
 
 Contributing guidelines:
 
-https://github.com/mehul0810/quark/blob/main/CONTRIBUTING.md
+https://github.com/mehul0810/aculect-ai-companion/blob/main/CONTRIBUTING.md
 
 Security policy:
 
-https://github.com/mehul0810/quark/security/policy
+https://github.com/mehul0810/aculect-ai-companion/security/policy
 
 From the repository checkout, rebuild assets with:
 

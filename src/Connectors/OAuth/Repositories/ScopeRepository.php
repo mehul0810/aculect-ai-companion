@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Repositories;
+namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Entities\ScopeEntity;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ScopeEntity;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Repositories\ScopeRepositoryInterface;
 
 /**
- * Validates OAuth scopes against Quark's supported connector scopes.
+ * Validates OAuth scopes against Aculect AI Companion's supported connector scopes.
  */
 final class ScopeRepository implements ScopeRepositoryInterface {
 

@@ -46,13 +46,13 @@ jobs:
         uses: wordpress/plugin-check-action@v1
         with:
           build-dir: "./release"
-          slug: "quark"
+          slug: "aculect-ai-companion"
           ignore-warnings: true
 
       - name: Generate plugin artifact
         run: |
           cd "${GITHUB_WORKSPACE}/release" || exit 1
-          zip -r "${GITHUB_WORKSPACE}/${{ github.event.repository.name }}.zip" .
+          zip -r "${GITHUB_WORKSPACE}/aculect-ai-companion.zip" .
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
@@ -60,6 +60,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ github.workspace }}/${{ github.event.repository.name }}.zip
-          asset_name: ${{ github.event.repository.name }}.zip
+          asset_path: ${{ github.workspace }}/aculect-ai-companion.zip
+          asset_name: aculect-ai-companion.zip
           asset_content_type: application/zip

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Repositories;
+namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
-use Quark\Connectors\OAuth\Database\Installer;
-use Quark\Connectors\OAuth\Entities\RefreshTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\Entities\RefreshTokenEntity;
 use League\OAuth2\Server\Entities\RefreshTokenEntityInterface;
 use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 

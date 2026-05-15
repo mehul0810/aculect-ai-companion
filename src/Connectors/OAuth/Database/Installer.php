@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Database;
+namespace Aculect\AICompanion\Connectors\OAuth\Database;
 
 /**
- * Owns Quark's OAuth storage schema and legacy token migration.
+ * Owns Aculect AI Companion's OAuth storage schema and legacy token migration.
  *
  * OAuth client, code, access-token, and refresh-token records need indexed
  * lookups by hashed protocol identifiers. WordPress options/transients are not
@@ -17,8 +17,8 @@ final class Installer {
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned OAuth protocol tables require uncached reads/writes and controlled schema changes.
 
 	private const DB_VERSION             = '2026.05.11.1';
-	private const OPTION_DB_VERSION      = 'quark_oauth_db_version';
-	private const OPTION_MIGRATED_LEGACY = 'quark_oauth_legacy_migrated';
+	private const OPTION_DB_VERSION      = 'aculect_ai_companion_oauth_db_version';
+	private const OPTION_MIGRATED_LEGACY = 'aculect_ai_companion_oauth_legacy_migrated';
 
 	/**
 	 * Create or update the OAuth tables and migrate option-backed legacy state.
@@ -49,10 +49,10 @@ final class Installer {
 		global $wpdb;
 
 		return array(
-			'clients'        => $wpdb->prefix . 'quark_oauth_clients',
-			'access_tokens'  => $wpdb->prefix . 'quark_oauth_access_tokens',
-			'refresh_tokens' => $wpdb->prefix . 'quark_oauth_refresh_tokens',
-			'auth_codes'     => $wpdb->prefix . 'quark_oauth_auth_codes',
+			'clients'        => $wpdb->prefix . 'aculect_ai_companion_oauth_clients',
+			'access_tokens'  => $wpdb->prefix . 'aculect_ai_companion_oauth_access_tokens',
+			'refresh_tokens' => $wpdb->prefix . 'aculect_ai_companion_oauth_refresh_tokens',
+			'auth_codes'     => $wpdb->prefix . 'aculect_ai_companion_oauth_auth_codes',
 		);
 	}
 
@@ -161,10 +161,10 @@ final class Installer {
 			return;
 		}
 
-		delete_option( 'quark_oauth_tokens' );
-		delete_option( 'quark_oauth_codes' );
+		delete_option( 'aculect_ai_companion_oauth_tokens' );
+		delete_option( 'aculect_ai_companion_oauth_codes' );
 		update_option(
-			'quark_chatgpt_connection_state',
+			'aculect_ai_companion_chatgpt_connection_state',
 			array(
 				'active'     => false,
 				'updated_at' => time(),

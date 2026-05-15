@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Quark\Connectors\OAuth\Server\ResourceServerFactory;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Server\ResourceServerFactory;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 
@@ -59,7 +59,7 @@ final class TokenValidator {
 			self::quote( Helpers::protected_resource_metadata_url() ),
 			self::quote( $scope ),
 			self::quote( $error ),
-			self::quote( 'Authorize Quark to continue' )
+			self::quote( 'Authorize Aculect AI Companion to continue' )
 		);
 	}
 

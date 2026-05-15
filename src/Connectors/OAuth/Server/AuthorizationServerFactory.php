@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Server;
+namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
 use DateInterval;
-use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Quark\Connectors\OAuth\Repositories\AuthCodeRepository;
-use Quark\Connectors\OAuth\Repositories\ClientRepository;
-use Quark\Connectors\OAuth\Repositories\RefreshTokenRepository;
-use Quark\Connectors\OAuth\Repositories\ScopeRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ScopeRepository;
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\CryptKey;
 use League\OAuth2\Server\Grant\AuthCodeGrant;

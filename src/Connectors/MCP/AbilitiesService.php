@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\MCP;
+namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
  * Implements WordPress content, taxonomy, media, comment, and site abilities.
@@ -371,7 +371,7 @@ final class AbilitiesService {
 
 		$filename = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
 		if ( '' === $filename || '.' === $filename || '..' === $filename ) {
-			$filename = 'quark-media-upload';
+			$filename = 'aculect-ai-companion-media-upload';
 		}
 
 		$file = array(
@@ -592,31 +592,31 @@ final class AbilitiesService {
 		$theme = wp_get_theme();
 
 		return array(
-			'name'             => get_option( 'blogname' ),
-			'description'      => get_option( 'blogdescription' ),
-			'home_url'         => home_url( '/' ),
-			'site_url'         => site_url( '/' ),
-			'wordpress'        => array(
+			'name'                         => get_option( 'blogname' ),
+			'description'                  => get_option( 'blogdescription' ),
+			'home_url'                     => home_url( '/' ),
+			'site_url'                     => site_url( '/' ),
+			'wordpress'                    => array(
 				'version'          => get_bloginfo( 'version' ),
 				'multisite'        => is_multisite(),
 				'environment_type' => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production',
 			),
-			'php'              => array(
+			'php'                          => array(
 				'version' => PHP_VERSION,
 			),
-			'active_theme'     => array(
+			'active_theme'                 => array(
 				'name'       => $theme->get( 'Name' ),
 				'stylesheet' => $theme->get_stylesheet(),
 				'template'   => $theme->get_template(),
 				'version'    => $theme->get( 'Version' ),
 			),
-			'active_plugins'   => count( (array) get_option( 'active_plugins', array() ) ),
-			'locale'           => get_locale(),
-			'timezone'         => wp_timezone_string(),
-			'rest_url'         => rest_url(),
-			'abilities_api'    => function_exists( 'wp_get_abilities' ),
-			'quark_version'    => QUARK_VERSION,
-			'mcp_endpoint_url' => \Quark\Connectors\Helpers::mcp_resource(),
+			'active_plugins'               => count( (array) get_option( 'active_plugins', array() ) ),
+			'locale'                       => get_locale(),
+			'timezone'                     => wp_timezone_string(),
+			'rest_url'                     => rest_url(),
+			'abilities_api'                => function_exists( 'wp_get_abilities' ),
+			'aculect_ai_companion_version' => ACULECT_AI_COMPANION_VERSION,
+			'mcp_endpoint_url'             => \Aculect\AICompanion\Connectors\Helpers::mcp_resource(),
 		);
 	}
 
@@ -707,7 +707,7 @@ final class AbilitiesService {
 	}
 
 	/**
-	 * Restrict writes to statuses Quark explicitly supports.
+	 * Restrict writes to statuses Aculect AI Companion explicitly supports.
 	 *
 	 * @param string $status Requested status.
 	 * @return string

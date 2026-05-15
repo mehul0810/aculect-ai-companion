@@ -1,8 +1,8 @@
-# Contributing to Quark
+# Contributing to Aculect AI Companion
 
-Thanks for your interest in improving Quark.
+Thanks for your interest in improving Aculect AI Companion.
 
-Quark is an early-stage WordPress plugin that helps site owners manage WordPress with AI assistants. Contributions should keep the product simple for non-technical users while keeping the implementation secure, testable, and WordPress-native.
+Aculect AI Companion is an early-stage WordPress plugin that helps site owners manage WordPress with AI assistants. Contributions should keep the product simple for non-technical users while keeping the implementation secure, testable, and WordPress-native.
 
 ## Before You Start
 
@@ -56,7 +56,7 @@ composer audit
 
 PHP code should:
 
-- Use strict types and PSR-4 classes under the `Quark\` namespace.
+- Use strict types and PSR-4 classes under the `Aculect\AICompanion\` namespace.
 - Follow WordPress Coding Standards.
 - Sanitize input, escape output, and verify capabilities on write paths.
 - Use WordPress APIs where practical.
@@ -85,7 +85,7 @@ Avoid surfacing protocol or implementation details in product UI unless the scre
 
 ## Security Expectations
 
-Quark handles site access and can change WordPress content through connected assistants, so security-sensitive changes need extra care.
+Aculect AI Companion handles site access and can change WordPress content through connected assistants, so security-sensitive changes need extra care.
 
 Security-related changes should consider:
 

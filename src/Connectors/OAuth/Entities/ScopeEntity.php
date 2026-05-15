@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Entities;
+namespace Aculect\AICompanion\Connectors\OAuth\Entities;
 
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Entities\Traits\EntityTrait;
 use League\OAuth2\Server\Entities\Traits\ScopeTrait;
 
 /**
- * League OAuth scope entity for Quark connector scopes.
+ * League OAuth scope entity for Aculect AI Companion connector scopes.
  */
 final class ScopeEntity implements ScopeEntityInterface {
 

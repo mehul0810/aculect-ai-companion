@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -43,7 +43,7 @@ final class ClientRegistrationController {
 			$body = array();
 		}
 
-		$client_name   = sanitize_text_field( (string) ( $body['client_name'] ?? 'Quark MCP Client' ) );
+		$client_name   = sanitize_text_field( (string) ( $body['client_name'] ?? 'Aculect AI Companion MCP Client' ) );
 		$redirect_uris = $this->redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
 		if ( array() === $redirect_uris ) {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );

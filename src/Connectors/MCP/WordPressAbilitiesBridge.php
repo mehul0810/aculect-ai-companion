@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\MCP;
+namespace Aculect\AICompanion\Connectors\MCP;
 
 use WP_Error;
 use WP_REST_Response;
 
 /**
- * Bridges WordPress Abilities API registrations into Quark MCP tools.
+ * Bridges WordPress Abilities API registrations into Aculect AI Companion MCP tools.
  */
 final class WordPressAbilitiesBridge {
 

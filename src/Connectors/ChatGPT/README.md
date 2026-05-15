@@ -1,35 +1,35 @@
 # ChatGPT Connector Notes
 
-This document captures the working ChatGPT connection flow for Quark and the regressions we hit while getting OAuth + MCP working. Keep this updated whenever the ChatGPT connector flow changes.
+This document captures the working ChatGPT connection flow for Aculect AI Companion and the regressions we hit while getting OAuth + MCP working. Keep this updated whenever the ChatGPT connector flow changes.
 
 ## Working Flow
 
 The working setup is endpoint-only:
 
-1. WordPress admin opens `Settings > Quark > Connectors`.
-2. Admin copies the Quark MCP endpoint URL only.
+1. WordPress admin opens `Settings > Aculect AI Companion > Connectors`.
+2. Admin copies the Aculect AI Companion MCP endpoint URL only.
 3. Admin opens ChatGPT connector settings and creates a custom MCP connector.
 4. Admin pastes only the MCP endpoint URL.
-5. ChatGPT discovers Quark OAuth metadata from the MCP endpoint/auth challenge.
+5. ChatGPT discovers Aculect AI Companion OAuth metadata from the MCP endpoint/auth challenge.
 6. ChatGPT dynamically registers an OAuth client through DCR.
 7. ChatGPT redirects the user to WordPress OAuth authorize.
-8. Quark redirects the browser to the wp-admin consent screen.
+8. Aculect AI Companion redirects the browser to the wp-admin consent screen.
 9. The WordPress user approves consent.
-10. Quark issues an authorization code and ChatGPT exchanges it for tokens.
-11. ChatGPT can call Quark MCP tools using the access token.
+10. Aculect AI Companion issues an authorization code and ChatGPT exchanges it for tokens.
+11. ChatGPT can call Aculect AI Companion MCP tools using the access token.
 
 The admin should not copy or manually fill authorization, token, registration, client ID, or client secret fields in the primary UX.
 
 ## Public URLs ChatGPT Uses
 
-These values are generated from `Quark\Connectors\Helpers`:
+These values are generated from `Aculect\AICompanion\Connectors\Helpers`:
 
-- MCP endpoint: `/wp-json/quark/v1/mcp`
+- MCP endpoint: `/wp-json/aculect-ai-companion/v1/mcp`
 - Protected resource metadata: `/.well-known/oauth-protected-resource` and resource-path variant
 - Authorization server metadata: `/.well-known/oauth-authorization-server` and issuer-path variant
-- Dynamic client registration: `/wp-json/quark/v1/oauth/register`
-- Authorization endpoint: `/wp-json/quark/v1/oauth/authorize`
-- Token endpoint: `/wp-json/quark/v1/oauth/token`
+- Dynamic client registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
+- Authorization endpoint: `/wp-json/aculect-ai-companion/v1/oauth/authorize`
+- Token endpoint: `/wp-json/aculect-ai-companion/v1/oauth/token`
 
 The MCP endpoint must be the only primary value shown to users. Metadata and OAuth URLs belong in advanced diagnostics only.
 
@@ -82,8 +82,8 @@ The authorize endpoint previously sent logged-out users to `wp-login.php` with `
 
 Current rule:
 
-- If the user is already logged in, `/oauth/authorize` redirects directly to the Quark wp-admin consent screen.
-- If the user is logged out, `wp_login_url()` uses the Quark wp-admin consent screen as `redirect_to`.
+- If the user is already logged in, `/oauth/authorize` redirects directly to the Aculect AI Companion wp-admin consent screen.
+- If the user is logged out, `wp_login_url()` uses the Aculect AI Companion wp-admin consent screen as `redirect_to`.
 - Consent approval/denial posts to `admin-post.php` with nonce validation.
 
 ### Root Authorize URL Compatibility
@@ -104,7 +104,7 @@ Regression check: run repeated valid DCR requests and confirm every request retu
 
 Cause: authorize flow did not cleanly hand off to wp-admin consent and relied on REST route state.
 
-Fix: validate the OAuth request first, then send logged-in users directly to `options-general.php?page=quark&view=oauth-consent`.
+Fix: validate the OAuth request first, then send logged-in users directly to `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 Regression check: with an authenticated browser session, OAuth authorize should show the consent screen without landing on `wp-login.php`.
 
@@ -112,9 +112,9 @@ Regression check: with an authenticated browser session, OAuth authorize should 
 
 Cause: `wp_login_url()` used the REST authorize URL as `redirect_to`.
 
-Fix: `redirect_to` must be the Quark admin consent URL, including the OAuth request parameters.
+Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including the OAuth request parameters.
 
-Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `options-general.php?page=quark&view=oauth-consent`.
+Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 ### ChatGPT Says The MCP Server Does Not Implement OAuth
 
@@ -140,7 +140,7 @@ Regression check: approve consent and confirm ChatGPT reaches token exchange wit
 
 ### Expected Tools Do Not Show In ChatGPT
 
-Possible cause: the ability is disabled under `Settings > Quark > Abilities`.
+Possible cause: the ability is disabled under `Settings > Aculect AI Companion > Abilities`.
 
 Fix: enable the relevant ability and save. `tools/list` only advertises enabled abilities, and `tools/call` rejects disabled abilities even if a client cached an older tool list.
 
@@ -153,10 +153,10 @@ Run these before creating a beta release that touches OAuth, MCP discovery, sett
 ```bash
 base='http://localhost:8895'
 for i in 1 2 3; do
-  curl -sS -o "/tmp/quark-dcr-${i}.json" -w "dcr_${i}_status=%{http_code}\n" \
-    -X POST "$base/wp-json/quark/v1/oauth/register" \
+  curl -sS -o "/tmp/aculect-ai-companion-dcr-${i}.json" -w "dcr_${i}_status=%{http_code}\n" \
+    -X POST "$base/wp-json/aculect-ai-companion/v1/oauth/register" \
     -H 'Content-Type: application/json' \
-    --data "{\"client_name\":\"Quark DCR Smoke ${i}\",\"redirect_uris\":[\"https://chatgpt.com/connector/oauth/smoke-${i}\"]}"
+    --data "{\"client_name\":\"Aculect AI Companion DCR Smoke ${i}\",\"redirect_uris\":[\"https://chatgpt.com/connector/oauth/smoke-${i}\"]}"
 done
 ```
 
@@ -167,16 +167,16 @@ Expected: every response is `201`.
 ```bash
 base='http://localhost:8895'
 client_id='CLIENT_FROM_DCR_RESPONSE'
-curl -sSI "$base/wp-json/quark/v1/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Fquark%2Fv1%2Fmcp&state=oauth_smoke_state" \
+curl -sSI "$base/wp-json/aculect-ai-companion/v1/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
   | tr -d '\r' \
   | grep -Ei '^(HTTP/|location:)'
 ```
 
-Expected: `302` to `wp-login.php` with `redirect_to` containing `options-general.php?page=quark&view=oauth-consent`.
+Expected: `302` to `wp-login.php` with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 ### Logged-In Authorize Should Go Directly To Consent
 
-Use a logged-in browser session and start the ChatGPT connector flow. Expected: WordPress shows the Quark consent screen directly, not the login page.
+Use a logged-in browser session and start the ChatGPT connector flow. Expected: WordPress shows the Aculect AI Companion consent screen directly, not the login page.
 
 ### Metadata Should Be JSON
 

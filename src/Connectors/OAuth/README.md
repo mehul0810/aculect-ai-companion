@@ -1,16 +1,16 @@
-# Quark OAuth Connector Layer
+# Aculect AI Companion OAuth Connector Layer
 
 This directory implements the OAuth 2.1 style authorization server used by MCP
 clients such as ChatGPT and Claude.
 
 ## Storage Model
 
-Quark uses plugin-owned custom tables for OAuth protocol state:
+Aculect AI Companion uses plugin-owned custom tables for OAuth protocol state:
 
-- `quark_oauth_clients`
-- `quark_oauth_auth_codes`
-- `quark_oauth_access_tokens`
-- `quark_oauth_refresh_tokens`
+- `aculect_ai_companion_oauth_clients`
+- `aculect_ai_companion_oauth_auth_codes`
+- `aculect_ai_companion_oauth_access_tokens`
+- `aculect_ai_companion_oauth_refresh_tokens`
 
 These records are not stored in `wp_options`, user meta, or transients because
 OAuth state needs indexed lookup by client, hashed token/code identifier, user,

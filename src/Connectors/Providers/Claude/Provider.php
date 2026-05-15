@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\Providers\Claude;
+namespace Aculect\AICompanion\Connectors\Providers\Claude;
 
-use Quark\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 
 /**
  * Provides Claude-specific connector setup guidance.
@@ -29,7 +29,7 @@ final class Provider implements ProviderInterface {
 	 * Return the provider description.
 	 */
 	public function description(): string {
-		return 'Use Claude, Claude Desktop, Claude Code, or your own Claude integration to manage WordPress through Quark.';
+		return 'Use Claude, Claude Desktop, Claude Code, or your own Claude integration to manage WordPress through Aculect AI Companion.';
 	}
 
 	/**
@@ -73,7 +73,7 @@ final class Provider implements ProviderInterface {
 				'steps'       => array(
 					'Copy the Claude Code command below.',
 					'Run it in a terminal where Claude Code is available.',
-					'When Claude Code asks you to connect Quark, approve the connection on the WordPress screen that appears.',
+					'When Claude Code asks you to connect Aculect AI Companion, approve the connection on the WordPress screen that appears.',
 					'Return to Claude Code and continue working with your site.',
 				),
 				'actionLabel' => 'Open Claude Code Docs',
@@ -81,7 +81,7 @@ final class Provider implements ProviderInterface {
 				'copyFields'  => array(
 					array(
 						'label' => 'Claude Code Command',
-						'value' => 'claude mcp add --transport http quark ' . $mcp_url,
+						'value' => 'claude mcp add --transport http aculect-ai-companion ' . $mcp_url,
 					),
 				),
 			),

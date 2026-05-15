@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Server;
+namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
 use Defuse\Crypto\Key;
 use phpseclib3\Crypt\RSA;
@@ -16,9 +16,9 @@ use RuntimeException;
  */
 final class KeyManager {
 
-	private const OPTION_ENCRYPTION_KEY = 'quark_oauth_encryption_key';
-	private const OPTION_PRIVATE_KEY    = 'quark_oauth_private_key';
-	private const OPTION_PUBLIC_KEY     = 'quark_oauth_public_key';
+	private const OPTION_ENCRYPTION_KEY = 'aculect_ai_companion_oauth_encryption_key';
+	private const OPTION_PRIVATE_KEY    = 'aculect_ai_companion_oauth_private_key';
+	private const OPTION_PUBLIC_KEY     = 'aculect_ai_companion_oauth_public_key';
 
 	/**
 	 * Return the Defuse encryption key used by league/oauth2-server.
@@ -46,7 +46,7 @@ final class KeyManager {
 		}
 
 		if ( '' === $key || ! self::is_private_key_valid( $key ) ) {
-			throw new RuntimeException( 'Quark could not generate a valid OAuth private key.' );
+			throw new RuntimeException( 'Aculect AI Companion could not generate a valid OAuth private key.' );
 		}
 
 		return $key;
@@ -65,7 +65,7 @@ final class KeyManager {
 		}
 
 		if ( '' === $key || ! self::is_public_key_valid( $key ) ) {
-			throw new RuntimeException( 'Quark could not generate a valid OAuth public key.' );
+			throw new RuntimeException( 'Aculect AI Companion could not generate a valid OAuth public key.' );
 		}
 
 		return $key;

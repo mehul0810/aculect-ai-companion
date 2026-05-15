@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors;
+namespace Aculect\AICompanion\Connectors;
 
 /**
  * Shared connector URL, metadata, and provider helpers.
  */
 final class Helpers {
 
-	public const REST_NAMESPACE              = 'quark/v1';
-	public const MCP_ROUTE                   = 'quark/v1/mcp';
+	public const REST_NAMESPACE              = 'aculect-ai-companion/v1';
+	public const MCP_ROUTE                   = 'aculect-ai-companion/v1/mcp';
 	public const AUTHORIZATION_METADATA      = 'oauth-authorization-server';
 	public const PROTECTED_RESOURCE_METADATA = 'oauth-protected-resource';
 	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft' );
@@ -103,7 +103,7 @@ final class Helpers {
 	 */
 	public static function supported_scopes(): array {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
-		$scopes = apply_filters( 'quark/connectors/supported_scopes', self::DEFAULT_SCOPES );
+		$scopes = apply_filters( 'aculect-ai-companion/connectors/supported_scopes', self::DEFAULT_SCOPES );
 		if ( ! is_array( $scopes ) ) {
 			return self::DEFAULT_SCOPES;
 		}
@@ -146,7 +146,7 @@ final class Helpers {
 	 */
 	public static function external_base_url(): string {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
-		$external_url = (string) apply_filters( 'quark/connectors/external_url', '' );
+		$external_url = (string) apply_filters( 'aculect-ai-companion/connectors/external_url', '' );
 		$external_url = untrailingslashit( $external_url );
 
 		if ( '' !== $external_url ) {
@@ -156,8 +156,8 @@ final class Helpers {
 			}
 
 			_doing_it_wrong(
-				'quark/connectors/external_url',
-				esc_html__( 'External connector URL must be a valid absolute URL. Falling back to home_url().', 'quark' ),
+				'aculect-ai-companion/connectors/external_url',
+				esc_html__( 'External connector URL must be a valid absolute URL. Falling back to home_url().', 'aculect-ai-companion' ),
 				'0.1.0'
 			);
 		}
@@ -202,7 +202,7 @@ final class Helpers {
 	 */
 	public static function is_allowed_redirect_uri( string $uri ): bool {
 		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
-		$allowed = apply_filters( 'quark/connectors/allowed_redirect_uri', null, $uri );
+		$allowed = apply_filters( 'aculect-ai-companion/connectors/allowed_redirect_uri', null, $uri );
 		if ( is_bool( $allowed ) ) {
 			return $allowed;
 		}

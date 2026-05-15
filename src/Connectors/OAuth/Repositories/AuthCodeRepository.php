@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Repositories;
+namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
-use Quark\Connectors\OAuth\Database\Installer;
-use Quark\Connectors\OAuth\Entities\AuthCodeEntity;
-use Quark\Connectors\OAuth\RequestContext;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\Entities\AuthCodeEntity;
+use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AuthCodeEntityInterface;
 use League\OAuth2\Server\Repositories\AuthCodeRepositoryInterface;
 

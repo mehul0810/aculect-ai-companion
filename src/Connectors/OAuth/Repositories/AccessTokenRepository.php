@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Repositories;
+namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
-use Quark\Connectors\OAuth\Database\Installer;
-use Quark\Connectors\OAuth\Entities\AccessTokenEntity;
-use Quark\Connectors\OAuth\RequestContext;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
@@ -200,7 +200,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'client_id'    => (string) ( $row['client_id'] ?? '' ),
 					'client_name'  => (string) ( $row['client_name'] ?? 'MCP Client' ),
 					'provider'     => (string) ( $row['provider'] ?? 'mcp' ),
-					'user'         => $user ? $user->display_name : __( 'Unknown user', 'quark' ),
+					'user'         => $user ? $user->display_name : __( 'Unknown user', 'aculect-ai-companion' ),
 					'scopes'       => is_array( $scopes ) ? array_values( array_map( 'strval', $scopes ) ) : array(),
 					'resource'     => (string) ( $row['resource'] ?? '' ),
 					'created_at'   => (string) ( $row['created_at'] ?? '' ),

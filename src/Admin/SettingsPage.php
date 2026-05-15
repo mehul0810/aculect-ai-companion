@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Quark\Admin;
+namespace Aculect\AICompanion\Admin;
 
-use Quark\Connectors\Helpers;
-use Quark\Connectors\MCP\AbilitiesRegistry;
-use Quark\Connectors\OAuth\AuthorizationController;
-use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Quark\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
-use Quark\Connectors\Providers\Claude\Provider as ClaudeProvider;
-use Quark\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
+use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
+use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
+use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -19,14 +19,14 @@ defined( 'ABSPATH' ) || exit;
  */
 final class SettingsPage {
 
-	private const ASSET_HANDLE = 'quark-settings-app';
-	private const STYLE_HANDLE = 'quark-settings-style';
+	private const ASSET_HANDLE = 'aculect-ai-companion-settings-app';
+	private const STYLE_HANDLE = 'aculect-ai-companion-settings-style';
 
 	/**
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
-		add_options_page( 'Connect your AI assistant', 'Quark', 'manage_options', 'quark', array( $this, 'render' ) );
+		add_options_page( 'Connect your AI assistant', 'Aculect AI Companion', 'manage_options', 'aculect-ai-companion', array( $this, 'render' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 	}
 
@@ -35,7 +35,7 @@ final class SettingsPage {
 	 */
 	public function render(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'quark' ) );
+			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
 		}
 
 		if ( $this->is_oauth_consent_view() ) {
@@ -43,7 +43,7 @@ final class SettingsPage {
 			return;
 		}
 
-		echo '<div class="wrap quark-settings-wrap"><div id="quark-settings-app-root" class="quark-settings-app-root"></div></div>';
+		echo '<div class="wrap aculect-ai-companion-settings-wrap"><div id="aculect-ai-companion-settings-app-root" class="aculect-ai-companion-settings-app-root"></div></div>';
 	}
 
 	/**
@@ -52,26 +52,26 @@ final class SettingsPage {
 	 * @param string $hook_suffix Current admin screen hook suffix.
 	 */
 	public function enqueue_assets( string $hook_suffix ): void {
-		if ( 'settings_page_quark' !== $hook_suffix ) {
+		if ( 'settings_page_aculect-ai-companion' !== $hook_suffix ) {
 			return;
 		}
 
 		if ( $this->is_oauth_consent_view() ) {
-			wp_enqueue_style( 'quark-oauth-consent', QUARK_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), QUARK_VERSION );
+			wp_enqueue_style( 'aculect-ai-companion-oauth-consent', ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), ACULECT_AI_COMPANION_VERSION );
 			return;
 		}
 
-		$asset_path = QUARK_PLUGIN_DIR . 'build/index.asset.php';
+		$asset_path = ACULECT_AI_COMPANION_PLUGIN_DIR . 'build/index.asset.php';
 		$asset      = file_exists( $asset_path )
 			? require $asset_path
 			: array(
 				'dependencies' => array( 'wp-element', 'wp-components' ),
-				'version'      => QUARK_VERSION,
+				'version'      => ACULECT_AI_COMPANION_VERSION,
 			);
 
 		wp_register_script(
 			self::ASSET_HANDLE,
-			QUARK_PLUGIN_URL . 'build/index.js',
+			ACULECT_AI_COMPANION_PLUGIN_URL . 'build/index.js',
 			$asset['dependencies'],
 			(string) $asset['version'],
 			true
@@ -79,16 +79,16 @@ final class SettingsPage {
 		wp_enqueue_script( self::ASSET_HANDLE );
 		wp_enqueue_style( 'wp-components' );
 
-		$style_path = QUARK_PLUGIN_DIR . 'build/style-index.css';
+		$style_path = ACULECT_AI_COMPANION_PLUGIN_DIR . 'build/style-index.css';
 		if ( file_exists( $style_path ) ) {
-			wp_enqueue_style( self::STYLE_HANDLE, QUARK_PLUGIN_URL . 'build/style-index.css', array(), (string) $asset['version'] );
+			wp_enqueue_style( self::STYLE_HANDLE, ACULECT_AI_COMPANION_PLUGIN_URL . 'build/style-index.css', array(), (string) $asset['version'] );
 		}
 
 		wp_localize_script(
 			self::ASSET_HANDLE,
-			'quarkSettingsData',
+			'aculectAICompanionSettingsData',
 			array(
-				'version'          => QUARK_VERSION,
+				'version'          => ACULECT_AI_COMPANION_VERSION,
 				'isConnected'      => ( new AccessTokenRepository() )->has_active_tokens(),
 				'mcpUrl'           => Helpers::mcp_resource(),
 				'providers'        => $this->providers(),
@@ -98,12 +98,12 @@ final class SettingsPage {
 				'status'           => $this->status(),
 				'actions'          => array(
 					'adminPostUrl'        => admin_url( 'admin-post.php' ),
-					'saveAbilitiesAction' => 'quark_save_abilities',
-					'revokeSessionAction' => 'quark_revoke_session',
-					'revokeAllAction'     => 'quark_revoke_all_sessions',
-					'saveAbilitiesNonce'  => wp_create_nonce( 'quark_save_abilities' ),
-					'revokeSessionNonce'  => wp_create_nonce( 'quark_revoke_session' ),
-					'revokeAllNonce'      => wp_create_nonce( 'quark_revoke_all_sessions' ),
+					'saveAbilitiesAction' => 'aculect_ai_companion_save_abilities',
+					'revokeSessionAction' => 'aculect_ai_companion_revoke_session',
+					'revokeAllAction'     => 'aculect_ai_companion_revoke_all_sessions',
+					'saveAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+					'revokeSessionNonce'  => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
+					'revokeAllNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 				),
 				'changelog'        => $this->load_changelog(),
 			)
@@ -114,7 +114,7 @@ final class SettingsPage {
 	 * Persist enabled MCP abilities from the admin form.
 	 */
 	public function handle_save_abilities(): void {
-		$this->guard_action( 'quark_save_abilities' );
+		$this->guard_action( 'aculect_ai_companion_save_abilities' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$enabled = isset( $_POST['enabled_abilities'] )
 			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_abilities'] ) )
@@ -126,7 +126,7 @@ final class SettingsPage {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'            => 'quark',
+					'page'            => 'aculect-ai-companion',
 					'abilities_saved' => '1',
 				),
 				admin_url( 'options-general.php' )
@@ -139,7 +139,7 @@ final class SettingsPage {
 	 * Revoke a single active connector session.
 	 */
 	public function handle_revoke_session(): void {
-		$this->guard_action( 'quark_revoke_session' );
+		$this->guard_action( 'aculect_ai_companion_revoke_session' );
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$session_id = isset( $_POST['session_id'] ) ? absint( $_POST['session_id'] ) : 0;
 		if ( $session_id > 0 ) {
@@ -149,7 +149,7 @@ final class SettingsPage {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'    => 'quark',
+					'page'    => 'aculect-ai-companion',
 					'revoked' => '1',
 				),
 				admin_url( 'options-general.php' )
@@ -162,12 +162,12 @@ final class SettingsPage {
 	 * Revoke every active connector session.
 	 */
 	public function handle_revoke_all_sessions(): void {
-		$this->guard_action( 'quark_revoke_all_sessions' );
+		$this->guard_action( 'aculect_ai_companion_revoke_all_sessions' );
 		( new AccessTokenRepository() )->revoke_all();
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'        => 'quark',
+					'page'        => 'aculect-ai-companion',
 					'revoked_all' => '1',
 				),
 				admin_url( 'options-general.php' )
@@ -227,7 +227,7 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function load_changelog(): array {
-		$file = QUARK_PLUGIN_DIR . 'changelog.json';
+		$file = ACULECT_AI_COMPANION_PLUGIN_DIR . 'changelog.json';
 		if ( ! file_exists( $file ) ) {
 			return array();
 		}
@@ -257,7 +257,7 @@ final class SettingsPage {
 	 */
 	private function guard_action( string $nonce_action ): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'quark' ) );
+			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
 		}
 
 		check_admin_referer( $nonce_action );

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth\Server;
+namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
-use Quark\Connectors\OAuth\Repositories\AccessTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use League\OAuth2\Server\CryptKey;
 use League\OAuth2\Server\ResourceServer;
 

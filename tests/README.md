@@ -1,6 +1,6 @@
-# Quark Tests
+# Aculect AI Companion Tests
 
-This directory contains the automated test suite for the Quark plugin.
+This directory contains the automated test suite for the Aculect AI Companion plugin.
 
 ## Unit Tests
 

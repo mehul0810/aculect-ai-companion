@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\MCP;
+namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
  * Dispatches MCP tool calls to WordPress content and abilities services.

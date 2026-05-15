@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;

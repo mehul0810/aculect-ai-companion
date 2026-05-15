@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
-use Quark\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\Helpers;
 
 /**
  * Carries request-local OAuth resource information during token issuance.

@@ -1,38 +1,38 @@
 <?php
 /**
- * Plugin Name: Quark
- * Plugin URI: https://quarkwp.com
- * Description: Connect WordPress with AI. Quark helps you manage content, comments, media, and more with your AI assistant.
+ * Plugin Name: Aculect AI Companion
+ * Plugin URI: https://aculect.com
+ * Description: Connect WordPress with AI. Aculect AI Companion helps you manage content, comments, media, and more with your AI assistant.
  * Version: 0.1.0
  * Requires at least: 6.5
  * Requires PHP: 8.2
  * Author: Mehul Gohil
  * Author URI: https://mehulgohil.com
- * Text Domain: quark
+ * Text Domain: aculect-ai-companion
  * Domain Path: /languages
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
- * @package Quark
+ * @package Aculect_AI_Companion
  */
 
 declare(strict_types=1);
 
-namespace Quark;
+namespace Aculect\AICompanion;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'QUARK_VERSION', '0.1.0' );
-define( 'QUARK_PLUGIN_FILE', __FILE__ );
-define( 'QUARK_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'QUARK_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'ACULECT_AI_COMPANION_VERSION', '0.1.0' );
+define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', __FILE__ );
+define( 'ACULECT_AI_COMPANION_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'ACULECT_AI_COMPANION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-$quark_autoload = QUARK_PLUGIN_DIR . 'vendor/autoload.php';
+$aculect_ai_companion_autoload = ACULECT_AI_COMPANION_PLUGIN_DIR . 'vendor/autoload.php';
 
-if ( file_exists( $quark_autoload ) ) {
-	require_once $quark_autoload;
+if ( file_exists( $aculect_ai_companion_autoload ) ) {
+	require_once $aculect_ai_companion_autoload;
 } else {
 	spl_autoload_register(
 		static function ( string $class_name ): void {
@@ -43,7 +43,7 @@ if ( file_exists( $quark_autoload ) ) {
 			}
 
 			$relative_class = substr( $class_name, strlen( $prefix ) );
-			$file           = QUARK_PLUGIN_DIR . 'src/' . str_replace( '\\', '/', $relative_class ) . '.php';
+			$file           = ACULECT_AI_COMPANION_PLUGIN_DIR . 'src/' . str_replace( '\\', '/', $relative_class ) . '.php';
 
 			if ( file_exists( $file ) ) {
 				require_once $file;

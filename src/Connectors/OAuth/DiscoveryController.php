@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Quark\Connectors\OAuth;
+namespace Aculect\AICompanion\Connectors\OAuth;
 
-use Quark\Connectors\Helpers;
-use Quark\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use WP_REST_Response;
 use WP_REST_Server;
 
@@ -20,13 +20,13 @@ final class DiscoveryController {
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule(
 			'^\.well-known/oauth-protected-resource(/.+)?/?$',
-			'index.php?quark_well_known=' . Helpers::PROTECTED_RESOURCE_METADATA . '&quark_well_known_resource_path=$matches[1]',
+			'index.php?aculect_ai_companion_well_known=' . Helpers::PROTECTED_RESOURCE_METADATA . '&aculect_ai_companion_well_known_resource_path=$matches[1]',
 			'top'
 		);
 
 		add_rewrite_rule(
 			'^\.well-known/oauth-authorization-server(/.+)?/?$',
-			'index.php?quark_well_known=' . Helpers::AUTHORIZATION_METADATA . '&quark_well_known_issuer_path=$matches[1]',
+			'index.php?aculect_ai_companion_well_known=' . Helpers::AUTHORIZATION_METADATA . '&aculect_ai_companion_well_known_issuer_path=$matches[1]',
 			'top'
 		);
 	}
@@ -99,7 +99,7 @@ final class DiscoveryController {
 					Helpers::issuer(),
 				),
 				'scopes_supported'                      => Helpers::supported_scopes(),
-				'resource_documentation'                => 'https://github.com/mehul0810/quark',
+				'resource_documentation'                => 'https://github.com/mehul0810/aculect-ai-companion',
 				'token_endpoint_auth_methods_supported' => array( 'client_secret_post', 'client_secret_basic' ),
 			),
 			200
@@ -153,9 +153,9 @@ final class DiscoveryController {
 	 * Render well-known metadata for non-REST root-level requests.
 	 */
 	public function render_well_known_metadata(): void {
-		$document      = (string) get_query_var( 'quark_well_known' );
-		$resource_path = (string) get_query_var( 'quark_well_known_resource_path' );
-		$issuer_path   = (string) get_query_var( 'quark_well_known_issuer_path' );
+		$document      = (string) get_query_var( 'aculect_ai_companion_well_known' );
+		$resource_path = (string) get_query_var( 'aculect_ai_companion_well_known_resource_path' );
+		$issuer_path   = (string) get_query_var( 'aculect_ai_companion_well_known_issuer_path' );
 
 		if ( '' === $document ) {
 			$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';

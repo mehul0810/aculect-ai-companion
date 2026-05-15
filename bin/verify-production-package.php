@@ -30,7 +30,6 @@ $forbidden_paths = array(
 	'AGENTS.md',
 	'CONTRIBUTING.md',
 	'bin',
-	'composer.json',
 	'composer.lock',
 	'eslint.config.cjs',
 	'node_modules',

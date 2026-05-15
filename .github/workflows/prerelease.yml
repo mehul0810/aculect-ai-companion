@@ -37,22 +37,23 @@ jobs:
 
       - name: Prepare plugin package
         run: |
-          rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" release/ --delete --delete-excluded
+          mkdir -p "${GITHUB_WORKSPACE}/release/aculect-ai-companion"
+          rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
 
       - name: Verify production package contents
-        run: php bin/verify-production-package.php release
+        run: php bin/verify-production-package.php release/aculect-ai-companion
 
       - name: Run Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:
-          build-dir: "./release"
+          build-dir: "./release/aculect-ai-companion"
           slug: "aculect-ai-companion"
           ignore-warnings: true
 
       - name: Generate plugin artifact
         run: |
           cd "${GITHUB_WORKSPACE}/release" || exit 1
-          zip -r "${GITHUB_WORKSPACE}/aculect-ai-companion.zip" .
+          zip -r "${GITHUB_WORKSPACE}/aculect-ai-companion.zip" aculect-ai-companion
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1

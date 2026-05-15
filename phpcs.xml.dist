@@ -3,6 +3,7 @@
   <description>WPCS ruleset for Aculect AI Companion plugin.</description>
   <arg value="sp"/>
   <arg name="extensions" value="php"/>
+  <config name="text_domain" value="aculect-ai-companion"/>
   <file>aculect-ai-companion.php</file>
   <file>uninstall.php</file>
   <file>src</file>

@@ -10,6 +10,8 @@ use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\UserEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
+use Aculect\AICompanion\Diagnostics\Logger;
+use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Server;
@@ -50,14 +52,35 @@ final class AuthorizationController {
 	 */
 	public function authorize( WP_REST_Request $request ): void {
 		$params = $this->params( $request );
-		$this->authorization_context( $params, false );
+		( new Logger() )->info(
+			'authorize.received',
+			'OAuth authorization request received.',
+			$this->log_context( $params ),
+			$request
+		);
+
+		$context = $this->authorization_context( $params, false, $request );
 
 		$consent_url = $this->admin_consent_url( $params );
 		if ( ! is_user_logged_in() ) {
+			( new Logger() )->info(
+				'authorize.login_redirect',
+				'OAuth authorization request redirected to WordPress login.',
+				$this->log_context( $params, $context['client'] ),
+				$request,
+				302
+			);
 			wp_safe_redirect( wp_login_url( $consent_url ), 302, 'Aculect AI Companion OAuth' );
 			exit;
 		}
 
+		( new Logger() )->info(
+			'authorize.consent_redirect',
+			'OAuth authorization request redirected to consent.',
+			$this->log_context( $params, $context['client'] ),
+			$request,
+			302
+		);
 		wp_safe_redirect( $consent_url, 302, 'Aculect AI Companion OAuth' );
 		exit;
 	}
@@ -81,11 +104,25 @@ final class AuthorizationController {
 		$params = $this->params_from_array( wp_unslash( $_POST ) );
 
 		if ( ! is_user_logged_in() ) {
+			( new Logger() )->info(
+				'authorize.login_redirect',
+				'OAuth consent submission required WordPress login.',
+				$this->log_context( $params ),
+				null,
+				302
+			);
 			wp_safe_redirect( wp_login_url( $this->admin_consent_url( $params ) ), 302, 'Aculect AI Companion OAuth' );
 			exit;
 		}
 
 		if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( (string) $_POST['_wpnonce'] ) ), self::NONCE_ACTION ) ) {
+			( new Logger() )->warning(
+				'consent.invalid_nonce',
+				'OAuth consent submission failed nonce validation.',
+				$this->log_context( $params, null, 'invalid_nonce' ),
+				null,
+				400
+			);
 			$this->render_error( 'Invalid request', 'The authorization request failed a security check.', 400 );
 		}
 
@@ -108,6 +145,13 @@ final class AuthorizationController {
 		$state        = sanitize_text_field( (string) ( $params['state'] ?? '' ) );
 
 		if ( 'approve' !== $decision ) {
+			( new Logger() )->info(
+				'consent.denied',
+				'OAuth consent request was denied.',
+				$this->log_context( $params, $client, 'access_denied' ),
+				null,
+				302
+			);
 			$this->redirect_to_client(
 				$redirect_uri,
 				array(
@@ -142,13 +186,34 @@ final class AuthorizationController {
 			);
 			$location = $response->getHeaderLine( 'Location' );
 			if ( '' === $location ) {
+				( new Logger() )->error(
+					'consent.failed',
+					'OAuth consent approval failed without a redirect location.',
+					$this->log_context( $params, $client, 'missing_redirect_location' ),
+					null,
+					500
+				);
 				$this->render_error( 'Connection approval failed', 'Aculect AI Companion could not complete the approval request.', 500 );
 			}
 
+			( new Logger() )->info(
+				'consent.approved',
+				'OAuth consent request was approved.',
+				$this->log_context( $params, $client ),
+				null,
+				302
+			);
 			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
 			wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
 			exit;
 		} catch ( OAuthServerException $exception ) {
+			( new Logger() )->warning(
+				'consent.oauth_error',
+				'OAuth server rejected the consent approval.',
+				$this->log_context( $params, $client, $exception->getErrorType() ),
+				null,
+				$exception->getHttpStatusCode()
+			);
 			$this->redirect_to_client(
 				$redirect_uri,
 				array(
@@ -158,6 +223,13 @@ final class AuthorizationController {
 				)
 			);
 		} catch ( Exception $exception ) {
+			( new Logger() )->error(
+				'consent.failed',
+				'OAuth consent approval failed.',
+				$this->log_context( $params, $client, 'server_error' ),
+				null,
+				500
+			);
 			$this->render_error( 'Authorization failed', $exception->getMessage(), 500 );
 		} finally {
 			RequestContext::reset();
@@ -299,26 +371,55 @@ final class AuthorizationController {
 	 *
 	 * @param array<string, string> $params        Authorization parameters.
 	 * @param bool                  $admin_context Whether errors render inside wp-admin.
+	 * @param WP_REST_Request|null  $request       Optional REST request.
 	 * @return array{params: array<string, string>, client: ClientEntity, resource: string}
 	 */
-	private function authorization_context( array $params, bool $admin_context ): array {
+	private function authorization_context( array $params, bool $admin_context, ?WP_REST_Request $request = null ): array {
 		$resource = $this->resource_from_params( $params );
 
 		if ( Helpers::mcp_resource() !== $resource ) {
+			( new Logger() )->warning(
+				'authorize.invalid_resource',
+				'OAuth authorization request used an invalid resource.',
+				$this->log_context( $params, null, 'invalid_target' ),
+				$request,
+				400
+			);
 			$this->fail( 'Invalid connection URL', 'The requested connection URL does not match this WordPress site.', 400, $admin_context );
 		}
 
 		if ( 'S256' !== (string) ( $params['code_challenge_method'] ?? '' ) ) {
+			( new Logger() )->warning(
+				'authorize.invalid_pkce',
+				'OAuth authorization request did not use PKCE S256.',
+				$this->log_context( $params, null, 'invalid_pkce' ),
+				$request,
+				400
+			);
 			$this->fail( 'PKCE required', 'Aculect AI Companion requires PKCE with the S256 code challenge method.', 400, $admin_context );
 		}
 
 		$client = ( new ClientRepository() )->getClientEntity( (string) ( $params['client_id'] ?? '' ) );
 		if ( ! $client instanceof ClientEntity ) {
+			( new Logger() )->warning(
+				'authorize.invalid_client',
+				'OAuth authorization request referenced an unknown client.',
+				$this->log_context( $params, null, 'invalid_client' ),
+				$request,
+				400
+			);
 			$this->fail( 'Unknown application', 'The application requesting access is not registered with this site.', 400, $admin_context );
 		}
 
 		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
 		if ( ! $this->redirect_uri_allowed( $client, $redirect_uri ) ) {
+			( new Logger() )->warning(
+				'authorize.invalid_redirect_uri',
+				'OAuth authorization request used a redirect URI that is not registered for the client.',
+				$this->log_context( $params, $client, 'invalid_redirect_uri' ),
+				$request,
+				400
+			);
 			$this->fail( 'Invalid return URL', 'The return URL is not allowed for this AI assistant.', 400, $admin_context );
 		}
 
@@ -450,5 +551,33 @@ final class AuthorizationController {
 		}
 
 		return $output;
+	}
+
+	/**
+	 * Build sanitized diagnostic context for OAuth authorization events.
+	 *
+	 * @param array<string, string> $params     Authorization parameters.
+	 * @param ClientEntity|null     $client     Optional registered client.
+	 * @param string|null           $error_code Optional error code.
+	 * @return array<string, mixed>
+	 */
+	private function log_context( array $params, ?ClientEntity $client = null, ?string $error_code = null ): array {
+		$sanitizer    = new LogSanitizer();
+		$redirect_uri = (string) ( $params['redirect_uri'] ?? '' );
+		$context      = array(
+			'provider'         => $client instanceof ClientEntity ? $client->getProvider() : '',
+			'response_type'    => (string) ( $params['response_type'] ?? '' ),
+			'scope'            => $this->scope_from_params( $params ),
+			'resource'         => $sanitizer->sanitize_url( $this->resource_from_params( $params ) ),
+			'redirect_uri'     => '' === $redirect_uri ? '' : $sanitizer->sanitize_url( $redirect_uri ),
+			'pkce_method_seen' => (string) ( $params['code_challenge_method'] ?? '' ),
+			'user_logged_in'   => is_user_logged_in(),
+		);
+
+		if ( null !== $error_code ) {
+			$context['error_code'] = $error_code;
+		}
+
+		return $context;
 	}
 }

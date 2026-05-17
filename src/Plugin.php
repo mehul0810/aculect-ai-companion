@@ -12,6 +12,7 @@ use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
 use Aculect\AICompanion\Connectors\OAuth\DiscoveryController;
 use Aculect\AICompanion\Connectors\OAuth\TokenController;
+use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -41,6 +42,7 @@ final class Plugin {
 	 */
 	public static function activate(): void {
 		OAuthInstaller::activate();
+		DiagnosticsInstaller::activate();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
@@ -67,12 +69,15 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
+		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
+		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_revoke_session', array( $this, 'handle_revoke_session' ) );
 		add_action( 'admin_post_aculect_ai_companion_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 
 		OAuthInstaller::install();
+		DiagnosticsInstaller::install();
 	}
 
 	/**
@@ -179,6 +184,20 @@ final class Plugin {
 	 */
 	public function handle_save_abilities(): void {
 		( new SettingsPage() )->handle_save_abilities();
+	}
+
+	/**
+	 * Proxy advanced settings form handling to the settings controller.
+	 */
+	public function handle_save_advanced(): void {
+		( new SettingsPage() )->handle_save_advanced();
+	}
+
+	/**
+	 * Proxy diagnostic log clearing to the settings controller.
+	 */
+	public function handle_clear_logs(): void {
+		( new SettingsPage() )->handle_clear_logs();
 	}
 
 	/**

@@ -8,6 +8,7 @@ import {
 	CheckboxControl,
 	Notice,
 	TabPanel,
+	ToggleControl,
 } from '@wordpress/components';
 
 const TAB_QUERY_PARAM = 'tab';
@@ -146,6 +147,79 @@ function ActionForm( {
 	);
 }
 
+function LogContext( { context } ) {
+	const hasContext =
+		context &&
+		typeof context === 'object' &&
+		Object.keys( context ).length > 0;
+
+	if ( ! hasContext ) {
+		return <span className="aculect-ai-companion-muted">None</span>;
+	}
+
+	return (
+		<details className="aculect-ai-companion-log-context">
+			<summary>View</summary>
+			<pre>{ JSON.stringify( context, null, 2 ) }</pre>
+		</details>
+	);
+}
+
+function LogsTable( { logs } ) {
+	const items = Array.isArray( logs?.items ) ? logs.items : [];
+
+	if ( items.length === 0 ) {
+		return (
+			<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+				No diagnostic logs have been recorded yet.
+			</p>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-log-table-wrap">
+			<table className="widefat striped aculect-ai-companion-log-table">
+				<thead>
+					<tr>
+						<th>Time</th>
+						<th>Level</th>
+						<th>Event</th>
+						<th>Provider</th>
+						<th>Status</th>
+						<th>Error</th>
+						<th>Message</th>
+						<th>Context</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ items.map( ( item ) => (
+						<tr key={ item.id }>
+							<td>{ item.created_at }</td>
+							<td>
+								<span
+									className={ `aculect-ai-companion-log-level is-${ item.level }` }
+								>
+									{ item.level || 'info' }
+								</span>
+							</td>
+							<td>
+								<code>{ item.event }</code>
+							</td>
+							<td>{ item.provider || '-' }</td>
+							<td>{ item.http_status || '-' }</td>
+							<td>{ item.error_code || '-' }</td>
+							<td>{ item.message || '-' }</td>
+							<td>
+								<LogContext context={ item.context } />
+							</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
 function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 	const steps = Array.isArray( section.steps ) ? section.steps : [];
 	const copyFields = Array.isArray( section.copyFields )
@@ -218,9 +292,20 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
+	const diagnostics =
+		data.diagnostics && typeof data.diagnostics === 'object'
+			? data.diagnostics
+			: {};
+	const logs =
+		diagnostics.logs && typeof diagnostics.logs === 'object'
+			? diagnostics.logs
+			: {};
 	const [ copied, setCopied ] = useState( '' );
 	const [ openProvider, setOpenProvider ] = useState(
 		providers[ 0 ]?.id || 'claude'
+	);
+	const [ loggingEnabled, setLoggingEnabled ] = useState(
+		Boolean( diagnostics.loggingEnabled )
 	);
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
@@ -290,6 +375,10 @@ function SettingsApp() {
 	if ( data.isConnected ) {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
 	}
+	tabs.push( { name: 'advanced', title: 'Advanced' } );
+	if ( diagnostics.loggingEnabled ) {
+		tabs.push( { name: 'logs', title: 'Logs' } );
+	}
 	tabs.push( { name: 'changelog', title: 'Changelog' } );
 	const selectedTab = initialTabName( tabs );
 	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
@@ -357,6 +446,16 @@ function SettingsApp() {
 			{ data.status === 'revoked_all' && (
 				<Notice status="warning" isDismissible={ false }>
 					All AI assistants disconnected.
+				</Notice>
+			) }
+			{ data.status === 'advanced_saved' && (
+				<Notice status="success" isDismissible={ false }>
+					Advanced settings saved.
+				</Notice>
+			) }
+			{ data.status === 'logs_cleared' && (
+				<Notice status="warning" isDismissible={ false }>
+					Diagnostic logs cleared.
 				</Notice>
 			) }
 
@@ -790,6 +889,132 @@ function SettingsApp() {
 											) }
 										</div>
 									</form>
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'advanced' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-advanced-card">
+								<CardHeader>Advanced Settings</CardHeader>
+								<CardBody>
+									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+										Enable diagnostic logging while testing
+										AI assistant connections. Logs keep
+										sanitized connection lifecycle events
+										for { diagnostics.retentionDays || 30 }{ ' ' }
+										days.
+									</p>
+									<form
+										method="post"
+										action={ data.actions?.adminPostUrl }
+										className="aculect-ai-companion-form aculect-ai-companion-form--advanced"
+									>
+										<input
+											type="hidden"
+											name="action"
+											value={
+												data.actions?.saveAdvancedAction
+											}
+										/>
+										<input
+											type="hidden"
+											name="_wpnonce"
+											value={
+												data.actions?.saveAdvancedNonce
+											}
+										/>
+										<input
+											type="hidden"
+											name="diagnostic_logging_enabled"
+											value={ loggingEnabled ? '1' : '0' }
+										/>
+										<div className="aculect-ai-companion-setting-row">
+											<ToggleControl
+												label="Enable diagnostic logging"
+												checked={ loggingEnabled }
+												onChange={ ( checked ) =>
+													setLoggingEnabled(
+														Boolean( checked )
+													)
+												}
+											/>
+											<p className="aculect-ai-companion-help-text">
+												Stores sanitized OAuth and MCP
+												connection events in a custom
+												table. Requests blocked before
+												WordPress loads will not appear
+												here.
+											</p>
+										</div>
+										<div className="aculect-ai-companion-setting-summary">
+											<div>
+												<span>Retention</span>
+												<strong>
+													{ diagnostics.retentionDays ||
+														30 }{ ' ' }
+													days
+												</strong>
+											</div>
+											<div>
+												<span>Stored data</span>
+												<strong>
+													Sanitized metadata only
+												</strong>
+											</div>
+										</div>
+										<Button type="submit" variant="primary">
+											Save Advanced Settings
+										</Button>
+									</form>
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'logs' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-logs-card">
+								<CardHeader>Diagnostic Logs</CardHeader>
+								<CardBody>
+									<div className="aculect-ai-companion-log-toolbar">
+										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+											Showing page { logs.page || 1 } of{ ' ' }
+											{ logs.totalPages || 1 }. Logs are
+											pruned after{ ' ' }
+											{ diagnostics.retentionDays || 30 }{ ' ' }
+											days.
+										</p>
+										<ActionForm
+											data={ data }
+											action={
+												data.actions?.clearLogsAction
+											}
+											nonce={
+												data.actions?.clearLogsNonce
+											}
+											label="Clear Logs"
+											destructive
+										/>
+									</div>
+									<LogsTable logs={ logs } />
+									<div className="aculect-ai-companion-log-pagination">
+										<Button
+											href={ logs.prevUrl || undefined }
+											variant="secondary"
+											disabled={ ! logs.prevUrl }
+										>
+											Previous
+										</Button>
+										<Button
+											href={ logs.nextUrl || undefined }
+											variant="secondary"
+											disabled={ ! logs.nextUrl }
+										>
+											Next
+										</Button>
+									</div>
 								</CardBody>
 							</Card>
 						);

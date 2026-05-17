@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
+use Aculect\AICompanion\Diagnostics\Logger;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -49,6 +50,13 @@ final class McpController {
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
 		$auth = ( new TokenValidator() )->authenticate( $request );
 		if ( array() === $auth ) {
+			( new Logger() )->warning(
+				'mcp.invalid_token',
+				'MCP endpoint description request did not include a valid bearer token.',
+				$this->log_context( 'describe', '', 'invalid_token' ),
+				$request,
+				401
+			);
 			return $this->auth_challenge_response( null, 'content:read', 401, 'invalid_token' );
 		}
 
@@ -82,6 +90,13 @@ final class McpController {
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
+			( new Logger() )->warning(
+				'mcp.invalid_request',
+				'MCP request body was not a valid JSON-RPC object.',
+				$this->log_context( '', '', 'invalid_request' ),
+				$request,
+				200
+			);
 			return $this->rpc_error( null, -32600, 'Invalid Request' );
 		}
 
@@ -97,6 +112,13 @@ final class McpController {
 
 		$auth = ( new TokenValidator() )->authenticate( $request );
 		if ( array() === $auth ) {
+			( new Logger() )->warning(
+				'mcp.invalid_token',
+				'MCP request did not include a valid bearer token.',
+				$this->log_context( $method, '', 'invalid_token' ),
+				$request,
+				401
+			);
 			return $this->auth_challenge_response( $id, 'content:read', 401, 'invalid_token' );
 		}
 
@@ -125,15 +147,36 @@ final class McpController {
 				$registry = new AbilitiesRegistry();
 				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
 				if ( ! $registry->is_known( $tool ) ) {
+					( new Logger() )->warning(
+						'mcp.unknown_tool',
+						'MCP tool call referenced an unknown tool.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'unknown_tool', $tool ),
+						$request,
+						200
+					);
 					return $this->tool_error_result( $id, 'Unknown tool.' );
 				}
 
 				if ( ! $registry->is_enabled( $tool ) ) {
+					( new Logger() )->warning(
+						'mcp.tool_disabled',
+						'MCP tool call referenced a disabled tool.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_disabled', $tool ),
+						$request,
+						200
+					);
 					return $this->tool_error_result( $id, 'This ability is disabled in Aculect AI Companion settings.' );
 				}
 
 				$required = $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
+					( new Logger() )->warning(
+						'mcp.insufficient_scope',
+						'MCP tool call did not include every required OAuth scope.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'insufficient_scope', $tool, $required ),
+						$request,
+						403
+					);
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
@@ -152,7 +195,42 @@ final class McpController {
 				);
 		}
 
+		( new Logger() )->warning(
+			'mcp.method_not_found',
+			'MCP request used an unsupported JSON-RPC method.',
+			$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'method_not_found' ),
+			$request,
+			200
+		);
 		return $this->rpc_error( $id, -32601, 'Method not found' );
+	}
+
+	/**
+	 * Build sanitized diagnostic context for MCP events.
+	 *
+	 * @param string   $method          JSON-RPC method.
+	 * @param string   $provider        Provider slug.
+	 * @param string   $error_code      Optional error code.
+	 * @param string   $tool            Optional internal tool ID.
+	 * @param string[] $required_scopes Optional required scopes.
+	 * @return array<string, mixed>
+	 */
+	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array() ): array {
+		$context = array(
+			'provider'   => $provider,
+			'rpc_method' => $method,
+			'tool'       => $tool,
+		);
+
+		if ( '' !== $error_code ) {
+			$context['error_code'] = $error_code;
+		}
+
+		if ( array() !== $required_scopes ) {
+			$context['required_scopes'] = array_values( array_map( 'strval', $required_scopes ) );
+		}
+
+		return $context;
 	}
 
 	/**

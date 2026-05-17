@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Diagnostics\Logger;
 use WP_REST_Response;
 use WP_REST_Server;
 
@@ -88,6 +89,17 @@ final class DiscoveryController {
 		$requested_resource_path = untrailingslashit( $requested_resource_path );
 
 		if ( '' !== $requested_resource_path && $requested_resource_path !== $resource_path ) {
+			( new Logger() )->warning(
+				'metadata.invalid_target',
+				'Protected resource metadata was requested for an unknown resource path.',
+				array(
+					'error_code'              => 'invalid_target',
+					'requested_resource_path' => $requested_resource_path,
+					'expected_resource_path'  => $resource_path,
+				),
+				null,
+				404
+			);
 			return new WP_REST_Response( array( 'error' => 'invalid_target' ), 404 );
 		}
 
@@ -122,6 +134,18 @@ final class DiscoveryController {
 		$requested_issuer_path = untrailingslashit( $requested_issuer_path );
 
 		if ( '' !== $requested_issuer_path && $requested_issuer_path !== $site_issuer_path && $requested_issuer_path !== $mcp_issuer_path ) {
+			( new Logger() )->warning(
+				'metadata.invalid_issuer',
+				'Authorization server metadata was requested for an unknown issuer path.',
+				array(
+					'error_code'            => 'invalid_issuer',
+					'requested_issuer_path' => $requested_issuer_path,
+					'site_issuer_path'      => $site_issuer_path,
+					'mcp_issuer_path'       => $mcp_issuer_path,
+				),
+				null,
+				404
+			);
 			return new WP_REST_Response( array( 'error' => 'invalid_issuer' ), 404 );
 		}
 

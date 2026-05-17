@@ -39,6 +39,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 }
 
 \Aculect\AICompanion\Connectors\OAuth\Database\Installer::uninstall();
+\Aculect\AICompanion\Diagnostics\Database\Installer::uninstall();
 \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
 
 delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );

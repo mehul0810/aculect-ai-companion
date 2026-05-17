@@ -6,6 +6,8 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Diagnostics\Logger;
+use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -43,16 +45,69 @@ final class ClientRegistrationController {
 			$body = array();
 		}
 
-		$client_name   = sanitize_text_field( (string) ( $body['client_name'] ?? 'Aculect AI Companion MCP Client' ) );
-		$redirect_uris = $this->redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
+		$logger            = new Logger();
+		$sanitizer         = new LogSanitizer();
+		$client_name       = sanitize_text_field( (string) ( $body['client_name'] ?? 'Aculect AI Companion MCP Client' ) );
+		$raw_redirect_uris = $this->raw_redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
+		$provider          = Helpers::provider_from_client( $client_name, $raw_redirect_uris );
+
+		$logger->info(
+			'dcr.received',
+			'Dynamic client registration request received.',
+			array(
+				'provider'           => $provider,
+				'client_name'        => $client_name,
+				'redirect_hosts'     => $sanitizer->redirect_hosts( $raw_redirect_uris ),
+				'redirect_uri_count' => count( $raw_redirect_uris ),
+			),
+			$request
+		);
+
+		$redirect_uris = $this->redirect_uris( $raw_redirect_uris );
 		if ( array() === $redirect_uris ) {
+			$logger->warning(
+				'dcr.invalid_redirect_uri',
+				'Dynamic client registration did not include a valid redirect URI.',
+				array(
+					'provider'           => $provider,
+					'error_code'         => 'invalid_redirect_uri',
+					'redirect_hosts'     => $sanitizer->redirect_hosts( $raw_redirect_uris ),
+					'redirect_uri_count' => count( $raw_redirect_uris ),
+				),
+				$request,
+				400
+			);
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
 		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, true, null );
 		if ( ! is_array( $client ) ) {
+			$logger->error(
+				'dcr.registration_failed',
+				'Dynamic client registration failed while storing the OAuth client.',
+				array(
+					'provider'           => $provider,
+					'error_code'         => 'registration_failed',
+					'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
+					'redirect_uri_count' => count( $redirect_uris ),
+				),
+				$request,
+				500
+			);
 			return new WP_Error( 'registration_failed', 'Unable to register OAuth client.', array( 'status' => 500 ) );
 		}
+
+		$logger->info(
+			'dcr.registered',
+			'Dynamic client registration completed.',
+			array(
+				'provider'           => (string) ( $client['provider'] ?? $provider ),
+				'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
+				'redirect_uri_count' => count( $redirect_uris ),
+			),
+			$request,
+			201
+		);
 
 		return new WP_REST_Response(
 			array(
@@ -91,5 +146,22 @@ final class ClientRegistrationController {
 		}
 
 		return array_values( array_unique( $valid ) );
+	}
+
+	/**
+	 * Return scalar redirect URI candidates for diagnostics and validation.
+	 *
+	 * @param array<int, mixed> $uris Raw redirect URI values.
+	 * @return string[]
+	 */
+	private function raw_redirect_uris( array $uris ): array {
+		return array_values(
+			array_filter(
+				array_map(
+					static fn( mixed $uri ): string => is_scalar( $uri ) ? (string) $uri : '',
+					$uris
+				)
+			)
+		);
 	}
 }

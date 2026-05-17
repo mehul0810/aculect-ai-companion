@@ -6,7 +6,11 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
+use Aculect\AICompanion\Diagnostics\Logger;
+use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -39,8 +43,25 @@ final class TokenController {
 	 * @return WP_REST_Response
 	 */
 	public function token( WP_REST_Request $request ): WP_REST_Response {
+		$logger   = new Logger();
 		$resource = $this->resource_from_request( $request );
+		$context  = $this->log_context( $request, $resource );
+
+		$logger->info(
+			'token.received',
+			'OAuth token request received.',
+			$context,
+			$request
+		);
+
 		if ( Helpers::mcp_resource() !== $resource ) {
+			$logger->warning(
+				'token.invalid_resource',
+				'OAuth token request used an invalid resource.',
+				array_merge( $context, array( 'error_code' => 'invalid_target' ) ),
+				$request,
+				400
+			);
 			return $this->error( 'invalid_target', 'The requested resource does not match this Aculect AI Companion MCP server.', 400 );
 		}
 
@@ -51,10 +72,32 @@ final class TokenController {
 				Psr7Bridge::response()
 			);
 
+			$logger->info(
+				'token.issued',
+				'OAuth token request completed.',
+				$context,
+				$request,
+				$response->getStatusCode()
+			);
+
 			return Psr7Bridge::to_rest_response( $response );
 		} catch ( OAuthServerException $exception ) {
+			$logger->warning(
+				'token.oauth_error',
+				'OAuth token request was rejected.',
+				array_merge( $context, array( 'error_code' => $exception->getErrorType() ) ),
+				$request,
+				$exception->getHttpStatusCode()
+			);
 			return Psr7Bridge::to_rest_response( $exception->generateHttpResponse( Psr7Bridge::response() ) );
 		} catch ( Exception $exception ) {
+			$logger->error(
+				'token.failed',
+				'OAuth token request failed.',
+				array_merge( $context, array( 'error_code' => 'server_error' ) ),
+				$request,
+				500
+			);
 			return $this->error( 'server_error', $exception->getMessage(), 500 );
 		} finally {
 			RequestContext::reset();
@@ -74,6 +117,39 @@ final class TokenController {
 		}
 
 		return '' === $resource ? Helpers::mcp_resource() : Helpers::normalize_resource( $resource );
+	}
+
+	/**
+	 * Build sanitized diagnostic context for token events.
+	 *
+	 * @param WP_REST_Request $request  Token request.
+	 * @param string          $resource Requested resource.
+	 * @return array<string, mixed>
+	 */
+	private function log_context( WP_REST_Request $request, string $resource ): array {
+		$sanitizer = new LogSanitizer();
+
+		return array(
+			'provider'   => $this->client_provider( $request ),
+			'grant_type' => (string) $request->get_param( 'grant_type' ),
+			'resource'   => $sanitizer->sanitize_url( $resource ),
+		);
+	}
+
+	/**
+	 * Resolve the registered provider for a token request client.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 */
+	private function client_provider( WP_REST_Request $request ): string {
+		$client_id = (string) $request->get_param( 'client_id' );
+		if ( '' === $client_id ) {
+			return '';
+		}
+
+		$client = ( new ClientRepository() )->getClientEntity( $client_id );
+
+		return $client instanceof ClientEntity ? $client->getProvider() : '';
 	}
 
 	/**

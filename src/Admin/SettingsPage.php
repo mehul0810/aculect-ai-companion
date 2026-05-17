@@ -11,6 +11,8 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Diagnostics\LogRepository;
+use Aculect\AICompanion\Diagnostics\LogSettings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -96,12 +98,17 @@ final class SettingsPage {
 				'abilities'        => ( new AbilitiesRegistry() )->public_definitions(),
 				'enabledAbilities' => ( new AbilitiesRegistry() )->enabled_ids(),
 				'status'           => $this->status(),
+				'diagnostics'      => $this->diagnostics(),
 				'actions'          => array(
 					'adminPostUrl'        => admin_url( 'admin-post.php' ),
 					'saveAbilitiesAction' => 'aculect_ai_companion_save_abilities',
+					'saveAdvancedAction'  => 'aculect_ai_companion_save_advanced',
+					'clearLogsAction'     => 'aculect_ai_companion_clear_logs',
 					'revokeSessionAction' => 'aculect_ai_companion_revoke_session',
 					'revokeAllAction'     => 'aculect_ai_companion_revoke_all_sessions',
 					'saveAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+					'saveAdvancedNonce'   => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+					'clearLogsNonce'      => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 					'revokeSessionNonce'  => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
 					'revokeAllNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 				),
@@ -128,6 +135,50 @@ final class SettingsPage {
 				array(
 					'page'            => 'aculect-ai-companion',
 					'abilities_saved' => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Persist advanced diagnostic settings from the admin form.
+	 */
+	public function handle_save_advanced(): void {
+		$this->guard_action( 'aculect_ai_companion_save_advanced' );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$enabled = isset( $_POST['diagnostic_logging_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['diagnostic_logging_enabled'] ) );
+
+		LogSettings::set_enabled( $enabled );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'           => 'aculect-ai-companion',
+					'tab'            => 'advanced',
+					'advanced_saved' => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Clear diagnostic logs from the admin form.
+	 */
+	public function handle_clear_logs(): void {
+		$this->guard_action( 'aculect_ai_companion_clear_logs' );
+
+		( new LogRepository() )->clear();
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'         => 'aculect-ai-companion',
+					'tab'          => 'logs',
+					'logs_cleared' => '1',
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -202,9 +253,90 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Return diagnostic settings and the current log page for the React app.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function diagnostics(): array {
+		$enabled = LogSettings::is_enabled();
+
+		return array(
+			'loggingEnabled' => $enabled,
+			'retentionDays'  => LogSettings::retention_days(),
+			'logs'           => $enabled ? $this->logs_payload() : $this->empty_logs_payload(),
+		);
+	}
+
+	/**
+	 * Return a paginated diagnostic log payload.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function logs_payload(): array {
+		$repository = new LogRepository();
+		$per_page   = 50;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination parameter.
+		$page        = isset( $_GET['logs_page'] ) ? max( 1, absint( $_GET['logs_page'] ) ) : 1;
+		$total       = $repository->count();
+		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
+		$page        = min( $page, $total_pages );
+
+		return array(
+			'items'      => $repository->list( $page, $per_page ),
+			'total'      => $total,
+			'page'       => $page,
+			'perPage'    => $per_page,
+			'totalPages' => $total_pages,
+			'prevUrl'    => $page > 1 ? $this->logs_page_url( $page - 1 ) : '',
+			'nextUrl'    => $page < $total_pages ? $this->logs_page_url( $page + 1 ) : '',
+		);
+	}
+
+	/**
+	 * Return an empty log payload when logging is disabled.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function empty_logs_payload(): array {
+		return array(
+			'items'      => array(),
+			'total'      => 0,
+			'page'       => 1,
+			'perPage'    => 50,
+			'totalPages' => 1,
+			'prevUrl'    => '',
+			'nextUrl'    => '',
+		);
+	}
+
+	/**
+	 * Build a Logs tab pagination URL.
+	 *
+	 * @param int $page Log page.
+	 */
+	private function logs_page_url( int $page ): string {
+		return add_query_arg(
+			array(
+				'page'      => 'aculect-ai-companion',
+				'tab'       => 'logs',
+				'logs_page' => max( 1, $page ),
+			),
+			admin_url( 'options-general.php' )
+		);
+	}
+
+	/**
 	 * Return admin status flags from the current request.
 	 */
 	private function status(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['advanced_saved'] ) ) {
+			return 'advanced_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['logs_cleared'] ) ) {
+			return 'logs_cleared';
+		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {
 			return 'abilities_saved';

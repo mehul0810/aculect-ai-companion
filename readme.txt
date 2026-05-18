@@ -169,9 +169,9 @@ Composer dependencies for production releases are installed with:
 * Added opt-in diagnostic logging for AI assistant connection flows.
 * Added an Advanced setting to enable diagnostics and a Logs tab that appears only when logging is enabled.
 * Added sanitized lifecycle and error logs for dynamic client registration, OAuth discovery, authorization, token exchange, and MCP authorization checks.
-* Added 30-day log retention, opportunistic pruning, pagination, and clear-log controls.
-* Hardened OAuth consent parameter handling with allowlisted sanitization and stricter validation for response type, resource, PKCE, scopes, redirect URI, and consent decisions.
-* Added unit coverage for diagnostic logging, redaction, repository behavior, and OAuth authorization parameter handling.
+* Added 30-day log retention, automatic pruning, pagination, and clear-log controls.
+* Hardened OAuth consent and authorization request handling with allowlisted, context-aware sanitization.
+* Added stricter validation for response type, resource, PKCE, scopes, redirect URI, and consent decisions.
 
 = 0.1.0 =
 

@@ -172,6 +172,7 @@ Composer dependencies for production releases are installed with:
 * Added 30-day log retention, automatic pruning, pagination, and clear-log controls.
 * Hardened OAuth consent and authorization request handling with allowlisted, context-aware sanitization.
 * Added stricter validation for response type, resource, PKCE, scopes, redirect URI, and consent decisions.
+* Added unit coverage for diagnostic logging, redaction, repository behavior, and OAuth authorization parameter handling.
 
 = 0.1.0 =
 

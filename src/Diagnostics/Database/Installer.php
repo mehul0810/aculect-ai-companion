@@ -20,11 +20,11 @@ final class Installer {
 	 * Create or update the diagnostic log table.
 	 */
 	public static function install(): void {
-		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
-			if ( '0' !== $installed || ! self::table_exists() ) {
-				self::create_table();
-			}
+		$installed    = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$table_exists = self::table_exists();
+
+		if ( self::should_install_schema( $installed, $table_exists ) ) {
+			self::create_table();
 			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 		}
 
@@ -101,5 +101,15 @@ final class Installer {
 		$table = self::table_name();
 
 		return $table === (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) );
+	}
+
+	/**
+	 * Determine whether the diagnostic log schema should be installed.
+	 *
+	 * @param string $installed_db_version Stored schema version.
+	 * @param bool   $table_exists         Whether the log table exists.
+	 */
+	private static function should_install_schema( string $installed_db_version, bool $table_exists ): bool {
+		return ! $table_exists || version_compare( $installed_db_version, self::DB_VERSION, '<' );
 	}
 }

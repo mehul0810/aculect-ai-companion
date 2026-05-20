@@ -360,18 +360,31 @@ final class AbilitiesService {
 			return $this->error( 'invalid_url', 'A public HTTP or HTTPS media URL is required.' );
 		}
 
+		$filename = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
+		if ( '' === $filename || '.' === $filename || '..' === $filename ) {
+			$filename = 'aculect-ai-companion-media-upload';
+		}
+
+		$guard           = new MediaUploadGuard();
+		$preflight_error = $guard->preflight( $url, $filename );
+		if ( null !== $preflight_error ) {
+			return $this->error( $preflight_error['code'], $preflight_error['message'] );
+		}
+
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 
-		$tmp = download_url( $url, 30 );
-		if ( is_wp_error( $tmp ) ) {
-			return $this->error( $tmp->get_error_code(), $tmp->get_error_message() );
+		$download = $guard->download( $url );
+		if ( isset( $download['code'] ) ) {
+			return $this->error( $download['code'], $download['message'] );
 		}
 
-		$filename = basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
-		if ( '' === $filename || '.' === $filename || '..' === $filename ) {
-			$filename = 'aculect-ai-companion-media-upload';
+		$tmp            = $download['tmp'];
+		$download_error = $guard->validate_downloaded_file( $tmp, $filename );
+		if ( null !== $download_error ) {
+			wp_delete_file( $tmp );
+			return $this->error( $download_error['code'], $download_error['message'] );
 		}
 
 		$file = array(

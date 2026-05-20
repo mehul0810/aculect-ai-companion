@@ -97,6 +97,28 @@ final class McpControllerTest extends TestCase {
 		self::assertSame('unknown_tool', $this->invokePrivate(new McpController(), 'tool_call_error', array('content.not_real', $registry)));
 	}
 
+	public function test_scope_checks_require_every_required_scope(): void {
+		$controller = new McpController();
+
+		self::assertTrue($this->invokePrivate($controller, 'has_scopes', array(array('content:read', 'content:draft'), array('content:draft'))));
+		self::assertFalse($this->invokePrivate($controller, 'has_scopes', array(array('content:read'), array('content:draft'))));
+	}
+
+	public function test_auth_challenge_response_includes_mcp_www_authenticate_metadata(): void {
+		$response = $this->invokePrivate(
+			new McpController(),
+			'auth_challenge_response',
+			array(1, 'content:draft', 403, 'insufficient_scope')
+		);
+
+		self::assertSame(403, $response->get_status());
+		self::assertStringContainsString('insufficient_scope', (string) $response->header('WWW-Authenticate'));
+
+		$data = $response->get_data();
+		self::assertTrue($data['result']['isError']);
+		self::assertArrayHasKey('mcp/www_authenticate', $data['result']['_meta']);
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *

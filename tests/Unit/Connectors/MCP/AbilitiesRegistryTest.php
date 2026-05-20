@@ -51,10 +51,38 @@ final class AbilitiesRegistryTest extends TestCase {
 		foreach ( $public_definitions as $definition ) {
 			self::assertArrayHasKey('toolName', $definition);
 			self::assertArrayHasKey('enabled', $definition);
+			self::assertArrayHasKey('changesSite', $definition);
+			self::assertArrayHasKey('riskLevel', $definition);
 			self::assertTrue($definition['enabled']);
 			self::assertIsString($definition['toolName']);
 			self::assertMatchesRegularExpression('/^[a-zA-Z0-9_-]{1,64}$/', $definition['toolName']);
 		}
+	}
+
+	public function test_public_definitions_surface_practical_permission_groups_and_risk(): void {
+		$definitions = $this->registry->public_definitions();
+		$groups      = array_values(
+			array_unique(
+				array_map(
+					static fn ( array $definition ): string => (string) $definition['group'],
+					$definitions
+				)
+			)
+		);
+
+		self::assertContains('Content', $groups);
+		self::assertContains('Content Groups', $groups);
+		self::assertContains('Comments', $groups);
+		self::assertContains('Media', $groups);
+		self::assertContains('Site Information', $groups);
+		self::assertContains('WordPress Actions', $groups);
+
+		$by_id = array_column($definitions, null, 'id');
+
+		self::assertSame('read-only', $by_id['content.list_items']['riskLevel']);
+		self::assertFalse($by_id['content.list_items']['changesSite']);
+		self::assertSame('write', $by_id['content.update_item']['riskLevel']);
+		self::assertTrue($by_id['content.update_item']['changesSite']);
 	}
 
 	public function test_requested_expansion_abilities_are_registered(): void {

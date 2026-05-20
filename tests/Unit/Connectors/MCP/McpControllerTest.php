@@ -83,6 +83,20 @@ final class McpControllerTest extends TestCase {
 		self::assertTrue($this->invokePrivate($controller, 'is_access_paused'));
 	}
 
+	public function test_disabled_tools_are_not_listed_and_are_blocked_for_cached_clients(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids(array('content.list_items'));
+
+		$result = $this->invokePrivate(new McpController(), 'list_tools');
+		$names  = array_column($result['tools'], 'name');
+
+		self::assertContains('content_list_items', $names);
+		self::assertNotContains('content_update_item', $names);
+		self::assertSame('', $this->invokePrivate(new McpController(), 'tool_call_error', array('content.list_items', $registry)));
+		self::assertSame('tool_disabled', $this->invokePrivate(new McpController(), 'tool_call_error', array('content.update_item', $registry)));
+		self::assertSame('unknown_tool', $this->invokePrivate(new McpController(), 'tool_call_error', array('content.not_real', $registry)));
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *

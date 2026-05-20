@@ -431,6 +431,26 @@
 	gap: 22px;
 }
 
+.aculect-ai-companion-ability-group__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 14px;
+	margin-bottom: 12px;
+}
+
+.aculect-ai-companion-ability-group__summary {
+	margin: -6px 0 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+}
+
+.aculect-ai-companion-ability-group__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
 .aculect-ai-companion-ability-list {
 	display: grid;
 	gap: 12px;
@@ -472,6 +492,18 @@
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	font-weight: 700;
+}
+
+.aculect-ai-companion-ability-row__meta
+.aculect-ai-companion-risk-chip.is-read-only {
+	background: #edf5ff;
+	color: #135e96;
+}
+
+.aculect-ai-companion-ability-row__meta
+.aculect-ai-companion-risk-chip.is-write {
+	background: #fff4e5;
+	color: #8a4b00;
 }
 
 .aculect-ai-companion-form--advanced {
@@ -638,6 +670,10 @@
 	.aculect-ai-companion-log-toolbar,
 	.aculect-ai-companion-log-pagination {
 		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.aculect-ai-companion-ability-group__header {
 		flex-direction: column;
 	}
 }

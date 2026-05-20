@@ -133,6 +133,14 @@ Yes. After a connection exists, open Settings > Aculect AI Companion > Abilities
 
 Aculect AI Companion does not require a separate product account. To use it with an external AI assistant, you may need an account with that external service.
 
+= I use Cloudflare. Can Bot Fight Mode block the connection? =
+
+Yes. Cloudflare Bot Fight Mode may block automated requests from an AI assistant before they reach WordPress. If the connection fails while Bot Fight Mode is enabled, temporarily disable Bot Fight Mode, connect and approve your AI assistant, then re-enable Bot Fight Mode and test the connection again.
+
+= I use Cloudflare. Can Flexible SSL prevent the connection from working? =
+
+Yes. If your DNS record is proxied through Cloudflare and SSL/TLS mode is set to Flexible, the AI assistant connection may fail. Use an end-to-end HTTPS mode such as Full or Full (strict) with a valid origin certificate for the hostname used by your connection URL.
+
 = Are custom post types and custom taxonomies supported? =
 
 Yes. Aculect AI Companion can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.

@@ -135,7 +135,7 @@ Aculect AI Companion does not require a separate product account. To use it with
 
 = I use Cloudflare. Can Bot Fight Mode block the connection? =
 
-Yes. Cloudflare Bot Fight Mode may block automated requests from an AI assistant before they reach WordPress. If the connection fails while Bot Fight Mode is enabled, temporarily disable Bot Fight Mode, connect and approve your AI assistant, then re-enable Bot Fight Mode and test the connection again.
+Yes. Cloudflare Bot Fight Mode can block automated MCP requests from an AI assistant before they reach WordPress. Keep Bot Fight Mode disabled for the hostname used by your Aculect AI Companion connection URL; otherwise setup and later tool calls, such as creating or updating content, may fail even after the assistant was previously connected.
 
 = I use Cloudflare. Can Flexible SSL prevent the connection from working? =
 

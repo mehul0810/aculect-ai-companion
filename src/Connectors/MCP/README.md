@@ -34,3 +34,11 @@ Aculect AI Companion's built-in MCP tools cover posts/pages/custom post types, t
 comments, media library listing/upload, safe site settings, site information,
 and plugin/theme inventory. New tool groups should stay deterministic,
 paginated where applicable, and capability-checked at execution time.
+
+Assistant-triggered media sideloads are bounded before WordPress imports the
+file. Aculect AI Companion checks public URL headers when available, caps the
+streamed download size, and validates the downloaded file type against the
+site's allowed upload MIME types. The default size limit is 10 MB and can be
+changed with the `aculect_ai_companion_media_upload_max_bytes` filter. Allowed
+MIME types can be narrowed or expanded with
+`aculect_ai_companion_media_upload_allowed_mime_types`.

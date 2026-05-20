@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
 use Aculect\AICompanion\Diagnostics\Logger;
@@ -193,6 +194,15 @@ final class McpController {
 				}
 
 				$result = $this->call_tool( $tool, (array) ( $body['params']['arguments'] ?? array() ) );
+				if ( ! $registry->is_read_only( $tool ) ) {
+					( new ActivityLogger() )->record_tool_call(
+						$tool,
+						(array) ( $body['params']['arguments'] ?? array() ),
+						$result,
+						$auth
+					);
+				}
+
 				return $this->rpc_result(
 					$id,
 					array(

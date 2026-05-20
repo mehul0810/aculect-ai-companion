@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion;
 
+use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
@@ -44,6 +45,7 @@ final class Plugin {
 	public static function activate(): void {
 		OAuthInstaller::activate();
 		DiagnosticsInstaller::activate();
+		ActivityInstaller::activate();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
@@ -80,6 +82,7 @@ final class Plugin {
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
+		ActivityInstaller::install();
 		OAuthStorageMaintenance::maybe_prune();
 	}
 

@@ -1,4 +1,17 @@
 {
+  "0.2.1": {
+    "Fixed": [
+      "Fixed diagnostics logging when the logs table is missing but the saved diagnostics database version is current.",
+      "Added automatic repair for the diagnostics logs table during plugin boot."
+    ],
+    "Improved": [
+      "Added Cloudflare troubleshooting guidance for Bot Fight Mode and Flexible SSL/TLS connection issues.",
+      "Clarified that Cloudflare Bot Fight Mode should remain disabled for the hostname used by the MCP connection URL because it can block setup and later tool calls."
+    ],
+    "Reliability": [
+      "Added unit coverage for diagnostics log table repair."
+    ]
+  },
   "0.2.0": {
     "New": [
       "Added opt-in diagnostic logging for AI assistant connection flows.",

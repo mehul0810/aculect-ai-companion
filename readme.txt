@@ -4,7 +4,7 @@ Tags: ai, content, claude, media, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -172,6 +172,14 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.2.1 =
+
+* Fixed diagnostics logging when the logs table is missing but the saved diagnostics database version is current.
+* Added automatic repair for the diagnostics logs table during plugin boot.
+* Added Cloudflare troubleshooting guidance for Bot Fight Mode and Flexible SSL/TLS connection issues.
+* Clarified that Cloudflare Bot Fight Mode should remain disabled for the hostname used by the MCP connection URL because it can block setup and later tool calls.
+* Added unit coverage for diagnostics log table repair.
+
 = 0.2.0 =
 
 * Added opt-in diagnostic logging for AI assistant connection flows.
@@ -192,6 +200,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.2.1 =
+
+Fixes diagnostics log table repair and adds Cloudflare MCP connection guidance.
 
 = 0.2.0 =
 

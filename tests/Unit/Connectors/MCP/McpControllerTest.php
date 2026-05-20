@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use ReflectionMethod;
 
@@ -70,6 +71,16 @@ final class McpControllerTest extends TestCase {
 		$abilities_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'wp_abilities_run' ) );
 		self::assertSame(array('id'), $abilities_schema['required']);
 		self::assertArrayHasKey('arguments', $abilities_schema['properties']);
+	}
+
+	public function test_global_pause_blocks_tool_calls(): void {
+		$controller = new McpController();
+
+		self::assertFalse($this->invokePrivate($controller, 'is_access_paused'));
+
+		AccessLockdown::set_paused(true);
+
+		self::assertTrue($this->invokePrivate($controller, 'is_access_paused'));
 	}
 
 	/**

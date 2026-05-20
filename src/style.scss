@@ -92,6 +92,11 @@
 	color: var(--aculect-ai-companion-green);
 }
 
+.aculect-ai-companion-pill--status.is-paused {
+	background: #fff4e5;
+	color: #8a4b00;
+}
+
 .aculect-ai-companion-admin-notices {
 	margin: -10px 0 22px;
 }
@@ -199,6 +204,34 @@
 	margin: -4px 0 0;
 	color: var(--aculect-ai-companion-muted);
 	font-size: 13px;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-lockdown {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 18px;
+	margin: 0 0 18px;
+	padding: 16px;
+	border: 1px solid #f0b849;
+	border-radius: 12px;
+	background: #fff8e5;
+}
+
+.aculect-ai-companion-lockdown.is-paused {
+	border-color: #d63638;
+	background: #fcf0f1;
+}
+
+.aculect-ai-companion-lockdown__content {
+	display: grid;
+	gap: 4px;
+}
+
+.aculect-ai-companion-lockdown__content p {
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
 	line-height: 1.5;
 }
 

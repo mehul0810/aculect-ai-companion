@@ -11,6 +11,7 @@ use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
 use Aculect\AICompanion\Connectors\OAuth\DiscoveryController;
+use Aculect\AICompanion\Connectors\OAuth\StorageMaintenance as OAuthStorageMaintenance;
 use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
 
@@ -78,6 +79,7 @@ final class Plugin {
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
+		OAuthStorageMaintenance::maybe_prune();
 	}
 
 	/**

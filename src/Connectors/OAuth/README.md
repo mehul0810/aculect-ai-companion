@@ -18,6 +18,12 @@ resource, expiry, and revocation state. Token revocation must be visible
 immediately, so the repository classes intentionally avoid object-cache reads
 for token validation.
 
+Expired authorization codes, access tokens, and refresh tokens are pruned
+opportunistically during plugin boot with a throttled maintenance window. Rows
+that are revoked before expiry are kept until their normal expiry time so
+revocation checks remain immediate while the token or code could otherwise still
+be presented.
+
 ## Plugin Check DB Warnings
 
 The repository classes contain scoped PHPCS suppressions for:

@@ -168,6 +168,17 @@ final class McpController {
 					return $this->tool_error_result( $id, 'This ability is disabled in Aculect AI Companion settings.' );
 				}
 
+				if ( $this->is_access_paused() ) {
+					( new Logger() )->warning(
+						'mcp.access_paused',
+						'MCP tool call was blocked because AI access is paused.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'access_paused' ),
+						$request,
+						423
+					);
+					return $this->tool_error_result( $id, 'AI access is paused in Aculect AI Companion settings.' );
+				}
+
 				$required = $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
 					( new Logger() )->warning(
@@ -506,6 +517,13 @@ final class McpController {
 			'wp_abilities.run' => $content->run_wp_ability( $args ),
 			default => array( 'error' => 'Unknown tool' ),
 		};
+	}
+
+	/**
+	 * Determine whether MCP tool calls are globally paused.
+	 */
+	private function is_access_paused(): bool {
+		return AccessLockdown::is_paused();
 	}
 
 	/**

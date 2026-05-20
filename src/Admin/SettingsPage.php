@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
@@ -92,6 +93,7 @@ final class SettingsPage {
 			array(
 				'version'          => ACULECT_AI_COMPANION_VERSION,
 				'isConnected'      => ( new AccessTokenRepository() )->has_active_tokens(),
+				'accessPaused'     => AccessLockdown::is_paused(),
 				'mcpUrl'           => Helpers::mcp_resource(),
 				'providers'        => $this->providers(),
 				'sessions'         => ( new AccessTokenRepository() )->list_active_sessions(),
@@ -104,11 +106,13 @@ final class SettingsPage {
 					'saveAbilitiesAction' => 'aculect_ai_companion_save_abilities',
 					'saveAdvancedAction'  => 'aculect_ai_companion_save_advanced',
 					'clearLogsAction'     => 'aculect_ai_companion_clear_logs',
+					'setLockdownAction'   => 'aculect_ai_companion_set_lockdown',
 					'revokeSessionAction' => 'aculect_ai_companion_revoke_session',
 					'revokeAllAction'     => 'aculect_ai_companion_revoke_all_sessions',
 					'saveAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
 					'saveAdvancedNonce'   => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
 					'clearLogsNonce'      => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
+					'setLockdownNonce'    => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
 					'revokeSessionNonce'  => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
 					'revokeAllNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 				),
@@ -179,6 +183,29 @@ final class SettingsPage {
 					'page'         => 'aculect-ai-companion',
 					'tab'          => 'logs',
 					'logs_cleared' => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Temporarily pause or resume all connected AI access.
+	 */
+	public function handle_set_lockdown(): void {
+		$this->guard_action( 'aculect_ai_companion_set_lockdown' );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$paused = isset( $_POST['access_paused'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['access_paused'] ) );
+
+		AccessLockdown::set_paused( $paused );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'connections',
+					'access_lockdown' => $paused ? 'paused' : 'resumed',
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -336,6 +363,11 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['logs_cleared'] ) ) {
 			return 'logs_cleared';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['access_lockdown'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return 'paused' === sanitize_key( wp_unslash( (string) $_GET['access_lockdown'] ) ) ? 'access_paused' : 'access_resumed';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {

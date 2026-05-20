@@ -22,6 +22,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth token repositories use dedicated custom tables and must read/write fresh token state.
 
+	private const DEFAULT_TOUCH_INTERVAL_SECONDS = 300;
+
 	/**
 	 * Create an access token entity for league/oauth2-server.
 	 *
@@ -145,7 +147,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			return array();
 		}
 
-		$this->touch( $token_id );
+		$this->touch( $token_id, (string) ( $row['last_used_at'] ?? '' ) );
 		$scopes = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
 
 		return array(
@@ -264,11 +266,41 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
+	 * Delete expired access-token rows.
+	 *
+	 * Revoked access tokens are preserved until they expire so active revocation
+	 * checks remain immediate and admin session state stays understandable.
+	 *
+	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
+	 * @return int Number of deleted rows.
+	 */
+	public function prune_expired( ?string $cutoff = null ): int {
+		global $wpdb;
+
+		$table  = Installer::table_names()['access_tokens'];
+		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE expires_at < %s',
+				$table,
+				$cutoff
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
 	 * Record last token usage for the admin connection list.
 	 *
 	 * @param string $token_id Raw OAuth token identifier.
+	 * @param string $last_used_at Existing UTC last-used timestamp.
 	 */
-	private function touch( string $token_id ): void {
+	private function touch( string $token_id, string $last_used_at ): void {
+		if ( ! $this->should_touch( $last_used_at ) ) {
+			return;
+		}
+
 		global $wpdb;
 
 		$table = Installer::table_names()['access_tokens'];
@@ -279,6 +311,30 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			array( '%s' ),
 			array( '%s' )
 		);
+	}
+
+	/**
+	 * Determine whether a token's last-used timestamp should be updated.
+	 *
+	 * @param string $last_used_at Existing UTC last-used timestamp.
+	 * @param int    $now          Current Unix timestamp for tests.
+	 */
+	private function should_touch( string $last_used_at, int $now = 0 ): bool {
+		$interval = (int) apply_filters( 'aculect_ai_companion_oauth_token_touch_interval', self::DEFAULT_TOUCH_INTERVAL_SECONDS );
+		$interval = max( 0, $interval );
+
+		if ( '' === $last_used_at ) {
+			return true;
+		}
+
+		$last_used_timestamp = strtotime( $last_used_at );
+		if ( false === $last_used_timestamp ) {
+			return true;
+		}
+
+		$now = $now > 0 ? $now : time();
+
+		return ( $now - $last_used_timestamp ) >= $interval;
 	}
 
 	/**

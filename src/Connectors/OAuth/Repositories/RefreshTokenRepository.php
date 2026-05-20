@@ -114,6 +114,31 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	}
 
 	/**
+	 * Delete expired refresh-token rows.
+	 *
+	 * Revoked refresh tokens are preserved until expiry so revocation decisions
+	 * remain immediate while the token could otherwise still be presented.
+	 *
+	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
+	 * @return int Number of deleted rows.
+	 */
+	public function prune_expired( ?string $cutoff = null ): int {
+		global $wpdb;
+
+		$table  = Installer::table_names()['refresh_tokens'];
+		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE expires_at < %s',
+				$table,
+				$cutoff
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
 	 * Hash raw token material before database lookup or storage.
 	 *
 	 * @param string $identifier Raw protocol identifier.

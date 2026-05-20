@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 
@@ -103,20 +104,23 @@ final class SettingsPage {
 				'status'           => $this->status(),
 				'activity'         => $this->activity_payload(),
 				'diagnostics'      => $this->diagnostics(),
+				'connectionHealth' => ( new ConnectionHealth() )->last_result(),
 				'actions'          => array(
-					'adminPostUrl'        => admin_url( 'admin-post.php' ),
-					'saveAbilitiesAction' => 'aculect_ai_companion_save_abilities',
-					'saveAdvancedAction'  => 'aculect_ai_companion_save_advanced',
-					'clearLogsAction'     => 'aculect_ai_companion_clear_logs',
-					'setLockdownAction'   => 'aculect_ai_companion_set_lockdown',
-					'revokeSessionAction' => 'aculect_ai_companion_revoke_session',
-					'revokeAllAction'     => 'aculect_ai_companion_revoke_all_sessions',
-					'saveAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
-					'saveAdvancedNonce'   => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
-					'clearLogsNonce'      => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
-					'setLockdownNonce'    => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
-					'revokeSessionNonce'  => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
-					'revokeAllNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
+					'adminPostUrl'         => admin_url( 'admin-post.php' ),
+					'saveAbilitiesAction'  => 'aculect_ai_companion_save_abilities',
+					'saveAdvancedAction'   => 'aculect_ai_companion_save_advanced',
+					'runDiagnosticsAction' => 'aculect_ai_companion_run_connection_diagnostics',
+					'clearLogsAction'      => 'aculect_ai_companion_clear_logs',
+					'setLockdownAction'    => 'aculect_ai_companion_set_lockdown',
+					'revokeSessionAction'  => 'aculect_ai_companion_revoke_session',
+					'revokeAllAction'      => 'aculect_ai_companion_revoke_all_sessions',
+					'saveAbilitiesNonce'   => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+					'saveAdvancedNonce'    => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+					'runDiagnosticsNonce'  => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+					'clearLogsNonce'       => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
+					'setLockdownNonce'     => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
+					'revokeSessionNonce'   => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
+					'revokeAllNonce'       => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 				),
 				'changelog'        => $this->load_changelog(),
 			)
@@ -208,6 +212,27 @@ final class SettingsPage {
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'connections',
 					'access_lockdown' => $paused ? 'paused' : 'resumed',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Run connection health diagnostics from the admin screen.
+	 */
+	public function handle_run_connection_diagnostics(): void {
+		$this->guard_action( 'aculect_ai_companion_run_connection_diagnostics' );
+
+		( new ConnectionHealth() )->run();
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'diagnostics',
+					'diagnostics_run' => '1',
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -443,6 +468,10 @@ final class SettingsPage {
 		if ( isset( $_GET['access_lockdown'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 			return 'paused' === sanitize_key( wp_unslash( (string) $_GET['access_lockdown'] ) ) ? 'access_paused' : 'access_resumed';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['diagnostics_run'] ) ) {
+			return 'diagnostics_run';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {

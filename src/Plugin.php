@@ -73,6 +73,7 @@ final class Plugin {
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
+		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
 		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
 		add_action( 'admin_post_aculect_ai_companion_revoke_session', array( $this, 'handle_revoke_session' ) );
@@ -211,6 +212,13 @@ final class Plugin {
 	 */
 	public function handle_set_lockdown(): void {
 		( new SettingsPage() )->handle_set_lockdown();
+	}
+
+	/**
+	 * Run connection diagnostics from the settings screen.
+	 */
+	public function handle_run_connection_diagnostics(): void {
+		( new SettingsPage() )->handle_run_connection_diagnostics();
 	}
 
 	/**

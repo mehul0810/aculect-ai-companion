@@ -151,7 +151,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Development ==
 
-The production package ships built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` are intentionally excluded from release ZIP files.
+The production package ships built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` are intentionally excluded from release ZIP files. Generated files under `build/` are not committed to the source repository; release automation generates them before packaging.
 
 For source code, build tooling, and exact dependency manifests, use the public GitHub repository:
 

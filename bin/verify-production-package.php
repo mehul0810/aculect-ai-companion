@@ -19,6 +19,19 @@ if ( '' === $release_dir || ! is_dir( $release_dir ) ) {
 
 $failures = array();
 
+$required_paths = array(
+	'build/index.asset.php',
+	'build/index.js',
+	'build/style-index.css',
+	'build/style-index-rtl.css',
+);
+
+foreach ( $required_paths as $path ) {
+	if ( ! file_exists( $release_dir . '/' . $path ) ) {
+		$failures[] = "Required production asset is missing: {$path}";
+	}
+}
+
 $forbidden_paths = array(
 	'.codex',
 	'.distignore',

@@ -573,32 +573,39 @@
 }
 
 .aculect-ai-companion-log-toolbar,
-.aculect-ai-companion-log-pagination {
+.aculect-ai-companion-log-pagination,
+.aculect-ai-companion-health-toolbar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 14px;
 }
 
-.aculect-ai-companion-log-toolbar {
+.aculect-ai-companion-log-toolbar,
+.aculect-ai-companion-health-toolbar {
 	margin-bottom: 16px;
 }
 
-.aculect-ai-companion-log-toolbar .aculect-ai-companion-copy {
+.aculect-ai-companion-log-toolbar .aculect-ai-companion-copy,
+.aculect-ai-companion-health-toolbar .aculect-ai-companion-copy {
 	margin-bottom: 0;
 }
 
-.aculect-ai-companion-log-table-wrap {
+.aculect-ai-companion-log-table-wrap,
+.aculect-ai-companion-health-table-wrap {
 	width: 100%;
 	overflow-x: auto;
 }
 
-.aculect-ai-companion-log-table {
+.aculect-ai-companion-log-table,
+.aculect-ai-companion-health-table {
 	min-width: 980px;
 }
 
 .aculect-ai-companion-log-table th,
-.aculect-ai-companion-log-table td {
+.aculect-ai-companion-log-table td,
+.aculect-ai-companion-health-table th,
+.aculect-ai-companion-health-table td {
 	vertical-align: top;
 }
 
@@ -627,20 +634,58 @@
 	color: #135e96;
 }
 
-.aculect-ai-companion-activity-status {
+.aculect-ai-companion-activity-status,
+.aculect-ai-companion-health-status {
 	display: inline-flex;
 	padding: 2px 7px;
 	border-radius: 999px;
-	background: #edfaef;
-	color: var(--aculect-ai-companion-green);
+	background: #f0f0f1;
 	font-size: 12px;
 	font-weight: 700;
 	text-transform: uppercase;
 }
 
-.aculect-ai-companion-activity-status.is-error {
+.aculect-ai-companion-activity-status {
+	background: #edfaef;
+	color: var(--aculect-ai-companion-green);
+}
+
+.aculect-ai-companion-activity-status.is-error,
+.aculect-ai-companion-health-status.is-fail {
 	background: #fcf0f1;
 	color: #b32d2e;
+}
+
+.aculect-ai-companion-health-status.is-pass {
+	background: #edfaef;
+	color: var(--aculect-ai-companion-green);
+}
+
+.aculect-ai-companion-health-status.is-warn {
+	background: #fcf9e8;
+	color: #996800;
+}
+
+.aculect-ai-companion-health-summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0 0 16px;
+	padding: 10px 12px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-soft);
+}
+
+.aculect-ai-companion-health-summary span:first-child {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-health-details {
+	margin-top: 18px;
 }
 
 .aculect-ai-companion-log-context summary {
@@ -711,7 +756,8 @@
 	}
 
 	.aculect-ai-companion-log-toolbar,
-	.aculect-ai-companion-log-pagination {
+	.aculect-ai-companion-log-pagination,
+	.aculect-ai-companion-health-toolbar {
 		align-items: flex-start;
 		flex-direction: column;
 	}

@@ -287,6 +287,71 @@ function ActivityTable( { activity } ) {
 	);
 }
 
+function StatusBadge( { status } ) {
+	const normalizedStatus = [ 'pass', 'warn', 'fail' ].includes( status )
+		? status
+		: 'warn';
+	const labels = {
+		pass: 'Pass',
+		warn: 'Warning',
+		fail: 'Fail',
+	};
+
+	return (
+		<span
+			className={ `aculect-ai-companion-health-status is-${ normalizedStatus }` }
+		>
+			{ labels[ normalizedStatus ] }
+		</span>
+	);
+}
+
+function ConnectionHealthChecks( { health } ) {
+	const items = Array.isArray( health?.items ) ? health.items : [];
+
+	if ( items.length === 0 ) {
+		return (
+			<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+				Run diagnostics to check whether your connection URL,
+				authorization metadata, and approval screen are reachable.
+			</p>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-health-table-wrap">
+			<table className="widefat striped aculect-ai-companion-health-table">
+				<thead>
+					<tr>
+						<th>Check</th>
+						<th>Status</th>
+						<th>Result</th>
+						<th>Next Action</th>
+						<th>Details</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ items.map( ( item ) => (
+						<tr key={ item.id }>
+							<td>
+								<code>{ item.id }</code>
+							</td>
+							<td>
+								<StatusBadge status={ item.status } />
+							</td>
+							<td>{ item.message || '-' }</td>
+							<td>{ item.remediation || '-' }</td>
+							<td>
+								<LogContext context={ item.details } />
+							</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
 function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 	const steps = Array.isArray( section.steps ) ? section.steps : [];
 	const copyFields = Array.isArray( section.copyFields )
@@ -368,6 +433,10 @@ function SettingsApp() {
 	const diagnostics =
 		data.diagnostics && typeof data.diagnostics === 'object'
 			? data.diagnostics
+			: {};
+	const connectionHealth =
+		data.connectionHealth && typeof data.connectionHealth === 'object'
+			? data.connectionHealth
 			: {};
 	const logs =
 		diagnostics.logs && typeof diagnostics.logs === 'object'
@@ -456,6 +525,7 @@ function SettingsApp() {
 	const tabs = [
 		{ name: 'about', title: 'About' },
 		{ name: 'connectors', title: 'Connect' },
+		{ name: 'diagnostics', title: 'Diagnostics' },
 		{ name: 'connections', title: 'Connections' },
 		{ name: 'activity', title: 'Activity' },
 	];
@@ -562,6 +632,11 @@ function SettingsApp() {
 			{ data.status === 'access_resumed' && (
 				<Notice status="success" isDismissible={ false }>
 					AI access resumed.
+				</Notice>
+			) }
+			{ data.status === 'diagnostics_run' && (
+				<Notice status="success" isDismissible={ false }>
+					Connection diagnostics updated.
 				</Notice>
 			) }
 
@@ -904,6 +979,72 @@ function SettingsApp() {
 											/>
 										</div>
 									) }
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'diagnostics' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-health-card">
+								<CardHeader>Connection Diagnostics</CardHeader>
+								<CardBody>
+									<div className="aculect-ai-companion-health-toolbar">
+										<div>
+											<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+												Run checks from WordPress to see
+												whether your connection URL,
+												metadata, and authorization
+												challenge are reachable by AI
+												tools.
+											</p>
+											{ connectionHealth.ranAt && (
+												<p className="aculect-ai-companion-help-text">
+													Last run:{ ' ' }
+													{ connectionHealth.ranAt }
+												</p>
+											) }
+										</div>
+										<ActionForm
+											data={ data }
+											action={
+												data.actions
+													?.runDiagnosticsAction
+											}
+											nonce={
+												data.actions
+													?.runDiagnosticsNonce
+											}
+											label="Run Diagnostics"
+										/>
+									</div>
+									{ connectionHealth.summary && (
+										<div className="aculect-ai-companion-health-summary">
+											<span>Overall status</span>
+											<StatusBadge
+												status={
+													connectionHealth.summary
+												}
+											/>
+										</div>
+									) }
+									<ConnectionHealthChecks
+										health={ connectionHealth }
+									/>
+									{ connectionHealth.details &&
+										Object.keys( connectionHealth.details )
+											.length > 0 && (
+											<div className="aculect-ai-companion-health-details">
+												<h3 className="aculect-ai-companion-section-heading">
+													Developer Details
+												</h3>
+												<LogContext
+													context={
+														connectionHealth.details
+													}
+												/>
+											</div>
+										) }
 								</CardBody>
 							</Card>
 						);

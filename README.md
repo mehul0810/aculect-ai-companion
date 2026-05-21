@@ -94,6 +94,10 @@ Admins can enable or disable these abilities from `Settings > Aculect AI Compani
 - Inspect one supported public WordPress ability.
 - Run a supported public WordPress ability using the connected user's permissions.
 
+## Activity Logging
+
+Settings > Aculect AI Companion > Activity shows write actions requested by connected AI assistants, including the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version to keep the table focused on site-changing activity and reduce stored data.
+
 ## Project Docs
 
 - [Contributing guidelines](CONTRIBUTING.md)

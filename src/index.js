@@ -220,6 +220,73 @@ function LogsTable( { logs } ) {
 	);
 }
 
+function ActivityTable( { activity } ) {
+	const items = Array.isArray( activity?.items ) ? activity.items : [];
+
+	if ( items.length === 0 ) {
+		return (
+			<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+				No connected AI activity has been recorded yet.
+			</p>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-log-table-wrap">
+			<table className="widefat striped aculect-ai-companion-log-table">
+				<thead>
+					<tr>
+						<th>Time</th>
+						<th>Status</th>
+						<th>Action</th>
+						<th>Assistant</th>
+						<th>User</th>
+						<th>Target</th>
+						<th>Error</th>
+						<th>Message</th>
+						<th>Context</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ items.map( ( item ) => (
+						<tr key={ item.id }>
+							<td>{ item.created_at }</td>
+							<td>
+								<span
+									className={ `aculect-ai-companion-activity-status is-${ item.status }` }
+								>
+									{ item.status || 'success' }
+								</span>
+							</td>
+							<td>
+								<code>{ item.action }</code>
+							</td>
+							<td>
+								{ item.client_name ||
+									item.provider ||
+									item.client_id ||
+									'-' }
+							</td>
+							<td>{ item.user_id || '-' }</td>
+							<td>
+								{ item.target_type || '-' }
+								{ item.target_id
+									? ` #${ item.target_id }`
+									: '' }
+							</td>
+							<td>{ item.error_code || '-' }</td>
+							<td>{ item.message || '-' }</td>
+							<td>
+								<LogContext context={ item.context } />
+							</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
 function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 	const steps = Array.isArray( section.steps ) ? section.steps : [];
 	const copyFields = Array.isArray( section.copyFields )
@@ -292,6 +359,12 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
+	const activity =
+		data.activity && typeof data.activity === 'object' ? data.activity : {};
+	const activityFilters =
+		activity.filters && typeof activity.filters === 'object'
+			? activity.filters
+			: {};
 	const diagnostics =
 		data.diagnostics && typeof data.diagnostics === 'object'
 			? data.diagnostics
@@ -384,6 +457,7 @@ function SettingsApp() {
 		{ name: 'about', title: 'About' },
 		{ name: 'connectors', title: 'Connect' },
 		{ name: 'connections', title: 'Connections' },
+		{ name: 'activity', title: 'Activity' },
 	];
 	if ( data.isConnected ) {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
@@ -1032,6 +1106,127 @@ function SettingsApp() {
 											) }
 										</div>
 									</form>
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'activity' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-activity-card">
+								<CardHeader>AI Activity</CardHeader>
+								<CardBody>
+									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+										Review write actions requested by
+										connected AI assistants. Read-only
+										actions are not logged in this version.
+									</p>
+									<form
+										method="get"
+										action="options-general.php"
+										className="aculect-ai-companion-activity-filters"
+									>
+										<input
+											type="hidden"
+											name="page"
+											value="aculect-ai-companion"
+										/>
+										<input
+											type="hidden"
+											name="tab"
+											value="activity"
+										/>
+										<label htmlFor="aculect-ai-companion-activity-action">
+											<span>Action</span>
+											<input
+												id="aculect-ai-companion-activity-action"
+												type="text"
+												name="activity_action"
+												defaultValue={
+													activityFilters.action || ''
+												}
+											/>
+										</label>
+										<label htmlFor="aculect-ai-companion-activity-status">
+											<span>Status</span>
+											<select
+												id="aculect-ai-companion-activity-status"
+												name="activity_status"
+												defaultValue={
+													activityFilters.status || ''
+												}
+											>
+												<option value="">Any</option>
+												<option value="success">
+													Success
+												</option>
+												<option value="error">
+													Error
+												</option>
+											</select>
+										</label>
+										<label htmlFor="aculect-ai-companion-activity-user">
+											<span>User ID</span>
+											<input
+												id="aculect-ai-companion-activity-user"
+												type="number"
+												min="1"
+												name="activity_user"
+												defaultValue={
+													activityFilters.user_id ||
+													''
+												}
+											/>
+										</label>
+										<label htmlFor="aculect-ai-companion-activity-assistant">
+											<span>Assistant</span>
+											<input
+												id="aculect-ai-companion-activity-assistant"
+												type="text"
+												name="activity_assistant"
+												defaultValue={
+													activityFilters.assistant ||
+													''
+												}
+											/>
+										</label>
+										<Button type="submit" variant="primary">
+											Filter
+										</Button>
+										<Button
+											href="options-general.php?page=aculect-ai-companion&tab=activity"
+											variant="secondary"
+										>
+											Reset
+										</Button>
+									</form>
+									<div className="aculect-ai-companion-log-toolbar">
+										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+											Showing page { activity.page || 1 }{ ' ' }
+											of { activity.totalPages || 1 }.
+										</p>
+									</div>
+									<ActivityTable activity={ activity } />
+									<div className="aculect-ai-companion-log-pagination">
+										<Button
+											href={
+												activity.prevUrl || undefined
+											}
+											variant="secondary"
+											disabled={ ! activity.prevUrl }
+										>
+											Previous
+										</Button>
+										<Button
+											href={
+												activity.nextUrl || undefined
+											}
+											variant="secondary"
+											disabled={ ! activity.nextUrl }
+										>
+											Next
+										</Button>
+									</div>
 								</CardBody>
 							</Card>
 						);

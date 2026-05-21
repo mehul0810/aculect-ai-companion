@@ -287,6 +287,17 @@ final class AbilitiesRegistry {
 	}
 
 	/**
+	 * Check whether an ability only reads site data.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_read_only( string $id ): bool {
+		$definition = $this->definitions()[ $this->internal_id( $id ) ] ?? array();
+
+		return (bool) ( $definition['readOnly'] ?? true );
+	}
+
+	/**
 	 * Convert a public tool name or legacy alias back to the internal ID.
 	 *
 	 * @param string $id Internal ID, legacy alias, or public tool name.

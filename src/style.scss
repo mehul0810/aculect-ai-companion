@@ -545,6 +545,33 @@
 	text-transform: uppercase;
 }
 
+.aculect-ai-companion-activity-filters {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(140px, 1fr)) auto auto;
+	gap: 12px;
+	align-items: end;
+	margin: 0 0 18px;
+}
+
+.aculect-ai-companion-activity-filters label {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+}
+
+.aculect-ai-companion-activity-filters label span {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-activity-filters input,
+.aculect-ai-companion-activity-filters select {
+	width: 100%;
+	min-height: 36px;
+}
+
 .aculect-ai-companion-log-toolbar,
 .aculect-ai-companion-log-pagination {
 	display: flex;
@@ -598,6 +625,22 @@
 .aculect-ai-companion-log-level.is-info {
 	background: #edf5ff;
 	color: #135e96;
+}
+
+.aculect-ai-companion-activity-status {
+	display: inline-flex;
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: #edfaef;
+	color: var(--aculect-ai-companion-green);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-activity-status.is-error {
+	background: #fcf0f1;
+	color: #b32d2e;
 }
 
 .aculect-ai-companion-log-context summary {
@@ -676,11 +719,19 @@
 	.aculect-ai-companion-ability-group__header {
 		flex-direction: column;
 	}
+
+	.aculect-ai-companion-activity-filters {
+		grid-template-columns: 1fr 1fr;
+	}
 }
 
 @media (max-width: 600px) {
 
 	.aculect-ai-companion-app-header {
 		padding: 22px;
+	}
+
+	.aculect-ai-companion-activity-filters {
+		grid-template-columns: 1fr;
 	}
 }

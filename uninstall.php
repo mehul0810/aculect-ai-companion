@@ -40,6 +40,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 
 \Aculect\AICompanion\Connectors\OAuth\Database\Installer::uninstall();
 \Aculect\AICompanion\Diagnostics\Database\Installer::uninstall();
+\Aculect\AICompanion\Activity\Database\Installer::uninstall();
 \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
 \Aculect\AICompanion\Connectors\MCP\AccessLockdown::delete();
 
@@ -47,3 +48,4 @@ delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );
 delete_option( 'aculect_ai_companion_rewrite_version' );
 delete_option( 'aculect_ai_companion_chatgpt_connection_state' );
 delete_option( 'aculect_ai_companion_enabled_abilities' );
+delete_option( 'aculect_ai_companion_activity_last_pruned_at' );

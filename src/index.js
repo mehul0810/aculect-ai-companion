@@ -410,6 +410,17 @@ function SettingsApp() {
 			return current.filter( ( item ) => item !== id );
 		} );
 	};
+	const setGroupAbilities = ( groupAbilities, checked ) => {
+		const groupIds = groupAbilities.map( ( ability ) => ability.id );
+
+		setEnabledAbilities( ( current ) => {
+			if ( checked ) {
+				return Array.from( new Set( [ ...current, ...groupIds ] ) );
+			}
+
+			return current.filter( ( id ) => ! groupIds.includes( id ) );
+		} );
+	};
 
 	return (
 		<div className="aculect-ai-companion-app-root">
@@ -907,9 +918,57 @@ function SettingsApp() {
 														key={ group }
 														className="aculect-ai-companion-ability-group"
 													>
-														<h3 className="aculect-ai-companion-section-heading">
-															{ group }
-														</h3>
+														<div className="aculect-ai-companion-ability-group__header">
+															<div>
+																<h3 className="aculect-ai-companion-section-heading">
+																	{ group }
+																</h3>
+																<p className="aculect-ai-companion-ability-group__summary">
+																	{
+																		groupAbilities.filter(
+																			(
+																				ability
+																			) =>
+																				enabledAbilities.includes(
+																					ability.id
+																				)
+																		).length
+																	}
+																	/{ ' ' }
+																	{
+																		groupAbilities.length
+																	}{ ' ' }
+																	enabled
+																</p>
+															</div>
+															<div className="aculect-ai-companion-ability-group__actions">
+																<Button
+																	type="button"
+																	variant="secondary"
+																	onClick={ () =>
+																		setGroupAbilities(
+																			groupAbilities,
+																			true
+																		)
+																	}
+																>
+																	Enable Group
+																</Button>
+																<Button
+																	type="button"
+																	variant="secondary"
+																	onClick={ () =>
+																		setGroupAbilities(
+																			groupAbilities,
+																			false
+																		)
+																	}
+																>
+																	Disable
+																	Group
+																</Button>
+															</div>
+														</div>
 														<div className="aculect-ai-companion-ability-list">
 															{ groupAbilities.map(
 																( ability ) => (
@@ -942,6 +1001,28 @@ function SettingsApp() {
 																				ability.description
 																			}
 																		</p>
+																		<div className="aculect-ai-companion-ability-row__meta">
+																			<span
+																				className={ `aculect-ai-companion-risk-chip ${
+																					ability.readOnly
+																						? 'is-read-only'
+																						: 'is-write'
+																				}` }
+																			>
+																				{ ability.readOnly
+																					? 'Read-only'
+																					: 'Can change site' }
+																			</span>
+																			<span>
+																				{ ability.scope ||
+																					'content:read' }
+																			</span>
+																			<code>
+																				{
+																					ability.toolName
+																				}
+																			</code>
+																		</div>
 																	</div>
 																)
 															) }

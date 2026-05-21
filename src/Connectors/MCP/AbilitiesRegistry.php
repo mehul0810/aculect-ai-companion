@@ -107,7 +107,7 @@ final class AbilitiesRegistry {
 				'id'          => 'site.get_settings',
 				'title'       => 'View Site Settings',
 				'description' => 'Read safe, non-secret site settings.',
-				'group'       => 'Site',
+				'group'       => 'Site Information',
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
@@ -115,7 +115,7 @@ final class AbilitiesRegistry {
 				'id'          => 'site.get_info',
 				'title'       => 'View Site Information',
 				'description' => 'Read WordPress version, PHP version, active theme, and basic site metadata.',
-				'group'       => 'Site',
+				'group'       => 'Site Information',
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
@@ -123,7 +123,7 @@ final class AbilitiesRegistry {
 				'id'          => 'site.list_plugins',
 				'title'       => 'List Plugins',
 				'description' => 'List installed WordPress plugins and active state for users who can manage plugins.',
-				'group'       => 'Site',
+				'group'       => 'Site Information',
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
@@ -131,7 +131,7 @@ final class AbilitiesRegistry {
 				'id'          => 'site.list_themes',
 				'title'       => 'List Themes',
 				'description' => 'List installed WordPress themes and active state for users who can manage themes.',
-				'group'       => 'Site',
+				'group'       => 'Site Information',
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
@@ -211,8 +211,11 @@ final class AbilitiesRegistry {
 		$enabled = $this->enabled_ids();
 		return array_map(
 			function ( array $definition ) use ( $enabled ): array {
-				$definition['enabled']  = in_array( (string) $definition['id'], $enabled, true );
-				$definition['toolName'] = $this->tool_name( (string) $definition['id'] );
+				$read_only                 = (bool) $definition['readOnly'];
+				$definition['enabled']     = in_array( (string) $definition['id'], $enabled, true );
+				$definition['toolName']    = $this->tool_name( (string) $definition['id'] );
+				$definition['changesSite'] = ! $read_only;
+				$definition['riskLevel']   = $read_only ? 'read-only' : 'write';
 				return $definition;
 			},
 			array_values( $this->definitions() )

@@ -146,7 +146,8 @@ final class McpController {
 			case 'tools/call':
 				$registry = new AbilitiesRegistry();
 				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
-				if ( ! $registry->is_known( $tool ) ) {
+				$error    = $this->tool_call_error( $tool, $registry );
+				if ( 'unknown_tool' === $error ) {
 					( new Logger() )->warning(
 						'mcp.unknown_tool',
 						'MCP tool call referenced an unknown tool.',
@@ -157,7 +158,7 @@ final class McpController {
 					return $this->tool_error_result( $id, 'Unknown tool.' );
 				}
 
-				if ( ! $registry->is_enabled( $tool ) ) {
+				if ( 'tool_disabled' === $error ) {
 					( new Logger() )->warning(
 						'mcp.tool_disabled',
 						'MCP tool call referenced a disabled tool.',
@@ -524,6 +525,24 @@ final class McpController {
 	 */
 	private function is_access_paused(): bool {
 		return AccessLockdown::is_paused();
+	}
+
+	/**
+	 * Return a tool-call block reason before dispatch, or an empty string if callable.
+	 *
+	 * @param string            $tool     Internal ability ID.
+	 * @param AbilitiesRegistry $registry Ability registry.
+	 */
+	private function tool_call_error( string $tool, AbilitiesRegistry $registry ): string {
+		if ( ! $registry->is_known( $tool ) ) {
+			return 'unknown_tool';
+		}
+
+		if ( ! $registry->is_enabled( $tool ) ) {
+			return 'tool_disabled';
+		}
+
+		return '';
 	}
 
 	/**

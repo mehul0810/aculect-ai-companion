@@ -109,7 +109,7 @@ Aculect AI Companion implements a remote MCP interface secured by OAuth-style au
 
 ### Release Packaging
 
-Production ZIP files include built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` stay in the GitHub repository but are excluded from release artifacts with `.distignore`. The generated `build/index.asset.php` file is required by WordPress for script dependencies and is shipped.
+Production ZIP files include built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` stay in the GitHub repository but are excluded from release artifacts with `.distignore`. Generated files under `build/` are not committed to the source repository; GitHub Actions runs `npm run build` before packaging so the release ZIP still ships `build/index.js`, `build/index.asset.php`, and stylesheets required by WordPress.
 
 ### Public Interfaces
 

@@ -87,6 +87,40 @@ if ( ! function_exists( 'delete_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'home_url' ) ) {
+	/**
+	 * Return a deterministic test home URL.
+	 *
+	 * @param string $path Optional path.
+	 */
+	function home_url( string $path = '' ): string {
+		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+	}
+}
+
+if ( ! function_exists( 'untrailingslashit' ) ) {
+	/**
+	 * Remove trailing slash characters.
+	 *
+	 * @param string $value Raw string.
+	 */
+	function untrailingslashit( string $value ): string {
+		return rtrim( $value, '/\\' );
+	}
+}
+
+if ( ! function_exists( 'wp_http_validate_url' ) ) {
+	/**
+	 * Validate a URL for tests.
+	 *
+	 * @param string $url Raw URL.
+	 * @return string|false
+	 */
+	function wp_http_validate_url( string $url ): string|false {
+		return false === filter_var( $url, FILTER_VALIDATE_URL ) ? false : $url;
+	}
+}
+
 if ( ! function_exists( 'absint' ) ) {
 	/**
 	 * Return a non-negative integer.
@@ -170,3 +204,114 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 	}
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames
+
+if ( ! class_exists( 'WP_REST_Request' ) ) {
+	/**
+	 * Minimal REST request test double.
+	 */
+	class WP_REST_Request {
+		/**
+		 * @param array<string, mixed>  $params  Request params.
+		 * @param array<string, string> $headers Request headers.
+		 * @param array<string, mixed>  $json    JSON params.
+		 */
+		public function __construct(
+			private array $params = array(),
+			private array $headers = array(),
+			private array $json = array(),
+			private string $method = 'GET',
+			private string $route = ''
+		) {}
+
+		/**
+		 * Return one request parameter.
+		 *
+		 * @param string $key Parameter name.
+		 * @return mixed
+		 */
+		public function get_param( string $key ): mixed {
+			return $this->params[ $key ] ?? null;
+		}
+
+		/**
+		 * Return one request header.
+		 *
+		 * @param string $key Header name.
+		 */
+		public function get_header( string $key ): string {
+			return $this->headers[ strtolower( $key ) ] ?? $this->headers[ $key ] ?? '';
+		}
+
+		/**
+		 * Return JSON parameters.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_json_params(): array {
+			return $this->json;
+		}
+
+		/**
+		 * Return request method.
+		 */
+		public function get_method(): string {
+			return $this->method;
+		}
+
+		/**
+		 * Return request route.
+		 */
+		public function get_route(): string {
+			return $this->route;
+		}
+	}
+}
+
+if ( ! class_exists( 'WP_REST_Response' ) ) {
+	/**
+	 * Minimal REST response test double.
+	 */
+	class WP_REST_Response {
+		/** @var array<string, string> */
+		private array $headers = array();
+
+		/**
+		 * @param mixed $data   Response data.
+		 * @param int   $status HTTP status.
+		 */
+		public function __construct( private mixed $data = null, private int $status = 200 ) {}
+
+		/**
+		 * Return response data.
+		 *
+		 * @return mixed
+		 */
+		public function get_data(): mixed {
+			return $this->data;
+		}
+
+		/**
+		 * Return HTTP status.
+		 */
+		public function get_status(): int {
+			return $this->status;
+		}
+
+		/**
+		 * Set or retrieve a response header.
+		 *
+		 * @param string      $key   Header key.
+		 * @param string|null $value Header value.
+		 * @return string|null
+		 */
+		public function header( string $key, ?string $value = null ): ?string {
+			if ( null === $value ) {
+				return $this->headers[ $key ] ?? null;
+			}
+
+			$this->headers[ $key ] = $value;
+
+			return null;
+		}
+	}
+}

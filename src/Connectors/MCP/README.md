@@ -32,8 +32,9 @@ abilities may modify data even when their names are not obvious.
 
 Aculect AI Companion's built-in MCP tools cover posts/pages/custom post types, taxonomies,
 comments, media library listing/upload, safe site settings, site information,
-and plugin/theme inventory. New tool groups should stay deterministic,
-paginated where applicable, and capability-checked at execution time.
+site health summaries, and plugin/theme inventory. New tool groups should stay
+deterministic, paginated where applicable, and capability-checked at execution
+time.
 
 ## Safety Controls
 

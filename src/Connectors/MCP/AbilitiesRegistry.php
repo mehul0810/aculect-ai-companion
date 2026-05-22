@@ -119,6 +119,14 @@ final class AbilitiesRegistry {
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
+			'site.get_health'          => array(
+				'id'          => 'site.get_health',
+				'title'       => 'View Site Health Summary',
+				'description' => 'Read a safe site health summary for users who can manage site options.',
+				'group'       => 'Site Information',
+				'scope'       => 'content:read',
+				'readOnly'    => true,
+			),
 			'site.list_plugins'        => array(
 				'id'          => 'site.list_plugins',
 				'title'       => 'List Plugins',

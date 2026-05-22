@@ -507,6 +507,10 @@ final class McpController {
 					),
 				),
 			),
+			'site.get_health' => array(
+				'type'       => 'object',
+				'properties' => new \stdClass(),
+			),
 			default => array(
 				'type'       => 'object',
 				'properties' => new \stdClass(),
@@ -572,6 +576,7 @@ final class McpController {
 			'comments.update_item' => $content->update_comment( $args ),
 			'site.get_settings' => $content->get_settings(),
 			'site.get_info' => $content->get_site_info(),
+			'site.get_health' => $content->get_site_health(),
 			'site.list_plugins' => $content->list_plugins(),
 			'site.list_themes' => $content->list_themes(),
 			'wp_abilities.discover' => $content->discover_wp_abilities( $args ),

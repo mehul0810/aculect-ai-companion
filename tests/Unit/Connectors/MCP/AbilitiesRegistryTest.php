@@ -99,6 +99,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'comments.update_item',
 				'media.upload_item',
 				'site.get_info',
+				'site.get_health',
 				'site.list_plugins',
 				'site.list_themes',
 			) as $ability_id
@@ -109,6 +110,7 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		self::assertSame(array('content:draft'), $this->registry->required_scopes('wp_abilities.run'));
 		self::assertSame(array('content:draft'), $this->registry->required_scopes('media.upload_item'));
+		self::assertSame(array('content:read'), $this->registry->required_scopes('site.get_health'));
 		self::assertSame(array('content:read'), $this->registry->required_scopes('site.list_plugins'));
 	}
 

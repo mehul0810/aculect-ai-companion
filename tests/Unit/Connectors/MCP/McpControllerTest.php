@@ -71,6 +71,10 @@ final class McpControllerTest extends TestCase {
 		$abilities_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'wp_abilities_run' ) );
 		self::assertSame(array('id'), $abilities_schema['required']);
 		self::assertArrayHasKey('arguments', $abilities_schema['properties']);
+
+		$health_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'site_get_health' ) );
+		self::assertSame('object', $health_schema['type']);
+		self::assertInstanceOf(\stdClass::class, $health_schema['properties']);
 	}
 
 	public function test_global_pause_blocks_tool_calls(): void {

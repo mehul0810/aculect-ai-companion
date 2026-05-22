@@ -193,6 +193,15 @@ final class ContentController {
 	}
 
 	/**
+	 * Return a safe high-level site health summary.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function get_site_health(): array {
+		return ( new AbilitiesService() )->get_site_health();
+	}
+
+	/**
 	 * List installed plugins.
 	 *
 	 * @return array<string, mixed>

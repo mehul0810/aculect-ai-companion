@@ -36,6 +36,13 @@ site health summaries, and plugin/theme inventory. New tool groups should stay
 deterministic, paginated where applicable, and capability-checked at execution
 time.
 
+`content_create_item` and `content_update_item` accept a `taxonomies` object
+that maps taxonomy slugs to existing term IDs or term slugs, for example
+`{ "category": [ 12, "release-notes" ], "post_tag": [ "mcp" ] }`. The
+implementation validates that each taxonomy is exposed by WordPress, assigned to
+the target post type, and assignable by the connected user. It only assigns
+existing terms; term creation remains handled by `taxonomy_create_term`.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a

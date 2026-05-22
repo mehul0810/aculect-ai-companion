@@ -364,24 +364,62 @@ final class McpController {
 			'content.create_item' => array(
 				'type'       => 'object',
 				'properties' => array(
-					'post_type' => array( 'type' => 'string' ),
-					'title'     => array( 'type' => 'string' ),
-					'content'   => array( 'type' => 'string' ),
-					'excerpt'   => array( 'type' => 'string' ),
-					'slug'      => array( 'type' => 'string' ),
-					'status'    => array( 'type' => 'string' ),
+					'post_type'  => array( 'type' => 'string' ),
+					'title'      => array( 'type' => 'string' ),
+					'content'    => array( 'type' => 'string' ),
+					'excerpt'    => array( 'type' => 'string' ),
+					'slug'       => array( 'type' => 'string' ),
+					'status'     => array( 'type' => 'string' ),
+					'taxonomies' => array(
+						'type'                 => 'object',
+						'description'          => 'Map taxonomy slugs to existing term IDs or term slugs.',
+						'additionalProperties' => array(
+							'oneOf' => array(
+								array( 'type' => 'integer' ),
+								array( 'type' => 'string' ),
+								array(
+									'type'  => 'array',
+									'items' => array(
+										'oneOf' => array(
+											array( 'type' => 'integer' ),
+											array( 'type' => 'string' ),
+										),
+									),
+								),
+							),
+						),
+					),
 				),
 			),
 			'content.update_item' => array(
 				'type'       => 'object',
 				'required'   => array( 'id' ),
 				'properties' => array(
-					'id'      => array( 'type' => 'integer' ),
-					'title'   => array( 'type' => 'string' ),
-					'content' => array( 'type' => 'string' ),
-					'excerpt' => array( 'type' => 'string' ),
-					'slug'    => array( 'type' => 'string' ),
-					'status'  => array( 'type' => 'string' ),
+					'id'         => array( 'type' => 'integer' ),
+					'title'      => array( 'type' => 'string' ),
+					'content'    => array( 'type' => 'string' ),
+					'excerpt'    => array( 'type' => 'string' ),
+					'slug'       => array( 'type' => 'string' ),
+					'status'     => array( 'type' => 'string' ),
+					'taxonomies' => array(
+						'type'                 => 'object',
+						'description'          => 'Map taxonomy slugs to existing term IDs or term slugs. Use an empty array to clear a taxonomy.',
+						'additionalProperties' => array(
+							'oneOf' => array(
+								array( 'type' => 'integer' ),
+								array( 'type' => 'string' ),
+								array(
+									'type'  => 'array',
+									'items' => array(
+										'oneOf' => array(
+											array( 'type' => 'integer' ),
+											array( 'type' => 'string' ),
+										),
+									),
+								),
+							),
+						),
+					),
 				),
 			),
 			'taxonomy.list_terms' => array(

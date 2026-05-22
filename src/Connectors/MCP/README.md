@@ -36,6 +36,11 @@ site health summaries, and plugin/theme inventory. New tool groups should stay
 deterministic, paginated where applicable, and capability-checked at execution
 time.
 
+`content_create_item` and `content_update_item` accept an `author` user ID when
+the connected WordPress user can assign authors for the target post type. The
+target user must exist and be able to own that post type. Omitting `author`
+preserves WordPress' default author behavior.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a

@@ -75,6 +75,12 @@ final class McpControllerTest extends TestCase {
 		$health_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'site_get_health' ) );
 		self::assertSame('object', $health_schema['type']);
 		self::assertInstanceOf(\stdClass::class, $health_schema['properties']);
+
+		$create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_create_item' ) );
+		self::assertArrayHasKey('author', $create_schema['properties']);
+
+		$update_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
+		self::assertArrayHasKey('author', $update_schema['properties']);
 	}
 
 	public function test_write_tool_schemas_include_safety_controls(): void {

@@ -370,6 +370,10 @@ final class McpController {
 					'excerpt'   => array( 'type' => 'string' ),
 					'slug'      => array( 'type' => 'string' ),
 					'status'    => array( 'type' => 'string' ),
+					'author'    => array(
+						'type'        => 'integer',
+						'description' => 'Existing WordPress user ID to assign as author.',
+					),
 				),
 			),
 			'content.update_item' => array(
@@ -382,6 +386,10 @@ final class McpController {
 					'excerpt' => array( 'type' => 'string' ),
 					'slug'    => array( 'type' => 'string' ),
 					'status'  => array( 'type' => 'string' ),
+					'author'  => array(
+						'type'        => 'integer',
+						'description' => 'Existing WordPress user ID to assign as author.',
+					),
 				),
 			),
 			'taxonomy.list_terms' => array(

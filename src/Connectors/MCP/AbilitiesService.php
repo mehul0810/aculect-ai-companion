@@ -137,6 +137,16 @@ final class AbilitiesService {
 			static fn( $value ): bool => null !== $value
 		);
 
+		if ( array_key_exists( 'author', $data ) ) {
+			$author_id = absint( $data['author'] );
+			$error     = $this->author_assignment_error( $author_id, $post_type_object );
+			if ( array() !== $error ) {
+				return $error;
+			}
+
+			$payload['post_author'] = $author_id;
+		}
+
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'content.create_item',
@@ -201,6 +211,15 @@ final class AbilitiesService {
 		if ( array_key_exists( 'slug', $data ) ) {
 			$update['post_name'] = sanitize_title( (string) $data['slug'] );
 		}
+		if ( array_key_exists( 'author', $data ) ) {
+			$author_id = absint( $data['author'] );
+			$error     = $this->author_assignment_error( $author_id, $post_type_object, (int) $post->post_author );
+			if ( array() !== $error ) {
+				return $error;
+			}
+
+			$update['post_author'] = $author_id;
+		}
 		if ( array_key_exists( 'status', $data ) ) {
 			$status = $this->writable_status( (string) $data['status'] );
 			if ( 'trash' === $status ) {
@@ -258,6 +277,7 @@ final class AbilitiesService {
 						'post_excerpt' => $post->post_excerpt,
 						'post_name'    => $post->post_name,
 						'post_status'  => $post->post_status,
+						'post_author'  => (int) $post->post_author,
 					),
 					$update
 				)
@@ -1104,6 +1124,35 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Validate whether the connected user can assign a content author.
+	 *
+	 * @param int           $author_id      Target author user ID.
+	 * @param \WP_Post_Type $post_type      Post type object.
+	 * @param int           $current_author Existing author ID for updates.
+	 * @return array<string, mixed>
+	 */
+	private function author_assignment_error( int $author_id, \WP_Post_Type $post_type, int $current_author = 0 ): array {
+		if ( $author_id <= 0 || ! get_userdata( $author_id ) ) {
+			return $this->error( 'invalid_author', 'Author user not found.' );
+		}
+
+		if ( ! user_can( $author_id, $post_type->cap->edit_posts ) ) {
+			return $this->error( 'invalid_author', 'Author cannot own this post type.' );
+		}
+
+		$current_user_id       = get_current_user_id();
+		$is_unchanged_author   = $current_author > 0 && $author_id === $current_author;
+		$is_current_user       = $author_id === $current_user_id;
+		$requires_others_posts = ! $is_current_user && ! $is_unchanged_author;
+
+		if ( $requires_others_posts && ! current_user_can( $post_type->cap->edit_others_posts ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to assign this author.' );
+		}
+
+		return array();
+	}
+
+	/**
 	 * Check whether a post type is safe to expose through MCP.
 	 *
 	 * @param mixed $post_type Candidate post type object.
@@ -1221,18 +1270,21 @@ final class AbilitiesService {
 	 * @return array<string, mixed>
 	 */
 	private function map_post( \WP_Post $post ): array {
+		$author = get_userdata( (int) $post->post_author );
+
 		$item = array(
-			'id'           => (int) $post->ID,
-			'type'         => $post->post_type,
-			'title'        => get_the_title( $post ),
-			'slug'         => $post->post_name,
-			'status'       => $post->post_status,
-			'content'      => $post->post_content,
-			'excerpt'      => $post->post_excerpt,
-			'author'       => (int) $post->post_author,
-			'date_gmt'     => $post->post_date_gmt,
-			'modified_gmt' => $post->post_modified_gmt,
-			'link'         => get_permalink( $post ),
+			'id'                  => (int) $post->ID,
+			'type'                => $post->post_type,
+			'title'               => get_the_title( $post ),
+			'slug'                => $post->post_name,
+			'status'              => $post->post_status,
+			'content'             => $post->post_content,
+			'excerpt'             => $post->post_excerpt,
+			'author'              => (int) $post->post_author,
+			'author_display_name' => $author instanceof \WP_User ? $author->display_name : '',
+			'date_gmt'            => $post->post_date_gmt,
+			'modified_gmt'        => $post->post_modified_gmt,
+			'link'                => get_permalink( $post ),
 		);
 
 		if ( 'attachment' === $post->post_type ) {
@@ -1370,6 +1422,7 @@ final class AbilitiesService {
 			'post_excerpt' => 'excerpt',
 			'post_name'    => 'slug',
 			'post_status'  => 'status',
+			'post_author'  => 'author',
 		);
 		$changes = array();
 

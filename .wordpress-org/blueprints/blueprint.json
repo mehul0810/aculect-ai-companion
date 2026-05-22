@@ -1,0 +1,35 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/wp-admin/options-general.php?page=aculect-ai-companion",
+  "meta": {
+    "title": "Aculect AI Companion Preview",
+    "author": "Aculect",
+    "description": "Preview the Aculect AI Companion settings screen, connection workflow, diagnostics, abilities, and activity views in WordPress Playground.",
+    "categories": [
+      "plugins",
+      "productivity"
+    ]
+  },
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "aculect-ai-companion"
+      },
+      "options": {
+        "activate": true
+      },
+      "ifAlreadyInstalled": "overwrite"
+    },
+    {
+      "step": "login",
+      "username": "admin",
+      "password": "password"
+    }
+  ]
+}

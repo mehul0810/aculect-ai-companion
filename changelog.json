@@ -7,7 +7,7 @@
     ],
     "Improved": [
       "Refreshed the settings screen header with Aculect branding and clearer AI agent connection messaging.",
-      "Added WordPress.org plugin icon, banner, and branded screenshots for the plugin listing.",
+      "Added WordPress.org plugin icon, banner, branded screenshots, and a Playground preview blueprint for the plugin listing.",
       "Improved action permission controls so AI tools only expose and run enabled, authorized abilities."
     ],
     "Reliability": [

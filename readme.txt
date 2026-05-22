@@ -4,7 +4,7 @@ Tags: ai, content, claude, media, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.2.1
+Stable tag: 0.3.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,6 +137,10 @@ Yes. Open Settings > Aculect AI Companion > Activity to review write actions req
 
 Aculect AI Companion does not require a separate product account. To use it with an external AI assistant, you may need an account with that external service.
 
+= Can I try Aculect AI Companion in the WordPress.org preview? =
+
+Yes. The WordPress.org preview opens a temporary WordPress Playground site with Aculect AI Companion active and takes you to the plugin settings screen. The preview is useful for reviewing the setup flow, supported abilities, diagnostics, and activity screens. For a full ChatGPT or Claude connection test, use your own HTTPS WordPress site because external AI assistants must be able to reach the WordPress site during OAuth and MCP requests.
+
 = I use Cloudflare. Can Bot Fight Mode block the connection? =
 
 Yes. Cloudflare Bot Fight Mode can block automated MCP requests from an AI assistant before they reach WordPress. Keep Bot Fight Mode disabled for the hostname used by your Aculect AI Companion connection URL; otherwise setup and later tool calls, such as creating or updating content, may fail even after the assistant was previously connected.
@@ -176,9 +180,9 @@ Security policy:
 
 https://github.com/mehul0810/aculect-ai-companion/security/policy
 
-From the repository checkout, rebuild assets with:
+From the repository checkout, use the Node.js version in `.nvmrc` and rebuild assets with:
 
-`npm install`
+`npm ci`
 `npm run build`
 
 Composer dependencies for production releases are installed with:
@@ -193,7 +197,7 @@ Composer dependencies for production releases are installed with:
 * Added a Connections control to temporarily pause or resume AI access without disconnecting assistants.
 * Added connection diagnostics that check endpoint, OAuth, and MCP readiness from the settings screen.
 * Refreshed the settings screen header with Aculect branding and clearer AI agent connection messaging.
-* Added WordPress.org plugin icon, banner, and branded screenshots for the plugin listing.
+* Added WordPress.org plugin icon, banner, branded screenshots, and a Playground preview blueprint for the plugin listing.
 * Improved action permission controls so AI tools only expose and run enabled, authorized abilities.
 * Added OAuth storage maintenance to clean up expired connection data.
 * Hardened media uploads from public URLs with stricter sideload safeguards.

@@ -241,6 +241,10 @@ final class Helpers {
 	public static function provider_from_client( string $client_name, array $redirect_uris ): string {
 		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
 
+		if ( str_contains( $haystack, 'codex' ) ) {
+			return 'codex';
+		}
+
 		if ( str_contains( $haystack, 'chatgpt.com' ) || str_contains( $haystack, 'chatgpt' ) || str_contains( $haystack, 'openai' ) ) {
 			return 'chatgpt';
 		}

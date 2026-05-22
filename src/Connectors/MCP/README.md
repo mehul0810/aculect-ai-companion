@@ -43,6 +43,11 @@ implementation validates that each taxonomy is exposed by WordPress, assigned to
 the target post type, and assignable by the connected user. It only assigns
 existing terms; term creation remains handled by `taxonomy_create_term`.
 
+Content create and update tools can assign an existing image attachment as the
+featured image through `featured_media`. Use media upload/list tools first when
+the image is not already in the media library. Clearing a featured image requires
+the explicit `clear_featured_media` flag on content update.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a

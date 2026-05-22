@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
+use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
@@ -314,6 +315,7 @@ final class SettingsPage {
 			array(
 				new ClaudeProvider(),
 				new ChatGPTProvider(),
+				new CodexProvider(),
 			)
 		);
 	}

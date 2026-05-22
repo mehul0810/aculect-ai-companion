@@ -443,14 +443,34 @@ final class McpController {
 			'comments.list_items' => array(
 				'type'       => 'object',
 				'properties' => array(
-					'status'   => array(
+					'status'         => array(
 						'type'        => 'string',
-						'description' => 'Comment status: all, hold, approve, spam, or trash.',
+						'description' => 'Comment status: all, pending, hold, approved, approve, spam, or trash.',
 					),
-					'post_id'  => array( 'type' => 'integer' ),
-					'search'   => array( 'type' => 'string' ),
-					'page'     => array( 'type' => 'integer' ),
-					'per_page' => array( 'type' => 'integer' ),
+					'post_id'        => array( 'type' => 'integer' ),
+					'author'         => array(
+						'type'        => 'string',
+						'description' => 'Search by comment author name, email, URL, or IP.',
+					),
+					'author_user_id' => array(
+						'type'        => 'integer',
+						'description' => 'Filter by the WordPress user ID that authored the comment.',
+					),
+					'author_email'   => array(
+						'type'        => 'string',
+						'description' => 'Filter by exact comment author email address.',
+					),
+					'date_after'     => array(
+						'type'        => 'string',
+						'description' => 'Inclusive lower date boundary accepted by WordPress date queries.',
+					),
+					'date_before'    => array(
+						'type'        => 'string',
+						'description' => 'Inclusive upper date boundary accepted by WordPress date queries.',
+					),
+					'search'         => array( 'type' => 'string' ),
+					'page'           => array( 'type' => 'integer' ),
+					'per_page'       => array( 'type' => 'integer' ),
 				),
 			),
 			'comments.get_item' => array(
@@ -462,9 +482,13 @@ final class McpController {
 				'type'       => 'object',
 				'required'   => array( 'post_id', 'content' ),
 				'properties' => array(
-					'post_id' => array( 'type' => 'integer' ),
-					'content' => array( 'type' => 'string' ),
-					'status'  => array(
+					'post_id'   => array( 'type' => 'integer' ),
+					'content'   => array( 'type' => 'string' ),
+					'parent_id' => array(
+						'type'        => 'integer',
+						'description' => 'Optional parent comment ID for structured replies.',
+					),
+					'status'    => array(
 						'type'        => 'string',
 						'description' => 'Optional status for moderators: hold or approve.',
 					),
@@ -478,7 +502,22 @@ final class McpController {
 					'content' => array( 'type' => 'string' ),
 					'status'  => array(
 						'type'        => 'string',
-						'description' => 'Comment status: hold, approve, spam, or trash.',
+						'description' => 'Comment status: pending, hold, approved, approve, spam, or trash.',
+					),
+				),
+			),
+			'comments.bulk_update' => array(
+				'type'       => 'object',
+				'required'   => array( 'ids', 'status' ),
+				'properties' => array(
+					'ids'    => array(
+						'type'        => 'array',
+						'description' => 'Comment IDs to moderate. Maximum 100 per call.',
+						'items'       => array( 'type' => 'integer' ),
+					),
+					'status' => array(
+						'type'        => 'string',
+						'description' => 'Comment status: pending, hold, approved, approve, spam, or trash.',
 					),
 				),
 			),
@@ -574,6 +613,7 @@ final class McpController {
 			'comments.get_item' => $content->get_comment( $args ),
 			'comments.create_item' => $content->create_comment( $args ),
 			'comments.update_item' => $content->update_comment( $args ),
+			'comments.bulk_update' => $content->bulk_update_comments( $args ),
 			'site.get_settings' => $content->get_settings(),
 			'site.get_info' => $content->get_site_info(),
 			'site.get_health' => $content->get_site_health(),

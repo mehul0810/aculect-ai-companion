@@ -175,6 +175,14 @@ final class AbilitiesRegistry {
 				'scope'       => 'content:draft',
 				'readOnly'    => false,
 			),
+			'comments.bulk_update'     => array(
+				'id'          => 'comments.bulk_update',
+				'title'       => 'Bulk Moderate Comments',
+				'description' => 'Apply one moderation status to multiple WordPress comments.',
+				'group'       => 'Comments',
+				'scope'       => 'content:draft',
+				'readOnly'    => false,
+			),
 			'media.upload_item'        => array(
 				'id'          => 'media.upload_item',
 				'title'       => 'Upload Media From a URL',

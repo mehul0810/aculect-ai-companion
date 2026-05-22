@@ -175,6 +175,16 @@ final class ContentController {
 	}
 
 	/**
+	 * Bulk update comment moderation status.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function bulk_update_comments( array $data ): array {
+		return ( new AbilitiesService() )->bulk_update_comments( $data );
+	}
+
+	/**
 	 * Return safe site settings.
 	 *
 	 * @return array<string, mixed>

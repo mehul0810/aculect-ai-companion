@@ -48,6 +48,11 @@ generic WordPress abilities require a short-lived `confirmation_token` before
 execution. Tokens are bound to the connected user, OAuth client, provider, tool,
 and exact argument payload, and are consumed after one successful use.
 
+Comment workflows support review filters for moderation status, post, author,
+author email, author user ID, search, and date ranges. Replies are created with
+`comments_create_item` by passing `parent_id`, and `comments_bulk_update`
+requires confirmation for every bulk moderation run.
+
 Admins can configure additional ability groups that require confirmation for
 every write action. High-risk actions still require confirmation even when no
 group is selected.

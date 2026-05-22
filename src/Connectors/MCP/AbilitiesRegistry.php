@@ -103,6 +103,22 @@ final class AbilitiesRegistry {
 				'scope'       => 'content:read',
 				'readOnly'    => true,
 			),
+			'media.get_item'           => array(
+				'id'          => 'media.get_item',
+				'title'       => 'Read Media Item',
+				'description' => 'Read one media library attachment by ID.',
+				'group'       => 'Media',
+				'scope'       => 'content:read',
+				'readOnly'    => true,
+			),
+			'media.update_item'        => array(
+				'id'          => 'media.update_item',
+				'title'       => 'Update Media Item',
+				'description' => 'Update media title, alt text, caption, description, slug, or attachment parent.',
+				'group'       => 'Media',
+				'scope'       => 'content:draft',
+				'readOnly'    => false,
+			),
 			'site.get_settings'        => array(
 				'id'          => 'site.get_settings',
 				'title'       => 'View Site Settings',

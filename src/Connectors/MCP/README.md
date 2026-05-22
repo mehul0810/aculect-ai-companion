@@ -48,6 +48,11 @@ featured image through `featured_media`. Use media upload/list tools first when
 the image is not already in the media library. Clearing a featured image requires
 the explicit `clear_featured_media` flag on content update.
 
+Media tools include `media_get_item` and `media_update_item` for reading and
+updating attachment title, alt text, caption, description, slug, and attachment
+parent. Updating `post_id` changes the attachment parent relationship only after
+the connected user can edit both the attachment and the target parent post.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a

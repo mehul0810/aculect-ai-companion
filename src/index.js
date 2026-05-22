@@ -456,6 +456,8 @@ function SettingsApp() {
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
+	const hasActiveSessions = sessions.length > 0;
+	const shouldShowAccessControl = isAccessPaused || hasActiveSessions;
 
 	useEffect(
 		() => () => {
@@ -886,47 +888,55 @@ function SettingsApp() {
 							<Card className="aculect-ai-companion-card aculect-ai-companion-sessions-card">
 								<CardHeader>Active Connections</CardHeader>
 								<CardBody>
-									<div
-										className={ `aculect-ai-companion-lockdown ${
-											isAccessPaused ? 'is-paused' : ''
-										}` }
-									>
-										<div className="aculect-ai-companion-lockdown__content">
-											<strong>
-												{ isAccessPaused
-													? 'AI access is paused'
-													: 'AI access is active' }
-											</strong>
-											<p>
-												{ isAccessPaused
-													? 'Connected assistants cannot run actions until access is resumed.'
-													: 'Pause access to stop connected assistants from running actions without disconnecting them.' }
-											</p>
-										</div>
-										<ActionForm
-											data={ data }
-											action={
-												data.actions?.setLockdownAction
-											}
-											nonce={
-												data.actions?.setLockdownNonce
-											}
-											label={
+									{ shouldShowAccessControl && (
+										<div
+											className={ `aculect-ai-companion-lockdown ${
 												isAccessPaused
-													? 'Resume AI Access'
-													: 'Pause AI Access'
-											}
-											destructive={ ! isAccessPaused }
+													? 'is-paused'
+													: ''
+											}` }
 										>
-											<input
-												type="hidden"
-												name="access_paused"
-												value={
-													isAccessPaused ? '0' : '1'
+											<div className="aculect-ai-companion-lockdown__content">
+												<strong>
+													{ isAccessPaused
+														? 'AI access is paused'
+														: 'AI access is active' }
+												</strong>
+												<p>
+													{ isAccessPaused
+														? 'Connected assistants cannot run actions until access is resumed.'
+														: 'Pause access to stop connected assistants from running actions without disconnecting them.' }
+												</p>
+											</div>
+											<ActionForm
+												data={ data }
+												action={
+													data.actions
+														?.setLockdownAction
 												}
-											/>
-										</ActionForm>
-									</div>
+												nonce={
+													data.actions
+														?.setLockdownNonce
+												}
+												label={
+													isAccessPaused
+														? 'Resume AI Access'
+														: 'Pause AI Access'
+												}
+												destructive={ ! isAccessPaused }
+											>
+												<input
+													type="hidden"
+													name="access_paused"
+													value={
+														isAccessPaused
+															? '0'
+															: '1'
+													}
+												/>
+											</ActionForm>
+										</div>
+									) }
 									{ sessions.length === 0 ? (
 										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
 											No AI assistants are connected yet.

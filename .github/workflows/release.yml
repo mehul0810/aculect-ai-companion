@@ -43,12 +43,33 @@ jobs:
       - name: Verify production package contents
         run: php bin/verify-production-package.php release/aculect-ai-companion
 
-      - name: Run Plugin Check
-        uses: wordpress/plugin-check-action@v1.1.5
+      - name: Setup Node for Plugin Check
+        uses: actions/setup-node@v4
         with:
-          build-dir: "./release/aculect-ai-companion"
-          slug: "aculect-ai-companion"
-          ignore-warnings: true
+          node-version: "24.15.0"
+
+      - name: Run Plugin Check
+        run: |
+          PLUGIN_DIR=$(realpath "./release/aculect-ai-companion")
+          PLUGIN_SLUG="aculect-ai-companion"
+
+          cat > .wp-env.json <<JSON
+          {
+            "core": null,
+            "port": 8880,
+            "testsEnvironment": false,
+            "plugins": [ "https://downloads.wordpress.org/plugin/plugin-check.zip" ],
+            "mappings": {
+              "wp-content/plugins/${PLUGIN_SLUG}": "${PLUGIN_DIR}"
+            }
+          }
+          JSON
+
+          npm -g --no-fund i @wordpress/env@11.6.0
+          wp-env start --update
+          wp-env run cli wp plugin activate "${PLUGIN_SLUG}"
+          wp-env run cli wp plugin check "${PLUGIN_SLUG}" --format=json --ignore-warnings --exclude-files=.wp-env.json --slug="${PLUGIN_SLUG}" --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
+          cat "${RUNNER_TEMP}/plugin-check-results.txt"
 
       - name: Deploy to WordPress.org
         uses: 10up/action-wordpress-plugin-deploy@2.3.0

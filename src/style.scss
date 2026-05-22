@@ -32,38 +32,54 @@
 .aculect-ai-companion-app-branding {
 	display: flex;
 	align-items: center;
+	flex: 1;
 	gap: 12px;
+	min-width: 0;
 }
 
 .aculect-ai-companion-app-heading {
 	display: grid;
-	gap: 6px;
-}
-
-.aculect-ai-companion-app-kicker,
-.aculect-ai-companion-app-tagline {
-	margin: 0;
-}
-
-.aculect-ai-companion-app-kicker {
-	color: var(--aculect-ai-companion-muted);
-	font-size: 13px;
-	font-weight: 800;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
+	gap: 8px;
+	min-width: 0;
 }
 
 .aculect-ai-companion-app-tagline {
 	color: var(--aculect-ai-companion-muted);
 	font-size: 15px;
 	line-height: 1.4;
+	margin: 0;
+}
+
+.aculect-ai-companion-app-product {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	color: #0f172a;
+	font-size: 15px;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.aculect-ai-companion-app-icon {
+	display: block;
+	width: 34px;
+	height: 34px;
+	flex: 0 0 auto;
+	border-radius: 8px;
+}
+
+.aculect-ai-companion-app-title-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
 }
 
 .aculect-ai-companion-app-title {
 	margin: 0;
 	font-size: 32px;
 	line-height: 1.1;
-	letter-spacing: -0.04em;
+	letter-spacing: 0;
 }
 
 .aculect-ai-companion-pill {

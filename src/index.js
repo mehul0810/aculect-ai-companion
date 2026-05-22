@@ -421,6 +421,7 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 
 function SettingsApp() {
 	const data = window.aculectAICompanionSettingsData || {};
+	const brandIconUrl = data.brandIconUrl || '';
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
@@ -571,19 +572,30 @@ function SettingsApp() {
 			<div className="aculect-ai-companion-app-header">
 				<div className="aculect-ai-companion-app-branding">
 					<div className="aculect-ai-companion-app-heading">
-						<p className="aculect-ai-companion-app-kicker">
-							Aculect AI Companion
-						</p>
-						<h1 className="aculect-ai-companion-app-title">
-							Connect your AI assistant
-						</h1>
+						<div className="aculect-ai-companion-app-product">
+							{ brandIconUrl && (
+								<img
+									className="aculect-ai-companion-app-icon"
+									src={ brandIconUrl }
+									alt=""
+									aria-hidden="true"
+								/>
+							) }
+							<span>AI Companion</span>
+						</div>
+						<div className="aculect-ai-companion-app-title-row">
+							<h1 className="aculect-ai-companion-app-title">
+								Connect your AI Agent
+							</h1>
+							<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
+								{ data.version || '0.2.0' }
+							</span>
+						</div>
 						<p className="aculect-ai-companion-app-tagline">
-							Connect WordPress with AI.
+							Automate your WordPress site by connecting it to
+							your AI Agent through secure MCP
 						</p>
 					</div>
-					<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
-						{ data.version || '0.2.0' }
-					</span>
 				</div>
 				<span className={ statusClass }>{ statusText }</span>
 			</div>

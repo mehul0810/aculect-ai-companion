@@ -94,6 +94,7 @@ final class SettingsPage {
 			'aculectAICompanionSettingsData',
 			array(
 				'version'          => ACULECT_AI_COMPANION_VERSION,
+				'brandIconUrl'     => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
 				'isConnected'      => ( new AccessTokenRepository() )->has_active_tokens(),
 				'accessPaused'     => AccessLockdown::is_paused(),
 				'mcpUrl'           => Helpers::mcp_resource(),

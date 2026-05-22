@@ -442,6 +442,23 @@
 	gap: 10px;
 }
 
+.aculect-ai-companion-confirmation-settings {
+	padding: 16px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 12px;
+	background: var(--aculect-ai-companion-soft);
+}
+
+.aculect-ai-companion-confirmation-groups {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 18px;
+}
+
+.aculect-ai-companion-confirmation-groups .components-base-control {
+	margin-bottom: 0;
+}
+
 .aculect-ai-companion-ability-groups {
 	display: grid;
 	gap: 22px;

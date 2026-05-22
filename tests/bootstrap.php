@@ -24,6 +24,7 @@ if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
 }
 
 $GLOBALS['aculect_ai_companion_test_options'] = array();
+$GLOBALS['aculect_ai_companion_test_transients'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -82,6 +83,61 @@ if ( ! function_exists( 'delete_option' ) ) {
 	 */
 	function delete_option( string $option ): bool {
 		unset( $GLOBALS['aculect_ai_companion_test_options'][ $option ] );
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+	/**
+	 * Store a test transient value.
+	 *
+	 * @param string $transient  Transient name.
+	 * @param mixed  $value      Transient value.
+	 * @param int    $expiration Expiration in seconds.
+	 * @return bool
+	 */
+	function set_transient( string $transient, mixed $value, int $expiration = 0 ): bool {
+		$GLOBALS['aculect_ai_companion_test_transients'][ $transient ] = array(
+			'value'      => $value,
+			'expires_at' => $expiration > 0 ? time() + $expiration : 0,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'get_transient' ) ) {
+	/**
+	 * Return a test transient value.
+	 *
+	 * @param string $transient Transient name.
+	 * @return mixed
+	 */
+	function get_transient( string $transient ): mixed {
+		$item = $GLOBALS['aculect_ai_companion_test_transients'][ $transient ] ?? null;
+		if ( ! is_array( $item ) ) {
+			return false;
+		}
+
+		if ( ! empty( $item['expires_at'] ) && (int) $item['expires_at'] < time() ) {
+			unset( $GLOBALS['aculect_ai_companion_test_transients'][ $transient ] );
+			return false;
+		}
+
+		return $item['value'];
+	}
+}
+
+if ( ! function_exists( 'delete_transient' ) ) {
+	/**
+	 * Delete a test transient.
+	 *
+	 * @param string $transient Transient name.
+	 * @return bool
+	 */
+	function delete_transient( string $transient ): bool {
+		unset( $GLOBALS['aculect_ai_companion_test_transients'][ $transient ] );
 
 		return true;
 	}
@@ -151,6 +207,17 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 	 */
 	function sanitize_text_field( string $str ): string {
 		return trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( $str ) ) ?? '' );
+	}
+}
+
+if ( ! function_exists( 'sanitize_file_name' ) ) {
+	/**
+	 * Sanitize a filename for tests.
+	 *
+	 * @param string $filename Raw filename.
+	 */
+	function sanitize_file_name( string $filename ): string {
+		return trim( preg_replace( '/[^A-Za-z0-9._-]+/', '-', $filename ) ?? '', '.-' );
 	}
 }
 

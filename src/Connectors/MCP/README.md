@@ -35,6 +35,26 @@ comments, media library listing/upload, safe site settings, site information,
 and plugin/theme inventory. New tool groups should stay deterministic,
 paginated where applicable, and capability-checked at execution time.
 
+## Safety Controls
+
+Write-capable tools accept `dry_run: true` to validate the request and return a
+deterministic preview without changing WordPress data. Previews include the
+target object, proposed changes, warnings, risk level, and whether confirmation
+is required.
+
+High-risk actions such as publishing, trashing, spam changes, and running
+generic WordPress abilities require a short-lived `confirmation_token` before
+execution. Tokens are bound to the connected user, OAuth client, provider, tool,
+and exact argument payload, and are consumed after one successful use.
+
+Admins can configure additional ability groups that require confirmation for
+every write action. High-risk actions still require confirmation even when no
+group is selected.
+
+Delete-style behavior should prefer reversible WordPress states. Built-in
+content trashing uses the WordPress trash instead of permanent deletion, and
+comment trash responses include recovery guidance.
+
 Assistant-triggered media sideloads are bounded before WordPress imports the
 file. Aculect AI Companion checks public URL headers when available, caps the
 streamed download size, and validates the downloaded file type against the

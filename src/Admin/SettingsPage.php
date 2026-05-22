@@ -8,6 +8,7 @@ use Aculect\AICompanion\Activity\ActivityRepository;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
@@ -93,20 +94,22 @@ final class SettingsPage {
 			self::ASSET_HANDLE,
 			'aculectAICompanionSettingsData',
 			array(
-				'version'          => ACULECT_AI_COMPANION_VERSION,
-				'brandIconUrl'     => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
-				'isConnected'      => ( new AccessTokenRepository() )->has_active_tokens(),
-				'accessPaused'     => AccessLockdown::is_paused(),
-				'mcpUrl'           => Helpers::mcp_resource(),
-				'providers'        => $this->providers(),
-				'sessions'         => ( new AccessTokenRepository() )->list_active_sessions(),
-				'abilities'        => ( new AbilitiesRegistry() )->public_definitions(),
-				'enabledAbilities' => ( new AbilitiesRegistry() )->enabled_ids(),
-				'status'           => $this->status(),
-				'activity'         => $this->activity_payload(),
-				'diagnostics'      => $this->diagnostics(),
-				'connectionHealth' => ( new ConnectionHealth() )->last_result(),
-				'actions'          => array(
+				'version'                  => ACULECT_AI_COMPANION_VERSION,
+				'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
+				'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
+				'accessPaused'             => AccessLockdown::is_paused(),
+				'mcpUrl'                   => Helpers::mcp_resource(),
+				'providers'                => $this->providers(),
+				'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
+				'abilities'                => ( new AbilitiesRegistry() )->public_definitions(),
+				'enabledAbilities'         => ( new AbilitiesRegistry() )->enabled_ids(),
+				'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
+				'confirmationGroupOptions' => ( new ToolSafety() )->available_confirmation_groups(),
+				'status'                   => $this->status(),
+				'activity'                 => $this->activity_payload(),
+				'diagnostics'              => $this->diagnostics(),
+				'connectionHealth'         => ( new ConnectionHealth() )->last_result(),
+				'actions'                  => array(
 					'adminPostUrl'         => admin_url( 'admin-post.php' ),
 					'saveAbilitiesAction'  => 'aculect_ai_companion_save_abilities',
 					'saveAdvancedAction'   => 'aculect_ai_companion_save_advanced',
@@ -123,7 +126,7 @@ final class SettingsPage {
 					'revokeSessionNonce'   => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
 					'revokeAllNonce'       => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 				),
-				'changelog'        => $this->load_changelog(),
+				'changelog'                => $this->load_changelog(),
 			)
 		);
 	}
@@ -140,6 +143,14 @@ final class SettingsPage {
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		( new AbilitiesRegistry() )->save_enabled_ids( $enabled );
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$confirmation_groups = isset( $_POST['confirmation_required_groups'] )
+			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['confirmation_required_groups'] ) )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
 
 		wp_safe_redirect(
 			add_query_arg(

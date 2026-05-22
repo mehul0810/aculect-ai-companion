@@ -237,6 +237,28 @@ final class ContentController {
 	 * @return array<string, mixed>
 	 */
 	public function run_wp_ability( array $data ): array {
-		return ( new WordPressAbilitiesBridge() )->run( $data );
+		$bridge = new WordPressAbilitiesBridge();
+		if ( ( new ToolSafety() )->is_dry_run( $data ) ) {
+			$info = $bridge->get_info( $data );
+			if ( isset( $info['error'] ) ) {
+				return $info;
+			}
+
+			return array(
+				'dry_run'               => true,
+				'status'                => 'preview',
+				'action'                => 'wp_abilities.run',
+				'risk_level'            => 'system',
+				'target'                => array(
+					'type' => 'wp_ability',
+					'id'   => sanitize_text_field( (string) ( $data['id'] ?? $data['name'] ?? '' ) ),
+				),
+				'changes'               => array(),
+				'warnings'              => array( 'This WordPress ability is provided by WordPress or another plugin. Aculect can validate the ability metadata but cannot preview the callback result before execution.' ),
+				'confirmation_required' => true,
+			);
+		}
+
+		return $bridge->run( $data );
 	}
 }

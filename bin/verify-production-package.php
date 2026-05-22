@@ -40,6 +40,7 @@ $forbidden_paths = array(
 	'.github',
 	'.gitignore',
 	'.nvmrc',
+	'.wordpress-org',
 	'AGENTS.md',
 	'CONTRIBUTING.md',
 	'bin',

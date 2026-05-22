@@ -187,6 +187,19 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.3.0 =
+
+* Added an AI Activity tab for reviewing write actions requested by connected AI assistants.
+* Added a Connections control to temporarily pause or resume AI access without disconnecting assistants.
+* Added connection diagnostics that check endpoint, OAuth, and MCP readiness from the settings screen.
+* Refreshed the settings screen header with Aculect branding and clearer AI agent connection messaging.
+* Added WordPress.org plugin icon, banner, and branded screenshots for the plugin listing.
+* Improved action permission controls so AI tools only expose and run enabled, authorized abilities.
+* Added OAuth storage maintenance to clean up expired connection data.
+* Hardened media uploads from public URLs with stricter sideload safeguards.
+* Expanded connector flow, activity log, access control, media, OAuth, and diagnostics test coverage.
+* Fixed the Active Connections screen so the active access notice does not appear when no assistants are connected.
+
 = 0.2.1 =
 
 * Fixed diagnostics logging when the logs table is missing but the saved diagnostics database version is current.
@@ -215,6 +228,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.3.0 =
+
+Adds AI activity visibility, access pause controls, connection diagnostics, stronger safeguards, and refreshed onboarding screens.
 
 = 0.2.1 =
 

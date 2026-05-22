@@ -159,6 +159,11 @@ final class AbilitiesService {
 			$payload['post_author'] = $author_id;
 		}
 
+		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post_type );
+		if ( isset( $taxonomy_assignments['error'] ) ) {
+			return $taxonomy_assignments['error'];
+		}
+
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'content.create_item',
@@ -169,6 +174,7 @@ final class AbilitiesService {
 				),
 				array_merge(
 					$this->post_payload_changes( array(), $payload ),
+					$this->taxonomy_assignment_changes( $taxonomy_assignments ),
 					null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
 				)
 			);
@@ -182,6 +188,11 @@ final class AbilitiesService {
 
 		if ( null !== $featured_media && false === set_post_thumbnail( (int) $post_id, $featured_media ) ) {
 			return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
+		}
+
+		$assignment_result = $this->apply_taxonomy_assignments( (int) $post_id, $taxonomy_assignments );
+		if ( isset( $assignment_result['error'] ) ) {
+			return $assignment_result['error'];
 		}
 
 		return $this->get_item( (int) $post_id );
@@ -281,6 +292,11 @@ final class AbilitiesService {
 			$update['post_status'] = $status;
 		}
 
+		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post->post_type );
+		if ( isset( $taxonomy_assignments['error'] ) ) {
+			return $taxonomy_assignments['error'];
+		}
+
 		$featured_media_change = $this->featured_media_change( $data, $post->post_type );
 		if ( isset( $featured_media_change['error'] ) ) {
 			return $featured_media_change;
@@ -306,6 +322,7 @@ final class AbilitiesService {
 						),
 						$update
 					),
+					$this->taxonomy_assignment_changes( $taxonomy_assignments, $post_id ),
 					! empty( $featured_media_change )
 						? array( $this->change( 'featured_media', get_post_thumbnail_id( $post_id ), $featured_media_change['value'] ) )
 						: array()
@@ -316,6 +333,11 @@ final class AbilitiesService {
 		$result = wp_update_post( $update, true );
 		if ( is_wp_error( $result ) ) {
 			return $this->error( $result->get_error_code(), $result->get_error_message() );
+		}
+
+		$assignment_result = $this->apply_taxonomy_assignments( $post_id, $taxonomy_assignments );
+		if ( isset( $assignment_result['error'] ) ) {
+			return $assignment_result['error'];
 		}
 
 		if ( ! empty( $featured_media_change ) ) {
@@ -509,6 +531,101 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Read one media attachment.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array<string, mixed>
+	 */
+	public function get_media( int $attachment_id ): array {
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type ) {
+			return $this->error( 'not_found', 'Media item not found.' );
+		}
+
+		if ( ! current_user_can( 'read_post', $attachment_id ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to read this media item.' );
+		}
+
+		return $this->map_post( $attachment );
+	}
+
+	/**
+	 * Update media metadata and attachment relationship.
+	 *
+	 * @param array<string, mixed> $data Media fields.
+	 * @return array<string, mixed>
+	 */
+	public function update_media( array $data ): array {
+		$attachment_id = absint( $data['id'] ?? 0 );
+		$attachment    = get_post( $attachment_id );
+		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type ) {
+			return $this->error( 'not_found', 'Media item not found.' );
+		}
+
+		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to update this media item.' );
+		}
+
+		$update = array( 'ID' => $attachment_id );
+		if ( array_key_exists( 'title', $data ) ) {
+			$update['post_title'] = sanitize_text_field( (string) $data['title'] );
+		}
+		if ( array_key_exists( 'caption', $data ) ) {
+			$update['post_excerpt'] = wp_kses_post( (string) $data['caption'] );
+		}
+		if ( array_key_exists( 'description', $data ) ) {
+			$update['post_content'] = wp_kses_post( (string) $data['description'] );
+		}
+		if ( array_key_exists( 'slug', $data ) ) {
+			$update['post_name'] = sanitize_title( (string) $data['slug'] );
+		}
+		if ( array_key_exists( 'post_id', $data ) ) {
+			$post_parent = absint( $data['post_id'] );
+			if ( $post_parent > 0 ) {
+				$parent = get_post( $post_parent );
+				if ( ! $parent instanceof \WP_Post || ! current_user_can( 'edit_post', $post_parent ) ) {
+					return $this->error( 'invalid_parent', 'Attachment parent post was not found or cannot be edited.' );
+				}
+			}
+
+			$update['post_parent'] = $post_parent;
+		}
+
+		$alt_text = null;
+		if ( array_key_exists( 'alt_text', $data ) ) {
+			$alt_text = sanitize_text_field( (string) $data['alt_text'] );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'media.update_item',
+				$data,
+				array(
+					'type' => 'attachment',
+					'id'   => $attachment_id,
+				),
+				array_merge(
+					$this->media_update_changes( $attachment, $update ),
+					null !== $alt_text ? array( $this->change( 'alt_text', get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ), $alt_text ) ) : array()
+				)
+			);
+		}
+
+		if ( count( $update ) > 1 ) {
+			$result = wp_update_post( $update, true );
+			if ( is_wp_error( $result ) ) {
+				return $this->error( $result->get_error_code(), $result->get_error_message() );
+			}
+		}
+
+		if ( null !== $alt_text ) {
+			update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt_text );
+		}
+
+		return $this->get_media( $attachment_id );
+	}
+
+	/**
 	 * Sideload media from a public HTTP(S) URL.
 	 *
 	 * @param array<string, mixed> $data Upload fields.
@@ -627,8 +744,30 @@ final class AbilitiesService {
 			$query['post_id'] = absint( $args['post_id'] );
 		}
 
+		$search = '';
+		if ( ! empty( $args['author'] ) ) {
+			$search = sanitize_text_field( (string) $args['author'] );
+		}
+
+		if ( ! empty( $args['author_user_id'] ) ) {
+			$query['user_id'] = absint( $args['author_user_id'] );
+		}
+
+		if ( ! empty( $args['author_email'] ) ) {
+			$query['author_email'] = sanitize_email( (string) $args['author_email'] );
+		}
+
+		$date_query = $this->comment_date_query( $args );
+		if ( array() !== $date_query ) {
+			$query['date_query'] = $date_query;
+		}
+
 		if ( ! empty( $args['search'] ) ) {
-			$query['search'] = sanitize_text_field( (string) $args['search'] );
+			$search = sanitize_text_field( (string) $args['search'] );
+		}
+
+		if ( '' !== $search ) {
+			$query['search'] = $search;
 		}
 
 		$comments = get_comments( $query );
@@ -679,9 +818,22 @@ final class AbilitiesService {
 	public function create_comment( array $data ): array {
 		$post_id = absint( $data['post_id'] ?? 0 );
 		$post    = get_post( $post_id );
+		$parent  = null;
 
 		if ( ! $post instanceof \WP_Post || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to comment on this post.' );
+		}
+
+		if ( ! empty( $data['parent_id'] ) ) {
+			$parent_id = absint( $data['parent_id'] );
+			$parent    = get_comment( $parent_id );
+			if ( ! $parent instanceof \WP_Comment || (int) $parent->comment_post_ID !== $post_id ) {
+				return $this->error( 'invalid_parent', 'Parent comment was not found on the selected post.' );
+			}
+
+			if ( ! $this->can_read_comment( $parent ) ) {
+				return $this->error( 'forbidden', 'You do not have permission to reply to this comment.' );
+			}
 		}
 
 		$content = wp_kses_post( (string) ( $data['content'] ?? '' ) );
@@ -710,6 +862,7 @@ final class AbilitiesService {
 							$this->change( 'post_id', null, $post_id ),
 							$this->change( 'content', null, $content ),
 							$this->change( 'status', null, $approved ),
+							$this->change( 'parent_id', null, $parent instanceof \WP_Comment ? (int) $parent->comment_ID : 0 ),
 						)
 					)
 				)
@@ -724,6 +877,7 @@ final class AbilitiesService {
 				'user_id'              => get_current_user_id(),
 				'comment_author'       => sanitize_text_field( $author_name ),
 				'comment_author_email' => sanitize_email( $user->user_email ),
+				'comment_parent'       => $parent instanceof \WP_Comment ? (int) $parent->comment_ID : 0,
 			)
 		);
 
@@ -815,6 +969,64 @@ final class AbilitiesService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Bulk update comment moderation status.
+	 *
+	 * @param array<string, mixed> $data Comment fields.
+	 * @return array<string, mixed>
+	 */
+	public function bulk_update_comments( array $data ): array {
+		if ( ! current_user_can( 'moderate_comments' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to bulk moderate comments.' );
+		}
+
+		$comment_ids = $this->comment_ids( $data['ids'] ?? array() );
+		if ( array() === $comment_ids ) {
+			return $this->error( 'invalid_comments', 'At least one comment ID is required.' );
+		}
+
+		$status  = $this->comment_status( (string) ( $data['status'] ?? '' ), false );
+		$changes = array();
+		foreach ( $comment_ids as $comment_id ) {
+			$comment = get_comment( $comment_id );
+			if ( ! $comment instanceof \WP_Comment ) {
+				return $this->error( 'not_found', 'One or more comments could not be found.' );
+			}
+
+			$changes[] = $this->change( 'comments.' . $comment_id . '.status', wp_get_comment_status( $comment ), $status );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'comments.bulk_update',
+				$data,
+				array(
+					'type' => 'comment',
+					'id'   => null,
+				),
+				$changes,
+				array( 'Bulk moderation requires confirmation before changes are applied.' )
+			);
+		}
+
+		$items = array();
+		foreach ( $comment_ids as $comment_id ) {
+			if ( ! wp_set_comment_status( $comment_id, $status ) ) {
+				return $this->error( 'comment_status_failed', 'One or more comments could not be updated.' );
+			}
+
+			$comment = get_comment( $comment_id );
+			if ( $comment instanceof \WP_Comment ) {
+				$items[] = $this->map_comment( $comment );
+			}
+		}
+
+		return array(
+			'items' => $items,
+			'total' => count( $items ),
+		);
 	}
 
 	/**
@@ -1203,6 +1415,143 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Resolve requested taxonomy assignments for a post type.
+	 *
+	 * @param array<string, mixed> $data      Tool arguments.
+	 * @param string               $post_type Post type slug.
+	 * @return array<string, list<int>>|array{error: array<string, mixed>}
+	 */
+	private function taxonomy_assignments( array $data, string $post_type ): array {
+		if ( ! array_key_exists( 'taxonomies', $data ) ) {
+			return array();
+		}
+
+		if ( ! is_array( $data['taxonomies'] ) ) {
+			return array( 'error' => $this->error( 'invalid_taxonomies', 'Taxonomies must be provided as an object keyed by taxonomy slug.' ) );
+		}
+
+		$assignments = array();
+		foreach ( $data['taxonomies'] as $taxonomy_name => $terms ) {
+			$taxonomy_name = sanitize_key( (string) $taxonomy_name );
+			$taxonomy      = get_taxonomy( $taxonomy_name );
+
+			if ( ! $this->is_supported_taxonomy( $taxonomy ) ) {
+				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' ) );
+			}
+
+			if ( ! is_object_in_taxonomy( $post_type, $taxonomy_name ) ) {
+				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not assigned to this post type.' ) );
+			}
+
+			if ( ! current_user_can( $taxonomy->cap->assign_terms ) ) {
+				return array( 'error' => $this->error( 'forbidden', 'You do not have permission to assign terms in this taxonomy.' ) );
+			}
+
+			$resolved = $this->resolve_taxonomy_terms( $taxonomy_name, $terms );
+			if ( isset( $resolved['error'] ) ) {
+				return $resolved;
+			}
+
+			$assignments[ $taxonomy_name ] = $resolved;
+		}
+
+		ksort( $assignments );
+
+		return $assignments;
+	}
+
+	/**
+	 * Resolve existing term IDs or slugs for a taxonomy.
+	 *
+	 * @param string $taxonomy_name Taxonomy slug.
+	 * @param mixed  $terms         Requested term IDs or slugs.
+	 * @return list<int>|array{error: array<string, mixed>}
+	 */
+	private function resolve_taxonomy_terms( string $taxonomy_name, mixed $terms ): array {
+		if ( is_array( $terms ) ) {
+			$candidates = array_values( $terms );
+		} elseif ( is_int( $terms ) || is_string( $terms ) ) {
+			$candidates = array( $terms );
+		} else {
+			return array( 'error' => $this->error( 'invalid_terms', 'Taxonomy terms must be existing term IDs or slugs.' ) );
+		}
+
+		$term_ids = array();
+		foreach ( $candidates as $candidate ) {
+			$term = null;
+			if ( is_int( $candidate ) ) {
+				$term = get_term( absint( $candidate ), $taxonomy_name );
+			} elseif ( is_string( $candidate ) ) {
+				$slug = sanitize_title( $candidate );
+				$term = '' === $slug ? null : get_term_by( 'slug', $slug, $taxonomy_name );
+			} else {
+				return array( 'error' => $this->error( 'invalid_terms', 'Taxonomy terms must be existing term IDs or slugs.' ) );
+			}
+
+			if ( ! $term instanceof \WP_Term || $taxonomy_name !== $term->taxonomy ) {
+				return array( 'error' => $this->error( 'term_not_found', 'One or more requested taxonomy terms could not be found.' ) );
+			}
+
+			$term_ids[] = (int) $term->term_id;
+		}
+
+		$term_ids = array_values( array_unique( $term_ids ) );
+		sort( $term_ids );
+
+		return $term_ids;
+	}
+
+	/**
+	 * Apply resolved taxonomy assignments to a content item.
+	 *
+	 * @param int                      $post_id     Post ID.
+	 * @param array<string, list<int>> $assignments Resolved assignments.
+	 * @return array<string, mixed>
+	 */
+	private function apply_taxonomy_assignments( int $post_id, array $assignments ): array {
+		foreach ( $assignments as $taxonomy_name => $term_ids ) {
+			$result = wp_set_object_terms( $post_id, $term_ids, $taxonomy_name, false );
+			if ( is_wp_error( $result ) ) {
+				return array( 'error' => $this->error( $result->get_error_code(), $result->get_error_message() ) );
+			}
+		}
+
+		return array( 'success' => true );
+	}
+
+	/**
+	 * Convert taxonomy assignments into preview changes.
+	 *
+	 * @param array<string, list<int>> $assignments Resolved assignments.
+	 * @param int                      $post_id     Existing post ID, or 0 for create.
+	 * @return list<array<string, mixed>>
+	 */
+	private function taxonomy_assignment_changes( array $assignments, int $post_id = 0 ): array {
+		$changes = array();
+
+		foreach ( $assignments as $taxonomy_name => $term_ids ) {
+			$current = array();
+			if ( $post_id > 0 ) {
+				$current_terms = wp_get_object_terms(
+					$post_id,
+					$taxonomy_name,
+					array(
+						'fields'  => 'ids',
+						'orderby' => 'term_id',
+						'order'   => 'ASC',
+					)
+				);
+				$current       = is_wp_error( $current_terms ) ? array() : array_values( array_map( 'intval', $current_terms ) );
+				sort( $current );
+			}
+
+			$changes[] = $this->change( 'taxonomies.' . $taxonomy_name, $current, $term_ids );
+		}
+
+		return array_values( array_filter( $changes ) );
+	}
+
+	/**
 	 * Check whether the current user can read a post type.
 	 *
 	 * @param \WP_Post_Type $post_type Post type object.
@@ -1308,10 +1657,58 @@ final class AbilitiesService {
 	 * @return string
 	 */
 	private function comment_status( string $status, bool $allow_all ): string {
-		$status  = sanitize_key( $status );
+		$status = sanitize_key( $status );
+		$status = match ( $status ) {
+			'pending', 'unapproved', 'unapprove' => 'hold',
+			'approved' => 'approve',
+			default => $status,
+		};
 		$allowed = $allow_all ? array( 'all', 'hold', 'approve', 'spam', 'trash' ) : array( 'hold', 'approve', 'spam', 'trash' );
 
 		return in_array( $status, $allowed, true ) ? $status : ( $allow_all ? 'all' : 'hold' );
+	}
+
+	/**
+	 * Normalize comment date filters for WP_Comment_Query.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return list<array<string, mixed>>
+	 */
+	private function comment_date_query( array $args ): array {
+		$date_query = array();
+
+		if ( ! empty( $args['date_after'] ) ) {
+			$date_query['after'] = sanitize_text_field( (string) $args['date_after'] );
+		}
+
+		if ( ! empty( $args['date_before'] ) ) {
+			$date_query['before'] = sanitize_text_field( (string) $args['date_before'] );
+		}
+
+		if ( array() === $date_query ) {
+			return array();
+		}
+
+		$date_query['inclusive'] = true;
+
+		return array( $date_query );
+	}
+
+	/**
+	 * Normalize a bounded list of comment IDs for bulk operations.
+	 *
+	 * @param mixed $ids Candidate comment IDs.
+	 * @return list<int>
+	 */
+	private function comment_ids( mixed $ids ): array {
+		if ( ! is_array( $ids ) ) {
+			return array();
+		}
+
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+		sort( $ids );
+
+		return array_slice( $ids, 0, 100 );
 	}
 
 	/**
@@ -1386,6 +1783,7 @@ final class AbilitiesService {
 			'date_gmt'            => $post->post_date_gmt,
 			'modified_gmt'        => $post->post_modified_gmt,
 			'link'                => get_permalink( $post ),
+			'terms'               => $this->post_terms( $post ),
 		);
 
 		if ( 'attachment' === $post->post_type ) {
@@ -1395,6 +1793,50 @@ final class AbilitiesService {
 		}
 
 		return $item;
+	}
+
+	/**
+	 * Return assigned terms grouped by supported taxonomy.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array<string, list<array<string, mixed>>>
+	 */
+	private function post_terms( \WP_Post $post ): array {
+		$taxonomies = get_object_taxonomies( $post->post_type, 'objects' );
+		$taxonomies = array_filter( $taxonomies, array( $this, 'is_supported_taxonomy' ) );
+		if ( array() === $taxonomies ) {
+			return array();
+		}
+
+		$taxonomy_names = array_values(
+			array_map(
+				static fn( \WP_Taxonomy $taxonomy ): string => $taxonomy->name,
+				$taxonomies
+			)
+		);
+		sort( $taxonomy_names );
+
+		$terms = wp_get_object_terms(
+			$post->ID,
+			$taxonomy_names,
+			array(
+				'orderby' => 'term_id',
+				'order'   => 'ASC',
+			)
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			$terms = array();
+		}
+
+		$grouped = array_fill_keys( $taxonomy_names, array() );
+		foreach ( $terms as $term ) {
+			if ( $term instanceof \WP_Term && isset( $grouped[ $term->taxonomy ] ) ) {
+				$grouped[ $term->taxonomy ][] = $this->map_term( $term );
+			}
+		}
+
+		return $grouped;
 	}
 
 	/**
@@ -1581,6 +2023,39 @@ final class AbilitiesService {
 			if ( array_key_exists( $argument, $data ) ) {
 				$value     = 'post_id' === $argument ? absint( $data[ $argument ] ) : sanitize_text_field( (string) $data[ $argument ] );
 				$changes[] = $this->change( $field, null, $value );
+			}
+		}
+
+		return array_values( array_filter( $changes ) );
+	}
+
+	/**
+	 * Convert media update payload into preview changes.
+	 *
+	 * @param \WP_Post             $attachment Existing attachment.
+	 * @param array<string, mixed> $payload    Proposed update payload.
+	 * @return list<array<string, mixed>>
+	 */
+	private function media_update_changes( \WP_Post $attachment, array $payload ): array {
+		$from = array(
+			'post_title'   => $attachment->post_title,
+			'post_excerpt' => $attachment->post_excerpt,
+			'post_content' => $attachment->post_content,
+			'post_name'    => $attachment->post_name,
+			'post_parent'  => (int) $attachment->post_parent,
+		);
+		$map  = array(
+			'post_title'   => 'title',
+			'post_excerpt' => 'caption',
+			'post_content' => 'description',
+			'post_name'    => 'slug',
+			'post_parent'  => 'post_id',
+		);
+
+		$changes = array();
+		foreach ( $map as $payload_key => $field ) {
+			if ( array_key_exists( $payload_key, $payload ) ) {
+				$changes[] = $this->change( $field, $from[ $payload_key ], $payload[ $payload_key ] );
 			}
 		}
 

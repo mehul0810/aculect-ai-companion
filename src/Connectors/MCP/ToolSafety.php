@@ -99,7 +99,12 @@ final class ToolSafety {
 	 * @param array<mixed> $args Tool arguments.
 	 */
 	public function risk_level( string $tool, array $args ): string {
-		$status = isset( $args['status'] ) && is_scalar( $args['status'] ) ? sanitize_key( (string) $args['status'] ) : '';
+		$status         = isset( $args['status'] ) && is_scalar( $args['status'] ) ? sanitize_key( (string) $args['status'] ) : '';
+		$comment_status = match ( $status ) {
+			'pending', 'unapproved', 'unapprove' => 'hold',
+			'approved' => 'approve',
+			default => $status,
+		};
 
 		return match ( $tool ) {
 			'content.create_item' => match ( $status ) {
@@ -112,13 +117,19 @@ final class ToolSafety {
 				'publish' => 'publish',
 				default => 'update',
 			},
-			'comments.create_item' => 'approve' === $status ? 'publish' : 'draft',
-			'comments.update_item' => match ( $status ) {
+			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
+			'comments.update_item' => match ( $comment_status ) {
+				'trash', 'spam' => 'destructive',
+				'approve' => 'publish',
+				default => 'update',
+			},
+			'comments.bulk_update' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
 				'approve' => 'publish',
 				default => 'update',
 			},
 			'wp_abilities.run' => 'system',
+			'media.update_item',
 			'media.upload_item',
 			'taxonomy.create_term',
 			'taxonomy.update_term' => 'update',
@@ -135,6 +146,10 @@ final class ToolSafety {
 	public function requires_confirmation( string $tool, array $args ): bool {
 		$risk = $this->risk_level( $tool, $args );
 		if ( in_array( $risk, array( 'publish', 'destructive', 'system' ), true ) ) {
+			return true;
+		}
+
+		if ( 'comments.bulk_update' === $tool ) {
 			return true;
 		}
 

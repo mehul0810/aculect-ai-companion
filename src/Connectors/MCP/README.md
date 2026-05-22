@@ -41,10 +41,22 @@ the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`
 preserves WordPress' default author behavior.
 
+`content_create_item` and `content_update_item` accept a `taxonomies` object
+that maps taxonomy slugs to existing term IDs or term slugs, for example
+`{ "category": [ 12, "release-notes" ], "post_tag": [ "mcp" ] }`. The
+implementation validates that each taxonomy is exposed by WordPress, assigned to
+the target post type, and assignable by the connected user. It only assigns
+existing terms; term creation remains handled by `taxonomy_create_term`.
+
 Content create and update tools can assign an existing image attachment as the
 featured image through `featured_media`. Use media upload/list tools first when
 the image is not already in the media library. Clearing a featured image requires
 the explicit `clear_featured_media` flag on content update.
+
+Media tools include `media_get_item` and `media_update_item` for reading and
+updating attachment title, alt text, caption, description, slug, and attachment
+parent. Updating `post_id` changes the attachment parent relationship only after
+the connected user can edit both the attachment and the target parent post.
 
 ## Safety Controls
 
@@ -57,6 +69,11 @@ High-risk actions such as publishing, trashing, spam changes, and running
 generic WordPress abilities require a short-lived `confirmation_token` before
 execution. Tokens are bound to the connected user, OAuth client, provider, tool,
 and exact argument payload, and are consumed after one successful use.
+
+Comment workflows support review filters for moderation status, post, author,
+author email, author user ID, search, and date ranges. Replies are created with
+`comments_create_item` by passing `parent_id`, and `comments_bulk_update`
+requires confirmation for every bulk moderation run.
 
 Admins can configure additional ability groups that require confirmation for
 every write action. High-risk actions still require confirmation even when no

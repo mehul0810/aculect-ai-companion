@@ -48,6 +48,7 @@ jobs:
         with:
           build-dir: "./release/aculect-ai-companion"
           slug: "aculect-ai-companion"
+          wp-version: "6.9"
           ignore-warnings: true
 
       - name: Deploy to WordPress.org

@@ -364,13 +364,17 @@ final class McpController {
 			'content.create_item' => array(
 				'type'       => 'object',
 				'properties' => array(
-					'post_type' => array( 'type' => 'string' ),
-					'title'     => array( 'type' => 'string' ),
-					'content'   => array( 'type' => 'string' ),
-					'excerpt'   => array( 'type' => 'string' ),
-					'slug'      => array( 'type' => 'string' ),
-					'status'    => array( 'type' => 'string' ),
-					'author'    => array(
+					'post_type'      => array( 'type' => 'string' ),
+					'title'          => array( 'type' => 'string' ),
+					'content'        => array( 'type' => 'string' ),
+					'excerpt'        => array( 'type' => 'string' ),
+					'slug'           => array( 'type' => 'string' ),
+					'status'         => array( 'type' => 'string' ),
+					'featured_media' => array(
+						'type'        => 'integer',
+						'description' => 'Existing image attachment ID to assign as the featured image.',
+					),
+					'author'         => array(
 						'type'        => 'integer',
 						'description' => 'Existing WordPress user ID to assign as author.',
 					),
@@ -380,13 +384,21 @@ final class McpController {
 				'type'       => 'object',
 				'required'   => array( 'id' ),
 				'properties' => array(
-					'id'      => array( 'type' => 'integer' ),
-					'title'   => array( 'type' => 'string' ),
-					'content' => array( 'type' => 'string' ),
-					'excerpt' => array( 'type' => 'string' ),
-					'slug'    => array( 'type' => 'string' ),
-					'status'  => array( 'type' => 'string' ),
-					'author'  => array(
+					'id'                   => array( 'type' => 'integer' ),
+					'title'                => array( 'type' => 'string' ),
+					'content'              => array( 'type' => 'string' ),
+					'excerpt'              => array( 'type' => 'string' ),
+					'slug'                 => array( 'type' => 'string' ),
+					'status'               => array( 'type' => 'string' ),
+					'featured_media'       => array(
+						'type'        => 'integer',
+						'description' => 'Existing image attachment ID to assign as the featured image.',
+					),
+					'clear_featured_media' => array(
+						'type'        => 'boolean',
+						'description' => 'Set true to intentionally remove the current featured image.',
+					),
+					'author'               => array(
 						'type'        => 'integer',
 						'description' => 'Existing WordPress user ID to assign as author.',
 					),

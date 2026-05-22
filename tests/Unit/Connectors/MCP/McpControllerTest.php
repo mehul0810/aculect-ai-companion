@@ -64,6 +64,13 @@ final class McpControllerTest extends TestCase {
 		self::assertSame(array('url'), $media_schema['required']);
 		self::assertArrayHasKey('alt_text', $media_schema['properties']);
 
+		$create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_create_item' ) );
+		self::assertArrayHasKey('featured_media', $create_schema['properties']);
+
+		$update_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
+		self::assertArrayHasKey('featured_media', $update_schema['properties']);
+		self::assertArrayHasKey('clear_featured_media', $update_schema['properties']);
+
 		$comments_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_update_item' ) );
 		self::assertSame(array('id'), $comments_schema['required']);
 		self::assertArrayHasKey('status', $comments_schema['properties']);

@@ -125,6 +125,18 @@ final class AbilitiesService {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
+		$featured_media = null;
+		if ( array_key_exists( 'featured_media', $data ) ) {
+			if ( ! post_type_supports( $post_type, 'thumbnail' ) ) {
+				return $this->error( 'unsupported_featured_media', 'This post type does not support featured images.' );
+			}
+
+			$featured_media = $this->validated_featured_media_id( $data['featured_media'] );
+			if ( is_array( $featured_media ) ) {
+				return $featured_media;
+			}
+		}
+
 		$payload = array_filter(
 			array(
 				'post_type'    => $post_type,
@@ -155,7 +167,10 @@ final class AbilitiesService {
 					'type' => $post_type,
 					'id'   => null,
 				),
-				$this->post_payload_changes( array(), $payload )
+				array_merge(
+					$this->post_payload_changes( array(), $payload ),
+					null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
+				)
 			);
 		}
 
@@ -163,6 +178,10 @@ final class AbilitiesService {
 
 		if ( is_wp_error( $post_id ) ) {
 			return $this->error( $post_id->get_error_code(), $post_id->get_error_message() );
+		}
+
+		if ( null !== $featured_media && false === set_post_thumbnail( (int) $post_id, $featured_media ) ) {
+			return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
 		}
 
 		return $this->get_item( (int) $post_id );
@@ -262,6 +281,11 @@ final class AbilitiesService {
 			$update['post_status'] = $status;
 		}
 
+		$featured_media_change = $this->featured_media_change( $data, $post->post_type );
+		if ( isset( $featured_media_change['error'] ) ) {
+			return $featured_media_change;
+		}
+
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'content.update_item',
@@ -270,16 +294,21 @@ final class AbilitiesService {
 					'type' => $post->post_type,
 					'id'   => $post_id,
 				),
-				$this->post_payload_changes(
-					array(
-						'post_title'   => $post->post_title,
-						'post_content' => $post->post_content,
-						'post_excerpt' => $post->post_excerpt,
-						'post_name'    => $post->post_name,
-						'post_status'  => $post->post_status,
-						'post_author'  => (int) $post->post_author,
+				array_merge(
+					$this->post_payload_changes(
+						array(
+							'post_title'   => $post->post_title,
+							'post_content' => $post->post_content,
+							'post_excerpt' => $post->post_excerpt,
+							'post_name'    => $post->post_name,
+							'post_status'  => $post->post_status,
+							'post_author'  => (int) $post->post_author,
+						),
+						$update
 					),
-					$update
+					! empty( $featured_media_change )
+						? array( $this->change( 'featured_media', get_post_thumbnail_id( $post_id ), $featured_media_change['value'] ) )
+						: array()
 				)
 			);
 		}
@@ -287,6 +316,14 @@ final class AbilitiesService {
 		$result = wp_update_post( $update, true );
 		if ( is_wp_error( $result ) ) {
 			return $this->error( $result->get_error_code(), $result->get_error_message() );
+		}
+
+		if ( ! empty( $featured_media_change ) ) {
+			if ( 0 === $featured_media_change['value'] ) {
+				delete_post_thumbnail( $post_id );
+			} elseif ( false === set_post_thumbnail( $post_id, (int) $featured_media_change['value'] ) ) {
+				return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
+			}
 		}
 
 		return $this->get_item( $post_id );
@@ -1077,6 +1114,69 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Build a requested featured image change from content arguments.
+	 *
+	 * @param array<string, mixed> $data      Content fields.
+	 * @param string               $post_type Target post type.
+	 * @return array<string, mixed>
+	 */
+	private function featured_media_change( array $data, string $post_type ): array {
+		$has_featured_media = array_key_exists( 'featured_media', $data );
+		$should_clear       = ! empty( $data['clear_featured_media'] );
+
+		if ( $has_featured_media && $should_clear ) {
+			return $this->error( 'invalid_featured_media', 'Provide either featured_media or clear_featured_media, not both.' );
+		}
+
+		if ( ! $has_featured_media && ! $should_clear ) {
+			return array();
+		}
+
+		if ( ! post_type_supports( $post_type, 'thumbnail' ) ) {
+			return $this->error( 'unsupported_featured_media', 'This post type does not support featured images.' );
+		}
+
+		if ( $should_clear ) {
+			return array( 'value' => 0 );
+		}
+
+		$featured_media = $this->validated_featured_media_id( $data['featured_media'] );
+		if ( is_array( $featured_media ) ) {
+			return $featured_media;
+		}
+
+		return array( 'value' => $featured_media );
+	}
+
+	/**
+	 * Validate an existing image attachment ID for featured image assignment.
+	 *
+	 * @param mixed $value Raw featured media value.
+	 * @return int|array<string, mixed>
+	 */
+	private function validated_featured_media_id( mixed $value ): int|array {
+		$attachment_id = absint( $value );
+		if ( 0 >= $attachment_id ) {
+			return $this->error( 'invalid_featured_media', 'featured_media must be an existing image attachment ID.' );
+		}
+
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type ) {
+			return $this->error( 'invalid_featured_media', 'Featured media must be an existing attachment.' );
+		}
+
+		if ( ! current_user_can( 'read_post', $attachment_id ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to use this media item.' );
+		}
+
+		if ( function_exists( 'wp_attachment_is_image' ) && ! wp_attachment_is_image( $attachment_id ) ) {
+			return $this->error( 'invalid_featured_media', 'Featured media must be an image attachment.' );
+		}
+
+		return $attachment_id;
+	}
+
+	/**
 	 * Build a sanitized term payload for insert/update calls.
 	 *
 	 * @param array<string, mixed> $data     Term fields.
@@ -1282,6 +1382,7 @@ final class AbilitiesService {
 			'excerpt'             => $post->post_excerpt,
 			'author'              => (int) $post->post_author,
 			'author_display_name' => $author instanceof \WP_User ? $author->display_name : '',
+			'featured_media'      => (int) get_post_thumbnail_id( $post ),
 			'date_gmt'            => $post->post_date_gmt,
 			'modified_gmt'        => $post->post_modified_gmt,
 			'link'                => get_permalink( $post ),

@@ -50,6 +50,15 @@ jobs:
           slug: "aculect-ai-companion"
           ignore-warnings: true
 
+      - name: Deploy to WordPress.org
+        uses: 10up/action-wordpress-plugin-deploy@2.3.0
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: aculect-ai-companion
+          BUILD_DIR: release/aculect-ai-companion
+          ASSETS_DIR: .wordpress-org
+
       - name: Generate plugin artifact
         run: |
           cd "${GITHUB_WORKSPACE}/release" || exit 1

@@ -44,6 +44,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Diagnostics\ConnectionHealth::delete();
 \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
 \Aculect\AICompanion\Connectors\MCP\AccessLockdown::delete();
+\Aculect\AICompanion\Connectors\MCP\ToolSafety::delete();
 
 delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );
 delete_option( 'aculect_ai_companion_rewrite_version' );

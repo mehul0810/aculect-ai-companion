@@ -425,6 +425,11 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
+	const confirmationGroupOptions = Array.isArray(
+		data.confirmationGroupOptions
+	)
+		? data.confirmationGroupOptions
+		: [];
 	const activity =
 		data.activity && typeof data.activity === 'object' ? data.activity : {};
 	const activityFilters =
@@ -452,6 +457,9 @@ function SettingsApp() {
 	);
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
+	);
+	const [ confirmationGroups, setConfirmationGroups ] = useState(
+		Array.isArray( data.confirmationGroups ) ? data.confirmationGroups : []
 	);
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
@@ -566,6 +574,15 @@ function SettingsApp() {
 			}
 
 			return current.filter( ( id ) => ! groupIds.includes( id ) );
+		} );
+	};
+	const toggleConfirmationGroup = ( group, checked ) => {
+		setConfirmationGroups( ( current ) => {
+			if ( checked ) {
+				return Array.from( new Set( [ ...current, group ] ) );
+			}
+
+			return current.filter( ( item ) => item !== group );
 		} );
 	};
 
@@ -1112,6 +1129,14 @@ function SettingsApp() {
 												value={ id }
 											/>
 										) ) }
+										{ confirmationGroups.map( ( group ) => (
+											<input
+												key={ group }
+												type="hidden"
+												name="confirmation_required_groups[]"
+												value={ group }
+											/>
+										) ) }
 										<div className="aculect-ai-companion-ability-toolbar">
 											<Button
 												type="button"
@@ -1143,6 +1168,44 @@ function SettingsApp() {
 												Save Abilities
 											</Button>
 										</div>
+										{ confirmationGroupOptions.length >
+											0 && (
+											<div className="aculect-ai-companion-confirmation-settings">
+												<h3 className="aculect-ai-companion-section-heading">
+													Confirmation Gates
+												</h3>
+												<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+													High-risk actions always
+													require confirmation. Select
+													groups that should require
+													confirmation for every write
+													action.
+												</p>
+												<div className="aculect-ai-companion-confirmation-groups">
+													{ confirmationGroupOptions.map(
+														( group ) => (
+															<CheckboxControl
+																key={ group }
+																label={ group }
+																checked={ confirmationGroups.includes(
+																	group
+																) }
+																onChange={ (
+																	checked
+																) =>
+																	toggleConfirmationGroup(
+																		group,
+																		Boolean(
+																			checked
+																		)
+																	)
+																}
+															/>
+														)
+													) }
+												</div>
+											</div>
+										) }
 										<div className="aculect-ai-companion-ability-groups">
 											{ Object.entries(
 												groupedAbilities

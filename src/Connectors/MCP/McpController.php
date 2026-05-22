@@ -147,6 +147,7 @@ final class McpController {
 			case 'tools/call':
 				$registry = new AbilitiesRegistry();
 				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
+				$args     = (array) ( $body['params']['arguments'] ?? array() );
 				$error    = $this->tool_call_error( $tool, $registry );
 				if ( 'unknown_tool' === $error ) {
 					( new Logger() )->warning(
@@ -193,11 +194,31 @@ final class McpController {
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
-				$result = $this->call_tool( $tool, (array) ( $body['params']['arguments'] ?? array() ) );
-				if ( ! $registry->is_read_only( $tool ) ) {
+				$safety                   = new ToolSafety();
+				$is_dry_run               = ! $registry->is_read_only( $tool ) && $safety->is_dry_run( $args );
+				$is_confirmation_required = false;
+				if ( $is_dry_run ) {
+					$result = $this->call_tool( $tool, $args );
+					if ( ! isset( $result['error'] ) && $safety->requires_confirmation( $tool, $args ) ) {
+						$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
+					}
+				} elseif ( ! $registry->is_read_only( $tool ) && $safety->requires_confirmation( $tool, $args ) && ! $safety->consume_confirmation_token( $tool, $args, $auth ) ) {
+					$preview_args             = $safety->strip_control_args( $args );
+					$preview_args['dry_run']  = true;
+					$preview                  = $this->call_tool( $tool, $preview_args );
+					$is_confirmation_required = ! isset( $preview['error'] );
+					$result                   = isset( $preview['error'] )
+						? $preview
+						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
+				} else {
+					$args   = $registry->is_read_only( $tool ) ? $args : $safety->strip_control_args( $args );
+					$result = $this->call_tool( $tool, $args );
+				}
+
+				if ( ! $is_dry_run && ! $is_confirmation_required && ! $registry->is_read_only( $tool ) ) {
 					( new ActivityLogger() )->record_tool_call(
 						$tool,
-						(array) ( $body['params']['arguments'] ?? array() ),
+						$args,
 						$result,
 						$auth
 					);
@@ -314,9 +335,10 @@ final class McpController {
 	 * @return array<string, mixed>
 	 */
 	private function input_schema_for_tool( string $tool ): array {
-		$tool = ( new AbilitiesRegistry() )->internal_id( $tool );
+		$registry = new AbilitiesRegistry();
+		$tool     = $registry->internal_id( $tool );
 
-		return match ( $tool ) {
+		$schema = match ( $tool ) {
 			'content.list_items' => array(
 				'type'       => 'object',
 				'properties' => array(
@@ -490,6 +512,35 @@ final class McpController {
 				'properties' => new \stdClass(),
 			),
 		};
+
+		return $this->schema_with_safety_controls( $tool, $schema, $registry );
+	}
+
+	/**
+	 * Add dry-run and confirmation fields to write-capable tool schemas.
+	 *
+	 * @param string              $tool     Internal ability ID.
+	 * @param array<string,mixed> $schema Tool input schema.
+	 * @param AbilitiesRegistry   $registry Ability registry.
+	 * @return array<string,mixed>
+	 */
+	private function schema_with_safety_controls( string $tool, array $schema, AbilitiesRegistry $registry ): array {
+		if ( ! $registry->is_known( $tool ) || $registry->is_read_only( $tool ) ) {
+			return $schema;
+		}
+
+		$properties                       = isset( $schema['properties'] ) && is_array( $schema['properties'] ) ? $schema['properties'] : array();
+		$properties['dry_run']            = array(
+			'type'        => 'boolean',
+			'description' => 'When true, validate the request and return a preview without changing WordPress data.',
+		);
+		$properties['confirmation_token'] = array(
+			'type'        => 'string',
+			'description' => 'Short-lived token returned by a dry run or confirmation-required response for high-risk actions.',
+		);
+		$schema['properties']             = $properties;
+
+		return $schema;
 	}
 
 	/**
@@ -528,6 +579,48 @@ final class McpController {
 			'wp_abilities.run' => $content->run_wp_ability( $args ),
 			default => array( 'error' => 'Unknown tool' ),
 		};
+	}
+
+	/**
+	 * Add confirmation metadata to a dry-run preview.
+	 *
+	 * @param array<string,mixed>  $result Preview result.
+	 * @param string               $tool   Internal ability ID.
+	 * @param array<mixed>         $args   Tool arguments.
+	 * @param array<string, mixed> $auth   OAuth context.
+	 * @param ToolSafety           $safety Safety helper.
+	 * @return array<string,mixed>
+	 */
+	private function add_confirmation_metadata( array $result, string $tool, array $args, array $auth, ToolSafety $safety ): array {
+		$result['confirmation_required']     = true;
+		$result['confirmation_token']        = $safety->issue_confirmation_token( $tool, $args, $auth );
+		$result['confirmation_expires_in']   = $safety->confirmation_ttl();
+		$result['confirmation_instructions'] = 'Repeat the same tool call with confirmation_token before it expires to apply these changes.';
+
+		return $result;
+	}
+
+	/**
+	 * Build a confirmation-required response without applying the action.
+	 *
+	 * @param string               $tool    Internal ability ID.
+	 * @param array<mixed>         $args    Preview arguments.
+	 * @param array<string, mixed> $auth    OAuth context.
+	 * @param array<string, mixed> $preview Dry-run preview.
+	 * @param ToolSafety           $safety  Safety helper.
+	 * @return array<string,mixed>
+	 */
+	private function confirmation_required_payload( string $tool, array $args, array $auth, array $preview, ToolSafety $safety ): array {
+		return array(
+			'status'                    => 'confirmation_required',
+			'confirmation_required'     => true,
+			'confirmation_token'        => $safety->issue_confirmation_token( $tool, $args, $auth ),
+			'confirmation_expires_in'   => $safety->confirmation_ttl(),
+			'confirmation_instructions' => 'Repeat the same tool call with confirmation_token before it expires to apply these changes.',
+			'action'                    => $tool,
+			'risk_level'                => $safety->risk_level( $tool, $args ),
+			'preview'                   => $preview,
+		);
 	}
 
 	/**

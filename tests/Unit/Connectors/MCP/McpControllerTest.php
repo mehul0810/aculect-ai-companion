@@ -73,6 +73,18 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey('arguments', $abilities_schema['properties']);
 	}
 
+	public function test_write_tool_schemas_include_safety_controls(): void {
+		$controller = new McpController();
+
+		$write_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
+		self::assertArrayHasKey( 'dry_run', $write_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $write_schema['properties'] );
+
+		$read_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_get_item' ) );
+		self::assertArrayNotHasKey( 'dry_run', $read_schema['properties'] );
+		self::assertArrayNotHasKey( 'confirmation_token', $read_schema['properties'] );
+	}
+
 	public function test_global_pause_blocks_tool_calls(): void {
 		$controller = new McpController();
 

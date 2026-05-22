@@ -10,7 +10,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 final class AbilitiesService {
 
 	private const DEFAULT_POST_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
-	private const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish' );
+	private const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish', 'trash' );
 
 	/**
 	 * List readable post types, including supported custom post types.
@@ -117,24 +117,39 @@ final class AbilitiesService {
 		}
 
 		$status = $this->writable_status( (string) ( $data['status'] ?? 'draft' ) );
+		if ( 'trash' === $status ) {
+			return $this->error( 'invalid_status', 'Content cannot be created directly in the trash.' );
+		}
+
 		if ( 'publish' === $status && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
-		$post_id = wp_insert_post(
-			array_filter(
-				array(
-					'post_type'    => $post_type,
-					'post_title'   => sanitize_text_field( (string) ( $data['title'] ?? '' ) ),
-					'post_content' => wp_kses_post( (string) ( $data['content'] ?? '' ) ),
-					'post_excerpt' => isset( $data['excerpt'] ) ? wp_kses_post( (string) $data['excerpt'] ) : null,
-					'post_name'    => isset( $data['slug'] ) ? sanitize_title( (string) $data['slug'] ) : null,
-					'post_status'  => $status,
-				),
-				static fn( $value ): bool => null !== $value
+		$payload = array_filter(
+			array(
+				'post_type'    => $post_type,
+				'post_title'   => sanitize_text_field( (string) ( $data['title'] ?? '' ) ),
+				'post_content' => wp_kses_post( (string) ( $data['content'] ?? '' ) ),
+				'post_excerpt' => isset( $data['excerpt'] ) ? wp_kses_post( (string) $data['excerpt'] ) : null,
+				'post_name'    => isset( $data['slug'] ) ? sanitize_title( (string) $data['slug'] ) : null,
+				'post_status'  => $status,
 			),
-			true
+			static fn( $value ): bool => null !== $value
 		);
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'content.create_item',
+				$data,
+				array(
+					'type' => $post_type,
+					'id'   => null,
+				),
+				$this->post_payload_changes( array(), $payload )
+			);
+		}
+
+		$post_id = wp_insert_post( $payload, true );
 
 		if ( is_wp_error( $post_id ) ) {
 			return $this->error( $post_id->get_error_code(), $post_id->get_error_message() );
@@ -188,10 +203,65 @@ final class AbilitiesService {
 		}
 		if ( array_key_exists( 'status', $data ) ) {
 			$status = $this->writable_status( (string) $data['status'] );
+			if ( 'trash' === $status ) {
+				if ( ! current_user_can( 'delete_post', $post_id ) ) {
+					return $this->error( 'forbidden', 'You do not have permission to trash this content item.' );
+				}
+
+				if ( $this->is_dry_run( $data ) ) {
+					return $this->preview_response(
+						'content.update_item',
+						$data,
+						array(
+							'type' => $post->post_type,
+							'id'   => $post_id,
+						),
+						array(
+							$this->change( 'status', $post->post_status, 'trash' ),
+						),
+						array( 'This item will be moved to the WordPress trash and can be restored from the admin.' )
+					);
+				}
+
+				$trashed = wp_trash_post( $post_id );
+				if ( ! $trashed instanceof \WP_Post ) {
+					return $this->error( 'trash_failed', 'Content item could not be moved to the trash.' );
+				}
+
+				$item             = $this->map_post( $trashed );
+				$item['recovery'] = array(
+					'type'    => 'trash',
+					'message' => 'Restore this item from the WordPress trash if the change was unintended.',
+				);
+
+				return $item;
+			}
+
 			if ( 'publish' === $status && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 				return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 			}
 			$update['post_status'] = $status;
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'content.update_item',
+				$data,
+				array(
+					'type' => $post->post_type,
+					'id'   => $post_id,
+				),
+				$this->post_payload_changes(
+					array(
+						'post_title'   => $post->post_title,
+						'post_content' => $post->post_content,
+						'post_excerpt' => $post->post_excerpt,
+						'post_name'    => $post->post_name,
+						'post_status'  => $post->post_status,
+					),
+					$update
+				)
+			);
 		}
 
 		$result = wp_update_post( $update, true );
@@ -297,7 +367,20 @@ final class AbilitiesService {
 			return $this->error( 'invalid_term', 'Term name is required.' );
 		}
 
-		$result = wp_insert_term( $name, $taxonomy, $this->term_payload( $data, $object ) );
+		$payload = $this->term_payload( $data, $object );
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'taxonomy.create_term',
+				$data,
+				array(
+					'type' => $taxonomy,
+					'id'   => null,
+				),
+				$this->term_payload_changes( array(), array_merge( $payload, array( 'name' => $name ) ) )
+			);
+		}
+
+		$result = wp_insert_term( $name, $taxonomy, $payload );
 		if ( is_wp_error( $result ) ) {
 			return $this->error( $result->get_error_code(), $result->get_error_message() );
 		}
@@ -325,7 +408,31 @@ final class AbilitiesService {
 			return $this->error( 'not_found', 'Term not found.' );
 		}
 
-		$result = wp_update_term( $term_id, $taxonomy, $this->term_payload( $data, $object ) );
+		$payload = $this->term_payload( $data, $object );
+		if ( $this->is_dry_run( $data ) ) {
+			$term = get_term( $term_id, $taxonomy );
+			return $this->preview_response(
+				'taxonomy.update_term',
+				$data,
+				array(
+					'type' => $taxonomy,
+					'id'   => $term_id,
+				),
+				$term instanceof \WP_Term
+					? $this->term_payload_changes(
+						array(
+							'name'        => $term->name,
+							'slug'        => $term->slug,
+							'description' => $term->description,
+							'parent'      => (int) $term->parent,
+						),
+						$payload
+					)
+					: array()
+			);
+		}
+
+		$result = wp_update_term( $term_id, $taxonomy, $payload );
 		if ( is_wp_error( $result ) ) {
 			return $this->error( $result->get_error_code(), $result->get_error_message() );
 		}
@@ -369,6 +476,19 @@ final class AbilitiesService {
 		$preflight_error = $guard->preflight( $url, $filename );
 		if ( null !== $preflight_error ) {
 			return $this->error( $preflight_error['code'], $preflight_error['message'] );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'media.upload_item',
+				$data,
+				array(
+					'type' => 'attachment',
+					'id'   => null,
+				),
+				$this->media_payload_changes( $url, $filename, $data ),
+				array( 'Dry run validated the URL preflight only; the file was not downloaded or added to the media library.' )
+			);
 		}
 
 		require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -519,6 +639,26 @@ final class AbilitiesService {
 			$approved = $this->comment_status( (string) ( $data['status'] ?? 'approve' ), false );
 		}
 
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'comments.create_item',
+				$data,
+				array(
+					'type' => 'comment',
+					'id'   => null,
+				),
+				array_values(
+					array_filter(
+						array(
+							$this->change( 'post_id', null, $post_id ),
+							$this->change( 'content', null, $content ),
+							$this->change( 'status', null, $approved ),
+						)
+					)
+				)
+			);
+		}
+
 		$comment_id = wp_insert_comment(
 			array(
 				'comment_post_ID'      => $post_id,
@@ -561,19 +701,63 @@ final class AbilitiesService {
 			$update['comment_content'] = wp_kses_post( (string) $data['content'] );
 		}
 
+		if ( array_key_exists( 'status', $data ) ) {
+			$status = $this->comment_status( (string) $data['status'], false );
+			if ( $this->is_dry_run( $data ) ) {
+				return $this->preview_response(
+					'comments.update_item',
+					$data,
+					array(
+						'type' => 'comment',
+						'id'   => $comment_id,
+					),
+					array_values(
+						array_filter(
+							array(
+								array_key_exists( 'content', $data ) ? $this->change( 'content', $comment->comment_content, $update['comment_content'] ?? $comment->comment_content ) : null,
+								$this->change( 'status', wp_get_comment_status( $comment ), $status ),
+							)
+						)
+					),
+					'trash' === $status ? array( 'This comment will be moved to the WordPress trash and can be restored from comment moderation.' ) : array()
+				);
+			}
+
+			if ( ! wp_set_comment_status( $comment_id, $status ) ) {
+				return $this->error( 'comment_status_failed', 'Comment status could not be updated.' );
+			}
+		} elseif ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'comments.update_item',
+				$data,
+				array(
+					'type' => 'comment',
+					'id'   => $comment_id,
+				),
+				array_values(
+					array_filter(
+						array(
+							array_key_exists( 'content', $data ) ? $this->change( 'content', $comment->comment_content, $update['comment_content'] ?? $comment->comment_content ) : null,
+						)
+					)
+				)
+			);
+		}
+
 		if ( count( $update ) > 1 && false === wp_update_comment( $update ) ) {
 			return $this->error( 'comment_failed', 'Comment could not be updated.' );
 		}
 
-		if ( array_key_exists( 'status', $data ) ) {
-			$status = $this->comment_status( (string) $data['status'], false );
-			if ( ! wp_set_comment_status( $comment_id, $status ) ) {
-				return $this->error( 'comment_status_failed', 'Comment status could not be updated.' );
-			}
+		$comment = get_comment( $comment_id );
+		$result  = $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => $comment_id );
+		if ( isset( $status ) && 'trash' === $status ) {
+			$result['recovery'] = array(
+				'type'    => 'trash',
+				'message' => 'Restore this comment from the WordPress trash if the change was unintended.',
+			);
 		}
 
-		$comment = get_comment( $comment_id );
-		return $comment instanceof \WP_Comment ? $this->map_comment( $comment ) : array( 'id' => $comment_id );
+		return $result;
 	}
 
 	/**
@@ -973,6 +1157,138 @@ final class AbilitiesService {
 			'page'     => $page,
 			'per_page' => $per_page,
 		);
+	}
+
+	/**
+	 * Determine whether a tool call should only preview changes.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 */
+	private function is_dry_run( array $data ): bool {
+		return ( new ToolSafety() )->is_dry_run( $data );
+	}
+
+	/**
+	 * Build a deterministic dry-run response.
+	 *
+	 * @param string               $action   Tool action.
+	 * @param array<string, mixed> $args     Tool arguments.
+	 * @param array<string, mixed> $target   Target object summary.
+	 * @param array<int, mixed>    $changes  Proposed changes.
+	 * @param string[]             $warnings Preview warnings.
+	 * @return array<string, mixed>
+	 */
+	private function preview_response( string $action, array $args, array $target, array $changes, array $warnings = array() ): array {
+		$safety = new ToolSafety();
+
+		return array(
+			'dry_run'               => true,
+			'status'                => 'preview',
+			'action'                => $action,
+			'risk_level'            => $safety->risk_level( $action, $args ),
+			'target'                => $target,
+			'changes'               => array_values( array_filter( $changes ) ),
+			'warnings'              => array_values( $warnings ),
+			'confirmation_required' => $safety->requires_confirmation( $action, $args ),
+		);
+	}
+
+	/**
+	 * Build one field-change entry.
+	 *
+	 * @param string $field Field name.
+	 * @param mixed  $from  Existing value.
+	 * @param mixed  $to    Proposed value.
+	 * @return array<string, mixed>|null
+	 */
+	private function change( string $field, mixed $from, mixed $to ): ?array {
+		if ( $from === $to ) {
+			return null;
+		}
+
+		return array(
+			'field' => $field,
+			'from'  => $from,
+			'to'    => $to,
+		);
+	}
+
+	/**
+	 * Convert a post insert/update payload into preview changes.
+	 *
+	 * @param array<string, mixed> $from    Current post fields.
+	 * @param array<string, mixed> $payload Proposed post payload.
+	 * @return list<array<string, mixed>>
+	 */
+	private function post_payload_changes( array $from, array $payload ): array {
+		$map     = array(
+			'post_type'    => 'type',
+			'post_title'   => 'title',
+			'post_content' => 'content',
+			'post_excerpt' => 'excerpt',
+			'post_name'    => 'slug',
+			'post_status'  => 'status',
+		);
+		$changes = array();
+
+		foreach ( $map as $payload_key => $field ) {
+			if ( array_key_exists( $payload_key, $payload ) ) {
+				$changes[] = $this->change( $field, $from[ $payload_key ] ?? null, $payload[ $payload_key ] );
+			}
+		}
+
+		return array_values( array_filter( $changes ) );
+	}
+
+	/**
+	 * Convert a term insert/update payload into preview changes.
+	 *
+	 * @param array<string, mixed> $from    Current term fields.
+	 * @param array<string, mixed> $payload Proposed term payload.
+	 * @return list<array<string, mixed>>
+	 */
+	private function term_payload_changes( array $from, array $payload ): array {
+		$changes = array();
+
+		foreach ( array( 'name', 'slug', 'description', 'parent' ) as $field ) {
+			if ( array_key_exists( $field, $payload ) ) {
+				$changes[] = $this->change( $field, $from[ $field ] ?? null, $payload[ $field ] );
+			}
+		}
+
+		return array_values( array_filter( $changes ) );
+	}
+
+	/**
+	 * Convert media upload arguments into preview changes.
+	 *
+	 * @param string               $url      Remote URL.
+	 * @param string               $filename Proposed filename.
+	 * @param array<string, mixed> $data     Tool arguments.
+	 * @return list<array<string, mixed>>
+	 */
+	private function media_payload_changes( string $url, string $filename, array $data ): array {
+		$changes = array(
+			$this->change( 'source_url', null, $url ),
+			$this->change( 'filename', null, sanitize_file_name( $filename ) ),
+		);
+
+		foreach (
+			array(
+				'title'       => 'title',
+				'alt_text'    => 'alt_text',
+				'caption'     => 'caption',
+				'description' => 'description',
+				'post_id'     => 'post_id',
+			) as $argument => $field
+		) {
+			if ( array_key_exists( $argument, $data ) ) {
+				$value     = 'post_id' === $argument ? absint( $data[ $argument ] ) : sanitize_text_field( (string) $data[ $argument ] );
+				$changes[] = $this->change( $field, null, $value );
+			}
+		}
+
+		return array_values( array_filter( $changes ) );
 	}
 
 	/**

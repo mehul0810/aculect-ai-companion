@@ -437,6 +437,11 @@ final class McpController {
 					'per_page' => array( 'type' => 'integer' ),
 				),
 			),
+			'media.get_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array( 'id' => array( 'type' => 'integer' ) ),
+			),
 			'media.upload_item' => array(
 				'type'       => 'object',
 				'required'   => array( 'url' ),
@@ -450,6 +455,22 @@ final class McpController {
 					'caption'     => array( 'type' => 'string' ),
 					'description' => array( 'type' => 'string' ),
 					'post_id'     => array( 'type' => 'integer' ),
+				),
+			),
+			'media.update_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id'          => array( 'type' => 'integer' ),
+					'title'       => array( 'type' => 'string' ),
+					'alt_text'    => array( 'type' => 'string' ),
+					'caption'     => array( 'type' => 'string' ),
+					'description' => array( 'type' => 'string' ),
+					'slug'        => array( 'type' => 'string' ),
+					'post_id'     => array(
+						'type'        => 'integer',
+						'description' => 'Post, page, or custom post ID to set as the attachment parent. Use 0 to detach.',
+					),
 				),
 			),
 			'comments.list_items' => array(
@@ -581,7 +602,9 @@ final class McpController {
 			'taxonomy.create_term' => $content->create_term( $args ),
 			'taxonomy.update_term' => $content->update_term( $args ),
 			'media.list_items' => $content->list_media( $args ),
+			'media.get_item' => $content->get_media( $args ),
 			'media.upload_item' => $content->upload_media( $args ),
+			'media.update_item' => $content->update_media( $args ),
 			'comments.list_items' => $content->list_comments( $args ),
 			'comments.get_item' => $content->get_comment( $args ),
 			'comments.create_item' => $content->create_comment( $args ),

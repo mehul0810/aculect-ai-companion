@@ -125,6 +125,16 @@ final class ContentController {
 	}
 
 	/**
+	 * Read a media attachment.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function get_media( array $data ): array {
+		return ( new AbilitiesService() )->get_media( (int) ( $data['id'] ?? 0 ) );
+	}
+
+	/**
 	 * Upload media from a public URL.
 	 *
 	 * @param array<string, mixed> $data Tool arguments.
@@ -132,6 +142,16 @@ final class ContentController {
 	 */
 	public function upload_media( array $data ): array {
 		return ( new AbilitiesService() )->upload_media( $data );
+	}
+
+	/**
+	 * Update media metadata.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function update_media( array $data ): array {
+		return ( new AbilitiesService() )->update_media( $data );
 	}
 
 	/**

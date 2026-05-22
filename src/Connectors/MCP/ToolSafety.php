@@ -119,6 +119,7 @@ final class ToolSafety {
 				default => 'update',
 			},
 			'wp_abilities.run' => 'system',
+			'media.update_item',
 			'media.upload_item',
 			'taxonomy.create_term',
 			'taxonomy.update_term' => 'update',

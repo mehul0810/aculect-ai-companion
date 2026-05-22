@@ -149,6 +149,11 @@ final class AbilitiesService {
 			static fn( $value ): bool => null !== $value
 		);
 
+		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post_type );
+		if ( isset( $taxonomy_assignments['error'] ) ) {
+			return $taxonomy_assignments['error'];
+		}
+
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'content.create_item',
@@ -159,6 +164,7 @@ final class AbilitiesService {
 				),
 				array_merge(
 					$this->post_payload_changes( array(), $payload ),
+					$this->taxonomy_assignment_changes( $taxonomy_assignments ),
 					null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
 				)
 			);
@@ -172,6 +178,11 @@ final class AbilitiesService {
 
 		if ( null !== $featured_media && false === set_post_thumbnail( (int) $post_id, $featured_media ) ) {
 			return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
+		}
+
+		$assignment_result = $this->apply_taxonomy_assignments( (int) $post_id, $taxonomy_assignments );
+		if ( isset( $assignment_result['error'] ) ) {
+			return $assignment_result['error'];
 		}
 
 		return $this->get_item( (int) $post_id );
@@ -262,6 +273,11 @@ final class AbilitiesService {
 			$update['post_status'] = $status;
 		}
 
+		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post->post_type );
+		if ( isset( $taxonomy_assignments['error'] ) ) {
+			return $taxonomy_assignments['error'];
+		}
+
 		$featured_media_change = $this->featured_media_change( $data, $post->post_type );
 		if ( isset( $featured_media_change['error'] ) ) {
 			return $featured_media_change;
@@ -286,6 +302,7 @@ final class AbilitiesService {
 						),
 						$update
 					),
+					$this->taxonomy_assignment_changes( $taxonomy_assignments, $post_id ),
 					! empty( $featured_media_change )
 						? array( $this->change( 'featured_media', get_post_thumbnail_id( $post_id ), $featured_media_change['value'] ) )
 						: array()
@@ -296,6 +313,11 @@ final class AbilitiesService {
 		$result = wp_update_post( $update, true );
 		if ( is_wp_error( $result ) ) {
 			return $this->error( $result->get_error_code(), $result->get_error_message() );
+		}
+
+		$assignment_result = $this->apply_taxonomy_assignments( $post_id, $taxonomy_assignments );
+		if ( isset( $assignment_result['error'] ) ) {
+			return $assignment_result['error'];
 		}
 
 		if ( ! empty( $featured_media_change ) ) {
@@ -1183,6 +1205,143 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Resolve requested taxonomy assignments for a post type.
+	 *
+	 * @param array<string, mixed> $data      Tool arguments.
+	 * @param string               $post_type Post type slug.
+	 * @return array<string, list<int>>|array{error: array<string, mixed>}
+	 */
+	private function taxonomy_assignments( array $data, string $post_type ): array {
+		if ( ! array_key_exists( 'taxonomies', $data ) ) {
+			return array();
+		}
+
+		if ( ! is_array( $data['taxonomies'] ) ) {
+			return array( 'error' => $this->error( 'invalid_taxonomies', 'Taxonomies must be provided as an object keyed by taxonomy slug.' ) );
+		}
+
+		$assignments = array();
+		foreach ( $data['taxonomies'] as $taxonomy_name => $terms ) {
+			$taxonomy_name = sanitize_key( (string) $taxonomy_name );
+			$taxonomy      = get_taxonomy( $taxonomy_name );
+
+			if ( ! $this->is_supported_taxonomy( $taxonomy ) ) {
+				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' ) );
+			}
+
+			if ( ! is_object_in_taxonomy( $post_type, $taxonomy_name ) ) {
+				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not assigned to this post type.' ) );
+			}
+
+			if ( ! current_user_can( $taxonomy->cap->assign_terms ) ) {
+				return array( 'error' => $this->error( 'forbidden', 'You do not have permission to assign terms in this taxonomy.' ) );
+			}
+
+			$resolved = $this->resolve_taxonomy_terms( $taxonomy_name, $terms );
+			if ( isset( $resolved['error'] ) ) {
+				return $resolved;
+			}
+
+			$assignments[ $taxonomy_name ] = $resolved;
+		}
+
+		ksort( $assignments );
+
+		return $assignments;
+	}
+
+	/**
+	 * Resolve existing term IDs or slugs for a taxonomy.
+	 *
+	 * @param string $taxonomy_name Taxonomy slug.
+	 * @param mixed  $terms         Requested term IDs or slugs.
+	 * @return list<int>|array{error: array<string, mixed>}
+	 */
+	private function resolve_taxonomy_terms( string $taxonomy_name, mixed $terms ): array {
+		if ( is_array( $terms ) ) {
+			$candidates = array_values( $terms );
+		} elseif ( is_int( $terms ) || is_string( $terms ) ) {
+			$candidates = array( $terms );
+		} else {
+			return array( 'error' => $this->error( 'invalid_terms', 'Taxonomy terms must be existing term IDs or slugs.' ) );
+		}
+
+		$term_ids = array();
+		foreach ( $candidates as $candidate ) {
+			$term = null;
+			if ( is_int( $candidate ) ) {
+				$term = get_term( absint( $candidate ), $taxonomy_name );
+			} elseif ( is_string( $candidate ) ) {
+				$slug = sanitize_title( $candidate );
+				$term = '' === $slug ? null : get_term_by( 'slug', $slug, $taxonomy_name );
+			} else {
+				return array( 'error' => $this->error( 'invalid_terms', 'Taxonomy terms must be existing term IDs or slugs.' ) );
+			}
+
+			if ( ! $term instanceof \WP_Term || $taxonomy_name !== $term->taxonomy ) {
+				return array( 'error' => $this->error( 'term_not_found', 'One or more requested taxonomy terms could not be found.' ) );
+			}
+
+			$term_ids[] = (int) $term->term_id;
+		}
+
+		$term_ids = array_values( array_unique( $term_ids ) );
+		sort( $term_ids );
+
+		return $term_ids;
+	}
+
+	/**
+	 * Apply resolved taxonomy assignments to a content item.
+	 *
+	 * @param int                      $post_id     Post ID.
+	 * @param array<string, list<int>> $assignments Resolved assignments.
+	 * @return array<string, mixed>
+	 */
+	private function apply_taxonomy_assignments( int $post_id, array $assignments ): array {
+		foreach ( $assignments as $taxonomy_name => $term_ids ) {
+			$result = wp_set_object_terms( $post_id, $term_ids, $taxonomy_name, false );
+			if ( is_wp_error( $result ) ) {
+				return array( 'error' => $this->error( $result->get_error_code(), $result->get_error_message() ) );
+			}
+		}
+
+		return array( 'success' => true );
+	}
+
+	/**
+	 * Convert taxonomy assignments into preview changes.
+	 *
+	 * @param array<string, list<int>> $assignments Resolved assignments.
+	 * @param int                      $post_id     Existing post ID, or 0 for create.
+	 * @return list<array<string, mixed>>
+	 */
+	private function taxonomy_assignment_changes( array $assignments, int $post_id = 0 ): array {
+		$changes = array();
+
+		foreach ( $assignments as $taxonomy_name => $term_ids ) {
+			$current = array();
+			if ( $post_id > 0 ) {
+				$current_terms = wp_get_object_terms(
+					$post_id,
+					$taxonomy_name,
+					array(
+						'fields'  => 'ids',
+						'orderby' => 'term_id',
+						'order'   => 'ASC',
+					)
+				);
+				$current       = is_wp_error( $current_terms ) ? array() : array_values( array_map( 'intval', $current_terms ) );
+				sort( $current );
+			}
+
+			$changes[] = $this->change( 'taxonomies.' . $taxonomy_name, $current, $term_ids );
+		}
+
+		return array_values( array_filter( $changes ) );
+	}
+
+	/**
 	 * Check whether the current user can read a post type.
 	 *
 	 * @param \WP_Post_Type $post_type Post type object.
@@ -1334,6 +1493,7 @@ final class AbilitiesService {
 			'date_gmt'       => $post->post_date_gmt,
 			'modified_gmt'   => $post->post_modified_gmt,
 			'link'           => get_permalink( $post ),
+			'terms'          => $this->post_terms( $post ),
 		);
 
 		if ( 'attachment' === $post->post_type ) {
@@ -1343,6 +1503,50 @@ final class AbilitiesService {
 		}
 
 		return $item;
+	}
+
+	/**
+	 * Return assigned terms grouped by supported taxonomy.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array<string, list<array<string, mixed>>>
+	 */
+	private function post_terms( \WP_Post $post ): array {
+		$taxonomies = get_object_taxonomies( $post->post_type, 'objects' );
+		$taxonomies = array_filter( $taxonomies, array( $this, 'is_supported_taxonomy' ) );
+		if ( array() === $taxonomies ) {
+			return array();
+		}
+
+		$taxonomy_names = array_values(
+			array_map(
+				static fn( \WP_Taxonomy $taxonomy ): string => $taxonomy->name,
+				$taxonomies
+			)
+		);
+		sort( $taxonomy_names );
+
+		$terms = wp_get_object_terms(
+			$post->ID,
+			$taxonomy_names,
+			array(
+				'orderby' => 'term_id',
+				'order'   => 'ASC',
+			)
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			$terms = array();
+		}
+
+		$grouped = array_fill_keys( $taxonomy_names, array() );
+		foreach ( $terms as $term ) {
+			if ( $term instanceof \WP_Term && isset( $grouped[ $term->taxonomy ] ) ) {
+				$grouped[ $term->taxonomy ][] = $this->map_term( $term );
+			}
+		}
+
+		return $grouped;
 	}
 
 	/**

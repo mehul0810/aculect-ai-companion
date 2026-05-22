@@ -374,6 +374,25 @@ final class McpController {
 						'type'        => 'integer',
 						'description' => 'Existing image attachment ID to assign as the featured image.',
 					),
+					'taxonomies'     => array(
+						'type'                 => 'object',
+						'description'          => 'Map taxonomy slugs to existing term IDs or term slugs.',
+						'additionalProperties' => array(
+							'oneOf' => array(
+								array( 'type' => 'integer' ),
+								array( 'type' => 'string' ),
+								array(
+									'type'  => 'array',
+									'items' => array(
+										'oneOf' => array(
+											array( 'type' => 'integer' ),
+											array( 'type' => 'string' ),
+										),
+									),
+								),
+							),
+						),
+					),
 				),
 			),
 			'content.update_item' => array(
@@ -393,6 +412,25 @@ final class McpController {
 					'clear_featured_media' => array(
 						'type'        => 'boolean',
 						'description' => 'Set true to intentionally remove the current featured image.',
+					),
+					'taxonomies'           => array(
+						'type'                 => 'object',
+						'description'          => 'Map taxonomy slugs to existing term IDs or term slugs. Use an empty array to clear a taxonomy.',
+						'additionalProperties' => array(
+							'oneOf' => array(
+								array( 'type' => 'integer' ),
+								array( 'type' => 'string' ),
+								array(
+									'type'  => 'array',
+									'items' => array(
+										'oneOf' => array(
+											array( 'type' => 'integer' ),
+											array( 'type' => 'string' ),
+										),
+									),
+								),
+							),
+						),
 					),
 				),
 			),

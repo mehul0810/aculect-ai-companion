@@ -36,6 +36,9 @@ final class ToolSafetyTest extends TestCase {
 
 		self::assertSame( 'update', $this->safety->risk_level( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
 		self::assertFalse( $this->safety->requires_confirmation( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
+
+		self::assertSame( 'update', $this->safety->risk_level( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
 	}
 
 	public function test_configured_groups_require_confirmation_for_all_write_actions(): void {

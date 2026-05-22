@@ -97,6 +97,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'comments.get_item',
 				'comments.create_item',
 				'comments.update_item',
+				'comments.bulk_update',
 				'media.upload_item',
 				'media.get_item',
 				'media.update_item',

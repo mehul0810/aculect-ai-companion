@@ -82,6 +82,16 @@ final class McpControllerTest extends TestCase {
 		self::assertSame(array('id'), $comments_schema['required']);
 		self::assertArrayHasKey('status', $comments_schema['properties']);
 
+		$comments_list_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_list_items' ) );
+		self::assertArrayHasKey('date_after', $comments_list_schema['properties']);
+		self::assertArrayHasKey('author_user_id', $comments_list_schema['properties']);
+
+		$comments_create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_create_item' ) );
+		self::assertArrayHasKey('parent_id', $comments_create_schema['properties']);
+
+		$comments_bulk_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_bulk_update' ) );
+		self::assertSame(array('ids', 'status'), $comments_bulk_schema['required']);
+
 		$abilities_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'wp_abilities_run' ) );
 		self::assertSame(array('id'), $abilities_schema['required']);
 		self::assertArrayHasKey('arguments', $abilities_schema['properties']);

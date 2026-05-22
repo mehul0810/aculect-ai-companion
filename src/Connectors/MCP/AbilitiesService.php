@@ -724,8 +724,30 @@ final class AbilitiesService {
 			$query['post_id'] = absint( $args['post_id'] );
 		}
 
+		$search = '';
+		if ( ! empty( $args['author'] ) ) {
+			$search = sanitize_text_field( (string) $args['author'] );
+		}
+
+		if ( ! empty( $args['author_user_id'] ) ) {
+			$query['user_id'] = absint( $args['author_user_id'] );
+		}
+
+		if ( ! empty( $args['author_email'] ) ) {
+			$query['author_email'] = sanitize_email( (string) $args['author_email'] );
+		}
+
+		$date_query = $this->comment_date_query( $args );
+		if ( array() !== $date_query ) {
+			$query['date_query'] = $date_query;
+		}
+
 		if ( ! empty( $args['search'] ) ) {
-			$query['search'] = sanitize_text_field( (string) $args['search'] );
+			$search = sanitize_text_field( (string) $args['search'] );
+		}
+
+		if ( '' !== $search ) {
+			$query['search'] = $search;
 		}
 
 		$comments = get_comments( $query );
@@ -776,9 +798,22 @@ final class AbilitiesService {
 	public function create_comment( array $data ): array {
 		$post_id = absint( $data['post_id'] ?? 0 );
 		$post    = get_post( $post_id );
+		$parent  = null;
 
 		if ( ! $post instanceof \WP_Post || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to comment on this post.' );
+		}
+
+		if ( ! empty( $data['parent_id'] ) ) {
+			$parent_id = absint( $data['parent_id'] );
+			$parent    = get_comment( $parent_id );
+			if ( ! $parent instanceof \WP_Comment || (int) $parent->comment_post_ID !== $post_id ) {
+				return $this->error( 'invalid_parent', 'Parent comment was not found on the selected post.' );
+			}
+
+			if ( ! $this->can_read_comment( $parent ) ) {
+				return $this->error( 'forbidden', 'You do not have permission to reply to this comment.' );
+			}
 		}
 
 		$content = wp_kses_post( (string) ( $data['content'] ?? '' ) );
@@ -807,6 +842,7 @@ final class AbilitiesService {
 							$this->change( 'post_id', null, $post_id ),
 							$this->change( 'content', null, $content ),
 							$this->change( 'status', null, $approved ),
+							$this->change( 'parent_id', null, $parent instanceof \WP_Comment ? (int) $parent->comment_ID : 0 ),
 						)
 					)
 				)
@@ -821,6 +857,7 @@ final class AbilitiesService {
 				'user_id'              => get_current_user_id(),
 				'comment_author'       => sanitize_text_field( $author_name ),
 				'comment_author_email' => sanitize_email( $user->user_email ),
+				'comment_parent'       => $parent instanceof \WP_Comment ? (int) $parent->comment_ID : 0,
 			)
 		);
 
@@ -912,6 +949,64 @@ final class AbilitiesService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Bulk update comment moderation status.
+	 *
+	 * @param array<string, mixed> $data Comment fields.
+	 * @return array<string, mixed>
+	 */
+	public function bulk_update_comments( array $data ): array {
+		if ( ! current_user_can( 'moderate_comments' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to bulk moderate comments.' );
+		}
+
+		$comment_ids = $this->comment_ids( $data['ids'] ?? array() );
+		if ( array() === $comment_ids ) {
+			return $this->error( 'invalid_comments', 'At least one comment ID is required.' );
+		}
+
+		$status  = $this->comment_status( (string) ( $data['status'] ?? '' ), false );
+		$changes = array();
+		foreach ( $comment_ids as $comment_id ) {
+			$comment = get_comment( $comment_id );
+			if ( ! $comment instanceof \WP_Comment ) {
+				return $this->error( 'not_found', 'One or more comments could not be found.' );
+			}
+
+			$changes[] = $this->change( 'comments.' . $comment_id . '.status', wp_get_comment_status( $comment ), $status );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'comments.bulk_update',
+				$data,
+				array(
+					'type' => 'comment',
+					'id'   => null,
+				),
+				$changes,
+				array( 'Bulk moderation requires confirmation before changes are applied.' )
+			);
+		}
+
+		$items = array();
+		foreach ( $comment_ids as $comment_id ) {
+			if ( ! wp_set_comment_status( $comment_id, $status ) ) {
+				return $this->error( 'comment_status_failed', 'One or more comments could not be updated.' );
+			}
+
+			$comment = get_comment( $comment_id );
+			if ( $comment instanceof \WP_Comment ) {
+				$items[] = $this->map_comment( $comment );
+			}
+		}
+
+		return array(
+			'items' => $items,
+			'total' => count( $items ),
+		);
 	}
 
 	/**
@@ -1513,10 +1608,58 @@ final class AbilitiesService {
 	 * @return string
 	 */
 	private function comment_status( string $status, bool $allow_all ): string {
-		$status  = sanitize_key( $status );
+		$status = sanitize_key( $status );
+		$status = match ( $status ) {
+			'pending', 'unapproved', 'unapprove' => 'hold',
+			'approved' => 'approve',
+			default => $status,
+		};
 		$allowed = $allow_all ? array( 'all', 'hold', 'approve', 'spam', 'trash' ) : array( 'hold', 'approve', 'spam', 'trash' );
 
 		return in_array( $status, $allowed, true ) ? $status : ( $allow_all ? 'all' : 'hold' );
+	}
+
+	/**
+	 * Normalize comment date filters for WP_Comment_Query.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return list<array<string, mixed>>
+	 */
+	private function comment_date_query( array $args ): array {
+		$date_query = array();
+
+		if ( ! empty( $args['date_after'] ) ) {
+			$date_query['after'] = sanitize_text_field( (string) $args['date_after'] );
+		}
+
+		if ( ! empty( $args['date_before'] ) ) {
+			$date_query['before'] = sanitize_text_field( (string) $args['date_before'] );
+		}
+
+		if ( array() === $date_query ) {
+			return array();
+		}
+
+		$date_query['inclusive'] = true;
+
+		return array( $date_query );
+	}
+
+	/**
+	 * Normalize a bounded list of comment IDs for bulk operations.
+	 *
+	 * @param mixed $ids Candidate comment IDs.
+	 * @return list<int>
+	 */
+	private function comment_ids( mixed $ids ): array {
+		if ( ! is_array( $ids ) ) {
+			return array();
+		}
+
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+		sort( $ids );
+
+		return array_slice( $ids, 0, 100 );
 	}
 
 	/**

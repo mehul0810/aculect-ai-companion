@@ -149,6 +149,17 @@ Yes. If your DNS record is proxied through Cloudflare and SSL/TLS mode is set to
 
 Yes. Aculect AI Companion can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.
 
+== Screenshots ==
+
+1. About tab with a plain-language overview of Aculect AI Companion.
+2. Connect tab with the MCP connection URL and guided setup for AI tools.
+3. Diagnostics tab for checking endpoint, OAuth, and MCP readiness.
+4. Connections tab for reviewing connected AI assistants and access state.
+5. Activity tab showing write actions requested by connected AI assistants.
+6. Advanced tab with diagnostic logging and retention controls.
+7. Logs tab showing sanitized connection lifecycle and error events.
+8. Changelog tab with recent release notes.
+
 == Development ==
 
 The production package ships built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` are intentionally excluded from release ZIP files. Generated files under `build/` are not committed to the source repository; release automation generates them before packaging.

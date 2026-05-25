@@ -171,4 +171,64 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$term = get_term( $term_id, $taxonomy );
 		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
 	}
+
+	/**
+	 * Assign or clear an image attachment for a taxonomy term.
+	 *
+	 * @param array<string, mixed> $data Term image fields.
+	 * @return array<string, mixed>
+	 */
+	public function set_term_image( array $data ): array {
+		$taxonomy = sanitize_key( (string) ( $data['taxonomy'] ?? '' ) );
+		$term_id  = absint( $data['term_id'] ?? 0 );
+		$object   = get_taxonomy( $taxonomy );
+
+		if ( ! $this->is_supported_taxonomy( $object ) ) {
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
+		}
+
+		if ( ! current_user_can( $object->cap->edit_terms ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to update terms in this taxonomy.' );
+		}
+
+		$term = get_term( $term_id, $taxonomy );
+		if ( ! $term instanceof \WP_Term ) {
+			return $this->error( 'not_found', 'Term not found.' );
+		}
+
+		$meta_key = sanitize_key( (string) ( $data['meta_key'] ?? 'aculect_ai_companion_term_image_id' ) );
+		if ( ! in_array( $meta_key, $this->term_image_meta_keys(), true ) ) {
+			return $this->error( 'invalid_meta_key', 'Term image meta key is not allowlisted.' );
+		}
+
+		$image_id = 0;
+		if ( empty( $data['clear_image'] ) ) {
+			$image_id = $this->validated_image_attachment_id( $data['image_id'] ?? 0 );
+			if ( is_array( $image_id ) ) {
+				return $image_id;
+			}
+		}
+
+		$current = absint( get_term_meta( $term_id, $meta_key, true ) );
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'taxonomy.set_term_image',
+				$data,
+				array(
+					'type' => $taxonomy,
+					'id'   => $term_id,
+				),
+				array( $this->change( 'image.' . $meta_key, $current, $image_id ) )
+			);
+		}
+
+		if ( 0 === $image_id ) {
+			delete_term_meta( $term_id, $meta_key );
+		} else {
+			update_term_meta( $term_id, $meta_key, $image_id );
+		}
+
+		$term = get_term( $term_id, $taxonomy );
+		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
+	}
 }

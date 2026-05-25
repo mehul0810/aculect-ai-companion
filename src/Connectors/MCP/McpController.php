@@ -354,6 +354,11 @@ final class McpController {
 					),
 					'page'      => array( 'type' => 'integer' ),
 					'per_page'  => array( 'type' => 'integer' ),
+					'context'   => array(
+						'type'        => 'string',
+						'enum'        => array( 'compact', 'full' ),
+						'description' => 'Use compact for list browsing or full to include full content bodies. Defaults to compact.',
+					),
 				),
 			),
 			'content.get_item' => array(
@@ -442,6 +447,29 @@ final class McpController {
 					),
 				),
 			),
+			'content.update_seo' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id'               => array( 'type' => 'integer' ),
+					'plugin'           => array(
+						'type'        => 'string',
+						'enum'        => array( 'auto', 'yoast', 'rank_math' ),
+						'description' => 'Supported SEO plugin adapter. Defaults to auto-detect.',
+					),
+					'meta_title'       => array( 'type' => 'string' ),
+					'meta_description' => array( 'type' => 'string' ),
+					'focus_keywords'   => array(
+						'oneOf' => array(
+							array( 'type' => 'string' ),
+							array(
+								'type'  => 'array',
+								'items' => array( 'type' => 'string' ),
+							),
+						),
+					),
+				),
+			),
 			'taxonomy.list_terms' => array(
 				'type'       => 'object',
 				'required'   => array( 'taxonomy' ),
@@ -476,11 +504,50 @@ final class McpController {
 					'parent'      => array( 'type' => 'integer' ),
 				),
 			),
+			'taxonomy.set_term_image' => array(
+				'type'       => 'object',
+				'required'   => array( 'taxonomy', 'term_id' ),
+				'properties' => array(
+					'taxonomy'    => array( 'type' => 'string' ),
+					'term_id'     => array( 'type' => 'integer' ),
+					'image_id'    => array(
+						'type'        => 'integer',
+						'description' => 'Existing image attachment ID to assign as the term image.',
+					),
+					'clear_image' => array(
+						'type'        => 'boolean',
+						'description' => 'Set true to intentionally clear the term image.',
+					),
+					'meta_key'    => array(
+						'type'        => 'string',
+						'description' => 'Allowlisted term meta key. Defaults to aculect_ai_companion_term_image_id.',
+					),
+				),
+			),
 			'media.list_items' => array(
 				'type'       => 'object',
 				'properties' => array(
-					'page'     => array( 'type' => 'integer' ),
-					'per_page' => array( 'type' => 'integer' ),
+					'page'        => array( 'type' => 'integer' ),
+					'per_page'    => array( 'type' => 'integer' ),
+					'search'      => array( 'type' => 'string' ),
+					'type'        => array(
+						'type'        => 'string',
+						'description' => 'Attachment family such as image, audio, video, or application.',
+					),
+					'mime_type'   => array( 'type' => 'string' ),
+					'post_id'     => array(
+						'type'        => 'integer',
+						'description' => 'Filter by attachment parent post ID. Use 0 for unattached media.',
+					),
+					'parent_id'   => array( 'type' => 'integer' ),
+					'author'      => array( 'type' => 'integer' ),
+					'date_after'  => array( 'type' => 'string' ),
+					'date_before' => array( 'type' => 'string' ),
+					'context'     => array(
+						'type'        => 'string',
+						'enum'        => array( 'compact', 'full' ),
+						'description' => 'Use compact for list browsing or full to include full attachment body fields. Defaults to compact.',
+					),
 				),
 			),
 			'media.get_item' => array(
@@ -519,6 +586,24 @@ final class McpController {
 					),
 				),
 			),
+			'media.delete_item' => array(
+				'type'       => 'object',
+				'required'   => array( 'id' ),
+				'properties' => array(
+					'id' => array( 'type' => 'integer' ),
+				),
+			),
+			'media.rename_file' => array(
+				'type'       => 'object',
+				'required'   => array( 'id', 'filename' ),
+				'properties' => array(
+					'id'       => array( 'type' => 'integer' ),
+					'filename' => array(
+						'type'        => 'string',
+						'description' => 'New filename for the physical uploaded file. The original extension must be preserved.',
+					),
+				),
+			),
 			'comments.list_items' => array(
 				'type'       => 'object',
 				'properties' => array(
@@ -550,6 +635,11 @@ final class McpController {
 					'search'         => array( 'type' => 'string' ),
 					'page'           => array( 'type' => 'integer' ),
 					'per_page'       => array( 'type' => 'integer' ),
+					'context'        => array(
+						'type'        => 'string',
+						'enum'        => array( 'compact', 'full' ),
+						'description' => 'Use compact for moderation queues or full to include comment bodies. Defaults to compact.',
+					),
 				),
 			),
 			'comments.get_item' => array(
@@ -682,14 +772,18 @@ final class McpController {
 			'content.create_item' => $content->create_item( $args ),
 			'content.create_draft' => $content->create_draft( $args ),
 			'content.update_item' => $content->update_item( $args ),
+			'content.update_seo' => $content->update_seo( $args ),
 			'taxonomy.list_taxonomies' => $content->list_taxonomies(),
 			'taxonomy.list_terms' => $content->list_terms( $args ),
 			'taxonomy.create_term' => $content->create_term( $args ),
 			'taxonomy.update_term' => $content->update_term( $args ),
+			'taxonomy.set_term_image' => $content->set_term_image( $args ),
 			'media.list_items' => $content->list_media( $args ),
 			'media.get_item' => $content->get_media( $args ),
 			'media.upload_item' => $content->upload_media( $args ),
 			'media.update_item' => $content->update_media( $args ),
+			'media.delete_item' => $content->delete_media( $args ),
+			'media.rename_file' => $content->rename_media_file( $args ),
 			'comments.list_items' => $content->list_comments( $args ),
 			'comments.get_item' => $content->get_comment( $args ),
 			'comments.create_item' => $content->create_comment( $args ),

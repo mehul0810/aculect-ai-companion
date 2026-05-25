@@ -8,6 +8,7 @@ use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
@@ -63,6 +64,7 @@ final class Plugin {
 	 */
 	public function boot(): void {
 		add_action( 'init', array( $this, 'register_rewrite_rules' ) );
+		add_action( 'init', array( $this, 'register_role_connection_entry_points' ) );
 		add_action( 'init', array( $this, 'maybe_flush_rewrite_rules' ), 20 );
 		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
 		add_filter( 'redirect_canonical', array( $this, 'filter_canonical_redirect' ), 10, 2 );
@@ -96,6 +98,13 @@ final class Plugin {
 		( new AuthorizationController() )->register_routes();
 		( new TokenController() )->register_routes();
 		( new McpController() )->register_routes();
+	}
+
+	/**
+	 * Register optional frontend connection entry points.
+	 */
+	public function register_role_connection_entry_points(): void {
+		( new RoleConnectionEntryPoint() )->register();
 	}
 
 	/**

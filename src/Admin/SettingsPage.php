@@ -9,6 +9,8 @@ use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
+use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
@@ -104,11 +106,21 @@ final class SettingsPage {
 				'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
 				'abilities'                => ( new AbilitiesRegistry() )->public_definitions(),
 				'enabledAbilities'         => ( new AbilitiesRegistry() )->enabled_ids(),
+				'wpAbilities'              => ( new WordPressAbilitiesPolicy() )->public_definitions(),
+				'enabledWpAbilities'       => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
 				'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
 				'confirmationGroupOptions' => ( new ToolSafety() )->available_confirmation_groups(),
 				'status'                   => $this->status(),
 				'activity'                 => $this->activity_payload(),
 				'diagnostics'              => $this->diagnostics(),
+				'roleConnections'          => array(
+					'enabled'      => RoleConnectionEntryPoint::is_enabled(),
+					'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
+					'roleOptions'  => RoleConnectionEntryPoint::role_options(),
+					'shortcode'    => '[aculect_ai_companion_connect]',
+					'blockName'    => 'aculect/ai-companion-connect',
+					'functionName' => 'aculect_ai_companion_connection_entry',
+				),
 				'connectionHealth'         => ( new ConnectionHealth() )->last_result(),
 				'actions'                  => array(
 					'adminPostUrl'         => admin_url( 'admin-post.php' ),
@@ -153,6 +165,14 @@ final class SettingsPage {
 
 		( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
 
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$enabled_wp_abilities = isset( $_POST['enabled_wp_abilities'] )
+			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_wp_abilities'] ) )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		( new WordPressAbilitiesPolicy() )->save_allowed_ids( $enabled_wp_abilities );
+
 		wp_safe_redirect(
 			add_query_arg(
 				array(
@@ -174,6 +194,15 @@ final class SettingsPage {
 		$enabled = isset( $_POST['diagnostic_logging_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['diagnostic_logging_enabled'] ) );
 
 		LogSettings::set_enabled( $enabled );
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$role_connections_enabled = isset( $_POST['role_connections_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_connections_enabled'] ) );
+		$role_connection_roles    = isset( $_POST['role_connection_roles'] )
+			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['role_connection_roles'] ) )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		RoleConnectionEntryPoint::save( $role_connections_enabled, $role_connection_roles );
 
 		wp_safe_redirect(
 			add_query_arg(

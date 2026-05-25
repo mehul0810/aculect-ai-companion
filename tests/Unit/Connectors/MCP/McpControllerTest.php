@@ -54,6 +54,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame($dotted_schema, $public_schema);
 		self::assertSame('object', $public_schema['type']);
 		self::assertArrayHasKey('post_type', $public_schema['properties']);
+		self::assertArrayHasKey('context', $public_schema['properties']);
+		self::assertSame(array('compact', 'full'), $public_schema['properties']['context']['enum']);
 	}
 
 	public function test_expanded_tool_schemas_are_available(): void {
@@ -71,12 +73,24 @@ final class McpControllerTest extends TestCase {
 		self::assertSame(array('id'), $media_update_schema['required']);
 		self::assertArrayHasKey('post_id', $media_update_schema['properties']);
 
+		$media_delete_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'media_delete_item' ) );
+		self::assertSame(array('id'), $media_delete_schema['required']);
+
+		$media_rename_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'media_rename_file' ) );
+		self::assertSame(array('id', 'filename'), $media_rename_schema['required']);
+
 		$create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_create_item' ) );
 		self::assertArrayHasKey('featured_media', $create_schema['properties']);
 
 		$update_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
 		self::assertArrayHasKey('featured_media', $update_schema['properties']);
 		self::assertArrayHasKey('clear_featured_media', $update_schema['properties']);
+
+		$seo_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_seo' ) );
+		self::assertSame(array('id'), $seo_schema['required']);
+		self::assertArrayHasKey('meta_title', $seo_schema['properties']);
+		self::assertArrayHasKey('meta_description', $seo_schema['properties']);
+		self::assertArrayHasKey('focus_keywords', $seo_schema['properties']);
 
 		$comments_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_update_item' ) );
 		self::assertSame(array('id'), $comments_schema['required']);
@@ -85,6 +99,7 @@ final class McpControllerTest extends TestCase {
 		$comments_list_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_list_items' ) );
 		self::assertArrayHasKey('date_after', $comments_list_schema['properties']);
 		self::assertArrayHasKey('author_user_id', $comments_list_schema['properties']);
+		self::assertArrayHasKey('context', $comments_list_schema['properties']);
 
 		$comments_create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'comments_create_item' ) );
 		self::assertArrayHasKey('parent_id', $comments_create_schema['properties']);
@@ -107,6 +122,11 @@ final class McpControllerTest extends TestCase {
 		$update_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
 		self::assertArrayHasKey('author', $update_schema['properties']);
 		self::assertArrayHasKey('taxonomies', $update_schema['properties']);
+
+		$term_image_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'taxonomy_set_term_image' ) );
+		self::assertSame(array('taxonomy', 'term_id'), $term_image_schema['required']);
+		self::assertArrayHasKey('image_id', $term_image_schema['properties']);
+		self::assertArrayHasKey('clear_image', $term_image_schema['properties']);
 	}
 
 	public function test_write_tool_schemas_include_safety_controls(): void {

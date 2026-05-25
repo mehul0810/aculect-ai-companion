@@ -79,14 +79,29 @@ abstract class AbstractAbilityService {
 	 * @return int|array<string, mixed>
 	 */
 	protected function validated_featured_media_id( mixed $value ): int|array {
+		$attachment_id = $this->validated_image_attachment_id( $value );
+		if ( is_array( $attachment_id ) ) {
+			return $attachment_id;
+		}
+
+		return $attachment_id;
+	}
+
+	/**
+	 * Validate an existing image attachment ID.
+	 *
+	 * @param mixed $value Raw image attachment value.
+	 * @return int|array<string, mixed>
+	 */
+	protected function validated_image_attachment_id( mixed $value ): int|array {
 		$attachment_id = absint( $value );
 		if ( 0 >= $attachment_id ) {
-			return $this->error( 'invalid_featured_media', 'featured_media must be an existing image attachment ID.' );
+			return $this->error( 'invalid_image', 'Image must be an existing image attachment ID.' );
 		}
 
 		$attachment = get_post( $attachment_id );
 		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type ) {
-			return $this->error( 'invalid_featured_media', 'Featured media must be an existing attachment.' );
+			return $this->error( 'invalid_image', 'Image must be an existing attachment.' );
 		}
 
 		if ( ! current_user_can( 'read_post', $attachment_id ) ) {
@@ -94,7 +109,7 @@ abstract class AbstractAbilityService {
 		}
 
 		if ( function_exists( 'wp_attachment_is_image' ) && ! wp_attachment_is_image( $attachment_id ) ) {
-			return $this->error( 'invalid_featured_media', 'Featured media must be an image attachment.' );
+			return $this->error( 'invalid_image', 'Image must be an image attachment.' );
 		}
 
 		return $attachment_id;
@@ -407,6 +422,32 @@ abstract class AbstractAbilityService {
 	}
 
 	/**
+	 * Normalize post/media date filters for WP_Query.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return list<array<string, mixed>>
+	 */
+	protected function date_query( array $args ): array {
+		$date_query = array();
+
+		if ( ! empty( $args['date_after'] ) ) {
+			$date_query['after'] = sanitize_text_field( (string) $args['date_after'] );
+		}
+
+		if ( ! empty( $args['date_before'] ) ) {
+			$date_query['before'] = sanitize_text_field( (string) $args['date_before'] );
+		}
+
+		if ( array() === $date_query ) {
+			return array();
+		}
+
+		$date_query['inclusive'] = true;
+
+		return array( $date_query );
+	}
+
+	/**
 	 * Normalize a bounded list of comment IDs for bulk operations.
 	 *
 	 * @param mixed $ids Candidate comment IDs.
@@ -508,6 +549,40 @@ abstract class AbstractAbilityService {
 	}
 
 	/**
+	 * Map a post object into compact MCP list output.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array<string, mixed>
+	 */
+	protected function map_post_compact( \WP_Post $post ): array {
+		$author = get_userdata( (int) $post->post_author );
+
+		$item = array(
+			'id'                  => (int) $post->ID,
+			'type'                => $post->post_type,
+			'title'               => get_the_title( $post ),
+			'slug'                => $post->post_name,
+			'status'              => $post->post_status,
+			'excerpt'             => $post->post_excerpt,
+			'author'              => (int) $post->post_author,
+			'author_display_name' => $author instanceof \WP_User ? $author->display_name : '',
+			'featured_media'      => (int) get_post_thumbnail_id( $post ),
+			'date_gmt'            => $post->post_date_gmt,
+			'modified_gmt'        => $post->post_modified_gmt,
+			'link'                => get_permalink( $post ),
+		);
+
+		if ( 'attachment' === $post->post_type ) {
+			$item['mime_type']   = $post->post_mime_type;
+			$item['source_url']  = wp_get_attachment_url( $post->ID );
+			$item['alt_text']    = get_post_meta( $post->ID, '_wp_attachment_image_alt', true );
+			$item['post_parent'] = (int) $post->post_parent;
+		}
+
+		return $item;
+	}
+
+	/**
 	 * Return assigned terms grouped by supported taxonomy.
 	 *
 	 * @param \WP_Post $post Post object.
@@ -566,7 +641,52 @@ abstract class AbstractAbilityService {
 			'description' => $term->description,
 			'parent'      => (int) $term->parent,
 			'count'       => (int) $term->count,
+			'image'       => $this->term_image( $term ),
 		);
+	}
+
+	/**
+	 * Return configured term image metadata for a term.
+	 *
+	 * @param \WP_Term $term Term object.
+	 * @return array<string, mixed>
+	 */
+	protected function term_image( \WP_Term $term ): array {
+		foreach ( $this->term_image_meta_keys() as $meta_key ) {
+			$attachment_id = absint( get_term_meta( $term->term_id, $meta_key, true ) );
+			if ( $attachment_id > 0 ) {
+				return array(
+					'attachment_id' => $attachment_id,
+					'meta_key'      => $meta_key,
+					'source_url'    => wp_get_attachment_url( $attachment_id ),
+				);
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Return allowed term image meta keys.
+	 *
+	 * @return list<string>
+	 */
+	protected function term_image_meta_keys(): array {
+		$keys = apply_filters(
+			'aculect_ai_companion_term_image_meta_keys',
+			array(
+				'aculect_ai_companion_term_image_id',
+				'thumbnail_id',
+			)
+		);
+
+		if ( ! is_array( $keys ) ) {
+			return array( 'aculect_ai_companion_term_image_id' );
+		}
+
+		$keys = array_filter( array_map( 'sanitize_key', array_map( 'strval', $keys ) ) );
+
+		return array_values( array_unique( $keys ) );
 	}
 
 	/**
@@ -593,6 +713,26 @@ abstract class AbstractAbilityService {
 	}
 
 	/**
+	 * Map a comment object into compact MCP list output.
+	 *
+	 * @param \WP_Comment $comment Comment object.
+	 * @return array<string, mixed>
+	 */
+	protected function map_comment_compact( \WP_Comment $comment ): array {
+		return array(
+			'id'          => (int) $comment->comment_ID,
+			'post_id'     => (int) $comment->comment_post_ID,
+			'author_name' => $comment->comment_author,
+			'user_id'     => (int) $comment->user_id,
+			'status'      => wp_get_comment_status( $comment ),
+			'type'        => $comment->comment_type,
+			'parent'      => (int) $comment->comment_parent,
+			'date_gmt'    => $comment->comment_date_gmt,
+			'link'        => get_comment_link( $comment ),
+		);
+	}
+
+	/**
 	 * Return a consistent empty paginated collection.
 	 *
 	 * @param int $page     Page number.
@@ -605,7 +745,19 @@ abstract class AbstractAbilityService {
 			'total'    => 0,
 			'page'     => $page,
 			'per_page' => $per_page,
+			'context'  => 'compact',
 		);
+	}
+
+	/**
+	 * Normalize list response context.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 */
+	protected function collection_context( array $args ): string {
+		$context = sanitize_key( (string) ( $args['context'] ?? 'compact' ) );
+
+		return 'full' === $context ? 'full' : 'compact';
 	}
 
 	/**

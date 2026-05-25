@@ -101,9 +101,11 @@ final class McpControllerTest extends TestCase {
 		self::assertInstanceOf(\stdClass::class, $health_schema['properties']);
 
 		$create_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_create_item' ) );
+		self::assertArrayHasKey('author', $create_schema['properties']);
 		self::assertArrayHasKey('taxonomies', $create_schema['properties']);
 
 		$update_schema = $this->invokePrivate( $controller, 'input_schema_for_tool', array( 'content_update_item' ) );
+		self::assertArrayHasKey('author', $update_schema['properties']);
 		self::assertArrayHasKey('taxonomies', $update_schema['properties']);
 	}
 

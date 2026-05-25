@@ -3,6 +3,8 @@ parameters:
   paths:
     - src
     - aculect-ai-companion.php
+  parallel:
+    maximumNumberOfProcesses: 1
   bootstrapFiles:
     - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     - phpstan-bootstrap.php

@@ -36,6 +36,11 @@ site health summaries, and plugin/theme inventory. New tool groups should stay
 deterministic, paginated where applicable, and capability-checked at execution
 time.
 
+`content_create_item` and `content_update_item` accept an `author` user ID when
+the connected WordPress user can assign authors for the target post type. The
+target user must exist and be able to own that post type. Omitting `author`
+preserves WordPress' default author behavior.
+
 `content_create_item` and `content_update_item` accept a `taxonomies` object
 that maps taxonomy slugs to existing term IDs or term slugs, for example
 `{ "category": [ 12, "release-notes" ], "post_tag": [ "mcp" ] }`. The

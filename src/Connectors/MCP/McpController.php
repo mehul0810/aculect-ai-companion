@@ -374,6 +374,10 @@ final class McpController {
 						'type'        => 'integer',
 						'description' => 'Existing image attachment ID to assign as the featured image.',
 					),
+					'author'         => array(
+						'type'        => 'integer',
+						'description' => 'Existing WordPress user ID to assign as author.',
+					),
 					'taxonomies'     => array(
 						'type'                 => 'object',
 						'description'          => 'Map taxonomy slugs to existing term IDs or term slugs.',
@@ -412,6 +416,10 @@ final class McpController {
 					'clear_featured_media' => array(
 						'type'        => 'boolean',
 						'description' => 'Set true to intentionally remove the current featured image.',
+					),
+					'author'               => array(
+						'type'        => 'integer',
+						'description' => 'Existing WordPress user ID to assign as author.',
 					),
 					'taxonomies'           => array(
 						'type'                 => 'object',

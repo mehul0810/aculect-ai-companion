@@ -1,4 +1,24 @@
 {
+  "0.4.0": {
+    "New": [
+      "Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.",
+      "Added taxonomy term image assignment for supported content groups.",
+      "Expanded media workflows with media read, update, trash, attachment relationship, and safe physical filename rename actions.",
+      "Added role-based MCP connection entry points for non-admin users.",
+      "Added Codex connector setup guidance."
+    ],
+    "Improved": [
+      "Expanded comment workflows with richer filters and bulk moderation.",
+      "Added safe site health summaries and broader site management visibility.",
+      "Added policy-controlled bridging for public WordPress Abilities registered by WordPress and other plugins.",
+      "Improved MCP list payloads with compact defaults and sparse field controls for lower-volume responses.",
+      "Modularized MCP tool definitions, schemas, scopes, read-only hints, and handlers to reduce drift as more tools are added."
+    ],
+    "Reliability": [
+      "Added dry-run previews and confirmation gates for higher-risk write actions.",
+      "Expanded test and CI coverage for MCP tools, permissions, safety controls, media workflows, and release packaging."
+    ]
+  },
   "0.3.0": {
     "New": [
       "Added an AI Activity tab for reviewing write actions requested by connected AI assistants.",

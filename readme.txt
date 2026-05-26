@@ -4,7 +4,7 @@ Tags: ai, content, claude, media, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,8 +57,9 @@ Content:
 * List readable content types, including custom post types
 * List posts, pages, and custom content items with pagination
 * Read one content item by ID
-* Create a post, page, or custom content item
-* Update title, content, excerpt, slug, or status for an existing item
+* Create a post, page, or custom content item with optional featured image, author, and taxonomy assignments
+* Update title, content, excerpt, slug, status, featured image, author, or taxonomy assignments for an existing item
+* Update SEO title, SEO description, and focus keywords for supported SEO plugins
 
 Content groups:
 
@@ -66,6 +67,7 @@ Content groups:
 * List terms for a supported taxonomy with pagination
 * Create a category, tag, or custom content group
 * Update a category, tag, or custom content group
+* Assign or clear an image for supported taxonomy terms
 
 Comments:
 
@@ -73,11 +75,14 @@ Comments:
 * Read one comment by ID
 * Reply to a comment as the connected WordPress user
 * Moderate comment content or status
+* Bulk moderate multiple comments
 
 Media:
 
 * List media library attachments with pagination
+* Read, update, trash, and safely rename media items
 * Upload media from a public URL with server-side request checks
+* Attach media to posts or detach media from posts
 
 Site information:
 
@@ -191,6 +196,21 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.4.0 =
+
+* Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.
+* Added taxonomy term image assignment for supported content groups.
+* Expanded media workflows with media read, update, trash, attachment relationship, and safe physical filename rename actions.
+* Expanded comment workflows with richer filters and bulk moderation.
+* Added safe site health summaries and broader site management visibility.
+* Added dry-run previews and confirmation gates for higher-risk write actions.
+* Added role-based MCP connection entry points for non-admin users.
+* Added policy-controlled bridging for public WordPress Abilities registered by WordPress and other plugins.
+* Added Codex connector setup guidance.
+* Improved MCP list payloads with compact defaults and sparse field controls for lower-volume responses.
+* Modularized MCP tool definitions, schemas, scopes, read-only hints, and handlers to reduce drift as more tools are added.
+* Expanded test and CI coverage for MCP tools, permissions, safety controls, media workflows, and release packaging.
+
 = 0.3.0 =
 
 * Added an AI Activity tab for reviewing write actions requested by connected AI assistants.
@@ -232,6 +252,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.4.0 =
+
+Expands content, media, taxonomy, comment, site health, and WordPress Abilities workflows with stronger safety controls and a more modular MCP tool layer.
 
 = 0.3.0 =
 

@@ -111,6 +111,12 @@ Aculect AI Companion implements a remote MCP interface secured by OAuth-style au
 
 Production ZIP files include built assets and Composer dependencies. Development manifests such as `composer.json`, `composer.lock`, and `package.json` stay in the GitHub repository but are excluded from release artifacts with `.distignore`. Generated files under `build/` are not committed to the source repository; GitHub Actions runs `npm run build` before packaging so the release ZIP still ships `build/index.js`, `build/index.asset.php`, and stylesheets required by WordPress.
 
+### MCP Ability Architecture
+
+First-party MCP tools are registered as internal ability modules. Each module owns its metadata, JSON input schema, required OAuth scope, read-only flag, and execution callback. `AbilitiesRegistry` maps internal dotted IDs to client-safe public tool names and keeps legacy aliases working.
+
+This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
+
 ### Public Interfaces
 
 - MCP: `/wp-json/aculect-ai-companion/v1/mcp`

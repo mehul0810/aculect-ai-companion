@@ -17,253 +17,19 @@ final class AbilitiesRegistry {
 	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
 
 	/**
+	 * Cached ability modules.
+	 *
+	 * @var array<string, AbilityModuleInterface>|null
+	 */
+	private ?array $modules = null;
+
+	/**
 	 * Return all abilities Aculect AI Companion can expose to assistant clients.
 	 *
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function definitions(): array {
-		return array(
-			'site.list_post_types'     => array(
-				'id'          => 'site.list_post_types',
-				'title'       => 'List Content Types',
-				'description' => 'List readable WordPress content types, including custom ones.',
-				'group'       => 'Content',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'content.list_items'       => array(
-				'id'          => 'content.list_items',
-				'title'       => 'List Posts and Pages',
-				'description' => 'List content for any enabled content type with pagination.',
-				'group'       => 'Content',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'content.get_item'         => array(
-				'id'          => 'content.get_item',
-				'title'       => 'Read a Post or Page',
-				'description' => 'Read one content item by ID from any enabled content type.',
-				'group'       => 'Content',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'content.create_item'      => array(
-				'id'          => 'content.create_item',
-				'title'       => 'Create a Post or Page',
-				'description' => 'Create a post, page, or custom content item.',
-				'group'       => 'Content',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'content.update_item'      => array(
-				'id'          => 'content.update_item',
-				'title'       => 'Update a Post or Page',
-				'description' => 'Update title, content, excerpt, slug, or status for an existing item.',
-				'group'       => 'Content',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'content.update_seo'       => array(
-				'id'          => 'content.update_seo',
-				'title'       => 'Update SEO Metadata',
-				'description' => 'Update SEO title, description, and focus keywords for supported SEO plugins.',
-				'group'       => 'Content',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'taxonomy.list_taxonomies' => array(
-				'id'          => 'taxonomy.list_taxonomies',
-				'title'       => 'List Content Groups',
-				'description' => 'List available categories, tags, and custom content groups.',
-				'group'       => 'Content Groups',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'taxonomy.list_terms'      => array(
-				'id'          => 'taxonomy.list_terms',
-				'title'       => 'List Categories and Tags',
-				'description' => 'List categories, tags, or custom content groups with pagination.',
-				'group'       => 'Content Groups',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'taxonomy.create_term'     => array(
-				'id'          => 'taxonomy.create_term',
-				'title'       => 'Create a Category or Tag',
-				'description' => 'Create a category, tag, or custom content group.',
-				'group'       => 'Content Groups',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'taxonomy.update_term'     => array(
-				'id'          => 'taxonomy.update_term',
-				'title'       => 'Update a Category or Tag',
-				'description' => 'Update a category, tag, or custom content group.',
-				'group'       => 'Content Groups',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'taxonomy.set_term_image'  => array(
-				'id'          => 'taxonomy.set_term_image',
-				'title'       => 'Set Category or Tag Image',
-				'description' => 'Assign or clear an image attachment for an allowlisted taxonomy term image meta key.',
-				'group'       => 'Content Groups',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'media.list_items'         => array(
-				'id'          => 'media.list_items',
-				'title'       => 'List Media',
-				'description' => 'List media library attachments with pagination.',
-				'group'       => 'Media',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'media.get_item'           => array(
-				'id'          => 'media.get_item',
-				'title'       => 'Read Media Item',
-				'description' => 'Read one media library attachment by ID.',
-				'group'       => 'Media',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'media.update_item'        => array(
-				'id'          => 'media.update_item',
-				'title'       => 'Update Media Item',
-				'description' => 'Update media title, alt text, caption, description, slug, or attachment parent.',
-				'group'       => 'Media',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'media.delete_item'        => array(
-				'id'          => 'media.delete_item',
-				'title'       => 'Trash Media Item',
-				'description' => 'Move a media library attachment to the trash when permitted.',
-				'group'       => 'Media',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'media.rename_file'        => array(
-				'id'          => 'media.rename_file',
-				'title'       => 'Rename Media File',
-				'description' => 'Safely rename the uploaded file on disk while preserving its extension and attachment metadata.',
-				'group'       => 'Media',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'site.get_settings'        => array(
-				'id'          => 'site.get_settings',
-				'title'       => 'View Site Settings',
-				'description' => 'Read safe, non-secret site settings.',
-				'group'       => 'Site Information',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'site.get_info'            => array(
-				'id'          => 'site.get_info',
-				'title'       => 'View Site Information',
-				'description' => 'Read WordPress version, PHP version, active theme, and basic site metadata.',
-				'group'       => 'Site Information',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'site.get_health'          => array(
-				'id'          => 'site.get_health',
-				'title'       => 'View Site Health Summary',
-				'description' => 'Read a safe site health summary for users who can manage site options.',
-				'group'       => 'Site Information',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'site.list_plugins'        => array(
-				'id'          => 'site.list_plugins',
-				'title'       => 'List Plugins',
-				'description' => 'List installed WordPress plugins and active state for users who can manage plugins.',
-				'group'       => 'Site Information',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'site.list_themes'         => array(
-				'id'          => 'site.list_themes',
-				'title'       => 'List Themes',
-				'description' => 'List installed WordPress themes and active state for users who can manage themes.',
-				'group'       => 'Site Information',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'comments.list_items'      => array(
-				'id'          => 'comments.list_items',
-				'title'       => 'List Comments for Review',
-				'description' => 'List WordPress comments with pagination and moderation-safe fields.',
-				'group'       => 'Comments',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'comments.get_item'        => array(
-				'id'          => 'comments.get_item',
-				'title'       => 'Read a Comment',
-				'description' => 'Read a single WordPress comment by ID.',
-				'group'       => 'Comments',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'comments.create_item'     => array(
-				'id'          => 'comments.create_item',
-				'title'       => 'Reply to a Comment',
-				'description' => 'Create a WordPress comment as the connected user.',
-				'group'       => 'Comments',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'comments.update_item'     => array(
-				'id'          => 'comments.update_item',
-				'title'       => 'Moderate a Comment',
-				'description' => 'Update comment content or moderation status.',
-				'group'       => 'Comments',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'comments.bulk_update'     => array(
-				'id'          => 'comments.bulk_update',
-				'title'       => 'Bulk Moderate Comments',
-				'description' => 'Apply one moderation status to multiple WordPress comments.',
-				'group'       => 'Comments',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'media.upload_item'        => array(
-				'id'          => 'media.upload_item',
-				'title'       => 'Upload Media From a URL',
-				'description' => 'Upload media to the WordPress media library from a public URL with SSRF checks.',
-				'group'       => 'Media',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-			'wp_abilities.discover'    => array(
-				'id'          => 'wp_abilities.discover',
-				'title'       => 'Discover WordPress Actions',
-				'description' => 'Discover supported actions registered by WordPress and plugins.',
-				'group'       => 'WordPress Actions',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'wp_abilities.get_info'    => array(
-				'id'          => 'wp_abilities.get_info',
-				'title'       => 'Inspect a WordPress Action',
-				'description' => 'Review details for a supported action registered by WordPress or a plugin.',
-				'group'       => 'WordPress Actions',
-				'scope'       => 'content:read',
-				'readOnly'    => true,
-			),
-			'wp_abilities.run'         => array(
-				'id'          => 'wp_abilities.run',
-				'title'       => 'Run a WordPress Action',
-				'description' => 'Run a supported public WordPress action using the connected user permissions.',
-				'group'       => 'WordPress Actions',
-				'scope'       => 'content:draft',
-				'readOnly'    => false,
-			),
-		);
+		return array_map( array( $this, 'definition_from_module' ), $this->modules() );
 	}
 
 	/**
@@ -295,6 +61,67 @@ final class AbilitiesRegistry {
 		$enabled     = $this->enabled_ids();
 		$definitions = $this->definitions();
 		return array_intersect_key( $definitions, array_flip( $enabled ) );
+	}
+
+	/**
+	 * Return all registered ability modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function modules(): array {
+		if ( null === $this->modules ) {
+			$this->modules = ( new FirstPartyAbilityModules() )->all();
+		}
+
+		return $this->modules;
+	}
+
+	/**
+	 * Return only modules enabled for MCP exposure.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function enabled_modules(): array {
+		$enabled = $this->enabled_ids();
+
+		return array_intersect_key( $this->modules(), array_flip( $enabled ) );
+	}
+
+	/**
+	 * Return one module by internal ID, legacy alias, or public tool name.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function module( string $id ): ?AbilityModuleInterface {
+		return $this->modules()[ $this->internal_id( $id ) ] ?? null;
+	}
+
+	/**
+	 * Return the input schema for an ability.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 * @return array<string, mixed>
+	 */
+	public function input_schema( string $id ): array {
+		$module = $this->module( $id );
+
+		return null === $module ? array(
+			'type'       => 'object',
+			'properties' => new \stdClass(),
+		) : $module->input_schema();
+	}
+
+	/**
+	 * Execute a registered ability module.
+	 *
+	 * @param string               $id   Internal ID, legacy alias, or public tool name.
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function execute( string $id, array $args ): array {
+		$module = $this->module( $id );
+
+		return null === $module ? array( 'error' => 'Unknown tool' ) : $module->execute( $args );
 	}
 
 	/**
@@ -345,9 +172,9 @@ final class AbilitiesRegistry {
 	 * @return list<string>
 	 */
 	public function required_scopes( string $id ): array {
-		$definition = $this->definitions()[ $this->internal_id( $id ) ] ?? array();
-		$scope      = (string) ( $definition['scope'] ?? 'content:read' );
-		return array( $scope );
+		$module = $this->module( $id );
+
+		return null === $module ? array( 'content:read' ) : $module->required_scopes();
 	}
 
 	/**
@@ -356,9 +183,9 @@ final class AbilitiesRegistry {
 	 * @param string $id Internal ID, legacy alias, or public tool name.
 	 */
 	public function is_read_only( string $id ): bool {
-		$definition = $this->definitions()[ $this->internal_id( $id ) ] ?? array();
+		$module = $this->module( $id );
 
-		return (bool) ( $definition['readOnly'] ?? true );
+		return null === $module || $module->is_read_only();
 	}
 
 	/**
@@ -446,5 +273,24 @@ final class AbilitiesRegistry {
 		}
 
 		return array_values( array_unique( $sanitized ) );
+	}
+
+	/**
+	 * Convert an ability module into the admin-compatible definition shape.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @return array<string, bool|string>
+	 */
+	private function definition_from_module( AbilityModuleInterface $module ): array {
+		$scopes = $module->required_scopes();
+
+		return array(
+			'id'          => $module->id(),
+			'title'       => $module->title(),
+			'description' => $module->description(),
+			'group'       => $module->group(),
+			'scope'       => (string) ( $scopes[0] ?? 'content:read' ),
+			'readOnly'    => $module->is_read_only(),
+		);
 	}
 }

@@ -84,6 +84,48 @@ final class ActivityRepository {
 	}
 
 	/**
+	 * Return aggregate activity counts for the admin dashboard.
+	 *
+	 * @param array<string, mixed> $filters Activity filters.
+	 * @return array<string, int>
+	 */
+	public function summary( array $filters = array() ): array {
+		global $wpdb;
+
+		$where              = $this->where_clause( $filters );
+		$table              = Installer::table_name();
+		$high_risk_patterns = array(
+			'%"risk_level":"publish"%',
+			'%"risk_level":"destructive"%',
+			'%"risk_level":"system"%',
+		);
+		$row                = $wpdb->get_row(
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- WHERE clause is built from fixed fragments and placeholder values in where_clause().
+			$wpdb->prepare(
+				"SELECT COUNT(*) AS total,
+					SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
+					SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failures,
+					COUNT(DISTINCT NULLIF(COALESCE(NULLIF(client_name, ''), NULLIF(client_id, ''), provider, ''), '')) AS assistants,
+					SUM(CASE WHEN context LIKE %s OR context LIKE %s OR context LIKE %s THEN 1 ELSE 0 END) AS high_risk
+				FROM %i {$where['sql']}",
+				...array_merge( $high_risk_patterns, array( $table ), $where['values'] )
+			),
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
+			ARRAY_A
+		);
+
+		$row = is_array( $row ) ? $row : array();
+
+		return array(
+			'total'      => (int) ( $row['total'] ?? 0 ),
+			'successes'  => (int) ( $row['successes'] ?? 0 ),
+			'failures'   => (int) ( $row['failures'] ?? 0 ),
+			'assistants' => (int) ( $row['assistants'] ?? 0 ),
+			'highRisk'   => (int) ( $row['high_risk'] ?? 0 ),
+		);
+	}
+
+	/**
 	 * Prune expired activity rows.
 	 *
 	 * @param int $retention_days Retention window.
@@ -157,6 +199,7 @@ final class ActivityRepository {
 			'error_code'  => (string) ( $row['error_code'] ?? '' ),
 			'message'     => (string) ( $row['message'] ?? '' ),
 			'context'     => is_array( $context ) ? $context : array(),
+			'risk_level'  => is_array( $context ) && isset( $context['risk_level'] ) && is_scalar( $context['risk_level'] ) ? sanitize_key( (string) $context['risk_level'] ) : '',
 		);
 	}
 
@@ -197,6 +240,12 @@ final class ActivityRepository {
 			$values[]  = $like;
 			$values[]  = $like;
 			$values[]  = $like;
+		}
+
+		$since = $this->range_cutoff( $filters['range'] ?? '' );
+		if ( '' !== $since ) {
+			$clauses[] = 'created_at >= %s';
+			$values[]  = $since;
 		}
 
 		return array(
@@ -249,6 +298,24 @@ final class ActivityRepository {
 		$status = is_scalar( $status ) ? sanitize_key( strtolower( (string) $status ) ) : '';
 
 		return in_array( $status, array( 'success', 'error' ), true ) ? $status : '';
+	}
+
+	/**
+	 * Convert an activity range filter into a UTC cutoff.
+	 *
+	 * @param mixed $range Raw range.
+	 */
+	private function range_cutoff( mixed $range ): string {
+		$range   = is_scalar( $range ) ? sanitize_key( strtolower( (string) $range ) ) : '';
+		$seconds = match ( $range ) {
+			'24h' => 86400,
+			'7d'  => 7 * 86400,
+			'30d' => 30 * 86400,
+			'90d' => 90 * 86400,
+			default => 0,
+		};
+
+		return $seconds > 0 ? gmdate( 'Y-m-d H:i:s', time() - $seconds ) : '';
 	}
 
 	/**

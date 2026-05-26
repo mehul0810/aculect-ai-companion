@@ -287,6 +287,46 @@ function ActivityTable( { activity } ) {
 	);
 }
 
+function ActivitySummary( { summary } ) {
+	const data = summary && typeof summary === 'object' ? summary : {};
+	const items = [
+		{
+			label: 'Actions',
+			value: data.total || 0,
+		},
+		{
+			label: 'Failures',
+			value: data.failures || 0,
+			tone: data.failures > 0 ? 'is-error' : '',
+		},
+		{
+			label: 'Assistants',
+			value: data.assistants || 0,
+		},
+		{
+			label: 'High risk',
+			value: data.highRisk || 0,
+			tone: data.highRisk > 0 ? 'is-warning' : '',
+		},
+	];
+
+	return (
+		<div className="aculect-ai-companion-activity-summary">
+			{ items.map( ( item ) => (
+				<div
+					key={ item.label }
+					className={ `aculect-ai-companion-activity-summary-item ${
+						item.tone || ''
+					}` }
+				>
+					<span>{ item.label }</span>
+					<strong>{ item.value }</strong>
+				</div>
+			) ) }
+		</div>
+	);
+}
+
 function StatusBadge( { status } ) {
 	const normalizedStatus = [ 'pass', 'warn', 'fail' ].includes( status )
 		? status
@@ -1480,6 +1520,9 @@ function SettingsApp() {
 										connected AI assistants. Read-only
 										actions are not logged in this version.
 									</p>
+									<ActivitySummary
+										summary={ activity.summary }
+									/>
 									<form
 										method="get"
 										action="options-general.php"
@@ -1548,6 +1591,33 @@ function SettingsApp() {
 													''
 												}
 											/>
+										</label>
+										<label htmlFor="aculect-ai-companion-activity-range">
+											<span>Range</span>
+											<select
+												id="aculect-ai-companion-activity-range"
+												name="activity_range"
+												defaultValue={
+													activityFilters.range ||
+													'7d'
+												}
+											>
+												<option value="24h">
+													24 hours
+												</option>
+												<option value="7d">
+													7 days
+												</option>
+												<option value="30d">
+													30 days
+												</option>
+												<option value="90d">
+													90 days
+												</option>
+												<option value="all">
+													All time
+												</option>
+											</select>
 										</label>
 										<Button type="submit" variant="primary">
 											Filter

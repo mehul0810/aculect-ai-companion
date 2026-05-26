@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Activity;
 
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+
 /**
  * Records connected AI actions with sanitized metadata only.
  */
@@ -30,6 +32,7 @@ final class ActivityLogger {
 	public function record_tool_call( string $action, array $args, array $result, array $auth ): bool {
 		$target = $this->target( $action, $args, $result );
 		$status = isset( $result['error'] ) ? 'error' : 'success';
+		$risk   = ( new ToolSafety() )->risk_level( $action, $args );
 
 		$inserted = $this->repository->insert(
 			array(
@@ -43,11 +46,7 @@ final class ActivityLogger {
 				'status'      => $status,
 				'error_code'  => 'error' === $status ? (string) ( $result['error'] ?? 'tool_error' ) : '',
 				'message'     => 'error' === $status ? (string) ( $result['message'] ?? 'AI action failed.' ) : 'AI action completed.',
-				'context'     => array(
-					'argument_keys' => $this->argument_keys( $args ),
-					'metadata'      => $this->safe_argument_metadata( $action, $args ),
-					'result'        => $this->result_metadata( $result ),
-				),
+				'context'     => $this->context( $action, $args, $result, $risk ),
 			)
 		);
 
@@ -56,6 +55,24 @@ final class ActivityLogger {
 		}
 
 		return $inserted;
+	}
+
+	/**
+	 * Build sanitized activity context without storing request payload values.
+	 *
+	 * @param string               $action Tool action.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $result Tool result.
+	 * @param string               $risk   Tool risk level.
+	 * @return array<string, mixed>
+	 */
+	private function context( string $action, array $args, array $result, string $risk ): array {
+		return array(
+			'argument_keys' => $this->argument_keys( $args ),
+			'risk_level'    => $risk,
+			'metadata'      => $this->safe_argument_metadata( $action, $args ),
+			'result'        => $this->result_metadata( $result ),
+		);
 	}
 
 	/**

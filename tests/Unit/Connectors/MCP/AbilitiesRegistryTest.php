@@ -71,8 +71,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		);
 
 		self::assertContains( 'Content', $groups );
-		self::assertContains( 'Content Groups', $groups );
-		self::assertContains( 'Comments', $groups );
+			self::assertContains( 'Content Groups', $groups );
+			self::assertContains( 'Brand', $groups );
+			self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
@@ -98,6 +99,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'comments.create_item',
 				'comments.update_item',
 				'comments.bulk_update',
+				'brand.get_profile',
 				'media.upload_item',
 				'media.get_item',
 				'media.update_item',

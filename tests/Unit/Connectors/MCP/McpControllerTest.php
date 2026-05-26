@@ -111,6 +111,10 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'object', $health_schema['type'] );
 		self::assertInstanceOf( \stdClass::class, $health_schema['properties'] );
 
+		$brand_schema = $this->schemaForTool( 'brand_get_profile' );
+		self::assertSame( 'object', $brand_schema['type'] );
+		self::assertInstanceOf( \stdClass::class, $brand_schema['properties'] );
+
 		$create_schema = $this->schemaForTool( 'content_create_item' );
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );

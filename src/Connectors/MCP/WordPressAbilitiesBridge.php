@@ -36,6 +36,10 @@ final class WordPressAbilitiesBridge {
 						return false;
 					}
 
+					if ( empty( $ability['allowed'] ) ) {
+						return false;
+					}
+
 					if ( '' !== $category && $category !== $ability['category'] ) {
 						return false;
 					}
@@ -81,6 +85,10 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'forbidden', 'This WordPress ability is not exposed for remote clients.' );
 		}
 
+		if ( ! ( new WordPressAbilitiesPolicy() )->is_allowed( $this->ability_name( $ability ) ) ) {
+			return $this->error( 'blocked_by_policy', 'This WordPress ability is blocked by Aculect AI Companion policy.' );
+		}
+
 		return $this->map_ability( $ability, true );
 	}
 
@@ -102,6 +110,10 @@ final class WordPressAbilitiesBridge {
 
 		if ( ! $this->is_public_ability( $ability ) ) {
 			return $this->error( 'forbidden', 'This WordPress ability is not exposed for remote clients.' );
+		}
+
+		if ( ! ( new WordPressAbilitiesPolicy() )->is_allowed( $this->ability_name( $ability ) ) ) {
+			return $this->error( 'blocked_by_policy', 'This WordPress ability is blocked by Aculect AI Companion policy.' );
 		}
 
 		if ( ! method_exists( $ability, 'execute' ) ) {
@@ -168,6 +180,7 @@ final class WordPressAbilitiesBridge {
 			'category'    => $this->method_string( $ability, 'get_category' ),
 			'readOnly'    => $this->is_readonly( $meta ),
 			'public'      => $this->is_public_ability( $ability ),
+			'allowed'     => ( new WordPressAbilitiesPolicy() )->is_allowed( $this->ability_name( $ability ) ),
 		);
 
 		if ( $include_full ) {

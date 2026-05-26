@@ -76,6 +76,16 @@ final class ContentController {
 	}
 
 	/**
+	 * Update supported SEO plugin metadata for a content item.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function update_seo( array $data ): array {
+		return ( new AbilitiesService() )->update_seo( $data );
+	}
+
+	/**
 	 * List available taxonomies.
 	 *
 	 * @return array<string, mixed>
@@ -112,6 +122,16 @@ final class ContentController {
 	 */
 	public function update_term( array $data ): array {
 		return ( new AbilitiesService() )->update_term( $data );
+	}
+
+	/**
+	 * Assign or clear an image for a taxonomy term.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function set_term_image( array $data ): array {
+		return ( new AbilitiesService() )->set_term_image( $data );
 	}
 
 	/**
@@ -152,6 +172,26 @@ final class ContentController {
 	 */
 	public function update_media( array $data ): array {
 		return ( new AbilitiesService() )->update_media( $data );
+	}
+
+	/**
+	 * Move a media attachment to the trash.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function delete_media( array $data ): array {
+		return ( new AbilitiesService() )->delete_media( $data );
+	}
+
+	/**
+	 * Rename a media attachment file on disk.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function rename_media_file( array $data ): array {
+		return ( new AbilitiesService() )->rename_media_file( $data );
 	}
 
 	/**

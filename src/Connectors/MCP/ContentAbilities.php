@@ -65,11 +65,14 @@ final class ContentAbilities extends AbstractAbilityService {
 			)
 		);
 
+		$mapper = 'full' === $this->collection_context( $args ) ? 'map_post' : 'map_post_compact';
+
 		return array(
-			'items'    => array_map( array( $this, 'map_post' ), $posts ),
+			'items'    => array_map( array( $this, $mapper ), $posts ),
 			'total'    => (int) $query->found_posts,
 			'page'     => $page,
 			'per_page' => $per_page,
+			'context'  => $this->collection_context( $args ),
 		);
 	}
 

@@ -52,6 +52,8 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 	);
 }
 
+require_once ACULECT_AI_COMPANION_PLUGIN_DIR . 'src/functions.php';
+
 register_activation_hook( __FILE__, array( Plugin::class, 'activate' ) );
 register_deactivation_hook( __FILE__, array( Plugin::class, 'deactivate' ) );
 

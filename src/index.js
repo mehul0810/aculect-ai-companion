@@ -425,6 +425,9 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
+	const wpAbilities = Array.isArray( data.wpAbilities )
+		? data.wpAbilities
+		: [];
 	const confirmationGroupOptions = Array.isArray(
 		data.confirmationGroupOptions
 	)
@@ -439,6 +442,10 @@ function SettingsApp() {
 	const diagnostics =
 		data.diagnostics && typeof data.diagnostics === 'object'
 			? data.diagnostics
+			: {};
+	const roleConnections =
+		data.roleConnections && typeof data.roleConnections === 'object'
+			? data.roleConnections
 			: {};
 	const connectionHealth =
 		data.connectionHealth && typeof data.connectionHealth === 'object'
@@ -455,11 +462,22 @@ function SettingsApp() {
 	const [ loggingEnabled, setLoggingEnabled ] = useState(
 		Boolean( diagnostics.loggingEnabled )
 	);
+	const [ roleConnectionsEnabled, setRoleConnectionsEnabled ] = useState(
+		Boolean( roleConnections.enabled )
+	);
+	const [ roleConnectionRoles, setRoleConnectionRoles ] = useState(
+		Array.isArray( roleConnections.allowedRoles )
+			? roleConnections.allowedRoles
+			: []
+	);
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
 		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
 	);
 	const [ confirmationGroups, setConfirmationGroups ] = useState(
 		Array.isArray( data.confirmationGroups ) ? data.confirmationGroups : []
+	);
+	const [ enabledWpAbilities, setEnabledWpAbilities ] = useState(
+		Array.isArray( data.enabledWpAbilities ) ? data.enabledWpAbilities : []
 	);
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
@@ -574,6 +592,26 @@ function SettingsApp() {
 			}
 
 			return current.filter( ( id ) => ! groupIds.includes( id ) );
+		} );
+	};
+
+	const toggleWpAbility = ( abilityId, checked ) => {
+		setEnabledWpAbilities( ( current ) => {
+			if ( checked ) {
+				return [ ...new Set( [ ...current, abilityId ] ) ];
+			}
+
+			return current.filter( ( id ) => id !== abilityId );
+		} );
+	};
+
+	const toggleRoleConnectionRole = ( roleId, checked ) => {
+		setRoleConnectionRoles( ( current ) => {
+			if ( checked ) {
+				return [ ...new Set( [ ...current, roleId ] ) ];
+			}
+
+			return current.filter( ( id ) => id !== roleId );
 		} );
 	};
 	const toggleConfirmationGroup = ( group, checked ) => {
@@ -1137,6 +1175,14 @@ function SettingsApp() {
 												value={ group }
 											/>
 										) ) }
+										{ enabledWpAbilities.map( ( id ) => (
+											<input
+												key={ id }
+												type="hidden"
+												name="enabled_wp_abilities[]"
+												value={ id }
+											/>
+										) ) }
 										<div className="aculect-ai-companion-ability-toolbar">
 											<Button
 												type="button"
@@ -1331,6 +1377,93 @@ function SettingsApp() {
 												)
 											) }
 										</div>
+										{ wpAbilities.length > 0 && (
+											<div className="aculect-ai-companion-ability-group">
+												<div className="aculect-ai-companion-ability-group__header">
+													<div>
+														<h3 className="aculect-ai-companion-section-heading">
+															WordPress Abilities
+														</h3>
+														<p className="aculect-ai-companion-ability-group__summary">
+															{
+																wpAbilities.filter(
+																	(
+																		ability
+																	) =>
+																		enabledWpAbilities.includes(
+																			ability.id
+																		)
+																).length
+															}
+															/{ ' ' }
+															{
+																wpAbilities.length
+															}{ ' ' }
+															allowed
+														</p>
+													</div>
+												</div>
+												<div className="aculect-ai-companion-ability-list">
+													{ wpAbilities.map(
+														( ability ) => (
+															<div
+																key={
+																	ability.id
+																}
+																className="aculect-ai-companion-ability-row"
+															>
+																<CheckboxControl
+																	label={
+																		ability.title ||
+																		ability.id
+																	}
+																	checked={ enabledWpAbilities.includes(
+																		ability.id
+																	) }
+																	onChange={ (
+																		checked
+																	) =>
+																		toggleWpAbility(
+																			ability.id,
+																			Boolean(
+																				checked
+																			)
+																		)
+																	}
+																/>
+																<p className="aculect-ai-companion-ability-row__description">
+																	{
+																		ability.description
+																	}
+																</p>
+																<div className="aculect-ai-companion-ability-row__meta">
+																	<span
+																		className={ `aculect-ai-companion-risk-chip ${
+																			ability.readOnly
+																				? 'is-read-only'
+																				: 'is-write'
+																		}` }
+																	>
+																		{ ability.readOnly
+																			? 'Read-only'
+																			: 'Can change site' }
+																	</span>
+																	<span>
+																		{ ability.category ||
+																			'uncategorized' }
+																	</span>
+																	<code>
+																		{
+																			ability.id
+																		}
+																	</code>
+																</div>
+															</div>
+														)
+													) }
+												</div>
+											</div>
+										) }
 									</form>
 								</CardBody>
 							</Card>
@@ -1494,6 +1627,23 @@ function SettingsApp() {
 											name="diagnostic_logging_enabled"
 											value={ loggingEnabled ? '1' : '0' }
 										/>
+										<input
+											type="hidden"
+											name="role_connections_enabled"
+											value={
+												roleConnectionsEnabled
+													? '1'
+													: '0'
+											}
+										/>
+										{ roleConnectionRoles.map( ( role ) => (
+											<input
+												key={ role }
+												type="hidden"
+												name="role_connection_roles[]"
+												value={ role }
+											/>
+										) ) }
 										<div className="aculect-ai-companion-setting-row">
 											<ToggleControl
 												label="Enable diagnostic logging"
@@ -1512,6 +1662,87 @@ function SettingsApp() {
 												here.
 											</p>
 										</div>
+										<div className="aculect-ai-companion-setting-row">
+											<ToggleControl
+												label="Enable role-based connection entry points"
+												checked={
+													roleConnectionsEnabled
+												}
+												onChange={ ( checked ) =>
+													setRoleConnectionsEnabled(
+														Boolean( checked )
+													)
+												}
+											/>
+											<p className="aculect-ai-companion-help-text">
+												Allows logged-in users with
+												selected roles to copy the MCP
+												connection URL from a block,
+												shortcode, or PHP template
+												function. OAuth and WordPress
+												capabilities still limit what
+												each connected user can do.
+											</p>
+										</div>
+										{ roleConnectionsEnabled && (
+											<div className="aculect-ai-companion-confirmation-settings">
+												<h3 className="aculect-ai-companion-section-heading">
+													Allowed Roles
+												</h3>
+												<div className="aculect-ai-companion-confirmation-groups">
+													{ (
+														roleConnections.roleOptions ||
+														[]
+													).map( ( role ) => (
+														<CheckboxControl
+															key={ role.id }
+															label={ role.label }
+															checked={ roleConnectionRoles.includes(
+																role.id
+															) }
+															onChange={ (
+																checked
+															) =>
+																toggleRoleConnectionRole(
+																	role.id,
+																	Boolean(
+																		checked
+																	)
+																)
+															}
+														/>
+													) ) }
+												</div>
+												<div className="aculect-ai-companion-setting-summary">
+													<div>
+														<span>Shortcode</span>
+														<strong>
+															{
+																roleConnections.shortcode
+															}
+														</strong>
+													</div>
+													<div>
+														<span>Block</span>
+														<strong>
+															{
+																roleConnections.blockName
+															}
+														</strong>
+													</div>
+													<div>
+														<span>
+															PHP function
+														</span>
+														<strong>
+															{
+																roleConnections.functionName
+															}
+														</strong>
+													</div>
+												</div>
+											</div>
+										) }
 										<div className="aculect-ai-companion-setting-summary">
 											<div>
 												<span>Retention</span>

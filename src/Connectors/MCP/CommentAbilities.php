@@ -67,11 +67,14 @@ final class CommentAbilities extends AbstractAbilityService {
 			)
 		);
 
+		$mapper = 'full' === $this->collection_context( $args ) ? 'map_comment' : 'map_comment_compact';
+
 		return array(
-			'items'    => array_map( array( $this, 'map_comment' ), is_array( $comments ) ? $comments : array() ),
+			'items'    => array_map( array( $this, $mapper ), is_array( $comments ) ? $comments : array() ),
 			'total'    => is_numeric( $total ) ? (int) $total : 0,
 			'page'     => $page,
 			'per_page' => $per_page,
+			'context'  => $this->collection_context( $args ),
 		);
 	}
 

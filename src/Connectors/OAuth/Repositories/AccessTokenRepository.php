@@ -233,6 +233,42 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
+	 * Return active session counts grouped by WordPress user ID.
+	 *
+	 * @return array<int, int>
+	 */
+	public function active_session_counts_by_user(): array {
+		global $wpdb;
+
+		$table = Installer::table_names()['access_tokens'];
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT user_id, COUNT(*) AS active_count
+				FROM %i
+				WHERE revoked = 0 AND expires_at >= %s AND user_id IS NOT NULL
+				GROUP BY user_id',
+				$table,
+				gmdate( 'Y-m-d H:i:s' )
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$counts = array();
+		foreach ( $rows as $row ) {
+			$user_id = absint( $row['user_id'] ?? 0 );
+			if ( $user_id > 0 ) {
+				$counts[ $user_id ] = absint( $row['active_count'] ?? 0 );
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
 	 * Revoke one admin-visible connector session.
 	 *
 	 * @param int $session_id Access-token table primary key.
@@ -263,6 +299,51 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		$tables = Installer::table_names();
 		$wpdb->update( $tables['access_tokens'], array( 'revoked' => 1 ), array( 'revoked' => 0 ), array( '%d' ), array( '%d' ) );
 		$wpdb->update( $tables['refresh_tokens'], array( 'revoked' => 1 ), array( 'revoked' => 0 ), array( '%d' ), array( '%d' ) );
+	}
+
+	/**
+	 * Revoke every active access and refresh token for one WordPress user.
+	 *
+	 * @param int $user_id WordPress user ID.
+	 * @return int Number of access-token sessions revoked.
+	 */
+	public function revoke_user( int $user_id ): int {
+		$user_id = absint( $user_id );
+		if ( $user_id <= 0 ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i refresh_tokens
+				SET refresh_tokens.revoked = 1
+				WHERE refresh_tokens.revoked = 0
+				AND refresh_tokens.access_token_hash IN (
+					SELECT access_tokens.token_hash
+					FROM %i access_tokens
+					WHERE access_tokens.user_id = %d
+				)',
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$user_id
+			)
+		);
+
+		$result = $wpdb->update(
+			$tables['access_tokens'],
+			array( 'revoked' => 1 ),
+			array(
+				'user_id' => $user_id,
+				'revoked' => 0,
+			),
+			array( '%d' ),
+			array( '%d', '%d' )
+		);
+
+		return false === $result ? 0 : (int) $result;
 	}
 
 	/**

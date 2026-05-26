@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use ReflectionMethod;
 
 /**
@@ -153,6 +154,15 @@ final class McpControllerTest extends TestCase {
 		AccessLockdown::set_paused( true );
 
 		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused' ) );
+	}
+
+	public function test_user_pause_blocks_only_matching_user_tool_calls(): void {
+		$controller = new McpController();
+
+		UserAccessControl::set_paused( 7, true );
+
+		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused', array( 7 ) ) );
+		self::assertFalse( $this->invokePrivate( $controller, 'is_access_paused', array( 12 ) ) );
 	}
 
 	public function test_disabled_tools_are_not_listed_and_are_blocked_for_cached_clients(): void {

@@ -23,7 +23,11 @@ if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
 	define( 'ACULECT_AI_COMPANION_VERSION', '0.2.0' );
 }
 
-$GLOBALS['aculect_ai_companion_test_options'] = array();
+if ( ! defined( 'ARRAY_A' ) ) {
+	define( 'ARRAY_A', 'ARRAY_A' );
+}
+
+$GLOBALS['aculect_ai_companion_test_options']    = array();
 $GLOBALS['aculect_ai_companion_test_transients'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.

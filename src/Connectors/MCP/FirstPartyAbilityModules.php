@@ -78,6 +78,7 @@ final class FirstPartyAbilityModules {
 						'excerpt'        => array( 'type' => 'string' ),
 						'slug'           => array( 'type' => 'string' ),
 						'status'         => array( 'type' => 'string' ),
+						'date'           => $this->content_date_schema(),
 						'featured_media' => array(
 							'type'        => 'integer',
 							'description' => 'Existing image attachment ID to assign as the featured image.',
@@ -106,6 +107,7 @@ final class FirstPartyAbilityModules {
 						'excerpt'              => array( 'type' => 'string' ),
 						'slug'                 => array( 'type' => 'string' ),
 						'status'               => array( 'type' => 'string' ),
+						'date'                 => $this->content_date_schema(),
 						'featured_media'       => array(
 							'type'        => 'integer',
 							'description' => 'Existing image attachment ID to assign as the featured image.',
@@ -675,6 +677,18 @@ final class FirstPartyAbilityModules {
 					'items' => array( 'type' => 'string' ),
 				),
 			),
+		);
+	}
+
+	/**
+	 * Build the content publication date schema.
+	 *
+	 * @return array<string, string>
+	 */
+	private function content_date_schema(): array {
+		return array(
+			'type'        => 'string',
+			'description' => 'Publication date as YYYY-MM-DDTHH:MM:SS in the site timezone, YYYY-MM-DD HH:MM:SS, or ISO 8601 with a timezone offset. Future publish dates may schedule the item according to WordPress rules.',
 		);
 	}
 

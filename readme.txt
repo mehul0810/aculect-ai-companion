@@ -1,6 +1,6 @@
 === Aculect AI Companion ===
 Contributors: mehul0810
-Tags: ai, content, claude, media, chatgpt
+Tags: ai, content, claude, codex, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
@@ -8,13 +8,9 @@ Stable tag: 0.4.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect WordPress with AI. Aculect AI Companion helps you manage content, comments, media, and more with your AI assistant.
+Connect WordPress to ChatGPT, Claude, Codex, and other AI assistants through secure MCP workflows.
 
 == Description ==
-
-= Pre-production Notice =
-
-Aculect AI Companion is an early release and is not intended for production websites yet. It can create, update, and manage WordPress content through connected AI assistants, so test it only on development or staging sites and enable it only with explicit approval from the site owner.
 
 Aculect AI Companion lets site owners manage their WordPress site using an AI assistant. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
 

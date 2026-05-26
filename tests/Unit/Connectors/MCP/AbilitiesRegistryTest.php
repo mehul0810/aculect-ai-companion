@@ -23,39 +23,39 @@ final class AbilitiesRegistryTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$this->registry                = new AbilitiesRegistry();
+		$this->registry                               = new AbilitiesRegistry();
 	}
 
 	public function test_public_tool_names_are_claude_safe_and_round_trip_to_internal_ids(): void {
 		foreach ( $this->registry->definitions() as $internal_id => $definition ) {
 			$tool_name = $this->registry->tool_name( (string) $internal_id );
 
-			self::assertSame((string) $internal_id, (string) $definition['id']);
-			self::assertMatchesRegularExpression('/^[a-zA-Z0-9_-]{1,64}$/', $tool_name);
-			self::assertStringNotContainsString('.', $tool_name);
-			self::assertStringNotContainsString('/', $tool_name);
-			self::assertSame((string) $internal_id, $this->registry->internal_id($tool_name));
+			self::assertSame( (string) $internal_id, (string) $definition['id'] );
+			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $tool_name );
+			self::assertStringNotContainsString( '.', $tool_name );
+			self::assertStringNotContainsString( '/', $tool_name );
+			self::assertSame( (string) $internal_id, $this->registry->internal_id( $tool_name ) );
 		}
 	}
 
 	public function test_legacy_create_draft_aliases_map_to_create_item(): void {
-		self::assertSame('content.create_item', $this->registry->internal_id('content.create_draft'));
-		self::assertSame('content.create_item', $this->registry->internal_id('content_create_draft'));
+		self::assertSame( 'content.create_item', $this->registry->internal_id( 'content.create_draft' ) );
+		self::assertSame( 'content.create_item', $this->registry->internal_id( 'content_create_draft' ) );
 	}
 
 	public function test_public_definitions_include_enabled_status_and_tool_name(): void {
 		$public_definitions = $this->registry->public_definitions();
 
-		self::assertNotEmpty($public_definitions);
+		self::assertNotEmpty( $public_definitions );
 
 		foreach ( $public_definitions as $definition ) {
-			self::assertArrayHasKey('toolName', $definition);
-			self::assertArrayHasKey('enabled', $definition);
-			self::assertArrayHasKey('changesSite', $definition);
-			self::assertArrayHasKey('riskLevel', $definition);
-			self::assertTrue($definition['enabled']);
-			self::assertIsString($definition['toolName']);
-			self::assertMatchesRegularExpression('/^[a-zA-Z0-9_-]{1,64}$/', $definition['toolName']);
+			self::assertArrayHasKey( 'toolName', $definition );
+			self::assertArrayHasKey( 'enabled', $definition );
+			self::assertArrayHasKey( 'changesSite', $definition );
+			self::assertArrayHasKey( 'riskLevel', $definition );
+			self::assertTrue( $definition['enabled'] );
+			self::assertIsString( $definition['toolName'] );
+			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $definition['toolName'] );
 		}
 	}
 
@@ -70,19 +70,19 @@ final class AbilitiesRegistryTest extends TestCase {
 			)
 		);
 
-		self::assertContains('Content', $groups);
-		self::assertContains('Content Groups', $groups);
-		self::assertContains('Comments', $groups);
-		self::assertContains('Media', $groups);
-		self::assertContains('Site Information', $groups);
-		self::assertContains('WordPress Actions', $groups);
+		self::assertContains( 'Content', $groups );
+		self::assertContains( 'Content Groups', $groups );
+		self::assertContains( 'Comments', $groups );
+		self::assertContains( 'Media', $groups );
+		self::assertContains( 'Site Information', $groups );
+		self::assertContains( 'WordPress Actions', $groups );
 
-		$by_id = array_column($definitions, null, 'id');
+		$by_id = array_column( $definitions, null, 'id' );
 
-		self::assertSame('read-only', $by_id['content.list_items']['riskLevel']);
-		self::assertFalse($by_id['content.list_items']['changesSite']);
-		self::assertSame('write', $by_id['content.update_item']['riskLevel']);
-		self::assertTrue($by_id['content.update_item']['changesSite']);
+		self::assertSame( 'read-only', $by_id['content.list_items']['riskLevel'] );
+		self::assertFalse( $by_id['content.list_items']['changesSite'] );
+		self::assertSame( 'write', $by_id['content.update_item']['riskLevel'] );
+		self::assertTrue( $by_id['content.update_item']['changesSite'] );
 	}
 
 	public function test_requested_expansion_abilities_are_registered(): void {
@@ -107,14 +107,42 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.list_themes',
 			) as $ability_id
 		) {
-			self::assertArrayHasKey($ability_id, $definitions);
-			self::assertTrue($this->registry->is_known($this->registry->tool_name($ability_id)));
+			self::assertArrayHasKey( $ability_id, $definitions );
+			self::assertTrue( $this->registry->is_known( $this->registry->tool_name( $ability_id ) ) );
 		}
 
-		self::assertSame(array('content:draft'), $this->registry->required_scopes('wp_abilities.run'));
-		self::assertSame(array('content:draft'), $this->registry->required_scopes('media.upload_item'));
-		self::assertSame(array('content:read'), $this->registry->required_scopes('site.get_health'));
-		self::assertSame(array('content:read'), $this->registry->required_scopes('site.list_plugins'));
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'wp_abilities.run' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+	}
+
+	public function test_registered_module_keeps_metadata_schema_and_handler_together(): void {
+		$module     = $this->registry->module( 'wp_abilities.discover' );
+		$definition = $this->registry->definitions()['wp_abilities.discover'] ?? array();
+
+		self::assertNotNull( $module );
+		self::assertSame( 'wp_abilities.discover', $module->id() );
+		self::assertSame( $definition['title'], $module->title() );
+		self::assertSame( $definition['description'], $module->description() );
+		self::assertSame( array( 'content:read' ), $module->required_scopes() );
+		self::assertTrue( $module->is_read_only() );
+		self::assertSame( $module->input_schema(), $this->registry->input_schema( 'wp_abilities_discover' ) );
+		self::assertArrayHasKey( 'search', $module->input_schema()['properties'] );
+
+		$result = $module->execute( array( 'search' => 'content' ) );
+
+		self::assertSame( 'abilities_api_unavailable', $result['error'] );
+	}
+
+	public function test_write_module_schema_includes_safety_controls(): void {
+		$schema = $this->registry->input_schema( 'content.update_item' );
+
+		self::assertArrayHasKey( 'dry_run', $schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $schema['properties'] );
+		self::assertArrayHasKey( 'title', $schema['properties'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_item' ) );
+		self::assertFalse( $this->registry->is_read_only( 'content_update_item' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {

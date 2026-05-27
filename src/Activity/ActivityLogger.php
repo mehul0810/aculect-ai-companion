@@ -76,6 +76,49 @@ final class ActivityLogger {
 	}
 
 	/**
+	 * Record an administrator lifecycle action for user-level AI access.
+	 *
+	 * @param string               $action         Admin access action.
+	 * @param int                  $target_user_id Affected WordPress user ID.
+	 * @param int                  $actor_user_id  Administrator user ID.
+	 * @param string               $message        Admin-safe activity message.
+	 * @param array<string, mixed> $metadata       Sanitized extra metadata.
+	 */
+	public function record_user_access_event( string $action, int $target_user_id, int $actor_user_id, string $message, array $metadata = array() ): bool {
+		$metadata = array_merge(
+			array(
+				'target_user_id' => max( 0, $target_user_id ),
+				'actor_user_id'  => max( 0, $actor_user_id ),
+			),
+			$this->safe_event_metadata( $metadata )
+		);
+
+		$inserted = $this->repository->insert(
+			array(
+				'provider'    => 'admin',
+				'client_id'   => '',
+				'client_name' => 'WordPress Admin',
+				'user_id'     => $actor_user_id,
+				'action'      => $action,
+				'target_type' => 'user',
+				'target_id'   => $target_user_id,
+				'status'      => 'success',
+				'error_code'  => '',
+				'message'     => $message,
+				'context'     => array(
+					'metadata' => $metadata,
+				),
+			)
+		);
+
+		if ( $inserted ) {
+			$this->maybe_prune();
+		}
+
+		return $inserted;
+	}
+
+	/**
 	 * Extract target metadata from the request and result.
 	 *
 	 * @param string               $action Tool action.
@@ -199,6 +242,27 @@ final class ActivityLogger {
 		}
 
 		return $metadata;
+	}
+
+	/**
+	 * Sanitize scalar admin-event metadata.
+	 *
+	 * @param array<string, mixed> $metadata Raw metadata.
+	 * @return array<string, mixed>
+	 */
+	private function safe_event_metadata( array $metadata ): array {
+		$safe = array();
+
+		foreach ( $metadata as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+			if ( '' === $key || ! is_scalar( $value ) ) {
+				continue;
+			}
+
+			$safe[ $key ] = is_numeric( $value ) ? absint( $value ) : sanitize_text_field( (string) $value );
+		}
+
+		return $safe;
 	}
 
 	/**

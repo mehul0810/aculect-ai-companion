@@ -6,6 +6,7 @@ namespace Aculect\AICompanion;
 
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\SettingsPage;
+use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
@@ -73,6 +74,7 @@ final class Plugin {
 		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
+		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
@@ -194,6 +196,13 @@ final class Plugin {
 	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
+	}
+
+	/**
+	 * Register Users-screen AI access controls.
+	 */
+	public function register_user_access_controls(): void {
+		( new UserAccessControls() )->register();
 	}
 
 	/**

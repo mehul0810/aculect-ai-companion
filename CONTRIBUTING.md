@@ -15,8 +15,8 @@ Aculect AI Companion is an early-stage WordPress plugin that helps site owners m
 
 - PHP 8.2 or newer.
 - Composer 2.
-- Node.js 20.19.0 or newer.
-- npm 10 or newer.
+- Node.js 24.16.0 or newer.
+- npm 11 or newer.
 - A local WordPress development environment for manual plugin testing.
 
 Use the project Node version when working locally:

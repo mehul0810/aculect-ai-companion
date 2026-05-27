@@ -385,6 +385,7 @@ final class SettingsPage {
 		);
 
 		return array(
+			'summary'    => $repository->summary( $filters ),
 			'items'      => $repository->list( $filters ),
 			'total'      => $total,
 			'page'       => $page,
@@ -403,12 +404,18 @@ final class SettingsPage {
 	 */
 	private function activity_filters(): array {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
+		$range = isset( $_GET['activity_range'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_range'] ) ) : '7d';
+		if ( ! in_array( $range, array( '24h', '7d', '30d', '90d', 'all' ), true ) ) {
+			$range = '7d';
+		}
+
 		return array(
 			'page'      => isset( $_GET['activity_page'] ) ? max( 1, absint( $_GET['activity_page'] ) ) : 1,
 			'action'    => isset( $_GET['activity_action'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_action'] ) ) : '',
 			'status'    => isset( $_GET['activity_status'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_status'] ) ) : '',
 			'user_id'   => isset( $_GET['activity_user'] ) ? absint( $_GET['activity_user'] ) : 0,
 			'assistant' => isset( $_GET['activity_assistant'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_assistant'] ) ) : '',
+			'range'     => $range,
 		);
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 	}
@@ -430,6 +437,7 @@ final class SettingsPage {
 					'activity_status'    => (string) ( $filters['status'] ?? '' ),
 					'activity_user'      => (int) ( $filters['user_id'] ?? 0 ),
 					'activity_assistant' => (string) ( $filters['assistant'] ?? '' ),
+					'activity_range'     => (string) ( $filters['range'] ?? '7d' ),
 				),
 				static fn( mixed $value ): bool => '' !== $value && 0 !== $value
 			),

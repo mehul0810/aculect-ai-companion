@@ -34,13 +34,39 @@ final class ActivityLoggerTest extends TestCase {
 			)
 		);
 
-		self::assertSame('content.create_item', $metadata['action']);
-		self::assertSame('post', $metadata['post_type']);
-		self::assertSame('draft', $metadata['status']);
-		self::assertSame('images.example.test', $metadata['source_host']);
-		self::assertArrayNotHasKey('title', $metadata);
-		self::assertArrayNotHasKey('content', $metadata);
-		self::assertArrayNotHasKey('url', $metadata);
+		self::assertSame( 'content.create_item', $metadata['action'] );
+		self::assertSame( 'post', $metadata['post_type'] );
+		self::assertSame( 'draft', $metadata['status'] );
+		self::assertSame( 'images.example.test', $metadata['source_host'] );
+		self::assertArrayNotHasKey( 'title', $metadata );
+		self::assertArrayNotHasKey( 'content', $metadata );
+		self::assertArrayNotHasKey( 'url', $metadata );
+	}
+
+	public function test_recorded_context_includes_risk_level_without_payload_values(): void {
+		$context = $this->invokePrivate(
+			new ActivityLogger(),
+			'context',
+			array(
+				'content.create_item',
+				array(
+					'title'   => 'Private draft title',
+					'content' => '<p>Private body.</p>',
+					'status'  => 'publish',
+				),
+				array(
+					'id'     => 12,
+					'type'   => 'post',
+					'status' => 'publish',
+				),
+				'publish',
+			)
+		);
+
+		self::assertSame( 'publish', $context['risk_level'] );
+		self::assertContains( 'title', $context['argument_keys'] );
+		self::assertArrayNotHasKey( 'title', $context['metadata'] );
+		self::assertArrayNotHasKey( 'content', $context['metadata'] );
 	}
 
 	public function test_target_prefers_result_identifier_for_content_updates(): void {
@@ -69,9 +95,9 @@ final class ActivityLoggerTest extends TestCase {
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object $object    Object instance.
+	 * @param string $method    Method name.
+	 * @param array  $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

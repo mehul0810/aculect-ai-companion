@@ -1137,10 +1137,10 @@ function SettingsApp() {
 												Control what AI can do
 											</h3>
 											<p className="aculect-ai-companion-feature-card__copy">
-												Turn abilities on or off from
-												Aculect AI Companion &gt;
-												Abilities and disconnect
-												assistants whenever needed.
+												Turn abilities on or off from AI
+												Companion &gt; Abilities and
+												disconnect assistants whenever
+												needed.
 											</p>
 										</div>
 									</div>

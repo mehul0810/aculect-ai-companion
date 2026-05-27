@@ -6,7 +6,7 @@ This document captures the working ChatGPT connection flow for Aculect AI Compan
 
 The working setup is endpoint-only:
 
-1. WordPress admin opens `Aculect AI Companion > Connect`.
+1. WordPress admin opens `AI Companion > Connect`.
 2. Admin copies the Aculect AI Companion MCP endpoint URL only.
 3. Admin opens ChatGPT connector settings and creates a custom MCP connector.
 4. Admin pastes only the MCP endpoint URL.
@@ -140,7 +140,7 @@ Regression check: approve consent and confirm ChatGPT reaches token exchange wit
 
 ### Expected Tools Do Not Show In ChatGPT
 
-Possible cause: the ability is disabled under `Aculect AI Companion > Abilities`.
+Possible cause: the ability is disabled under `AI Companion > Abilities`.
 
 Fix: enable the relevant ability and save. `tools/list` only advertises enabled abilities, and `tools/call` rejects disabled abilities even if a client cached an older tool list.
 

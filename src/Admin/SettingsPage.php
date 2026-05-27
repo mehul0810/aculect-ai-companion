@@ -40,7 +40,7 @@ final class SettingsPage {
 	public function register(): void {
 		add_menu_page(
 			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
-			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
+			__( 'AI Companion', 'aculect-ai-companion' ),
 			'manage_options',
 			'aculect-ai-companion',
 			array( $this, 'render' ),

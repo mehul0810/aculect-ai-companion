@@ -13,13 +13,20 @@ import {
 } from '@wordpress/components';
 import {
 	Icon,
+	category,
 	chartBar,
 	cog,
+	comment,
 	home,
+	info,
 	link,
+	lock,
+	media,
 	page,
 	people,
 	plugins,
+	postContent,
+	settings,
 	shield,
 } from '@wordpress/icons';
 
@@ -729,6 +736,46 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 	);
 }
 
+function OverviewFeatureCard( { icon, title, children } ) {
+	return (
+		<div className="aculect-ai-companion-feature-card">
+			<span
+				className="aculect-ai-companion-feature-card__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 20 } />
+			</span>
+			<h3 className="aculect-ai-companion-feature-card__title">
+				{ title }
+			</h3>
+			<p className="aculect-ai-companion-feature-card__copy">
+				{ children }
+			</p>
+		</div>
+	);
+}
+
+function OverviewCircuit( { brandIconUrl } ) {
+	return (
+		<div
+			className="aculect-ai-companion-overview-circuit"
+			aria-hidden="true"
+		>
+			<span className="aculect-ai-companion-overview-circuit__line is-horizontal" />
+			<span className="aculect-ai-companion-overview-circuit__line is-vertical" />
+			<span className="aculect-ai-companion-overview-circuit__node is-top" />
+			<span className="aculect-ai-companion-overview-circuit__node is-left" />
+			<span className="aculect-ai-companion-overview-circuit__node is-right" />
+			<span className="aculect-ai-companion-overview-circuit__node is-bottom" />
+			<div className="aculect-ai-companion-overview-circuit__logo">
+				{ brandIconUrl && (
+					<img src={ brandIconUrl } alt="" aria-hidden="true" />
+				) }
+			</div>
+		</div>
+	);
+}
+
 function SettingsApp() {
 	const data = window.aculectAICompanionSettingsData || {};
 	const brandIconUrl = data.brandIconUrl || '';
@@ -1059,93 +1106,156 @@ function SettingsApp() {
 
 					if ( tab.name === 'overview' ) {
 						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-about-card">
-								<CardHeader>
-									About Aculect AI Companion
-								</CardHeader>
-								<CardBody>
-									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-										Aculect AI Companion helps you manage
-										content, comments, media, and more with
-										your AI assistant. You can ask in plain
-										English, and Aculect AI Companion turns
-										that request into WordPress tasks.
-									</p>
-									<p className="aculect-ai-companion-copy">
-										You stay in control. WordPress asks for
-										your approval before an AI assistant can
-										connect, you choose which abilities are
-										available, and you can disconnect access
-										at any time.
-									</p>
-
-									<div className="aculect-ai-companion-feature-grid">
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Create and update content
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Draft posts, update pages,
-												change titles, edit excerpts,
-												and publish when you are ready.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Organize your site
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Manage categories, tags, and
-												other content groups without
-												searching through WordPress
-												screens.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Handle comments
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Review comments, approve or
-												trash them, and prepare replies
-												without opening every comment
-												manually.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Work with media
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Add images from public URLs and
-												find items already in your media
-												library.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Check site details
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Ask for safe site information,
-												including active plugins,
-												themes, and basic settings.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Control what AI can do
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Turn abilities on or off from AI
-												Companion &gt; Abilities and
-												disconnect assistants whenever
-												needed.
-											</p>
+							<div className="aculect-ai-companion-overview">
+								<section className="aculect-ai-companion-overview-hero">
+									<div className="aculect-ai-companion-overview-hero__content">
+										<span className="aculect-ai-companion-eyebrow">
+											Ready for secure AI workflows
+										</span>
+										<h2 className="aculect-ai-companion-overview-hero__title">
+											Connect your AI Assistant to
+											WordPress
+										</h2>
+										<p className="aculect-ai-companion-overview-hero__copy">
+											Aculect AI Companion gives approved
+											AI tools a secure WordPress
+											connection for drafting content,
+											organizing your site, handling
+											comments, managing media, and
+											reviewing safe site details.
+										</p>
+										<div className="aculect-ai-companion-overview-actions">
+											<Button
+												href={ tabUrl(
+													'connect',
+													data.adminPageUrl
+												) }
+												variant="primary"
+												onClick={ ( event ) =>
+													maybeSelectTab(
+														event,
+														'connect'
+													)
+												}
+											>
+												Connect AI Assistant
+											</Button>
+											<Button
+												href="#aculect-ai-companion-overview-capabilities"
+												variant="secondary"
+											>
+												Learn More
+											</Button>
 										</div>
 									</div>
-								</CardBody>
-							</Card>
+									<OverviewCircuit
+										brandIconUrl={ brandIconUrl }
+									/>
+								</section>
+
+								<section
+									id="aculect-ai-companion-overview-capabilities"
+									className="aculect-ai-companion-overview-section"
+								>
+									<div className="aculect-ai-companion-section-title-row">
+										<div>
+											<span className="aculect-ai-companion-eyebrow">
+												What you can do
+											</span>
+											<h2 className="aculect-ai-companion-section-title">
+												Manage common WordPress work
+												from your AI assistant
+											</h2>
+										</div>
+									</div>
+									<div className="aculect-ai-companion-feature-grid">
+										<OverviewFeatureCard
+											icon={ postContent }
+											title="Create and update content"
+										>
+											Draft posts, update pages, change
+											titles, edit excerpts, schedule
+											content, and publish when you are
+											ready.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ category }
+											title="Organize your site"
+										>
+											Manage categories, tags, and other
+											content groups without jumping
+											between WordPress screens.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ comment }
+											title="Handle comments"
+										>
+											Review comments, approve or trash
+											them, and prepare replies with
+											WordPress permission checks in
+											place.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ media }
+											title="Work with media"
+										>
+											Add images from public URLs, find
+											existing library items, and attach
+											media to content workflows.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ info }
+											title="Check site details"
+										>
+											Ask for safe site information,
+											including active plugins, themes,
+											locale, and basic public settings.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ settings }
+											title="Control what AI can do"
+										>
+											Turn abilities on or off from AI
+											Companion &gt; Abilities and
+											disconnect assistants whenever
+											needed.
+										</OverviewFeatureCard>
+									</div>
+								</section>
+
+								<section className="aculect-ai-companion-control-banner">
+									<span
+										className="aculect-ai-companion-control-banner__icon"
+										aria-hidden="true"
+									>
+										<Icon icon={ lock } size={ 22 } />
+									</span>
+									<div className="aculect-ai-companion-control-banner__content">
+										<h2>
+											You stay in control from WordPress
+										</h2>
+										<p>
+											Every assistant connection needs
+											WordPress approval. You choose which
+											abilities are available, and you can
+											pause or disconnect access at any
+											time.
+										</p>
+									</div>
+									<a
+										className="aculect-ai-companion-control-banner__link"
+										href={ tabUrl(
+											'abilities',
+											data.adminPageUrl
+										) }
+										onClick={ ( event ) =>
+											maybeSelectTab( event, 'abilities' )
+										}
+									>
+										Review Controls
+									</a>
+								</section>
+							</div>
 						);
 					}
 

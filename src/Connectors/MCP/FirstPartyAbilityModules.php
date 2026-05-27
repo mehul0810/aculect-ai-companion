@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Brand\BrandProfile;
 use Closure;
 
 /**
@@ -64,6 +65,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ContentAbilities() )->get_item( (int) ( $args['id'] ?? 0 ) )
 			),
 			$this->module(
+				'brand.get_profile',
+				'Get Brand Profile',
+				'Read sanitized brand guidance for content and featured image workflows.',
+				'Brand',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new BrandProfile() )->public_profile()
+			),
+			$this->module(
 				'content.create_item',
 				'Create a Post or Page',
 				'Create a post, page, or custom content item.',
@@ -78,6 +89,7 @@ final class FirstPartyAbilityModules {
 						'excerpt'        => array( 'type' => 'string' ),
 						'slug'           => array( 'type' => 'string' ),
 						'status'         => array( 'type' => 'string' ),
+						'date'           => $this->content_date_schema(),
 						'featured_media' => array(
 							'type'        => 'integer',
 							'description' => 'Existing image attachment ID to assign as the featured image.',
@@ -106,6 +118,7 @@ final class FirstPartyAbilityModules {
 						'excerpt'              => array( 'type' => 'string' ),
 						'slug'                 => array( 'type' => 'string' ),
 						'status'               => array( 'type' => 'string' ),
+						'date'                 => $this->content_date_schema(),
 						'featured_media'       => array(
 							'type'        => 'integer',
 							'description' => 'Existing image attachment ID to assign as the featured image.',
@@ -675,6 +688,18 @@ final class FirstPartyAbilityModules {
 					'items' => array( 'type' => 'string' ),
 				),
 			),
+		);
+	}
+
+	/**
+	 * Build the content publication date schema.
+	 *
+	 * @return array<string, string>
+	 */
+	private function content_date_schema(): array {
+		return array(
+			'type'        => 'string',
+			'description' => 'Publication date as YYYY-MM-DDTHH:MM:SS in the site timezone, YYYY-MM-DD HH:MM:SS, or ISO 8601 with a timezone offset. Future publish dates may schedule the item according to WordPress rules.',
 		);
 	}
 

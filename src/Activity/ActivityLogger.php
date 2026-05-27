@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Activity;
 
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+
 /**
  * Records connected AI actions with sanitized metadata only.
  */
@@ -30,6 +32,7 @@ final class ActivityLogger {
 	public function record_tool_call( string $action, array $args, array $result, array $auth ): bool {
 		$target = $this->target( $action, $args, $result );
 		$status = isset( $result['error'] ) ? 'error' : 'success';
+		$risk   = ( new ToolSafety() )->risk_level( $action, $args );
 
 		$inserted = $this->repository->insert(
 			array(
@@ -43,10 +46,67 @@ final class ActivityLogger {
 				'status'      => $status,
 				'error_code'  => 'error' === $status ? (string) ( $result['error'] ?? 'tool_error' ) : '',
 				'message'     => 'error' === $status ? (string) ( $result['message'] ?? 'AI action failed.' ) : 'AI action completed.',
+				'context'     => $this->context( $action, $args, $result, $risk ),
+			)
+		);
+
+		if ( $inserted ) {
+			$this->maybe_prune();
+		}
+
+		return $inserted;
+	}
+
+	/**
+	 * Build sanitized activity context without storing request payload values.
+	 *
+	 * @param string               $action Tool action.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $result Tool result.
+	 * @param string               $risk   Tool risk level.
+	 * @return array<string, mixed>
+	 */
+	private function context( string $action, array $args, array $result, string $risk ): array {
+		return array(
+			'argument_keys' => $this->argument_keys( $args ),
+			'risk_level'    => $risk,
+			'metadata'      => $this->safe_argument_metadata( $action, $args ),
+			'result'        => $this->result_metadata( $result ),
+		);
+	}
+
+	/**
+	 * Record an administrator lifecycle action for user-level AI access.
+	 *
+	 * @param string               $action         Admin access action.
+	 * @param int                  $target_user_id Affected WordPress user ID.
+	 * @param int                  $actor_user_id  Administrator user ID.
+	 * @param string               $message        Admin-safe activity message.
+	 * @param array<string, mixed> $metadata       Sanitized extra metadata.
+	 */
+	public function record_user_access_event( string $action, int $target_user_id, int $actor_user_id, string $message, array $metadata = array() ): bool {
+		$metadata = array_merge(
+			array(
+				'target_user_id' => max( 0, $target_user_id ),
+				'actor_user_id'  => max( 0, $actor_user_id ),
+			),
+			$this->safe_event_metadata( $metadata )
+		);
+
+		$inserted = $this->repository->insert(
+			array(
+				'provider'    => 'admin',
+				'client_id'   => '',
+				'client_name' => 'WordPress Admin',
+				'user_id'     => $actor_user_id,
+				'action'      => $action,
+				'target_type' => 'user',
+				'target_id'   => $target_user_id,
+				'status'      => 'success',
+				'error_code'  => '',
+				'message'     => $message,
 				'context'     => array(
-					'argument_keys' => $this->argument_keys( $args ),
-					'metadata'      => $this->safe_argument_metadata( $action, $args ),
-					'result'        => $this->result_metadata( $result ),
+					'metadata' => $metadata,
 				),
 			)
 		);
@@ -182,6 +242,27 @@ final class ActivityLogger {
 		}
 
 		return $metadata;
+	}
+
+	/**
+	 * Sanitize scalar admin-event metadata.
+	 *
+	 * @param array<string, mixed> $metadata Raw metadata.
+	 * @return array<string, mixed>
+	 */
+	private function safe_event_metadata( array $metadata ): array {
+		$safe = array();
+
+		foreach ( $metadata as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+			if ( '' === $key || ! is_scalar( $value ) ) {
+				continue;
+			}
+
+			$safe[ $key ] = is_numeric( $value ) ? absint( $value ) : sanitize_text_field( (string) $value );
+		}
+
+		return $safe;
 	}
 
 	/**

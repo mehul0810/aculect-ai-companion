@@ -6,6 +6,7 @@ namespace Aculect\AICompanion;
 
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\SettingsPage;
+use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
@@ -73,8 +74,10 @@ final class Plugin {
 		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
+		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
+		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
 		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
 		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
@@ -196,6 +199,13 @@ final class Plugin {
 	}
 
 	/**
+	 * Register Users-screen AI access controls.
+	 */
+	public function register_user_access_controls(): void {
+		( new UserAccessControls() )->register();
+	}
+
+	/**
 	 * Proxy abilities-save form handling to the settings controller.
 	 */
 	public function handle_save_abilities(): void {
@@ -207,6 +217,13 @@ final class Plugin {
 	 */
 	public function handle_save_advanced(): void {
 		( new SettingsPage() )->handle_save_advanced();
+	}
+
+	/**
+	 * Proxy brand profile form handling to the settings controller.
+	 */
+	public function handle_save_brand(): void {
+		( new SettingsPage() )->handle_save_brand();
 	}
 
 	/**

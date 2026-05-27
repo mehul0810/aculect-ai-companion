@@ -46,23 +46,38 @@ final class ActivityRepositoryTest extends TestCase {
 
 		$context = json_decode( $prepared['data']['context'], true );
 
-		self::assertSame('chatgpt', $prepared['data']['provider']);
-		self::assertSame('content.update_item', $prepared['data']['action']);
-		self::assertSame('success', $prepared['data']['status']);
-		self::assertSame(7, $prepared['data']['user_id']);
-		self::assertSame(42, $prepared['data']['target_id']);
-		self::assertSame('Updated post', $prepared['data']['message']);
-		self::assertSame('kept', $context['safe_indicator']);
-		self::assertArrayNotHasKey('client_secret', $context);
-		self::assertArrayNotHasKey('authorization', $context);
+		self::assertSame( 'chatgpt', $prepared['data']['provider'] );
+		self::assertSame( 'content.update_item', $prepared['data']['action'] );
+		self::assertSame( 'success', $prepared['data']['status'] );
+		self::assertSame( 7, $prepared['data']['user_id'] );
+		self::assertSame( 42, $prepared['data']['target_id'] );
+		self::assertSame( 'Updated post', $prepared['data']['message'] );
+		self::assertSame( 'kept', $context['safe_indicator'] );
+		self::assertArrayNotHasKey( 'client_secret', $context );
+		self::assertArrayNotHasKey( 'authorization', $context );
+	}
+
+	public function test_where_clause_filters_by_recent_activity_range(): void {
+		$where = $this->invokePrivate(
+			new ActivityRepository(),
+			'where_clause',
+			array(
+				array(
+					'range' => '24h',
+				),
+			)
+		);
+
+		self::assertStringContainsString( 'created_at >= %s', $where['sql'] );
+		self::assertCount( 1, $where['values'] );
 	}
 
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object $object    Object instance.
+	 * @param string $method    Method name.
+	 * @param array  $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

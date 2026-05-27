@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use ReflectionMethod;
 
 /**
@@ -111,13 +112,19 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'object', $health_schema['type'] );
 		self::assertInstanceOf( \stdClass::class, $health_schema['properties'] );
 
+		$brand_schema = $this->schemaForTool( 'brand_get_profile' );
+		self::assertSame( 'object', $brand_schema['type'] );
+		self::assertInstanceOf( \stdClass::class, $brand_schema['properties'] );
+
 		$create_schema = $this->schemaForTool( 'content_create_item' );
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
+		self::assertArrayHasKey( 'date', $create_schema['properties'] );
 
 		$update_schema = $this->schemaForTool( 'content_update_item' );
 		self::assertArrayHasKey( 'author', $update_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $update_schema['properties'] );
+		self::assertArrayHasKey( 'date', $update_schema['properties'] );
 
 		$term_image_schema = $this->schemaForTool( 'taxonomy_set_term_image' );
 		self::assertSame( array( 'taxonomy', 'term_id' ), $term_image_schema['required'] );
@@ -153,6 +160,15 @@ final class McpControllerTest extends TestCase {
 		AccessLockdown::set_paused( true );
 
 		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused' ) );
+	}
+
+	public function test_user_pause_blocks_only_matching_user_tool_calls(): void {
+		$controller = new McpController();
+
+		UserAccessControl::set_paused( 7, true );
+
+		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused', array( 7 ) ) );
+		self::assertFalse( $this->invokePrivate( $controller, 'is_access_paused', array( 12 ) ) );
 	}
 
 	public function test_disabled_tools_are_not_listed_and_are_blocked_for_cached_clients(): void {

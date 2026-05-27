@@ -8,6 +8,8 @@ import {
 	CheckboxControl,
 	Notice,
 	TabPanel,
+	TextareaControl,
+	TextControl,
 	ToggleControl,
 } from '@wordpress/components';
 
@@ -147,6 +149,79 @@ function ActionForm( {
 	);
 }
 
+function brandFieldValue( values, key ) {
+	const value = values?.[ key ];
+
+	return typeof value === 'string' ? value : '';
+}
+
+function BrandDefaultValue( { value, color = false } ) {
+	if ( ! value ) {
+		return null;
+	}
+
+	return (
+		<p className="aculect-ai-companion-brand-default">
+			<span>Detected default</span>
+			{ color && (
+				<i
+					className="aculect-ai-companion-brand-swatch"
+					style={ { backgroundColor: value } }
+					aria-hidden="true"
+				/>
+			) }
+			<code>{ value }</code>
+		</p>
+	);
+}
+
+function BrandTextField( {
+	fields,
+	defaults,
+	name,
+	label,
+	type = 'text',
+	color = false,
+} ) {
+	const value = brandFieldValue( fields, name );
+	const defaultValue = brandFieldValue( defaults, name );
+
+	return (
+		<div className="aculect-ai-companion-brand-field">
+			<div className="aculect-ai-companion-brand-field__control">
+				{ color && value && (
+					<i
+						className="aculect-ai-companion-brand-swatch"
+						style={ { backgroundColor: value } }
+						aria-hidden="true"
+					/>
+				) }
+				<TextControl
+					label={ label }
+					type={ type }
+					name={ `brand_profile[${ name }]` }
+					defaultValue={ value }
+				/>
+			</div>
+			<BrandDefaultValue value={ defaultValue } color={ color } />
+		</div>
+	);
+}
+
+function BrandTextareaField( { fields, defaults, name, label } ) {
+	return (
+		<div className="aculect-ai-companion-brand-field">
+			<TextareaControl
+				label={ label }
+				name={ `brand_profile[${ name }]` }
+				defaultValue={ brandFieldValue( fields, name ) }
+				rows={ 4 }
+			/>
+			<BrandDefaultValue value={ brandFieldValue( defaults, name ) } />
+		</div>
+	);
+}
+
 function LogContext( { context } ) {
 	const hasContext =
 		context &&
@@ -283,6 +358,46 @@ function ActivityTable( { activity } ) {
 					) ) }
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+function ActivitySummary( { summary } ) {
+	const data = summary && typeof summary === 'object' ? summary : {};
+	const items = [
+		{
+			label: 'Actions',
+			value: data.total || 0,
+		},
+		{
+			label: 'Failures',
+			value: data.failures || 0,
+			tone: data.failures > 0 ? 'is-error' : '',
+		},
+		{
+			label: 'Assistants',
+			value: data.assistants || 0,
+		},
+		{
+			label: 'High risk',
+			value: data.highRisk || 0,
+			tone: data.highRisk > 0 ? 'is-warning' : '',
+		},
+	];
+
+	return (
+		<div className="aculect-ai-companion-activity-summary">
+			{ items.map( ( item ) => (
+				<div
+					key={ item.label }
+					className={ `aculect-ai-companion-activity-summary-item ${
+						item.tone || ''
+					}` }
+				>
+					<span>{ item.label }</span>
+					<strong>{ item.value }</strong>
+				</div>
+			) ) }
 		</div>
 	);
 }
@@ -435,6 +550,18 @@ function SettingsApp() {
 		: [];
 	const activity =
 		data.activity && typeof data.activity === 'object' ? data.activity : {};
+	const brandProfile =
+		data.brandProfile && typeof data.brandProfile === 'object'
+			? data.brandProfile
+			: {};
+	const brandFields =
+		brandProfile.fields && typeof brandProfile.fields === 'object'
+			? brandProfile.fields
+			: {};
+	const brandDefaults =
+		brandProfile.defaults && typeof brandProfile.defaults === 'object'
+			? brandProfile.defaults
+			: {};
 	const activityFilters =
 		activity.filters && typeof activity.filters === 'object'
 			? activity.filters
@@ -557,6 +684,7 @@ function SettingsApp() {
 		{ name: 'diagnostics', title: 'Diagnostics' },
 		{ name: 'connections', title: 'Connections' },
 		{ name: 'activity', title: 'Activity' },
+		{ name: 'brand', title: 'Brand' },
 	];
 	if ( data.isConnected ) {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
@@ -686,6 +814,11 @@ function SettingsApp() {
 			{ data.status === 'advanced_saved' && (
 				<Notice status="success" isDismissible={ false }>
 					Advanced settings saved.
+				</Notice>
+			) }
+			{ data.status === 'brand_saved' && (
+				<Notice status="success" isDismissible={ false }>
+					Brand profile saved.
 				</Notice>
 			) }
 			{ data.status === 'logs_cleared' && (
@@ -1480,6 +1613,9 @@ function SettingsApp() {
 										connected AI assistants. Read-only
 										actions are not logged in this version.
 									</p>
+									<ActivitySummary
+										summary={ activity.summary }
+									/>
 									<form
 										method="get"
 										action="options-general.php"
@@ -1549,6 +1685,33 @@ function SettingsApp() {
 												}
 											/>
 										</label>
+										<label htmlFor="aculect-ai-companion-activity-range">
+											<span>Range</span>
+											<select
+												id="aculect-ai-companion-activity-range"
+												name="activity_range"
+												defaultValue={
+													activityFilters.range ||
+													'7d'
+												}
+											>
+												<option value="24h">
+													24 hours
+												</option>
+												<option value="7d">
+													7 days
+												</option>
+												<option value="30d">
+													30 days
+												</option>
+												<option value="90d">
+													90 days
+												</option>
+												<option value="all">
+													All time
+												</option>
+											</select>
+										</label>
 										<Button type="submit" variant="primary">
 											Filter
 										</Button>
@@ -1586,6 +1749,136 @@ function SettingsApp() {
 											Next
 										</Button>
 									</div>
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'brand' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-brand-card">
+								<CardHeader>Brand Profile</CardHeader>
+								<CardBody>
+									<form
+										method="post"
+										action={ data.actions?.adminPostUrl }
+										className="aculect-ai-companion-form aculect-ai-companion-form--brand"
+									>
+										<input
+											type="hidden"
+											name="action"
+											value={
+												data.actions?.saveBrandAction
+											}
+										/>
+										<input
+											type="hidden"
+											name="_wpnonce"
+											value={
+												data.actions?.saveBrandNonce
+											}
+										/>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Identity
+											</h3>
+											<div className="aculect-ai-companion-brand-grid">
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="site_name"
+													label="Site name"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="tagline"
+													label="Tagline"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="logo_url"
+													label="Logo URL"
+													type="url"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="logo_preference"
+													label="Logo preference"
+												/>
+											</div>
+										</div>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Colors
+											</h3>
+											<div className="aculect-ai-companion-brand-grid aculect-ai-companion-brand-grid--colors">
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="primary_color"
+													label="Primary color"
+													color
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="secondary_color"
+													label="Secondary color"
+													color
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="accent_color"
+													label="Accent color"
+													color
+												/>
+											</div>
+										</div>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Editorial Guidance
+											</h3>
+											<div className="aculect-ai-companion-brand-grid">
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="image_style"
+													label="Image style"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="typography_notes"
+													label="Typography notes"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="tone"
+													label="Tone"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="audience"
+													label="Audience"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="avoid"
+													label="Avoid"
+												/>
+											</div>
+										</div>
+										<Button type="submit" variant="primary">
+											Save Brand Profile
+										</Button>
+									</form>
 								</CardBody>
 							</Card>
 						);

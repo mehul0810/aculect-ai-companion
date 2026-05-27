@@ -533,6 +533,7 @@ abstract class AbstractAbilityService {
 			'author'              => (int) $post->post_author,
 			'author_display_name' => $author instanceof \WP_User ? $author->display_name : '',
 			'featured_media'      => (int) get_post_thumbnail_id( $post ),
+			'date'                => $post->post_date,
 			'date_gmt'            => $post->post_date_gmt,
 			'modified_gmt'        => $post->post_modified_gmt,
 			'link'                => get_permalink( $post ),
@@ -567,6 +568,7 @@ abstract class AbstractAbilityService {
 			'author'              => (int) $post->post_author,
 			'author_display_name' => $author instanceof \WP_User ? $author->display_name : '',
 			'featured_media'      => (int) get_post_thumbnail_id( $post ),
+			'date'                => $post->post_date,
 			'date_gmt'            => $post->post_date_gmt,
 			'modified_gmt'        => $post->post_modified_gmt,
 			'link'                => get_permalink( $post ),
@@ -823,13 +825,15 @@ abstract class AbstractAbilityService {
 	 */
 	protected function post_payload_changes( array $from, array $payload ): array {
 		$map     = array(
-			'post_type'    => 'type',
-			'post_title'   => 'title',
-			'post_content' => 'content',
-			'post_excerpt' => 'excerpt',
-			'post_name'    => 'slug',
-			'post_status'  => 'status',
-			'post_author'  => 'author',
+			'post_type'     => 'type',
+			'post_title'    => 'title',
+			'post_content'  => 'content',
+			'post_excerpt'  => 'excerpt',
+			'post_name'     => 'slug',
+			'post_status'   => 'status',
+			'post_author'   => 'author',
+			'post_date'     => 'date',
+			'post_date_gmt' => 'date_gmt',
 		);
 		$changes = array();
 

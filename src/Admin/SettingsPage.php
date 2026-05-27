@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Activity\ActivityRepository;
+use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
@@ -106,6 +107,7 @@ final class SettingsPage {
 				'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
 				'abilities'                => ( new AbilitiesRegistry() )->public_definitions(),
 				'enabledAbilities'         => ( new AbilitiesRegistry() )->enabled_ids(),
+				'brandProfile'             => ( new BrandProfile() )->admin_payload(),
 				'wpAbilities'              => ( new WordPressAbilitiesPolicy() )->public_definitions(),
 				'enabledWpAbilities'       => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
 				'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
@@ -126,6 +128,7 @@ final class SettingsPage {
 					'adminPostUrl'         => admin_url( 'admin-post.php' ),
 					'saveAbilitiesAction'  => 'aculect_ai_companion_save_abilities',
 					'saveAdvancedAction'   => 'aculect_ai_companion_save_advanced',
+					'saveBrandAction'      => 'aculect_ai_companion_save_brand',
 					'runDiagnosticsAction' => 'aculect_ai_companion_run_connection_diagnostics',
 					'clearLogsAction'      => 'aculect_ai_companion_clear_logs',
 					'setLockdownAction'    => 'aculect_ai_companion_set_lockdown',
@@ -133,6 +136,7 @@ final class SettingsPage {
 					'revokeAllAction'      => 'aculect_ai_companion_revoke_all_sessions',
 					'saveAbilitiesNonce'   => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
 					'saveAdvancedNonce'    => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+					'saveBrandNonce'       => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
 					'runDiagnosticsNonce'  => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
 					'clearLogsNonce'       => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 					'setLockdownNonce'     => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
@@ -210,6 +214,30 @@ final class SettingsPage {
 					'page'           => 'aculect-ai-companion',
 					'tab'            => 'advanced',
 					'advanced_saved' => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Persist brand profile settings from the admin form.
+	 */
+	public function handle_save_brand(): void {
+		$this->guard_action( 'aculect_ai_companion_save_brand' );
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$profile = isset( $_POST['brand_profile'] ) && is_array( $_POST['brand_profile'] ) ? (array) wp_unslash( $_POST['brand_profile'] ) : array();
+
+		( new BrandProfile() )->save( $profile );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'        => 'aculect-ai-companion',
+					'tab'         => 'brand',
+					'brand_saved' => '1',
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -385,6 +413,7 @@ final class SettingsPage {
 		);
 
 		return array(
+			'summary'    => $repository->summary( $filters ),
 			'items'      => $repository->list( $filters ),
 			'total'      => $total,
 			'page'       => $page,
@@ -403,12 +432,18 @@ final class SettingsPage {
 	 */
 	private function activity_filters(): array {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
+		$range = isset( $_GET['activity_range'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_range'] ) ) : '7d';
+		if ( ! in_array( $range, array( '24h', '7d', '30d', '90d', 'all' ), true ) ) {
+			$range = '7d';
+		}
+
 		return array(
 			'page'      => isset( $_GET['activity_page'] ) ? max( 1, absint( $_GET['activity_page'] ) ) : 1,
 			'action'    => isset( $_GET['activity_action'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_action'] ) ) : '',
 			'status'    => isset( $_GET['activity_status'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_status'] ) ) : '',
 			'user_id'   => isset( $_GET['activity_user'] ) ? absint( $_GET['activity_user'] ) : 0,
 			'assistant' => isset( $_GET['activity_assistant'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_assistant'] ) ) : '',
+			'range'     => $range,
 		);
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 	}
@@ -430,6 +465,7 @@ final class SettingsPage {
 					'activity_status'    => (string) ( $filters['status'] ?? '' ),
 					'activity_user'      => (int) ( $filters['user_id'] ?? 0 ),
 					'activity_assistant' => (string) ( $filters['assistant'] ?? '' ),
+					'activity_range'     => (string) ( $filters['range'] ?? '7d' ),
 				),
 				static fn( mixed $value ): bool => '' !== $value && 0 !== $value
 			),
@@ -502,6 +538,10 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['advanced_saved'] ) ) {
 			return 'advanced_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['brand_saved'] ) ) {
+			return 'brand_saved';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['logs_cleared'] ) ) {

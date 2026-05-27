@@ -53,6 +53,12 @@ featured image through `featured_media`. Use media upload/list tools first when
 the image is not already in the media library. Clearing a featured image requires
 the explicit `clear_featured_media` flag on content update.
 
+Content create and update tools accept `date` as `YYYY-MM-DDTHH:MM:SS` in the
+site timezone, `YYYY-MM-DD HH:MM:SS`, or an ISO 8601 value with a timezone
+offset such as `2026-06-01T09:00:00+00:00`. Invalid or empty date values return
+a structured validation error instead of being silently converted by WordPress.
+Tool output includes both the stored local `date` and `date_gmt`.
+
 Media tools include `media_get_item` and `media_update_item` for reading and
 updating attachment title, alt text, caption, description, slug, and attachment
 parent. Updating `post_id` changes the attachment parent relationship only after

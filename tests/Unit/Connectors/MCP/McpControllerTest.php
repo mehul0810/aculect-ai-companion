@@ -114,10 +114,12 @@ final class McpControllerTest extends TestCase {
 		$create_schema = $this->schemaForTool( 'content_create_item' );
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
+		self::assertArrayHasKey( 'date', $create_schema['properties'] );
 
 		$update_schema = $this->schemaForTool( 'content_update_item' );
 		self::assertArrayHasKey( 'author', $update_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $update_schema['properties'] );
+		self::assertArrayHasKey( 'date', $update_schema['properties'] );
 
 		$term_image_schema = $this->schemaForTool( 'taxonomy_set_term_image' );
 		self::assertSame( array( 'taxonomy', 'term_id' ), $term_image_schema['required'] );

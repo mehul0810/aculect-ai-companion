@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use DateTimeImmutable;
+use DateTimeZone;
+
 /**
  * Content abilities implementation.
  */
@@ -142,6 +145,13 @@ final class ContentAbilities extends AbstractAbilityService {
 			),
 			static fn( $value ): bool => null !== $value
 		);
+
+		$date_payload = $this->post_date_payload_from_data( $data );
+		if ( isset( $date_payload['error'] ) ) {
+			return $date_payload['error'];
+		}
+
+		$payload = array_merge( $payload, $date_payload );
 
 		if ( array_key_exists( 'author', $data ) ) {
 			$author_id = absint( $data['author'] );
@@ -286,6 +296,13 @@ final class ContentAbilities extends AbstractAbilityService {
 			$update['post_status'] = $status;
 		}
 
+		$date_payload = $this->post_date_payload_from_data( $data );
+		if ( isset( $date_payload['error'] ) ) {
+			return $date_payload['error'];
+		}
+
+		$update = array_merge( $update, $date_payload );
+
 		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post->post_type );
 		if ( isset( $taxonomy_assignments['error'] ) ) {
 			return $taxonomy_assignments['error'];
@@ -307,12 +324,14 @@ final class ContentAbilities extends AbstractAbilityService {
 				array_merge(
 					$this->post_payload_changes(
 						array(
-							'post_title'   => $post->post_title,
-							'post_content' => $post->post_content,
-							'post_excerpt' => $post->post_excerpt,
-							'post_name'    => $post->post_name,
-							'post_status'  => $post->post_status,
-							'post_author'  => (int) $post->post_author,
+							'post_title'    => $post->post_title,
+							'post_content'  => $post->post_content,
+							'post_excerpt'  => $post->post_excerpt,
+							'post_name'     => $post->post_name,
+							'post_status'   => $post->post_status,
+							'post_author'   => (int) $post->post_author,
+							'post_date'     => $post->post_date,
+							'post_date_gmt' => $post->post_date_gmt,
 						),
 						$update
 					),
@@ -343,5 +362,87 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		return $this->get_item( $post_id );
+	}
+
+	/**
+	 * Convert a date tool argument into WordPress post date fields.
+	 *
+	 * @param array<string, mixed> $data Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	private function post_date_payload_from_data( array $data ): array {
+		if ( ! array_key_exists( 'date', $data ) ) {
+			return array();
+		}
+
+		$date = trim( (string) $data['date'] );
+		if ( '' === $date ) {
+			return array( 'error' => $this->error( 'invalid_date', 'Date must be a non-empty ISO 8601 date/time string.' ) );
+		}
+
+		$parsed = $this->parse_post_date( $date );
+		if ( ! $parsed instanceof DateTimeImmutable ) {
+			return array( 'error' => $this->error( 'invalid_date', 'Date must use YYYY-MM-DDTHH:MM:SS, YYYY-MM-DD HH:MM:SS, or include a timezone offset such as 2026-06-01T09:00:00+00:00.' ) );
+		}
+
+		$site_date = $parsed->setTimezone( $this->site_timezone() );
+		$gmt_date  = $parsed->setTimezone( new DateTimeZone( 'UTC' ) );
+
+		return array(
+			'post_date'     => $site_date->format( 'Y-m-d H:i:s' ),
+			'post_date_gmt' => $gmt_date->format( 'Y-m-d H:i:s' ),
+		);
+	}
+
+	/**
+	 * Parse an explicit post date while rejecting rollover dates.
+	 *
+	 * @param string $date Submitted tool date.
+	 */
+	private function parse_post_date( string $date ): ?DateTimeImmutable {
+		$normalized = str_ends_with( $date, 'Z' ) ? substr( $date, 0, -1 ) . '+00:00' : $date;
+
+		if ( 1 === preg_match( '/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2}$/', $normalized ) ) {
+			return $this->create_date_from_format( '!Y-m-d\\TH:i:sP', $normalized, null );
+		}
+
+		if ( 1 === preg_match( '/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$/', $date ) ) {
+			return $this->create_date_from_format( '!Y-m-d\\TH:i:s', $date, $this->site_timezone() );
+		}
+
+		if ( 1 === preg_match( '/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/', $date ) ) {
+			return $this->create_date_from_format( '!Y-m-d H:i:s', $date, $this->site_timezone() );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Create a date object and reject parser warnings/errors.
+	 *
+	 * @param string            $format   Date format.
+	 * @param string            $date     Submitted tool date.
+	 * @param DateTimeZone|null $timezone Site timezone for local dates.
+	 */
+	private function create_date_from_format( string $format, string $date, ?DateTimeZone $timezone ): ?DateTimeImmutable {
+		$parsed = null === $timezone ? DateTimeImmutable::createFromFormat( $format, $date ) : DateTimeImmutable::createFromFormat( $format, $date, $timezone );
+		$errors = DateTimeImmutable::getLastErrors();
+
+		if ( false !== $errors && ( 0 < $errors['warning_count'] || 0 < $errors['error_count'] ) ) {
+			return null;
+		}
+
+		return $parsed instanceof DateTimeImmutable ? $parsed : null;
+	}
+
+	/**
+	 * Return the WordPress site timezone.
+	 */
+	private function site_timezone(): DateTimeZone {
+		if ( function_exists( 'wp_timezone' ) ) {
+			return wp_timezone();
+		}
+
+		return new DateTimeZone( 'UTC' );
 	}
 }

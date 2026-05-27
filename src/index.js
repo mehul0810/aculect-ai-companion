@@ -8,6 +8,8 @@ import {
 	CheckboxControl,
 	Notice,
 	TabPanel,
+	TextareaControl,
+	TextControl,
 	ToggleControl,
 } from '@wordpress/components';
 
@@ -144,6 +146,79 @@ function ActionForm( {
 				{ label }
 			</Button>
 		</form>
+	);
+}
+
+function brandFieldValue( values, key ) {
+	const value = values?.[ key ];
+
+	return typeof value === 'string' ? value : '';
+}
+
+function BrandDefaultValue( { value, color = false } ) {
+	if ( ! value ) {
+		return null;
+	}
+
+	return (
+		<p className="aculect-ai-companion-brand-default">
+			<span>Detected default</span>
+			{ color && (
+				<i
+					className="aculect-ai-companion-brand-swatch"
+					style={ { backgroundColor: value } }
+					aria-hidden="true"
+				/>
+			) }
+			<code>{ value }</code>
+		</p>
+	);
+}
+
+function BrandTextField( {
+	fields,
+	defaults,
+	name,
+	label,
+	type = 'text',
+	color = false,
+} ) {
+	const value = brandFieldValue( fields, name );
+	const defaultValue = brandFieldValue( defaults, name );
+
+	return (
+		<div className="aculect-ai-companion-brand-field">
+			<div className="aculect-ai-companion-brand-field__control">
+				{ color && value && (
+					<i
+						className="aculect-ai-companion-brand-swatch"
+						style={ { backgroundColor: value } }
+						aria-hidden="true"
+					/>
+				) }
+				<TextControl
+					label={ label }
+					type={ type }
+					name={ `brand_profile[${ name }]` }
+					defaultValue={ value }
+				/>
+			</div>
+			<BrandDefaultValue value={ defaultValue } color={ color } />
+		</div>
+	);
+}
+
+function BrandTextareaField( { fields, defaults, name, label } ) {
+	return (
+		<div className="aculect-ai-companion-brand-field">
+			<TextareaControl
+				label={ label }
+				name={ `brand_profile[${ name }]` }
+				defaultValue={ brandFieldValue( fields, name ) }
+				rows={ 4 }
+			/>
+			<BrandDefaultValue value={ brandFieldValue( defaults, name ) } />
+		</div>
 	);
 }
 
@@ -475,6 +550,18 @@ function SettingsApp() {
 		: [];
 	const activity =
 		data.activity && typeof data.activity === 'object' ? data.activity : {};
+	const brandProfile =
+		data.brandProfile && typeof data.brandProfile === 'object'
+			? data.brandProfile
+			: {};
+	const brandFields =
+		brandProfile.fields && typeof brandProfile.fields === 'object'
+			? brandProfile.fields
+			: {};
+	const brandDefaults =
+		brandProfile.defaults && typeof brandProfile.defaults === 'object'
+			? brandProfile.defaults
+			: {};
 	const activityFilters =
 		activity.filters && typeof activity.filters === 'object'
 			? activity.filters
@@ -597,6 +684,7 @@ function SettingsApp() {
 		{ name: 'diagnostics', title: 'Diagnostics' },
 		{ name: 'connections', title: 'Connections' },
 		{ name: 'activity', title: 'Activity' },
+		{ name: 'brand', title: 'Brand' },
 	];
 	if ( data.isConnected ) {
 		tabs.push( { name: 'abilities', title: 'Abilities' } );
@@ -726,6 +814,11 @@ function SettingsApp() {
 			{ data.status === 'advanced_saved' && (
 				<Notice status="success" isDismissible={ false }>
 					Advanced settings saved.
+				</Notice>
+			) }
+			{ data.status === 'brand_saved' && (
+				<Notice status="success" isDismissible={ false }>
+					Brand profile saved.
 				</Notice>
 			) }
 			{ data.status === 'logs_cleared' && (
@@ -1656,6 +1749,136 @@ function SettingsApp() {
 											Next
 										</Button>
 									</div>
+								</CardBody>
+							</Card>
+						);
+					}
+
+					if ( tab.name === 'brand' ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-brand-card">
+								<CardHeader>Brand Profile</CardHeader>
+								<CardBody>
+									<form
+										method="post"
+										action={ data.actions?.adminPostUrl }
+										className="aculect-ai-companion-form aculect-ai-companion-form--brand"
+									>
+										<input
+											type="hidden"
+											name="action"
+											value={
+												data.actions?.saveBrandAction
+											}
+										/>
+										<input
+											type="hidden"
+											name="_wpnonce"
+											value={
+												data.actions?.saveBrandNonce
+											}
+										/>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Identity
+											</h3>
+											<div className="aculect-ai-companion-brand-grid">
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="site_name"
+													label="Site name"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="tagline"
+													label="Tagline"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="logo_url"
+													label="Logo URL"
+													type="url"
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="logo_preference"
+													label="Logo preference"
+												/>
+											</div>
+										</div>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Colors
+											</h3>
+											<div className="aculect-ai-companion-brand-grid aculect-ai-companion-brand-grid--colors">
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="primary_color"
+													label="Primary color"
+													color
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="secondary_color"
+													label="Secondary color"
+													color
+												/>
+												<BrandTextField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="accent_color"
+													label="Accent color"
+													color
+												/>
+											</div>
+										</div>
+										<div className="aculect-ai-companion-brand-section">
+											<h3 className="aculect-ai-companion-section-heading">
+												Editorial Guidance
+											</h3>
+											<div className="aculect-ai-companion-brand-grid">
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="image_style"
+													label="Image style"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="typography_notes"
+													label="Typography notes"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="tone"
+													label="Tone"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="audience"
+													label="Audience"
+												/>
+												<BrandTextareaField
+													fields={ brandFields }
+													defaults={ brandDefaults }
+													name="avoid"
+													label="Avoid"
+												/>
+											</div>
+										</div>
+										<Button type="submit" variant="primary">
+											Save Brand Profile
+										</Button>
+									</form>
 								</CardBody>
 							</Card>
 						);

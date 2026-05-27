@@ -75,6 +75,7 @@ final class Plugin {
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
+		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
 		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
 		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
@@ -207,6 +208,13 @@ final class Plugin {
 	 */
 	public function handle_save_advanced(): void {
 		( new SettingsPage() )->handle_save_advanced();
+	}
+
+	/**
+	 * Proxy brand profile form handling to the settings controller.
+	 */
+	public function handle_save_brand(): void {
+		( new SettingsPage() )->handle_save_brand();
 	}
 
 	/**

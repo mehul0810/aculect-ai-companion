@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Brand\BrandProfile;
 use Closure;
 
 /**
@@ -62,6 +63,16 @@ final class FirstPartyAbilityModules {
 					array( 'id' )
 				),
 				static fn ( array $args ): array => ( new ContentAbilities() )->get_item( (int) ( $args['id'] ?? 0 ) )
+			),
+			$this->module(
+				'brand.get_profile',
+				'Get Brand Profile',
+				'Read sanitized brand guidance for content and featured image workflows.',
+				'Brand',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new BrandProfile() )->public_profile()
 			),
 			$this->module(
 				'content.create_item',

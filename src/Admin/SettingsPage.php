@@ -31,13 +31,36 @@ final class SettingsPage {
 
 	private const ASSET_HANDLE = 'aculect-ai-companion-settings-app';
 	private const STYLE_HANDLE = 'aculect-ai-companion-settings-style';
+	private const MENU_ICON    = 'data:image/svg+xml;base64,'
+		. 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCI+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0iTTMuNCAxNiA4LjYgNGMuNi0xLjQgMi4yLTEuNCAyLjggMEwxNi42IDE2aC0zTDEwIDcuMiA2LjQgMTZoLTN6Ii8+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0ibTEwIDEyLjQuNiAxLjIgMS4yLjYtMS4yLjYtLjYgMS4yLS42LTEuMi0xLjItLjYgMS4yLS42LjYtMS4yeiIvPjwvc3ZnPg==';
 
 	/**
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
-		add_options_page( 'Connect your AI assistant', 'Aculect AI Companion', 'manage_options', 'aculect-ai-companion', array( $this, 'render' ) );
+		add_menu_page(
+			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
+			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
+			'manage_options',
+			'aculect-ai-companion',
+			array( $this, 'render' ),
+			self::MENU_ICON,
+			81
+		);
+		foreach ( $this->settings_tabs() as $tab ) {
+			add_submenu_page(
+				'aculect-ai-companion',
+				$tab['title'],
+				$tab['menu_title'],
+				'manage_options',
+				$tab['slug'],
+				array( $this, 'render' )
+			);
+		}
+
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_filter( 'parent_file', array( $this, 'highlight_parent_menu' ) );
+		add_filter( 'submenu_file', array( $this, 'highlight_submenu' ) );
 	}
 
 	/**
@@ -62,7 +85,7 @@ final class SettingsPage {
 	 * @param string $hook_suffix Current admin screen hook suffix.
 	 */
 	public function enqueue_assets( string $hook_suffix ): void {
-		if ( 'settings_page_aculect-ai-companion' !== $hook_suffix ) {
+		if ( ! $this->is_settings_admin_screen( $hook_suffix ) ) {
 			return;
 		}
 
@@ -75,7 +98,7 @@ final class SettingsPage {
 		$asset      = file_exists( $asset_path )
 			? require $asset_path
 			: array(
-				'dependencies' => array( 'wp-element', 'wp-components' ),
+				'dependencies' => array( 'wp-element', 'wp-components', 'wp-primitives' ),
 				'version'      => ACULECT_AI_COMPANION_VERSION,
 			);
 
@@ -99,6 +122,7 @@ final class SettingsPage {
 			'aculectAICompanionSettingsData',
 			array(
 				'version'                  => ACULECT_AI_COMPANION_VERSION,
+				'adminPageUrl'             => esc_url_raw( $this->settings_url() ),
 				'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
 				'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
 				'accessPaused'             => AccessLockdown::is_paused(),
@@ -183,7 +207,7 @@ final class SettingsPage {
 					'page'            => 'aculect-ai-companion',
 					'abilities_saved' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -215,7 +239,7 @@ final class SettingsPage {
 					'tab'            => 'advanced',
 					'advanced_saved' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -239,7 +263,7 @@ final class SettingsPage {
 					'tab'         => 'brand',
 					'brand_saved' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -260,7 +284,7 @@ final class SettingsPage {
 					'tab'          => 'logs',
 					'logs_cleared' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -283,7 +307,7 @@ final class SettingsPage {
 					'tab'             => 'connections',
 					'access_lockdown' => $paused ? 'paused' : 'resumed',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -304,7 +328,7 @@ final class SettingsPage {
 					'tab'             => 'diagnostics',
 					'diagnostics_run' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -327,7 +351,7 @@ final class SettingsPage {
 					'page'    => 'aculect-ai-companion',
 					'revoked' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -345,7 +369,7 @@ final class SettingsPage {
 					'page'        => 'aculect-ai-companion',
 					'revoked_all' => '1',
 				),
-				admin_url( 'options-general.php' )
+				$this->settings_url()
 			)
 		);
 		exit;
@@ -469,7 +493,7 @@ final class SettingsPage {
 				),
 				static fn( mixed $value ): bool => '' !== $value && 0 !== $value
 			),
-			admin_url( 'options-general.php' )
+			$this->settings_url()
 		);
 	}
 
@@ -527,8 +551,150 @@ final class SettingsPage {
 				'tab'       => 'logs',
 				'logs_page' => max( 1, $page ),
 			),
-			admin_url( 'options-general.php' )
+			$this->settings_url()
 		);
+	}
+
+	/**
+	 * Return the admin URL for this settings app.
+	 *
+	 * @param array<string, mixed> $args Additional query args.
+	 */
+	private function settings_url( array $args = array() ): string {
+		return add_query_arg(
+			array_merge(
+				array(
+					'page' => 'aculect-ai-companion',
+				),
+				$args
+			),
+			admin_url( 'admin.php' )
+		);
+	}
+
+	/**
+	 * Return the visible settings tabs used for the wp-admin submenu.
+	 *
+	 * @return array<int, array{tab:string, title:string, menu_title:string, slug:string}>
+	 */
+	private function settings_tabs(): array {
+		$tabs = array(
+			array(
+				'tab'        => 'overview',
+				'title'      => __( 'Overview', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Overview', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion',
+			),
+			array(
+				'tab'        => 'connect',
+				'title'      => __( 'Connect', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Connect', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=connect',
+			),
+			array(
+				'tab'        => 'connections',
+				'title'      => __( 'Connections', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Connections', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=connections',
+			),
+			array(
+				'tab'        => 'abilities',
+				'title'      => __( 'Abilities', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Abilities', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=abilities',
+			),
+			array(
+				'tab'        => 'activity',
+				'title'      => __( 'Activity', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Activity', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=activity',
+			),
+			array(
+				'tab'        => 'diagnostics',
+				'title'      => __( 'Diagnostics', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Diagnostics', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=diagnostics',
+			),
+			array(
+				'tab'        => 'advanced',
+				'title'      => __( 'Advanced', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Advanced', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=advanced',
+			),
+			array(
+				'tab'        => 'changelog',
+				'title'      => __( 'Changelog', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Changelog', 'aculect-ai-companion' ),
+				'slug'       => 'aculect-ai-companion&tab=changelog',
+			),
+		);
+
+		return $tabs;
+	}
+
+	/**
+	 * Determine whether the current admin screen belongs to this settings app.
+	 *
+	 * @param string $hook_suffix Current admin screen hook suffix.
+	 */
+	private function is_settings_admin_screen( string $hook_suffix ): bool {
+		if ( str_contains( $hook_suffix, 'aculect-ai-companion' ) ) {
+			return true;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
+		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
+	}
+
+	/**
+	 * Keep the Aculect top-level menu highlighted for tab subpages.
+	 *
+	 * @param string|null $parent_file Current parent file.
+	 */
+	public function highlight_parent_menu( ?string $parent_file ): ?string {
+		return $this->is_current_settings_page() ? 'aculect-ai-companion' : $parent_file;
+	}
+
+	/**
+	 * Keep the matching Aculect submenu highlighted for the current tab.
+	 *
+	 * @param string|null $submenu_file Current submenu file.
+	 */
+	public function highlight_submenu( ?string $submenu_file ): ?string {
+		if ( ! $this->is_current_settings_page() ) {
+			return $submenu_file;
+		}
+
+		$tab = $this->current_tab();
+		if ( 'overview' === $tab ) {
+			return 'aculect-ai-companion';
+		}
+
+		return 'aculect-ai-companion&tab=' . $tab;
+	}
+
+	/**
+	 * Determine whether the current request is for the settings app.
+	 */
+	private function is_current_settings_page(): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
+		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
+	}
+
+	/**
+	 * Return the normalized active settings tab.
+	 */
+	private function current_tab(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only tab routing flag.
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) : 'overview';
+
+		$available_tabs = array_column( $this->settings_tabs(), 'tab' );
+
+		return match ( $tab ) {
+			'about' => 'overview',
+			'connectors' => 'connect',
+			default => in_array( $tab, $available_tabs, true ) ? $tab : 'overview',
+		};
 	}
 
 	/**

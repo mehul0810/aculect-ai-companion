@@ -16,7 +16,7 @@ Aculect AI Companion lets site owners manage their WordPress site using an AI as
 
 Setup is designed to be simple:
 
-1. Copy your connection URL from Settings > Aculect AI Companion.
+1. Copy your connection URL from Aculect AI Companion > Connect.
 2. Open your AI tool and add a new connector.
 3. Paste the URL when prompted.
 4. Approve the connection on the screen that appears.
@@ -46,7 +46,7 @@ Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 = Supported Abilities =
 
-Admins can enable or disable these abilities from Settings > Aculect AI Companion > Abilities after the first assistant connection is active.
+Admins can enable or disable these abilities from Aculect AI Companion > Abilities after the first assistant connection is active.
 
 Content:
 
@@ -110,7 +110,7 @@ Administrators should review the terms and privacy policy for the AI assistant t
 
 1. Upload the `aculect-ai-companion` folder to the `/wp-content/plugins/` directory, or install the plugin ZIP from WordPress.
 2. Activate Aculect AI Companion from the Plugins screen.
-3. Open Settings > Aculect AI Companion.
+3. Open Aculect AI Companion > Connect.
 4. Copy your connection URL.
 5. Open your AI tool and add a new connector.
 6. Paste the URL when prompted.
@@ -124,15 +124,15 @@ No. Aculect AI Companion does not send site data on activation or admin page loa
 
 = Can I disconnect access? =
 
-Yes. Open Settings > Aculect AI Companion > Connections and disconnect one AI assistant or all active AI assistants.
+Yes. Open Aculect AI Companion > Connections and disconnect one AI assistant or all active AI assistants.
 
 = Can I control what my AI assistant can do? =
 
-Yes. After a connection exists, open Settings > Aculect AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
+Yes. After a connection exists, open Aculect AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
 
 = Can I review what connected AI assistants changed? =
 
-Yes. Open Settings > Aculect AI Companion > Activity to review write actions requested by connected AI assistants. The activity log stores the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version.
+Yes. Open Aculect AI Companion > Activity to review write actions requested by connected AI assistants. The activity log stores the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version.
 
 = Does Aculect AI Companion require an account with a third-party service? =
 

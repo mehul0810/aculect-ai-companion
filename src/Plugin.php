@@ -192,7 +192,7 @@ final class Plugin {
 	}
 
 	/**
-	 * Register the Settings > Aculect AI Companion admin page.
+	 * Register the Aculect AI Companion admin page.
 	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();

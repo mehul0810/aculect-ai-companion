@@ -72,6 +72,35 @@ final class ActivityRepositoryTest extends TestCase {
 		self::assertCount( 1, $where['values'] );
 	}
 
+	public function test_where_clause_filters_by_sanitized_activity_search(): void {
+		global $wpdb;
+
+		$previous_wpdb = $wpdb;
+		$wpdb          = new class() {
+			public function esc_like( string $text ): string {
+				return addcslashes( $text, '_%\\' );
+			}
+		};
+
+		try {
+			$where = $this->invokePrivate(
+				new ActivityRepository(),
+				'where_clause',
+				array(
+					array(
+						'search' => ' title <script> ',
+					),
+				)
+			);
+		} finally {
+			$wpdb = $previous_wpdb;
+		}
+
+		self::assertStringContainsString( 'message LIKE %s', $where['sql'] );
+		self::assertCount( 7, $where['values'] );
+		self::assertSame( '%title%', $where['values'][0] );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

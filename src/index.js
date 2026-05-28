@@ -3244,9 +3244,329 @@ function RoleAbilitiesEditor( {
 	);
 }
 
+function isPlainObject( value ) {
+	return value && typeof value === 'object' && ! Array.isArray( value );
+}
+
+function versionParts( version ) {
+	return String( version || '' )
+		.split( '.' )
+		.map( ( part ) => Number.parseInt( part, 10 ) || 0 );
+}
+
+function compareVersionsDescending( firstVersion, secondVersion ) {
+	const firstParts = versionParts( firstVersion );
+	const secondParts = versionParts( secondVersion );
+	const length = Math.max( firstParts.length, secondParts.length );
+
+	for ( let index = 0; index < length; index += 1 ) {
+		const firstPart = firstParts[ index ] || 0;
+		const secondPart = secondParts[ index ] || 0;
+
+		if ( firstPart !== secondPart ) {
+			return secondPart - firstPart;
+		}
+	}
+
+	return String( secondVersion ).localeCompare( String( firstVersion ) );
+}
+
+function releaseType( version ) {
+	const parts = versionParts( version );
+	const patch = parts[ 2 ] || 0;
+
+	if ( patch > 0 ) {
+		return 'Patch release';
+	}
+
+	const major = parts[ 0 ] || 0;
+	const minor = parts[ 1 ] || 0;
+
+	if ( major > 0 && minor === 0 ) {
+		return 'Major release';
+	}
+
+	return 'Minor release';
+}
+
+function safeExternalUrl( value ) {
+	try {
+		const url = new URL( String( value || '' ) );
+
+		return [ 'https:', 'http:' ].includes( url.protocol )
+			? url.toString()
+			: '';
+	} catch {
+		return '';
+	}
+}
+
+function normalizeChangelogEntries( changelog ) {
+	const entries = Object.entries(
+		isPlainObject( changelog ) ? changelog : {}
+	)
+		.map( ( [ version, groups ] ) => ( {
+			version,
+			type: releaseType( version ),
+			date: '',
+			groups: Object.entries( isPlainObject( groups ) ? groups : {} )
+				.map( ( [ title, items ] ) => ( {
+					title,
+					items: Array.isArray( items )
+						? items.filter( ( item ) =>
+								String( item || '' ).trim()
+						  )
+						: [],
+				} ) )
+				.filter( ( group ) => group.items.length > 0 ),
+		} ) )
+		.filter( ( entry ) => entry.version );
+
+	return entries.sort( ( firstEntry, secondEntry ) =>
+		compareVersionsDescending( firstEntry.version, secondEntry.version )
+	);
+}
+
+function ChangelogDashboard( { changelog, metadata } ) {
+	const pluginMetadata = isPlainObject( metadata ) ? metadata : {};
+	const entries = normalizeChangelogEntries( changelog );
+	const latestVersion = entries[ 0 ]?.version || '';
+	const installedVersion =
+		pluginMetadata.version || pluginMetadata.stableTag || latestVersion;
+	const [ selectedVersion, setSelectedVersion ] = useState(
+		latestVersion || installedVersion || ''
+	);
+	const selectedEntry =
+		entries.find( ( entry ) => entry.version === selectedVersion ) ||
+		entries[ 0 ];
+	const wordpressOrgUrl = safeExternalUrl( pluginMetadata.wordpressOrgUrl );
+	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
+	const reviewUrl = safeExternalUrl( pluginMetadata.reviewUrl );
+	const releaseDate = selectedEntry?.date || 'Not listed in changelog';
+	const metadataRows = [
+		{ label: 'Version', value: selectedEntry?.version || '-' },
+		{ label: 'Release date', value: releaseDate },
+		{ label: 'Type', value: selectedEntry?.type || 'Release' },
+		{ label: 'Tested up to', value: pluginMetadata.testedUpTo || '-' },
+		{ label: 'Requires WP', value: pluginMetadata.requiresAtLeast || '-' },
+		{ label: 'Requires PHP', value: pluginMetadata.requiresPhp || '-' },
+	];
+
+	if ( entries.length === 0 ) {
+		return (
+			<div className="aculect-ai-companion-changelog-dashboard">
+				<section className="aculect-ai-companion-changelog-hero">
+					<div>
+						<span className="aculect-ai-companion-eyebrow">
+							Changelog
+						</span>
+						<h2 className="aculect-ai-companion-changelog-hero__title">
+							Release history
+						</h2>
+						<p className="aculect-ai-companion-changelog-hero__copy">
+							Bundled changelog data could not be loaded from the
+							plugin source.
+						</p>
+					</div>
+				</section>
+				<EmptyState title="No changelog entries">
+					Check the bundled changelog file or the WordPress.org
+					developer tab for release notes.
+				</EmptyState>
+			</div>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-changelog-dashboard">
+			<section className="aculect-ai-companion-changelog-hero">
+				<div>
+					<span className="aculect-ai-companion-eyebrow">
+						Changelog
+					</span>
+					<h2 className="aculect-ai-companion-changelog-hero__title">
+						Release history and update notes
+					</h2>
+					<p className="aculect-ai-companion-changelog-hero__copy">
+						Review recent releases from the bundled changelog and
+						compare them with the installed plugin metadata.
+					</p>
+				</div>
+				{ wordpressOrgUrl && (
+					<Button
+						href={ wordpressOrgUrl }
+						target="_blank"
+						rel="noreferrer noopener"
+						variant="secondary"
+					>
+						WordPress.org Changelog
+					</Button>
+				) }
+			</section>
+
+			<div className="aculect-ai-companion-changelog-layout">
+				<aside className="aculect-ai-companion-changelog-sidebar">
+					<h3 className="aculect-ai-companion-changelog-sidebar__title">
+						Versions
+					</h3>
+					<div className="aculect-ai-companion-changelog-version-list">
+						{ entries.map( ( entry ) => {
+							const isSelected =
+								entry.version === selectedEntry.version;
+
+							return (
+								<button
+									key={ entry.version }
+									type="button"
+									className={
+										isSelected ? 'is-selected' : ''
+									}
+									aria-pressed={ isSelected }
+									onClick={ () =>
+										setSelectedVersion( entry.version )
+									}
+								>
+									<span className="aculect-ai-companion-changelog-version-list__version">
+										{ entry.version }
+									</span>
+									<span className="aculect-ai-companion-changelog-version-list__meta">
+										{ entry.date || 'Date not listed' }
+									</span>
+									<span className="aculect-ai-companion-changelog-version-list__badges">
+										{ entry.version === latestVersion && (
+											<em>Latest</em>
+										) }
+										{ entry.version ===
+											installedVersion && (
+											<em>Installed</em>
+										) }
+									</span>
+								</button>
+							);
+						} ) }
+					</div>
+				</aside>
+
+				<section className="aculect-ai-companion-changelog-detail">
+					<div className="aculect-ai-companion-changelog-detail__header">
+						<div>
+							<span className="aculect-ai-companion-eyebrow">
+								Selected release
+							</span>
+							<h3 className="aculect-ai-companion-changelog-detail__version">
+								{ selectedEntry.version }
+							</h3>
+						</div>
+						<div className="aculect-ai-companion-changelog-detail__badges">
+							{ selectedEntry.version === latestVersion && (
+								<span className="aculect-ai-companion-changelog-detail__badge">
+									Latest
+								</span>
+							) }
+							{ selectedEntry.version === installedVersion && (
+								<span className="aculect-ai-companion-changelog-detail__badge">
+									Installed
+								</span>
+							) }
+						</div>
+					</div>
+
+					<div className="aculect-ai-companion-changelog-meta-grid">
+						{ metadataRows.map( ( item ) => (
+							<div
+								key={ item.label }
+								className="aculect-ai-companion-changelog-meta-grid__item"
+							>
+								<span className="aculect-ai-companion-changelog-meta-grid__label">
+									{ item.label }
+								</span>
+								<strong className="aculect-ai-companion-changelog-meta-grid__value">
+									{ item.value }
+								</strong>
+							</div>
+						) ) }
+					</div>
+
+					{ selectedEntry.groups.length > 0 ? (
+						<div className="aculect-ai-companion-changelog-notes">
+							{ selectedEntry.groups.map( ( group ) => (
+								<section
+									key={ group.title }
+									className="aculect-ai-companion-changelog-notes__group"
+								>
+									<h4 className="aculect-ai-companion-changelog-notes__title">
+										{ group.title }
+									</h4>
+									<ul className="aculect-ai-companion-changelog-notes__list">
+										{ group.items.map( ( item, index ) => (
+											<li
+												key={ `${ selectedEntry.version }-${ group.title }-${ index }` }
+											>
+												{ item }
+											</li>
+										) ) }
+									</ul>
+								</section>
+							) ) }
+						</div>
+					) : (
+						<EmptyState title="No release notes">
+							This version exists in the changelog source, but no
+							grouped notes were found.
+						</EmptyState>
+					) }
+				</section>
+			</div>
+
+			<div className="aculect-ai-companion-changelog-help">
+				<div className="aculect-ai-companion-changelog-help__item">
+					<h3 className="aculect-ai-companion-changelog-help__title">
+						Need help with an update?
+					</h3>
+					<p className="aculect-ai-companion-changelog-help__copy">
+						Use the support forum for release questions,
+						compatibility reports, or setup issues.
+					</p>
+					{ supportUrl && (
+						<a
+							href={ supportUrl }
+							target="_blank"
+							rel="noreferrer noopener"
+						>
+							Open support forum
+						</a>
+					) }
+				</div>
+				<div className="aculect-ai-companion-changelog-help__item">
+					<h3 className="aculect-ai-companion-changelog-help__title">
+						Share release feedback
+					</h3>
+					<p className="aculect-ai-companion-changelog-help__copy">
+						Reviews help prioritize improvements and surface
+						compatibility feedback for other WordPress users.
+					</p>
+					{ reviewUrl && (
+						<a
+							href={ reviewUrl }
+							target="_blank"
+							rel="noreferrer noopener"
+						>
+							Leave a review
+						</a>
+					) }
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function SettingsApp() {
 	const data = window.aculectAICompanionSettingsData || {};
 	const brandIconUrl = data.brandIconUrl || '';
+	const pluginMetadata =
+		data.pluginMetadata && typeof data.pluginMetadata === 'object'
+			? data.pluginMetadata
+			: {};
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const revokedSessions = Array.isArray( data.revokedSessions )
@@ -4954,87 +5274,11 @@ function SettingsApp() {
 					}
 
 					if ( tab.name === 'changelog' ) {
-						const changelog =
-							data.changelog && typeof data.changelog === 'object'
-								? data.changelog
-								: {};
-						const versions = Object.entries( changelog ).slice(
-							0,
-							3
-						);
 						return (
-							<Card className="aculect-ai-companion-card">
-								<CardHeader>Changelog</CardHeader>
-								<CardBody>
-									{ versions.length === 0 ? (
-										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-											No changelog entries found.
-										</p>
-									) : (
-										<div className="aculect-ai-companion-changelog">
-											{ versions.map(
-												( [ version, groups ] ) => (
-													<div
-														key={ version }
-														className="aculect-ai-companion-changelog-version"
-													>
-														<h3 className="aculect-ai-companion-changelog-version-title">
-															{ version }
-														</h3>
-														{ Object.entries(
-															groups || {}
-														).map(
-															( [
-																group,
-																items,
-															] ) => (
-																<div
-																	key={ `${ version }-${ group }` }
-																	className="aculect-ai-companion-changelog-group"
-																>
-																	<h4 className="aculect-ai-companion-changelog-group-title">
-																		{
-																			group
-																		}
-																	</h4>
-																	<ul className="aculect-ai-companion-changelog-list">
-																		{ Array.isArray(
-																			items
-																		) &&
-																			items.map(
-																				(
-																					item,
-																					index
-																				) => (
-																					<li
-																						key={ `${ version }-${ group }-${ index }` }
-																					>
-																						{
-																							item
-																						}
-																					</li>
-																				)
-																			) }
-																	</ul>
-																</div>
-															)
-														) }
-													</div>
-												)
-											) }
-										</div>
-									) }
-									<p className="aculect-ai-companion-changelog-footer">
-										<a
-											href="https://github.com/mehul0810/aculect-ai-companion/blob/main/changelog.json"
-											target="_blank"
-											rel="noopener noreferrer"
-										>
-											View full changelog.json on GitHub
-										</a>
-									</p>
-								</CardBody>
-							</Card>
+							<ChangelogDashboard
+								changelog={ data.changelog }
+								metadata={ pluginMetadata }
+							/>
 						);
 					}
 

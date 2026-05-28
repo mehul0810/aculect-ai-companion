@@ -135,6 +135,7 @@ final class SettingsPage {
 
 		return array(
 			'version'                  => ACULECT_AI_COMPANION_VERSION,
+			'pluginMetadata'           => $this->plugin_metadata(),
 			'adminPageUrl'             => esc_url_raw( $this->settings_url() ),
 			'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
 			'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
@@ -819,6 +820,81 @@ final class SettingsPage {
 
 		$decoded = json_decode( $json, true );
 		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/**
+	 * Return plugin metadata used by the changelog screen.
+	 *
+	 * @return array<string, string>
+	 */
+	private function plugin_metadata(): array {
+		$plugin_data = function_exists( 'get_file_data' )
+			? get_file_data(
+				ACULECT_AI_COMPANION_PLUGIN_FILE,
+				array(
+					'version'         => 'Version',
+					'requiresAtLeast' => 'Requires at least',
+					'requiresPhp'     => 'Requires PHP',
+				),
+				'plugin'
+			)
+			: array();
+		$readme_data = $this->readme_headers();
+
+		return array(
+			'version'         => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
+			'requiresAtLeast' => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
+			'requiresPhp'     => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
+			'testedUpTo'      => sanitize_text_field( (string) ( $readme_data['Tested up to'] ?? '' ) ),
+			'stableTag'       => sanitize_text_field( (string) ( $readme_data['Stable tag'] ?? '' ) ),
+			'wordpressOrgUrl' => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/#developers' ),
+			'supportUrl'      => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
+			'reviewUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
+		);
+	}
+
+	/**
+	 * Parse readme headers without duplicating version requirements in JS.
+	 *
+	 * @return array<string, string>
+	 */
+	private function readme_headers(): array {
+		$file = ACULECT_AI_COMPANION_PLUGIN_DIR . 'readme.txt';
+		if ( ! file_exists( $file ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local plugin file read.
+		$contents = file_get_contents( $file );
+		if ( false === $contents || '' === $contents ) {
+			return array();
+		}
+
+		$headers = array();
+		$lines   = preg_split( '/\R/', $contents );
+		$lines   = false === $lines ? array() : $lines;
+
+		foreach ( $lines as $line ) {
+			$line = trim( $line );
+
+			if ( '' === $line && array() !== $headers ) {
+				break;
+			}
+
+			if ( str_starts_with( $line, '==' ) ) {
+				if ( array() !== $headers ) {
+					break;
+				}
+
+				continue;
+			}
+
+			if ( preg_match( '/^([^:]+):\s*(.+)$/', $line, $matches ) ) {
+				$headers[ trim( $matches[1] ) ] = sanitize_text_field( trim( $matches[2] ) );
+			}
+		}
+
+		return $headers;
 	}
 
 	/**

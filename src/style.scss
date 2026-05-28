@@ -935,6 +935,7 @@
 .aculect-ai-companion-connections-table-wrap {
 	width: 100%;
 	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
 	background: var(--aculect-ai-companion-surface);
@@ -1174,15 +1175,23 @@
 	max-width: 100%;
 }
 
-.aculect-ai-companion-copy-field__input {
+.aculect-ai-companion-copy-field__control:focus-within {
+	border-radius: 8px;
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+
+.aculect-ai-companion-copy-field__input,
+.aculect-ai-companion-copy-field__display {
 	flex: 1 1 auto;
 	min-width: 0;
-	height: 40px;
+	min-height: 40px;
 	margin: 0;
+	padding: 8px 10px;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-right: 0;
 	border-radius: 8px 0 0 8px;
 	background: #fff;
+	color: var(--aculect-ai-companion-ink);
 	font-family:
 		ui-monospace,
 		SFMono-Regular,
@@ -1190,6 +1199,27 @@
 		Monaco,
 		Consolas,
 		monospace;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-copy-field__input {
+	height: 40px;
+	overflow-x: auto;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.aculect-ai-companion-copy-field__display {
+	display: block;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.aculect-ai-companion-copy-field__display:focus-visible,
+.aculect-ai-companion-copy-field__input:focus-visible {
+	outline: 2px solid var(--aculect-ai-companion-primary);
+	outline-offset: -2px;
 }
 
 .aculect-ai-companion-copy-field__button.components-button {
@@ -1198,10 +1228,11 @@
 	justify-content: center;
 	width: 44px;
 	min-width: 44px;
-	height: 40px;
+	height: auto;
 	min-height: 40px;
 	padding: 0;
 	border-radius: 0 8px 8px 0;
+	align-self: stretch;
 }
 
 .aculect-ai-companion-copy-field__button.components-button.is-secondary {
@@ -1846,6 +1877,7 @@
 .aculect-ai-companion-health-table-wrap {
 	width: 100%;
 	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
 }
 
 .aculect-ai-companion-log-table,

@@ -279,24 +279,49 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 			.toString( 36 )
 			.slice( 2 ) }`
 	);
+	const labelId = `${ inputId.current }-label`;
+	const copyValue = String( value || '' );
 
 	return (
 		<div className="aculect-ai-companion-copy-field">
-			<label
-				className="aculect-ai-companion-copy-field__label"
-				htmlFor={ inputId.current }
-			>
-				{ label }
-			</label>
+			{ secret ? (
+				<label
+					className="aculect-ai-companion-copy-field__label"
+					htmlFor={ inputId.current }
+					id={ labelId }
+				>
+					{ label }
+				</label>
+			) : (
+				<span
+					className="aculect-ai-companion-copy-field__label"
+					id={ labelId }
+				>
+					{ label }
+				</span>
+			) }
 			<div className="aculect-ai-companion-copy-field__control">
-				<input
-					id={ inputId.current }
-					className="aculect-ai-companion-copy-field__input"
-					type={ secret ? 'password' : 'text' }
-					value={ String( value || '' ) }
-					readOnly
-					aria-label={ label }
-				/>
+				{ secret ? (
+					<input
+						id={ inputId.current }
+						className="aculect-ai-companion-copy-field__input"
+						type="password"
+						value={ copyValue }
+						readOnly
+						aria-label={ label }
+						spellCheck={ false }
+					/>
+				) : (
+					<code
+						id={ inputId.current }
+						className="aculect-ai-companion-copy-field__display"
+						tabIndex={ 0 }
+						aria-labelledby={ labelId }
+						title={ copyValue }
+					>
+						{ copyValue }
+					</code>
+				) }
 				<Button
 					type="button"
 					variant="secondary"

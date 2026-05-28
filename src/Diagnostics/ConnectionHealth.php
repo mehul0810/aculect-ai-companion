@@ -35,6 +35,7 @@ final class ConnectionHealth {
 			'ranAt'   => gmdate( 'Y-m-d H:i:s' ),
 			'summary' => $this->summary_status( $items ),
 			'items'   => $items,
+			'system'  => $this->system_info(),
 			'details' => array(
 				'connectionUrl'                     => Helpers::mcp_resource(),
 				'protectedResourceMetadataUrl'      => Helpers::protected_resource_metadata_url(),
@@ -391,6 +392,7 @@ final class ConnectionHealth {
 					)
 				)
 			),
+			'system'  => $this->sanitize_details( is_array( $result['system'] ?? null ) ? $result['system'] : array() ),
 			'details' => $this->sanitize_details( is_array( $result['details'] ?? null ) ? $result['details'] : array() ),
 		);
 	}
@@ -405,11 +407,31 @@ final class ConnectionHealth {
 			'ranAt'   => '',
 			'summary' => '',
 			'items'   => array(),
+			'system'  => $this->system_info(),
 			'details' => array(
 				'connectionUrl'                  => Helpers::mcp_resource(),
 				'protectedResourceMetadataUrl'   => Helpers::protected_resource_metadata_url(),
 				'authorizationServerMetadataUrl' => Helpers::authorization_metadata_url(),
 			),
+		);
+	}
+
+	/**
+	 * Return support-safe system details for the diagnostics screen.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function system_info(): array {
+		return $this->sanitize_details(
+			array(
+				'site_url'          => home_url( '/' ),
+				'rest_url'          => rest_url(),
+				'connection_url'    => Helpers::mcp_resource(),
+				'wordpress_version' => get_bloginfo( 'version' ),
+				'php_version'       => PHP_VERSION,
+				'environment_type'  => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production',
+				'debug_mode'        => defined( 'WP_DEBUG' ) && WP_DEBUG ? 'enabled' : 'disabled',
+			)
 		);
 	}
 

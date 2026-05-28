@@ -2682,6 +2682,730 @@ function OverviewCircuit( { brandIconUrl } ) {
 	);
 }
 
+const ABILITY_PAGE_SIZE = 12;
+const ABILITY_TABS = [
+	{ name: 'all', label: 'All' },
+	{ name: 'system', label: 'System' },
+	{ name: 'custom', label: 'Custom' },
+	{ name: 'active', label: 'Active' },
+	{ name: 'inactive', label: 'Inactive' },
+];
+
+function normalizedAbilityGroup( value ) {
+	return String( value || 'Other' ).trim() || 'Other';
+}
+
+function abilitySearchText( ability ) {
+	return [
+		ability.title,
+		ability.id,
+		ability.description,
+		ability.scope,
+		ability.group,
+		ability.category,
+		ability.toolName,
+		ability.sourceLabel,
+	]
+		.join( ' ' )
+		.toLowerCase();
+}
+
+function sortAbilities( firstAbility, secondAbility ) {
+	return (
+		String( firstAbility.group ).localeCompare(
+			String( secondAbility.group )
+		) ||
+		String( firstAbility.title ).localeCompare(
+			String( secondAbility.title )
+		)
+	);
+}
+
+function sameStringSet( firstValue, secondValue ) {
+	const first = Array.isArray( firstValue ) ? firstValue : [];
+	const second = Array.isArray( secondValue ) ? secondValue : [];
+
+	if ( first.length !== second.length ) {
+		return false;
+	}
+
+	const secondSet = new Set( second );
+	return first.every( ( item ) => secondSet.has( item ) );
+}
+
+function activeConnectionLabel( count ) {
+	return `${ count } active connection${ count === 1 ? '' : 's' }`;
+}
+
+function normalizedAbilityRows( {
+	abilities,
+	enabledAbilities,
+	wpAbilities,
+	enabledWpAbilities,
+	activeConnectionCount,
+} ) {
+	const enabledAbilityIds = new Set( enabledAbilities );
+	const enabledWpAbilityIds = new Set( enabledWpAbilities );
+	const firstParty = abilities.map( ( ability ) => ( {
+		id: String( ability.id || '' ),
+		title: String( ability.title || ability.id || 'Untitled ability' ),
+		description: String( ability.description || '' ),
+		group: normalizedAbilityGroup( ability.group ),
+		scope: String( ability.scope || 'content:read' ),
+		source: 'system',
+		sourceLabel: 'System',
+		readOnly: Boolean( ability.readOnly ),
+		enabled: enabledAbilityIds.has( ability.id ),
+		toolName: String( ability.toolName || ability.id || '' ),
+		assignedTo: enabledAbilityIds.has( ability.id )
+			? activeConnectionLabel( activeConnectionCount )
+			: 'Not exposed',
+		updated: 'Bundled registry',
+	} ) );
+	const wordpress = wpAbilities.map( ( ability ) => ( {
+		id: String( ability.id || '' ),
+		title: String( ability.title || ability.id || 'WordPress ability' ),
+		description: String( ability.description || '' ),
+		group: normalizedAbilityGroup( ability.category || 'WordPress API' ),
+		scope: ability.destructive ? 'write' : 'content:read',
+		source: 'wordpress',
+		sourceLabel: 'WordPress API',
+		readOnly: Boolean( ability.readOnly ),
+		destructive: Boolean( ability.destructive ),
+		enabled: enabledWpAbilityIds.has( ability.id ),
+		toolName: String( ability.id || '' ),
+		assignedTo: enabledWpAbilityIds.has( ability.id )
+			? activeConnectionLabel( activeConnectionCount )
+			: 'Not exposed',
+		updated: 'Runtime policy',
+	} ) );
+
+	return [ ...firstParty, ...wordpress ]
+		.filter( ( ability ) => ability.id )
+		.sort( sortAbilities );
+}
+
+function filterAbilityRows( {
+	rows,
+	tab,
+	search,
+	selectedCategory,
+	risk,
+	source,
+} ) {
+	const searchTerm = search.trim().toLowerCase();
+
+	return rows.filter( ( ability ) => {
+		if ( tab === 'system' && ability.source !== 'system' ) {
+			return false;
+		}
+
+		if ( tab === 'custom' ) {
+			return false;
+		}
+
+		if ( tab === 'active' && ! ability.enabled ) {
+			return false;
+		}
+
+		if ( tab === 'inactive' && ability.enabled ) {
+			return false;
+		}
+
+		if (
+			selectedCategory !== 'all' &&
+			ability.group !== selectedCategory
+		) {
+			return false;
+		}
+
+		if ( source !== 'all' && ability.source !== source ) {
+			return false;
+		}
+
+		if ( risk === 'read' && ! ability.readOnly ) {
+			return false;
+		}
+
+		if ( risk === 'write' && ability.readOnly ) {
+			return false;
+		}
+
+		return (
+			! searchTerm || abilitySearchText( ability ).includes( searchTerm )
+		);
+	} );
+}
+
+function AbilitySummaryCard( { icon, label, value, description } ) {
+	return (
+		<div className="aculect-ai-companion-ability-summary-card">
+			<span
+				className="aculect-ai-companion-ability-summary-card__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 18 } />
+			</span>
+			<div>
+				<span>{ label }</span>
+				<strong>{ value }</strong>
+				<p>{ description }</p>
+			</div>
+		</div>
+	);
+}
+
+function AbilityDashboard( {
+	data,
+	abilities,
+	enabledAbilities,
+	wpAbilities,
+	enabledWpAbilities,
+	confirmationGroups,
+	confirmationGroupOptions,
+	activeConnectionCount,
+	hasChanges,
+	onToggleAbility,
+	onToggleWpAbility,
+	onToggleConfirmationGroup,
+	onEnableAll,
+	onDisableAll,
+	onResetChanges,
+	onCopy,
+} ) {
+	const [ abilityTab, setAbilityTab ] = useState( 'all' );
+	const [ abilitySearch, setAbilitySearch ] = useState( '' );
+	const [ abilityCategory, setAbilityCategory ] = useState( 'all' );
+	const [ abilityRisk, setAbilityRisk ] = useState( 'all' );
+	const [ abilitySource, setAbilitySource ] = useState( 'all' );
+	const [ abilityPage, setAbilityPage ] = useState( 1 );
+	const rows = normalizedAbilityRows( {
+		abilities,
+		enabledAbilities,
+		wpAbilities,
+		enabledWpAbilities,
+		activeConnectionCount,
+	} );
+	const filteredRows = filterAbilityRows( {
+		rows,
+		tab: abilityTab,
+		search: abilitySearch,
+		selectedCategory: abilityCategory,
+		risk: abilityRisk,
+		source: abilitySource,
+	} );
+	const totalPages = Math.max(
+		1,
+		Math.ceil( filteredRows.length / ABILITY_PAGE_SIZE )
+	);
+	const currentPage = Math.min( abilityPage, totalPages );
+	const visibleRows = filteredRows.slice(
+		( currentPage - 1 ) * ABILITY_PAGE_SIZE,
+		currentPage * ABILITY_PAGE_SIZE
+	);
+	const activeRows = rows.filter( ( ability ) => ability.enabled );
+	const systemRows = rows.filter(
+		( ability ) => ability.source === 'system'
+	);
+	const sourceOptions = [
+		{ value: 'all', label: 'All sources' },
+		{ value: 'system', label: 'System' },
+	];
+	const categories = Array.from(
+		new Set( rows.map( ( ability ) => ability.group ) )
+	).sort();
+	const tabCounts = ABILITY_TABS.reduce(
+		( counts, tab ) => ( {
+			...counts,
+			[ tab.name ]:
+				tab.name === 'all'
+					? rows.length
+					: filterAbilityRows( {
+							rows,
+							tab: tab.name,
+							search: '',
+							selectedCategory: 'all',
+							risk: 'all',
+							source: 'all',
+					  } ).length,
+		} ),
+		{}
+	);
+
+	if ( wpAbilities.length > 0 ) {
+		sourceOptions.push( { value: 'wordpress', label: 'WordPress API' } );
+	}
+
+	useEffect( () => {
+		setAbilityPage( 1 );
+	}, [
+		abilityTab,
+		abilitySearch,
+		abilityCategory,
+		abilityRisk,
+		abilitySource,
+	] );
+
+	return (
+		<form
+			method="post"
+			action={ data.actions?.adminPostUrl }
+			className="aculect-ai-companion-abilities-dashboard"
+		>
+			<input
+				type="hidden"
+				name="action"
+				value={ data.actions?.saveAbilitiesAction }
+			/>
+			<input
+				type="hidden"
+				name="_wpnonce"
+				value={ data.actions?.saveAbilitiesNonce }
+			/>
+			{ enabledAbilities.map( ( id ) => (
+				<input
+					key={ id }
+					type="hidden"
+					name="enabled_abilities[]"
+					value={ id }
+				/>
+			) ) }
+			{ enabledWpAbilities.map( ( id ) => (
+				<input
+					key={ id }
+					type="hidden"
+					name="enabled_wp_abilities[]"
+					value={ id }
+				/>
+			) ) }
+			{ confirmationGroups.map( ( group ) => (
+				<input
+					key={ group }
+					type="hidden"
+					name="confirmation_required_groups[]"
+					value={ group }
+				/>
+			) ) }
+			<section className="aculect-ai-companion-abilities-hero">
+				<div>
+					<span className="aculect-ai-companion-eyebrow">
+						Abilities
+					</span>
+					<h2 className="aculect-ai-companion-abilities-hero__title">
+						AI capability policy
+					</h2>
+					<p className="aculect-ai-companion-abilities-hero__copy">
+						Control which registered actions connected assistants
+						can request while WordPress permissions continue to
+						authorize every run.
+					</p>
+				</div>
+				<div className="aculect-ai-companion-abilities-hero__actions">
+					<Button type="submit" variant="primary">
+						Save abilities
+					</Button>
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ onResetChanges }
+						disabled={ ! hasChanges }
+					>
+						Discard changes
+					</Button>
+				</div>
+			</section>
+
+			<div className="aculect-ai-companion-ability-summary">
+				<AbilitySummaryCard
+					icon={ plugins }
+					label="Total abilities"
+					value={ rows.length }
+					description="Registered from the live ability registry."
+				/>
+				<AbilitySummaryCard
+					icon={ check }
+					label="Active abilities"
+					value={ activeRows.length }
+					description="Currently exposed to connected assistants."
+				/>
+				<AbilitySummaryCard
+					icon={ people }
+					label="Assigned access"
+					value={ activeConnectionCount }
+					description="Active connections still use WordPress caps."
+				/>
+				<AbilitySummaryCard
+					icon={ lock }
+					label="System abilities"
+					value={ systemRows.length }
+					description="Bundled actions protected from destructive edits."
+				/>
+			</div>
+
+			<div className="aculect-ai-companion-abilities-layout">
+				<section className="aculect-ai-companion-abilities-main">
+					<div className="aculect-ai-companion-ability-actions">
+						<Button type="button" variant="secondary" disabled>
+							Import ability
+						</Button>
+						<Button type="button" variant="secondary" disabled>
+							Export abilities
+						</Button>
+						<Button type="button" variant="secondary" disabled>
+							Create ability
+						</Button>
+						<p>
+							Custom ability storage is not enabled, so custom
+							ability actions stay unavailable.
+						</p>
+					</div>
+
+					<div
+						className="aculect-ai-companion-ability-tabs"
+						role="tablist"
+						aria-label="Ability status filters"
+					>
+						{ ABILITY_TABS.map( ( tab ) => (
+							<button
+								key={ tab.name }
+								type="button"
+								role="tab"
+								aria-selected={ abilityTab === tab.name }
+								className={
+									abilityTab === tab.name ? 'is-active' : ''
+								}
+								onClick={ () => setAbilityTab( tab.name ) }
+							>
+								<span>{ tab.label }</span>
+								<strong>{ tabCounts[ tab.name ] || 0 }</strong>
+							</button>
+						) ) }
+					</div>
+
+					<div className="aculect-ai-companion-ability-filters">
+						<TextControl
+							label="Search abilities"
+							value={ abilitySearch }
+							placeholder="Name, key, description, scope, or source"
+							onChange={ setAbilitySearch }
+						/>
+						<label
+							className="aculect-ai-companion-ability-filters__field"
+							htmlFor="aculect-ai-companion-ability-category"
+						>
+							<span className="aculect-ai-companion-ability-filters__label">
+								Category
+							</span>
+							<select
+								id="aculect-ai-companion-ability-category"
+								value={ abilityCategory }
+								onChange={ ( event ) =>
+									setAbilityCategory( event.target.value )
+								}
+							>
+								<option value="all">All categories</option>
+								{ categories.map( ( categoryName ) => (
+									<option
+										key={ categoryName }
+										value={ categoryName }
+									>
+										{ categoryName }
+									</option>
+								) ) }
+							</select>
+						</label>
+						<label
+							className="aculect-ai-companion-ability-filters__field"
+							htmlFor="aculect-ai-companion-ability-risk"
+						>
+							<span className="aculect-ai-companion-ability-filters__label">
+								Status risk
+							</span>
+							<select
+								id="aculect-ai-companion-ability-risk"
+								value={ abilityRisk }
+								onChange={ ( event ) =>
+									setAbilityRisk( event.target.value )
+								}
+							>
+								<option value="all">Read and write</option>
+								<option value="read">Read-only</option>
+								<option value="write">Can change site</option>
+							</select>
+						</label>
+						<label
+							className="aculect-ai-companion-ability-filters__field"
+							htmlFor="aculect-ai-companion-ability-source"
+						>
+							<span className="aculect-ai-companion-ability-filters__label">
+								Source
+							</span>
+							<select
+								id="aculect-ai-companion-ability-source"
+								value={ abilitySource }
+								onChange={ ( event ) =>
+									setAbilitySource( event.target.value )
+								}
+							>
+								{ sourceOptions.map( ( option ) => (
+									<option
+										key={ option.value }
+										value={ option.value }
+									>
+										{ option.label }
+									</option>
+								) ) }
+							</select>
+						</label>
+					</div>
+
+					{ visibleRows.length > 0 ? (
+						<div className="aculect-ai-companion-ability-table-wrap">
+							<table className="aculect-ai-companion-ability-table">
+								<thead>
+									<tr>
+										<th>Ability</th>
+										<th>Scope</th>
+										<th>Granted to</th>
+										<th>Status</th>
+										<th>Updated</th>
+										<th>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{ visibleRows.map( ( ability ) => (
+										<tr key={ ability.id }>
+											<td data-label="Ability">
+												<div className="aculect-ai-companion-ability-name-cell">
+													<strong>
+														{ ability.title }
+													</strong>
+													<code>{ ability.id }</code>
+													<p>
+														{ ability.description ||
+															'No description provided.' }
+													</p>
+													<div className="aculect-ai-companion-ability-row-tags">
+														<span className="is-source">
+															{
+																ability.sourceLabel
+															}
+														</span>
+														<span>
+															{ ability.group }
+														</span>
+													</div>
+												</div>
+											</td>
+											<td data-label="Scope">
+												<span
+													className={ `aculect-ai-companion-risk-chip ${
+														ability.readOnly
+															? 'is-read-only'
+															: 'is-write'
+													}` }
+												>
+													{ ability.readOnly
+														? 'Read-only'
+														: 'Can change site' }
+												</span>
+												<code>{ ability.scope }</code>
+											</td>
+											<td data-label="Granted to">
+												{ ability.assignedTo }
+											</td>
+											<td data-label="Status">
+												<div className="aculect-ai-companion-ability-status-cell">
+													<span
+														className={ `aculect-ai-companion-ability-status ${
+															ability.enabled
+																? 'is-active'
+																: 'is-inactive'
+														}` }
+													>
+														{ ability.enabled
+															? 'Active'
+															: 'Inactive' }
+													</span>
+													<ToggleControl
+														label={ `${ ability.title } active state` }
+														checked={
+															ability.enabled
+														}
+														onChange={ (
+															checked
+														) => {
+															if (
+																ability.source ===
+																'wordpress'
+															) {
+																onToggleWpAbility(
+																	ability.id,
+																	Boolean(
+																		checked
+																	)
+																);
+																return;
+															}
+
+															onToggleAbility(
+																ability.id,
+																Boolean(
+																	checked
+																)
+															);
+														} }
+													/>
+												</div>
+											</td>
+											<td data-label="Updated">
+												{ ability.updated }
+											</td>
+											<td data-label="Actions">
+												<Button
+													type="button"
+													variant="tertiary"
+													aria-label={ `Copy ${ ability.title } ability key` }
+													onClick={ () =>
+														onCopy(
+															ability.id,
+															'Ability key copied'
+														)
+													}
+												>
+													<Icon
+														icon={ copy }
+														size={ 16 }
+													/>
+												</Button>
+											</td>
+										</tr>
+									) ) }
+								</tbody>
+							</table>
+						</div>
+					) : (
+						<EmptyState
+							title={
+								abilityTab === 'custom'
+									? 'No custom abilities'
+									: 'No matching abilities'
+							}
+						>
+							{ abilityTab === 'custom'
+								? 'Custom ability storage is not available, so no custom rows can be listed.'
+								: 'Adjust the search, tabs, or filters to show ability rows.' }
+						</EmptyState>
+					) }
+
+					{ filteredRows.length > ABILITY_PAGE_SIZE && (
+						<div className="aculect-ai-companion-ability-pagination">
+							<Button
+								type="button"
+								variant="secondary"
+								disabled={ currentPage === 1 }
+								onClick={ () =>
+									setAbilityPage( ( currentAbilityPage ) =>
+										Math.max( 1, currentAbilityPage - 1 )
+									)
+								}
+							>
+								Previous
+							</Button>
+							<span>
+								Page { currentPage } of { totalPages }
+							</span>
+							<Button
+								type="button"
+								variant="secondary"
+								disabled={ currentPage === totalPages }
+								onClick={ () =>
+									setAbilityPage( ( currentAbilityPage ) =>
+										Math.min(
+											totalPages,
+											currentAbilityPage + 1
+										)
+									)
+								}
+							>
+								Next
+							</Button>
+						</div>
+					) }
+				</section>
+
+				<aside className="aculect-ai-companion-abilities-side">
+					<section className="aculect-ai-companion-abilities-panel">
+						<h3>About abilities</h3>
+						<p>
+							System rows come from the bundled registry.
+							WordPress Ability API rows appear only when public
+							abilities are registered on this site.
+						</p>
+					</section>
+					<section className="aculect-ai-companion-abilities-panel">
+						<h3>Quick actions</h3>
+						<div className="aculect-ai-companion-abilities-panel__actions">
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={ onEnableAll }
+							>
+								Enable all
+							</Button>
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={ onDisableAll }
+							>
+								Disable all
+							</Button>
+							<Button type="button" variant="secondary" disabled>
+								Manage role abilities
+							</Button>
+						</div>
+					</section>
+					{ confirmationGroupOptions.length > 0 && (
+						<section className="aculect-ai-companion-abilities-panel">
+							<h3>Confirmation gates</h3>
+							<p>
+								High-risk actions always require confirmation.
+								Selected groups require confirmation for every
+								write action.
+							</p>
+							<div className="aculect-ai-companion-confirmation-groups">
+								{ confirmationGroupOptions.map( ( group ) => (
+									<CheckboxControl
+										key={ group }
+										label={ group }
+										checked={ confirmationGroups.includes(
+											group
+										) }
+										onChange={ ( checked ) =>
+											onToggleConfirmationGroup(
+												group,
+												Boolean( checked )
+											)
+										}
+									/>
+								) ) }
+							</div>
+						</section>
+					) }
+					<section className="aculect-ai-companion-abilities-panel">
+						<h3>Help</h3>
+						<p>
+							Disabling an ability removes it from the MCP tool
+							list; WordPress still checks user capabilities when
+							an enabled tool runs.
+						</p>
+					</section>
+				</aside>
+			</div>
+		</form>
+	);
+}
+
 function roleAbilitySearchText( ability ) {
 	return [
 		ability.title,
@@ -3576,6 +4300,15 @@ function SettingsApp() {
 	const wpAbilities = Array.isArray( data.wpAbilities )
 		? data.wpAbilities
 		: [];
+	const originalEnabledAbilities = Array.isArray( data.enabledAbilities )
+		? data.enabledAbilities
+		: [];
+	const originalEnabledWpAbilities = Array.isArray( data.enabledWpAbilities )
+		? data.enabledWpAbilities
+		: [];
+	const originalConfirmationGroups = Array.isArray( data.confirmationGroups )
+		? data.confirmationGroups
+		: [];
 	const confirmationGroupOptions = Array.isArray(
 		data.confirmationGroupOptions
 	)
@@ -3637,13 +4370,13 @@ function SettingsApp() {
 			: []
 	);
 	const [ enabledAbilities, setEnabledAbilities ] = useState(
-		Array.isArray( data.enabledAbilities ) ? data.enabledAbilities : []
+		originalEnabledAbilities
 	);
 	const [ confirmationGroups, setConfirmationGroups ] = useState(
-		Array.isArray( data.confirmationGroups ) ? data.confirmationGroups : []
+		originalConfirmationGroups
 	);
 	const [ enabledWpAbilities, setEnabledWpAbilities ] = useState(
-		Array.isArray( data.enabledWpAbilities ) ? data.enabledWpAbilities : []
+		originalEnabledWpAbilities
 	);
 	const [ selectedRoleAbilityRole, setSelectedRoleAbilityRole ] = useState(
 		Array.isArray( roleAbilityPolicy.roles )
@@ -3691,6 +4424,10 @@ function SettingsApp() {
 		enabledAbilityIds: enabledAbilities,
 	} );
 	const connectionUserTotal = connectionUserCount( activeConnectionSessions );
+	const hasAbilityChanges =
+		! sameStringSet( enabledAbilities, originalEnabledAbilities ) ||
+		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
+		! sameStringSet( confirmationGroups, originalConfirmationGroups );
 	const connectionStatus = connectStatusDetails( {
 		isAccessPaused,
 		hasActiveSessions,
@@ -3777,13 +4514,6 @@ function SettingsApp() {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
 
-	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
-		const group = ability.group || 'Other';
-		return {
-			...groups,
-			[ group ]: [ ...( groups[ group ] || [] ), ability ],
-		};
-	}, {} );
 	const toggleAbility = ( id, checked ) => {
 		setEnabledAbilities( ( current ) => {
 			if ( checked ) {
@@ -3791,17 +4521,6 @@ function SettingsApp() {
 			}
 
 			return current.filter( ( item ) => item !== id );
-		} );
-	};
-	const setGroupAbilities = ( groupAbilities, checked ) => {
-		const groupIds = groupAbilities.map( ( ability ) => ability.id );
-
-		setEnabledAbilities( ( current ) => {
-			if ( checked ) {
-				return Array.from( new Set( [ ...current, ...groupIds ] ) );
-			}
-
-			return current.filter( ( id ) => ! groupIds.includes( id ) );
 		} );
 	};
 
@@ -4510,353 +5229,63 @@ function SettingsApp() {
 
 					if ( tab.name === 'abilities' ) {
 						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-abilities-card">
-								<CardHeader>What your AI can do</CardHeader>
-								<CardBody>
-									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-										Choose which abilities connected AI
-										assistants can use. WordPress
-										permissions are still checked every time
-										your AI assistant asks Aculect AI
-										Companion to do something.
-									</p>
-									<RoleAbilitiesEditor
-										data={ data }
-										abilities={ abilities }
-										roleAbilityPolicy={ roleAbilityPolicy }
-										selectedRole={ selectedRoleAbilityRole }
-										onSelectRole={
-											setSelectedRoleAbilityRole
-										}
-									/>
-									<form
-										method="post"
-										action={ data.actions?.adminPostUrl }
-										className="aculect-ai-companion-form aculect-ai-companion-form--abilities"
-									>
-										<input
-											type="hidden"
-											name="action"
-											value={
-												data.actions
-													?.saveAbilitiesAction
-											}
-										/>
-										<input
-											type="hidden"
-											name="_wpnonce"
-											value={
-												data.actions?.saveAbilitiesNonce
-											}
-										/>
-										{ enabledAbilities.map( ( id ) => (
-											<input
-												key={ id }
-												type="hidden"
-												name="enabled_abilities[]"
-												value={ id }
-											/>
-										) ) }
-										{ confirmationGroups.map( ( group ) => (
-											<input
-												key={ group }
-												type="hidden"
-												name="confirmation_required_groups[]"
-												value={ group }
-											/>
-										) ) }
-										{ enabledWpAbilities.map( ( id ) => (
-											<input
-												key={ id }
-												type="hidden"
-												name="enabled_wp_abilities[]"
-												value={ id }
-											/>
-										) ) }
-										<div className="aculect-ai-companion-ability-toolbar">
-											<Button
-												type="button"
-												variant="secondary"
-												onClick={ () =>
-													setEnabledAbilities(
-														abilities.map(
-															( ability ) =>
-																ability.id
-														)
-													)
-												}
-											>
-												Enable All Abilities
-											</Button>
-											<Button
-												type="button"
-												variant="secondary"
-												onClick={ () =>
-													setEnabledAbilities( [] )
-												}
-											>
-												Disable All Abilities
-											</Button>
-											<Button
-												type="submit"
-												variant="primary"
-											>
-												Save Abilities
-											</Button>
-										</div>
-										{ confirmationGroupOptions.length >
-											0 && (
-											<div className="aculect-ai-companion-confirmation-settings">
-												<h3 className="aculect-ai-companion-section-heading">
-													Confirmation Gates
-												</h3>
-												<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-													High-risk actions always
-													require confirmation. Select
-													groups that should require
-													confirmation for every write
-													action.
-												</p>
-												<div className="aculect-ai-companion-confirmation-groups">
-													{ confirmationGroupOptions.map(
-														( group ) => (
-															<CheckboxControl
-																key={ group }
-																label={ group }
-																checked={ confirmationGroups.includes(
-																	group
-																) }
-																onChange={ (
-																	checked
-																) =>
-																	toggleConfirmationGroup(
-																		group,
-																		Boolean(
-																			checked
-																		)
-																	)
-																}
-															/>
-														)
-													) }
-												</div>
-											</div>
-										) }
-										<div className="aculect-ai-companion-ability-groups">
-											{ Object.entries(
-												groupedAbilities
-											).map(
-												( [
-													group,
-													groupAbilities,
-												] ) => (
-													<div
-														key={ group }
-														className="aculect-ai-companion-ability-group"
-													>
-														<div className="aculect-ai-companion-ability-group__header">
-															<div>
-																<h3 className="aculect-ai-companion-section-heading">
-																	{ group }
-																</h3>
-																<p className="aculect-ai-companion-ability-group__summary">
-																	{
-																		groupAbilities.filter(
-																			(
-																				ability
-																			) =>
-																				enabledAbilities.includes(
-																					ability.id
-																				)
-																		).length
-																	}
-																	/{ ' ' }
-																	{
-																		groupAbilities.length
-																	}{ ' ' }
-																	enabled
-																</p>
-															</div>
-															<div className="aculect-ai-companion-ability-group__actions">
-																<Button
-																	type="button"
-																	variant="secondary"
-																	onClick={ () =>
-																		setGroupAbilities(
-																			groupAbilities,
-																			true
-																		)
-																	}
-																>
-																	Enable Group
-																</Button>
-																<Button
-																	type="button"
-																	variant="secondary"
-																	onClick={ () =>
-																		setGroupAbilities(
-																			groupAbilities,
-																			false
-																		)
-																	}
-																>
-																	Disable
-																	Group
-																</Button>
-															</div>
-														</div>
-														<div className="aculect-ai-companion-ability-list">
-															{ groupAbilities.map(
-																( ability ) => (
-																	<div
-																		key={
-																			ability.id
-																		}
-																		className="aculect-ai-companion-ability-row"
-																	>
-																		<CheckboxControl
-																			label={
-																				ability.title
-																			}
-																			checked={ enabledAbilities.includes(
-																				ability.id
-																			) }
-																			onChange={ (
-																				checked
-																			) =>
-																				toggleAbility(
-																					ability.id,
-																					Boolean(
-																						checked
-																					)
-																				)
-																			}
-																		/>
-																		<p className="aculect-ai-companion-ability-row__description">
-																			{
-																				ability.description
-																			}
-																		</p>
-																		<div className="aculect-ai-companion-ability-row__meta">
-																			<span
-																				className={ `aculect-ai-companion-risk-chip ${
-																					ability.readOnly
-																						? 'is-read-only'
-																						: 'is-write'
-																				}` }
-																			>
-																				{ ability.readOnly
-																					? 'Read-only'
-																					: 'Can change site' }
-																			</span>
-																			<span>
-																				{ ability.scope ||
-																					'content:read' }
-																			</span>
-																			<code>
-																				{
-																					ability.toolName
-																				}
-																			</code>
-																		</div>
-																	</div>
-																)
-															) }
-														</div>
-													</div>
-												)
-											) }
-										</div>
-										{ wpAbilities.length > 0 && (
-											<div className="aculect-ai-companion-ability-group">
-												<div className="aculect-ai-companion-ability-group__header">
-													<div>
-														<h3 className="aculect-ai-companion-section-heading">
-															WordPress Abilities
-														</h3>
-														<p className="aculect-ai-companion-ability-group__summary">
-															{
-																wpAbilities.filter(
-																	(
-																		ability
-																	) =>
-																		enabledWpAbilities.includes(
-																			ability.id
-																		)
-																).length
-															}
-															/{ ' ' }
-															{
-																wpAbilities.length
-															}{ ' ' }
-															allowed
-														</p>
-													</div>
-												</div>
-												<div className="aculect-ai-companion-ability-list">
-													{ wpAbilities.map(
-														( ability ) => (
-															<div
-																key={
-																	ability.id
-																}
-																className="aculect-ai-companion-ability-row"
-															>
-																<CheckboxControl
-																	label={
-																		ability.title ||
-																		ability.id
-																	}
-																	checked={ enabledWpAbilities.includes(
-																		ability.id
-																	) }
-																	onChange={ (
-																		checked
-																	) =>
-																		toggleWpAbility(
-																			ability.id,
-																			Boolean(
-																				checked
-																			)
-																		)
-																	}
-																/>
-																<p className="aculect-ai-companion-ability-row__description">
-																	{
-																		ability.description
-																	}
-																</p>
-																<div className="aculect-ai-companion-ability-row__meta">
-																	<span
-																		className={ `aculect-ai-companion-risk-chip ${
-																			ability.readOnly
-																				? 'is-read-only'
-																				: 'is-write'
-																		}` }
-																	>
-																		{ ability.readOnly
-																			? 'Read-only'
-																			: 'Can change site' }
-																	</span>
-																	<span>
-																		{ ability.category ||
-																			'uncategorized' }
-																	</span>
-																	<code>
-																		{
-																			ability.id
-																		}
-																	</code>
-																</div>
-															</div>
-														)
-													) }
-												</div>
-											</div>
-										) }
-									</form>
-								</CardBody>
-							</Card>
+							<>
+								<AbilityDashboard
+									data={ data }
+									abilities={ abilities }
+									enabledAbilities={ enabledAbilities }
+									wpAbilities={ wpAbilities }
+									enabledWpAbilities={ enabledWpAbilities }
+									confirmationGroups={ confirmationGroups }
+									confirmationGroupOptions={
+										confirmationGroupOptions
+									}
+									activeConnectionCount={
+										activeConnectionSessions.length
+									}
+									hasChanges={ hasAbilityChanges }
+									onToggleAbility={ toggleAbility }
+									onToggleWpAbility={ toggleWpAbility }
+									onToggleConfirmationGroup={
+										toggleConfirmationGroup
+									}
+									onEnableAll={ () => {
+										setEnabledAbilities(
+											abilities.map(
+												( ability ) => ability.id
+											)
+										);
+										setEnabledWpAbilities(
+											wpAbilities.map(
+												( ability ) => ability.id
+											)
+										);
+									} }
+									onDisableAll={ () => {
+										setEnabledAbilities( [] );
+										setEnabledWpAbilities( [] );
+									} }
+									onResetChanges={ () => {
+										setEnabledAbilities(
+											originalEnabledAbilities
+										);
+										setEnabledWpAbilities(
+											originalEnabledWpAbilities
+										);
+										setConfirmationGroups(
+											originalConfirmationGroups
+										);
+									} }
+									onCopy={ copyValue }
+								/>
+								<RoleAbilitiesEditor
+									data={ data }
+									abilities={ abilities }
+									roleAbilityPolicy={ roleAbilityPolicy }
+									selectedRole={ selectedRoleAbilityRole }
+									onSelectRole={ setSelectedRoleAbilityRole }
+								/>
+							</>
 						);
 					}
 

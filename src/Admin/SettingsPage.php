@@ -30,34 +30,22 @@ defined( 'ABSPATH' ) || exit;
  */
 final class SettingsPage {
 
-	private const ASSET_HANDLE = 'aculect-ai-companion-settings-app';
-	private const STYLE_HANDLE = 'aculect-ai-companion-settings-style';
-	private const MENU_ICON    = 'data:image/svg+xml;base64,'
-		. 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCI+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0iTTMuNCAxNiA4LjYgNGMuNi0xLjQgMi4yLTEuNCAyLjggMEwxNi42IDE2aC0zTDEwIDcuMiA2LjQgMTZoLTN6Ii8+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0ibTEwIDEyLjQuNiAxLjIgMS4yLjYtMS4yLjYtLjYgMS4yLS42LTEuMi0xLjItLjYgMS4yLS42LjYtMS4yeiIvPjwvc3ZnPg==';
+	private const PAGE_SLUG            = 'aculect-ai-companion';
+	private const SETTINGS_PARENT_FILE = 'options-general.php';
+	private const ASSET_HANDLE         = 'aculect-ai-companion-settings-app';
+	private const STYLE_HANDLE         = 'aculect-ai-companion-settings-style';
 
 	/**
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
-		add_menu_page(
+		add_options_page(
 			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
 			__( 'AI Companion', 'aculect-ai-companion' ),
 			'manage_options',
-			'aculect-ai-companion',
-			array( $this, 'render' ),
-			self::MENU_ICON,
-			81
+			self::PAGE_SLUG,
+			array( $this, 'render' )
 		);
-		foreach ( $this->settings_tabs() as $tab ) {
-			add_submenu_page(
-				'aculect-ai-companion',
-				$tab['title'],
-				$tab['menu_title'],
-				'manage_options',
-				$tab['slug'],
-				array( $this, 'render' )
-			);
-		}
 
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_filter( 'parent_file', array( $this, 'highlight_parent_menu' ) );
@@ -757,18 +745,18 @@ final class SettingsPage {
 		return add_query_arg(
 			array_merge(
 				array(
-					'page' => 'aculect-ai-companion',
+					'page' => self::PAGE_SLUG,
 				),
 				$args
 			),
-			admin_url( 'admin.php' )
+			admin_url( self::SETTINGS_PARENT_FILE )
 		);
 	}
 
 	/**
-	 * Return the visible settings tabs used for the wp-admin submenu.
+	 * Return the visible settings tabs rendered inside the settings app.
 	 *
-	 * @return array<int, array{tab:string, title:string, menu_title:string, slug:string}>
+	 * @return array<int, array{tab:string, title:string, menu_title:string}>
 	 */
 	private function settings_tabs(): array {
 		$tabs = array(
@@ -776,49 +764,41 @@ final class SettingsPage {
 				'tab'        => 'overview',
 				'title'      => __( 'Overview', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Overview', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion',
 			),
 			array(
 				'tab'        => 'connect',
 				'title'      => __( 'Connect', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Connect', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=connect',
 			),
 			array(
 				'tab'        => 'connections',
 				'title'      => __( 'Connections', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Connections', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=connections',
 			),
 			array(
 				'tab'        => 'abilities',
 				'title'      => __( 'Abilities', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Abilities', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=abilities',
 			),
 			array(
 				'tab'        => 'activity',
 				'title'      => __( 'Activity', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Activity', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=activity',
 			),
 			array(
 				'tab'        => 'diagnostics',
 				'title'      => __( 'Diagnostics', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Diagnostics', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=diagnostics',
 			),
 			array(
 				'tab'        => 'advanced',
 				'title'      => __( 'Advanced', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Advanced', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=advanced',
 			),
 			array(
 				'tab'        => 'changelog',
 				'title'      => __( 'Changelog', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Changelog', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=changelog',
 			),
 		);
 
@@ -836,20 +816,20 @@ final class SettingsPage {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
-		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
+		return isset( $_GET['page'] ) && self::PAGE_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**
-	 * Keep the Aculect top-level menu highlighted for tab subpages.
+	 * Keep the WordPress Settings menu highlighted for tab subpages.
 	 *
 	 * @param string|null $parent_file Current parent file.
 	 */
 	public function highlight_parent_menu( ?string $parent_file ): ?string {
-		return $this->is_current_settings_page() ? 'aculect-ai-companion' : $parent_file;
+		return $this->is_current_settings_page() ? self::SETTINGS_PARENT_FILE : $parent_file;
 	}
 
 	/**
-	 * Keep the matching Aculect submenu highlighted for the current tab.
+	 * Keep the AI Companion settings submenu highlighted for internal tabs.
 	 *
 	 * @param string|null $submenu_file Current submenu file.
 	 */
@@ -858,12 +838,7 @@ final class SettingsPage {
 			return $submenu_file;
 		}
 
-		$tab = $this->current_tab();
-		if ( 'overview' === $tab ) {
-			return 'aculect-ai-companion';
-		}
-
-		return 'aculect-ai-companion&tab=' . $tab;
+		return self::PAGE_SLUG;
 	}
 
 	/**
@@ -871,17 +846,7 @@ final class SettingsPage {
 	 */
 	private function is_current_settings_page(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
-		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
-	}
-
-	/**
-	 * Return the normalized active settings tab.
-	 */
-	private function current_tab(): string {
-		$tab            = $this->requested_tab();
-		$available_tabs = array_column( $this->settings_tabs(), 'tab' );
-
-		return in_array( $tab, $available_tabs, true ) ? $tab : 'overview';
+		return isset( $_GET['page'] ) && self::PAGE_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**

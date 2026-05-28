@@ -41,14 +41,23 @@ if ( ! defined( 'ARRAY_A' ) ) {
 	define( 'ARRAY_A', 'ARRAY_A' );
 }
 
-$GLOBALS['aculect_ai_companion_test_options']    = array();
-$GLOBALS['aculect_ai_companion_test_transients'] = array();
-$GLOBALS['aculect_ai_companion_test_roles']      = array(
+$GLOBALS['aculect_ai_companion_test_options']     = array();
+$GLOBALS['aculect_ai_companion_test_transients']  = array();
+$GLOBALS['aculect_ai_companion_test_admin_pages'] = array(
+	'menu'    => array(),
+	'options' => array(),
+	'submenu' => array(),
+);
+$GLOBALS['aculect_ai_companion_test_hooks']       = array(
+	'actions' => array(),
+	'filters' => array(),
+);
+$GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'administrator' => array( 'name' => 'Administrator' ),
 	'editor'        => array( 'name' => 'Editor' ),
 	'author'        => array( 'name' => 'Author' ),
 );
-$GLOBALS['aculect_ai_companion_test_users']      = array();
+$GLOBALS['aculect_ai_companion_test_users']       = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -121,6 +130,127 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	}
 }
 
+if ( ! function_exists( 'add_action' ) ) {
+	/**
+	 * Record a test action registration.
+	 *
+	 * @param string $hook_name     Action hook name.
+	 * @param mixed  $callback      Callback.
+	 * @param int    $priority      Hook priority.
+	 * @param int    $accepted_args Accepted argument count.
+	 */
+	function add_action( string $hook_name, mixed $callback, int $priority = 10, int $accepted_args = 1 ): true {
+		$GLOBALS['aculect_ai_companion_test_hooks']['actions'][] = array(
+			'hook_name'     => $hook_name,
+			'callback'      => $callback,
+			'priority'      => $priority,
+			'accepted_args' => $accepted_args,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+	/**
+	 * Record a test filter registration.
+	 *
+	 * @param string $hook_name     Filter hook name.
+	 * @param mixed  $callback      Callback.
+	 * @param int    $priority      Hook priority.
+	 * @param int    $accepted_args Accepted argument count.
+	 */
+	function add_filter( string $hook_name, mixed $callback, int $priority = 10, int $accepted_args = 1 ): true {
+		$GLOBALS['aculect_ai_companion_test_hooks']['filters'][] = array(
+			'hook_name'     => $hook_name,
+			'callback'      => $callback,
+			'priority'      => $priority,
+			'accepted_args' => $accepted_args,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'add_menu_page' ) ) {
+	/**
+	 * Record a top-level admin menu registration.
+	 *
+	 * @param string   $page_title Page title.
+	 * @param string   $menu_title Menu title.
+	 * @param string   $capability Required capability.
+	 * @param string   $menu_slug  Menu slug.
+	 * @param mixed    $callback   Page callback.
+	 * @param string   $icon_url   Menu icon URL.
+	 * @param int|null $position   Menu position.
+	 */
+	function add_menu_page( string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', string $icon_url = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['menu'][] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'capability' => $capability,
+			'menu_slug'  => $menu_slug,
+			'callback'   => $callback,
+			'icon_url'   => $icon_url,
+			'position'   => $position,
+		);
+
+		return 'toplevel_page_' . $menu_slug;
+	}
+}
+
+if ( ! function_exists( 'add_options_page' ) ) {
+	/**
+	 * Record a Settings submenu page registration.
+	 *
+	 * @param string   $page_title Page title.
+	 * @param string   $menu_title Menu title.
+	 * @param string   $capability Required capability.
+	 * @param string   $menu_slug  Menu slug.
+	 * @param mixed    $callback   Page callback.
+	 * @param int|null $position   Menu position.
+	 */
+	function add_options_page( string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['options'][] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'capability' => $capability,
+			'menu_slug'  => $menu_slug,
+			'callback'   => $callback,
+			'position'   => $position,
+		);
+
+		return 'settings_page_' . $menu_slug;
+	}
+}
+
+if ( ! function_exists( 'add_submenu_page' ) ) {
+	/**
+	 * Record a generic admin submenu registration.
+	 *
+	 * @param string   $parent_slug Parent menu slug.
+	 * @param string   $page_title  Page title.
+	 * @param string   $menu_title  Menu title.
+	 * @param string   $capability  Required capability.
+	 * @param string   $menu_slug   Menu slug.
+	 * @param mixed    $callback    Page callback.
+	 * @param int|null $position    Menu position.
+	 */
+	function add_submenu_page( string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][] = array(
+			'parent_slug' => $parent_slug,
+			'page_title'  => $page_title,
+			'menu_title'  => $menu_title,
+			'capability'  => $capability,
+			'menu_slug'   => $menu_slug,
+			'callback'    => $callback,
+			'position'    => $position,
+		);
+
+		return $parent_slug . '_page_' . $menu_slug;
+	}
+}
+
 if ( ! function_exists( 'wp_roles' ) ) {
 	/**
 	 * Return test roles.
@@ -182,7 +312,7 @@ if ( ! function_exists( 'count_users' ) ) {
 	 */
 	function count_users(): array {
 		if ( array_key_exists( 'aculect_ai_companion_count_users_calls', $GLOBALS ) ) {
-			$GLOBALS['aculect_ai_companion_count_users_calls']++;
+			++$GLOBALS['aculect_ai_companion_count_users_calls'];
 		}
 
 		$roles = array();
@@ -337,7 +467,7 @@ if ( ! function_exists( 'add_query_arg' ) ) {
 			$url        = (string) $url;
 		}
 
-		$url = '' === $url ? 'https://example.com/' : $url;
+		$url       = '' === $url ? 'https://example.com/' : $url;
 		$separator = str_contains( $url, '?' ) ? '&' : '?';
 
 		return $url . $separator . http_build_query( $query_args );
@@ -368,9 +498,9 @@ if ( ! function_exists( 'get_file_data' ) ) {
 	/**
 	 * Parse simple plugin headers for tests.
 	 *
-	 * @param string                $file            File path.
-	 * @param array<string,string>  $default_headers Header map.
-	 * @param string                $context         Header context.
+	 * @param string               $file            File path.
+	 * @param array<string,string> $default_headers Header map.
+	 * @param string               $context         Header context.
 	 * @return array<string,string>
 	 */
 	function get_file_data( string $file, array $default_headers, string $context = '' ): array {

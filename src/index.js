@@ -112,8 +112,8 @@ function tabUrl( tabName, adminPageUrl = '' ) {
 		return url.toString();
 	} catch {
 		return normalizedTabName === 'overview'
-			? 'admin.php?page=aculect-ai-companion'
-			: `admin.php?page=aculect-ai-companion&tab=${ normalizedTabName }`;
+			? 'options-general.php?page=aculect-ai-companion'
+			: `options-general.php?page=aculect-ai-companion&tab=${ normalizedTabName }`;
 	}
 }
 
@@ -148,12 +148,6 @@ function formatVersion( version ) {
 
 function adminTabTitle( title ) {
 	return `Aculect AI Companion: ${ title }`;
-}
-
-function tabSlug( tabName ) {
-	return tabName === 'overview'
-		? 'aculect-ai-companion'
-		: `aculect-ai-companion&tab=${ tabName }`;
 }
 
 function shouldIgnoreTabClick( event ) {
@@ -193,29 +187,23 @@ function hasHydratedTab( tabName ) {
 }
 
 function updateAdminSubmenuSelection( tabName ) {
-	const submenu = document.querySelector(
-		'#toplevel_page_aculect-ai-companion .wp-submenu'
-	);
+	const submenu = document.querySelector( '#menu-settings .wp-submenu' );
 	if ( ! submenu ) {
 		return;
 	}
 
-	const activeSlug = tabSlug( tabName );
+	const normalizedTabName = normalizeTabName( tabName ) || 'overview';
 	submenu.querySelectorAll( 'li' ).forEach( ( item ) => {
 		const linkNode = item.querySelector( 'a[href]' );
 		const href = linkNode?.getAttribute( 'href' ) || '';
-		let isActive =
-			href.includes( `page=${ activeSlug }` ) ||
-			href.includes( `page=${ encodeURIComponent( activeSlug ) }` );
+		let isActive = href.includes( 'page=aculect-ai-companion' );
 
 		try {
 			const url = new URL( href, window.location.href );
-			const urlTab = normalizeTabName(
-				url.searchParams.get( TAB_QUERY_PARAM ) || 'overview'
-			);
 			isActive =
 				url.searchParams.get( 'page' ) === 'aculect-ai-companion' &&
-				urlTab === tabName;
+				( normalizedTabName === 'overview' ||
+					! url.searchParams.has( TAB_QUERY_PARAM ) );
 		} catch {
 			// Fall back to the string checks above for unusual admin URLs.
 		}

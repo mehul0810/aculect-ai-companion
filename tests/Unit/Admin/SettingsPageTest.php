@@ -33,15 +33,24 @@ final class SettingsPageTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->original_get = $_GET;
+		$this->original_get  = $_GET;
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
-		$this->wpdb         = new FakeSettingsPageWpdb();
+		$this->wpdb          = new FakeSettingsPageWpdb();
 
 		$GLOBALS['wpdb']                                      = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_admin_pages']     = array(
+			'menu'    => array(),
+			'options' => array(),
+			'submenu' => array(),
+		);
+		$GLOBALS['aculect_ai_companion_test_hooks']           = array(
+			'actions' => array(),
+			'filters' => array(),
+		);
 		$GLOBALS['aculect_ai_companion_test_users']           = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 5;
-		$_GET                                                = array(
+		$_GET = array(
 			'page' => 'aculect-ai-companion',
 		);
 	}
@@ -55,6 +64,42 @@ final class SettingsPageTest extends TestCase {
 		}
 
 		parent::tearDown();
+	}
+
+	public function test_register_adds_settings_page_without_top_level_menu(): void {
+		( new SettingsPage() )->register();
+
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_pages']['menu'] );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'] );
+		self::assertCount( 1, $GLOBALS['aculect_ai_companion_test_admin_pages']['options'] );
+		self::assertSame( 'AI Companion', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['menu_title'] );
+		self::assertSame( 'manage_options', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['capability'] );
+		self::assertSame( 'aculect-ai-companion', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['menu_slug'] );
+		self::assertContains( 'admin_enqueue_scripts', array_column( $GLOBALS['aculect_ai_companion_test_hooks']['actions'], 'hook_name' ) );
+		self::assertContains( 'parent_file', array_column( $GLOBALS['aculect_ai_companion_test_hooks']['filters'], 'hook_name' ) );
+		self::assertContains( 'submenu_file', array_column( $GLOBALS['aculect_ai_companion_test_hooks']['filters'], 'hook_name' ) );
+	}
+
+	public function test_settings_urls_and_menu_highlighting_use_wordpress_settings_parent(): void {
+		$page = new SettingsPage();
+		$url  = $this->invokePrivate(
+			$page,
+			'settings_url',
+			array(
+				array(
+					'tab' => 'connections',
+				),
+			)
+		);
+
+		self::assertSame( 'https://example.com/wp-admin/options-general.php?page=aculect-ai-companion&tab=connections', $url );
+		self::assertSame( 'options-general.php', $page->highlight_parent_menu( 'plugins.php' ) );
+		self::assertSame( 'aculect-ai-companion', $page->highlight_submenu( 'options-general.php' ) );
+
+		$_GET = array();
+
+		self::assertSame( 'plugins.php', $page->highlight_parent_menu( 'plugins.php' ) );
+		self::assertSame( 'options-general.php', $page->highlight_submenu( 'options-general.php' ) );
 	}
 
 	public function test_overview_payload_defers_tab_specific_data(): void {
@@ -149,10 +194,23 @@ final class SettingsPageTest extends TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function settings_payload(): array {
-		$reflection = new ReflectionMethod( new SettingsPage(), 'settings_payload' );
-		$payload    = $reflection->invoke( new SettingsPage() );
+		$payload = $this->invokePrivate( new SettingsPage(), 'settings_payload' );
 
 		return is_array( $payload ) ? $payload : array();
+	}
+
+	/**
+	 * Invoke a private method for focused unit coverage.
+	 *
+	 * @param object      $object    Object instance.
+	 * @param string      $method    Method name.
+	 * @param list<mixed> $arguments Method arguments.
+	 * @return mixed
+	 */
+	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {
+		$reflection = new ReflectionMethod( $object, $method );
+
+		return $reflection->invokeArgs( $object, $arguments );
 	}
 }
 
@@ -175,7 +233,7 @@ final class FakeSettingsPageWpdb {
 	 * @param mixed  ...$args Placeholder values.
 	 */
 	public function prepare( string $query, mixed ...$args ): string {
-		$prepared = trim( $query . ' ' . implode( ' ', array_map( 'strval', $args ) ) );
+		$prepared        = trim( $query . ' ' . implode( ' ', array_map( 'strval', $args ) ) );
 		$this->queries[] = $prepared;
 
 		return $prepared;

@@ -2125,6 +2125,568 @@ function OverviewCircuit( { brandIconUrl } ) {
 	);
 }
 
+function roleAbilitySearchText( ability ) {
+	return [
+		ability.title,
+		ability.id,
+		ability.description,
+		ability.group,
+		ability.scope,
+		ability.toolName,
+	]
+		.join( ' ' )
+		.toLowerCase();
+}
+
+function roleAbilityGroups( abilities, roleAllowedIds, globalEnabledIds ) {
+	const allowed = new Set( roleAllowedIds );
+	const global = new Set( globalEnabledIds );
+
+	return abilities.reduce( ( groups, ability ) => {
+		const group = ability.group || 'Other';
+		const isGloballyEnabled = global.has( ability.id );
+		const row = {
+			...ability,
+			group,
+			enabled: isGloballyEnabled && allowed.has( ability.id ),
+			globallyEnabled: isGloballyEnabled,
+		};
+
+		return {
+			...groups,
+			[ group ]: [ ...( groups[ group ] || [] ), row ],
+		};
+	}, {} );
+}
+
+function roleAbilitySourceLabel( ability, activeRole, isChecked ) {
+	if ( ! ability.globallyEnabled ) {
+		return 'Disabled globally';
+	}
+
+	if ( ! activeRole.explicit ) {
+		return 'Inherited from global';
+	}
+
+	return isChecked ? 'Explicitly enabled' : 'Explicitly disabled';
+}
+
+function RoleAbilitiesEditor( {
+	data,
+	abilities,
+	roleAbilityPolicy,
+	selectedRole,
+	onSelectRole,
+} ) {
+	const roles = Array.isArray( roleAbilityPolicy.roles )
+		? roleAbilityPolicy.roles
+		: [];
+	const globalEnabledIds = Array.isArray( roleAbilityPolicy.globalEnabledIds )
+		? roleAbilityPolicy.globalEnabledIds
+		: [];
+	const activeRole =
+		roles.find( ( role ) => role.id === selectedRole ) || roles[ 0 ];
+	const [ stagedIds, setStagedIds ] = useState(
+		activeRole?.allowedIds || []
+	);
+	const [ search, setSearch ] = useState( '' );
+	const [ statusFilter, setStatusFilter ] = useState( 'all' );
+	const [ categoryFilter, setCategoryFilter ] = useState( 'all' );
+	const [ copyFromRole, setCopyFromRole ] = useState(
+		roles.find( ( role ) => role.id !== activeRole?.id )?.id || ''
+	);
+	const [ expandedGroups, setExpandedGroups ] = useState( [] );
+	const [ showAffectedUsers, setShowAffectedUsers ] = useState( false );
+	useEffect( () => {
+		setStagedIds( activeRole?.allowedIds || [] );
+		setCopyFromRole(
+			roles.find( ( role ) => role.id !== activeRole?.id )?.id || ''
+		);
+		setExpandedGroups(
+			Object.keys(
+				roleAbilityGroups(
+					abilities,
+					activeRole?.allowedIds || [],
+					globalEnabledIds
+				)
+			).slice( 0, 2 )
+		);
+		setShowAffectedUsers( false );
+	}, [ activeRole?.id ] );
+
+	if ( ! activeRole ) {
+		return null;
+	}
+
+	const groups = roleAbilityGroups( abilities, stagedIds, globalEnabledIds );
+	const categories = Object.keys( groups ).sort();
+	const normalizedSearch = search.trim().toLowerCase();
+	const filteredGroups = categories.reduce( ( currentGroups, group ) => {
+		if ( categoryFilter !== 'all' && group !== categoryFilter ) {
+			return currentGroups;
+		}
+
+		const items = groups[ group ].filter( ( ability ) => {
+			if ( statusFilter === 'enabled' && ! ability.enabled ) {
+				return false;
+			}
+
+			if ( statusFilter === 'disabled' && ability.enabled ) {
+				return false;
+			}
+
+			return (
+				! normalizedSearch ||
+				roleAbilitySearchText( ability ).includes( normalizedSearch )
+			);
+		} );
+
+		if ( items.length === 0 ) {
+			return currentGroups;
+		}
+
+		return {
+			...currentGroups,
+			[ group ]: items,
+		};
+	}, {} );
+	const filteredCategories = Object.keys( filteredGroups );
+	const stagedSet = new Set( stagedIds );
+	const activeRoleIds = activeRole.allowedIds || [];
+	const hasChanges =
+		stagedIds.length !== activeRoleIds.length ||
+		stagedIds.some( ( id ) => ! activeRoleIds.includes( id ) );
+
+	const toggleAbility = ( abilityId, checked ) => {
+		setStagedIds( ( current ) => {
+			if ( checked ) {
+				return [ ...new Set( [ ...current, abilityId ] ) ];
+			}
+
+			return current.filter( ( id ) => id !== abilityId );
+		} );
+	};
+
+	return (
+		<section
+			id="aculect-ai-companion-role-abilities"
+			className="aculect-ai-companion-role-abilities"
+		>
+			<div className="aculect-ai-companion-role-abilities__hero">
+				<div>
+					<span className="aculect-ai-companion-eyebrow">
+						Role abilities
+					</span>
+					<h2>Manage role abilities</h2>
+					<p>
+						Choose the tools exposed to users in each WordPress
+						role. Unknown, unavailable, and globally disabled tools
+						remain blocked by the server policy.
+					</p>
+				</div>
+				<div className="aculect-ai-companion-role-abilities__controls">
+					<label htmlFor="aculect-ai-companion-role-selector">
+						<span>Role</span>
+						<select
+							id="aculect-ai-companion-role-selector"
+							value={ activeRole.id }
+							onChange={ ( event ) =>
+								onSelectRole( event.target.value )
+							}
+						>
+							{ roles.map( ( role ) => (
+								<option key={ role.id } value={ role.id }>
+									{ role.label }
+								</option>
+							) ) }
+						</select>
+					</label>
+				</div>
+			</div>
+
+			<div className="aculect-ai-companion-role-abilities__layout">
+				<div className="aculect-ai-companion-role-abilities__main">
+					<form
+						method="post"
+						action={ data.actions?.adminPostUrl }
+						className="aculect-ai-companion-role-abilities__form"
+					>
+						<input
+							type="hidden"
+							name="action"
+							value={ data.actions?.saveRoleAbilitiesAction }
+						/>
+						<input
+							type="hidden"
+							name="_wpnonce"
+							value={ data.actions?.saveRoleAbilitiesNonce }
+						/>
+						<input
+							type="hidden"
+							name="role_ability_action"
+							value="save"
+						/>
+						<input
+							type="hidden"
+							name="role_ability_role"
+							value={ activeRole.id }
+						/>
+						{ stagedIds.map( ( id ) => (
+							<input
+								key={ id }
+								type="hidden"
+								name="enabled_role_abilities[]"
+								value={ id }
+							/>
+						) ) }
+						<div className="aculect-ai-companion-role-abilities__toolbar">
+							<TextControl
+								label="Search role abilities"
+								value={ search }
+								placeholder="Name, key, scope, or description"
+								onChange={ setSearch }
+							/>
+							<label htmlFor="aculect-ai-companion-role-ability-category">
+								<span>Category</span>
+								<select
+									id="aculect-ai-companion-role-ability-category"
+									value={ categoryFilter }
+									onChange={ ( event ) =>
+										setCategoryFilter( event.target.value )
+									}
+								>
+									<option value="all">All categories</option>
+									{ categories.map( ( group ) => (
+										<option key={ group } value={ group }>
+											{ group }
+										</option>
+									) ) }
+								</select>
+							</label>
+							<label htmlFor="aculect-ai-companion-role-ability-status">
+								<span>Status</span>
+								<select
+									id="aculect-ai-companion-role-ability-status"
+									value={ statusFilter }
+									onChange={ ( event ) =>
+										setStatusFilter( event.target.value )
+									}
+								>
+									<option value="all">All states</option>
+									<option value="enabled">Enabled</option>
+									<option value="disabled">Disabled</option>
+								</select>
+							</label>
+						</div>
+
+						{ filteredCategories.length > 0 ? (
+							<div className="aculect-ai-companion-role-ability-groups">
+								{ filteredCategories.map( ( group ) => {
+									const items = filteredGroups[ group ];
+									const enabledCount = items.filter(
+										( ability ) => ability.enabled
+									).length;
+									const isExpanded =
+										expandedGroups.includes( group );
+
+									return (
+										<section
+											key={ group }
+											className="aculect-ai-companion-role-ability-group"
+										>
+											<button
+												type="button"
+												className="aculect-ai-companion-role-ability-group__header"
+												aria-expanded={ isExpanded }
+												onClick={ () =>
+													setExpandedGroups(
+														( current ) =>
+															current.includes(
+																group
+															)
+																? current.filter(
+																		(
+																			item
+																		) =>
+																			item !==
+																			group
+																  )
+																: [
+																		...current,
+																		group,
+																  ]
+													)
+												}
+											>
+												<strong>{ group }</strong>
+												<span>
+													{ enabledCount }/{ ' ' }
+													{ items.length } enabled
+												</span>
+											</button>
+											{ isExpanded && (
+												<div className="aculect-ai-companion-role-ability-list">
+													{ items.map(
+														( ability ) => {
+															const isChecked =
+																stagedSet.has(
+																	ability.id
+																) &&
+																ability.globallyEnabled;
+															const sourceLabel =
+																roleAbilitySourceLabel(
+																	ability,
+																	activeRole,
+																	isChecked
+																);
+
+															return (
+																<div
+																	key={
+																		ability.id
+																	}
+																	className="aculect-ai-companion-role-ability-row"
+																>
+																	<ToggleControl
+																		label={
+																			ability.title
+																		}
+																		checked={
+																			isChecked
+																		}
+																		disabled={
+																			! ability.globallyEnabled
+																		}
+																		onChange={ (
+																			checked
+																		) =>
+																			toggleAbility(
+																				ability.id,
+																				Boolean(
+																					checked
+																				)
+																			)
+																		}
+																	/>
+																	<p>
+																		{
+																			ability.description
+																		}
+																	</p>
+																	<div className="aculect-ai-companion-role-ability-row__meta">
+																		<span>
+																			{
+																				sourceLabel
+																			}
+																		</span>
+																		<span>
+																			{ ability.readOnly
+																				? 'Read-only'
+																				: 'Can change site' }
+																		</span>
+																		<code>
+																			{
+																				ability.id
+																			}
+																		</code>
+																	</div>
+																</div>
+															);
+														}
+													) }
+												</div>
+											) }
+										</section>
+									);
+								} ) }
+							</div>
+						) : (
+							<EmptyState title="No role abilities found">
+								Adjust the search, category, or status filters
+								for this role.
+							</EmptyState>
+						) }
+
+						<div className="aculect-ai-companion-role-abilities__footer">
+							<Button type="submit" variant="primary">
+								Save role changes
+							</Button>
+							<Button
+								type="button"
+								variant="secondary"
+								disabled={ ! hasChanges }
+								onClick={ () =>
+									setStagedIds( activeRole.allowedIds || [] )
+								}
+							>
+								Discard changes
+							</Button>
+						</div>
+					</form>
+				</div>
+
+				<aside className="aculect-ai-companion-role-abilities__side">
+					<section>
+						<h3>Role summary</h3>
+						<dl>
+							<div className="aculect-ai-companion-role-abilities__summary-row">
+								<dt>Enabled</dt>
+								<dd>{ stagedIds.length }</dd>
+							</div>
+							<div className="aculect-ai-companion-role-abilities__summary-row">
+								<dt>Policy</dt>
+								<dd>
+									{ activeRole.explicit
+										? 'Custom override'
+										: roleAbilityPolicy.defaultPolicyName ||
+										  'Global ability policy' }
+								</dd>
+							</div>
+							<div className="aculect-ai-companion-role-abilities__summary-row">
+								<dt>Affected users</dt>
+								<dd>{ activeRole.userCount }</dd>
+							</div>
+						</dl>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={ () =>
+								setShowAffectedUsers( ( current ) => ! current )
+							}
+						>
+							View affected users
+						</Button>
+						{ showAffectedUsers && (
+							<ul className="aculect-ai-companion-role-abilities__users">
+								{ activeRole.users.length > 0 ? (
+									activeRole.users.map( ( user ) => (
+										<li key={ user.id }>
+											{ user.label ||
+												`User ${ user.id }` }
+										</li>
+									) )
+								) : (
+									<li>No users currently have this role.</li>
+								) }
+							</ul>
+						) }
+					</section>
+					<section>
+						<h3>Role actions</h3>
+						<form
+							method="post"
+							action={ data.actions?.adminPostUrl }
+							onSubmit={ () => {
+								// eslint-disable-next-line no-alert
+								return window.confirm(
+									'Reset this role to the global ability policy?'
+								);
+							} }
+						>
+							<input
+								type="hidden"
+								name="action"
+								value={ data.actions?.saveRoleAbilitiesAction }
+							/>
+							<input
+								type="hidden"
+								name="_wpnonce"
+								value={ data.actions?.saveRoleAbilitiesNonce }
+							/>
+							<input
+								type="hidden"
+								name="role_ability_action"
+								value="reset"
+							/>
+							<input
+								type="hidden"
+								name="role_ability_role"
+								value={ activeRole.id }
+							/>
+							<Button type="submit" variant="secondary">
+								Reset to default
+							</Button>
+						</form>
+						<form
+							method="post"
+							action={ data.actions?.adminPostUrl }
+							onSubmit={ () => {
+								// eslint-disable-next-line no-alert
+								return window.confirm(
+									'Copy ability policy from the selected role?'
+								);
+							} }
+						>
+							<input
+								type="hidden"
+								name="action"
+								value={ data.actions?.saveRoleAbilitiesAction }
+							/>
+							<input
+								type="hidden"
+								name="_wpnonce"
+								value={ data.actions?.saveRoleAbilitiesNonce }
+							/>
+							<input
+								type="hidden"
+								name="role_ability_action"
+								value="copy"
+							/>
+							<input
+								type="hidden"
+								name="role_ability_role"
+								value={ activeRole.id }
+							/>
+							<label htmlFor="aculect-ai-companion-copy-role">
+								<span className="aculect-ai-companion-role-abilities__side-label">
+									Copy from
+								</span>
+								<select
+									id="aculect-ai-companion-copy-role"
+									name="copy_from_role"
+									value={ copyFromRole }
+									onChange={ ( event ) =>
+										setCopyFromRole( event.target.value )
+									}
+								>
+									{ roles
+										.filter(
+											( role ) =>
+												role.id !== activeRole.id
+										)
+										.map( ( role ) => (
+											<option
+												key={ role.id }
+												value={ role.id }
+											>
+												{ role.label }
+											</option>
+										) ) }
+								</select>
+							</label>
+							<Button
+								type="submit"
+								variant="secondary"
+								disabled={ ! copyFromRole }
+							>
+								Copy from role
+							</Button>
+						</form>
+					</section>
+					<section>
+						<h3>Help</h3>
+						<p>
+							Role policies narrow the globally enabled ability
+							list. WordPress capabilities are still checked for
+							each tool execution.
+						</p>
+					</section>
+				</aside>
+			</div>
+		</section>
+	);
+}
+
 function SettingsApp() {
 	const data = window.aculectAICompanionSettingsData || {};
 	const brandIconUrl = data.brandIconUrl || '';
@@ -2168,6 +2730,10 @@ function SettingsApp() {
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
 			: {};
+	const roleAbilityPolicy =
+		data.roleAbilityPolicy && typeof data.roleAbilityPolicy === 'object'
+			? data.roleAbilityPolicy
+			: {};
 	const connectionHealth =
 		data.connectionHealth && typeof data.connectionHealth === 'object'
 			? data.connectionHealth
@@ -2199,6 +2765,11 @@ function SettingsApp() {
 	);
 	const [ enabledWpAbilities, setEnabledWpAbilities ] = useState(
 		Array.isArray( data.enabledWpAbilities ) ? data.enabledWpAbilities : []
+	);
+	const [ selectedRoleAbilityRole, setSelectedRoleAbilityRole ] = useState(
+		Array.isArray( roleAbilityPolicy.roles )
+			? roleAbilityPolicy.roles[ 0 ]?.id || ''
+			: ''
 	);
 	const [ connectionFilter, setConnectionFilter ] = useState( 'all' );
 	const [ connectionSearch, setConnectionSearch ] = useState( '' );
@@ -2454,6 +3025,11 @@ function SettingsApp() {
 			{ data.status === 'abilities_saved' && (
 				<Notice status="success" isDismissible={ false }>
 					Abilities saved.
+				</Notice>
+			) }
+			{ data.status === 'role_abilities_saved' && (
+				<Notice status="success" isDismissible={ false }>
+					Role ability policy saved.
 				</Notice>
 			) }
 			{ data.status === 'revoked' && (
@@ -3116,6 +3692,15 @@ function SettingsApp() {
 										your AI assistant asks Aculect AI
 										Companion to do something.
 									</p>
+									<RoleAbilitiesEditor
+										data={ data }
+										abilities={ abilities }
+										roleAbilityPolicy={ roleAbilityPolicy }
+										selectedRole={ selectedRoleAbilityRole }
+										onSelectRole={
+											setSelectedRoleAbilityRole
+										}
+									/>
 									<form
 										method="post"
 										action={ data.actions?.adminPostUrl }

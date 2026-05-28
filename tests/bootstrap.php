@@ -181,6 +181,32 @@ if ( ! function_exists( 'wp_http_validate_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_roles' ) ) {
+	/**
+	 * Return deterministic test roles.
+	 */
+	function wp_roles(): object {
+		return (object) array(
+			'roles' => array(
+				'administrator' => array( 'name' => 'Administrator' ),
+				'editor'        => array( 'name' => 'Editor' ),
+				'author'        => array( 'name' => 'Author' ),
+			),
+		);
+	}
+}
+
+if ( ! function_exists( 'translate_user_role' ) ) {
+	/**
+	 * Return an untranslated test role label.
+	 *
+	 * @param string $name Role name.
+	 */
+	function translate_user_role( string $name ): string {
+		return $name;
+	}
+}
+
 if ( ! function_exists( 'absint' ) ) {
 	/**
 	 * Return a non-negative integer.

@@ -298,6 +298,7 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 					aria-label={ label }
 				/>
 				<Button
+					type="button"
 					variant="secondary"
 					className="aculect-ai-companion-copy-field__button"
 					onClick={ () => onCopy( value ) }
@@ -1495,6 +1496,536 @@ function ConnectionsSidePanels( {
 				</a>
 			</div>
 		</aside>
+	);
+}
+
+function AdvancedStatusCard( { icon, label, value, description, tone = '' } ) {
+	return (
+		<div className={ `aculect-ai-companion-advanced-status ${ tone }` }>
+			<span
+				className="aculect-ai-companion-advanced-status__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 18 } />
+			</span>
+			<div>
+				<span className="aculect-ai-companion-advanced-status__label">
+					{ label }
+				</span>
+				<strong className="aculect-ai-companion-advanced-status__value">
+					{ value }
+				</strong>
+				<p className="aculect-ai-companion-advanced-status__description">
+					{ description }
+				</p>
+			</div>
+		</div>
+	);
+}
+
+function AdvancedSection( { icon, title, description, children } ) {
+	return (
+		<section className="aculect-ai-companion-advanced-section">
+			<div className="aculect-ai-companion-advanced-section__header">
+				<span
+					className="aculect-ai-companion-advanced-section__icon"
+					aria-hidden="true"
+				>
+					<Icon icon={ icon } size={ 20 } />
+				</span>
+				<div>
+					<h3 className="aculect-ai-companion-advanced-section__title">
+						{ title }
+					</h3>
+					<p className="aculect-ai-companion-advanced-section__description">
+						{ description }
+					</p>
+				</div>
+			</div>
+			<div className="aculect-ai-companion-advanced-section__body">
+				{ children }
+			</div>
+		</section>
+	);
+}
+
+function AdvancedSettingRow( {
+	title,
+	description,
+	status,
+	statusTone = '',
+	children,
+	disabled = false,
+} ) {
+	return (
+		<div
+			className={ `aculect-ai-companion-advanced-setting ${
+				disabled ? 'is-disabled' : ''
+			}` }
+		>
+			<div className="aculect-ai-companion-advanced-setting__content">
+				<div className="aculect-ai-companion-advanced-setting__title">
+					<h4 className="aculect-ai-companion-advanced-setting__heading">
+						{ title }
+					</h4>
+					{ status && (
+						<span
+							className={ `aculect-ai-companion-advanced-setting__status ${ statusTone }` }
+						>
+							{ status }
+						</span>
+					) }
+				</div>
+				<p className="aculect-ai-companion-advanced-setting__description">
+					{ description }
+				</p>
+			</div>
+			{ children && (
+				<div className="aculect-ai-companion-advanced-setting__control">
+					{ children }
+				</div>
+			) }
+		</div>
+	);
+}
+
+function AdvancedDisabledToggle( { label, checked = false } ) {
+	return (
+		<ToggleControl
+			label={ label }
+			checked={ checked }
+			disabled
+			onChange={ () => {} }
+		/>
+	);
+}
+
+function AdvancedRoleControls( {
+	roleConnections,
+	roleConnectionsEnabled,
+	roleConnectionRoles,
+	onToggleRole,
+} ) {
+	const roleOptions = Array.isArray( roleConnections.roleOptions )
+		? roleConnections.roleOptions
+		: [];
+
+	if ( ! roleConnectionsEnabled ) {
+		return (
+			<p className="aculect-ai-companion-help-text">
+				Role selection is available when role-based entry points are
+				enabled.
+			</p>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-advanced-role-controls">
+			{ roleOptions.map( ( role ) => (
+				<CheckboxControl
+					key={ role.id }
+					label={ role.label }
+					checked={ roleConnectionRoles.includes( role.id ) }
+					onChange={ ( checked ) =>
+						onToggleRole( role.id, Boolean( checked ) )
+					}
+				/>
+			) ) }
+		</div>
+	);
+}
+
+function AdvancedIntegrationList( { roleConnections } ) {
+	const integrations = [
+		{ label: 'Shortcode', value: roleConnections.shortcode },
+		{ label: 'Block', value: roleConnections.blockName },
+		{ label: 'PHP function', value: roleConnections.functionName },
+	];
+
+	return (
+		<div className="aculect-ai-companion-advanced-integration-list">
+			{ integrations.map( ( item ) => (
+				<div
+					key={ item.label }
+					className="aculect-ai-companion-advanced-integration-list__item"
+				>
+					<span className="aculect-ai-companion-advanced-integration-list__label">
+						{ item.label }
+					</span>
+					<code className="aculect-ai-companion-advanced-integration-list__value">
+						{ item.value || 'Unavailable' }
+					</code>
+				</div>
+			) ) }
+		</div>
+	);
+}
+
+function AdvancedDashboard( {
+	data,
+	diagnostics,
+	roleConnections,
+	loggingEnabled,
+	onLoggingChange,
+	roleConnectionsEnabled,
+	onRoleConnectionsChange,
+	roleConnectionRoles,
+	onToggleRole,
+	abilities,
+	enabledAbilities,
+	wpAbilities,
+	enabledWpAbilities,
+	onCopy,
+} ) {
+	const retentionDays = diagnostics.retentionDays || 30;
+	const availableAbilityCount = abilities.length + wpAbilities.length;
+	const enabledAbilityCount =
+		enabledAbilities.length + enabledWpAbilities.length;
+	const selectedRoleCount = roleConnectionRoles.length;
+	const abilitiesUrl = tabUrl( 'abilities', data.adminPageUrl );
+	const diagnosticsUrl = tabUrl( 'diagnostics', data.adminPageUrl );
+
+	return (
+		<form
+			method="post"
+			action={ data.actions?.adminPostUrl }
+			className="aculect-ai-companion-form aculect-ai-companion-form--advanced-dashboard"
+		>
+			<input
+				type="hidden"
+				name="action"
+				value={ data.actions?.saveAdvancedAction }
+			/>
+			<input
+				type="hidden"
+				name="_wpnonce"
+				value={ data.actions?.saveAdvancedNonce }
+			/>
+			<input
+				type="hidden"
+				name="diagnostic_logging_enabled"
+				value={ loggingEnabled ? '1' : '0' }
+			/>
+			<input
+				type="hidden"
+				name="role_connections_enabled"
+				value={ roleConnectionsEnabled ? '1' : '0' }
+			/>
+			{ roleConnectionRoles.map( ( role ) => (
+				<input
+					key={ role }
+					type="hidden"
+					name="role_connection_roles[]"
+					value={ role }
+				/>
+			) ) }
+
+			<section className="aculect-ai-companion-advanced-hero">
+				<div>
+					<span className="aculect-ai-companion-eyebrow">
+						Advanced settings
+					</span>
+					<h2 className="aculect-ai-companion-advanced-hero__title">
+						Security, permissions, and developer controls
+					</h2>
+					<p className="aculect-ai-companion-advanced-hero__copy">
+						Manage the advanced settings backed by WordPress
+						options. Controls that need new server behavior are
+						locked until that behavior exists.
+					</p>
+				</div>
+				<Button type="submit" variant="primary">
+					Save Advanced Settings
+				</Button>
+			</section>
+
+			<div className="aculect-ai-companion-advanced-status-grid">
+				<AdvancedStatusCard
+					icon={ chartBar }
+					label="Diagnostic logging"
+					value={ loggingEnabled ? 'On' : 'Off' }
+					description="Sanitized OAuth and MCP events"
+					tone={ loggingEnabled ? 'is-active' : '' }
+				/>
+				<AdvancedStatusCard
+					icon={ people }
+					label="Role entry points"
+					value={ roleConnectionsEnabled ? 'On' : 'Off' }
+					description={ `${ selectedRoleCount } allowed role${
+						selectedRoleCount === 1 ? '' : 's'
+					}` }
+					tone={ roleConnectionsEnabled ? 'is-active' : '' }
+				/>
+				<AdvancedStatusCard
+					icon={ plugins }
+					label="Enabled abilities"
+					value={ `${ enabledAbilityCount }/${ availableAbilityCount }` }
+					description="MCP and WordPress ability policy"
+				/>
+				<AdvancedStatusCard
+					icon={ lock }
+					label="Audit retention"
+					value={ `${ retentionDays } days` }
+					description="Diagnostic log pruning window"
+				/>
+			</div>
+
+			<div className="aculect-ai-companion-advanced-layout">
+				<div className="aculect-ai-companion-advanced-main">
+					<AdvancedSection
+						icon={ shield }
+						title="Security and access"
+						description="Connection approval, session lifetime, and user-facing entry points."
+					>
+						<AdvancedSettingRow
+							title="Approval requirement"
+							description="Every assistant connection uses the WordPress OAuth consent flow before it can run actions."
+							status="Always on"
+							statusTone="is-active"
+						/>
+						<AdvancedSettingRow
+							title="Permission model"
+							description="MCP actions still run through WordPress capabilities and the enabled abilities policy."
+							status="Server enforced"
+						>
+							<Button
+								href={ abilitiesUrl }
+								variant="secondary"
+								onClick={ ( event ) =>
+									maybeSelectTab( event, 'abilities' )
+								}
+							>
+								Review Abilities
+							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Session timeout"
+							description="Access tokens expire after 1 hour. Refresh tokens expire after 30 days unless the session is revoked first."
+							status="Fixed"
+						/>
+						<AdvancedSettingRow
+							title="Role-based connection entry points"
+							description="Allow selected logged-in roles to copy the MCP connection URL from a shortcode, block, or PHP template function."
+							status={
+								roleConnectionsEnabled ? 'Enabled' : 'Disabled'
+							}
+							statusTone={
+								roleConnectionsEnabled ? 'is-active' : ''
+							}
+						>
+							<ToggleControl
+								label="Enable role entry points"
+								checked={ roleConnectionsEnabled }
+								onChange={ ( checked ) =>
+									onRoleConnectionsChange(
+										Boolean( checked )
+									)
+								}
+							/>
+							<AdvancedRoleControls
+								roleConnections={ roleConnections }
+								roleConnectionsEnabled={
+									roleConnectionsEnabled
+								}
+								roleConnectionRoles={ roleConnectionRoles }
+								onToggleRole={ onToggleRole }
+							/>
+						</AdvancedSettingRow>
+					</AdvancedSection>
+
+					<AdvancedSection
+						icon={ plugins }
+						title="Capabilities and permissions"
+						description="Default and future custom ability boundaries for connected assistants."
+					>
+						<AdvancedSettingRow
+							title="Default capability set"
+							description="The active ability policy controls which content, comment, media, taxonomy, SEO, and site tools assistants can use."
+							status={ `${ enabledAbilityCount } enabled` }
+							statusTone="is-active"
+						>
+							<Button
+								href={ abilitiesUrl }
+								variant="secondary"
+								onClick={ ( event ) =>
+									maybeSelectTab( event, 'abilities' )
+								}
+							>
+								Edit Abilities
+							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Custom capability sets"
+							description="Multiple named ability profiles are not available until server-side policy storage exists."
+							status="Not available"
+							disabled
+						>
+							<Button type="button" variant="secondary" disabled>
+								Create Set
+							</Button>
+						</AdvancedSettingRow>
+					</AdvancedSection>
+
+					<AdvancedSection
+						icon={ globe }
+						title="Integrations"
+						description="Endpoint configuration and integration entry points."
+					>
+						<AdvancedSettingRow
+							title="MCP endpoint"
+							description="Copy the generated endpoint used by supported AI assistants for OAuth discovery and MCP requests."
+							status="Generated"
+						>
+							<CopyField
+								label="MCP endpoint"
+								value={ data.mcpUrl }
+								onCopy={ ( value ) =>
+									onCopy( value, 'MCP endpoint copied.' )
+								}
+							/>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Connection entry points"
+							description="Use these entry points when role-based connection sharing is enabled."
+							status={
+								roleConnectionsEnabled ? 'Available' : 'Off'
+							}
+						>
+							<AdvancedIntegrationList
+								roleConnections={ roleConnections }
+							/>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Webhook URL"
+							description="Incoming webhook configuration is not active in 0.5.0 and has no server-side handler yet."
+							status="Not available"
+							disabled
+						>
+							<TextControl
+								label="Webhook URL"
+								value="Not configured"
+								disabled
+								__next40pxDefaultSize
+								onChange={ () => {} }
+							/>
+						</AdvancedSettingRow>
+					</AdvancedSection>
+				</div>
+
+				<aside className="aculect-ai-companion-advanced-sidebar">
+					<AdvancedSection
+						icon={ settings }
+						title="Performance"
+						description="Runtime controls that are fixed in this release."
+					>
+						<AdvancedSettingRow
+							title="Background processing"
+							description="OAuth and diagnostic storage pruning already run through bounded maintenance tasks."
+							status="Automatic"
+						/>
+						<AdvancedSettingRow
+							title="Rate limiting"
+							description="No configurable rate limit option exists in 0.5.0."
+							status="Not available"
+							disabled
+						>
+							<AdvancedDisabledToggle label="Enable rate limiting" />
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Caching controls"
+							description="Authorization checks read current token state directly so revocation remains immediate."
+							status="Fixed"
+						/>
+					</AdvancedSection>
+
+					<AdvancedSection
+						icon={ lock }
+						title="Data and privacy"
+						description="What the plugin stores and exposes to support workflows."
+					>
+						<AdvancedSettingRow
+							title="Data sharing"
+							description="The plugin does not add a separate data-sharing toggle in 0.5.0."
+							status="No option"
+						/>
+						<AdvancedSettingRow
+							title="Encrypted communication"
+							description="Hosted assistants require a public HTTPS endpoint; OAuth tokens and signing keys remain server-side."
+							status="Protocol enforced"
+						/>
+						<AdvancedSettingRow
+							title="Anonymization"
+							description="A configurable anonymization mode is not available until log redaction policy is specified."
+							status="Not available"
+							disabled
+						>
+							<AdvancedDisabledToggle label="Anonymize logs" />
+						</AdvancedSettingRow>
+					</AdvancedSection>
+
+					<AdvancedSection
+						icon={ cog }
+						title="Developer"
+						description="Diagnostics and maintenance controls for troubleshooting."
+					>
+						<AdvancedSettingRow
+							title="Diagnostic logging"
+							description={ `Stores sanitized OAuth and MCP lifecycle events for ${ retentionDays } days.` }
+							status={ loggingEnabled ? 'Enabled' : 'Disabled' }
+							statusTone={ loggingEnabled ? 'is-active' : '' }
+						>
+							<ToggleControl
+								label="Enable diagnostic logging"
+								checked={ loggingEnabled }
+								onChange={ ( checked ) =>
+									onLoggingChange( Boolean( checked ) )
+								}
+							/>
+							<Button
+								href={ diagnosticsUrl }
+								variant="secondary"
+								onClick={ ( event ) =>
+									maybeSelectTab( event, 'diagnostics' )
+								}
+							>
+								Open Diagnostics
+							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Log level"
+							description="The current logger records sanitized lifecycle events without a configurable verbosity level."
+							status="Fixed"
+						/>
+						<AdvancedSettingRow
+							title="Export settings"
+							description="Disabled until a sanitized export endpoint exists that excludes secrets, salts, OAuth keys, tokens, and private payloads."
+							status="Not available"
+							disabled
+						>
+							<Button type="button" variant="secondary" disabled>
+								Export Settings
+							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Reset settings"
+							description="Disabled until a confirmed, capability-checked reset action exists."
+							status="Not available"
+							statusTone="is-danger"
+							disabled
+						>
+							<Button
+								type="button"
+								variant="secondary"
+								isDestructive
+								disabled
+							>
+								Reset Settings
+							</Button>
+						</AdvancedSettingRow>
+					</AdvancedSection>
+				</aside>
+			</div>
+		</form>
 	);
 }
 
@@ -3202,178 +3733,26 @@ function SettingsApp() {
 
 					if ( tab.name === 'advanced' ) {
 						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-advanced-card">
-								<CardHeader>Advanced Settings</CardHeader>
-								<CardBody>
-									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-										Enable diagnostic logging while testing
-										AI assistant connections. Logs keep
-										sanitized connection lifecycle events
-										for { diagnostics.retentionDays || 30 }{ ' ' }
-										days.
-									</p>
-									<form
-										method="post"
-										action={ data.actions?.adminPostUrl }
-										className="aculect-ai-companion-form aculect-ai-companion-form--advanced"
-									>
-										<input
-											type="hidden"
-											name="action"
-											value={
-												data.actions?.saveAdvancedAction
-											}
-										/>
-										<input
-											type="hidden"
-											name="_wpnonce"
-											value={
-												data.actions?.saveAdvancedNonce
-											}
-										/>
-										<input
-											type="hidden"
-											name="diagnostic_logging_enabled"
-											value={ loggingEnabled ? '1' : '0' }
-										/>
-										<input
-											type="hidden"
-											name="role_connections_enabled"
-											value={
-												roleConnectionsEnabled
-													? '1'
-													: '0'
-											}
-										/>
-										{ roleConnectionRoles.map( ( role ) => (
-											<input
-												key={ role }
-												type="hidden"
-												name="role_connection_roles[]"
-												value={ role }
-											/>
-										) ) }
-										<div className="aculect-ai-companion-setting-row">
-											<ToggleControl
-												label="Enable diagnostic logging"
-												checked={ loggingEnabled }
-												onChange={ ( checked ) =>
-													setLoggingEnabled(
-														Boolean( checked )
-													)
-												}
-											/>
-											<p className="aculect-ai-companion-help-text">
-												Stores sanitized OAuth and MCP
-												connection events in a custom
-												table. Requests blocked before
-												WordPress loads will not appear
-												here.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-setting-row">
-											<ToggleControl
-												label="Enable role-based connection entry points"
-												checked={
-													roleConnectionsEnabled
-												}
-												onChange={ ( checked ) =>
-													setRoleConnectionsEnabled(
-														Boolean( checked )
-													)
-												}
-											/>
-											<p className="aculect-ai-companion-help-text">
-												Allows logged-in users with
-												selected roles to copy the MCP
-												connection URL from a block,
-												shortcode, or PHP template
-												function. OAuth and WordPress
-												capabilities still limit what
-												each connected user can do.
-											</p>
-										</div>
-										{ roleConnectionsEnabled && (
-											<div className="aculect-ai-companion-confirmation-settings">
-												<h3 className="aculect-ai-companion-section-heading">
-													Allowed Roles
-												</h3>
-												<div className="aculect-ai-companion-confirmation-groups">
-													{ (
-														roleConnections.roleOptions ||
-														[]
-													).map( ( role ) => (
-														<CheckboxControl
-															key={ role.id }
-															label={ role.label }
-															checked={ roleConnectionRoles.includes(
-																role.id
-															) }
-															onChange={ (
-																checked
-															) =>
-																toggleRoleConnectionRole(
-																	role.id,
-																	Boolean(
-																		checked
-																	)
-																)
-															}
-														/>
-													) ) }
-												</div>
-												<div className="aculect-ai-companion-setting-summary">
-													<div>
-														<span>Shortcode</span>
-														<strong>
-															{
-																roleConnections.shortcode
-															}
-														</strong>
-													</div>
-													<div>
-														<span>Block</span>
-														<strong>
-															{
-																roleConnections.blockName
-															}
-														</strong>
-													</div>
-													<div>
-														<span>
-															PHP function
-														</span>
-														<strong>
-															{
-																roleConnections.functionName
-															}
-														</strong>
-													</div>
-												</div>
-											</div>
-										) }
-										<div className="aculect-ai-companion-setting-summary">
-											<div>
-												<span>Retention</span>
-												<strong>
-													{ diagnostics.retentionDays ||
-														30 }{ ' ' }
-													days
-												</strong>
-											</div>
-											<div>
-												<span>Stored data</span>
-												<strong>
-													Sanitized metadata only
-												</strong>
-											</div>
-										</div>
-										<Button type="submit" variant="primary">
-											Save Advanced Settings
-										</Button>
-									</form>
-								</CardBody>
-							</Card>
+							<AdvancedDashboard
+								data={ data }
+								diagnostics={ diagnostics }
+								roleConnections={ roleConnections }
+								loggingEnabled={ loggingEnabled }
+								onLoggingChange={ setLoggingEnabled }
+								roleConnectionsEnabled={
+									roleConnectionsEnabled
+								}
+								onRoleConnectionsChange={
+									setRoleConnectionsEnabled
+								}
+								roleConnectionRoles={ roleConnectionRoles }
+								onToggleRole={ toggleRoleConnectionRole }
+								abilities={ abilities }
+								enabledAbilities={ enabledAbilities }
+								wpAbilities={ wpAbilities }
+								enabledWpAbilities={ enabledWpAbilities }
+								onCopy={ copyValue }
+							/>
 						);
 					}
 

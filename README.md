@@ -22,7 +22,7 @@ Aculect AI Companion is an early release and is not intended for production webs
 
 ## User Setup
 
-Open `Settings > Aculect AI Companion` in WordPress and follow the setup flow:
+Open `AI Companion > Connect` in WordPress and follow the setup flow:
 
 1. Copy your connection URL.
 2. Open your AI tool and add a new connector.
@@ -52,7 +52,7 @@ Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 ## Supported Abilities
 
-Admins can enable or disable these abilities from `Settings > Aculect AI Companion > Abilities` after the first assistant connection is active.
+Admins can enable or disable these abilities from `AI Companion > Abilities` after the first assistant connection is active.
 
 ### Content
 
@@ -96,7 +96,7 @@ Admins can enable or disable these abilities from `Settings > Aculect AI Compani
 
 ## Activity Logging
 
-Settings > Aculect AI Companion > Activity shows write actions requested by connected AI assistants, including the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version to keep the table focused on site-changing activity and reduce stored data.
+`AI Companion > Activity` shows write actions requested by connected AI assistants, including the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version to keep the table focused on site-changing activity and reduce stored data.
 
 ## Project Docs
 

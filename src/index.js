@@ -7,13 +7,53 @@ import {
 	CardHeader,
 	CheckboxControl,
 	Notice,
-	TabPanel,
 	TextareaControl,
 	TextControl,
 	ToggleControl,
 } from '@wordpress/components';
+import {
+	Icon,
+	category,
+	chartBar,
+	check,
+	cog,
+	comment,
+	copy,
+	desktop,
+	external,
+	globe,
+	help,
+	home,
+	info,
+	link,
+	lock,
+	media,
+	page,
+	people,
+	plugins,
+	postContent,
+	seen,
+	settings,
+	shield,
+} from '@wordpress/icons';
 
 const TAB_QUERY_PARAM = 'tab';
+const SETTINGS_TABS = [
+	{ name: 'overview', title: 'Overview', icon: home },
+	{ name: 'connect', title: 'Connect', icon: link },
+	{ name: 'connections', title: 'Connections', icon: people },
+	{ name: 'abilities', title: 'Abilities', icon: plugins },
+	{ name: 'activity', title: 'Activity', icon: chartBar },
+	{ name: 'diagnostics', title: 'Diagnostics', icon: shield },
+	{ name: 'advanced', title: 'Advanced', icon: cog },
+	{ name: 'changelog', title: 'Changelog', icon: page },
+	{ name: 'brand', title: 'Brand', hidden: true },
+	{ name: 'logs', title: 'Logs', hidden: true },
+];
+const TAB_ALIASES = {
+	about: 'overview',
+	connectors: 'connect',
+};
 const ADMIN_NOTICE_SELECTOR = [
 	'#wpbody-content > .notice',
 	'#wpbody-content > .updated',
@@ -30,12 +70,18 @@ function hasTab( tabs, tabName ) {
 	return tabs.some( ( tab ) => tab.name === tabName );
 }
 
+function normalizeTabName( tabName ) {
+	return TAB_ALIASES[ tabName ] || tabName;
+}
+
 function initialTabName( tabs ) {
-	const defaultTab = tabs[ 0 ]?.name || 'about';
+	const defaultTab = tabs[ 0 ]?.name || 'overview';
 
 	try {
 		const url = new URL( window.location.href );
-		const requestedTab = url.searchParams.get( TAB_QUERY_PARAM );
+		const requestedTab = normalizeTabName(
+			url.searchParams.get( TAB_QUERY_PARAM )
+		);
 
 		return requestedTab && hasTab( tabs, requestedTab )
 			? requestedTab
@@ -45,14 +91,168 @@ function initialTabName( tabs ) {
 	}
 }
 
-function persistTabName( tabName ) {
+function tabUrl( tabName, adminPageUrl = '' ) {
+	const normalizedTabName = normalizeTabName( tabName );
+
+	try {
+		const url = new URL( adminPageUrl || window.location.href );
+		url.searchParams.set( 'page', 'aculect-ai-companion' );
+		if ( normalizedTabName === 'overview' ) {
+			url.searchParams.delete( TAB_QUERY_PARAM );
+		} else {
+			url.searchParams.set( TAB_QUERY_PARAM, normalizedTabName );
+		}
+
+		return url.toString();
+	} catch {
+		return normalizedTabName === 'overview'
+			? 'admin.php?page=aculect-ai-companion'
+			: `admin.php?page=aculect-ai-companion&tab=${ normalizedTabName }`;
+	}
+}
+
+function persistTabName( tabName, replace = true ) {
+	const normalizedTabName = normalizeTabName( tabName );
+
 	try {
 		const url = new URL( window.location.href );
-		url.searchParams.set( TAB_QUERY_PARAM, tabName );
-		window.history.replaceState( {}, '', url.toString() );
+		if ( normalizedTabName === 'overview' ) {
+			url.searchParams.delete( TAB_QUERY_PARAM );
+		} else {
+			url.searchParams.set( TAB_QUERY_PARAM, normalizedTabName );
+		}
+		const stateMethod = replace ? 'replaceState' : 'pushState';
+		window.history[ stateMethod ]( {}, '', url.toString() );
 	} catch {
 		// URL state is progressive enhancement; tab navigation still works.
 	}
+}
+
+function formatVersion( version ) {
+	const normalizedVersion = String( version || '' ).trim();
+
+	if ( ! normalizedVersion ) {
+		return '';
+	}
+
+	return normalizedVersion.startsWith( 'v' )
+		? normalizedVersion
+		: `v${ normalizedVersion }`;
+}
+
+function adminTabTitle( title ) {
+	return `Aculect AI Companion: ${ title }`;
+}
+
+function tabSlug( tabName ) {
+	return tabName === 'overview'
+		? 'aculect-ai-companion'
+		: `aculect-ai-companion&tab=${ tabName }`;
+}
+
+function shouldIgnoreTabClick( event ) {
+	return (
+		event.defaultPrevented ||
+		event.metaKey ||
+		event.altKey ||
+		event.ctrlKey ||
+		event.shiftKey ||
+		event.button !== 0
+	);
+}
+
+function maybeSelectTab( event, tabName ) {
+	if ( shouldIgnoreTabClick( event ) ) {
+		return;
+	}
+
+	event.preventDefault();
+	persistTabName( tabName, false );
+	window.dispatchEvent(
+		new CustomEvent( 'aculect-ai-companion-tab-selected', {
+			detail: { tabName },
+		} )
+	);
+}
+
+function updateAdminSubmenuSelection( tabName ) {
+	const submenu = document.querySelector(
+		'#toplevel_page_aculect-ai-companion .wp-submenu'
+	);
+	if ( ! submenu ) {
+		return;
+	}
+
+	const activeSlug = tabSlug( tabName );
+	submenu.querySelectorAll( 'li' ).forEach( ( item ) => {
+		const linkNode = item.querySelector( 'a[href]' );
+		const href = linkNode?.getAttribute( 'href' ) || '';
+		let isActive =
+			href.includes( `page=${ activeSlug }` ) ||
+			href.includes( `page=${ encodeURIComponent( activeSlug ) }` );
+
+		try {
+			const url = new URL( href, window.location.href );
+			const urlTab = normalizeTabName(
+				url.searchParams.get( TAB_QUERY_PARAM ) || 'overview'
+			);
+			isActive =
+				url.searchParams.get( 'page' ) === 'aculect-ai-companion' &&
+				urlTab === tabName;
+		} catch {
+			// Fall back to the string checks above for unusual admin URLs.
+		}
+
+		item.classList.toggle( 'current', isActive );
+		if ( linkNode ) {
+			linkNode.classList.toggle( 'current', isActive );
+			if ( isActive ) {
+				linkNode.setAttribute( 'aria-current', 'page' );
+			} else {
+				linkNode.removeAttribute( 'aria-current' );
+			}
+		}
+	} );
+}
+
+function useActiveTabName( tabs ) {
+	const [ activeTabName, setActiveTabName ] = useState( () =>
+		initialTabName( tabs )
+	);
+
+	useEffect( () => {
+		updateAdminSubmenuSelection( activeTabName );
+	}, [ activeTabName ] );
+
+	useEffect( () => {
+		const handleSelect = ( event ) => {
+			const requestedTab = normalizeTabName(
+				event.detail?.tabName || ''
+			);
+			if ( hasTab( tabs, requestedTab ) ) {
+				setActiveTabName( requestedTab );
+			}
+		};
+		const handlePopState = () => {
+			setActiveTabName( initialTabName( tabs ) );
+		};
+
+		window.addEventListener(
+			'aculect-ai-companion-tab-selected',
+			handleSelect
+		);
+		window.addEventListener( 'popstate', handlePopState );
+
+		return () => {
+			window.removeEventListener(
+				'aculect-ai-companion-tab-selected',
+				handleSelect
+			);
+			window.removeEventListener( 'popstate', handlePopState );
+		};
+	}, [ tabs ] );
+
+	return activeTabName;
 }
 
 function relocateAdminNotices( target ) {
@@ -106,17 +306,19 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 						className="aculect-ai-companion-copy-field__icon"
 						aria-hidden="true"
 					>
-						<svg
-							viewBox="0 0 24 24"
-							width="18"
-							height="18"
-							focusable="false"
-						>
-							<path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z" />
-						</svg>
+						<Icon icon={ copy } size={ 18 } />
 					</span>
 				</Button>
 			</div>
+		</div>
+	);
+}
+
+function EmptyState( { title, children } ) {
+	return (
+		<div className="aculect-ai-companion-empty-state">
+			<strong>{ title }</strong>
+			{ children && <p>{ children }</p> }
 		</div>
 	);
 }
@@ -245,9 +447,9 @@ function LogsTable( { logs } ) {
 
 	if ( items.length === 0 ) {
 		return (
-			<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+			<EmptyState title="No diagnostic logs">
 				No diagnostic logs have been recorded yet.
-			</p>
+			</EmptyState>
 		);
 	}
 
@@ -300,9 +502,9 @@ function ActivityTable( { activity } ) {
 
 	if ( items.length === 0 ) {
 		return (
-			<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+			<EmptyState title="No connected AI activity">
 				No connected AI activity has been recorded yet.
-			</p>
+			</EmptyState>
 		);
 	}
 
@@ -504,7 +706,7 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 						<Button
 							href={ section.actionUrl }
 							target="_blank"
-							rel="noreferrer"
+							rel="noreferrer noopener"
 							variant="secondary"
 						>
 							{ section.actionLabel || 'Open Docs' }
@@ -530,6 +732,290 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 					) ) }
 				</div>
 			) }
+		</div>
+	);
+}
+
+function ConnectFlowGraphic( { brandIconUrl } ) {
+	return (
+		<div className="aculect-ai-companion-connect-flow" aria-hidden="true">
+			<div className="aculect-ai-companion-connect-flow__node is-assistant">
+				<Icon icon={ desktop } size={ 28 } />
+			</div>
+			<span className="aculect-ai-companion-connect-flow__path" />
+			<div className="aculect-ai-companion-connect-flow__node is-site">
+				{ brandIconUrl ? (
+					<img src={ brandIconUrl } alt="" aria-hidden="true" />
+				) : (
+					<Icon icon={ link } size={ 28 } />
+				) }
+			</div>
+			<span className="aculect-ai-companion-connect-flow__path is-muted" />
+			<div className="aculect-ai-companion-connect-flow__node is-wordpress">
+				<Icon icon={ globe } size={ 28 } />
+			</div>
+		</div>
+	);
+}
+
+function connectStatusDetails( {
+	isAccessPaused,
+	hasActiveSessions,
+	sessionCount,
+} ) {
+	if ( isAccessPaused ) {
+		return {
+			tone: 'is-paused',
+			title: 'Access paused',
+			description:
+				'Existing connections are paused and cannot run MCP actions until access is resumed.',
+			meta:
+				sessionCount > 0
+					? `${ sessionCount } active session${
+							sessionCount === 1 ? '' : 's'
+					  } paused`
+					: 'No active sessions',
+		};
+	}
+
+	if ( hasActiveSessions ) {
+		return {
+			tone: 'is-connected',
+			title: 'Connected',
+			description:
+				'At least one AI assistant has an active WordPress-approved session.',
+			meta: `${ sessionCount } active session${
+				sessionCount === 1 ? '' : 's'
+			}`,
+		};
+	}
+
+	return {
+		tone: 'is-ready',
+		title: 'Ready to connect',
+		description:
+			'Copy the connection URL into an AI assistant, then approve the OAuth consent screen in WordPress.',
+		meta: 'No active sessions',
+	};
+}
+
+function uniqueHelpLinks( providers ) {
+	const links = [];
+	const seenUrls = new Set();
+
+	providers.forEach( ( provider ) => {
+		if (
+			provider.primaryActionUrl &&
+			! seenUrls.has( provider.primaryActionUrl )
+		) {
+			seenUrls.add( provider.primaryActionUrl );
+			links.push( {
+				url: provider.primaryActionUrl,
+				label: provider.primaryActionLabel || provider.label,
+			} );
+		}
+
+		const setupSections = Array.isArray( provider.setupSections )
+			? provider.setupSections
+			: [];
+		setupSections.forEach( ( section ) => {
+			if ( ! section.actionUrl || seenUrls.has( section.actionUrl ) ) {
+				return;
+			}
+
+			seenUrls.add( section.actionUrl );
+			links.push( {
+				url: section.actionUrl,
+				label: section.actionLabel || section.title || provider.label,
+			} );
+		} );
+	} );
+
+	return links;
+}
+
+function ConnectStatusPanel( { status } ) {
+	return (
+		<div
+			className={ `aculect-ai-companion-side-panel aculect-ai-companion-connection-status ${ status.tone }` }
+		>
+			<span className="aculect-ai-companion-side-panel__icon">
+				<Icon icon={ seen } size={ 20 } />
+			</span>
+			<div>
+				<h3>{ status.title }</h3>
+				<p>{ status.description }</p>
+				<strong>{ status.meta }</strong>
+			</div>
+		</div>
+	);
+}
+
+function RequirementsPanel( { health, diagnosticsUrl, onNavigate } ) {
+	const items = Array.isArray( health?.items ) ? health.items : [];
+
+	return (
+		<div className="aculect-ai-companion-side-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ check } size={ 20 } />
+				</span>
+				<h3>Connection requirements</h3>
+			</div>
+			{ items.length > 0 ? (
+				<ul className="aculect-ai-companion-requirements-list">
+					{ items.map( ( item ) => (
+						<li key={ item.id }>
+							<StatusBadge status={ item.status } />
+							<span>{ item.message || item.id }</span>
+						</li>
+					) ) }
+				</ul>
+			) : (
+				<div className="aculect-ai-companion-requirement-empty">
+					<span className="aculect-ai-companion-health-status is-unavailable">
+						Unavailable
+					</span>
+					<p>
+						Run diagnostics to verify HTTPS, discovery metadata, and
+						the MCP authorization challenge.
+					</p>
+				</div>
+			) }
+			<a
+				className="aculect-ai-companion-side-panel__link"
+				href={ diagnosticsUrl }
+				onClick={ onNavigate }
+			>
+				Review diagnostics
+			</a>
+		</div>
+	);
+}
+
+function HelpLinksPanel( { links } ) {
+	if ( links.length === 0 ) {
+		return null;
+	}
+
+	return (
+		<div className="aculect-ai-companion-side-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ help } size={ 20 } />
+				</span>
+				<h3>Setup links</h3>
+			</div>
+			<ul className="aculect-ai-companion-help-link-list">
+				{ links.map( ( item ) => (
+					<li key={ item.url }>
+						<a
+							href={ item.url }
+							target="_blank"
+							rel="noreferrer noopener"
+						>
+							<span>{ item.label }</span>
+							<Icon icon={ external } size={ 16 } />
+						</a>
+					</li>
+				) ) }
+			</ul>
+		</div>
+	);
+}
+
+function ConnectProviderCard( { provider, isOpen, onToggle, onCopy } ) {
+	const setupSections = Array.isArray( provider.setupSections )
+		? provider.setupSections
+		: [];
+	const panelId = `aculect-ai-companion-provider-panel-${ provider.id }`;
+
+	return (
+		<Card
+			key={ provider.id }
+			className={ `aculect-ai-companion-card aculect-ai-companion-provider-card ${
+				isOpen ? 'is-open' : ''
+			}` }
+		>
+			<CardBody>
+				<div className="aculect-ai-companion-provider-card__header">
+					<div className="aculect-ai-companion-provider-card__title-wrap">
+						<h3 className="aculect-ai-companion-provider-card__title">
+							{ provider.label }
+						</h3>
+						<p className="aculect-ai-companion-provider-card__description">
+							{ provider.description }
+						</p>
+					</div>
+					<Button
+						variant="secondary"
+						onClick={ onToggle }
+						aria-expanded={ isOpen }
+						aria-controls={ panelId }
+					>
+						{ isOpen ? 'Hide setup' : 'Show setup' }
+					</Button>
+				</div>
+
+				{ isOpen && (
+					<div
+						id={ panelId }
+						className="aculect-ai-companion-provider-panel"
+					>
+						<div className="aculect-ai-companion-setup-method-list">
+							{ setupSections.map( ( section, index ) => (
+								<SetupSection
+									key={ `${ provider.id }-${ index }` }
+									provider={ provider }
+									section={ section }
+									sectionIndex={ index }
+									onCopy={ onCopy }
+								/>
+							) ) }
+						</div>
+					</div>
+				) }
+			</CardBody>
+		</Card>
+	);
+}
+
+function OverviewFeatureCard( { icon, title, children } ) {
+	return (
+		<div className="aculect-ai-companion-feature-card">
+			<span
+				className="aculect-ai-companion-feature-card__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 20 } />
+			</span>
+			<h3 className="aculect-ai-companion-feature-card__title">
+				{ title }
+			</h3>
+			<p className="aculect-ai-companion-feature-card__copy">
+				{ children }
+			</p>
+		</div>
+	);
+}
+
+function OverviewCircuit( { brandIconUrl } ) {
+	return (
+		<div
+			className="aculect-ai-companion-overview-circuit"
+			aria-hidden="true"
+		>
+			<span className="aculect-ai-companion-overview-circuit__line is-horizontal" />
+			<span className="aculect-ai-companion-overview-circuit__line is-vertical" />
+			<span className="aculect-ai-companion-overview-circuit__node is-top" />
+			<span className="aculect-ai-companion-overview-circuit__node is-left" />
+			<span className="aculect-ai-companion-overview-circuit__node is-right" />
+			<span className="aculect-ai-companion-overview-circuit__node is-bottom" />
+			<div className="aculect-ai-companion-overview-circuit__logo">
+				{ brandIconUrl && (
+					<img src={ brandIconUrl } alt="" aria-hidden="true" />
+				) }
+			</div>
 		</div>
 	);
 }
@@ -610,6 +1096,12 @@ function SettingsApp() {
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
 	const hasActiveSessions = sessions.length > 0;
+	const connectionStatus = connectStatusDetails( {
+		isAccessPaused,
+		hasActiveSessions,
+		sessionCount: sessions.length,
+	} );
+	const helpLinks = uniqueHelpLinks( providers );
 	const shouldShowAccessControl = isAccessPaused || hasActiveSessions;
 
 	useEffect(
@@ -678,23 +1170,16 @@ function SettingsApp() {
 			'aculect-ai-companion-pill aculect-ai-companion-pill--status is-paused';
 		statusText = 'Paused';
 	}
-	const tabs = [
-		{ name: 'about', title: 'About' },
-		{ name: 'connectors', title: 'Connect' },
-		{ name: 'diagnostics', title: 'Diagnostics' },
-		{ name: 'connections', title: 'Connections' },
-		{ name: 'activity', title: 'Activity' },
-		{ name: 'brand', title: 'Brand' },
-	];
-	if ( data.isConnected ) {
-		tabs.push( { name: 'abilities', title: 'Abilities' } );
-	}
-	tabs.push( { name: 'advanced', title: 'Advanced' } );
-	if ( diagnostics.loggingEnabled ) {
-		tabs.push( { name: 'logs', title: 'Logs' } );
-	}
-	tabs.push( { name: 'changelog', title: 'Changelog' } );
-	const selectedTab = initialTabName( tabs );
+	const tabs = SETTINGS_TABS;
+	const visibleTabs = tabs.filter( ( tab ) => ! tab.hidden );
+	const activeTabName = useActiveTabName( tabs );
+	const activeTab =
+		tabs.find( ( tab ) => tab.name === activeTabName ) || tabs[ 0 ];
+
+	useEffect( () => {
+		document.title = adminTabTitle( activeTab.title );
+	}, [ activeTab.title ] );
+
 	const groupedAbilities = abilities.reduce( ( groups, ability ) => {
 		const group = ability.group || 'Other';
 		return {
@@ -754,36 +1239,59 @@ function SettingsApp() {
 
 	return (
 		<div className="aculect-ai-companion-app-root">
-			<div className="aculect-ai-companion-app-header">
+			<header className="aculect-ai-companion-app-header">
 				<div className="aculect-ai-companion-app-branding">
-					<div className="aculect-ai-companion-app-heading">
-						<div className="aculect-ai-companion-app-product">
-							{ brandIconUrl && (
-								<img
-									className="aculect-ai-companion-app-icon"
-									src={ brandIconUrl }
-									alt=""
-									aria-hidden="true"
-								/>
-							) }
-							<span>AI Companion</span>
-						</div>
-						<div className="aculect-ai-companion-app-title-row">
-							<h1 className="aculect-ai-companion-app-title">
-								Connect your AI Agent
-							</h1>
-							<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
-								{ data.version || '0.2.0' }
-							</span>
-						</div>
-						<p className="aculect-ai-companion-app-tagline">
-							Automate your WordPress site by connecting it to
-							your AI Agent through secure MCP
-						</p>
-					</div>
+					{ brandIconUrl && (
+						<img
+							className="aculect-ai-companion-app-icon"
+							src={ brandIconUrl }
+							alt=""
+							aria-hidden="true"
+						/>
+					) }
+					<h1 className="aculect-ai-companion-app-title">
+						Aculect AI Companion
+					</h1>
+					{ data.version && (
+						<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
+							{ formatVersion( data.version ) }
+						</span>
+					) }
 				</div>
-				<span className={ statusClass }>{ statusText }</span>
-			</div>
+				<span className={ statusClass }>
+					<span
+						className="aculect-ai-companion-status-dot"
+						aria-hidden="true"
+					/>
+					{ statusText }
+				</span>
+			</header>
+
+			<nav
+				className="aculect-ai-companion-tabs"
+				aria-label="Aculect AI Companion settings"
+			>
+				{ visibleTabs.map( ( tab ) => {
+					const isActive = activeTab.name === tab.name;
+
+					return (
+						<a
+							key={ tab.name }
+							className={ `aculect-ai-companion-tab ${
+								isActive ? 'is-active' : ''
+							}` }
+							href={ tabUrl( tab.name, data.adminPageUrl ) }
+							aria-current={ isActive ? 'page' : undefined }
+							onClick={ ( event ) =>
+								maybeSelectTab( event, tab.name )
+							}
+						>
+							<Icon icon={ tab.icon } size={ 18 } />
+							<span>{ tab.title }</span>
+						</a>
+					);
+				} ) }
+			</nav>
 
 			<div
 				className="aculect-ai-companion-admin-notices"
@@ -842,182 +1350,248 @@ function SettingsApp() {
 				</Notice>
 			) }
 
-			<TabPanel
-				className="aculect-ai-companion-tabs"
-				initialTabName={ selectedTab }
-				onSelect={ persistTabName }
-				tabs={ tabs }
-			>
-				{ ( tab ) => {
-					if ( tab.name === 'about' ) {
-						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-about-card">
-								<CardHeader>
-									About Aculect AI Companion
-								</CardHeader>
-								<CardBody>
-									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-										Aculect AI Companion helps you manage
-										content, comments, media, and more with
-										your AI assistant. You can ask in plain
-										English, and Aculect AI Companion turns
-										that request into WordPress tasks.
-									</p>
-									<p className="aculect-ai-companion-copy">
-										You stay in control. WordPress asks for
-										your approval before an AI assistant can
-										connect, you choose which abilities are
-										available, and you can disconnect access
-										at any time.
-									</p>
+			<main className="aculect-ai-companion-tab-panel">
+				{ ( () => {
+					const tab = activeTab;
 
-									<div className="aculect-ai-companion-feature-grid">
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Create and update content
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Draft posts, update pages,
-												change titles, edit excerpts,
-												and publish when you are ready.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Organize your site
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Manage categories, tags, and
-												other content groups without
-												searching through WordPress
-												screens.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Handle comments
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Review comments, approve or
-												trash them, and prepare replies
-												without opening every comment
-												manually.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Work with media
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Add images from public URLs and
-												find items already in your media
-												library.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Check site details
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Ask for safe site information,
-												including active plugins,
-												themes, and basic settings.
-											</p>
-										</div>
-										<div className="aculect-ai-companion-feature-card">
-											<h3 className="aculect-ai-companion-feature-card__title">
-												Control what AI can do
-											</h3>
-											<p className="aculect-ai-companion-feature-card__copy">
-												Turn abilities on or off from
-												Settings &gt; Aculect AI
-												Companion &gt; Abilities and
-												disconnect assistants whenever
-												needed.
-											</p>
+					if ( tab.name === 'overview' ) {
+						return (
+							<div className="aculect-ai-companion-overview">
+								<section className="aculect-ai-companion-overview-hero">
+									<div className="aculect-ai-companion-overview-hero__content">
+										<span className="aculect-ai-companion-eyebrow">
+											Ready for secure AI workflows
+										</span>
+										<h2 className="aculect-ai-companion-overview-hero__title">
+											Connect your AI Assistant to
+											WordPress
+										</h2>
+										<p className="aculect-ai-companion-overview-hero__copy">
+											Aculect AI Companion gives approved
+											AI tools a secure WordPress
+											connection for drafting content,
+											organizing your site, handling
+											comments, managing media, and
+											reviewing safe site details.
+										</p>
+										<div className="aculect-ai-companion-overview-actions">
+											<Button
+												href={ tabUrl(
+													'connect',
+													data.adminPageUrl
+												) }
+												variant="primary"
+												onClick={ ( event ) =>
+													maybeSelectTab(
+														event,
+														'connect'
+													)
+												}
+											>
+												Connect AI Assistant
+											</Button>
+											<Button
+												href="#aculect-ai-companion-overview-capabilities"
+												variant="secondary"
+											>
+												Learn More
+											</Button>
 										</div>
 									</div>
-								</CardBody>
-							</Card>
+									<OverviewCircuit
+										brandIconUrl={ brandIconUrl }
+									/>
+								</section>
+
+								<section
+									id="aculect-ai-companion-overview-capabilities"
+									className="aculect-ai-companion-overview-section"
+								>
+									<div className="aculect-ai-companion-section-title-row">
+										<div>
+											<span className="aculect-ai-companion-eyebrow">
+												What you can do
+											</span>
+											<h2 className="aculect-ai-companion-section-title">
+												Manage common WordPress work
+												from your AI assistant
+											</h2>
+										</div>
+									</div>
+									<div className="aculect-ai-companion-feature-grid">
+										<OverviewFeatureCard
+											icon={ postContent }
+											title="Create and update content"
+										>
+											Draft posts, update pages, change
+											titles, edit excerpts, schedule
+											content, and publish when you are
+											ready.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ category }
+											title="Organize your site"
+										>
+											Manage categories, tags, and other
+											content groups without jumping
+											between WordPress screens.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ comment }
+											title="Handle comments"
+										>
+											Review comments, approve or trash
+											them, and prepare replies with
+											WordPress permission checks in
+											place.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ media }
+											title="Work with media"
+										>
+											Add images from public URLs, find
+											existing library items, and attach
+											media to content workflows.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ info }
+											title="Check site details"
+										>
+											Ask for safe site information,
+											including active plugins, themes,
+											locale, and basic public settings.
+										</OverviewFeatureCard>
+										<OverviewFeatureCard
+											icon={ settings }
+											title="Control what AI can do"
+										>
+											Turn abilities on or off from AI
+											Companion &gt; Abilities and
+											disconnect assistants whenever
+											needed.
+										</OverviewFeatureCard>
+									</div>
+								</section>
+
+								<section className="aculect-ai-companion-control-banner">
+									<span
+										className="aculect-ai-companion-control-banner__icon"
+										aria-hidden="true"
+									>
+										<Icon icon={ lock } size={ 22 } />
+									</span>
+									<div className="aculect-ai-companion-control-banner__content">
+										<h2>
+											You stay in control from WordPress
+										</h2>
+										<p>
+											Every assistant connection needs
+											WordPress approval. You choose which
+											abilities are available, and you can
+											pause or disconnect access at any
+											time.
+										</p>
+									</div>
+									<a
+										className="aculect-ai-companion-control-banner__link"
+										href={ tabUrl(
+											'abilities',
+											data.adminPageUrl
+										) }
+										onClick={ ( event ) =>
+											maybeSelectTab( event, 'abilities' )
+										}
+									>
+										Review Controls
+									</a>
+								</section>
+							</div>
 						);
 					}
 
-					if ( tab.name === 'connectors' ) {
+					if ( tab.name === 'connect' ) {
 						return (
-							<div className="aculect-ai-companion-connectors">
-								<Card className="aculect-ai-companion-card aculect-ai-companion-endpoint-card">
-									<CardHeader>
-										Connect your AI assistant
-									</CardHeader>
-									<CardBody>
-										<ol className="aculect-ai-companion-steps aculect-ai-companion-steps--primary">
-											<li>
-												Copy your connection URL below.
-											</li>
-											<li>
-												Open your AI tool and add a new
-												connector.
-											</li>
-											<li>
-												Paste the URL when prompted.
-											</li>
-											<li>
-												Approve the connection on the
-												screen that appears.
-											</li>
-										</ol>
-										<CopyField
-											label="Your connection URL"
-											value={ data.mcpUrl }
-											onCopy={ ( value ) =>
-												copyValue(
-													value,
-													'Connection URL copied.'
-												)
-											}
-										/>
-										<p className="aculect-ai-companion-help-text">
-											The URL must be publicly reachable
-											over HTTPS for your AI tool to
-											connect.
+							<div className="aculect-ai-companion-connect">
+								<section className="aculect-ai-companion-connect-hero">
+									<div className="aculect-ai-companion-connect-hero__content">
+										<span className="aculect-ai-companion-eyebrow">
+											Connect setup
+										</span>
+										<h2 className="aculect-ai-companion-connect-hero__title">
+											Add Aculect AI Companion to your AI
+											assistant
+										</h2>
+										<p className="aculect-ai-companion-connect-hero__copy">
+											Use the secure MCP endpoint below,
+											then approve the OAuth consent
+											screen in WordPress. The connection
+											URL is generated from this site at
+											runtime.
 										</p>
-									</CardBody>
-								</Card>
+									</div>
+									<ConnectFlowGraphic
+										brandIconUrl={ brandIconUrl }
+									/>
+								</section>
 
-								<div className="aculect-ai-companion-provider-list">
-									{ providers.map( ( provider ) => {
-										const setupSections = Array.isArray(
-											provider.setupSections
-										)
-											? provider.setupSections
-											: [];
+								<div className="aculect-ai-companion-connect-layout">
+									<div className="aculect-ai-companion-connect-main">
+										<Card className="aculect-ai-companion-card aculect-ai-companion-endpoint-card">
+											<CardHeader>
+												Step 1: Copy the connection URL
+											</CardHeader>
+											<CardBody>
+												<CopyField
+													label="Connection URL"
+													value={ data.mcpUrl }
+													onCopy={ ( value ) =>
+														copyValue(
+															value,
+															'Connection URL copied.'
+														)
+													}
+												/>
+												<p className="aculect-ai-companion-help-text">
+													This endpoint starts MCP and
+													OAuth discovery. It is not a
+													password, bearer token, or
+													secret.
+												</p>
+												<p className="aculect-ai-companion-help-text">
+													Hosted AI tools need a
+													publicly reachable HTTPS
+													URL. Localhost URLs are
+													useful for local testing
+													only.
+												</p>
+											</CardBody>
+										</Card>
 
-										return (
-											<Card
-												key={ provider.id }
-												className={ `aculect-ai-companion-card aculect-ai-companion-provider-card ${
-													openProvider === provider.id
-														? 'is-open'
-														: ''
-												}` }
-											>
-												<CardBody>
-													<div className="aculect-ai-companion-provider-card__header">
-														<div className="aculect-ai-companion-provider-card__title-wrap">
-															<h3 className="aculect-ai-companion-provider-card__title">
-																{
-																	provider.label
-																}
-															</h3>
-															<p className="aculect-ai-companion-provider-card__description">
-																{
-																	provider.description
-																}
-															</p>
-														</div>
-														<Button
-															variant="link"
-															onClick={ () =>
+										<section className="aculect-ai-companion-connect-section">
+											<div className="aculect-ai-companion-section-title-row">
+												<div>
+													<span className="aculect-ai-companion-eyebrow">
+														Step 2
+													</span>
+													<h2 className="aculect-ai-companion-section-title">
+														Add the endpoint to an
+														AI assistant
+													</h2>
+												</div>
+											</div>
+											<div className="aculect-ai-companion-provider-list">
+												{ providers.map(
+													( provider ) => (
+														<ConnectProviderCard
+															key={ provider.id }
+															provider={
+																provider
+															}
+															isOpen={
+																openProvider ===
+																provider.id
+															}
+															onToggle={ () =>
 																setOpenProvider(
 																	openProvider ===
 																		provider.id
@@ -1025,47 +1599,78 @@ function SettingsApp() {
 																		: provider.id
 																)
 															}
-														>
-															{ openProvider ===
-															provider.id
-																? 'Close'
-																: 'Configure' }
-														</Button>
-													</div>
+															onCopy={ copyValue }
+														/>
+													)
+												) }
+											</div>
+										</section>
 
-													{ openProvider ===
-														provider.id && (
-														<div className="aculect-ai-companion-provider-panel">
-															<div className="aculect-ai-companion-setup-method-list">
-																{ setupSections.map(
-																	(
-																		section,
-																		index
-																	) => (
-																		<SetupSection
-																			key={ `${ provider.id }-${ index }` }
-																			provider={
-																				provider
-																			}
-																			section={
-																				section
-																			}
-																			sectionIndex={
-																				index
-																			}
-																			onCopy={
-																				copyValue
-																			}
-																		/>
-																	)
-																) }
-															</div>
-														</div>
-													) }
-												</CardBody>
-											</Card>
-										);
-									} ) }
+										<section className="aculect-ai-companion-authorization-panel">
+											<span
+												className="aculect-ai-companion-authorization-panel__icon"
+												aria-hidden="true"
+											>
+												<Icon
+													icon={ shield }
+													size={ 22 }
+												/>
+											</span>
+											<div>
+												<span className="aculect-ai-companion-eyebrow">
+													Step 3
+												</span>
+												<h2>
+													Approve the assistant in
+													WordPress
+												</h2>
+												<p>
+													After the AI assistant
+													starts the connection,
+													WordPress shows a consent
+													screen. Review the assistant
+													name, scopes, and connected
+													user before approving
+													access.
+												</p>
+											</div>
+											<a
+												className="aculect-ai-companion-authorization-panel__link"
+												href={ tabUrl(
+													'abilities',
+													data.adminPageUrl
+												) }
+												onClick={ ( event ) =>
+													maybeSelectTab(
+														event,
+														'abilities'
+													)
+												}
+											>
+												Review Controls
+											</a>
+										</section>
+									</div>
+
+									<aside className="aculect-ai-companion-connect-sidebar">
+										<ConnectStatusPanel
+											status={ connectionStatus }
+										/>
+										<RequirementsPanel
+											health={ connectionHealth }
+											diagnosticsUrl={ tabUrl(
+												'diagnostics',
+												data.adminPageUrl
+											) }
+											onNavigate={ ( event ) =>
+												maybeSelectTab(
+													event,
+													'diagnostics'
+												)
+											}
+										/>
+										<HelpLinksPanel links={ helpLinks } />
+									</aside>
 								</div>
 							</div>
 						);
@@ -1126,13 +1731,11 @@ function SettingsApp() {
 										</div>
 									) }
 									{ sessions.length === 0 ? (
-										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-											No AI assistants are connected yet.
+										<EmptyState title="No active connections">
 											Add Aculect AI Companion in your AI
 											tool with your connection URL, then
-											approve the connection on the screen
-											that appears.
-										</p>
+											approve the connection in WordPress.
+										</EmptyState>
 									) : (
 										<div className="aculect-ai-companion-session-list">
 											{ sessions.map( ( session ) => (
@@ -1618,7 +2221,7 @@ function SettingsApp() {
 									/>
 									<form
 										method="get"
-										action="options-general.php"
+										action="admin.php"
 										className="aculect-ai-companion-activity-filters"
 									>
 										<input
@@ -1716,7 +2319,10 @@ function SettingsApp() {
 											Filter
 										</Button>
 										<Button
-											href="options-general.php?page=aculect-ai-companion&tab=activity"
+											href={ tabUrl(
+												'activity',
+												data.adminPageUrl
+											) }
 											variant="secondary"
 										>
 											Reset
@@ -2194,8 +2800,8 @@ function SettingsApp() {
 					}
 
 					return null;
-				} }
-			</TabPanel>
+				} )() }
+			</main>
 		</div>
 	);
 }

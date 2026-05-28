@@ -721,7 +721,7 @@ final class AuthorizationController {
 				),
 				$this->persisted_params( $params )
 			),
-			admin_url( 'options-general.php' )
+			admin_url( 'admin.php' )
 		);
 	}
 

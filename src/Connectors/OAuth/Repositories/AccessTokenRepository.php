@@ -168,12 +168,48 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public function list_active_sessions(): array {
+		return $this->list_sessions_by_revoked_state( false );
+	}
+
+	/**
+	 * List revoked connector sessions for the admin settings screen.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function list_revoked_sessions(): array {
+		return $this->list_sessions_by_revoked_state( true );
+	}
+
+	/**
+	 * List connector sessions for one token lifecycle state.
+	 *
+	 * @param bool $revoked Whether to list revoked sessions.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function list_sessions_by_revoked_state( bool $revoked ): array {
 		global $wpdb;
 
 		$tables = Installer::table_names();
-		$rows   = $wpdb->get_results(
-			$wpdb->prepare(
-				'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
+		if ( $revoked ) {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
+                    access_tokens.resource, access_tokens.expires_at, access_tokens.created_at, access_tokens.last_used_at,
+                    clients.client_name, clients.provider
+                FROM %i access_tokens
+                LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+                WHERE access_tokens.revoked = 1
+                ORDER BY access_tokens.created_at DESC
+                LIMIT 100',
+					$tables['access_tokens'],
+					$tables['clients']
+				),
+				ARRAY_A
+			);
+		} else {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
                     access_tokens.resource, access_tokens.expires_at, access_tokens.created_at, access_tokens.last_used_at,
                     clients.client_name, clients.provider
                 FROM %i access_tokens
@@ -181,30 +217,45 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
                 WHERE access_tokens.revoked = 0 AND access_tokens.expires_at >= %s
                 ORDER BY access_tokens.created_at DESC
                 LIMIT 100',
-				$tables['access_tokens'],
-				$tables['clients'],
-				gmdate( 'Y-m-d H:i:s' )
-			),
-			ARRAY_A
-		);
+					$tables['access_tokens'],
+					$tables['clients'],
+					gmdate( 'Y-m-d H:i:s' )
+				),
+				ARRAY_A
+			);
+		}
 
 		if ( ! is_array( $rows ) ) {
 			return array();
 		}
 
 		return array_map(
-			static function ( array $row ): array {
-				$scopes = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
-				$user   = get_user_by( 'id', (int) ( $row['user_id'] ?? 0 ) );
+			static function ( array $row ) use ( $revoked ): array {
+				$scopes     = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
+				$user_id    = (int) ( $row['user_id'] ?? 0 );
+				$user       = get_user_by( 'id', $user_id );
+				$user_roles = array();
+
+				if ( $user ) {
+					$role_definitions = wp_roles()->roles;
+					foreach ( (array) $user->roles as $role ) {
+						$user_roles[] = isset( $role_definitions[ $role ]['name'] )
+							? translate_user_role( $role_definitions[ $role ]['name'] )
+							: (string) $role;
+					}
+				}
 
 				return array(
 					'id'           => (int) $row['id'],
 					'client_id'    => (string) ( $row['client_id'] ?? '' ),
 					'client_name'  => (string) ( $row['client_name'] ?? 'MCP Client' ),
 					'provider'     => (string) ( $row['provider'] ?? 'mcp' ),
+					'user_id'      => $user_id,
 					'user'         => $user ? $user->display_name : __( 'Unknown user', 'aculect-ai-companion' ),
+					'user_roles'   => array_values( array_unique( $user_roles ) ),
 					'scopes'       => is_array( $scopes ) ? array_values( array_map( 'strval', $scopes ) ) : array(),
 					'resource'     => (string) ( $row['resource'] ?? '' ),
+					'status'       => $revoked ? 'revoked' : 'active',
 					'created_at'   => (string) ( $row['created_at'] ?? '' ),
 					'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
 					'expires_at'   => (string) ( $row['expires_at'] ?? '' ),

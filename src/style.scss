@@ -762,6 +762,310 @@
 	line-height: 1.5;
 }
 
+.aculect-ai-companion-connections-dashboard {
+	display: grid;
+	gap: 18px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connections-hero {
+	padding: 20px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.aculect-ai-companion-connections-hero p {
+	max-width: 780px;
+	margin: 8px 0 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 15px;
+	line-height: 1.55;
+}
+
+.aculect-ai-companion-connection-metrics {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.aculect-ai-companion-connection-metric {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 12px;
+	align-items: start;
+	min-width: 0;
+	padding: 16px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
+}
+
+.aculect-ai-companion-connection-metric.is-paused {
+	border-color: #fed7aa;
+	background: #fff8e5;
+}
+
+.aculect-ai-companion-connection-metric__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 8px;
+	background: #edf5ff;
+	color: var(--aculect-ai-companion-primary);
+}
+
+.aculect-ai-companion-connection-metric span {
+	display: block;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-connection-metric strong {
+	display: block;
+	margin: 4px 0;
+	font-size: 24px;
+	line-height: 1.15;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-connection-metric p {
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.aculect-ai-companion-lockdown--connections {
+	margin: 0;
+}
+
+.aculect-ai-companion-connections-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+	gap: 18px;
+	align-items: start;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connections-main,
+.aculect-ai-companion-connections-sidebar {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connections-sidebar {
+	position: sticky;
+	top: 44px;
+}
+
+.aculect-ai-companion-connections-toolbar {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+	gap: 12px;
+	align-items: end;
+	padding: 16px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-connections-toolbar .components-base-control {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-connection-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-filter {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 36px;
+	padding: 6px 10px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-ink);
+	cursor: pointer;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-connection-filter:hover,
+.aculect-ai-companion-connection-filter:focus {
+	border-color: #93c5fd;
+	box-shadow: none;
+	outline: none;
+}
+
+.aculect-ai-companion-connection-filter:focus-visible {
+	box-shadow: 0 0 0 2px var(--aculect-ai-companion-primary);
+}
+
+.aculect-ai-companion-connection-filter.is-active {
+	border-color: #93c5fd;
+	background: #eff6ff;
+	color: #1d4ed8;
+}
+
+.aculect-ai-companion-connection-filter strong {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 22px;
+	height: 22px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: #fff;
+	font-size: 12px;
+	line-height: 1;
+}
+
+.aculect-ai-companion-connections-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-connections-table {
+	min-width: 1060px;
+	border: 0;
+}
+
+.aculect-ai-companion-connections-table th,
+.aculect-ai-companion-connections-table td {
+	vertical-align: top;
+}
+
+.aculect-ai-companion-connections-table__primary {
+	display: block;
+	margin-bottom: 4px;
+	color: var(--aculect-ai-companion-ink);
+}
+
+.aculect-ai-companion-connections-table__secondary {
+	display: block;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-connection-ability-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	max-width: 280px;
+}
+
+.aculect-ai-companion-connection-ability-list span {
+	display: inline-flex;
+	align-items: center;
+	min-height: 24px;
+	padding: 3px 7px;
+	border-radius: 999px;
+	background: #edf5ff;
+	color: #135e96;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.aculect-ai-companion-connection-status-chip {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	min-height: 24px;
+	margin-bottom: 6px;
+	padding: 3px 8px;
+	border-radius: 999px;
+	background: #f0f0f1;
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 1.2;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-connection-status-chip.is-active {
+	background: #edfaef;
+	color: var(--aculect-ai-companion-green);
+}
+
+.aculect-ai-companion-connection-status-chip.is-paused {
+	background: #fff4e5;
+	color: #8a4b00;
+}
+
+.aculect-ai-companion-connection-status-chip.is-revoked {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+.aculect-ai-companion-connection-action-menu {
+	width: fit-content;
+}
+
+.aculect-ai-companion-connection-action-menu__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	color: var(--aculect-ai-companion-muted);
+	cursor: pointer;
+	list-style: none;
+}
+
+.aculect-ai-companion-connection-action-menu__trigger::-webkit-details-marker {
+	display: none;
+}
+
+.aculect-ai-companion-connection-action-menu__trigger:hover,
+.aculect-ai-companion-connection-action-menu__trigger:focus {
+	border-color: #93c5fd;
+	color: var(--aculect-ai-companion-primary);
+	outline: none;
+}
+
+.aculect-ai-companion-connection-action-menu__trigger:focus-visible {
+	box-shadow: 0 0 0 2px var(--aculect-ai-companion-primary);
+}
+
+.aculect-ai-companion-connection-action-menu__content {
+	margin-top: 8px;
+}
+
+.aculect-ai-companion-connection-action-note {
+	display: inline-flex;
+	max-width: 150px;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.4;
+}
+
+.aculect-ai-companion-danger-zone--connections {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 0;
+}
+
 .aculect-ai-companion-provider-card__header {
 	display: flex;
 	align-items: flex-start;
@@ -1045,12 +1349,14 @@
 	font-weight: 700;
 }
 
-.aculect-ai-companion-ability-row__meta .aculect-ai-companion-risk-chip.is-read-only {
+.aculect-ai-companion-ability-row__meta
+.aculect-ai-companion-risk-chip.is-read-only {
 	background: #edf5ff;
 	color: #135e96;
 }
 
-.aculect-ai-companion-ability-row__meta .aculect-ai-companion-risk-chip.is-write {
+.aculect-ai-companion-ability-row__meta
+.aculect-ai-companion-risk-chip.is-write {
 	background: #fff4e5;
 	color: #8a4b00;
 }
@@ -1425,6 +1731,8 @@
 	.aculect-ai-companion-brand-grid--colors,
 	.aculect-ai-companion-connect-hero,
 	.aculect-ai-companion-connect-layout,
+	.aculect-ai-companion-connections-layout,
+	.aculect-ai-companion-connections-toolbar,
 	.aculect-ai-companion-feature-grid,
 	.aculect-ai-companion-overview-hero,
 	.aculect-ai-companion-setting-summary,
@@ -1466,6 +1774,10 @@
 		position: static;
 	}
 
+	.aculect-ai-companion-connections-sidebar {
+		position: static;
+	}
+
 	.aculect-ai-companion-authorization-panel {
 		grid-template-columns: auto minmax(0, 1fr);
 	}
@@ -1480,6 +1792,10 @@
 	}
 
 	.aculect-ai-companion-activity-summary {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.aculect-ai-companion-connection-metrics {
 		grid-template-columns: 1fr 1fr;
 	}
 }
@@ -1554,6 +1870,10 @@
 	}
 
 	.aculect-ai-companion-activity-summary {
+		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-connection-metrics {
 		grid-template-columns: 1fr;
 	}
 }

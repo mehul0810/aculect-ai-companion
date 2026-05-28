@@ -148,7 +148,7 @@ final class McpController {
 				$registry = new AbilitiesRegistry();
 				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
 				$args     = (array) ( $body['params']['arguments'] ?? array() );
-				$error    = $this->tool_call_error( $tool, $registry );
+				$error    = $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
 				if ( 'unknown_tool' === $error ) {
 					( new Logger() )->warning(
 						'mcp.unknown_tool',
@@ -169,6 +169,17 @@ final class McpController {
 						200
 					);
 					return $this->tool_error_result( $id, 'This ability is disabled in Aculect AI Companion settings.' );
+				}
+
+				if ( 'tool_forbidden_for_role' === $error ) {
+					( new Logger() )->warning(
+						'mcp.tool_forbidden_for_role',
+						'MCP tool call was blocked by role ability policy.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_forbidden_for_role', $tool ),
+						$request,
+						200
+					);
+					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress role.' );
 				}
 
 				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
@@ -296,9 +307,11 @@ final class McpController {
 	 */
 	private function list_tools(): array {
 		$registry = new AbilitiesRegistry();
+		$user_id  = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$modules  = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( (int) $user_id, $registry );
 
 		return array(
-			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $registry->enabled_modules() ) ),
+			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
 		);
 	}
 
@@ -380,14 +393,19 @@ final class McpController {
 	 *
 	 * @param string            $tool     Internal ability ID.
 	 * @param AbilitiesRegistry $registry Ability registry.
+	 * @param int               $user_id  WordPress user ID.
 	 */
-	private function tool_call_error( string $tool, AbilitiesRegistry $registry ): string {
+	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0 ): string {
 		if ( ! $registry->is_known( $tool ) ) {
 			return 'unknown_tool';
 		}
 
 		if ( ! $registry->is_enabled( $tool ) ) {
 			return 'tool_disabled';
+		}
+
+		if ( ! ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $tool, $user_id, $registry ) ) {
+			return 'tool_forbidden_for_role';
 		}
 
 		return '';

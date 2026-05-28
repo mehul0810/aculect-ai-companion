@@ -1392,6 +1392,231 @@
 	color: #8a4b00;
 }
 
+.aculect-ai-companion-role-abilities {
+	display: grid;
+	gap: 18px;
+	margin: 20px 0;
+	padding: 18px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-role-abilities__hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+	gap: 18px;
+	align-items: end;
+	padding: 20px;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	background: #f8fbff;
+}
+
+.aculect-ai-companion-role-abilities__hero h2 {
+	margin: 6px 0 10px;
+	font-size: 26px;
+	line-height: 1.15;
+}
+
+.aculect-ai-companion-role-abilities__hero p,
+.aculect-ai-companion-role-abilities__side p {
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
+	line-height: 1.55;
+}
+
+.aculect-ai-companion-role-abilities__controls label,
+.aculect-ai-companion-role-abilities__toolbar label,
+.aculect-ai-companion-role-abilities__side label {
+	display: grid;
+	gap: 6px;
+}
+
+.aculect-ai-companion-role-abilities__controls span,
+.aculect-ai-companion-role-abilities__toolbar span,
+.aculect-ai-companion-role-abilities__side-label {
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-role-abilities select {
+	min-height: 40px;
+	max-width: 100%;
+	border-color: var(--aculect-ai-companion-border);
+	border-radius: 6px;
+}
+
+.aculect-ai-companion-role-abilities__layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+	gap: 18px;
+	align-items: start;
+	min-width: 0;
+}
+
+.aculect-ai-companion-role-abilities__main,
+.aculect-ai-companion-role-abilities__side section {
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-role-abilities__main {
+	min-width: 0;
+	padding: 16px;
+}
+
+.aculect-ai-companion-role-abilities__form,
+.aculect-ai-companion-role-abilities__side {
+	display: grid;
+	gap: 14px;
+}
+
+.aculect-ai-companion-role-abilities__toolbar {
+	display: grid;
+	grid-template-columns: minmax(220px, 1.5fr) minmax(150px, 1fr) minmax(130px, 1fr);
+	gap: 12px;
+	align-items: end;
+	margin-bottom: 16px;
+}
+
+.aculect-ai-companion-role-abilities__toolbar .components-base-control {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-role-ability-groups {
+	display: grid;
+	gap: 12px;
+}
+
+.aculect-ai-companion-role-ability-group {
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.aculect-ai-companion-role-ability-group__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	padding: 12px 14px;
+	border: 0;
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-ink);
+	text-align: left;
+	cursor: pointer;
+}
+
+.aculect-ai-companion-role-ability-group__header:focus-visible {
+	outline: 2px solid var(--aculect-ai-companion-primary);
+	outline-offset: -2px;
+}
+
+.aculect-ai-companion-role-ability-group__header span {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-role-ability-list {
+	display: grid;
+	gap: 0;
+}
+
+.aculect-ai-companion-role-ability-row {
+	display: grid;
+	gap: 8px;
+	padding: 14px;
+	border-top: 1px solid var(--aculect-ai-companion-border);
+}
+
+.aculect-ai-companion-role-ability-row .components-base-control {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-role-ability-row p {
+	margin: 0 0 0 40px;
+	color: var(--aculect-ai-companion-muted);
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-role-ability-row__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+	margin-left: 40px;
+}
+
+.aculect-ai-companion-role-ability-row__meta span,
+.aculect-ai-companion-role-ability-row__meta code {
+	display: inline-flex;
+	width: fit-content;
+	max-width: 100%;
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-role-abilities__footer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.aculect-ai-companion-role-abilities__side section {
+	display: grid;
+	gap: 10px;
+	padding: 16px;
+}
+
+.aculect-ai-companion-role-abilities__side h3 {
+	margin: 0;
+	font-size: 16px;
+	line-height: 1.3;
+}
+
+.aculect-ai-companion-role-abilities__side dl {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+}
+
+.aculect-ai-companion-role-abilities__summary-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.aculect-ai-companion-role-abilities__side dt {
+	color: var(--aculect-ai-companion-muted);
+	font-weight: 700;
+}
+
+.aculect-ai-companion-role-abilities__side dd {
+	margin: 0;
+	text-align: right;
+}
+
+.aculect-ai-companion-role-abilities__side form {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+}
+
+.aculect-ai-companion-role-abilities__users {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+	padding-left: 18px;
+}
+
 .aculect-ai-companion-form--advanced {
 	display: grid;
 	gap: 20px;
@@ -2030,6 +2255,9 @@
 	.aculect-ai-companion-advanced-hero,
 	.aculect-ai-companion-advanced-layout,
 	.aculect-ai-companion-advanced-setting,
+	.aculect-ai-companion-role-abilities__hero,
+	.aculect-ai-companion-role-abilities__layout,
+	.aculect-ai-companion-role-abilities__toolbar,
 	.aculect-ai-companion-brand-grid,
 	.aculect-ai-companion-brand-grid--colors,
 	.aculect-ai-companion-connect-hero,
@@ -2109,6 +2337,10 @@
 	.aculect-ai-companion-connection-metrics {
 		grid-template-columns: 1fr 1fr;
 	}
+
+	.aculect-ai-companion-role-abilities__summary-row {
+		display: grid;
+	}
 }
 
 @media (max-width: 600px) {
@@ -2131,6 +2363,12 @@
 
 	.aculect-ai-companion-advanced-hero {
 		padding: 22px;
+	}
+
+	.aculect-ai-companion-role-abilities,
+	.aculect-ai-companion-role-abilities__hero,
+	.aculect-ai-companion-role-abilities__main {
+		padding: 14px;
 	}
 
 	.aculect-ai-companion-overview-hero__title {
@@ -2198,5 +2436,10 @@
 
 	.aculect-ai-companion-connection-metrics {
 		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-role-ability-row p,
+	.aculect-ai-companion-role-ability-row__meta {
+		margin-left: 0;
 	}
 }

@@ -29,6 +29,12 @@ if ( ! defined( 'ARRAY_A' ) ) {
 
 $GLOBALS['aculect_ai_companion_test_options']    = array();
 $GLOBALS['aculect_ai_companion_test_transients'] = array();
+$GLOBALS['aculect_ai_companion_test_roles']      = array(
+	'administrator' => array( 'name' => 'Administrator' ),
+	'editor'        => array( 'name' => 'Editor' ),
+	'author'        => array( 'name' => 'Author' ),
+);
+$GLOBALS['aculect_ai_companion_test_users']      = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -75,6 +81,93 @@ if ( ! function_exists( 'apply_filters' ) ) {
 		unset( $hook_name, $args );
 
 		return $value;
+	}
+}
+
+if ( ! function_exists( 'wp_roles' ) ) {
+	/**
+	 * Return test roles.
+	 */
+	function wp_roles(): object {
+		return (object) array(
+			'roles' => $GLOBALS['aculect_ai_companion_test_roles'],
+		);
+	}
+}
+
+if ( ! function_exists( 'translate_user_role' ) ) {
+	/**
+	 * Return an untranslated role name for tests.
+	 *
+	 * @param string $name Role display name.
+	 */
+	function translate_user_role( string $name ): string {
+		return $name;
+	}
+}
+
+if ( ! function_exists( 'get_users' ) ) {
+	/**
+	 * Return test users filtered by role.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<int, mixed>
+	 */
+	function get_users( array $args = array() ): array {
+		$users = array_values( $GLOBALS['aculect_ai_companion_test_users'] );
+		if ( isset( $args['role'] ) ) {
+			$role  = (string) $args['role'];
+			$users = array_values(
+				array_filter(
+					$users,
+					static fn( object $user ): bool => in_array( $role, (array) ( $user->roles ?? array() ), true )
+				)
+			);
+		}
+
+		if ( isset( $args['number'] ) && (int) $args['number'] > 0 ) {
+			$users = array_slice( $users, 0, (int) $args['number'] );
+		}
+
+		if ( isset( $args['fields'] ) && 'ID' === $args['fields'] ) {
+			return array_map( static fn( object $user ): int => (int) $user->ID, $users );
+		}
+
+		return $users;
+	}
+}
+
+if ( ! function_exists( 'count_users' ) ) {
+	/**
+	 * Return test user counts by role.
+	 *
+	 * @return array{total_users:int, avail_roles:array<string, int>}
+	 */
+	function count_users(): array {
+		$roles = array();
+		foreach ( $GLOBALS['aculect_ai_companion_test_users'] as $user ) {
+			foreach ( (array) ( $user->roles ?? array() ) as $role ) {
+				$role           = (string) $role;
+				$roles[ $role ] = ( $roles[ $role ] ?? 0 ) + 1;
+			}
+		}
+
+		return array(
+			'total_users' => count( $GLOBALS['aculect_ai_companion_test_users'] ),
+			'avail_roles' => $roles,
+		);
+	}
+}
+
+if ( ! function_exists( 'get_userdata' ) ) {
+	/**
+	 * Return one test user.
+	 *
+	 * @param int $user_id User ID.
+	 * @return object|false
+	 */
+	function get_userdata( int $user_id ): object|false {
+		return $GLOBALS['aculect_ai_companion_test_users'][ $user_id ] ?? false;
 	}
 }
 

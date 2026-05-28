@@ -76,6 +76,7 @@ final class Plugin {
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
+		add_action( 'admin_post_aculect_ai_companion_save_role_abilities', array( $this, 'handle_save_role_abilities' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
 		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
@@ -210,6 +211,13 @@ final class Plugin {
 	 */
 	public function handle_save_abilities(): void {
 		( new SettingsPage() )->handle_save_abilities();
+	}
+
+	/**
+	 * Proxy role abilities-save form handling to the settings controller.
+	 */
+	public function handle_save_role_abilities(): void {
+		( new SettingsPage() )->handle_save_role_abilities();
 	}
 
 	/**

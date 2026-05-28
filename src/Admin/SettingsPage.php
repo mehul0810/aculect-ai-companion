@@ -9,6 +9,7 @@ use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
@@ -120,58 +121,111 @@ final class SettingsPage {
 		wp_localize_script(
 			self::ASSET_HANDLE,
 			'aculectAICompanionSettingsData',
-			array(
-				'version'                  => ACULECT_AI_COMPANION_VERSION,
-				'adminPageUrl'             => esc_url_raw( $this->settings_url() ),
-				'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
-				'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
-				'accessPaused'             => AccessLockdown::is_paused(),
-				'currentUserId'            => get_current_user_id(),
-				'mcpUrl'                   => Helpers::mcp_resource(),
-				'providers'                => $this->providers(),
-				'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
-				'revokedSessions'          => ( new AccessTokenRepository() )->list_revoked_sessions(),
-				'abilities'                => ( new AbilitiesRegistry() )->public_definitions(),
-				'enabledAbilities'         => ( new AbilitiesRegistry() )->enabled_ids(),
-				'brandProfile'             => ( new BrandProfile() )->admin_payload(),
-				'wpAbilities'              => ( new WordPressAbilitiesPolicy() )->public_definitions(),
-				'enabledWpAbilities'       => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
-				'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
-				'confirmationGroupOptions' => ( new ToolSafety() )->available_confirmation_groups(),
-				'status'                   => $this->status(),
-				'activity'                 => $this->activity_payload(),
-				'diagnostics'              => $this->diagnostics(),
-				'roleConnections'          => array(
-					'enabled'      => RoleConnectionEntryPoint::is_enabled(),
-					'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
-					'roleOptions'  => RoleConnectionEntryPoint::role_options(),
-					'shortcode'    => '[aculect_ai_companion_connect]',
-					'blockName'    => 'aculect/ai-companion-connect',
-					'functionName' => 'aculect_ai_companion_connection_entry',
+			$this->settings_payload()
+		);
+	}
+
+	/**
+	 * Return settings data for the React application.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function settings_payload(): array {
+		$ability_registry = new AbilitiesRegistry();
+
+		return array(
+			'version'                  => ACULECT_AI_COMPANION_VERSION,
+			'adminPageUrl'             => esc_url_raw( $this->settings_url() ),
+			'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
+			'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
+			'accessPaused'             => AccessLockdown::is_paused(),
+			'currentUserId'            => get_current_user_id(),
+			'mcpUrl'                   => Helpers::mcp_resource(),
+			'providers'                => $this->providers(),
+			'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
+			'revokedSessions'          => ( new AccessTokenRepository() )->list_revoked_sessions(),
+			'abilities'                => $ability_registry->public_definitions(),
+			'enabledAbilities'         => $ability_registry->enabled_ids(),
+			'roleAbilityPolicy'        => ( new RoleAbilitiesPolicy() )->admin_payload( $ability_registry ),
+			'brandProfile'             => ( new BrandProfile() )->admin_payload(),
+			'wpAbilities'              => ( new WordPressAbilitiesPolicy() )->public_definitions(),
+			'enabledWpAbilities'       => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
+			'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
+			'confirmationGroupOptions' => ( new ToolSafety() )->available_confirmation_groups(),
+			'status'                   => $this->status(),
+			'activity'                 => $this->activity_payload(),
+			'diagnostics'              => $this->diagnostics(),
+			'roleConnections'          => array(
+				'enabled'      => RoleConnectionEntryPoint::is_enabled(),
+				'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
+				'roleOptions'  => RoleConnectionEntryPoint::role_options(),
+				'shortcode'    => '[aculect_ai_companion_connect]',
+				'blockName'    => 'aculect/ai-companion-connect',
+				'functionName' => 'aculect_ai_companion_connection_entry',
+			),
+			'connectionHealth'         => ( new ConnectionHealth() )->last_result(),
+			'actions'                  => array(
+				'adminPostUrl'            => admin_url( 'admin-post.php' ),
+				'saveAbilitiesAction'     => 'aculect_ai_companion_save_abilities',
+				'saveRoleAbilitiesAction' => 'aculect_ai_companion_save_role_abilities',
+				'saveAdvancedAction'      => 'aculect_ai_companion_save_advanced',
+				'saveBrandAction'         => 'aculect_ai_companion_save_brand',
+				'runDiagnosticsAction'    => 'aculect_ai_companion_run_connection_diagnostics',
+				'clearLogsAction'         => 'aculect_ai_companion_clear_logs',
+				'setLockdownAction'       => 'aculect_ai_companion_set_lockdown',
+				'revokeSessionAction'     => 'aculect_ai_companion_revoke_session',
+				'revokeAllAction'         => 'aculect_ai_companion_revoke_all_sessions',
+				'saveAbilitiesNonce'      => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+				'saveRoleAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
+				'saveAdvancedNonce'       => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+				'saveBrandNonce'          => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
+				'runDiagnosticsNonce'     => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+				'clearLogsNonce'          => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
+				'setLockdownNonce'        => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
+				'revokeSessionNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
+				'revokeAllNonce'          => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
+			),
+			'changelog'                => $this->load_changelog(),
+		);
+	}
+
+	/**
+	 * Persist role-specific MCP ability policy from the admin form.
+	 */
+	public function handle_save_role_abilities(): void {
+		$this->guard_action( 'aculect_ai_companion_save_role_abilities' );
+		$registry = new AbilitiesRegistry();
+		$policy   = new RoleAbilitiesPolicy();
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$role      = isset( $_POST['role_ability_role'] ) ? sanitize_key( wp_unslash( (string) $_POST['role_ability_role'] ) ) : '';
+		$action    = isset( $_POST['role_ability_action'] ) ? sanitize_key( wp_unslash( (string) $_POST['role_ability_action'] ) ) : 'save';
+		$ids       = isset( $_POST['enabled_role_abilities'] )
+			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_role_abilities'] ) )
+			: array();
+		$copy_from = isset( $_POST['copy_from_role'] ) ? sanitize_key( wp_unslash( (string) $_POST['copy_from_role'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( 'reset' === $action ) {
+			$policy->reset_role_policy( $role, $registry );
+		} elseif ( 'copy' === $action ) {
+			$policy->copy_role_policy( $copy_from, $role, $registry );
+		} else {
+			$policy->save_role_policy( $role, $ids, $registry );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                 => 'aculect-ai-companion',
+					'tab'                  => 'abilities',
+					'role_abilities_saved' => '1',
+					'role'                 => $role,
 				),
-				'connectionHealth'         => ( new ConnectionHealth() )->last_result(),
-				'actions'                  => array(
-					'adminPostUrl'         => admin_url( 'admin-post.php' ),
-					'saveAbilitiesAction'  => 'aculect_ai_companion_save_abilities',
-					'saveAdvancedAction'   => 'aculect_ai_companion_save_advanced',
-					'saveBrandAction'      => 'aculect_ai_companion_save_brand',
-					'runDiagnosticsAction' => 'aculect_ai_companion_run_connection_diagnostics',
-					'clearLogsAction'      => 'aculect_ai_companion_clear_logs',
-					'setLockdownAction'    => 'aculect_ai_companion_set_lockdown',
-					'revokeSessionAction'  => 'aculect_ai_companion_revoke_session',
-					'revokeAllAction'      => 'aculect_ai_companion_revoke_all_sessions',
-					'saveAbilitiesNonce'   => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
-					'saveAdvancedNonce'    => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
-					'saveBrandNonce'       => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
-					'runDiagnosticsNonce'  => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
-					'clearLogsNonce'       => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
-					'setLockdownNonce'     => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
-					'revokeSessionNonce'   => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
-					'revokeAllNonce'       => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
-				),
-				'changelog'                => $this->load_changelog(),
+				$this->settings_url()
 			)
 		);
+		exit;
 	}
 
 	/**
@@ -727,6 +781,10 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {
 			return 'abilities_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['role_abilities_saved'] ) ) {
+			return 'role_abilities_saved';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['revoked_all'] ) ) {

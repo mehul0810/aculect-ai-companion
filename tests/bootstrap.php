@@ -251,6 +251,48 @@ if ( ! function_exists( 'home_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'site_url' ) ) {
+	/**
+	 * Return a deterministic test site URL.
+	 *
+	 * @param string $path Optional path.
+	 */
+	function site_url( string $path = '' ): string {
+		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+	}
+}
+
+if ( ! function_exists( 'rest_url' ) ) {
+	/**
+	 * Return a deterministic test REST URL.
+	 *
+	 * @param string $path Optional path.
+	 */
+	function rest_url( string $path = '' ): string {
+		return 'https://example.com/wp-json/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'get_bloginfo' ) ) {
+	/**
+	 * Return deterministic test site metadata.
+	 *
+	 * @param string $show Requested field.
+	 */
+	function get_bloginfo( string $show = '' ): string {
+		return 'version' === $show ? '6.8.1' : '';
+	}
+}
+
+if ( ! function_exists( 'wp_get_environment_type' ) ) {
+	/**
+	 * Return a deterministic test environment type.
+	 */
+	function wp_get_environment_type(): string {
+		return 'local';
+	}
+}
+
 if ( ! function_exists( 'untrailingslashit' ) ) {
 	/**
 	 * Remove trailing slash characters.

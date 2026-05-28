@@ -2258,6 +2258,204 @@
 	font-weight: 700;
 }
 
+.aculect-ai-companion-diagnostics {
+	display: grid;
+	gap: 18px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-diagnostics-hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 20px;
+	align-items: center;
+	padding: 24px;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	background: #f8fbff;
+}
+
+.aculect-ai-companion-diagnostics-hero__title {
+	margin: 6px 0 10px;
+	font-size: 28px;
+	line-height: 1.15;
+	letter-spacing: 0;
+}
+
+.aculect-ai-companion-diagnostics-hero__copy {
+	max-width: 720px;
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+.aculect-ai-companion-diagnostic-metrics {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.aculect-ai-companion-diagnostic-metric {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+	padding: 16px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-diagnostic-metric__label {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-diagnostic-metric__value {
+	color: var(--aculect-ai-companion-ink);
+	font-size: 24px;
+	line-height: 1.15;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-diagnostic-metric.is-pass .aculect-ai-companion-diagnostic-metric__value {
+	color: var(--aculect-ai-companion-green);
+}
+
+.aculect-ai-companion-diagnostic-metric.is-warn .aculect-ai-companion-diagnostic-metric__value {
+	color: #996800;
+}
+
+.aculect-ai-companion-diagnostic-metric.is-fail .aculect-ai-companion-diagnostic-metric__value {
+	color: #b32d2e;
+}
+
+.aculect-ai-companion-diagnostics-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+	gap: 18px;
+	align-items: start;
+	min-width: 0;
+}
+
+.aculect-ai-companion-diagnostics-main,
+.aculect-ai-companion-diagnostics-sidebar {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-diagnostics-sidebar {
+	position: sticky;
+	top: 44px;
+}
+
+.aculect-ai-companion-diagnostics-checks {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+	padding: 18px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-diagnostic-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.aculect-ai-companion-diagnostic-filters button {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 36px;
+	padding: 6px 10px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 6px;
+	background: #fff;
+	color: #334155;
+	cursor: pointer;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-diagnostic-filters button:hover,
+.aculect-ai-companion-diagnostic-filters button:focus {
+	border-color: var(--aculect-ai-companion-primary);
+	color: var(--aculect-ai-companion-primary);
+}
+
+.aculect-ai-companion-diagnostic-filters button:focus-visible {
+	outline: 2px solid var(--aculect-ai-companion-primary);
+	outline-offset: 2px;
+}
+
+.aculect-ai-companion-diagnostic-filters button.is-active {
+	border-color: var(--aculect-ai-companion-primary);
+	background: #eff6ff;
+	color: #0b55e5;
+}
+
+.aculect-ai-companion-diagnostic-filter__count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 22px;
+	height: 22px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: #edf2f7;
+	color: #1e293b;
+	font-size: 12px;
+}
+
+.aculect-ai-companion-diagnostic-panel .components-button {
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+}
+
+.aculect-ai-companion-diagnostic-meta-list {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+}
+
+.aculect-ai-companion-diagnostic-meta-list div {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-diagnostic-meta-list dt {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-diagnostic-meta-list dd {
+	margin: 0;
+	color: var(--aculect-ai-companion-ink);
+	font-weight: 650;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-diagnostic-environment {
+	display: grid;
+	gap: 8px;
+}
+
+.aculect-ai-companion-diagnostic-environment p,
+.aculect-ai-companion-diagnostic-environment__remediation {
+	margin: 0;
+	line-height: 1.5;
+}
+
 .aculect-ai-companion-log-toolbar,
 .aculect-ai-companion-log-pagination,
 .aculect-ai-companion-health-toolbar {
@@ -2444,6 +2642,8 @@
 	.aculect-ai-companion-connect-layout,
 	.aculect-ai-companion-connections-layout,
 	.aculect-ai-companion-connections-toolbar,
+	.aculect-ai-companion-diagnostics-hero,
+	.aculect-ai-companion-diagnostics-layout,
 	.aculect-ai-companion-feature-grid,
 	.aculect-ai-companion-overview-hero,
 	.aculect-ai-companion-setting-summary,
@@ -2498,6 +2698,10 @@
 		position: static;
 	}
 
+	.aculect-ai-companion-diagnostics-sidebar {
+		position: static;
+	}
+
 	.aculect-ai-companion-authorization-panel {
 		grid-template-columns: auto minmax(0, 1fr);
 	}
@@ -2526,6 +2730,10 @@
 	.aculect-ai-companion-role-abilities__summary-row {
 		display: grid;
 	}
+
+	.aculect-ai-companion-diagnostic-metrics {
+		grid-template-columns: 1fr 1fr;
+	}
 }
 
 @media (max-width: 600px) {
@@ -2550,6 +2758,10 @@
 		padding: 22px;
 	}
 
+	.aculect-ai-companion-diagnostics-hero {
+		padding: 22px;
+	}
+
 	.aculect-ai-companion-role-abilities,
 	.aculect-ai-companion-role-abilities__hero,
 	.aculect-ai-companion-role-abilities__main {
@@ -2565,6 +2777,10 @@
 	}
 
 	.aculect-ai-companion-advanced-hero__title {
+		font-size: 25px;
+	}
+
+	.aculect-ai-companion-diagnostics-hero__title {
 		font-size: 25px;
 	}
 
@@ -2621,6 +2837,20 @@
 
 	.aculect-ai-companion-connection-metrics {
 		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-diagnostic-metrics {
+		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-diagnostic-filters {
+		display: grid;
+		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-diagnostic-filters button {
+		justify-content: space-between;
+		width: 100%;
 	}
 
 	.aculect-ai-companion-role-ability-row p,

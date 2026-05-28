@@ -77,14 +77,25 @@ final class ConnectionHealthTest extends TestCase {
 						'connectionUrl' => 'https://example.test/wp-json/aculect-ai-companion/v1/mcp',
 						'access_token'  => 'secret',
 					),
+					'system'  => array(
+						'site_url'        => 'https://example.test',
+						'php_version'     => '8.2.0',
+						'auth_header'     => 'Bearer no',
+						'private_payload' => '{"token":"no"}',
+						'wp_salt'         => 'secret',
+					),
 				),
 			)
 		);
 
 		self::assertSame('2026-05-20', $result['ranAt']);
 		self::assertSame('ok', $result['items'][0]['message']);
+		self::assertSame('8.2.0', $result['system']['php_version']);
 		self::assertArrayNotHasKey('client_secret', $result['items'][0]['details']);
 		self::assertArrayNotHasKey('access_token', $result['details']);
+		self::assertArrayNotHasKey('auth_header', $result['system']);
+		self::assertArrayNotHasKey('private_payload', $result['system']);
+		self::assertArrayNotHasKey('wp_salt', $result['system']);
 	}
 
 	/**

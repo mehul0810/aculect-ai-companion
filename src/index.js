@@ -1,5 +1,6 @@
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
+import { normalizeTabName, tabNameIsHydrated } from './admin-tab-hydration.mjs';
 import {
 	Button,
 	Card,
@@ -63,10 +64,6 @@ const DIAGNOSTIC_STATUS_LABELS = {
 	warn: 'Warning',
 	fail: 'Error',
 };
-const TAB_ALIASES = {
-	about: 'overview',
-	connectors: 'connect',
-};
 const ADMIN_NOTICE_SELECTOR = [
 	'#wpbody-content > .notice',
 	'#wpbody-content > .updated',
@@ -81,10 +78,6 @@ const ADMIN_NOTICE_SELECTOR = [
 
 function hasTab( tabs, tabName ) {
 	return tabs.some( ( tab ) => tab.name === tabName );
-}
-
-function normalizeTabName( tabName ) {
-	return TAB_ALIASES[ tabName ] || tabName;
 }
 
 function initialTabName( tabs ) {
@@ -193,13 +186,10 @@ function maybeSelectTab( event, tabName ) {
 }
 
 function hasHydratedTab( tabName ) {
-	const normalizedTabName = normalizeTabName( tabName );
 	const data = window.aculectAICompanionSettingsData || {};
-	const hydratedTabs = Array.isArray( data.hydratedTabs )
-		? data.hydratedTabs
-		: SETTINGS_TABS.map( ( tab ) => tab.name );
+	const fallbackTabs = SETTINGS_TABS.map( ( tab ) => tab.name );
 
-	return hydratedTabs.includes( normalizedTabName );
+	return tabNameIsHydrated( tabName, data, fallbackTabs );
 }
 
 function updateAdminSubmenuSelection( tabName ) {

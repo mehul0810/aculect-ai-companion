@@ -15,12 +15,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 	if ( 'cli' !== PHP_SAPI ) {
 		exit;
 	}
+
+	define( 'ABSPATH', dirname( __DIR__ ) . '/' );
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.2.0' );
+	define( 'ACULECT_AI_COMPANION_VERSION', '0.5.0' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', dirname( __DIR__ ) . '/aculect-ai-companion.php' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_DIR' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_DIR', dirname( __DIR__ ) . '/' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_URL' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_URL', 'https://example.com/wp-content/plugins/aculect-ai-companion/' );
 }
 
 if ( ! defined( 'ARRAY_A' ) ) {
@@ -244,6 +258,118 @@ if ( ! function_exists( 'delete_transient' ) ) {
 	}
 }
 
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * Return untranslated text in tests.
+	 *
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain.
+	 */
+	function __( string $text, string $domain = 'default' ): string {
+		unset( $domain );
+
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'esc_html__' ) ) {
+	/**
+	 * Return untranslated escaped text in tests.
+	 *
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain.
+	 */
+	function esc_html__( string $text, string $domain = 'default' ): string {
+		unset( $domain );
+
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'admin_url' ) ) {
+	/**
+	 * Return a deterministic test admin URL.
+	 *
+	 * @param string $path Optional path.
+	 */
+	function admin_url( string $path = '' ): string {
+		return 'https://example.com/wp-admin/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'add_query_arg' ) ) {
+	/**
+	 * Add query args to a URL for tests.
+	 *
+	 * @param array<string, mixed>|string $args Query args or key.
+	 * @param mixed                       $value Query value or URL.
+	 * @param string|null                 $url   URL when key/value form is used.
+	 */
+	function add_query_arg( array|string $args, mixed $value = null, ?string $url = null ): string {
+		if ( is_array( $args ) ) {
+			$query_args = $args;
+			$url        = is_string( $value ) ? $value : (string) $url;
+		} else {
+			$query_args = array( $args => $value );
+			$url        = (string) $url;
+		}
+
+		$url = '' === $url ? 'https://example.com/' : $url;
+		$separator = str_contains( $url, '?' ) ? '&' : '?';
+
+		return $url . $separator . http_build_query( $query_args );
+	}
+}
+
+if ( ! function_exists( 'get_current_user_id' ) ) {
+	/**
+	 * Return a deterministic current user ID.
+	 */
+	function get_current_user_id(): int {
+		return (int) ( $GLOBALS['aculect_ai_companion_test_current_user_id'] ?? 1 );
+	}
+}
+
+if ( ! function_exists( 'wp_create_nonce' ) ) {
+	/**
+	 * Return deterministic test nonces.
+	 *
+	 * @param string $action Nonce action.
+	 */
+	function wp_create_nonce( string $action = '' ): string {
+		return 'nonce-' . $action;
+	}
+}
+
+if ( ! function_exists( 'get_file_data' ) ) {
+	/**
+	 * Parse simple plugin headers for tests.
+	 *
+	 * @param string                $file            File path.
+	 * @param array<string,string>  $default_headers Header map.
+	 * @param string                $context         Header context.
+	 * @return array<string,string>
+	 */
+	function get_file_data( string $file, array $default_headers, string $context = '' ): array {
+		unset( $context );
+
+		if ( ! file_exists( $file ) ) {
+			return array_fill_keys( array_keys( $default_headers ), '' );
+		}
+
+		$contents = file_get_contents( $file );
+		$contents = false === $contents ? '' : $contents;
+		$data     = array();
+
+		foreach ( $default_headers as $key => $header ) {
+			$pattern      = '/^[ \t\/*#@]*' . preg_quote( $header, '/' ) . ':\s*(.+)$/mi';
+			$data[ $key ] = preg_match( $pattern, $contents, $matches ) ? trim( $matches[1] ) : '';
+		}
+
+		return $data;
+	}
+}
+
 if ( ! function_exists( 'home_url' ) ) {
 	/**
 	 * Return a deterministic test home URL.
@@ -346,6 +472,23 @@ if ( ! function_exists( 'translate_user_role' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_user_by' ) ) {
+	/**
+	 * Return one test user by ID.
+	 *
+	 * @param string $field User field.
+	 * @param mixed  $value Field value.
+	 * @return object|false
+	 */
+	function get_user_by( string $field, mixed $value ): object|false {
+		if ( 'id' !== $field && 'ID' !== $field ) {
+			return false;
+		}
+
+		return $GLOBALS['aculect_ai_companion_test_users'][ (int) $value ] ?? false;
+	}
+}
+
 if ( ! function_exists( 'absint' ) ) {
 	/**
 	 * Return a non-negative integer.
@@ -354,6 +497,29 @@ if ( ! function_exists( 'absint' ) ) {
 	 */
 	function absint( mixed $maybeint ): int {
 		return abs( (int) $maybeint );
+	}
+}
+
+if ( ! function_exists( 'wp_hash_password' ) ) {
+	/**
+	 * Hash a password for tests.
+	 *
+	 * @param string $password Raw password.
+	 */
+	function wp_hash_password( string $password ): string {
+		return password_hash( $password, PASSWORD_BCRYPT );
+	}
+}
+
+if ( ! function_exists( 'wp_check_password' ) ) {
+	/**
+	 * Check a password hash for tests.
+	 *
+	 * @param string $password Raw password.
+	 * @param string $hash     Password hash.
+	 */
+	function wp_check_password( string $password, string $hash ): bool {
+		return password_verify( $password, $hash );
 	}
 }
 

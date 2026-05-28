@@ -8,6 +8,7 @@
     "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",
     "lint:css": "wp-scripts lint-style",
+    "test:js": "node --test tests/js/*.test.mjs",
     "format": "wp-scripts format"
   },
   "engines": {

@@ -132,6 +132,27 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertStringContainsString( 'updated_at < %s', $wpdb->prepared[0]['query'] );
 	}
 
+	public function test_create_client_runs_duplicate_cleanup_before_insert(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$credentials = ( new ClientRepository() )->create_client(
+			'ChatGPT Connector',
+			array( 'https://chatgpt.com/oauth/callback' )
+		);
+
+		self::assertIsArray( $credentials );
+		self::assertSame( 'chatgpt', $credentials['provider'] );
+		self::assertNotEmpty( $credentials['client_id'] );
+		self::assertNotEmpty( $credentials['client_secret'] );
+		self::assertSame( array( 'query', 'insert' ), $wpdb->operations );
+		self::assertStringContainsString( 'UPDATE %i clients', $wpdb->prepared[0]['query'] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->inserts[0]['table'] );
+		self::assertSame( 'chatgpt', $wpdb->inserts[0]['data']['provider'] );
+		self::assertSame( '["https:\/\/chatgpt.com\/oauth\/callback"]', $wpdb->inserts[0]['data']['redirect_uris'] );
+		self::assertSame( 0, $wpdb->inserts[0]['data']['revoked'] );
+	}
+
 	/**
 	 * Invoke the private hash helper on a repository.
 	 *
@@ -174,6 +195,20 @@ final class FakeAccessTokenWpdb {
 	 * @var string[]
 	 */
 	public array $queries = array();
+
+	/**
+	 * Insert calls.
+	 *
+	 * @var array<int, array{table: string, data: array<string, mixed>}>
+	 */
+	public array $inserts = array();
+
+	/**
+	 * Operation order.
+	 *
+	 * @var string[]
+	 */
+	public array $operations = array();
 
 	/**
 	 * Configured result rows.
@@ -221,8 +256,28 @@ final class FakeAccessTokenWpdb {
 	 */
 	public function query( string $query ): int|false {
 		$this->queries[] = $query;
+		$this->operations[] = 'query';
 
 		return $this->query_result;
+	}
+
+	/**
+	 * Record an insert call.
+	 *
+	 * @param string               $table   Table name.
+	 * @param array<string, mixed> $data    Insert data.
+	 * @param string[]             $formats Insert formats.
+	 */
+	public function insert( string $table, array $data, array $formats ): int|false {
+		unset( $formats );
+
+		$this->inserts[] = array(
+			'table' => $table,
+			'data'  => $data,
+		);
+		$this->operations[] = 'insert';
+
+		return 1;
 	}
 
 	/**

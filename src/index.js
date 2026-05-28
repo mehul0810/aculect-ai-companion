@@ -524,6 +524,54 @@ function LogsTable( { logs } ) {
 	);
 }
 
+function activityAssistantName( item ) {
+	return item.client_name || item.provider || item.client_id || 'Assistant';
+}
+
+function activityUserName( item ) {
+	if ( item.user ) {
+		return item.user;
+	}
+
+	return item.user_id ? `User #${ item.user_id }` : 'Unknown user';
+}
+
+function activityTargetLabel( item ) {
+	const targetType = item.target_type || 'site';
+
+	return item.target_id ? `${ targetType } #${ item.target_id }` : targetType;
+}
+
+function activityBreakdown( items, getLabel ) {
+	const counts = items.reduce( ( totals, item ) => {
+		const label = getLabel( item );
+
+		return {
+			...totals,
+			[ label ]: ( totals[ label ] || 0 ) + 1,
+		};
+	}, {} );
+
+	return Object.entries( counts )
+		.map( ( [ label, count ] ) => ( { label, count } ) )
+		.sort(
+			( a, b ) => b.count - a.count || a.label.localeCompare( b.label )
+		)
+		.slice( 0, 5 );
+}
+
+function ActivityStatusPill( { status } ) {
+	const normalizedStatus = status === 'error' ? 'error' : 'success';
+
+	return (
+		<span
+			className={ `aculect-ai-companion-activity-status is-${ normalizedStatus }` }
+		>
+			{ normalizedStatus === 'error' ? 'Failed' : 'Success' }
+		</span>
+	);
+}
+
 function ActivityTable( { activity } ) {
 	const items = Array.isArray( activity?.items ) ? activity.items : [];
 
@@ -536,51 +584,43 @@ function ActivityTable( { activity } ) {
 	}
 
 	return (
-		<div className="aculect-ai-companion-log-table-wrap">
-			<table className="widefat striped aculect-ai-companion-log-table">
+		<div className="aculect-ai-companion-activity-table-wrap">
+			<table className="widefat striped aculect-ai-companion-activity-table">
 				<thead>
 					<tr>
 						<th>Time</th>
-						<th>Status</th>
-						<th>Action</th>
-						<th>Assistant</th>
 						<th>User</th>
+						<th>Assistant</th>
+						<th>Action</th>
 						<th>Target</th>
-						<th>Error</th>
-						<th>Message</th>
-						<th>Context</th>
+						<th>Result</th>
+						<th>Details</th>
 					</tr>
 				</thead>
 				<tbody>
 					{ items.map( ( item ) => (
 						<tr key={ item.id }>
-							<td>{ item.created_at }</td>
 							<td>
-								<span
-									className={ `aculect-ai-companion-activity-status is-${ item.status }` }
-								>
-									{ item.status || 'success' }
-								</span>
+								<strong className="aculect-ai-companion-activity-table__time">
+									{ item.created_at }
+								</strong>
 							</td>
+							<td>{ activityUserName( item ) }</td>
+							<td>{ activityAssistantName( item ) }</td>
 							<td>
 								<code>{ item.action }</code>
 							</td>
+							<td>{ activityTargetLabel( item ) }</td>
 							<td>
-								{ item.client_name ||
-									item.provider ||
-									item.client_id ||
-									'-' }
+								<ActivityStatusPill status={ item.status } />
+								{ item.error_code && (
+									<span className="aculect-ai-companion-activity-error-code">
+										{ item.error_code }
+									</span>
+								) }
 							</td>
-							<td>{ item.user_id || '-' }</td>
 							<td>
-								{ item.target_type || '-' }
-								{ item.target_id
-									? ` #${ item.target_id }`
-									: '' }
-							</td>
-							<td>{ item.error_code || '-' }</td>
-							<td>{ item.message || '-' }</td>
-							<td>
+								{ item.message || '-' }
 								<LogContext context={ item.context } />
 							</td>
 						</tr>
@@ -591,43 +631,136 @@ function ActivityTable( { activity } ) {
 	);
 }
 
+function ActivityMetricCard( { icon, label, value, description, tone = '' } ) {
+	return (
+		<div className={ `aculect-ai-companion-activity-metric ${ tone }` }>
+			<span
+				className="aculect-ai-companion-activity-metric__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 18 } />
+			</span>
+			<div>
+				<span>{ label }</span>
+				<strong>{ value }</strong>
+				<p>{ description }</p>
+			</div>
+		</div>
+	);
+}
+
 function ActivitySummary( { summary } ) {
 	const data = summary && typeof summary === 'object' ? summary : {};
 	const items = [
 		{
-			label: 'Actions',
+			icon: chartBar,
+			label: 'Total',
 			value: data.total || 0,
+			description: 'Sanitized activity records in this range.',
 		},
 		{
-			label: 'Failures',
-			value: data.failures || 0,
-			tone: data.failures > 0 ? 'is-error' : '',
+			icon: postContent,
+			label: 'Content',
+			value: data.content || 0,
+			description: 'Post, page, taxonomy, and content actions.',
 		},
 		{
-			label: 'Assistants',
-			value: data.assistants || 0,
+			icon: comment,
+			label: 'Comments',
+			value: data.comments || 0,
+			description: 'Comment moderation and reply actions.',
 		},
 		{
-			label: 'High risk',
-			value: data.highRisk || 0,
-			tone: data.highRisk > 0 ? 'is-warning' : '',
+			icon: media,
+			label: 'Media',
+			value: data.media || 0,
+			description: 'Upload and media library actions.',
 		},
 	];
 
 	return (
 		<div className="aculect-ai-companion-activity-summary">
 			{ items.map( ( item ) => (
-				<div
+				<ActivityMetricCard
 					key={ item.label }
-					className={ `aculect-ai-companion-activity-summary-item ${
-						item.tone || ''
-					}` }
-				>
-					<span>{ item.label }</span>
-					<strong>{ item.value }</strong>
-				</div>
+					icon={ item.icon }
+					label={ item.label }
+					value={ item.value }
+					description={ item.description }
+					tone={ item.tone }
+				/>
 			) ) }
 		</div>
+	);
+}
+
+function ActivityInsightList( { title, items, emptyText } ) {
+	return (
+		<div className="aculect-ai-companion-activity-insight-list">
+			<h3>{ title }</h3>
+			{ items.length === 0 ? (
+				<p>{ emptyText }</p>
+			) : (
+				<ul>
+					{ items.map( ( item ) => (
+						<li key={ item.label }>
+							<span>{ item.label }</span>
+							<strong>{ item.count }</strong>
+						</li>
+					) ) }
+				</ul>
+			) }
+		</div>
+	);
+}
+
+function ActivityInsights( { activity } ) {
+	const items = Array.isArray( activity?.items ) ? activity.items : [];
+	const actionBreakdown = activityBreakdown(
+		items,
+		( item ) => item.action || 'Unknown action'
+	);
+	const userBreakdown = activityBreakdown( items, activityUserName );
+
+	return (
+		<aside className="aculect-ai-companion-activity-sidebar">
+			<div className="aculect-ai-companion-side-panel">
+				<div className="aculect-ai-companion-side-panel__heading">
+					<span className="aculect-ai-companion-side-panel__icon">
+						<Icon icon={ chartBar } size={ 20 } />
+					</span>
+					<h3>Activity trend</h3>
+				</div>
+				<p>
+					{ activity.total || 0 } sanitized records match the current
+					filters across { activity.totalPages || 1 } page
+					{ activity.totalPages === 1 ? '' : 's' }.
+				</p>
+			</div>
+			<ActivityInsightList
+				title="Action breakdown"
+				items={ actionBreakdown }
+				emptyText="No actions match the current filters."
+			/>
+			<ActivityInsightList
+				title="Top active users"
+				items={ userBreakdown }
+				emptyText="No connected users appear in this result set."
+			/>
+			<div className="aculect-ai-companion-side-panel">
+				<div className="aculect-ai-companion-side-panel__heading">
+					<span className="aculect-ai-companion-side-panel__icon">
+						<Icon icon={ shield } size={ 20 } />
+					</span>
+					<h3>Privacy posture</h3>
+				</div>
+				<p>
+					IP addresses are omitted from this dashboard. Details are
+					limited to sanitized audit context and never include raw
+					request bodies, tokens, OAuth codes, or secrets.
+				</p>
+			</div>
+		</aside>
 	);
 }
 
@@ -3474,155 +3607,212 @@ function SettingsApp() {
 
 					if ( tab.name === 'activity' ) {
 						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-activity-card">
-								<CardHeader>AI Activity</CardHeader>
-								<CardBody>
-									<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-										Review write actions requested by
-										connected AI assistants. Read-only
-										actions are not logged in this version.
-									</p>
-									<ActivitySummary
-										summary={ activity.summary }
-									/>
-									<form
-										method="get"
-										action="admin.php"
-										className="aculect-ai-companion-activity-filters"
-									>
-										<input
-											type="hidden"
-											name="page"
-											value="aculect-ai-companion"
-										/>
-										<input
-											type="hidden"
-											name="tab"
-											value="activity"
-										/>
-										<label htmlFor="aculect-ai-companion-activity-action">
-											<span>Action</span>
-											<input
-												id="aculect-ai-companion-activity-action"
-												type="text"
-												name="activity_action"
-												defaultValue={
-													activityFilters.action || ''
-												}
-											/>
-										</label>
-										<label htmlFor="aculect-ai-companion-activity-status">
-											<span>Status</span>
-											<select
-												id="aculect-ai-companion-activity-status"
-												name="activity_status"
-												defaultValue={
-													activityFilters.status || ''
-												}
-											>
-												<option value="">Any</option>
-												<option value="success">
-													Success
-												</option>
-												<option value="error">
-													Error
-												</option>
-											</select>
-										</label>
-										<label htmlFor="aculect-ai-companion-activity-user">
-											<span>User ID</span>
-											<input
-												id="aculect-ai-companion-activity-user"
-												type="number"
-												min="1"
-												name="activity_user"
-												defaultValue={
-													activityFilters.user_id ||
-													''
-												}
-											/>
-										</label>
-										<label htmlFor="aculect-ai-companion-activity-assistant">
-											<span>Assistant</span>
-											<input
-												id="aculect-ai-companion-activity-assistant"
-												type="text"
-												name="activity_assistant"
-												defaultValue={
-													activityFilters.assistant ||
-													''
-												}
-											/>
-										</label>
-										<label htmlFor="aculect-ai-companion-activity-range">
-											<span>Range</span>
-											<select
-												id="aculect-ai-companion-activity-range"
-												name="activity_range"
-												defaultValue={
-													activityFilters.range ||
-													'7d'
-												}
-											>
-												<option value="24h">
-													24 hours
-												</option>
-												<option value="7d">
-													7 days
-												</option>
-												<option value="30d">
-													30 days
-												</option>
-												<option value="90d">
-													90 days
-												</option>
-												<option value="all">
-													All time
-												</option>
-											</select>
-										</label>
-										<Button type="submit" variant="primary">
-											Filter
-										</Button>
-										<Button
-											href={ tabUrl(
-												'activity',
-												data.adminPageUrl
-											) }
-											variant="secondary"
-										>
-											Reset
-										</Button>
-									</form>
-									<div className="aculect-ai-companion-log-toolbar">
-										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
-											Showing page { activity.page || 1 }{ ' ' }
-											of { activity.totalPages || 1 }.
+							<div className="aculect-ai-companion-activity-dashboard">
+								<section className="aculect-ai-companion-activity-hero">
+									<div>
+										<span className="aculect-ai-companion-eyebrow">
+											Audit history
+										</span>
+										<h2 className="aculect-ai-companion-section-title">
+											Activity
+										</h2>
+										<p>
+											Monitor connected assistant actions
+											with sanitized audit records,
+											bounded pagination, and privacy-safe
+											filters.
 										</p>
 									</div>
-									<ActivityTable activity={ activity } />
-									<div className="aculect-ai-companion-log-pagination">
-										<Button
-											href={
-												activity.prevUrl || undefined
-											}
-											variant="secondary"
-											disabled={ ! activity.prevUrl }
-										>
-											Previous
-										</Button>
-										<Button
-											href={
-												activity.nextUrl || undefined
-											}
-											variant="secondary"
-											disabled={ ! activity.nextUrl }
-										>
-											Next
-										</Button>
+								</section>
+								<ActivitySummary summary={ activity.summary } />
+								<div className="aculect-ai-companion-activity-control-banner">
+									<span
+										className="aculect-ai-companion-activity-control-banner__icon"
+										aria-hidden="true"
+									>
+										<Icon icon={ shield } size={ 20 } />
+									</span>
+									<div>
+										<strong>Sanitized audit log</strong>
+										<p>
+											Activity records show action
+											metadata and safe context only. IP
+											addresses, tokens, OAuth codes, and
+											raw request bodies are not
+											displayed.
+										</p>
 									</div>
-								</CardBody>
-							</Card>
+								</div>
+								<div className="aculect-ai-companion-activity-layout">
+									<section className="aculect-ai-companion-activity-main">
+										<form
+											method="get"
+											action="admin.php"
+											className="aculect-ai-companion-activity-filters"
+										>
+											<input
+												type="hidden"
+												name="page"
+												value="aculect-ai-companion"
+											/>
+											<input
+												type="hidden"
+												name="tab"
+												value="activity"
+											/>
+											<label htmlFor="aculect-ai-companion-activity-range">
+												<span>Range</span>
+												<select
+													id="aculect-ai-companion-activity-range"
+													name="activity_range"
+													defaultValue={
+														activityFilters.range ||
+														'7d'
+													}
+												>
+													<option value="24h">
+														24 hours
+													</option>
+													<option value="7d">
+														7 days
+													</option>
+													<option value="30d">
+														30 days
+													</option>
+													<option value="90d">
+														90 days
+													</option>
+													<option value="all">
+														All time
+													</option>
+												</select>
+											</label>
+											<label htmlFor="aculect-ai-companion-activity-status">
+												<span>Status</span>
+												<select
+													id="aculect-ai-companion-activity-status"
+													name="activity_status"
+													defaultValue={
+														activityFilters.status ||
+														''
+													}
+												>
+													<option value="">
+														Any
+													</option>
+													<option value="success">
+														Success
+													</option>
+													<option value="error">
+														Failed
+													</option>
+												</select>
+											</label>
+											<label htmlFor="aculect-ai-companion-activity-user">
+												<span>User ID</span>
+												<input
+													id="aculect-ai-companion-activity-user"
+													type="number"
+													min="1"
+													name="activity_user"
+													defaultValue={
+														activityFilters.user_id ||
+														''
+													}
+												/>
+											</label>
+											<label htmlFor="aculect-ai-companion-activity-assistant">
+												<span>Assistant</span>
+												<input
+													id="aculect-ai-companion-activity-assistant"
+													type="text"
+													name="activity_assistant"
+													defaultValue={
+														activityFilters.assistant ||
+														''
+													}
+												/>
+											</label>
+											<label htmlFor="aculect-ai-companion-activity-action">
+												<span>Action Type</span>
+												<input
+													id="aculect-ai-companion-activity-action"
+													type="text"
+													name="activity_action"
+													defaultValue={
+														activityFilters.action ||
+														''
+													}
+												/>
+											</label>
+											<label htmlFor="aculect-ai-companion-activity-search">
+												<span>Search</span>
+												<input
+													id="aculect-ai-companion-activity-search"
+													type="search"
+													name="activity_search"
+													defaultValue={
+														activityFilters.search ||
+														''
+													}
+												/>
+											</label>
+											<div className="aculect-ai-companion-activity-filter-actions">
+												<Button
+													type="submit"
+													variant="primary"
+												>
+													Filter
+												</Button>
+												<Button
+													href={ tabUrl(
+														'activity',
+														data.adminPageUrl
+													) }
+													variant="secondary"
+												>
+													Reset
+												</Button>
+											</div>
+										</form>
+										<div className="aculect-ai-companion-activity-table-toolbar">
+											<p>
+												Showing page{ ' ' }
+												{ activity.page || 1 } of{ ' ' }
+												{ activity.totalPages || 1 }.
+											</p>
+											<strong>
+												{ activity.total || 0 } total
+												records
+											</strong>
+										</div>
+										<ActivityTable activity={ activity } />
+										<div className="aculect-ai-companion-log-pagination">
+											<Button
+												href={
+													activity.prevUrl ||
+													undefined
+												}
+												variant="secondary"
+												disabled={ ! activity.prevUrl }
+											>
+												Previous
+											</Button>
+											<Button
+												href={
+													activity.nextUrl ||
+													undefined
+												}
+												variant="secondary"
+												disabled={ ! activity.nextUrl }
+											>
+												Next
+											</Button>
+										</div>
+									</section>
+									<ActivityInsights activity={ activity } />
+								</div>
+							</div>
 						);
 					}
 

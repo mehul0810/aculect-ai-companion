@@ -92,23 +92,32 @@ final class ActivityRepository {
 	public function summary( array $filters = array() ): array {
 		global $wpdb;
 
-		$where              = $this->where_clause( $filters );
-		$table              = Installer::table_name();
-		$high_risk_patterns = array(
+		$where                  = $this->where_clause( $filters );
+		$table                  = Installer::table_name();
+		$high_risk_patterns     = array(
 			'%"risk_level":"publish"%',
 			'%"risk_level":"destructive"%',
 			'%"risk_level":"system"%',
 		);
-		$row                = $wpdb->get_row(
+		$activity_type_patterns = array(
+			'content.%',
+			'taxonomy.%',
+			'comment.%',
+			'media.%',
+		);
+		$row                    = $wpdb->get_row(
 			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- WHERE clause is built from fixed fragments and placeholder values in where_clause().
 			$wpdb->prepare(
 				"SELECT COUNT(*) AS total,
 					SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
 					SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failures,
 					COUNT(DISTINCT NULLIF(COALESCE(NULLIF(client_name, ''), NULLIF(client_id, ''), provider, ''), '')) AS assistants,
-					SUM(CASE WHEN context LIKE %s OR context LIKE %s OR context LIKE %s THEN 1 ELSE 0 END) AS high_risk
+					SUM(CASE WHEN context LIKE %s OR context LIKE %s OR context LIKE %s THEN 1 ELSE 0 END) AS high_risk,
+					SUM(CASE WHEN target_type IN ('post', 'page', 'term', 'taxonomy') OR action LIKE %s OR action LIKE %s THEN 1 ELSE 0 END) AS content_actions,
+					SUM(CASE WHEN target_type = 'comment' OR action LIKE %s THEN 1 ELSE 0 END) AS comment_actions,
+					SUM(CASE WHEN target_type = 'attachment' OR action LIKE %s THEN 1 ELSE 0 END) AS media_actions
 				FROM %i {$where['sql']}",
-				...array_merge( $high_risk_patterns, array( $table ), $where['values'] )
+				...array_merge( $high_risk_patterns, $activity_type_patterns, array( $table ), $where['values'] )
 			),
 			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
 			ARRAY_A
@@ -122,6 +131,9 @@ final class ActivityRepository {
 			'failures'   => (int) ( $row['failures'] ?? 0 ),
 			'assistants' => (int) ( $row['assistants'] ?? 0 ),
 			'highRisk'   => (int) ( $row['high_risk'] ?? 0 ),
+			'content'    => (int) ( $row['content_actions'] ?? 0 ),
+			'comments'   => (int) ( $row['comment_actions'] ?? 0 ),
+			'media'      => (int) ( $row['media_actions'] ?? 0 ),
 		);
 	}
 
@@ -184,6 +196,8 @@ final class ActivityRepository {
 	 */
 	private function public_row( array $row ): array {
 		$context = json_decode( (string) ( $row['context'] ?? '{}' ), true );
+		$user_id = null === $row['user_id'] ? null : (int) $row['user_id'];
+		$user    = null !== $user_id ? get_user_by( 'id', $user_id ) : false;
 
 		return array(
 			'id'          => (int) ( $row['id'] ?? 0 ),
@@ -191,7 +205,8 @@ final class ActivityRepository {
 			'provider'    => (string) ( $row['provider'] ?? '' ),
 			'client_id'   => (string) ( $row['client_id'] ?? '' ),
 			'client_name' => (string) ( $row['client_name'] ?? '' ),
-			'user_id'     => null === $row['user_id'] ? null : (int) $row['user_id'],
+			'user_id'     => $user_id,
+			'user'        => $user ? $user->display_name : '',
 			'action'      => (string) ( $row['action'] ?? '' ),
 			'target_type' => (string) ( $row['target_type'] ?? '' ),
 			'target_id'   => null === $row['target_id'] ? null : (int) $row['target_id'],
@@ -237,6 +252,19 @@ final class ActivityRepository {
 		if ( null !== $assistant ) {
 			$clauses[] = '(client_id LIKE %s OR client_name LIKE %s OR provider LIKE %s)';
 			$like      = '%' . $wpdb->esc_like( $assistant ) . '%';
+			$values[]  = $like;
+			$values[]  = $like;
+			$values[]  = $like;
+		}
+
+		$search = $this->nullable_text( $filters['search'] ?? null, 100 );
+		if ( null !== $search ) {
+			$clauses[] = '(action LIKE %s OR target_type LIKE %s OR error_code LIKE %s OR message LIKE %s OR client_name LIKE %s OR client_id LIKE %s OR provider LIKE %s)';
+			$like      = '%' . $wpdb->esc_like( $search ) . '%';
+			$values[]  = $like;
+			$values[]  = $like;
+			$values[]  = $like;
+			$values[]  = $like;
 			$values[]  = $like;
 			$values[]  = $like;
 			$values[]  = $like;

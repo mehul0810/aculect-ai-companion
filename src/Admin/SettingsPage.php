@@ -469,6 +469,7 @@ final class SettingsPage {
 			'status'    => isset( $_GET['activity_status'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_status'] ) ) : '',
 			'user_id'   => isset( $_GET['activity_user'] ) ? absint( $_GET['activity_user'] ) : 0,
 			'assistant' => isset( $_GET['activity_assistant'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_assistant'] ) ) : '',
+			'search'    => isset( $_GET['activity_search'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_search'] ) ) : '',
 			'range'     => $range,
 		);
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
@@ -491,6 +492,7 @@ final class SettingsPage {
 					'activity_status'    => (string) ( $filters['status'] ?? '' ),
 					'activity_user'      => (int) ( $filters['user_id'] ?? 0 ),
 					'activity_assistant' => (string) ( $filters['assistant'] ?? '' ),
+					'activity_search'    => (string) ( $filters['search'] ?? '' ),
 					'activity_range'     => (string) ( $filters['range'] ?? '7d' ),
 				),
 				static fn( mixed $value ): bool => '' !== $value && 0 !== $value

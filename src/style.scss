@@ -1,3 +1,7 @@
+.aculect-ai-companion-settings-wrap {
+	margin: 0;
+}
+
 .aculect-ai-companion-settings-app-root {
 	margin-top: 0;
 }
@@ -13,7 +17,6 @@
 	--aculect-ai-companion-orange: #f97316;
 	max-width: 1400px;
 	margin: 0 auto;
-	padding: 22px 18px 36px;
 	box-sizing: border-box;
 	color: var(--aculect-ai-companion-ink);
 }
@@ -30,6 +33,7 @@
 	justify-content: space-between;
 	gap: 18px;
 	margin: 0 0 22px;
+	background: #fff;
 }
 
 .aculect-ai-companion-app-branding {
@@ -3312,10 +3316,6 @@
 }
 
 @media (max-width: 600px) {
-
-	.aculect-ai-companion-app-root {
-		padding: 18px 12px 28px;
-	}
 
 	.aculect-ai-companion-app-header {
 		gap: 12px;

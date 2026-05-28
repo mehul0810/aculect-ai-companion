@@ -19,6 +19,8 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth refresh tokens use a dedicated custom table and must read/write fresh token state.
 
+	private const DEFAULT_PRUNE_BATCH_SIZE = 500;
+
 	/**
 	 * Create a refresh-token entity for league/oauth2-server.
 	 */
@@ -120,22 +122,34 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	 * remain immediate while the token could otherwise still be presented.
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
+	 * @param int         $limit  Maximum rows to delete in this pass.
 	 * @return int Number of deleted rows.
 	 */
-	public function prune_expired( ?string $cutoff = null ): int {
+	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
 		global $wpdb;
 
 		$table  = Installer::table_names()['refresh_tokens'];
 		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
+		$limit  = $this->normalized_batch_limit( $limit );
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				'DELETE FROM %i WHERE expires_at < %s',
+				'DELETE FROM %i WHERE expires_at < %s LIMIT %d',
 				$table,
-				$cutoff
+				$cutoff,
+				$limit
 			)
 		);
 
 		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Keep maintenance deletes bounded.
+	 *
+	 * @param int $limit Requested row limit.
+	 */
+	private function normalized_batch_limit( int $limit ): int {
+		return min( 1000, max( 1, $limit ) );
 	}
 
 	/**

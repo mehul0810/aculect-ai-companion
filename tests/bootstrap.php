@@ -82,6 +82,29 @@ if ( ! function_exists( 'update_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'add_option' ) ) {
+	/**
+	 * Add a test option value only when it does not already exist.
+	 *
+	 * @param string $option     Option name.
+	 * @param mixed  $value      Option value.
+	 * @param mixed  $deprecated Deprecated description argument.
+	 * @param mixed  $autoload   Autoload flag.
+	 * @return bool
+	 */
+	function add_option( string $option, mixed $value = '', mixed $deprecated = '', mixed $autoload = null ): bool {
+		unset( $deprecated, $autoload );
+
+		if ( array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_options'] ) ) {
+			return false;
+		}
+
+		$GLOBALS['aculect_ai_companion_test_options'][ $option ] = $value;
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'apply_filters' ) ) {
 	/**
 	 * Return an unfiltered test value.
@@ -443,32 +466,6 @@ if ( ! function_exists( 'wp_http_validate_url' ) ) {
 	 */
 	function wp_http_validate_url( string $url ): string|false {
 		return false === filter_var( $url, FILTER_VALIDATE_URL ) ? false : $url;
-	}
-}
-
-if ( ! function_exists( 'wp_roles' ) ) {
-	/**
-	 * Return deterministic test roles.
-	 */
-	function wp_roles(): object {
-		return (object) array(
-			'roles' => array(
-				'administrator' => array( 'name' => 'Administrator' ),
-				'editor'        => array( 'name' => 'Editor' ),
-				'author'        => array( 'name' => 'Author' ),
-			),
-		);
-	}
-}
-
-if ( ! function_exists( 'translate_user_role' ) ) {
-	/**
-	 * Return an untranslated test role label.
-	 *
-	 * @param string $name Role name.
-	 */
-	function translate_user_role( string $name ): string {
-		return $name;
 	}
 }
 

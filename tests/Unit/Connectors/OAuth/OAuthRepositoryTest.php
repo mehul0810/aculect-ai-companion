@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -107,29 +108,69 @@ final class OAuthRepositoryTest extends TestCase {
 
 		self::assertSame( 1, $revoked );
 		self::assertStringContainsString( 'UPDATE %i clients', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'clients.registration_fingerprint = %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'active_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'active_codes.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'LIMIT %d', $wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( 'chatgpt', $wpdb->prepared[0]['args'][1] );
-		self::assertSame( '["https:\/\/chatgpt.com\/oauth\/callback"]', $wpdb->prepared[0]['args'][2] );
+		self::assertSame(
+			ClientRegistrationFingerprint::from_redirect_uris( array( 'https://chatgpt.com/oauth/callback' ) ),
+			$wpdb->prepared[0]['args'][2]
+		);
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][3] );
 		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][4] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_auth_codes', $wpdb->prepared[0]['args'][5] );
 		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][6] );
+		self::assertSame( 25, $wpdb->prepared[0]['args'][7] );
+	}
+
+	public function test_duplicate_client_cleanup_uses_order_insensitive_redirect_fingerprints(): void {
+		$first  = ClientRegistrationFingerprint::from_redirect_uris(
+			array(
+				'https://example.com/b/callback',
+				'https://example.com/a/callback',
+			)
+		);
+		$second = ClientRegistrationFingerprint::from_redirect_uris(
+			array(
+				'https://example.com/a/callback',
+				'https://example.com/b/callback',
+			)
+		);
+
+		self::assertSame( $first, $second );
+
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		( new ClientRepository() )->revoke_unused_duplicate_clients(
+			'mcp',
+			array(
+				'https://example.com/b/callback',
+				'https://example.com/a/callback',
+			),
+			'2026-05-28 00:00:00'
+		);
+
+		self::assertSame( $first, $wpdb->prepared[0]['args'][2] );
+		self::assertStringNotContainsString( 'clients.redirect_uris = %s', $wpdb->prepared[0]['query'] );
 	}
 
 	public function test_prune_revoked_clients_deletes_only_old_revoked_rows(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
 
-		$deleted = ( new ClientRepository() )->prune_revoked_clients( '2026-05-01 00:00:00' );
+		$deleted = ( new ClientRepository() )->prune_revoked_clients( '2026-05-01 00:00:00', 37 );
 
 		self::assertSame( 1, $deleted );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( '2026-05-01 00:00:00', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( 37, $wpdb->prepared[0]['args'][2] );
 		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'updated_at < %s', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'LIMIT %d', $wpdb->prepared[0]['query'] );
 	}
 
 	public function test_create_client_runs_duplicate_cleanup_before_insert(): void {
@@ -150,6 +191,10 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->inserts[0]['table'] );
 		self::assertSame( 'chatgpt', $wpdb->inserts[0]['data']['provider'] );
 		self::assertSame( '["https:\/\/chatgpt.com\/oauth\/callback"]', $wpdb->inserts[0]['data']['redirect_uris'] );
+		self::assertSame(
+			ClientRegistrationFingerprint::from_redirect_uris( array( 'https://chatgpt.com/oauth/callback' ) ),
+			$wpdb->inserts[0]['data']['registration_fingerprint']
+		);
 		self::assertSame( 0, $wpdb->inserts[0]['data']['revoked'] );
 	}
 
@@ -255,7 +300,7 @@ final class FakeAccessTokenWpdb {
 	 * @param string $query SQL query.
 	 */
 	public function query( string $query ): int|false {
-		$this->queries[] = $query;
+		$this->queries[]    = $query;
 		$this->operations[] = 'query';
 
 		return $this->query_result;
@@ -271,7 +316,7 @@ final class FakeAccessTokenWpdb {
 	public function insert( string $table, array $data, array $formats ): int|false {
 		unset( $formats );
 
-		$this->inserts[] = array(
+		$this->inserts[]    = array(
 			'table' => $table,
 			'data'  => $data,
 		);

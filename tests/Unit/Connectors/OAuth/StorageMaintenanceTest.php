@@ -16,6 +16,8 @@ use Aculect\AICompanion\Connectors\OAuth\StorageMaintenance;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused repository tests replace wpdb with a local test double.
+
 /**
  * Verifies pruning and write-throttle behavior for OAuth storage.
  */
@@ -26,8 +28,8 @@ final class StorageMaintenanceTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->wpdb = new FakeOAuthWpdb();
-		$GLOBALS['wpdb'] = $this->wpdb;
+		$this->wpdb                                   = new FakeOAuthWpdb();
+		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 	}
 
@@ -35,9 +37,10 @@ final class StorageMaintenanceTest extends TestCase {
 		$deleted = ( new AuthCodeRepository() )->prune_expired( '2026-05-20 00:00:00' );
 
 		self::assertSame( 3, $deleted );
-		self::assertSame( 'DELETE FROM %i WHERE expires_at < %s', $this->wpdb->prepared[0]['query'] );
+		self::assertSame( 'DELETE FROM %i WHERE expires_at < %s LIMIT %d', $this->wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_auth_codes', $this->wpdb->prepared[0]['args'][0] );
 		self::assertSame( '2026-05-20 00:00:00', $this->wpdb->prepared[0]['args'][1] );
+		self::assertSame( 500, $this->wpdb->prepared[0]['args'][2] );
 	}
 
 	public function test_prunes_expired_access_tokens(): void {
@@ -46,6 +49,7 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( 3, $deleted );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $this->wpdb->prepared[0]['args'][0] );
 		self::assertStringContainsString( 'expires_at < %s', $this->wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'LIMIT %d', $this->wpdb->prepared[0]['query'] );
 	}
 
 	public function test_prunes_expired_refresh_tokens(): void {
@@ -54,6 +58,7 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( 3, $deleted );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $this->wpdb->prepared[0]['args'][0] );
 		self::assertStringContainsString( 'expires_at < %s', $this->wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'LIMIT %d', $this->wpdb->prepared[0]['query'] );
 	}
 
 	public function test_failed_prune_query_returns_zero_deleted_rows(): void {
@@ -75,8 +80,10 @@ final class StorageMaintenanceTest extends TestCase {
 			$result
 		);
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $this->wpdb->prepared[3]['args'][0] );
+		self::assertSame( 500, $this->wpdb->prepared[3]['args'][2] );
 		self::assertStringContainsString( 'revoked = 1', $this->wpdb->prepared[3]['query'] );
 		self::assertStringContainsString( 'updated_at < %s', $this->wpdb->prepared[3]['query'] );
+		self::assertStringContainsString( 'LIMIT %d', $this->wpdb->prepared[3]['query'] );
 	}
 
 	public function test_last_used_updates_are_throttled(): void {
@@ -96,16 +103,30 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( array(), $this->wpdb->queries );
 	}
 
+	public function test_maybe_prune_skips_when_lock_is_active(): void {
+		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() + 300, false );
+
+		StorageMaintenance::maybe_prune();
+
+		self::assertSame( array(), $this->wpdb->queries );
+	}
+
 	public function test_delete_options_removes_oauth_prune_timestamp(): void {
 		update_option( 'aculect_ai_companion_oauth_last_pruned_at', 123, false );
+		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() + 300, false );
 
 		StorageMaintenance::delete_options();
 
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
 	}
 
 	/**
 	 * Invoke private touch-throttle decision logic.
+	 *
+	 * @param AccessTokenRepository $repository   Repository instance.
+	 * @param string                $last_used_at Existing last-used timestamp.
+	 * @param int                   $now          Current Unix timestamp.
 	 */
 	private function shouldTouch( AccessTokenRepository $repository, string $last_used_at, int $now ): bool {
 		$reflection = new ReflectionMethod( $repository, 'should_touch' );
@@ -113,6 +134,8 @@ final class StorageMaintenanceTest extends TestCase {
 		return (bool) $reflection->invokeArgs( $repository, array( $last_used_at, $now ) );
 	}
 }
+
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test double is intentionally local to this file.
 
 /**
  * Minimal wpdb test double for focused repository unit tests.
@@ -122,11 +145,15 @@ final class FakeOAuthWpdb {
 	public string $prefix = 'wp_';
 
 	/**
+	 * Prepared SQL calls.
+	 *
 	 * @var array<int, array{query: string, args: array<int, mixed>}>
 	 */
 	public array $prepared = array();
 
 	/**
+	 * Raw SQL query calls.
+	 *
 	 * @var string[]
 	 */
 	public array $queries = array();

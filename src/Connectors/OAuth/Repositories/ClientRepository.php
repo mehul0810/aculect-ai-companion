@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use DateTimeImmutable;
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
@@ -20,6 +21,9 @@ use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
 final class ClientRepository implements ClientRepositoryInterface {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
+
+	private const DUPLICATE_CLEANUP_BATCH_SIZE = 25;
+	private const DEFAULT_PRUNE_BATCH_SIZE     = 500;
 
 	/**
 	 * Load a non-revoked OAuth client entity by client ID.
@@ -79,36 +83,38 @@ final class ClientRepository implements ClientRepositoryInterface {
 	public function create_client( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ?array {
 		global $wpdb;
 
-		$table         = Installer::table_names()['clients'];
-		$client_id     = $this->generate_client_id();
-		$client_secret = $confidential ? $this->generate_client_secret() : null;
-		$secret_hash   = $client_secret ? wp_hash_password( $client_secret ) : null;
-		$provider      = Helpers::provider_from_client( $name, $redirect_uris );
-		$encoded_uris  = $this->encoded_redirect_uris( $redirect_uris );
+		$table                    = Installer::table_names()['clients'];
+		$client_id                = $this->generate_client_id();
+		$client_secret            = $confidential ? $this->generate_client_secret() : null;
+		$secret_hash              = $client_secret ? wp_hash_password( $client_secret ) : null;
+		$provider                 = Helpers::provider_from_client( $name, $redirect_uris );
+		$encoded_uris             = ClientRegistrationFingerprint::encoded_redirect_uris( $redirect_uris );
+		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
 
-		if ( null === $encoded_uris ) {
+		if ( null === $encoded_uris || null === $registration_fingerprint ) {
 			return null;
 		}
 
 		$this->revoke_unused_duplicate_clients_by_fingerprint(
 			$provider,
-			$encoded_uris,
+			$registration_fingerprint,
 			gmdate( 'Y-m-d H:i:s' )
 		);
 
 		$result = $wpdb->insert(
 			$table,
 			array(
-				'client_id'          => $client_id,
-				'client_secret_hash' => $secret_hash,
-				'client_name'        => $name,
-				'provider'           => $provider,
-				'redirect_uris'      => $encoded_uris,
-				'user_id'            => $user_id,
-				'is_confidential'    => $confidential ? 1 : 0,
-				'revoked'            => 0,
+				'client_id'                => $client_id,
+				'client_secret_hash'       => $secret_hash,
+				'client_name'              => $name,
+				'provider'                 => $provider,
+				'redirect_uris'            => $encoded_uris,
+				'registration_fingerprint' => $registration_fingerprint,
+				'user_id'                  => $user_id,
+				'is_confidential'          => $confidential ? 1 : 0,
+				'revoked'                  => 0,
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d' )
 		);
 
 		if ( false === $result ) {
@@ -164,14 +170,14 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * @return int Number of client rows revoked.
 	 */
 	public function revoke_unused_duplicate_clients( string $provider, array $redirect_uris, ?string $now = null ): int {
-		$encoded_uris = $this->encoded_redirect_uris( $redirect_uris );
-		if ( null === $encoded_uris ) {
+		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
+		if ( null === $registration_fingerprint ) {
 			return 0;
 		}
 
 		return $this->revoke_unused_duplicate_clients_by_fingerprint(
 			sanitize_key( $provider ),
-			$encoded_uris,
+			$registration_fingerprint,
 			$this->normalized_cutoff( $now )
 		);
 	}
@@ -180,18 +186,21 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * Delete revoked DCR clients older than the retention cutoff.
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
+	 * @param int         $limit  Maximum rows to delete in this pass.
 	 * @return int Number of deleted rows.
 	 */
-	public function prune_revoked_clients( ?string $cutoff = null ): int {
+	public function prune_revoked_clients( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
 		global $wpdb;
 
 		$table  = Installer::table_names()['clients'];
 		$cutoff = $this->normalized_cutoff( $cutoff );
+		$limit  = $this->normalized_batch_limit( $limit );
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				'DELETE FROM %i WHERE revoked = 1 AND updated_at < %s',
+				'DELETE FROM %i WHERE revoked = 1 AND updated_at < %s LIMIT %d',
 				$table,
-				$cutoff
+				$cutoff,
+				$limit
 			)
 		);
 
@@ -253,35 +262,25 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Encode redirect URIs exactly as stored for fingerprint comparisons.
-	 *
-	 * @param string[] $redirect_uris Valid redirect URIs.
-	 */
-	private function encoded_redirect_uris( array $redirect_uris ): ?string {
-		$encoded = wp_json_encode( array_values( array_map( 'strval', $redirect_uris ) ) );
-
-		return false === $encoded ? null : $encoded;
-	}
-
-	/**
 	 * Revoke matching duplicate clients that have no live token or auth code.
 	 *
-	 * @param string $provider     Provider slug.
-	 * @param string $encoded_uris JSON encoded redirect URI list.
-	 * @param string $now          UTC timestamp in Y-m-d H:i:s format.
+	 * @param string $provider                 Provider slug.
+	 * @param string $registration_fingerprint Canonical registration fingerprint.
+	 * @param string $now                      UTC timestamp in Y-m-d H:i:s format.
 	 * @return int Number of client rows revoked.
 	 */
-	private function revoke_unused_duplicate_clients_by_fingerprint( string $provider, string $encoded_uris, string $now ): int {
+	private function revoke_unused_duplicate_clients_by_fingerprint( string $provider, string $registration_fingerprint, string $now ): int {
 		global $wpdb;
 
 		$tables = Installer::table_names();
+		$limit  = $this->normalized_batch_limit( self::DUPLICATE_CLEANUP_BATCH_SIZE );
 		$result = $wpdb->query(
 			$wpdb->prepare(
 				'UPDATE %i clients
 				SET clients.revoked = 1
 				WHERE clients.revoked = 0
 				AND clients.provider = %s
-				AND clients.redirect_uris = %s
+				AND clients.registration_fingerprint = %s
 				AND clients.client_id NOT IN (
 					SELECT active_tokens.client_id
 					FROM %i active_tokens
@@ -293,14 +292,17 @@ final class ClientRepository implements ClientRepositoryInterface {
 					FROM %i active_codes
 					WHERE active_codes.revoked = 0
 					AND active_codes.expires_at >= %s
-				)',
+				)
+				ORDER BY clients.created_at ASC
+				LIMIT %d',
 				$tables['clients'],
 				$provider,
-				$encoded_uris,
+				$registration_fingerprint,
 				$tables['access_tokens'],
 				$now,
 				$tables['auth_codes'],
-				$now
+				$now,
+				$limit
 			)
 		);
 
@@ -314,6 +316,15 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 */
 	private function normalized_cutoff( ?string $cutoff ): string {
 		return null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
+	}
+
+	/**
+	 * Keep maintenance writes bounded.
+	 *
+	 * @param int $limit Requested row limit.
+	 */
+	private function normalized_batch_limit( int $limit ): int {
+		return min( 1000, max( 1, $limit ) );
 	}
 
 	/**

@@ -51,6 +51,7 @@ const SETTINGS_TABS = [
 	{ name: 'brand', title: 'Brand', hidden: true },
 	{ name: 'logs', title: 'Logs', hidden: true },
 ];
+const EMPTY_ARRAY = [];
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
 	{ name: 'pass', label: 'Passed' },
@@ -178,6 +179,10 @@ function maybeSelectTab( event, tabName ) {
 		return;
 	}
 
+	if ( ! hasHydratedTab( tabName ) ) {
+		return;
+	}
+
 	event.preventDefault();
 	persistTabName( tabName, false );
 	window.dispatchEvent(
@@ -185,6 +190,16 @@ function maybeSelectTab( event, tabName ) {
 			detail: { tabName },
 		} )
 	);
+}
+
+function hasHydratedTab( tabName ) {
+	const normalizedTabName = normalizeTabName( tabName );
+	const data = window.aculectAICompanionSettingsData || {};
+	const hydratedTabs = Array.isArray( data.hydratedTabs )
+		? data.hydratedTabs
+		: SETTINGS_TABS.map( ( tab ) => tab.name );
+
+	return hydratedTabs.includes( normalizedTabName );
 }
 
 function updateAdminSubmenuSelection( tabName ) {
@@ -3461,10 +3476,10 @@ function RoleAbilitiesEditor( {
 } ) {
 	const roles = Array.isArray( roleAbilityPolicy.roles )
 		? roleAbilityPolicy.roles
-		: [];
+		: EMPTY_ARRAY;
 	const globalEnabledIds = Array.isArray( roleAbilityPolicy.globalEnabledIds )
 		? roleAbilityPolicy.globalEnabledIds
-		: [];
+		: EMPTY_ARRAY;
 	const activeRole =
 		roles.find( ( role ) => role.id === selectedRole ) || roles[ 0 ];
 	const [ stagedIds, setStagedIds ] = useState(
@@ -3493,7 +3508,13 @@ function RoleAbilitiesEditor( {
 			).slice( 0, 2 )
 		);
 		setShowAffectedUsers( false );
-	}, [ activeRole?.id ] );
+	}, [
+		activeRole?.id,
+		activeRole?.allowedIds,
+		abilities,
+		globalEnabledIds,
+		roles,
+	] );
 
 	if ( ! activeRole ) {
 		return null;
@@ -4336,6 +4357,7 @@ function SettingsApp() {
 		data.diagnostics && typeof data.diagnostics === 'object'
 			? data.diagnostics
 			: {};
+	const activeSessionCount = Number( data.activeSessionCount || 0 );
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
@@ -4388,7 +4410,7 @@ function SettingsApp() {
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
-	const hasActiveSessions = sessions.length > 0;
+	const hasActiveSessions = activeSessionCount > 0;
 	const currentUserId = Number( data.currentUserId || 0 );
 	const activeConnectionSessions = sessions.map( ( session ) =>
 		normalizeConnectionSession( session, 'active' )
@@ -4431,7 +4453,7 @@ function SettingsApp() {
 	const connectionStatus = connectStatusDetails( {
 		isAccessPaused,
 		hasActiveSessions,
-		sessionCount: sessions.length,
+		sessionCount: activeSessionCount,
 	} );
 	const helpLinks = uniqueHelpLinks( providers );
 	const shouldShowAccessControl = Boolean(
@@ -5240,9 +5262,7 @@ function SettingsApp() {
 									confirmationGroupOptions={
 										confirmationGroupOptions
 									}
-									activeConnectionCount={
-										activeConnectionSessions.length
-									}
+									activeConnectionCount={ activeSessionCount }
 									hasChanges={ hasAbilityChanges }
 									onToggleAbility={ toggleAbility }
 									onToggleWpAbility={ toggleWpAbility }

@@ -84,11 +84,17 @@ final class ClientRepository implements ClientRepositoryInterface {
 		$client_secret = $confidential ? $this->generate_client_secret() : null;
 		$secret_hash   = $client_secret ? wp_hash_password( $client_secret ) : null;
 		$provider      = Helpers::provider_from_client( $name, $redirect_uris );
-		$encoded_uris  = wp_json_encode( array_values( $redirect_uris ) );
+		$encoded_uris  = $this->encoded_redirect_uris( $redirect_uris );
 
-		if ( false === $encoded_uris ) {
+		if ( null === $encoded_uris ) {
 			return null;
 		}
+
+		$this->revoke_unused_duplicate_clients_by_fingerprint(
+			$provider,
+			$encoded_uris,
+			gmdate( 'Y-m-d H:i:s' )
+		);
 
 		$result = $wpdb->insert(
 			$table,
@@ -146,6 +152,53 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
+	 * Revoke unused active clients that match a new DCR registration fingerprint.
+	 *
+	 * This bounds repeated connector retries without rejecting valid Dynamic Client
+	 * Registration requests. Clients with live access tokens or authorization codes
+	 * remain active so in-flight and approved connections are not broken.
+	 *
+	 * @param string      $provider      Provider slug.
+	 * @param string[]    $redirect_uris Valid redirect URIs.
+	 * @param string|null $now           Optional UTC timestamp for tests.
+	 * @return int Number of client rows revoked.
+	 */
+	public function revoke_unused_duplicate_clients( string $provider, array $redirect_uris, ?string $now = null ): int {
+		$encoded_uris = $this->encoded_redirect_uris( $redirect_uris );
+		if ( null === $encoded_uris ) {
+			return 0;
+		}
+
+		return $this->revoke_unused_duplicate_clients_by_fingerprint(
+			sanitize_key( $provider ),
+			$encoded_uris,
+			$this->normalized_cutoff( $now )
+		);
+	}
+
+	/**
+	 * Delete revoked DCR clients older than the retention cutoff.
+	 *
+	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
+	 * @return int Number of deleted rows.
+	 */
+	public function prune_revoked_clients( ?string $cutoff = null ): int {
+		global $wpdb;
+
+		$table  = Installer::table_names()['clients'];
+		$cutoff = $this->normalized_cutoff( $cutoff );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE revoked = 1 AND updated_at < %s',
+				$table,
+				$cutoff
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
 	 * Convert a database row into a League OAuth client entity.
 	 *
 	 * @param array<string, mixed> $row Client row.
@@ -197,6 +250,70 @@ final class ClientRepository implements ClientRepositoryInterface {
 		}
 
 		return array_values( array_filter( array_map( 'strval', $decoded ) ) );
+	}
+
+	/**
+	 * Encode redirect URIs exactly as stored for fingerprint comparisons.
+	 *
+	 * @param string[] $redirect_uris Valid redirect URIs.
+	 */
+	private function encoded_redirect_uris( array $redirect_uris ): ?string {
+		$encoded = wp_json_encode( array_values( array_map( 'strval', $redirect_uris ) ) );
+
+		return false === $encoded ? null : $encoded;
+	}
+
+	/**
+	 * Revoke matching duplicate clients that have no live token or auth code.
+	 *
+	 * @param string $provider     Provider slug.
+	 * @param string $encoded_uris JSON encoded redirect URI list.
+	 * @param string $now          UTC timestamp in Y-m-d H:i:s format.
+	 * @return int Number of client rows revoked.
+	 */
+	private function revoke_unused_duplicate_clients_by_fingerprint( string $provider, string $encoded_uris, string $now ): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i clients
+				SET clients.revoked = 1
+				WHERE clients.revoked = 0
+				AND clients.provider = %s
+				AND clients.redirect_uris = %s
+				AND clients.client_id NOT IN (
+					SELECT active_tokens.client_id
+					FROM %i active_tokens
+					WHERE active_tokens.revoked = 0
+					AND active_tokens.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT active_codes.client_id
+					FROM %i active_codes
+					WHERE active_codes.revoked = 0
+					AND active_codes.expires_at >= %s
+				)',
+				$tables['clients'],
+				$provider,
+				$encoded_uris,
+				$tables['access_tokens'],
+				$now,
+				$tables['auth_codes'],
+				$now
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Normalize an optional UTC cutoff timestamp.
+	 *
+	 * @param string|null $cutoff Optional UTC cutoff.
+	 */
+	private function normalized_cutoff( ?string $cutoff ): string {
+		return null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
 	}
 
 	/**

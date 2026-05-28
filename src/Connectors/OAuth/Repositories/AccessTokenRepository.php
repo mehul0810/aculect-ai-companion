@@ -269,6 +269,13 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * Determine whether at least one non-expired session is active.
 	 */
 	public function has_active_tokens(): bool {
+		return $this->active_token_count() > 0;
+	}
+
+	/**
+	 * Count non-expired active sessions.
+	 */
+	public function active_token_count(): int {
 		global $wpdb;
 
 		$table = Installer::table_names()['access_tokens'];
@@ -280,7 +287,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			)
 		);
 
-		return (int) $count > 0;
+		return (int) $count;
 	}
 
 	/**

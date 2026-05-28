@@ -62,6 +62,23 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( 0, ( new AccessTokenRepository() )->prune_expired( '2026-05-20 00:00:00' ) );
 	}
 
+	public function test_storage_prune_includes_revoked_clients(): void {
+		$result = StorageMaintenance::prune();
+
+		self::assertSame(
+			array(
+				'auth_codes'     => 3,
+				'access_tokens'  => 3,
+				'refresh_tokens' => 3,
+				'clients'        => 3,
+			),
+			$result
+		);
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $this->wpdb->prepared[3]['args'][0] );
+		self::assertStringContainsString( 'revoked = 1', $this->wpdb->prepared[3]['query'] );
+		self::assertStringContainsString( 'updated_at < %s', $this->wpdb->prepared[3]['query'] );
+	}
+
 	public function test_last_used_updates_are_throttled(): void {
 		$repository = new AccessTokenRepository();
 
@@ -77,6 +94,14 @@ final class StorageMaintenanceTest extends TestCase {
 		StorageMaintenance::maybe_prune();
 
 		self::assertSame( array(), $this->wpdb->queries );
+	}
+
+	public function test_delete_options_removes_oauth_prune_timestamp(): void {
+		update_option( 'aculect_ai_companion_oauth_last_pruned_at', 123, false );
+
+		StorageMaintenance::delete_options();
+
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 	}
 
 	/**

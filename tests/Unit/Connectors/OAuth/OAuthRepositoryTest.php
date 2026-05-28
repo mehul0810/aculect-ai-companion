@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -94,6 +95,43 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( array(), $wpdb->queries );
 	}
 
+	public function test_duplicate_client_cleanup_preserves_live_tokens_and_auth_codes(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$revoked = ( new ClientRepository() )->revoke_unused_duplicate_clients(
+			'chatgpt',
+			array( 'https://chatgpt.com/oauth/callback' ),
+			'2026-05-28 00:00:00'
+		);
+
+		self::assertSame( 1, $revoked );
+		self::assertStringContainsString( 'UPDATE %i clients', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'active_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'active_codes.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'chatgpt', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( '["https:\/\/chatgpt.com\/oauth\/callback"]', $wpdb->prepared[0]['args'][2] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][3] );
+		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][4] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_auth_codes', $wpdb->prepared[0]['args'][5] );
+		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][6] );
+	}
+
+	public function test_prune_revoked_clients_deletes_only_old_revoked_rows(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$deleted = ( new ClientRepository() )->prune_revoked_clients( '2026-05-01 00:00:00' );
+
+		self::assertSame( 1, $deleted );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( '2026-05-01 00:00:00', $wpdb->prepared[0]['args'][1] );
+		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'updated_at < %s', $wpdb->prepared[0]['query'] );
+	}
+
 	/**
 	 * Invoke the private hash helper on a repository.
 	 *
@@ -146,6 +184,8 @@ final class FakeAccessTokenWpdb {
 
 	public int|false $update_result = 2;
 
+	public int|false $query_result = 1;
+
 	/**
 	 * Record a prepared SQL template and arguments.
 	 *
@@ -179,10 +219,10 @@ final class FakeAccessTokenWpdb {
 	 *
 	 * @param string $query SQL query.
 	 */
-	public function query( string $query ): int {
+	public function query( string $query ): int|false {
 		$this->queries[] = $query;
 
-		return 1;
+		return $this->query_result;
 	}
 
 	/**

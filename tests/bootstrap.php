@@ -144,6 +144,10 @@ if ( ! function_exists( 'count_users' ) ) {
 	 * @return array{total_users:int, avail_roles:array<string, int>}
 	 */
 	function count_users(): array {
+		if ( array_key_exists( 'aculect_ai_companion_count_users_calls', $GLOBALS ) ) {
+			$GLOBALS['aculect_ai_companion_count_users_calls']++;
+		}
+
 		$roles = array();
 		foreach ( $GLOBALS['aculect_ai_companion_test_users'] as $user ) {
 			foreach ( (array) ( $user->roles ?? array() ) as $role ) {

@@ -4,7 +4,7 @@ Tags: ai, content, claude, codex, chatgpt
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -192,6 +192,15 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.5.0 =
+
+* Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.
+* Added brand profile guidance for connected assistants.
+* Added role-specific MCP ability policy controls and per-user access pause controls.
+* Reduced unnecessary admin payload work for tab-specific data.
+* Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.
+* Expanded cleanup coverage for full uninstall data removal.
+
 = 0.4.0 =
 
 * Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.
@@ -248,6 +257,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.5.0 =
+
+Refreshes the AI Companion admin redesign, adds brand and role controls, and hardens OAuth/client cleanup for larger sites.
 
 = 0.4.0 =
 

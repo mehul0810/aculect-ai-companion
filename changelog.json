@@ -1,4 +1,18 @@
 {
+  "0.5.0": {
+    "New": [
+      "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
+      "Added brand profile guidance for connected assistants.",
+      "Added role-specific MCP ability policy controls and per-user access pause controls."
+    ],
+    "Improved": [
+      "Reduced unnecessary admin payload work for tab-specific data.",
+      "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries."
+    ],
+    "Reliability": [
+      "Expanded cleanup coverage for full uninstall data removal."
+    ]
+  },
   "0.4.0": {
     "New": [
       "Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.",

@@ -28,6 +28,7 @@ import {
 	link,
 	lock,
 	media,
+	moreVertical,
 	page,
 	people,
 	plugins,
@@ -924,6 +925,579 @@ function HelpLinksPanel( { links } ) {
 	);
 }
 
+function normalizeConnectionSession( session, status ) {
+	return {
+		...session,
+		status: session.status || status,
+	};
+}
+
+function connectionUserCount( sessions ) {
+	return new Set(
+		sessions
+			.map( ( session ) => Number( session.user_id || 0 ) )
+			.filter( ( userId ) => userId > 0 )
+	).size;
+}
+
+function connectionScopeLabel( scope ) {
+	const labels = {
+		'content:read': 'Read content',
+		'content:draft': 'Create and update content',
+	};
+
+	return labels[ scope ] || scope;
+}
+
+function connectionDateValue( value, fallback = 'Never' ) {
+	const rawValue = String( value || '' ).trim();
+
+	if ( ! rawValue ) {
+		return fallback;
+	}
+
+	const parsedDate = new Date( rawValue.replace( ' ', 'T' ) );
+	if ( Number.isNaN( parsedDate.getTime() ) ) {
+		return rawValue;
+	}
+
+	return new Intl.DateTimeFormat( undefined, {
+		dateStyle: 'medium',
+		timeStyle: 'short',
+	} ).format( parsedDate );
+}
+
+function connectionSessionStatus( session, isAccessPaused ) {
+	if ( session.status === 'revoked' ) {
+		return {
+			label: 'Revoked',
+			tone: 'is-revoked',
+		};
+	}
+
+	if ( isAccessPaused ) {
+		return {
+			label: 'Paused',
+			tone: 'is-paused',
+		};
+	}
+
+	return {
+		label: 'Active',
+		tone: 'is-active',
+	};
+}
+
+function connectionAbilityLabels( session, abilities, enabledAbilityIds ) {
+	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
+	const enabledIds = new Set( enabledAbilityIds );
+	const labels = abilities
+		.filter(
+			( ability ) =>
+				enabledIds.has( ability.id ) && scopes.includes( ability.scope )
+		)
+		.map( ( ability ) => ability.title || ability.id );
+
+	if ( labels.length > 0 ) {
+		return Array.from( new Set( labels ) );
+	}
+
+	return scopes.map( connectionScopeLabel );
+}
+
+function connectionSearchHaystack( session, abilities, enabledAbilityIds ) {
+	return [
+		session.client_name,
+		session.client_id,
+		session.provider,
+		session.user,
+		session.resource,
+		session.status,
+		...( Array.isArray( session.user_roles ) ? session.user_roles : [] ),
+		...( Array.isArray( session.scopes ) ? session.scopes : [] ),
+		...connectionAbilityLabels( session, abilities, enabledAbilityIds ),
+	]
+		.join( ' ' )
+		.toLowerCase();
+}
+
+function isCurrentUserSession( session, currentUserId ) {
+	return (
+		Number( currentUserId || 0 ) > 0 &&
+		Number( session.user_id || 0 ) === Number( currentUserId || 0 )
+	);
+}
+
+function connectionMatchesFilter(
+	session,
+	filter,
+	isAccessPaused,
+	currentUserId
+) {
+	const status = session.status || 'active';
+
+	if ( filter === 'active' ) {
+		return status === 'active' && ! isAccessPaused;
+	}
+
+	if ( filter === 'paused' ) {
+		return status === 'active' && isAccessPaused;
+	}
+
+	if ( filter === 'revoked' ) {
+		return status === 'revoked';
+	}
+
+	if ( filter === 'pending' ) {
+		return false;
+	}
+
+	if ( filter === 'my' ) {
+		return (
+			status === 'active' &&
+			isCurrentUserSession( session, currentUserId )
+		);
+	}
+
+	if ( filter === 'team' ) {
+		return (
+			status === 'active' &&
+			Number( currentUserId || 0 ) > 0 &&
+			Number( session.user_id || 0 ) > 0 &&
+			! isCurrentUserSession( session, currentUserId )
+		);
+	}
+
+	return true;
+}
+
+function connectionFilters(
+	connectionSessions,
+	activeSessions,
+	revokedSessions,
+	isAccessPaused,
+	currentUserId
+) {
+	const myCount = activeSessions.filter( ( session ) =>
+		isCurrentUserSession( session, currentUserId )
+	).length;
+	const teamCount = activeSessions.filter(
+		( session ) =>
+			Number( currentUserId || 0 ) > 0 &&
+			Number( session.user_id || 0 ) > 0 &&
+			! isCurrentUserSession( session, currentUserId )
+	).length;
+
+	return [
+		{
+			name: 'all',
+			label: 'All',
+			count: connectionSessions.length,
+		},
+		{
+			name: 'active',
+			label: 'Active',
+			count: isAccessPaused ? 0 : activeSessions.length,
+		},
+		{
+			name: 'my',
+			label: 'My',
+			count: myCount,
+		},
+		{
+			name: 'team',
+			label: 'Team',
+			count: teamCount,
+		},
+		{
+			name: 'paused',
+			label: 'Paused',
+			count: isAccessPaused ? activeSessions.length : 0,
+		},
+		{
+			name: 'pending',
+			label: 'Pending',
+			count: 0,
+		},
+		{
+			name: 'revoked',
+			label: 'Revoked',
+			count: revokedSessions.length,
+		},
+	];
+}
+
+function filterConnectionSessions( {
+	connectionSessions,
+	filter,
+	searchTerm,
+	isAccessPaused,
+	currentUserId,
+	abilities,
+	enabledAbilityIds,
+} ) {
+	const normalizedSearch = String( searchTerm || '' )
+		.trim()
+		.toLowerCase();
+
+	return connectionSessions.filter( ( session ) => {
+		if (
+			! connectionMatchesFilter(
+				session,
+				filter,
+				isAccessPaused,
+				currentUserId
+			)
+		) {
+			return false;
+		}
+
+		if ( ! normalizedSearch ) {
+			return true;
+		}
+
+		return connectionSearchHaystack(
+			session,
+			abilities,
+			enabledAbilityIds
+		).includes( normalizedSearch );
+	} );
+}
+
+function ConnectionMetricCard( {
+	icon,
+	label,
+	value,
+	description,
+	tone = '',
+} ) {
+	return (
+		<div className={ `aculect-ai-companion-connection-metric ${ tone }` }>
+			<span
+				className="aculect-ai-companion-connection-metric__icon"
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 18 } />
+			</span>
+			<div>
+				<span>{ label }</span>
+				<strong>{ value }</strong>
+				<p>{ description }</p>
+			</div>
+		</div>
+	);
+}
+
+function ConnectionStatusChip( { session, isAccessPaused } ) {
+	const status = connectionSessionStatus( session, isAccessPaused );
+
+	return (
+		<span
+			className={ `aculect-ai-companion-connection-status-chip ${ status.tone }` }
+		>
+			{ status.label }
+		</span>
+	);
+}
+
+function ConnectionAbilityChips( { session, abilities, enabledAbilityIds } ) {
+	const labels = connectionAbilityLabels(
+		session,
+		abilities,
+		enabledAbilityIds
+	);
+	const visibleLabels = labels.slice( 0, 3 );
+	const remainingCount = labels.length - visibleLabels.length;
+
+	if ( labels.length === 0 ) {
+		return <span className="aculect-ai-companion-muted">No scopes</span>;
+	}
+
+	return (
+		<div className="aculect-ai-companion-connection-ability-list">
+			{ visibleLabels.map( ( label ) => (
+				<span key={ label }>{ label }</span>
+			) ) }
+			{ remainingCount > 0 && <span>{ remainingCount } more</span> }
+		</div>
+	);
+}
+
+function ConnectionActionsMenu( { session, data } ) {
+	const canRevoke =
+		session.status !== 'revoked' &&
+		data.actions?.revokeSessionAction &&
+		data.actions?.revokeSessionNonce;
+
+	if ( session.status === 'revoked' ) {
+		return (
+			<span className="aculect-ai-companion-connection-action-note">
+				Reconnect required
+			</span>
+		);
+	}
+
+	if ( ! canRevoke ) {
+		return (
+			<span className="aculect-ai-companion-connection-action-note">
+				Unavailable
+			</span>
+		);
+	}
+
+	return (
+		<details className="aculect-ai-companion-connection-action-menu">
+			<summary
+				className="aculect-ai-companion-connection-action-menu__trigger"
+				aria-label="Open connection actions"
+			>
+				<Icon icon={ moreVertical } size={ 18 } />
+			</summary>
+			<div className="aculect-ai-companion-connection-action-menu__content">
+				<ActionForm
+					data={ data }
+					action={ data.actions?.revokeSessionAction }
+					nonce={ data.actions?.revokeSessionNonce }
+					label="Disconnect"
+					destructive
+				>
+					<input
+						type="hidden"
+						name="session_id"
+						value={ session.id }
+					/>
+				</ActionForm>
+			</div>
+		</details>
+	);
+}
+
+function connectionEmptyStateCopy( filter, hasSearch, hasConnections ) {
+	if ( hasSearch ) {
+		return {
+			title: 'No matching connections',
+			copy: 'Try a different assistant, WordPress user, role, ability, or provider search.',
+		};
+	}
+
+	if ( filter === 'pending' ) {
+		return {
+			title: 'No pending requests',
+			copy: 'Approval happens during the OAuth consent screen. There are no pending approval requests stored for this site.',
+		};
+	}
+
+	if ( filter === 'revoked' ) {
+		return {
+			title: 'No revoked sessions',
+			copy: 'Disconnected sessions that are still retained by the token store will appear here.',
+		};
+	}
+
+	if ( filter === 'paused' ) {
+		return {
+			title: 'AI access is not paused',
+			copy: 'Use the pause control when you need to stop active assistants without disconnecting them.',
+		};
+	}
+
+	if ( filter === 'my' ) {
+		return {
+			title: 'No connections for your user',
+			copy: 'Connections approved by your WordPress account will appear here.',
+		};
+	}
+
+	if ( filter === 'team' ) {
+		return {
+			title: 'No team connections',
+			copy: 'Connections approved by other WordPress users will appear here when available.',
+		};
+	}
+
+	return {
+		title: hasConnections
+			? 'No connections in this state'
+			: 'No connections',
+		copy: 'Add the connection URL to an AI assistant, then approve the connection in WordPress.',
+	};
+}
+
+function ConnectionsTable( {
+	sessions: connectionSessions,
+	data,
+	filter,
+	searchTerm,
+	isAccessPaused,
+	abilities,
+	enabledAbilityIds,
+	hasConnections,
+} ) {
+	if ( connectionSessions.length === 0 ) {
+		const emptyState = connectionEmptyStateCopy(
+			filter,
+			Boolean( String( searchTerm || '' ).trim() ),
+			hasConnections
+		);
+
+		return (
+			<EmptyState title={ emptyState.title }>
+				{ emptyState.copy }
+			</EmptyState>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-connections-table-wrap">
+			<table className="widefat striped aculect-ai-companion-connections-table">
+				<thead>
+					<tr>
+						<th>Assistant</th>
+						<th>WordPress User</th>
+						<th>Role</th>
+						<th>Granted Abilities</th>
+						<th>Last Activity</th>
+						<th>Status</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ connectionSessions.map( ( session ) => (
+						<tr key={ `${ session.status }-${ session.id }` }>
+							<td>
+								<strong className="aculect-ai-companion-connections-table__primary">
+									{ session.client_name || 'AI Assistant' }
+								</strong>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									{ session.provider || 'mcp' }
+								</span>
+							</td>
+							<td>
+								<strong className="aculect-ai-companion-connections-table__primary">
+									{ session.user || 'Unknown user' }
+								</strong>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									{ session.resource || 'Default resource' }
+								</span>
+							</td>
+							<td>
+								{ Array.isArray( session.user_roles ) &&
+								session.user_roles.length > 0
+									? session.user_roles.join( ', ' )
+									: 'Unknown' }
+							</td>
+							<td>
+								<ConnectionAbilityChips
+									session={ session }
+									abilities={ abilities }
+									enabledAbilityIds={ enabledAbilityIds }
+								/>
+							</td>
+							<td>
+								<strong className="aculect-ai-companion-connections-table__primary">
+									{ connectionDateValue(
+										session.last_used_at
+									) }
+								</strong>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									Created{ ' ' }
+									{ connectionDateValue(
+										session.created_at,
+										'Unknown'
+									) }
+								</span>
+							</td>
+							<td>
+								<ConnectionStatusChip
+									session={ session }
+									isAccessPaused={ isAccessPaused }
+								/>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									Expires{ ' ' }
+									{ connectionDateValue(
+										session.expires_at,
+										'Unknown'
+									) }
+								</span>
+							</td>
+							<td>
+								<ConnectionActionsMenu
+									session={ session }
+									data={ data }
+								/>
+							</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+function ConnectionsSidePanels( {
+	activityUrl,
+	abilitiesUrl,
+	onActivity,
+	onAbilities,
+} ) {
+	return (
+		<aside className="aculect-ai-companion-connections-sidebar">
+			<div className="aculect-ai-companion-side-panel">
+				<div className="aculect-ai-companion-side-panel__heading">
+					<span className="aculect-ai-companion-side-panel__icon">
+						<Icon icon={ shield } size={ 20 } />
+					</span>
+					<h3>Connection security</h3>
+				</div>
+				<p>
+					OAuth tokens are stored hashed and never shown in this
+					dashboard. Disconnecting a session revokes the active access
+					token and its refresh token.
+				</p>
+				<a
+					className="aculect-ai-companion-side-panel__link"
+					href={ abilitiesUrl }
+					onClick={ onAbilities }
+				>
+					Review abilities
+				</a>
+			</div>
+			<div className="aculect-ai-companion-side-panel">
+				<div className="aculect-ai-companion-side-panel__heading">
+					<span className="aculect-ai-companion-side-panel__icon">
+						<Icon icon={ lock } size={ 20 } />
+					</span>
+					<h3>Pending approval</h3>
+				</div>
+				<p>
+					Assistant approvals are handled during the WordPress OAuth
+					consent flow. This site does not keep a separate pending
+					approval queue.
+				</p>
+			</div>
+			<div className="aculect-ai-companion-side-panel">
+				<div className="aculect-ai-companion-side-panel__heading">
+					<span className="aculect-ai-companion-side-panel__icon">
+						<Icon icon={ chartBar } size={ 20 } />
+					</span>
+					<h3>Activity audit</h3>
+				</div>
+				<p>
+					Review successful and blocked assistant actions, including
+					the assistant name, connected user, target, and error state.
+				</p>
+				<a
+					className="aculect-ai-companion-side-panel__link"
+					href={ activityUrl }
+					onClick={ onActivity }
+				>
+					View activity
+				</a>
+			</div>
+		</aside>
+	);
+}
+
 function ConnectProviderCard( { provider, isOpen, onToggle, onCopy } ) {
 	const setupSections = Array.isArray( provider.setupSections )
 		? provider.setupSections
@@ -1025,6 +1599,9 @@ function SettingsApp() {
 	const brandIconUrl = data.brandIconUrl || '';
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
+	const revokedSessions = Array.isArray( data.revokedSessions )
+		? data.revokedSessions
+		: [];
 	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
 	const wpAbilities = Array.isArray( data.wpAbilities )
 		? data.wpAbilities
@@ -1092,17 +1669,56 @@ function SettingsApp() {
 	const [ enabledWpAbilities, setEnabledWpAbilities ] = useState(
 		Array.isArray( data.enabledWpAbilities ) ? data.enabledWpAbilities : []
 	);
+	const [ connectionFilter, setConnectionFilter ] = useState( 'all' );
+	const [ connectionSearch, setConnectionSearch ] = useState( '' );
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
 	const hasActiveSessions = sessions.length > 0;
+	const currentUserId = Number( data.currentUserId || 0 );
+	const activeConnectionSessions = sessions.map( ( session ) =>
+		normalizeConnectionSession( session, 'active' )
+	);
+	const revokedConnectionSessions = revokedSessions.map( ( session ) =>
+		normalizeConnectionSession( session, 'revoked' )
+	);
+	const connectionSessions = [
+		...activeConnectionSessions,
+		...revokedConnectionSessions,
+	];
+	const connectionFilterItems = connectionFilters(
+		connectionSessions,
+		activeConnectionSessions,
+		revokedConnectionSessions,
+		isAccessPaused,
+		currentUserId
+	);
+	const connectionFilterCounts = connectionFilterItems.reduce(
+		( counts, item ) => ( {
+			...counts,
+			[ item.name ]: item.count,
+		} ),
+		{}
+	);
+	const filteredConnectionSessions = filterConnectionSessions( {
+		connectionSessions,
+		filter: connectionFilter,
+		searchTerm: connectionSearch,
+		isAccessPaused,
+		currentUserId,
+		abilities,
+		enabledAbilityIds: enabledAbilities,
+	} );
+	const connectionUserTotal = connectionUserCount( activeConnectionSessions );
 	const connectionStatus = connectStatusDetails( {
 		isAccessPaused,
 		hasActiveSessions,
 		sessionCount: sessions.length,
 	} );
 	const helpLinks = uniqueHelpLinks( providers );
-	const shouldShowAccessControl = isAccessPaused || hasActiveSessions;
+	const shouldShowAccessControl = Boolean(
+		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
+	);
 
 	useEffect(
 		() => () => {
@@ -1678,122 +2294,216 @@ function SettingsApp() {
 
 					if ( tab.name === 'connections' ) {
 						return (
-							<Card className="aculect-ai-companion-card aculect-ai-companion-sessions-card">
-								<CardHeader>Active Connections</CardHeader>
-								<CardBody>
-									{ shouldShowAccessControl && (
-										<div
-											className={ `aculect-ai-companion-lockdown ${
+							<div className="aculect-ai-companion-connections-dashboard">
+								<section className="aculect-ai-companion-connections-hero">
+									<div>
+										<span className="aculect-ai-companion-eyebrow">
+											Assistant lifecycle
+										</span>
+										<h2 className="aculect-ai-companion-section-title">
+											Connections
+										</h2>
+										<p>
+											Review approved AI assistants,
+											connected WordPress users, granted
+											abilities, session status, and
+											available lifecycle actions.
+										</p>
+									</div>
+								</section>
+
+								<div className="aculect-ai-companion-connection-metrics">
+									<ConnectionMetricCard
+										icon={ people }
+										label="Total"
+										value={ connectionSessions.length }
+										description="Active and retained revoked sessions."
+									/>
+									<ConnectionMetricCard
+										icon={ seen }
+										label="My"
+										value={ connectionFilterCounts.my || 0 }
+										description="Approved by your WordPress user."
+									/>
+									<ConnectionMetricCard
+										icon={ shield }
+										label="Team"
+										value={
+											connectionFilterCounts.team || 0
+										}
+										description="Approved by other WordPress users."
+									/>
+									<ConnectionMetricCard
+										icon={ lock }
+										label="Access"
+										value={
+											isAccessPaused ? 'Paused' : 'Active'
+										}
+										description={ `${ connectionUserTotal } connected user${
+											connectionUserTotal === 1 ? '' : 's'
+										}` }
+										tone={
+											isAccessPaused ? 'is-paused' : ''
+										}
+									/>
+								</div>
+
+								{ shouldShowAccessControl && (
+									<div
+										className={ `aculect-ai-companion-lockdown aculect-ai-companion-lockdown--connections ${
+											isAccessPaused ? 'is-paused' : ''
+										}` }
+									>
+										<div className="aculect-ai-companion-lockdown__content">
+											<strong>
+												{ isAccessPaused
+													? 'AI access is paused'
+													: 'AI access is active' }
+											</strong>
+											<p>
+												{ isAccessPaused
+													? 'Connected assistants keep their sessions, but cannot run actions until access is resumed.'
+													: 'Pause access to stop active assistants from running actions without disconnecting their sessions.' }
+											</p>
+										</div>
+										<ActionForm
+											data={ data }
+											action={
+												data.actions?.setLockdownAction
+											}
+											nonce={
+												data.actions?.setLockdownNonce
+											}
+											label={
 												isAccessPaused
-													? 'is-paused'
-													: ''
-											}` }
+													? 'Resume AI Access'
+													: 'Pause AI Access'
+											}
+											destructive={ ! isAccessPaused }
 										>
-											<div className="aculect-ai-companion-lockdown__content">
-												<strong>
-													{ isAccessPaused
-														? 'AI access is paused'
-														: 'AI access is active' }
-												</strong>
-												<p>
-													{ isAccessPaused
-														? 'Connected assistants cannot run actions until access is resumed.'
-														: 'Pause access to stop connected assistants from running actions without disconnecting them.' }
-												</p>
-											</div>
-											<ActionForm
-												data={ data }
-												action={
-													data.actions
-														?.setLockdownAction
+											<input
+												type="hidden"
+												name="access_paused"
+												value={
+													isAccessPaused ? '0' : '1'
 												}
-												nonce={
-													data.actions
-														?.setLockdownNonce
-												}
-												label={
-													isAccessPaused
-														? 'Resume AI Access'
-														: 'Pause AI Access'
-												}
-												destructive={ ! isAccessPaused }
+											/>
+										</ActionForm>
+									</div>
+								) }
+
+								<div className="aculect-ai-companion-connections-layout">
+									<section className="aculect-ai-companion-connections-main">
+										<div className="aculect-ai-companion-connections-toolbar">
+											<div
+												className="aculect-ai-companion-connection-filters"
+												role="tablist"
+												aria-label="Connection states"
 											>
-												<input
-													type="hidden"
-													name="access_paused"
-													value={
-														isAccessPaused
-															? '0'
-															: '1'
+												{ connectionFilterItems.map(
+													( filter ) => {
+														const isActive =
+															connectionFilter ===
+															filter.name;
+
+														return (
+															<button
+																key={
+																	filter.name
+																}
+																type="button"
+																className={ `aculect-ai-companion-connection-filter ${
+																	isActive
+																		? 'is-active'
+																		: ''
+																}` }
+																role="tab"
+																aria-selected={
+																	isActive
+																}
+																onClick={ () =>
+																	setConnectionFilter(
+																		filter.name
+																	)
+																}
+															>
+																<span>
+																	{
+																		filter.label
+																	}
+																</span>
+																<strong>
+																	{
+																		filter.count
+																	}
+																</strong>
+															</button>
+														);
 													}
-												/>
-											</ActionForm>
-										</div>
-									) }
-									{ sessions.length === 0 ? (
-										<EmptyState title="No active connections">
-											Add Aculect AI Companion in your AI
-											tool with your connection URL, then
-											approve the connection in WordPress.
-										</EmptyState>
-									) : (
-										<div className="aculect-ai-companion-session-list">
-											{ sessions.map( ( session ) => (
-												<div
-													key={ session.id }
-													className="aculect-ai-companion-session-row"
-												>
-													<div className="aculect-ai-companion-session-row__main">
-														<strong>
-															{ session.client_name ||
-																'AI Assistant' }
-														</strong>
-														<span>
-															{ session.provider }{ ' ' }
-															· { session.user }
-														</span>
-													</div>
-													<ActionForm
-														data={ data }
-														action={
-															data.actions
-																?.revokeSessionAction
-														}
-														nonce={
-															data.actions
-																?.revokeSessionNonce
-														}
-														label="Disconnect"
-														destructive
-													>
-														<input
-															type="hidden"
-															name="session_id"
-															value={ session.id }
-														/>
-													</ActionForm>
-												</div>
-											) ) }
-										</div>
-									) }
-									{ sessions.length > 0 && (
-										<div className="aculect-ai-companion-danger-zone">
-											<ActionForm
-												data={ data }
-												action={
-													data.actions
-														?.revokeAllAction
-												}
-												nonce={
-													data.actions?.revokeAllNonce
-												}
-												label="Disconnect All"
-												destructive
+												) }
+											</div>
+											<TextControl
+												label="Search connections"
+												value={ connectionSearch }
+												placeholder="Assistant, user, role, ability, or provider"
+												onChange={ setConnectionSearch }
 											/>
 										</div>
-									) }
-								</CardBody>
-							</Card>
+
+										<ConnectionsTable
+											sessions={
+												filteredConnectionSessions
+											}
+											data={ data }
+											filter={ connectionFilter }
+											searchTerm={ connectionSearch }
+											isAccessPaused={ isAccessPaused }
+											abilities={ abilities }
+											enabledAbilityIds={
+												enabledAbilities
+											}
+											hasConnections={
+												connectionSessions.length > 0
+											}
+										/>
+
+										{ activeConnectionSessions.length >
+											0 && (
+											<div className="aculect-ai-companion-danger-zone aculect-ai-companion-danger-zone--connections">
+												<ActionForm
+													data={ data }
+													action={
+														data.actions
+															?.revokeAllAction
+													}
+													nonce={
+														data.actions
+															?.revokeAllNonce
+													}
+													label="Disconnect All"
+													destructive
+												/>
+											</div>
+										) }
+									</section>
+									<ConnectionsSidePanels
+										activityUrl={ tabUrl(
+											'activity',
+											data.adminPageUrl
+										) }
+										abilitiesUrl={ tabUrl(
+											'abilities',
+											data.adminPageUrl
+										) }
+										onActivity={ ( event ) =>
+											maybeSelectTab( event, 'activity' )
+										}
+										onAbilities={ ( event ) =>
+											maybeSelectTab( event, 'abilities' )
+										}
+									/>
+								</div>
+							</div>
 						);
 					}
 

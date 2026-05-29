@@ -15,9 +15,12 @@
 	--aculect-ai-companion-primary: #2563eb;
 	--aculect-ai-companion-green: #0f9f5f;
 	--aculect-ai-companion-orange: #f97316;
-	max-width: 1400px;
-	margin: 0 auto;
+	width: 100%;
+	max-width: none;
+	min-height: 100vh;
+	margin: 0;
 	box-sizing: border-box;
+	background: var(--aculect-ai-companion-soft);
 	color: var(--aculect-ai-companion-ink);
 }
 
@@ -31,91 +34,120 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 18px;
-	margin: 0 0 22px;
+	gap: 32px;
+	min-height: 176px;
+	margin: 0;
+	padding: 48px 52px 46px 80px;
+	border-bottom: 1px solid #d8dee8;
 	background: #fff;
+	box-shadow: 0 18px 42px rgba(15, 23, 42, 0.045);
 }
 
 .aculect-ai-companion-app-branding {
 	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
-	gap: 14px;
+	flex-wrap: nowrap;
+	gap: 26px;
 	min-width: 0;
 }
 
 .aculect-ai-companion-app-icon {
 	display: block;
-	width: 46px;
-	height: 46px;
+	width: 88px;
+	height: 88px;
 	flex: 0 0 auto;
-	border-radius: 8px;
-	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+	object-fit: contain;
 }
 
-.aculect-ai-companion-app-title-row {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 10px;
+.aculect-ai-companion-app-heading {
+	min-width: 0;
 }
 
 .aculect-ai-companion-app-title {
 	margin: 0;
-	font-size: 26px;
-	line-height: 1.1;
+	color: #050b35;
+	font-size: 42px;
+	font-weight: 800;
+	line-height: 1.05;
 	letter-spacing: 0;
 	overflow-wrap: anywhere;
 }
 
-.aculect-ai-companion-pill {
+.aculect-ai-companion-app-subtitle {
+	margin: 8px 0 0;
+	color: #26324d;
+	font-size: 22px;
+	line-height: 1.25;
+}
+
+.aculect-ai-companion-header-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 30px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-header-link {
 	display: inline-flex;
 	align-items: center;
-	gap: 7px;
-	min-height: 24px;
-	padding: 4px 10px;
-	border-radius: 999px;
-	font-size: 12px;
+	flex: 0 0 auto;
+	gap: 14px;
+	min-height: 72px;
+	color: #050b35;
+	font-size: 22px;
 	font-weight: 700;
-	line-height: 1;
+	line-height: 1.2;
+	text-decoration: none;
 	white-space: nowrap;
 }
 
-.aculect-ai-companion-pill--version {
-	background: #eaf1ff;
-	color: #1d4ed8;
+.aculect-ai-companion-header-link:hover,
+.aculect-ai-companion-header-link:focus {
+	color: var(--aculect-ai-companion-primary);
+	box-shadow: none;
+	outline: none;
 }
 
-.aculect-ai-companion-pill--status {
-	border: 1px solid #d7e6dc;
-	background: #f0fdf4;
-	color: #047857;
-	font-size: 13px;
-	font-weight: 800;
+.aculect-ai-companion-header-link:focus-visible {
+	border-radius: 4px;
+	box-shadow: 0 0 0 2px var(--aculect-ai-companion-primary);
 }
 
-.aculect-ai-companion-pill--status.is-connected {
-	border-color: #bde7ca;
-	background: #ecfdf3;
-	color: var(--aculect-ai-companion-green);
+.aculect-ai-companion-header-divider {
+	display: block;
+	width: 1px;
+	height: 36px;
+	flex: 0 0 auto;
+	background: #d8dee8;
 }
 
-.aculect-ai-companion-pill--status.is-paused {
-	border-color: #fed7aa;
-	background: #fff4e5;
-	color: #8a4b00;
+.aculect-ai-companion-header-save.components-button.is-primary {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	min-height: 72px;
+	padding: 0 28px;
+	border-radius: 8px;
+	background: #0b5cff;
+	box-shadow: 0 12px 24px rgba(11, 92, 255, 0.18);
+	color: #fff;
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.2;
+	white-space: nowrap;
 }
 
-.aculect-ai-companion-status-dot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: currentcolor;
-	box-shadow: 0 0 0 3px rgba(15, 159, 95, 0.12);
+.aculect-ai-companion-header-save.components-button.is-primary:hover,
+.aculect-ai-companion-header-save.components-button.is-primary:focus {
+	background: #084ee0;
+	color: #fff;
 }
 
 .aculect-ai-companion-admin-notices {
-	margin: 16px 0;
+	margin: 18px 0 0;
+	padding: 0 52px;
 }
 
 .aculect-ai-companion-admin-notices:empty {
@@ -138,10 +170,13 @@
 
 .aculect-ai-companion-tabs {
 	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin: 0 0 22px;
-	border-bottom: 1px solid var(--aculect-ai-companion-border);
+	align-items: stretch;
+	gap: 34px;
+	min-height: 110px;
+	margin: 0;
+	padding: 0 52px;
+	border-bottom: 1px solid #d8dee8;
+	background: #fff;
 	overflow-x: auto;
 	scrollbar-width: thin;
 }
@@ -151,13 +186,16 @@
 	display: inline-flex;
 	align-items: center;
 	flex: 0 0 auto;
-	gap: 8px;
-	min-height: 48px;
-	padding: 0 10px;
+	justify-content: center;
+	min-height: 110px;
+	padding: 0 12px;
 	border: 0;
-	color: #334155;
-	text-decoration: none;
+	color: #2d3954;
+	font-size: 20px;
 	font-weight: 700;
+	line-height: 1.2;
+	text-decoration: none;
+	white-space: nowrap;
 }
 
 .aculect-ai-companion-tab:hover,
@@ -179,21 +217,16 @@
 .aculect-ai-companion-tab.is-active::after {
 	position: absolute;
 	right: 0;
-	bottom: -1px;
+	bottom: 0;
 	left: 0;
-	height: 3px;
-	border-radius: 3px 3px 0 0;
-	background: var(--aculect-ai-companion-primary);
+	height: 4px;
+	background: #0b5cff;
 	content: "";
-}
-
-.aculect-ai-companion-tab .components-icon {
-	width: 18px;
-	height: 18px;
 }
 
 .aculect-ai-companion-tab-panel {
 	min-width: 0;
+	padding: 34px 52px 60px;
 }
 
 .aculect-ai-companion-card.components-card {
@@ -3225,6 +3258,24 @@
 
 	.aculect-ai-companion-app-header {
 		flex-direction: column;
+		padding: 36px 28px;
+	}
+
+	.aculect-ai-companion-header-actions {
+		width: 100%;
+		justify-content: flex-start;
+		flex-wrap: wrap;
+	}
+
+	.aculect-ai-companion-tabs {
+		gap: 24px;
+		padding: 0 28px;
+	}
+
+	.aculect-ai-companion-admin-notices,
+	.aculect-ai-companion-tab-panel {
+		padding-right: 28px;
+		padding-left: 28px;
 	}
 
 	.aculect-ai-companion-ability-summary {
@@ -3319,6 +3370,61 @@
 
 	.aculect-ai-companion-app-header {
 		gap: 12px;
+		padding: 28px 18px;
+	}
+
+	.aculect-ai-companion-app-branding {
+		gap: 16px;
+	}
+
+	.aculect-ai-companion-app-icon {
+		width: 64px;
+		height: 64px;
+	}
+
+	.aculect-ai-companion-app-title {
+		font-size: 32px;
+	}
+
+	.aculect-ai-companion-app-subtitle {
+		font-size: 18px;
+	}
+
+	.aculect-ai-companion-header-actions {
+		gap: 14px;
+	}
+
+	.aculect-ai-companion-header-link {
+		min-height: 42px;
+		font-size: 16px;
+	}
+
+	.aculect-ai-companion-header-divider {
+		display: none;
+	}
+
+	.aculect-ai-companion-header-save.components-button.is-primary {
+		width: 100%;
+		min-height: 54px;
+		font-size: 17px;
+	}
+
+	.aculect-ai-companion-tabs {
+		gap: 14px;
+		min-height: 74px;
+		padding: 0 18px;
+	}
+
+	.aculect-ai-companion-tab {
+		min-height: 74px;
+		padding: 0 8px;
+		font-size: 16px;
+	}
+
+	.aculect-ai-companion-admin-notices,
+	.aculect-ai-companion-tab-panel {
+		padding-right: 18px;
+		padding-left: 18px;
 	}
 
 	.aculect-ai-companion-overview-hero {

@@ -107,6 +107,18 @@ final class SettingsPageTest extends TestCase {
 
 		self::assertSame( 'overview', $payload['payloadTab'] );
 		self::assertSame( array( 'overview', 'connect', 'diagnostics', 'advanced' ), $payload['hydratedTabs'] );
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/aculect-icon-light.svg',
+			$payload['brandIconUrl']
+		);
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/aculect-mark.svg',
+			$payload['brandMarkUrl']
+		);
+		self::assertSame(
+			'https://wordpress.org/plugins/aculect-ai-companion/',
+			$payload['pluginMetadata']['documentationUrl']
+		);
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
 		self::assertSame( array(), $payload['sessions'] );

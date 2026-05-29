@@ -152,6 +152,9 @@ final class SettingsPage {
 			'brandIconUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
 			),
+			'brandMarkUrl'       => esc_url_raw(
+				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-mark.svg'
+			),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
 			'accessPaused'       => AccessLockdown::is_paused(),
@@ -992,14 +995,15 @@ final class SettingsPage {
 		$readme_data = $this->readme_headers();
 
 		return array(
-			'version'         => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
-			'requiresAtLeast' => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
-			'requiresPhp'     => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
-			'testedUpTo'      => sanitize_text_field( (string) ( $readme_data['Tested up to'] ?? '' ) ),
-			'stableTag'       => sanitize_text_field( (string) ( $readme_data['Stable tag'] ?? '' ) ),
-			'wordpressOrgUrl' => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/#developers' ),
-			'supportUrl'      => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
-			'reviewUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
+			'version'          => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
+			'requiresAtLeast'  => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
+			'requiresPhp'      => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
+			'testedUpTo'       => sanitize_text_field( (string) ( $readme_data['Tested up to'] ?? '' ) ),
+			'stableTag'        => sanitize_text_field( (string) ( $readme_data['Stable tag'] ?? '' ) ),
+			'documentationUrl' => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/' ),
+			'wordpressOrgUrl'  => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/#developers' ),
+			'supportUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
+			'reviewUrl'        => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
 		);
 	}
 

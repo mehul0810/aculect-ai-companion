@@ -134,18 +134,6 @@ function persistTabName( tabName, replace = true ) {
 	}
 }
 
-function formatVersion( version ) {
-	const normalizedVersion = String( version || '' ).trim();
-
-	if ( ! normalizedVersion ) {
-		return '';
-	}
-
-	return normalizedVersion.startsWith( 'v' )
-		? normalizedVersion
-		: `v${ normalizedVersion }`;
-}
-
 function adminTabTitle( title ) {
 	return `Aculect AI Companion: ${ title }`;
 }
@@ -177,6 +165,30 @@ function maybeSelectTab( event, tabName ) {
 			detail: { tabName },
 		} )
 	);
+}
+
+function submitActiveSettingsForm() {
+	const activePanel = document.querySelector(
+		'.aculect-ai-companion-tab-panel'
+	);
+	const form = activePanel?.querySelector(
+		[
+			'.aculect-ai-companion-form',
+			'.aculect-ai-companion-abilities-dashboard',
+			'.aculect-ai-companion-role-abilities__form',
+		].join( ',' )
+	);
+
+	if ( ! form ) {
+		return;
+	}
+
+	if ( typeof form.requestSubmit === 'function' ) {
+		form.requestSubmit();
+		return;
+	}
+
+	form.submit();
 }
 
 function hasHydratedTab( tabName ) {
@@ -4290,6 +4302,11 @@ function SettingsApp() {
 		data.pluginMetadata && typeof data.pluginMetadata === 'object'
 			? data.pluginMetadata
 			: {};
+	const brandMarkUrl = data.brandMarkUrl || brandIconUrl;
+	const documentationUrl = safeExternalUrl(
+		pluginMetadata.documentationUrl || pluginMetadata.wordpressOrgUrl
+	);
+	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
 	const providers = Array.isArray( data.providers ) ? data.providers : [];
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const revokedSessions = Array.isArray( data.revokedSessions )
@@ -4489,21 +4506,6 @@ function SettingsApp() {
 		}
 	};
 
-	let statusClass =
-		'aculect-ai-companion-pill aculect-ai-companion-pill--status is-disconnected';
-	let statusText = 'Ready to connect';
-
-	if ( data.isConnected ) {
-		statusClass =
-			'aculect-ai-companion-pill aculect-ai-companion-pill--status is-connected';
-		statusText = 'Connected';
-	}
-
-	if ( isAccessPaused ) {
-		statusClass =
-			'aculect-ai-companion-pill aculect-ai-companion-pill--status is-paused';
-		statusText = 'Paused';
-	}
 	const tabs = SETTINGS_TABS;
 	const visibleTabs = tabs.filter( ( tab ) => ! tab.hidden );
 	const activeTabName = useActiveTabName( tabs );
@@ -4557,30 +4559,63 @@ function SettingsApp() {
 		<div className="aculect-ai-companion-app-root">
 			<header className="aculect-ai-companion-app-header">
 				<div className="aculect-ai-companion-app-branding">
-					{ brandIconUrl && (
+					{ brandMarkUrl && (
 						<img
 							className="aculect-ai-companion-app-icon"
-							src={ brandIconUrl }
+							src={ brandMarkUrl }
 							alt=""
 							aria-hidden="true"
 						/>
 					) }
-					<h1 className="aculect-ai-companion-app-title">
-						Aculect AI Companion
-					</h1>
-					{ data.version && (
-						<span className="aculect-ai-companion-pill aculect-ai-companion-pill--version">
-							{ formatVersion( data.version ) }
-						</span>
-					) }
+					<div className="aculect-ai-companion-app-heading">
+						<h1 className="aculect-ai-companion-app-title">
+							AI Companion
+						</h1>
+						<p className="aculect-ai-companion-app-subtitle">
+							by Aculect
+						</p>
+					</div>
 				</div>
-				<span className={ statusClass }>
-					<span
-						className="aculect-ai-companion-status-dot"
-						aria-hidden="true"
-					/>
-					{ statusText }
-				</span>
+				<div className="aculect-ai-companion-header-actions">
+					{ documentationUrl && (
+						<a
+							className="aculect-ai-companion-header-link"
+							href={ documentationUrl }
+							target="_blank"
+							rel="noreferrer noopener"
+						>
+							<Icon icon={ page } size={ 26 } />
+							<span>Documentation</span>
+						</a>
+					) }
+					{ documentationUrl && supportUrl && (
+						<span
+							className="aculect-ai-companion-header-divider"
+							aria-hidden="true"
+						/>
+					) }
+					{ supportUrl && (
+						<a
+							className="aculect-ai-companion-header-link"
+							href={ supportUrl }
+							target="_blank"
+							rel="noreferrer noopener"
+						>
+							<Icon icon={ help } size={ 28 } />
+							<span>Support</span>
+						</a>
+					) }
+					<Button
+						type="button"
+						variant="primary"
+						className="aculect-ai-companion-header-save"
+						aria-label="Save current tab settings"
+						onClick={ submitActiveSettingsForm }
+					>
+						<Icon icon={ page } size={ 25 } />
+						<span>Save Changes</span>
+					</Button>
+				</div>
 			</header>
 
 			<nav
@@ -4602,7 +4637,6 @@ function SettingsApp() {
 								maybeSelectTab( event, tab.name )
 							}
 						>
-							<Icon icon={ tab.icon } size={ 18 } />
 							<span>{ tab.title }</span>
 						</a>
 					);

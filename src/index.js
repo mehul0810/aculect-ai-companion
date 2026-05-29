@@ -18,6 +18,7 @@ import {
 } from '@wordpress/components';
 import {
 	Icon,
+	arrowRight,
 	category,
 	chartBar,
 	check,
@@ -2703,12 +2704,14 @@ function OverviewFeatureCard( { icon, title, children } ) {
 			>
 				<Icon icon={ icon } size={ 20 } />
 			</span>
-			<h3 className="aculect-ai-companion-feature-card__title">
-				{ title }
-			</h3>
-			<p className="aculect-ai-companion-feature-card__copy">
-				{ children }
-			</p>
+			<div className="aculect-ai-companion-feature-card__body">
+				<h3 className="aculect-ai-companion-feature-card__title">
+					{ title }
+				</h3>
+				<p className="aculect-ai-companion-feature-card__copy">
+					{ children }
+				</p>
+			</div>
 		</div>
 	);
 }
@@ -4856,19 +4859,20 @@ function SettingsApp() {
 								<section className="aculect-ai-companion-overview-hero">
 									<div className="aculect-ai-companion-overview-hero__content">
 										<span className="aculect-ai-companion-eyebrow">
-											Ready for secure AI workflows
+											AI assistants. WordPress. Securely
+											connected.
 										</span>
 										<h2 className="aculect-ai-companion-overview-hero__title">
-											Connect your AI Assistant to
-											WordPress
+											Bring AI assistants into WordPress
+											without giving up control.
 										</h2>
 										<p className="aculect-ai-companion-overview-hero__copy">
-											Aculect AI Companion gives approved
-											AI tools a secure WordPress
-											connection for drafting content,
-											organizing your site, handling
-											comments, managing media, and
-											reviewing safe site details.
+											Connect approved AI tools to
+											WordPress through a secure
+											permission layer. Draft content,
+											manage media, review comments, and
+											automate repetitive tasks while
+											keeping administrators in control.
 										</p>
 										<div className="aculect-ai-companion-overview-actions">
 											<Button
@@ -4877,6 +4881,7 @@ function SettingsApp() {
 													data.adminPageUrl
 												) }
 												variant="primary"
+												className="aculect-ai-companion-overview-action aculect-ai-companion-overview-action--primary"
 												onClick={ ( event ) =>
 													maybeSelectTab(
 														event,
@@ -4884,13 +4889,23 @@ function SettingsApp() {
 													)
 												}
 											>
-												Connect AI Assistant
+												Connect Assistant
 											</Button>
 											<Button
-												href="#aculect-ai-companion-overview-capabilities"
+												href={
+													documentationUrl ||
+													'#aculect-ai-companion-overview-capabilities'
+												}
 												variant="secondary"
+												className="aculect-ai-companion-overview-action aculect-ai-companion-overview-action--secondary"
+												{ ...( documentationUrl
+													? {
+															target: '_blank',
+															rel: 'noreferrer noopener',
+													  }
+													: {} ) }
 											>
-												Learn More
+												View Documentation
 											</Button>
 										</div>
 									</div>
@@ -4903,68 +4918,57 @@ function SettingsApp() {
 									id="aculect-ai-companion-overview-capabilities"
 									className="aculect-ai-companion-overview-section"
 								>
-									<div className="aculect-ai-companion-section-title-row">
-										<div>
-											<span className="aculect-ai-companion-eyebrow">
-												What you can do
-											</span>
-											<h2 className="aculect-ai-companion-section-title">
-												Manage common WordPress work
-												from your AI assistant
-											</h2>
-										</div>
-									</div>
+									<h2 className="aculect-ai-companion-overview-section__title">
+										Everything your AI assistant can do
+									</h2>
 									<div className="aculect-ai-companion-feature-grid">
 										<OverviewFeatureCard
 											icon={ postContent }
-											title="Create and update content"
+											title="Content Management"
 										>
-											Draft posts, update pages, change
-											titles, edit excerpts, schedule
-											content, and publish when you are
-											ready.
+											Create and update posts, pages,
+											excerpts, and metadata while
+											following WordPress permissions.
 										</OverviewFeatureCard>
 										<OverviewFeatureCard
 											icon={ category }
-											title="Organize your site"
+											title="Taxonomies & Structure"
 										>
-											Manage categories, tags, and other
-											content groups without jumping
-											between WordPress screens.
+											Organize categories, tags, and
+											custom taxonomies without navigating
+											multiple admin screens.
 										</OverviewFeatureCard>
 										<OverviewFeatureCard
 											icon={ comment }
-											title="Handle comments"
+											title="Comment Moderation"
 										>
-											Review comments, approve or trash
-											them, and prepare replies with
-											WordPress permission checks in
-											place.
+											Review, approve, reply to, or remove
+											comments through controlled
+											workflows.
 										</OverviewFeatureCard>
 										<OverviewFeatureCard
 											icon={ media }
-											title="Work with media"
+											title="Media Library Access"
 										>
-											Add images from public URLs, find
-											existing library items, and attach
-											media to content workflows.
+											Upload media, locate existing
+											assets, and attach files to content
+											when permitted.
 										</OverviewFeatureCard>
 										<OverviewFeatureCard
 											icon={ info }
-											title="Check site details"
+											title="Site Intelligence"
 										>
-											Ask for safe site information,
-											including active plugins, themes,
-											locale, and basic public settings.
+											Retrieve plugin, theme, version, and
+											configuration information for
+											troubleshooting and audits.
 										</OverviewFeatureCard>
 										<OverviewFeatureCard
 											icon={ settings }
-											title="Control what AI can do"
+											title="Ability Controls"
 										>
-											Turn abilities on or off from AI
-											Companion &gt; Abilities and
-											disconnect assistants whenever
-											needed.
+											Choose exactly which actions each AI
+											assistant can perform and revoke
+											access at any time.
 										</OverviewFeatureCard>
 									</div>
 								</section>
@@ -4978,14 +4982,16 @@ function SettingsApp() {
 									</span>
 									<div className="aculect-ai-companion-control-banner__content">
 										<h2>
-											You stay in control from WordPress
+											WordPress remains the source of
+											truth
 										</h2>
 										<p>
-											Every assistant connection needs
-											WordPress approval. You choose which
-											abilities are available, and you can
-											pause or disconnect access at any
-											time.
+											Every action runs through WordPress
+											permissions and capability checks.
+											Administrators decide what
+											assistants can access, what actions
+											are allowed, and when connections
+											should be revoked.
 										</p>
 									</div>
 									<a
@@ -4998,7 +5004,8 @@ function SettingsApp() {
 											maybeSelectTab( event, 'abilities' )
 										}
 									>
-										Review Controls
+										<span>Manage Abilities</span>
+										<Icon icon={ arrowRight } size={ 18 } />
 									</a>
 								</section>
 							</div>

@@ -22,6 +22,8 @@ import {
 	category,
 	chartBar,
 	check,
+	chevronDown,
+	chevronUp,
 	cog,
 	comment,
 	copy,
@@ -400,6 +402,70 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 						<Icon icon={ copy } size={ 18 } />
 					</span>
 				</Button>
+			</div>
+		</div>
+	);
+}
+
+function ConnectStepHeading( { number, title, children } ) {
+	return (
+		<div className="aculect-ai-companion-connect-step-heading">
+			<span className="aculect-ai-companion-connect-step-number">
+				{ number }
+			</span>
+			<div>
+				<h2>{ title }</h2>
+				{ children && <p>{ children }</p> }
+			</div>
+		</div>
+	);
+}
+
+function preferredOpenProviderId( providers ) {
+	return (
+		providers.find( ( provider ) => provider.id === 'chatgpt' )?.id ||
+		providers[ 0 ]?.id ||
+		''
+	);
+}
+
+function providerBadgeLabel( provider ) {
+	const labels = {
+		chatgpt: 'C',
+		claude: 'A',
+		codex: 'Cx',
+	};
+
+	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
+}
+
+function providerOverviewText( provider ) {
+	return `Connect ${ provider.label } to manage your WordPress site.`;
+}
+
+function ConnectProviderBadge( { provider } ) {
+	return (
+		<span
+			className={ `aculect-ai-companion-provider-badge is-${ provider.id }` }
+			aria-hidden="true"
+		>
+			{ providerBadgeLabel( provider ) }
+		</span>
+	);
+}
+
+function ConnectCapabilityCard( { icon, title, children, tone = 'blue' } ) {
+	return (
+		<div className="aculect-ai-companion-connect-capability-card">
+			<span
+				className={ `aculect-ai-companion-connect-capability-card__icon is-${ tone }` }
+				aria-hidden="true"
+			>
+				<Icon icon={ icon } size={ 20 } />
+			</span>
+			<div>
+				<h3>{ title }</h3>
+				<p>{ children }</p>
 			</div>
 		</div>
 	);
@@ -1157,6 +1223,9 @@ function ConnectFlowGraphic( { brandIconUrl } ) {
 				) : (
 					<Icon icon={ link } size={ 28 } />
 				) }
+				<span className="aculect-ai-companion-connect-flow__approval">
+					<Icon icon={ check } size={ 18 } />
+				</span>
 			</div>
 			<span className="aculect-ai-companion-connect-flow__path is-muted" />
 			<div className="aculect-ai-companion-connect-flow__node is-wordpress">
@@ -1202,7 +1271,7 @@ function connectStatusDetails( {
 		tone: 'is-ready',
 		title: 'Ready to connect',
 		description:
-			'Copy the connection URL into an AI assistant, then approve the OAuth consent screen in WordPress.',
+			'No assistants are connected yet. Follow the steps to get started.',
 		meta: 'No active sessions',
 	};
 }
@@ -1242,92 +1311,28 @@ function uniqueHelpLinks( providers ) {
 	return links;
 }
 
-function ConnectStatusPanel( { status } ) {
+function ConnectStatusPanel( { status, connectionsUrl, onNavigate } ) {
+	const statusIcon = status.tone === 'is-paused' ? lock : check;
+
 	return (
 		<div
-			className={ `aculect-ai-companion-side-panel aculect-ai-companion-connection-status ${ status.tone }` }
+			className={ `aculect-ai-companion-connect-card aculect-ai-companion-connection-status ${ status.tone }` }
 		>
-			<span className="aculect-ai-companion-side-panel__icon">
-				<Icon icon={ seen } size={ 20 } />
+			<span className="aculect-ai-companion-connection-status__icon">
+				<Icon icon={ statusIcon } size={ 18 } />
 			</span>
 			<div>
 				<h3>{ status.title }</h3>
 				<p>{ status.description }</p>
 				<strong>{ status.meta }</strong>
+				<a
+					className="aculect-ai-companion-connection-status__link"
+					href={ connectionsUrl }
+					onClick={ onNavigate }
+				>
+					Learn more about connections
+				</a>
 			</div>
-		</div>
-	);
-}
-
-function RequirementsPanel( { health, diagnosticsUrl, onNavigate } ) {
-	const items = Array.isArray( health?.items ) ? health.items : [];
-
-	return (
-		<div className="aculect-ai-companion-side-panel">
-			<div className="aculect-ai-companion-side-panel__heading">
-				<span className="aculect-ai-companion-side-panel__icon">
-					<Icon icon={ check } size={ 20 } />
-				</span>
-				<h3>Connection requirements</h3>
-			</div>
-			{ items.length > 0 ? (
-				<ul className="aculect-ai-companion-requirements-list">
-					{ items.map( ( item ) => (
-						<li key={ item.id }>
-							<StatusBadge status={ item.status } />
-							<span>{ item.message || item.id }</span>
-						</li>
-					) ) }
-				</ul>
-			) : (
-				<div className="aculect-ai-companion-requirement-empty">
-					<span className="aculect-ai-companion-health-status is-unavailable">
-						Unavailable
-					</span>
-					<p>
-						Run diagnostics to verify HTTPS, discovery metadata, and
-						the MCP authorization challenge.
-					</p>
-				</div>
-			) }
-			<a
-				className="aculect-ai-companion-side-panel__link"
-				href={ diagnosticsUrl }
-				onClick={ onNavigate }
-			>
-				Review diagnostics
-			</a>
-		</div>
-	);
-}
-
-function HelpLinksPanel( { links } ) {
-	if ( links.length === 0 ) {
-		return null;
-	}
-
-	return (
-		<div className="aculect-ai-companion-side-panel">
-			<div className="aculect-ai-companion-side-panel__heading">
-				<span className="aculect-ai-companion-side-panel__icon">
-					<Icon icon={ help } size={ 20 } />
-				</span>
-				<h3>Setup links</h3>
-			</div>
-			<ul className="aculect-ai-companion-help-link-list">
-				{ links.map( ( item ) => (
-					<li key={ item.url }>
-						<a
-							href={ item.url }
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							<span>{ item.label }</span>
-							<Icon icon={ external } size={ 16 } />
-						</a>
-					</li>
-				) ) }
-			</ul>
 		</div>
 	);
 }
@@ -2646,37 +2651,43 @@ function ConnectProviderCard( { provider, isOpen, onToggle, onCopy } ) {
 	const panelId = `aculect-ai-companion-provider-panel-${ provider.id }`;
 
 	return (
-		<Card
+		<div
 			key={ provider.id }
-			className={ `aculect-ai-companion-card aculect-ai-companion-provider-card ${
+			className={ `aculect-ai-companion-provider-card ${
 				isOpen ? 'is-open' : ''
 			}` }
 		>
-			<CardBody>
-				<div className="aculect-ai-companion-provider-card__header">
-					<div className="aculect-ai-companion-provider-card__title-wrap">
-						<h3 className="aculect-ai-companion-provider-card__title">
-							{ provider.label }
-						</h3>
-						<p className="aculect-ai-companion-provider-card__description">
-							{ provider.description }
-						</p>
-					</div>
-					<Button
-						variant="secondary"
-						onClick={ onToggle }
-						aria-expanded={ isOpen }
-						aria-controls={ panelId }
-					>
-						{ isOpen ? 'Hide setup' : 'Show setup' }
-					</Button>
+			<div className="aculect-ai-companion-provider-card__header">
+				<ConnectProviderBadge provider={ provider } />
+				<div className="aculect-ai-companion-provider-card__title-wrap">
+					<h3 className="aculect-ai-companion-provider-card__title">
+						{ provider.label }
+					</h3>
+					<p className="aculect-ai-companion-provider-card__description">
+						{ providerOverviewText( provider ) }
+					</p>
 				</div>
+				<Button
+					variant="secondary"
+					className="aculect-ai-companion-provider-toggle"
+					onClick={ onToggle }
+					aria-expanded={ isOpen }
+					aria-controls={ panelId }
+				>
+					<span>{ isOpen ? 'Hide steps' : 'Show steps' }</span>
+					<Icon
+						icon={ isOpen ? chevronUp : chevronDown }
+						size={ 16 }
+					/>
+				</Button>
+			</div>
 
-				{ isOpen && (
-					<div
-						id={ panelId }
-						className="aculect-ai-companion-provider-panel"
-					>
+			{ isOpen && (
+				<div
+					id={ panelId }
+					className="aculect-ai-companion-provider-panel"
+				>
+					{ setupSections.length > 0 ? (
 						<div className="aculect-ai-companion-setup-method-list">
 							{ setupSections.map( ( section, index ) => (
 								<SetupSection
@@ -2688,10 +2699,24 @@ function ConnectProviderCard( { provider, isOpen, onToggle, onCopy } ) {
 								/>
 							) ) }
 						</div>
+					) : (
+						<p className="aculect-ai-companion-provider-card__description">
+							Setup steps are not available for this provider yet.
+						</p>
+					) }
+					<div className="aculect-ai-companion-connect-info-message">
+						<span aria-hidden="true">
+							<Icon icon={ info } size={ 18 } />
+						</span>
+						<p>
+							You will be asked to approve the connection in
+							WordPress. You can review or remove access at any
+							time.
+						</p>
 					</div>
-				) }
-			</CardBody>
-		</Card>
+				</div>
+			) }
+		</div>
 	);
 }
 
@@ -4362,7 +4387,9 @@ function SettingsApp() {
 		pluginMetadata.documentationUrl || pluginMetadata.wordpressOrgUrl
 	);
 	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
-	const providers = Array.isArray( data.providers ) ? data.providers : [];
+	const providers = Array.isArray( data.providers )
+		? data.providers
+		: EMPTY_ARRAY;
 	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
 	const revokedSessions = Array.isArray( data.revokedSessions )
 		? data.revokedSessions
@@ -4428,7 +4455,7 @@ function SettingsApp() {
 	const [ diagnosticFilter, setDiagnosticFilter ] = useState( 'all' );
 	const [ diagnosticsRunning, setDiagnosticsRunning ] = useState( false );
 	const [ openProvider, setOpenProvider ] = useState(
-		providers[ 0 ]?.id || 'claude'
+		preferredOpenProviderId( providers )
 	);
 	const [ loggingEnabled, setLoggingEnabled ] = useState(
 		Boolean( diagnostics.loggingEnabled )
@@ -4518,6 +4545,22 @@ function SettingsApp() {
 		},
 		[]
 	);
+
+	useEffect( () => {
+		if ( providers.length === 0 ) {
+			return;
+		}
+
+		setOpenProvider( ( currentProvider ) => {
+			const providerIsAvailable = providers.some(
+				( provider ) => provider.id === currentProvider
+			);
+
+			return providerIsAvailable
+				? currentProvider
+				: preferredOpenProviderId( providers );
+		} );
+	}, [ providers ] );
 
 	useEffect( () => {
 		const target = adminNoticesRef.current;
@@ -5018,18 +5061,16 @@ function SettingsApp() {
 								<section className="aculect-ai-companion-connect-hero">
 									<div className="aculect-ai-companion-connect-hero__content">
 										<span className="aculect-ai-companion-eyebrow">
-											Connect setup
+											Connect your AI assistant
 										</span>
 										<h2 className="aculect-ai-companion-connect-hero__title">
-											Add Aculect AI Companion to your AI
-											assistant
+											Connect Aculect AI Companion to your
+											AI assistant
 										</h2>
 										<p className="aculect-ai-companion-connect-hero__copy">
-											Use the secure MCP endpoint below,
-											then approve the OAuth consent
-											screen in WordPress. The connection
-											URL is generated from this site at
-											runtime.
+											Use the secure connection below to
+											allow your AI assistant to interact
+											with your WordPress site.
 										</p>
 									</div>
 									<ConnectFlowGraphic
@@ -5037,144 +5078,165 @@ function SettingsApp() {
 									/>
 								</section>
 
-								<div className="aculect-ai-companion-connect-layout">
-									<div className="aculect-ai-companion-connect-main">
-										<Card className="aculect-ai-companion-card aculect-ai-companion-endpoint-card">
-											<CardHeader>
-												Step 1: Copy the connection URL
-											</CardHeader>
-											<CardBody>
-												<CopyField
-													label="Connection URL"
-													value={ data.mcpUrl }
-													onCopy={ ( value ) =>
-														copyValue(
-															value,
-															'Connection URL copied.'
-														)
-													}
-												/>
-												<p className="aculect-ai-companion-help-text">
-													This endpoint starts MCP and
-													OAuth discovery. It is not a
-													password, bearer token, or
-													secret.
-												</p>
-												<p className="aculect-ai-companion-help-text">
-													Hosted AI tools need a
-													publicly reachable HTTPS
-													URL. Localhost URLs are
-													useful for local testing
-													only.
-												</p>
-											</CardBody>
-										</Card>
-
-										<section className="aculect-ai-companion-connect-section">
-											<div className="aculect-ai-companion-section-title-row">
-												<div>
-													<span className="aculect-ai-companion-eyebrow">
-														Step 2
-													</span>
-													<h2 className="aculect-ai-companion-section-title">
-														Add the endpoint to an
-														AI assistant
-													</h2>
-												</div>
-											</div>
-											<div className="aculect-ai-companion-provider-list">
-												{ providers.map(
-													( provider ) => (
-														<ConnectProviderCard
-															key={ provider.id }
-															provider={
-																provider
-															}
-															isOpen={
-																openProvider ===
-																provider.id
-															}
-															onToggle={ () =>
-																setOpenProvider(
-																	openProvider ===
-																		provider.id
-																		? ''
-																		: provider.id
-																)
-															}
-															onCopy={ copyValue }
-														/>
-													)
-												) }
-											</div>
-										</section>
-
-										<section className="aculect-ai-companion-authorization-panel">
-											<span
-												className="aculect-ai-companion-authorization-panel__icon"
-												aria-hidden="true"
-											>
-												<Icon
-													icon={ shield }
-													size={ 22 }
-												/>
-											</span>
-											<div>
-												<span className="aculect-ai-companion-eyebrow">
-													Step 3
-												</span>
-												<h2>
-													Approve the assistant in
-													WordPress
-												</h2>
-												<p>
-													After the AI assistant
-													starts the connection,
-													WordPress shows a consent
-													screen. Review the assistant
-													name, scopes, and connected
-													user before approving
-													access.
-												</p>
-											</div>
-											<a
-												className="aculect-ai-companion-authorization-panel__link"
-												href={ tabUrl(
-													'abilities',
-													data.adminPageUrl
-												) }
-												onClick={ ( event ) =>
-													maybeSelectTab(
-														event,
-														'abilities'
+								<div className="aculect-ai-companion-connect-step-row">
+									<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
+										<ConnectStepHeading
+											number="1"
+											title="Copy the connection URL"
+										>
+											Copy the URL below and paste it into
+											your AI assistant when prompted.
+										</ConnectStepHeading>
+										<div className="aculect-ai-companion-connect-url-panel">
+											<CopyField
+												label="Connection URL"
+												value={ data.mcpUrl }
+												onCopy={ ( value ) =>
+													copyValue(
+														value,
+														'Connection URL copied.'
 													)
 												}
-											>
-												Review Controls
-											</a>
-										</section>
+											/>
+										</div>
+										<div className="aculect-ai-companion-connect-secure-note">
+											<Icon icon={ lock } size={ 16 } />
+											<span>
+												This link is unique to your site
+												and can be used by approved AI
+												assistants only.
+											</span>
+										</div>
+									</section>
+									<ConnectStatusPanel
+										status={ connectionStatus }
+										connectionsUrl={ tabUrl(
+											'connections',
+											data.adminPageUrl
+										) }
+										onNavigate={ ( event ) =>
+											maybeSelectTab(
+												event,
+												'connections'
+											)
+										}
+									/>
+								</div>
+
+								<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--providers">
+									<ConnectStepHeading
+										number="2"
+										title="Add the connection in your AI assistant"
+									>
+										Choose your AI assistant and follow the
+										simple steps to add the connection.
+									</ConnectStepHeading>
+									<div className="aculect-ai-companion-provider-list">
+										{ providers.map( ( provider ) => (
+											<ConnectProviderCard
+												key={ provider.id }
+												provider={ provider }
+												isOpen={
+													openProvider === provider.id
+												}
+												onToggle={ () =>
+													setOpenProvider(
+														openProvider ===
+															provider.id
+															? ''
+															: provider.id
+													)
+												}
+												onCopy={ copyValue }
+											/>
+										) ) }
 									</div>
 
-									<aside className="aculect-ai-companion-connect-sidebar">
-										<ConnectStatusPanel
-											status={ connectionStatus }
-										/>
-										<RequirementsPanel
-											health={ connectionHealth }
-											diagnosticsUrl={ tabUrl(
-												'diagnostics',
+									<section className="aculect-ai-companion-connect-capabilities">
+										<h2>What your AI assistant can do</h2>
+										<p>
+											These actions are always subject to
+											your permissions and settings.
+										</p>
+										<div className="aculect-ai-companion-connect-capability-grid">
+											<ConnectCapabilityCard
+												icon={ postContent }
+												title="Create & edit content"
+											>
+												Draft and update posts, pages,
+												and more.
+											</ConnectCapabilityCard>
+											<ConnectCapabilityCard
+												icon={ category }
+												title="Manage content"
+												tone="green"
+											>
+												Organize categories, tags, and
+												media.
+											</ConnectCapabilityCard>
+											<ConnectCapabilityCard
+												icon={ comment }
+												title="Moderate comments"
+												tone="purple"
+											>
+												Review, reply to, and manage
+												comments.
+											</ConnectCapabilityCard>
+											<ConnectCapabilityCard
+												icon={ shield }
+												title="Secure by design"
+												tone="orange"
+											>
+												You stay in control and can
+												revoke access anytime.
+											</ConnectCapabilityCard>
+										</div>
+									</section>
+								</section>
+
+								<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--approval">
+									<ConnectStepHeading
+										number="3"
+										title="Approve the connection in WordPress"
+									>
+										When your AI assistant tries to connect,
+										you will see a request here.
+									</ConnectStepHeading>
+									<div className="aculect-ai-companion-connect-request-panel">
+										<span
+											className="aculect-ai-companion-connect-request-panel__icon"
+											aria-hidden="true"
+										>
+											<Icon icon={ lock } size={ 18 } />
+										</span>
+										<div>
+											<strong>
+												No connection requests yet
+											</strong>
+											<p>
+												Requests from your AI assistant
+												will appear here for your
+												review.
+											</p>
+										</div>
+										<Button
+											href={ tabUrl(
+												'connections',
 												data.adminPageUrl
 											) }
-											onNavigate={ ( event ) =>
+											variant="secondary"
+											className="aculect-ai-companion-connect-request-panel__button"
+											onClick={ ( event ) =>
 												maybeSelectTab(
 													event,
-													'diagnostics'
+													'connections'
 												)
 											}
-										/>
-										<HelpLinksPanel links={ helpLinks } />
-									</aside>
-								</div>
+										>
+											Review requests
+										</Button>
+									</div>
+								</section>
 							</div>
 						);
 					}

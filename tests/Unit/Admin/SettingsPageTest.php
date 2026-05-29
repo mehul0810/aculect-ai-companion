@@ -13,6 +13,8 @@ use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Brand\BrandProfile;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use WP_REST_Request;
+use WP_REST_Response;
 
 /**
  * Verifies tab-specific admin payload hydration stays bounded.
@@ -119,6 +121,8 @@ final class SettingsPageTest extends TestCase {
 			'https://wordpress.org/plugins/aculect-ai-companion/',
 			$payload['pluginMetadata']['documentationUrl']
 		);
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/settings-payload', $payload['settingsPayloadUrl'] );
+		self::assertSame( 'nonce-wp_rest', $payload['settingsRestNonce'] );
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
 		self::assertSame( array(), $payload['sessions'] );
@@ -198,6 +202,25 @@ final class SettingsPageTest extends TestCase {
 		self::assertContains( 'changelog', $changelog['hydratedTabs'] );
 		self::assertSame( array(), $changelog['brandProfile'] );
 		self::assertArrayHasKey( '0.5.0', $changelog['changelog'] );
+	}
+
+	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {
+		$response = ( new SettingsPage() )->rest_settings_payload(
+			new WP_REST_Request(
+				array(
+					'tab' => 'connections',
+				)
+			)
+		);
+
+		self::assertInstanceOf( WP_REST_Response::class, $response );
+
+		$payload = $response->get_data();
+		self::assertIsArray( $payload );
+		self::assertSame( 'connections', $payload['payloadTab'] );
+		self::assertContains( 'connections', $payload['hydratedTabs'] );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 0 AND access_tokens.expires_at >= %s' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 
 	/**

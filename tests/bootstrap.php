@@ -52,6 +52,7 @@ $GLOBALS['aculect_ai_companion_test_hooks']       = array(
 	'actions' => array(),
 	'filters' => array(),
 );
+$GLOBALS['aculect_ai_companion_test_rest_routes'] = array();
 $GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'administrator' => array( 'name' => 'Administrator' ),
 	'editor'        => array( 'name' => 'Editor' ),
@@ -166,6 +167,27 @@ if ( ! function_exists( 'add_filter' ) ) {
 			'callback'      => $callback,
 			'priority'      => $priority,
 			'accepted_args' => $accepted_args,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'register_rest_route' ) ) {
+	/**
+	 * Record a test REST route registration.
+	 *
+	 * @param string               $namespace Route namespace.
+	 * @param string               $route     Route path.
+	 * @param array<string, mixed> $args      Route arguments.
+	 * @param bool                 $override  Whether to override existing route.
+	 */
+	function register_rest_route( string $namespace, string $route, array $args = array(), bool $override = false ): bool {
+		$GLOBALS['aculect_ai_companion_test_rest_routes'][] = array(
+			'namespace' => $namespace,
+			'route'     => $route,
+			'args'      => $args,
+			'override'  => $override,
 		);
 
 		return true;
@@ -733,6 +755,19 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 	}
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames
+
+if ( ! class_exists( 'WP_REST_Server' ) ) {
+	/**
+	 * Minimal REST server constants used by route registration tests.
+	 */
+	class WP_REST_Server {
+		public const READABLE   = 'GET';
+		public const CREATABLE  = 'POST';
+		public const EDITABLE   = 'POST, PUT, PATCH';
+		public const DELETABLE  = 'DELETE';
+		public const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+	}
+}
 
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	/**

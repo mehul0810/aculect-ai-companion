@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	hydratedTabsFromData,
+	mergeSettingsPayload,
 	normalizeTabName,
 	tabNameIsHydrated,
 } from '../../src/admin-tab-hydration.mjs';
@@ -34,4 +35,64 @@ test( 'falls back to all local tabs when old payloads omit hydration metadata', 
 	assert.deepEqual( hydratedTabsFromData( {}, fallbackTabs ), fallbackTabs );
 	assert.equal( tabNameIsHydrated( 'activity', {}, fallbackTabs ), true );
 	assert.equal( tabNameIsHydrated( 'about', {}, fallbackTabs ), true );
+} );
+
+test( 'merges lazy tab payloads without clearing previously hydrated tab data', () => {
+	const currentData = {
+		hydratedTabs: [ 'overview', 'connections' ],
+		sessions: [ { id: 1 } ],
+		revokedSessions: [ { id: 2 } ],
+		activity: { total: 0, items: [] },
+	};
+	const payload = {
+		payloadTab: 'activity',
+		hydratedTabs: [ 'overview', 'activity' ],
+		sessions: [],
+		revokedSessions: [],
+		activity: { total: 3, items: [ { id: 3 } ] },
+	};
+
+	assert.deepEqual(
+		mergeSettingsPayload( currentData, payload, 'activity' ),
+		{
+			hydratedTabs: [ 'overview', 'connections', 'activity' ],
+			payloadTab: 'activity',
+			sessions: [ { id: 1 } ],
+			revokedSessions: [ { id: 2 } ],
+			activity: { total: 3, items: [ { id: 3 } ] },
+		}
+	);
+} );
+
+test( 'merges diagnostic updates without clearing loaded logs', () => {
+	const currentData = {
+		hydratedTabs: [ 'overview', 'logs' ],
+		diagnostics: {
+			loggingEnabled: true,
+			retentionDays: 30,
+			logs: { total: 5, items: [ { id: 5 } ] },
+		},
+	};
+	const payload = {
+		payloadTab: 'advanced',
+		hydratedTabs: [ 'overview', 'advanced' ],
+		diagnostics: {
+			loggingEnabled: false,
+			retentionDays: 14,
+			logs: { total: 0, items: [] },
+		},
+	};
+
+	assert.deepEqual(
+		mergeSettingsPayload( currentData, payload, 'advanced' ),
+		{
+			hydratedTabs: [ 'overview', 'logs', 'advanced' ],
+			payloadTab: 'advanced',
+			diagnostics: {
+				loggingEnabled: false,
+				retentionDays: 14,
+				logs: { total: 5, items: [ { id: 5 } ] },
+			},
+		}
+	);
 } );

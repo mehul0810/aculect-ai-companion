@@ -1,6 +1,10 @@
 import { render, useEffect, useRef, useState } from '@wordpress/element';
 import './style.scss';
-import { normalizeTabName, tabNameIsHydrated } from './admin-tab-hydration.mjs';
+import {
+	mergeSettingsPayload,
+	normalizeTabName,
+	tabNameIsHydrated,
+} from './admin-tab-hydration.mjs';
 import {
 	Button,
 	Card,
@@ -166,10 +170,6 @@ function maybeSelectTab( event, tabName ) {
 		return;
 	}
 
-	if ( ! hasHydratedTab( tabName ) ) {
-		return;
-	}
-
 	event.preventDefault();
 	persistTabName( tabName, false );
 	window.dispatchEvent(
@@ -203,11 +203,46 @@ function submitActiveSettingsForm() {
 	form.submit();
 }
 
-function hasHydratedTab( tabName ) {
-	const data = window.aculectAICompanionSettingsData || {};
+function hasHydratedTab(
+	tabName,
+	data = window.aculectAICompanionSettingsData || {}
+) {
 	const fallbackTabs = SETTINGS_TABS.map( ( tab ) => tab.name );
 
 	return tabNameIsHydrated( tabName, data, fallbackTabs );
+}
+
+async function fetchSettingsPayload( data, tabName ) {
+	if ( ! data.settingsPayloadUrl ) {
+		throw new Error( 'Settings payload URL is unavailable.' );
+	}
+
+	const url = new URL( data.settingsPayloadUrl, window.location.origin );
+	url.searchParams.set( TAB_QUERY_PARAM, normalizeTabName( tabName ) );
+
+	const headers = {
+		Accept: 'application/json',
+	};
+
+	if ( data.settingsRestNonce ) {
+		headers[ 'X-WP-Nonce' ] = data.settingsRestNonce;
+	}
+
+	const response = await window.fetch( url.toString(), {
+		credentials: 'same-origin',
+		headers,
+	} );
+
+	if ( ! response.ok ) {
+		throw new Error( 'Settings payload request failed.' );
+	}
+
+	const payload = await response.json();
+	if ( ! isPlainObject( payload ) ) {
+		throw new Error( 'Settings payload response is invalid.' );
+	}
+
+	return payload;
 }
 
 function updateAdminSubmenuSelection( tabName ) {
@@ -4308,7 +4343,12 @@ function ChangelogDashboard( { changelog, metadata } ) {
 }
 
 function SettingsApp() {
-	const data = window.aculectAICompanionSettingsData || {};
+	const initialSettingsData = window.aculectAICompanionSettingsData || {};
+	const [ settingsData, setSettingsData ] = useState( initialSettingsData );
+	const [ loadingTab, setLoadingTab ] = useState( '' );
+	const [ tabLoadError, setTabLoadError ] = useState( '' );
+	const tabPayloadRequestsRef = useRef( new Set() );
+	const data = settingsData;
 	const brandIconUrl = data.brandIconUrl || '';
 	const pluginMetadata =
 		data.pluginMetadata && typeof data.pluginMetadata === 'object'
@@ -4523,10 +4563,66 @@ function SettingsApp() {
 	const activeTabName = useActiveTabName( tabs );
 	const activeTab =
 		tabs.find( ( tab ) => tab.name === activeTabName ) || tabs[ 0 ];
+	const hydratedTabKey = Array.isArray( data.hydratedTabs )
+		? data.hydratedTabs.join( '|' )
+		: '';
+	const settingsPayloadUrl = data.settingsPayloadUrl || '';
+	const settingsRestNonce = data.settingsRestNonce || '';
+	const activeTabHydrated = hasHydratedTab( activeTab.name, data );
+	const activeTabLoadFailed =
+		! activeTabHydrated && tabLoadError === activeTab.name;
 
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
+
+	useEffect( () => {
+		const tabName = activeTab.name;
+		if ( activeTabHydrated ) {
+			return;
+		}
+
+		if ( ! settingsPayloadUrl ) {
+			setTabLoadError( tabName );
+			return;
+		}
+
+		if ( tabPayloadRequestsRef.current.has( tabName ) ) {
+			return;
+		}
+
+		tabPayloadRequestsRef.current.add( tabName );
+		setLoadingTab( tabName );
+		setTabLoadError( '' );
+
+		fetchSettingsPayload(
+			{
+				settingsPayloadUrl,
+				settingsRestNonce,
+			},
+			tabName
+		)
+			.then( ( payload ) => {
+				setSettingsData( ( currentData ) =>
+					mergeSettingsPayload( currentData, payload, tabName )
+				);
+			} )
+			.catch( () => {
+				tabPayloadRequestsRef.current.delete( tabName );
+				setTabLoadError( tabName );
+			} )
+			.finally( () => {
+				setLoadingTab( ( currentTab ) =>
+					currentTab === tabName ? '' : currentTab
+				);
+			} );
+	}, [
+		activeTab.name,
+		activeTabHydrated,
+		hydratedTabKey,
+		settingsPayloadUrl,
+		settingsRestNonce,
+	] );
 
 	const toggleAbility = ( id, checked ) => {
 		setEnabledAbilities( ( current ) => {
@@ -4727,6 +4823,32 @@ function SettingsApp() {
 			<main className="aculect-ai-companion-tab-panel">
 				{ ( () => {
 					const tab = activeTab;
+
+					if ( ! activeTabHydrated ) {
+						return (
+							<Card className="aculect-ai-companion-card aculect-ai-companion-tab-loading">
+								<CardBody>
+									{ activeTabLoadFailed ? (
+										<Notice
+											status="error"
+											isDismissible={ false }
+										>
+											{ activeTab.title } could not be
+											loaded. Use the direct tab link if
+											the problem persists.
+										</Notice>
+									) : (
+										<p className="aculect-ai-companion-copy aculect-ai-companion-copy--first">
+											{ loadingTab === activeTab.name
+												? 'Loading'
+												: 'Preparing' }{ ' ' }
+											{ activeTab.title }...
+										</p>
+									) }
+								</CardBody>
+							</Card>
+						);
+					}
 
 					if ( tab.name === 'overview' ) {
 						return (

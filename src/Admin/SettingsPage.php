@@ -22,6 +22,8 @@ use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
+use WP_REST_Request;
+use WP_REST_Response;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -50,6 +52,46 @@ final class SettingsPage {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_filter( 'parent_file', array( $this, 'highlight_parent_menu' ) );
 		add_filter( 'submenu_file', array( $this, 'highlight_submenu' ) );
+	}
+
+	/**
+	 * Register admin-only REST routes used by the settings React app.
+	 */
+	public function register_rest_routes(): void {
+		register_rest_route(
+			'aculect-ai-companion/v1',
+			'/settings-payload',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'rest_settings_payload' ),
+				'permission_callback' => array( $this, 'can_manage_settings' ),
+				'args'                => array(
+					'tab' => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Check whether the current user can load admin settings payloads.
+	 */
+	public function can_manage_settings(): bool {
+		return current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * Return a tab-specific settings payload for client-side tab hydration.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return WP_REST_Response
+	 */
+	public function rest_settings_payload( WP_REST_Request $request ): WP_REST_Response {
+		$tab = sanitize_key( (string) $request->get_param( 'tab' ) );
+
+		return new WP_REST_Response( $this->settings_payload( $tab ) );
 	}
 
 	/**
@@ -116,10 +158,13 @@ final class SettingsPage {
 	/**
 	 * Return settings data for the React application.
 	 *
+	 * @param string|null $requested_tab Optional requested tab override.
 	 * @return array<string, mixed>
 	 */
-	private function settings_payload(): array {
-		$payload_tab          = $this->current_payload_tab();
+	private function settings_payload( ?string $requested_tab = null ): array {
+		$payload_tab          = null === $requested_tab
+			? $this->current_payload_tab()
+			: $this->normalize_payload_tab( $requested_tab );
 		$access_tokens        = new AccessTokenRepository();
 		$ability_registry     = new AbilitiesRegistry();
 		$active_session_count = $access_tokens->active_token_count();
@@ -149,6 +194,8 @@ final class SettingsPage {
 			'payloadTab'         => $payload_tab,
 			'hydratedTabs'       => $this->hydrated_tabs( $payload_tab ),
 			'adminPageUrl'       => esc_url_raw( $this->settings_url() ),
+			'settingsPayloadUrl' => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
+			'settingsRestNonce'  => wp_create_nonce( 'wp_rest' ),
 			'brandIconUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
 			),
@@ -856,9 +903,18 @@ final class SettingsPage {
 	 * Return the normalized tab used for server-side payload hydration.
 	 */
 	private function current_payload_tab(): string {
-		$tab = $this->requested_tab();
+		return $this->normalize_payload_tab( $this->requested_tab() );
+	}
 
-		return in_array( $tab, $this->payload_tabs(), true ) ? $tab : 'overview';
+	/**
+	 * Normalize a requested tab to a tab that can be server-hydrated.
+	 *
+	 * @param string $tab Requested tab.
+	 */
+	private function normalize_payload_tab( string $tab ): string {
+		$normalized_tab = $this->normalize_requested_tab( $tab );
+
+		return in_array( $normalized_tab, $this->payload_tabs(), true ) ? $normalized_tab : 'overview';
 	}
 
 	/**
@@ -902,6 +958,15 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only tab routing flag.
 		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) : 'overview';
 
+		return $this->normalize_requested_tab( $tab );
+	}
+
+	/**
+	 * Normalize legacy tab aliases.
+	 *
+	 * @param string $tab Requested tab.
+	 */
+	private function normalize_requested_tab( string $tab ): string {
 		return match ( $tab ) {
 			'about' => 'overview',
 			'connectors' => 'connect',

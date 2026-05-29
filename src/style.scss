@@ -34,27 +34,26 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 32px;
-	min-height: 176px;
+	gap: 16px;
+	min-height: 64px;
 	margin: 0;
-	padding: 48px 52px 46px 80px;
-	border-bottom: 1px solid #d8dee8;
+	padding: 8px 16px;
+	border-bottom: 1px solid #e5e7eb;
 	background: #fff;
-	box-shadow: 0 18px 42px rgba(15, 23, 42, 0.045);
 }
 
 .aculect-ai-companion-app-branding {
 	display: flex;
 	align-items: center;
 	flex-wrap: nowrap;
-	gap: 26px;
+	gap: 12px;
 	min-width: 0;
 }
 
 .aculect-ai-companion-app-icon {
 	display: block;
-	width: 88px;
-	height: 88px;
+	width: 44px;
+	height: 44px;
 	flex: 0 0 auto;
 	object-fit: contain;
 }
@@ -63,28 +62,53 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-app-title {
+.aculect-ai-companion-app-title-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-app-root .aculect-ai-companion-app-title {
 	margin: 0;
-	color: #050b35;
-	font-size: 42px;
-	font-weight: 800;
-	line-height: 1.05;
+	padding: 0;
+	color: var(--aculect-ai-companion-ink);
+	font-size: 20px;
+	font-weight: 700;
+	line-height: 1.2;
 	letter-spacing: 0;
 	overflow-wrap: anywhere;
 }
 
+.aculect-ai-companion-version-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 24px;
+	padding: 3px 10px;
+	border: 1px solid #e5e7eb;
+	border-radius: 999px;
+	background: #f3f4f6;
+	color: #475569;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1;
+	white-space: nowrap;
+}
+
 .aculect-ai-companion-app-subtitle {
-	margin: 8px 0 0;
-	color: #26324d;
-	font-size: 22px;
-	line-height: 1.25;
+	margin: 2px 0 0;
+	color: #64748b;
+	font-size: 13px;
+	line-height: 1.2;
 }
 
 .aculect-ai-companion-header-actions {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	gap: 30px;
+	gap: 22px;
 	min-width: 0;
 }
 
@@ -92,10 +116,10 @@
 	display: inline-flex;
 	align-items: center;
 	flex: 0 0 auto;
-	gap: 14px;
-	min-height: 72px;
-	color: #050b35;
-	font-size: 22px;
+	gap: 8px;
+	min-height: 40px;
+	color: #111827;
+	font-size: 14px;
 	font-weight: 700;
 	line-height: 1.2;
 	text-decoration: none;
@@ -117,23 +141,23 @@
 .aculect-ai-companion-header-divider {
 	display: block;
 	width: 1px;
-	height: 36px;
+	height: 28px;
 	flex: 0 0 auto;
-	background: #d8dee8;
+	background: #e5e7eb;
 }
 
 .aculect-ai-companion-header-save.components-button.is-primary {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 14px;
-	min-height: 72px;
-	padding: 0 28px;
-	border-radius: 8px;
-	background: #0b5cff;
-	box-shadow: 0 12px 24px rgba(11, 92, 255, 0.18);
+	gap: 8px;
+	min-height: 40px;
+	padding: 0 16px;
+	border-radius: 4px;
+	background: var(--aculect-ai-companion-primary);
+	box-shadow: none;
 	color: #fff;
-	font-size: 22px;
+	font-size: 14px;
 	font-weight: 700;
 	line-height: 1.2;
 	white-space: nowrap;
@@ -146,8 +170,8 @@
 }
 
 .aculect-ai-companion-admin-notices {
-	margin: 18px 0 0;
-	padding: 0 52px;
+	margin: 16px 0 0;
+	padding: 0 44px;
 }
 
 .aculect-ai-companion-admin-notices:empty {
@@ -171,11 +195,11 @@
 .aculect-ai-companion-tabs {
 	display: flex;
 	align-items: stretch;
-	gap: 34px;
-	min-height: 110px;
+	gap: 32px;
+	min-height: 56px;
 	margin: 0;
-	padding: 0 52px;
-	border-bottom: 1px solid #d8dee8;
+	padding: 0 44px;
+	border-bottom: 1px solid #e5e7eb;
 	background: #fff;
 	overflow-x: auto;
 	scrollbar-width: thin;
@@ -187,12 +211,12 @@
 	align-items: center;
 	flex: 0 0 auto;
 	justify-content: center;
-	min-height: 110px;
-	padding: 0 12px;
+	min-height: 56px;
+	padding: 0 8px;
 	border: 0;
-	color: #2d3954;
-	font-size: 20px;
-	font-weight: 700;
+	color: #1f2937;
+	font-size: 14px;
+	font-weight: 600;
 	line-height: 1.2;
 	text-decoration: none;
 	white-space: nowrap;
@@ -219,14 +243,14 @@
 	right: 0;
 	bottom: 0;
 	left: 0;
-	height: 4px;
-	background: #0b5cff;
+	height: 2px;
+	background: var(--aculect-ai-companion-primary);
 	content: "";
 }
 
 .aculect-ai-companion-tab-panel {
 	min-width: 0;
-	padding: 34px 52px 60px;
+	padding: 24px 44px 48px;
 }
 
 .aculect-ai-companion-card.components-card {
@@ -3258,7 +3282,8 @@
 
 	.aculect-ai-companion-app-header {
 		flex-direction: column;
-		padding: 36px 28px;
+		gap: 12px;
+		padding: 12px 16px;
 	}
 
 	.aculect-ai-companion-header-actions {
@@ -3268,14 +3293,15 @@
 	}
 
 	.aculect-ai-companion-tabs {
-		gap: 24px;
-		padding: 0 28px;
+		gap: 20px;
+		min-height: 52px;
+		padding: 0 16px;
 	}
 
 	.aculect-ai-companion-admin-notices,
 	.aculect-ai-companion-tab-panel {
-		padding-right: 28px;
-		padding-left: 28px;
+		padding-right: 16px;
+		padding-left: 16px;
 	}
 
 	.aculect-ai-companion-ability-summary {
@@ -3370,33 +3396,39 @@
 
 	.aculect-ai-companion-app-header {
 		gap: 12px;
-		padding: 28px 18px;
+		padding: 12px 14px;
 	}
 
 	.aculect-ai-companion-app-branding {
-		gap: 16px;
+		gap: 10px;
 	}
 
 	.aculect-ai-companion-app-icon {
-		width: 64px;
-		height: 64px;
+		width: 40px;
+		height: 40px;
 	}
 
-	.aculect-ai-companion-app-title {
-		font-size: 32px;
-	}
-
-	.aculect-ai-companion-app-subtitle {
+	.aculect-ai-companion-app-root .aculect-ai-companion-app-title {
 		font-size: 18px;
 	}
 
+	.aculect-ai-companion-version-badge {
+		min-height: 22px;
+		padding: 3px 8px;
+		font-size: 12px;
+	}
+
+	.aculect-ai-companion-app-subtitle {
+		font-size: 12px;
+	}
+
 	.aculect-ai-companion-header-actions {
-		gap: 14px;
+		gap: 12px;
 	}
 
 	.aculect-ai-companion-header-link {
-		min-height: 42px;
-		font-size: 16px;
+		min-height: 32px;
+		font-size: 14px;
 	}
 
 	.aculect-ai-companion-header-divider {
@@ -3405,26 +3437,26 @@
 
 	.aculect-ai-companion-header-save.components-button.is-primary {
 		width: 100%;
-		min-height: 54px;
-		font-size: 17px;
+		min-height: 40px;
+		font-size: 14px;
 	}
 
 	.aculect-ai-companion-tabs {
 		gap: 14px;
-		min-height: 74px;
-		padding: 0 18px;
+		min-height: 48px;
+		padding: 0 14px;
 	}
 
 	.aculect-ai-companion-tab {
-		min-height: 74px;
+		min-height: 48px;
 		padding: 0 8px;
-		font-size: 16px;
+		font-size: 14px;
 	}
 
 	.aculect-ai-companion-admin-notices,
 	.aculect-ai-companion-tab-panel {
-		padding-right: 18px;
-		padding-left: 18px;
+		padding-right: 14px;
+		padding-left: 14px;
 	}
 
 	.aculect-ai-companion-overview-hero {

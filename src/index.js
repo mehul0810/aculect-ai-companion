@@ -134,6 +134,18 @@ function persistTabName( tabName, replace = true ) {
 	}
 }
 
+function formatVersion( version ) {
+	const normalizedVersion = String( version || '' ).trim();
+
+	if ( ! normalizedVersion ) {
+		return '';
+	}
+
+	return normalizedVersion.startsWith( 'v' )
+		? normalizedVersion
+		: `v${ normalizedVersion }`;
+}
+
 function adminTabTitle( title ) {
 	return `Aculect AI Companion: ${ title }`;
 }
@@ -4568,9 +4580,16 @@ function SettingsApp() {
 						/>
 					) }
 					<div className="aculect-ai-companion-app-heading">
-						<h1 className="aculect-ai-companion-app-title">
-							AI Companion
-						</h1>
+						<div className="aculect-ai-companion-app-title-row">
+							<h1 className="aculect-ai-companion-app-title">
+								AI Companion
+							</h1>
+							{ data.version && (
+								<span className="aculect-ai-companion-version-badge">
+									{ formatVersion( data.version ) }
+								</span>
+							) }
+						</div>
 						<p className="aculect-ai-companion-app-subtitle">
 							by Aculect
 						</p>
@@ -4584,7 +4603,7 @@ function SettingsApp() {
 							target="_blank"
 							rel="noreferrer noopener"
 						>
-							<Icon icon={ page } size={ 26 } />
+							<Icon icon={ page } size={ 20 } />
 							<span>Documentation</span>
 						</a>
 					) }
@@ -4601,7 +4620,7 @@ function SettingsApp() {
 							target="_blank"
 							rel="noreferrer noopener"
 						>
-							<Icon icon={ help } size={ 28 } />
+							<Icon icon={ help } size={ 22 } />
 							<span>Support</span>
 						</a>
 					) }
@@ -4612,7 +4631,7 @@ function SettingsApp() {
 						aria-label="Save current tab settings"
 						onClick={ submitActiveSettingsForm }
 					>
-						<Icon icon={ page } size={ 25 } />
+						<Icon icon={ page } size={ 18 } />
 						<span>Save Changes</span>
 					</Button>
 				</div>

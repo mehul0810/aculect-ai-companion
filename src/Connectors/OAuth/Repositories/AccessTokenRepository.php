@@ -12,7 +12,7 @@ use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
 /**
- * Persists OAuth access tokens and active connector session state.
+ * Persists OAuth access tokens and connector session state.
  *
  * Access tokens are stored by SHA-256 hash only. Reads intentionally bypass
  * object cache because MCP authorization and revocation decisions must reflect
@@ -164,7 +164,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * List active connector sessions for the admin settings screen.
+	 * List refreshable connector sessions for the admin settings screen.
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
@@ -211,16 +211,24 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(
 					'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
-                    access_tokens.resource, access_tokens.expires_at, access_tokens.created_at, access_tokens.last_used_at,
-                    clients.client_name, clients.provider
+                    access_tokens.resource, access_tokens.expires_at AS access_token_expires_at,
+                    active_refresh.expires_at AS connection_expires_at, access_tokens.created_at,
+                    access_tokens.last_used_at, clients.client_name, clients.provider
                 FROM %i access_tokens
+                INNER JOIN (
+                    SELECT access_token_hash, MAX(expires_at) AS expires_at
+                    FROM %i
+                    WHERE revoked = 0 AND expires_at >= %s
+                    GROUP BY access_token_hash
+                ) active_refresh ON active_refresh.access_token_hash = access_tokens.token_hash
                 LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
-                WHERE access_tokens.revoked = 0 AND access_tokens.expires_at >= %s
-                ORDER BY access_tokens.created_at DESC
+                WHERE access_tokens.revoked = 0
+                ORDER BY active_refresh.expires_at DESC, access_tokens.created_at DESC
                 LIMIT 100',
 					$tables['access_tokens'],
-					$tables['clients'],
-					gmdate( 'Y-m-d H:i:s' )
+					$tables['refresh_tokens'],
+					gmdate( 'Y-m-d H:i:s' ),
+					$tables['clients']
 				),
 				ARRAY_A
 			);
@@ -259,7 +267,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'status'       => $revoked ? 'revoked' : 'active',
 					'created_at'   => (string) ( $row['created_at'] ?? '' ),
 					'last_used_at' => (string) ( $row['last_used_at'] ?? '' ),
-					'expires_at'   => (string) ( $row['expires_at'] ?? '' ),
+					'expires_at'   => (string) ( $row['connection_expires_at'] ?? $row['expires_at'] ?? '' ),
 				);
 			},
 			$rows
@@ -267,23 +275,29 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * Determine whether at least one non-expired session is active.
+	 * Determine whether at least one refreshable session is active.
 	 */
 	public function has_active_tokens(): bool {
 		return $this->active_token_count() > 0;
 	}
 
 	/**
-	 * Count non-expired active sessions.
+	 * Count active connections that can still refresh access.
 	 */
 	public function active_token_count(): int {
 		global $wpdb;
 
-		$table = Installer::table_names()['access_tokens'];
-		$count = $wpdb->get_var(
+		$tables = Installer::table_names();
+		$count  = $wpdb->get_var(
 			$wpdb->prepare(
-				'SELECT COUNT(*) FROM %i WHERE revoked = 0 AND expires_at >= %s',
-				$table,
+				'SELECT COUNT(DISTINCT access_tokens.id)
+				FROM %i access_tokens
+				INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+				WHERE access_tokens.revoked = 0
+				AND refresh_tokens.revoked = 0
+				AND refresh_tokens.expires_at >= %s',
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
 				gmdate( 'Y-m-d H:i:s' )
 			)
 		);
@@ -299,14 +313,19 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	public function active_session_counts_by_user(): array {
 		global $wpdb;
 
-		$table = Installer::table_names()['access_tokens'];
-		$rows  = $wpdb->get_results(
+		$tables = Installer::table_names();
+		$rows   = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT user_id, COUNT(*) AS active_count
-				FROM %i
-				WHERE revoked = 0 AND expires_at >= %s AND user_id IS NOT NULL
-				GROUP BY user_id',
-				$table,
+				'SELECT access_tokens.user_id, COUNT(DISTINCT access_tokens.id) AS active_count
+				FROM %i access_tokens
+				INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+				WHERE access_tokens.revoked = 0
+				AND refresh_tokens.revoked = 0
+				AND refresh_tokens.expires_at >= %s
+				AND access_tokens.user_id IS NOT NULL
+				GROUP BY access_tokens.user_id',
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
 				gmdate( 'Y-m-d H:i:s' )
 			),
 			ARRAY_A
@@ -406,10 +425,11 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * Delete expired access-token rows.
+	 * Delete expired access-token rows that no longer anchor active refresh.
 	 *
-	 * Revoked access tokens are preserved until they expire so active revocation
-	 * checks remain immediate and admin session state stays understandable.
+	 * Expired access-token rows are kept while a non-revoked refresh token can
+	 * still renew them so admin session state and revocation remain available
+	 * for the full connection window.
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
 	 * @param int         $limit  Maximum rows to delete in this pass.
@@ -418,13 +438,24 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
 		global $wpdb;
 
-		$table  = Installer::table_names()['access_tokens'];
+		$tables = Installer::table_names();
 		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
 		$limit  = $this->normalized_batch_limit( $limit );
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				'DELETE FROM %i WHERE expires_at < %s LIMIT %d',
-				$table,
+				'DELETE FROM %i
+				WHERE expires_at < %s
+				AND token_hash NOT IN (
+					SELECT access_token_hash
+					FROM %i
+					WHERE revoked = 0
+					AND expires_at >= %s
+				)
+				ORDER BY expires_at ASC
+				LIMIT %d',
+				$tables['access_tokens'],
+				$cutoff,
+				$tables['refresh_tokens'],
 				$cutoff,
 				$limit
 			)

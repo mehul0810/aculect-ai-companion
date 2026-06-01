@@ -24,6 +24,14 @@ that are revoked before expiry are kept until their normal expiry time so
 revocation checks remain immediate while the token or code could otherwise still
 be presented.
 
+Access tokens remain short-lived bearer credentials. Admin-visible connection
+state is based on a non-revoked refresh token that can renew access for 30 days
+from the last refresh; if an assistant does not use the connection during that
+window, the refresh token expires and the connection is no longer active.
+Expired access-token rows are retained only while they anchor an active refresh
+token, keeping admin revocation available for the full connection window without
+extending bearer-token validity.
+
 ## Plugin Check DB Warnings
 
 The repository classes contain scoped PHPCS suppressions for:

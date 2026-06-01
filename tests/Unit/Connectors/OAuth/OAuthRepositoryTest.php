@@ -62,7 +62,54 @@ final class OAuthRepositoryTest extends TestCase {
 			$counts
 		);
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
-		self::assertStringContainsString( 'GROUP BY user_id', $wpdb->prepared[0]['query'] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertStringContainsString( 'COUNT(DISTINCT access_tokens.id)', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.expires_at >= %s', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'GROUP BY access_tokens.user_id', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_active_token_count_uses_refreshable_connections(): void {
+		$wpdb             = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb']  = $wpdb;
+		$wpdb->var_result = 3;
+
+		self::assertSame( 3, ( new AccessTokenRepository() )->active_token_count() );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertStringContainsString( 'COUNT(DISTINCT access_tokens.id)', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.expires_at >= %s', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_active_sessions_show_connection_expiry_from_refresh_token(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->results   = array(
+			array(
+				'id'                      => '5',
+				'client_id'               => 'client-1',
+				'user_id'                 => '0',
+				'scopes'                  => '["content:read"]',
+				'resource'                => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+				'access_token_expires_at' => '2026-06-01 01:00:00',
+				'connection_expires_at'   => '2026-07-01 00:00:00',
+				'created_at'              => '2026-06-01 00:00:00',
+				'last_used_at'            => '',
+				'client_name'             => 'ChatGPT',
+				'provider'                => 'chatgpt',
+			),
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$sessions = ( new AccessTokenRepository() )->list_active_sessions();
+
+		self::assertCount( 1, $sessions );
+		self::assertSame( 'active', $sessions[0]['status'] );
+		self::assertSame( '2026-07-01 00:00:00', $sessions[0]['expires_at'] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertStringContainsString( 'MAX(expires_at) AS expires_at', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'active_refresh.access_token_hash = access_tokens.token_hash', $wpdb->prepared[0]['query'] );
 	}
 
 	public function test_revoke_user_marks_only_selected_users_tokens_revoked(): void {
@@ -262,6 +309,8 @@ final class FakeAccessTokenWpdb {
 	 */
 	public array $results = array();
 
+	public int $var_result = 0;
+
 	public int|false $update_result = 2;
 
 	public int|false $query_result = 1;
@@ -292,6 +341,17 @@ final class FakeAccessTokenWpdb {
 		unset( $query, $output );
 
 		return $this->results;
+	}
+
+	/**
+	 * Return a configured scalar query value.
+	 *
+	 * @param string $query SQL query.
+	 */
+	public function get_var( string $query ): int {
+		unset( $query );
+
+		return $this->var_result;
 	}
 
 	/**

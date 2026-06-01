@@ -144,7 +144,8 @@ final class SettingsPageTest extends TestCase {
 
 		self::assertSame( 'connections', $payload['payloadTab'] );
 		self::assertContains( 'connections', $payload['hydratedTabs'] );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 0 AND access_tokens.expires_at >= %s' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.revoked = 0' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.expires_at >= %s' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 
@@ -219,7 +220,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertIsArray( $payload );
 		self::assertSame( 'connections', $payload['payloadTab'] );
 		self::assertContains( 'connections', $payload['hydratedTabs'] );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 0 AND access_tokens.expires_at >= %s' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.revoked = 0' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.expires_at >= %s' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 

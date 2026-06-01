@@ -48,7 +48,11 @@ final class StorageMaintenanceTest extends TestCase {
 
 		self::assertSame( 3, $deleted );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $this->wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $this->wpdb->prepared[0]['args'][2] );
 		self::assertStringContainsString( 'expires_at < %s', $this->wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'token_hash NOT IN', $this->wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'revoked = 0', $this->wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'expires_at >= %s', $this->wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'LIMIT %d', $this->wpdb->prepared[0]['query'] );
 	}
 

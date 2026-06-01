@@ -1825,7 +1825,7 @@ function ConnectionsTable( {
 									isAccessPaused={ isAccessPaused }
 								/>
 								<span className="aculect-ai-companion-connections-table__secondary">
-									Expires{ ' ' }
+									Connection expires{ ' ' }
 									{ connectionDateValue(
 										session.expires_at,
 										'Unknown'
@@ -2211,7 +2211,7 @@ function AdvancedDashboard( {
 						</AdvancedSettingRow>
 						<AdvancedSettingRow
 							title="Session timeout"
-							description="Access tokens expire after 1 hour. Refresh tokens expire after 30 days unless the session is revoked first."
+							description="Connections stay active for 30 days from last assistant use. Access tokens remain short-lived and are refreshed by the assistant."
 							status="Fixed"
 						/>
 						<AdvancedSettingRow

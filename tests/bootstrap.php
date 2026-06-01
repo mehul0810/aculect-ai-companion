@@ -15,26 +15,50 @@ if ( ! defined( 'ABSPATH' ) ) {
 	if ( 'cli' !== PHP_SAPI ) {
 		exit;
 	}
+
+	define( 'ABSPATH', dirname( __DIR__ ) . '/' );
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.2.0' );
+	define( 'ACULECT_AI_COMPANION_VERSION', '0.5.0' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', dirname( __DIR__ ) . '/aculect-ai-companion.php' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_DIR' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_DIR', dirname( __DIR__ ) . '/' );
+}
+
+if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_URL' ) ) {
+	define( 'ACULECT_AI_COMPANION_PLUGIN_URL', 'https://example.com/wp-content/plugins/aculect-ai-companion/' );
 }
 
 if ( ! defined( 'ARRAY_A' ) ) {
 	define( 'ARRAY_A', 'ARRAY_A' );
 }
 
-$GLOBALS['aculect_ai_companion_test_options']    = array();
-$GLOBALS['aculect_ai_companion_test_transients'] = array();
-$GLOBALS['aculect_ai_companion_test_roles']      = array(
+$GLOBALS['aculect_ai_companion_test_options']     = array();
+$GLOBALS['aculect_ai_companion_test_transients']  = array();
+$GLOBALS['aculect_ai_companion_test_admin_pages'] = array(
+	'menu'    => array(),
+	'options' => array(),
+	'submenu' => array(),
+);
+$GLOBALS['aculect_ai_companion_test_hooks']       = array(
+	'actions' => array(),
+	'filters' => array(),
+);
+$GLOBALS['aculect_ai_companion_test_rest_routes'] = array();
+$GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'administrator' => array( 'name' => 'Administrator' ),
 	'editor'        => array( 'name' => 'Editor' ),
 	'author'        => array( 'name' => 'Author' ),
 );
-$GLOBALS['aculect_ai_companion_test_users']      = array();
+$GLOBALS['aculect_ai_companion_test_users']       = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -68,6 +92,29 @@ if ( ! function_exists( 'update_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'add_option' ) ) {
+	/**
+	 * Add a test option value only when it does not already exist.
+	 *
+	 * @param string $option     Option name.
+	 * @param mixed  $value      Option value.
+	 * @param mixed  $deprecated Deprecated description argument.
+	 * @param mixed  $autoload   Autoload flag.
+	 * @return bool
+	 */
+	function add_option( string $option, mixed $value = '', mixed $deprecated = '', mixed $autoload = null ): bool {
+		unset( $deprecated, $autoload );
+
+		if ( array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_options'] ) ) {
+			return false;
+		}
+
+		$GLOBALS['aculect_ai_companion_test_options'][ $option ] = $value;
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'apply_filters' ) ) {
 	/**
 	 * Return an unfiltered test value.
@@ -81,6 +128,148 @@ if ( ! function_exists( 'apply_filters' ) ) {
 		unset( $hook_name, $args );
 
 		return $value;
+	}
+}
+
+if ( ! function_exists( 'add_action' ) ) {
+	/**
+	 * Record a test action registration.
+	 *
+	 * @param string $hook_name     Action hook name.
+	 * @param mixed  $callback      Callback.
+	 * @param int    $priority      Hook priority.
+	 * @param int    $accepted_args Accepted argument count.
+	 */
+	function add_action( string $hook_name, mixed $callback, int $priority = 10, int $accepted_args = 1 ): true {
+		$GLOBALS['aculect_ai_companion_test_hooks']['actions'][] = array(
+			'hook_name'     => $hook_name,
+			'callback'      => $callback,
+			'priority'      => $priority,
+			'accepted_args' => $accepted_args,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+	/**
+	 * Record a test filter registration.
+	 *
+	 * @param string $hook_name     Filter hook name.
+	 * @param mixed  $callback      Callback.
+	 * @param int    $priority      Hook priority.
+	 * @param int    $accepted_args Accepted argument count.
+	 */
+	function add_filter( string $hook_name, mixed $callback, int $priority = 10, int $accepted_args = 1 ): true {
+		$GLOBALS['aculect_ai_companion_test_hooks']['filters'][] = array(
+			'hook_name'     => $hook_name,
+			'callback'      => $callback,
+			'priority'      => $priority,
+			'accepted_args' => $accepted_args,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'register_rest_route' ) ) {
+	/**
+	 * Record a test REST route registration.
+	 *
+	 * @param string               $namespace Route namespace.
+	 * @param string               $route     Route path.
+	 * @param array<string, mixed> $args      Route arguments.
+	 * @param bool                 $override  Whether to override existing route.
+	 */
+	function register_rest_route( string $namespace, string $route, array $args = array(), bool $override = false ): bool {
+		$GLOBALS['aculect_ai_companion_test_rest_routes'][] = array(
+			'namespace' => $namespace,
+			'route'     => $route,
+			'args'      => $args,
+			'override'  => $override,
+		);
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'add_menu_page' ) ) {
+	/**
+	 * Record a top-level admin menu registration.
+	 *
+	 * @param string   $page_title Page title.
+	 * @param string   $menu_title Menu title.
+	 * @param string   $capability Required capability.
+	 * @param string   $menu_slug  Menu slug.
+	 * @param mixed    $callback   Page callback.
+	 * @param string   $icon_url   Menu icon URL.
+	 * @param int|null $position   Menu position.
+	 */
+	function add_menu_page( string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', string $icon_url = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['menu'][] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'capability' => $capability,
+			'menu_slug'  => $menu_slug,
+			'callback'   => $callback,
+			'icon_url'   => $icon_url,
+			'position'   => $position,
+		);
+
+		return 'toplevel_page_' . $menu_slug;
+	}
+}
+
+if ( ! function_exists( 'add_options_page' ) ) {
+	/**
+	 * Record a Settings submenu page registration.
+	 *
+	 * @param string   $page_title Page title.
+	 * @param string   $menu_title Menu title.
+	 * @param string   $capability Required capability.
+	 * @param string   $menu_slug  Menu slug.
+	 * @param mixed    $callback   Page callback.
+	 * @param int|null $position   Menu position.
+	 */
+	function add_options_page( string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['options'][] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'capability' => $capability,
+			'menu_slug'  => $menu_slug,
+			'callback'   => $callback,
+			'position'   => $position,
+		);
+
+		return 'settings_page_' . $menu_slug;
+	}
+}
+
+if ( ! function_exists( 'add_submenu_page' ) ) {
+	/**
+	 * Record a generic admin submenu registration.
+	 *
+	 * @param string   $parent_slug Parent menu slug.
+	 * @param string   $page_title  Page title.
+	 * @param string   $menu_title  Menu title.
+	 * @param string   $capability  Required capability.
+	 * @param string   $menu_slug   Menu slug.
+	 * @param mixed    $callback    Page callback.
+	 * @param int|null $position    Menu position.
+	 */
+	function add_submenu_page( string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
+		$GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][] = array(
+			'parent_slug' => $parent_slug,
+			'page_title'  => $page_title,
+			'menu_title'  => $menu_title,
+			'capability'  => $capability,
+			'menu_slug'   => $menu_slug,
+			'callback'    => $callback,
+			'position'    => $position,
+		);
+
+		return $parent_slug . '_page_' . $menu_slug;
 	}
 }
 
@@ -144,6 +333,10 @@ if ( ! function_exists( 'count_users' ) ) {
 	 * @return array{total_users:int, avail_roles:array<string, int>}
 	 */
 	function count_users(): array {
+		if ( array_key_exists( 'aculect_ai_companion_count_users_calls', $GLOBALS ) ) {
+			++$GLOBALS['aculect_ai_companion_count_users_calls'];
+		}
+
 		$roles = array();
 		foreach ( $GLOBALS['aculect_ai_companion_test_users'] as $user ) {
 			foreach ( (array) ( $user->roles ?? array() ) as $role ) {
@@ -240,6 +433,118 @@ if ( ! function_exists( 'delete_transient' ) ) {
 	}
 }
 
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * Return untranslated text in tests.
+	 *
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain.
+	 */
+	function __( string $text, string $domain = 'default' ): string {
+		unset( $domain );
+
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'esc_html__' ) ) {
+	/**
+	 * Return untranslated escaped text in tests.
+	 *
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain.
+	 */
+	function esc_html__( string $text, string $domain = 'default' ): string {
+		unset( $domain );
+
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'admin_url' ) ) {
+	/**
+	 * Return a deterministic test admin URL.
+	 *
+	 * @param string $path Optional path.
+	 */
+	function admin_url( string $path = '' ): string {
+		return 'https://example.com/wp-admin/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'add_query_arg' ) ) {
+	/**
+	 * Add query args to a URL for tests.
+	 *
+	 * @param array<string, mixed>|string $args Query args or key.
+	 * @param mixed                       $value Query value or URL.
+	 * @param string|null                 $url   URL when key/value form is used.
+	 */
+	function add_query_arg( array|string $args, mixed $value = null, ?string $url = null ): string {
+		if ( is_array( $args ) ) {
+			$query_args = $args;
+			$url        = is_string( $value ) ? $value : (string) $url;
+		} else {
+			$query_args = array( $args => $value );
+			$url        = (string) $url;
+		}
+
+		$url       = '' === $url ? 'https://example.com/' : $url;
+		$separator = str_contains( $url, '?' ) ? '&' : '?';
+
+		return $url . $separator . http_build_query( $query_args );
+	}
+}
+
+if ( ! function_exists( 'get_current_user_id' ) ) {
+	/**
+	 * Return a deterministic current user ID.
+	 */
+	function get_current_user_id(): int {
+		return (int) ( $GLOBALS['aculect_ai_companion_test_current_user_id'] ?? 1 );
+	}
+}
+
+if ( ! function_exists( 'wp_create_nonce' ) ) {
+	/**
+	 * Return deterministic test nonces.
+	 *
+	 * @param string $action Nonce action.
+	 */
+	function wp_create_nonce( string $action = '' ): string {
+		return 'nonce-' . $action;
+	}
+}
+
+if ( ! function_exists( 'get_file_data' ) ) {
+	/**
+	 * Parse simple plugin headers for tests.
+	 *
+	 * @param string               $file            File path.
+	 * @param array<string,string> $default_headers Header map.
+	 * @param string               $context         Header context.
+	 * @return array<string,string>
+	 */
+	function get_file_data( string $file, array $default_headers, string $context = '' ): array {
+		unset( $context );
+
+		if ( ! file_exists( $file ) ) {
+			return array_fill_keys( array_keys( $default_headers ), '' );
+		}
+
+		$contents = file_get_contents( $file );
+		$contents = false === $contents ? '' : $contents;
+		$data     = array();
+
+		foreach ( $default_headers as $key => $header ) {
+			$pattern      = '/^[ \t\/*#@]*' . preg_quote( $header, '/' ) . ':\s*(.+)$/mi';
+			$data[ $key ] = preg_match( $pattern, $contents, $matches ) ? trim( $matches[1] ) : '';
+		}
+
+		return $data;
+	}
+}
+
 if ( ! function_exists( 'home_url' ) ) {
 	/**
 	 * Return a deterministic test home URL.
@@ -316,29 +621,20 @@ if ( ! function_exists( 'wp_http_validate_url' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_roles' ) ) {
+if ( ! function_exists( 'get_user_by' ) ) {
 	/**
-	 * Return deterministic test roles.
-	 */
-	function wp_roles(): object {
-		return (object) array(
-			'roles' => array(
-				'administrator' => array( 'name' => 'Administrator' ),
-				'editor'        => array( 'name' => 'Editor' ),
-				'author'        => array( 'name' => 'Author' ),
-			),
-		);
-	}
-}
-
-if ( ! function_exists( 'translate_user_role' ) ) {
-	/**
-	 * Return an untranslated test role label.
+	 * Return one test user by ID.
 	 *
-	 * @param string $name Role name.
+	 * @param string $field User field.
+	 * @param mixed  $value Field value.
+	 * @return object|false
 	 */
-	function translate_user_role( string $name ): string {
-		return $name;
+	function get_user_by( string $field, mixed $value ): object|false {
+		if ( 'id' !== $field && 'ID' !== $field ) {
+			return false;
+		}
+
+		return $GLOBALS['aculect_ai_companion_test_users'][ (int) $value ] ?? false;
 	}
 }
 
@@ -350,6 +646,29 @@ if ( ! function_exists( 'absint' ) ) {
 	 */
 	function absint( mixed $maybeint ): int {
 		return abs( (int) $maybeint );
+	}
+}
+
+if ( ! function_exists( 'wp_hash_password' ) ) {
+	/**
+	 * Hash a password for tests.
+	 *
+	 * @param string $password Raw password.
+	 */
+	function wp_hash_password( string $password ): string {
+		return password_hash( $password, PASSWORD_BCRYPT );
+	}
+}
+
+if ( ! function_exists( 'wp_check_password' ) ) {
+	/**
+	 * Check a password hash for tests.
+	 *
+	 * @param string $password Raw password.
+	 * @param string $hash     Password hash.
+	 */
+	function wp_check_password( string $password, string $hash ): bool {
+		return password_verify( $password, $hash );
 	}
 }
 
@@ -436,6 +755,19 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 	}
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames
+
+if ( ! class_exists( 'WP_REST_Server' ) ) {
+	/**
+	 * Minimal REST server constants used by route registration tests.
+	 */
+	class WP_REST_Server {
+		public const READABLE   = 'GET';
+		public const CREATABLE  = 'POST';
+		public const EDITABLE   = 'POST, PUT, PATCH';
+		public const DELETABLE  = 'DELETE';
+		public const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+	}
+}
 
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	/**

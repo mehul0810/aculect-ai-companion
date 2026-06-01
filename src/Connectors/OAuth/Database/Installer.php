@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Database;
 
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
+
 /**
  * Owns Aculect AI Companion's OAuth storage schema and legacy token migration.
  *
@@ -16,18 +18,21 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned OAuth protocol tables require uncached reads/writes and controlled schema changes.
 
-	private const DB_VERSION             = '2026.05.11.1';
-	private const OPTION_DB_VERSION      = 'aculect_ai_companion_oauth_db_version';
-	private const OPTION_MIGRATED_LEGACY = 'aculect_ai_companion_oauth_legacy_migrated';
+	private const DB_VERSION                 = '2026.05.28.1';
+	private const OPTION_DB_VERSION          = 'aculect_ai_companion_oauth_db_version';
+	private const OPTION_MIGRATED_LEGACY     = 'aculect_ai_companion_oauth_legacy_migrated';
+	private const FINGERPRINT_BACKFILL_LIMIT = 500;
 
 	/**
 	 * Create or update the OAuth tables and migrate option-backed legacy state.
 	 */
 	public static function install(): void {
-		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
+		$installed           = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$needs_schema_update = version_compare( $installed, self::DB_VERSION, '<' );
+		if ( $needs_schema_update ) {
 			self::create_tables();
 			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+			self::backfill_client_registration_fingerprints();
 		}
 
 		self::migrate_legacy_option_tokens();
@@ -79,13 +84,43 @@ final class Installer {
 		$charset = $wpdb->get_charset_collate();
 		$tables  = self::table_names();
 
-		$sql = "CREATE TABLE {$tables['clients']} (
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( self::schema_sql( $tables, $charset ) );
+	}
+
+	/**
+	 * Return the full OAuth schema SQL for dbDelta().
+	 *
+	 * @param array<string, string> $tables  Table names keyed by logical store.
+	 * @param string                $charset Database charset/collation clause.
+	 */
+	private static function schema_sql( array $tables, string $charset ): string {
+		return implode(
+			"\n\n",
+			array(
+				self::clients_table_sql( $tables['clients'], $charset ),
+				self::auth_codes_table_sql( $tables['auth_codes'], $charset ),
+				self::access_tokens_table_sql( $tables['access_tokens'], $charset ),
+				self::refresh_tokens_table_sql( $tables['refresh_tokens'], $charset ),
+			)
+		) . "\n";
+	}
+
+	/**
+	 * Return the DCR client table schema.
+	 *
+	 * @param string $table   Table name.
+	 * @param string $charset Database charset/collation clause.
+	 */
+	private static function clients_table_sql( string $table, string $charset ): string {
+		return "CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             client_id varchar(100) NOT NULL,
             client_secret_hash varchar(255) DEFAULT NULL,
             client_name varchar(255) NOT NULL,
             provider varchar(40) NOT NULL DEFAULT 'mcp',
             redirect_uris longtext NOT NULL,
+            registration_fingerprint char(64) NOT NULL DEFAULT '',
             user_id bigint(20) unsigned DEFAULT NULL,
             is_confidential tinyint(1) NOT NULL DEFAULT 1,
             revoked tinyint(1) NOT NULL DEFAULT 0,
@@ -94,11 +129,21 @@ final class Installer {
             PRIMARY KEY  (id),
             UNIQUE KEY client_id (client_id),
             KEY provider (provider),
+            KEY provider_registration_revoked (provider, registration_fingerprint, revoked),
             KEY user_id (user_id),
-            KEY revoked (revoked)
-        ) {$charset};
+            KEY revoked (revoked),
+            KEY revoked_updated_at (revoked, updated_at)
+        ) {$charset};";
+	}
 
-        CREATE TABLE {$tables['auth_codes']} (
+	/**
+	 * Return the authorization code table schema.
+	 *
+	 * @param string $table   Table name.
+	 * @param string $charset Database charset/collation clause.
+	 */
+	private static function auth_codes_table_sql( string $table, string $charset ): string {
+		return "CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             code_hash char(64) NOT NULL,
             client_id varchar(100) NOT NULL,
@@ -114,9 +159,17 @@ final class Installer {
             KEY user_id (user_id),
             KEY revoked (revoked),
             KEY expires_at (expires_at)
-        ) {$charset};
+        ) {$charset};";
+	}
 
-        CREATE TABLE {$tables['access_tokens']} (
+	/**
+	 * Return the access token table schema.
+	 *
+	 * @param string $table   Table name.
+	 * @param string $charset Database charset/collation clause.
+	 */
+	private static function access_tokens_table_sql( string $table, string $charset ): string {
+		return "CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             token_hash char(64) NOT NULL,
             client_id varchar(100) NOT NULL,
@@ -133,9 +186,17 @@ final class Installer {
             KEY user_id (user_id),
             KEY revoked (revoked),
             KEY expires_at (expires_at)
-        ) {$charset};
+        ) {$charset};";
+	}
 
-        CREATE TABLE {$tables['refresh_tokens']} (
+	/**
+	 * Return the refresh token table schema.
+	 *
+	 * @param string $table   Table name.
+	 * @param string $charset Database charset/collation clause.
+	 */
+	private static function refresh_tokens_table_sql( string $table, string $charset ): string {
+		return "CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             token_hash char(64) NOT NULL,
             access_token_hash char(64) NOT NULL,
@@ -147,10 +208,45 @@ final class Installer {
             KEY access_token_hash (access_token_hash),
             KEY revoked (revoked),
             KEY expires_at (expires_at)
-        ) {$charset};\n";
+        ) {$charset};";
+	}
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
+	/**
+	 * Backfill fingerprints for existing DCR clients after the schema upgrade.
+	 */
+	private static function backfill_client_registration_fingerprints(): void {
+		global $wpdb;
+
+		$table = self::table_names()['clients'];
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, redirect_uris FROM %i WHERE registration_fingerprint = %s LIMIT %d',
+				$table,
+				'',
+				self::FINGERPRINT_BACKFILL_LIMIT
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return;
+		}
+
+		foreach ( $rows as $row ) {
+			$id          = absint( $row['id'] ?? 0 );
+			$fingerprint = ClientRegistrationFingerprint::from_encoded_redirect_uris( (string) ( $row['redirect_uris'] ?? '' ) );
+			if ( $id <= 0 || null === $fingerprint ) {
+				continue;
+			}
+
+			$wpdb->update(
+				$table,
+				array( 'registration_fingerprint' => $fingerprint ),
+				array( 'id' => $id ),
+				array( '%s' ),
+				array( '%d' )
+			);
+		}
 	}
 
 	/**

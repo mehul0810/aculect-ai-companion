@@ -22,8 +22,8 @@ final class AuthorizationControllerTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$_GET                                        = array();
-		$_POST                                       = array();
+		$_GET  = array();
+		$_POST = array();
 	}
 
 	public function test_params_from_array_allowlists_and_sanitizes_oauth_parameters(): void {
@@ -71,8 +71,8 @@ final class AuthorizationControllerTest extends TestCase {
 	public function test_posted_helpers_unslash_sanitize_and_validate_form_fields(): void {
 		$_POST = array(
 			'client_id' => 'client\\\\id',
-			'_wpnonce' => 'nonce\\value',
-			'decision' => 'approve',
+			'_wpnonce'  => 'nonce\\value',
+			'decision'  => 'approve',
 		);
 
 		$controller = new AuthorizationController();
@@ -89,6 +89,28 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertFalse( $this->invokePrivate( $controller, 'valid_code_challenge', array( str_repeat( 'a', 42 ) ) ) );
 		self::assertTrue( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'content:draft' ) ) ) );
 		self::assertFalse( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'options:write' ) ) ) );
+	}
+
+	public function test_admin_consent_url_uses_wordpress_settings_page(): void {
+		$url = $this->invokePrivate(
+			new AuthorizationController(),
+			'admin_consent_url',
+			array(
+				array(
+					'response_type'         => 'code',
+					'client_id'             => 'client-1',
+					'redirect_uri'          => 'https://chatgpt.com/oauth/callback',
+					'code_challenge'        => str_repeat( 'a', 43 ),
+					'code_challenge_method' => 'S256',
+				),
+			)
+		);
+
+		self::assertIsString( $url );
+		self::assertStringStartsWith( 'https://example.com/wp-admin/options-general.php?', $url );
+		self::assertStringContainsString( 'page=aculect-ai-companion', $url );
+		self::assertStringContainsString( 'view=oauth-consent', $url );
+		self::assertStringContainsString( 'client_id=client-1', $url );
 	}
 
 	/**

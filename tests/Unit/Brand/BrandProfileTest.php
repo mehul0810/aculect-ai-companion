@@ -73,4 +73,18 @@ final class BrandProfileTest extends TestCase {
 		self::assertSame( '', $public['colors']['primary']['value'] );
 		self::assertSame( 'empty', $public['colors']['primary']['source'] );
 	}
+
+	public function test_delete_removes_saved_profile(): void {
+		$profile = new BrandProfile();
+
+		$profile->save(
+			array(
+				'site_name' => 'Delete Me',
+			)
+		);
+
+		BrandProfile::delete();
+
+		self::assertSame( array(), get_option( 'aculect_ai_companion_brand_profile', array() ) );
+	}
 }

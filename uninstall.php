@@ -41,10 +41,14 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Connectors\OAuth\Database\Installer::uninstall();
 \Aculect\AICompanion\Diagnostics\Database\Installer::uninstall();
 \Aculect\AICompanion\Activity\Database\Installer::uninstall();
+\Aculect\AICompanion\Brand\BrandProfile::delete();
 \Aculect\AICompanion\Diagnostics\ConnectionHealth::delete();
 \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
+\Aculect\AICompanion\Connectors\OAuth\StorageMaintenance::delete_options();
 \Aculect\AICompanion\Connectors\MCP\AccessLockdown::delete();
+\Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::delete();
 \Aculect\AICompanion\Connectors\MCP\ToolSafety::delete();
+\Aculect\AICompanion\Connectors\MCP\UserAccessControl::delete();
 \Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy::delete();
 \Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint::delete();
 

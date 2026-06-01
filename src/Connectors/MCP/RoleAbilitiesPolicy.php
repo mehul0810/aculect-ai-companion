@@ -19,18 +19,21 @@ final class RoleAbilitiesPolicy {
 	/**
 	 * Return admin-facing role policy data.
 	 *
-	 * @param AbilitiesRegistry $registry Ability registry.
+	 * @param AbilitiesRegistry $registry             Ability registry.
+	 * @param bool              $include_user_samples Whether to include sample affected users.
 	 * @return array<string, mixed>
 	 */
-	public function admin_payload( AbilitiesRegistry $registry ): array {
-		$roles = array();
+	public function admin_payload( AbilitiesRegistry $registry, bool $include_user_samples = true ): array {
+		$roles       = array();
+		$user_counts = $this->role_user_counts();
+
 		foreach ( $this->registered_roles() as $slug => $role ) {
 			$allowed_ids = $this->allowed_ids_for_role( (string) $slug, $registry );
 			$roles[]     = array(
 				'id'           => (string) $slug,
 				'label'        => translate_user_role( (string) ( $role['name'] ?? $slug ) ),
-				'userCount'    => $this->role_user_count( (string) $slug ),
-				'users'        => $this->role_user_samples( (string) $slug ),
+				'userCount'    => $user_counts[ (string) $slug ] ?? 0,
+				'users'        => $include_user_samples ? $this->role_user_samples( (string) $slug ) : array(),
 				'explicit'     => $this->has_explicit_policy( (string) $slug ),
 				'allowedIds'   => $allowed_ids,
 				'enabledCount' => count( $allowed_ids ),
@@ -270,17 +273,26 @@ final class RoleAbilitiesPolicy {
 	}
 
 	/**
-	 * Count users for a role.
+	 * Return user counts keyed by role.
 	 *
-	 * @param string $role Role slug.
+	 * @return array<string, int>
 	 */
-	private function role_user_count( string $role ): int {
+	private function role_user_counts(): array {
 		if ( ! function_exists( 'count_users' ) ) {
-			return 0;
+			return array();
 		}
 
 		$counts = count_users();
-		return (int) ( $counts['avail_roles'][ $role ] ?? 0 );
+		$roles  = array();
+		foreach ( $counts['avail_roles'] as $role => $count ) {
+			if ( ! is_scalar( $role ) ) {
+				continue;
+			}
+
+			$roles[ (string) $role ] = absint( $count );
+		}
+
+		return $roles;
 	}
 
 	/**

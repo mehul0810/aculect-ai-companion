@@ -22,6 +22,8 @@ use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
+use WP_REST_Request;
+use WP_REST_Response;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -30,38 +32,66 @@ defined( 'ABSPATH' ) || exit;
  */
 final class SettingsPage {
 
-	private const ASSET_HANDLE = 'aculect-ai-companion-settings-app';
-	private const STYLE_HANDLE = 'aculect-ai-companion-settings-style';
-	private const MENU_ICON    = 'data:image/svg+xml;base64,'
-		. 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCI+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0iTTMuNCAxNiA4LjYgNGMuNi0xLjQgMi4yLTEuNCAyLjggMEwxNi42IDE2aC0zTDEwIDcuMiA2LjQgMTZoLTN6Ii8+PHBhdGggZmlsbD0iI2E3YWFhZCIgZD0ibTEwIDEyLjQuNiAxLjIgMS4yLjYtMS4yLjYtLjYgMS4yLS42LTEuMi0xLjItLjYgMS4yLS42LjYtMS4yeiIvPjwvc3ZnPg==';
+	private const PAGE_SLUG            = 'aculect-ai-companion';
+	private const SETTINGS_PARENT_FILE = 'options-general.php';
+	private const ASSET_HANDLE         = 'aculect-ai-companion-settings-app';
+	private const STYLE_HANDLE         = 'aculect-ai-companion-settings-style';
 
 	/**
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
-		add_menu_page(
+		add_options_page(
 			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
 			__( 'AI Companion', 'aculect-ai-companion' ),
 			'manage_options',
-			'aculect-ai-companion',
-			array( $this, 'render' ),
-			self::MENU_ICON,
-			81
+			self::PAGE_SLUG,
+			array( $this, 'render' )
 		);
-		foreach ( $this->settings_tabs() as $tab ) {
-			add_submenu_page(
-				'aculect-ai-companion',
-				$tab['title'],
-				$tab['menu_title'],
-				'manage_options',
-				$tab['slug'],
-				array( $this, 'render' )
-			);
-		}
 
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_filter( 'parent_file', array( $this, 'highlight_parent_menu' ) );
 		add_filter( 'submenu_file', array( $this, 'highlight_submenu' ) );
+	}
+
+	/**
+	 * Register admin-only REST routes used by the settings React app.
+	 */
+	public function register_rest_routes(): void {
+		register_rest_route(
+			'aculect-ai-companion/v1',
+			'/settings-payload',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'rest_settings_payload' ),
+				'permission_callback' => array( $this, 'can_manage_settings' ),
+				'args'                => array(
+					'tab' => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Check whether the current user can load admin settings payloads.
+	 */
+	public function can_manage_settings(): bool {
+		return current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * Return a tab-specific settings payload for client-side tab hydration.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return WP_REST_Response
+	 */
+	public function rest_settings_payload( WP_REST_Request $request ): WP_REST_Response {
+		$tab = sanitize_key( (string) $request->get_param( 'tab' ) );
+
+		return new WP_REST_Response( $this->settings_payload( $tab ) );
 	}
 
 	/**
@@ -128,65 +158,175 @@ final class SettingsPage {
 	/**
 	 * Return settings data for the React application.
 	 *
+	 * @param string|null $requested_tab Optional requested tab override.
 	 * @return array<string, mixed>
 	 */
-	private function settings_payload(): array {
-		$ability_registry = new AbilitiesRegistry();
+	private function settings_payload( ?string $requested_tab = null ): array {
+		$payload_tab          = null === $requested_tab
+			? $this->current_payload_tab()
+			: $this->normalize_payload_tab( $requested_tab );
+		$access_tokens        = new AccessTokenRepository();
+		$ability_registry     = new AbilitiesRegistry();
+		$active_session_count = $access_tokens->active_token_count();
+
+		return array_merge(
+			$this->base_payload( $payload_tab, $active_session_count ),
+			$this->connection_payload( $payload_tab, $access_tokens ),
+			$this->ability_payload( $payload_tab, $ability_registry ),
+			$this->tab_payload( $payload_tab ),
+			array(
+				'actions' => $this->actions_payload(),
+			)
+		);
+	}
+
+	/**
+	 * Return shared settings data that is cheap enough for every tab.
+	 *
+	 * @param string $payload_tab          Normalized payload tab.
+	 * @param int    $active_session_count Active OAuth session count.
+	 * @return array<string, mixed>
+	 */
+	private function base_payload( string $payload_tab, int $active_session_count ): array {
+		return array(
+			'version'            => ACULECT_AI_COMPANION_VERSION,
+			'pluginMetadata'     => $this->plugin_metadata(),
+			'payloadTab'         => $payload_tab,
+			'hydratedTabs'       => $this->hydrated_tabs( $payload_tab ),
+			'adminPageUrl'       => esc_url_raw( $this->settings_url() ),
+			'settingsPayloadUrl' => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
+			'settingsRestNonce'  => wp_create_nonce( 'wp_rest' ),
+			'brandIconUrl'       => esc_url_raw(
+				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
+			),
+			'brandMarkUrl'       => esc_url_raw(
+				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-mark.svg'
+			),
+			'isConnected'        => $active_session_count > 0,
+			'activeSessionCount' => $active_session_count,
+			'accessPaused'       => AccessLockdown::is_paused(),
+			'currentUserId'      => get_current_user_id(),
+			'mcpUrl'             => Helpers::mcp_resource(),
+			'providers'          => $this->providers(),
+			'status'             => $this->status(),
+			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
+			'roleConnections'    => $this->role_connections_payload(),
+			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
+		);
+	}
+
+	/**
+	 * Return session lists only for tabs that render connection tables.
+	 *
+	 * @param string                $payload_tab   Normalized payload tab.
+	 * @param AccessTokenRepository $access_tokens Access token repository.
+	 * @return array<string, mixed>
+	 */
+	private function connection_payload( string $payload_tab, AccessTokenRepository $access_tokens ): array {
+		if ( 'connections' !== $payload_tab ) {
+			return array(
+				'sessions'        => array(),
+				'revokedSessions' => array(),
+			);
+		}
 
 		return array(
-			'version'                  => ACULECT_AI_COMPANION_VERSION,
-			'pluginMetadata'           => $this->plugin_metadata(),
-			'adminPageUrl'             => esc_url_raw( $this->settings_url() ),
-			'brandIconUrl'             => esc_url_raw( ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg' ),
-			'isConnected'              => ( new AccessTokenRepository() )->has_active_tokens(),
-			'accessPaused'             => AccessLockdown::is_paused(),
-			'currentUserId'            => get_current_user_id(),
-			'mcpUrl'                   => Helpers::mcp_resource(),
-			'providers'                => $this->providers(),
-			'sessions'                 => ( new AccessTokenRepository() )->list_active_sessions(),
-			'revokedSessions'          => ( new AccessTokenRepository() )->list_revoked_sessions(),
+			'sessions'        => $access_tokens->list_active_sessions(),
+			'revokedSessions' => $access_tokens->list_revoked_sessions(),
+		);
+	}
+
+	/**
+	 * Return ability controls while deferring role samples to the Abilities tab.
+	 *
+	 * @param string            $payload_tab      Normalized payload tab.
+	 * @param AbilitiesRegistry $ability_registry Ability registry.
+	 * @return array<string, mixed>
+	 */
+	private function ability_payload( string $payload_tab, AbilitiesRegistry $ability_registry ): array {
+		$wp_abilities        = new WordPressAbilitiesPolicy();
+		$tool_safety         = new ToolSafety();
+		$role_ability_policy = 'abilities' === $payload_tab
+			? ( new RoleAbilitiesPolicy() )->admin_payload( $ability_registry )
+			: array();
+
+		return array(
 			'abilities'                => $ability_registry->public_definitions(),
 			'enabledAbilities'         => $ability_registry->enabled_ids(),
-			'roleAbilityPolicy'        => ( new RoleAbilitiesPolicy() )->admin_payload( $ability_registry ),
-			'brandProfile'             => ( new BrandProfile() )->admin_payload(),
-			'wpAbilities'              => ( new WordPressAbilitiesPolicy() )->public_definitions(),
-			'enabledWpAbilities'       => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
-			'confirmationGroups'       => ( new ToolSafety() )->confirmation_groups(),
-			'confirmationGroupOptions' => ( new ToolSafety() )->available_confirmation_groups(),
-			'status'                   => $this->status(),
-			'activity'                 => $this->activity_payload(),
-			'diagnostics'              => $this->diagnostics(),
-			'roleConnections'          => array(
-				'enabled'      => RoleConnectionEntryPoint::is_enabled(),
-				'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
-				'roleOptions'  => RoleConnectionEntryPoint::role_options(),
-				'shortcode'    => '[aculect_ai_companion_connect]',
-				'blockName'    => 'aculect/ai-companion-connect',
-				'functionName' => 'aculect_ai_companion_connection_entry',
-			),
-			'connectionHealth'         => ( new ConnectionHealth() )->last_result(),
-			'actions'                  => array(
-				'adminPostUrl'            => admin_url( 'admin-post.php' ),
-				'saveAbilitiesAction'     => 'aculect_ai_companion_save_abilities',
-				'saveRoleAbilitiesAction' => 'aculect_ai_companion_save_role_abilities',
-				'saveAdvancedAction'      => 'aculect_ai_companion_save_advanced',
-				'saveBrandAction'         => 'aculect_ai_companion_save_brand',
-				'runDiagnosticsAction'    => 'aculect_ai_companion_run_connection_diagnostics',
-				'clearLogsAction'         => 'aculect_ai_companion_clear_logs',
-				'setLockdownAction'       => 'aculect_ai_companion_set_lockdown',
-				'revokeSessionAction'     => 'aculect_ai_companion_revoke_session',
-				'revokeAllAction'         => 'aculect_ai_companion_revoke_all_sessions',
-				'saveAbilitiesNonce'      => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
-				'saveRoleAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
-				'saveAdvancedNonce'       => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
-				'saveBrandNonce'          => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
-				'runDiagnosticsNonce'     => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
-				'clearLogsNonce'          => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
-				'setLockdownNonce'        => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
-				'revokeSessionNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
-				'revokeAllNonce'          => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
-			),
-			'changelog'                => $this->load_changelog(),
+			'roleAbilityPolicy'        => $role_ability_policy,
+			'wpAbilities'              => $wp_abilities->public_definitions(),
+			'enabledWpAbilities'       => $wp_abilities->allowed_ids(),
+			'confirmationGroups'       => $tool_safety->confirmation_groups(),
+			'confirmationGroupOptions' => $tool_safety->available_confirmation_groups(),
+		);
+	}
+
+	/**
+	 * Return data that belongs to one expensive or hidden tab.
+	 *
+	 * @param string $payload_tab Normalized payload tab.
+	 * @return array<string, mixed>
+	 */
+	private function tab_payload( string $payload_tab ): array {
+		$activity_payload = 'activity' === $payload_tab
+			? $this->activity_payload()
+			: $this->empty_activity_payload();
+		$brand_profile    = 'brand' === $payload_tab
+			? ( new BrandProfile() )->admin_payload()
+			: array();
+		$changelog        = 'changelog' === $payload_tab
+			? $this->load_changelog()
+			: array();
+
+		return array(
+			'activity'     => $activity_payload,
+			'brandProfile' => $brand_profile,
+			'changelog'    => $changelog,
+		);
+	}
+
+	/**
+	 * Return role-connection settings for the Advanced tab.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function role_connections_payload(): array {
+		return array(
+			'enabled'      => RoleConnectionEntryPoint::is_enabled(),
+			'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
+			'roleOptions'  => RoleConnectionEntryPoint::role_options(),
+			'shortcode'    => '[aculect_ai_companion_connect]',
+			'blockName'    => 'aculect/ai-companion-connect',
+			'functionName' => 'aculect_ai_companion_connection_entry',
+		);
+	}
+
+	/**
+	 * Return admin-post action names and nonces for forms.
+	 *
+	 * @return array<string, string>
+	 */
+	private function actions_payload(): array {
+		return array(
+			'adminPostUrl'            => admin_url( 'admin-post.php' ),
+			'saveAbilitiesAction'     => 'aculect_ai_companion_save_abilities',
+			'saveRoleAbilitiesAction' => 'aculect_ai_companion_save_role_abilities',
+			'saveAdvancedAction'      => 'aculect_ai_companion_save_advanced',
+			'saveBrandAction'         => 'aculect_ai_companion_save_brand',
+			'runDiagnosticsAction'    => 'aculect_ai_companion_run_connection_diagnostics',
+			'clearLogsAction'         => 'aculect_ai_companion_clear_logs',
+			'setLockdownAction'       => 'aculect_ai_companion_set_lockdown',
+			'revokeSessionAction'     => 'aculect_ai_companion_revoke_session',
+			'revokeAllAction'         => 'aculect_ai_companion_revoke_all_sessions',
+			'saveAbilitiesNonce'      => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+			'saveRoleAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
+			'saveAdvancedNonce'       => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+			'saveBrandNonce'          => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
+			'runDiagnosticsNonce'     => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+			'clearLogsNonce'          => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
+			'setLockdownNonce'        => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
+			'revokeSessionNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
+			'revokeAllNonce'          => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 		);
 	}
 
@@ -461,15 +601,18 @@ final class SettingsPage {
 	/**
 	 * Return diagnostic settings and the current log page for the React app.
 	 *
+	 * @param bool $include_logs Whether to load paginated log rows.
 	 * @return array<string, mixed>
 	 */
-	private function diagnostics(): array {
+	private function diagnostics( bool $include_logs = false ): array {
 		$enabled = LogSettings::is_enabled();
 
 		return array(
 			'loggingEnabled' => $enabled,
 			'retentionDays'  => LogSettings::retention_days(),
-			'logs'           => $enabled ? $this->logs_payload() : $this->empty_logs_payload(),
+			'logs'           => $enabled && $include_logs
+				? $this->logs_payload()
+				: $this->empty_logs_payload(),
 		);
 	}
 
@@ -502,7 +645,36 @@ final class SettingsPage {
 			'totalPages' => $total_pages,
 			'filters'    => $filters,
 			'prevUrl'    => $page > 1 ? $this->activity_page_url( $filters, $page - 1 ) : '',
-			'nextUrl'    => $page < $total_pages ? $this->activity_page_url( $filters, $page + 1 ) : '',
+			'nextUrl'    => $page < $total_pages
+				? $this->activity_page_url( $filters, $page + 1 )
+				: '',
+		);
+	}
+
+	/**
+	 * Return the default empty AI activity payload.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function empty_activity_payload(): array {
+		return array(
+			'summary'    => array(),
+			'items'      => array(),
+			'total'      => 0,
+			'page'       => 1,
+			'perPage'    => 50,
+			'totalPages' => 1,
+			'filters'    => array(
+				'page'      => 1,
+				'action'    => '',
+				'status'    => '',
+				'user_id'   => 0,
+				'assistant' => '',
+				'search'    => '',
+				'range'     => '7d',
+			),
+			'prevUrl'    => '',
+			'nextUrl'    => '',
 		);
 	}
 
@@ -623,18 +795,18 @@ final class SettingsPage {
 		return add_query_arg(
 			array_merge(
 				array(
-					'page' => 'aculect-ai-companion',
+					'page' => self::PAGE_SLUG,
 				),
 				$args
 			),
-			admin_url( 'admin.php' )
+			admin_url( self::SETTINGS_PARENT_FILE )
 		);
 	}
 
 	/**
-	 * Return the visible settings tabs used for the wp-admin submenu.
+	 * Return the visible settings tabs rendered inside the settings app.
 	 *
-	 * @return array<int, array{tab:string, title:string, menu_title:string, slug:string}>
+	 * @return array<int, array{tab:string, title:string, menu_title:string}>
 	 */
 	private function settings_tabs(): array {
 		$tabs = array(
@@ -642,49 +814,41 @@ final class SettingsPage {
 				'tab'        => 'overview',
 				'title'      => __( 'Overview', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Overview', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion',
 			),
 			array(
 				'tab'        => 'connect',
 				'title'      => __( 'Connect', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Connect', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=connect',
 			),
 			array(
 				'tab'        => 'connections',
 				'title'      => __( 'Connections', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Connections', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=connections',
 			),
 			array(
 				'tab'        => 'abilities',
 				'title'      => __( 'Abilities', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Abilities', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=abilities',
 			),
 			array(
 				'tab'        => 'activity',
 				'title'      => __( 'Activity', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Activity', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=activity',
 			),
 			array(
 				'tab'        => 'diagnostics',
 				'title'      => __( 'Diagnostics', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Diagnostics', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=diagnostics',
 			),
 			array(
 				'tab'        => 'advanced',
 				'title'      => __( 'Advanced', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Advanced', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=advanced',
 			),
 			array(
 				'tab'        => 'changelog',
 				'title'      => __( 'Changelog', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Changelog', 'aculect-ai-companion' ),
-				'slug'       => 'aculect-ai-companion&tab=changelog',
 			),
 		);
 
@@ -702,20 +866,20 @@ final class SettingsPage {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
-		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
+		return isset( $_GET['page'] ) && self::PAGE_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**
-	 * Keep the Aculect top-level menu highlighted for tab subpages.
+	 * Keep the WordPress Settings menu highlighted for tab subpages.
 	 *
 	 * @param string|null $parent_file Current parent file.
 	 */
 	public function highlight_parent_menu( ?string $parent_file ): ?string {
-		return $this->is_current_settings_page() ? 'aculect-ai-companion' : $parent_file;
+		return $this->is_current_settings_page() ? self::SETTINGS_PARENT_FILE : $parent_file;
 	}
 
 	/**
-	 * Keep the matching Aculect submenu highlighted for the current tab.
+	 * Keep the AI Companion settings submenu highlighted for internal tabs.
 	 *
 	 * @param string|null $submenu_file Current submenu file.
 	 */
@@ -724,12 +888,7 @@ final class SettingsPage {
 			return $submenu_file;
 		}
 
-		$tab = $this->current_tab();
-		if ( 'overview' === $tab ) {
-			return 'aculect-ai-companion';
-		}
-
-		return 'aculect-ai-companion&tab=' . $tab;
+		return self::PAGE_SLUG;
 	}
 
 	/**
@@ -737,22 +896,81 @@ final class SettingsPage {
 	 */
 	private function is_current_settings_page(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin routing flag.
-		return isset( $_GET['page'] ) && 'aculect-ai-companion' === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
+		return isset( $_GET['page'] ) && self::PAGE_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**
-	 * Return the normalized active settings tab.
+	 * Return the normalized tab used for server-side payload hydration.
 	 */
-	private function current_tab(): string {
+	private function current_payload_tab(): string {
+		return $this->normalize_payload_tab( $this->requested_tab() );
+	}
+
+	/**
+	 * Normalize a requested tab to a tab that can be server-hydrated.
+	 *
+	 * @param string $tab Requested tab.
+	 */
+	private function normalize_payload_tab( string $tab ): string {
+		$normalized_tab = $this->normalize_requested_tab( $tab );
+
+		return in_array( $normalized_tab, $this->payload_tabs(), true ) ? $normalized_tab : 'overview';
+	}
+
+	/**
+	 * Return tabs that have complete data in the current localized payload.
+	 *
+	 * @param string $payload_tab Normalized payload tab.
+	 * @return list<string>
+	 */
+	private function hydrated_tabs( string $payload_tab ): array {
+		$tabs = array( 'overview', 'connect', 'diagnostics', 'advanced' );
+
+		$tab_specific_payloads = array(
+			'connections',
+			'abilities',
+			'activity',
+			'brand',
+			'logs',
+			'changelog',
+		);
+
+		if ( in_array( $payload_tab, $tab_specific_payloads, true ) ) {
+			$tabs[] = $payload_tab;
+		}
+
+		return array_values( array_unique( $tabs ) );
+	}
+
+	/**
+	 * Return every tab name that can be represented by localized data.
+	 *
+	 * @return list<string>
+	 */
+	private function payload_tabs(): array {
+		return array_merge( array_column( $this->settings_tabs(), 'tab' ), array( 'brand', 'logs' ) );
+	}
+
+	/**
+	 * Return the raw requested tab normalized for legacy aliases.
+	 */
+	private function requested_tab(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only tab routing flag.
 		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) : 'overview';
 
-		$available_tabs = array_column( $this->settings_tabs(), 'tab' );
+		return $this->normalize_requested_tab( $tab );
+	}
 
+	/**
+	 * Normalize legacy tab aliases.
+	 *
+	 * @param string $tab Requested tab.
+	 */
+	private function normalize_requested_tab( string $tab ): string {
 		return match ( $tab ) {
 			'about' => 'overview',
 			'connectors' => 'connect',
-			default => in_array( $tab, $available_tabs, true ) ? $tab : 'overview',
+			default => $tab,
 		};
 	}
 
@@ -842,14 +1060,15 @@ final class SettingsPage {
 		$readme_data = $this->readme_headers();
 
 		return array(
-			'version'         => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
-			'requiresAtLeast' => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
-			'requiresPhp'     => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
-			'testedUpTo'      => sanitize_text_field( (string) ( $readme_data['Tested up to'] ?? '' ) ),
-			'stableTag'       => sanitize_text_field( (string) ( $readme_data['Stable tag'] ?? '' ) ),
-			'wordpressOrgUrl' => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/#developers' ),
-			'supportUrl'      => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
-			'reviewUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
+			'version'          => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
+			'requiresAtLeast'  => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
+			'requiresPhp'      => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
+			'testedUpTo'       => sanitize_text_field( (string) ( $readme_data['Tested up to'] ?? '' ) ),
+			'stableTag'        => sanitize_text_field( (string) ( $readme_data['Stable tag'] ?? '' ) ),
+			'documentationUrl' => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/' ),
+			'wordpressOrgUrl'  => esc_url_raw( 'https://wordpress.org/plugins/aculect-ai-companion/#developers' ),
+			'supportUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
+			'reviewUrl'        => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
 		);
 	}
 

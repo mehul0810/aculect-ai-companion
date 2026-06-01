@@ -104,7 +104,7 @@ Regression check: run repeated valid DCR requests and confirm every request retu
 
 Cause: authorize flow did not cleanly hand off to wp-admin consent and relied on REST route state.
 
-Fix: validate the OAuth request first, then send logged-in users directly to `admin.php?page=aculect-ai-companion&view=oauth-consent`.
+Fix: validate the OAuth request first, then send logged-in users directly to `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 Regression check: with an authenticated browser session, OAuth authorize should show the consent screen without landing on `wp-login.php`.
 
@@ -114,7 +114,7 @@ Cause: `wp_login_url()` used the REST authorize URL as `redirect_to`.
 
 Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including the OAuth request parameters.
 
-Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `admin.php?page=aculect-ai-companion&view=oauth-consent`.
+Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 ### ChatGPT Says The MCP Server Does Not Implement OAuth
 
@@ -172,7 +172,7 @@ curl -sSI "$base/wp-json/aculect-ai-companion/v1/oauth/authorize?response_type=c
   | grep -Ei '^(HTTP/|location:)'
 ```
 
-Expected: `302` to `wp-login.php` with `redirect_to` containing `admin.php?page=aculect-ai-companion&view=oauth-consent`.
+Expected: `302` to `wp-login.php` with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
 
 ### Logged-In Authorize Should Go Directly To Consent
 

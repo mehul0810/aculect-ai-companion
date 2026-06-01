@@ -53,15 +53,26 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	}
 
 	public function test_admin_payload_includes_role_metadata(): void {
+		$GLOBALS['aculect_ai_companion_count_users_calls'] = 0;
+
 		$payload = $this->policy->admin_payload( $this->registry );
 		$roles   = array_column( $payload['roles'], null, 'id' );
 
+		self::assertSame( 1, $GLOBALS['aculect_ai_companion_count_users_calls'] );
 		self::assertSame( $this->registry->enabled_ids(), $payload['globalEnabledIds'] );
 		self::assertArrayHasKey( 'editor', $roles );
 		self::assertSame( 'Editor', $roles['editor']['label'] );
 		self::assertSame( 1, $roles['editor']['userCount'] );
 		self::assertSame( 'Ed Editor', $roles['editor']['users'][0]['label'] );
 		self::assertFalse( $roles['editor']['explicit'] );
+	}
+
+	public function test_admin_payload_can_skip_user_samples(): void {
+		$payload = $this->policy->admin_payload( $this->registry, false );
+		$roles   = array_column( $payload['roles'], null, 'id' );
+
+		self::assertSame( 1, $roles['editor']['userCount'] );
+		self::assertSame( array(), $roles['editor']['users'] );
 	}
 
 	public function test_role_policy_sanitizes_unknown_abilities_and_resets_to_default(): void {

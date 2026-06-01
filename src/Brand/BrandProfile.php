@@ -37,6 +37,13 @@ final class BrandProfile {
 	}
 
 	/**
+	 * Delete the saved brand profile.
+	 */
+	public static function delete(): void {
+		delete_option( self::OPTION );
+	}
+
+	/**
 	 * Return admin UI data with saved overrides and detected defaults.
 	 *
 	 * @return array<string, mixed>

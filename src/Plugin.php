@@ -102,6 +102,7 @@ final class Plugin {
 		( new AuthorizationController() )->register_routes();
 		( new TokenController() )->register_routes();
 		( new McpController() )->register_routes();
+		( new SettingsPage() )->register_rest_routes();
 	}
 
 	/**

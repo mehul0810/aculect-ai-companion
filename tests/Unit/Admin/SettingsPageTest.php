@@ -135,6 +135,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertIsArray( $providers['claude'] );
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
+		self::assertArrayHasKey( 'codex', $providers );
+		self::assertStringContainsString( 'scopes = ["content:read", "content:draft"]', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );

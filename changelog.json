@@ -11,6 +11,7 @@
       "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries."
     ],
     "Reliability": [
+      "Fixed Claude MCP tool invocation by requesting the full connector scope set during OAuth discovery while keeping ChatGPT and Codex scope metadata aligned.",
       "Expanded cleanup coverage for full uninstall data removal."
     ]
   },

@@ -58,7 +58,7 @@ final class McpController {
 				$request,
 				401
 			);
-			return $this->auth_challenge_response( null, 'content:read', 401, 'invalid_token' );
+			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
 		if ( str_contains( (string) $request->get_header( 'accept' ), 'text/event-stream' ) ) {
@@ -120,7 +120,7 @@ final class McpController {
 				$request,
 				401
 			);
-			return $this->auth_challenge_response( $id, 'content:read', 401, 'invalid_token' );
+			return $this->auth_challenge_response( $id, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
 		wp_set_current_user( (int) $auth['user_id'] );
@@ -442,6 +442,13 @@ final class McpController {
 				'scopes' => $scopes,
 			),
 		);
+	}
+
+	/**
+	 * Return the scopes requested during the first OAuth challenge.
+	 */
+	private function initial_auth_scope(): string {
+		return implode( ' ', Helpers::supported_scopes() );
 	}
 
 	/**

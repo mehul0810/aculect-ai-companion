@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use PHPUnit\Framework\TestCase;
+use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\McpController;
@@ -205,6 +206,25 @@ final class McpControllerTest extends TestCase {
 		$data = $response->get_data();
 		self::assertTrue( $data['result']['isError'] );
 		self::assertArrayHasKey( 'mcp/www_authenticate', $data['result']['_meta'] );
+	}
+
+	public function test_initial_auth_challenge_requests_all_supported_scopes(): void {
+		$controller = new McpController();
+		$scope      = $this->invokePrivate( $controller, 'initial_auth_scope' );
+
+		self::assertSame( implode( ' ', Helpers::supported_scopes() ), $scope );
+		self::assertSame( 'content:read content:draft', $scope );
+
+		$response = $this->invokePrivate(
+			$controller,
+			'auth_challenge_response',
+			array( 1, $scope, 401, 'invalid_token' )
+		);
+		$header   = (string) $response->header( 'WWW-Authenticate' );
+		$data     = $response->get_data();
+
+		self::assertStringContainsString( 'scope="content:read content:draft"', $header );
+		self::assertStringContainsString( 'scope="content:read content:draft"', $data['result']['_meta']['mcp/www_authenticate'][0] );
 	}
 
 	/**

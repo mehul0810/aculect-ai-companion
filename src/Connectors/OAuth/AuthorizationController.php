@@ -62,6 +62,29 @@ final class AuthorizationController {
 	 */
 	public function authorize( WP_REST_Request $request ): void {
 		$params = $this->params( $request );
+		$this->authorize_with_params( $params, $request );
+	}
+
+	/**
+	 * Validate a root-route authorization request and redirect to WordPress consent.
+	 *
+	 * WordPress REST cookie authentication requires a REST nonce, so browser
+	 * OAuth redirects use the root route to preserve normal logged-in cookies.
+	 *
+	 * @param array<string, mixed> $query_params Raw query parameters.
+	 */
+	public function authorize_from_query_params( array $query_params ): void {
+		$params = $this->params_from_array( $query_params, true );
+		$this->authorize_with_params( $params );
+	}
+
+	/**
+	 * Validate sanitized authorization params and redirect to WordPress consent.
+	 *
+	 * @param array<string, string> $params  Sanitized authorization parameters.
+	 * @param WP_REST_Request|null  $request Optional REST request for logging.
+	 */
+	private function authorize_with_params( array $params, ?WP_REST_Request $request = null ): void {
 		( new Logger() )->info(
 			'authorize.received',
 			'OAuth authorization request received.',

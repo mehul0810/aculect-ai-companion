@@ -7,7 +7,6 @@ namespace Aculect\AICompanion;
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
-use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
@@ -69,7 +68,7 @@ final class Plugin {
 		add_action( 'init', array( $this, 'maybe_flush_rewrite_rules' ), 20 );
 		add_filter( 'query_vars', array( $this, 'register_query_vars' ) );
 		add_filter( 'redirect_canonical', array( $this, 'filter_canonical_redirect' ), 10, 2 );
-		add_action( 'parse_request', array( $this, 'maybe_redirect_root_authorize' ), 0, 0 );
+		add_action( 'parse_request', array( $this, 'maybe_redirect_root_authorize' ), 0, 1 );
 		add_action( 'parse_request', array( $this, 'render_well_known_metadata' ), 0, 0 );
 		add_action( 'template_redirect', array( $this, 'render_well_known_metadata' ) );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -148,22 +147,29 @@ final class Plugin {
 	}
 
 	/**
-	 * Redirect the root /oauth/authorize route to the REST authorization handler.
+	 * Handle the root /oauth/authorize route while preserving logged-in cookies.
+	 *
+	 * @param object $wp Current WordPress request object.
 	 */
-	public function maybe_redirect_root_authorize(): void {
-		if ( ! get_query_var( 'aculect_ai_companion_oauth_authorize' ) ) {
+	public function maybe_redirect_root_authorize( object $wp ): void {
+		if ( ! $this->is_root_authorize_request( $wp ) ) {
 			return;
 		}
 
-		$params = array();
-		foreach ( $_GET as $key => $value ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			if ( is_scalar( $value ) ) {
-				$params[ sanitize_key( (string) $key ) ] = sanitize_text_field( wp_unslash( (string) $value ) );
-			}
-		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public OAuth query parameters are allowlisted and sanitized by the authorization controller.
+		( new AuthorizationController() )->authorize_from_query_params( $_GET );
+	}
 
-		wp_safe_redirect( add_query_arg( $params, Helpers::authorization_endpoint() ), 302, 'Aculect AI Companion OAuth' );
-		exit;
+	/**
+	 * Determine whether WordPress matched the root /oauth/authorize rewrite.
+	 *
+	 * @param object $wp Current WordPress request object.
+	 */
+	private function is_root_authorize_request( object $wp ): bool {
+		$properties = get_object_vars( $wp );
+		$query_vars = isset( $properties['query_vars'] ) && is_array( $properties['query_vars'] ) ? $properties['query_vars'] : array();
+
+		return ! empty( $query_vars['aculect_ai_companion_oauth_authorize'] );
 	}
 
 	/**

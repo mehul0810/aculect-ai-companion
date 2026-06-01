@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
+use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -111,6 +112,17 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertStringContainsString( 'page=aculect-ai-companion', $url );
 		self::assertStringContainsString( 'view=oauth-consent', $url );
 		self::assertStringContainsString( 'client_id=client-1', $url );
+	}
+
+	public function test_authorization_endpoint_uses_root_route_for_browser_cookie_auth(): void {
+		self::assertSame(
+			'https://example.com/oauth/authorize',
+			Helpers::authorization_endpoint()
+		);
+		self::assertStringNotContainsString(
+			'/wp-json/',
+			Helpers::authorization_endpoint()
+		);
 	}
 
 	/**

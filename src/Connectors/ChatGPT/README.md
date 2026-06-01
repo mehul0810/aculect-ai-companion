@@ -88,7 +88,7 @@ Current rule:
 
 ### Root Authorize URL Compatibility
 
-Some flows can hit `/oauth/authorize` outside the REST namespace. The rewrite rule redirects that root URL to the REST authorization endpoint while preserving query parameters.
+Some flows can hit `/oauth/authorize` outside the REST namespace. The rewrite rule handles that root URL directly so normal browser cookies remain available before redirecting to the wp-admin consent screen.
 
 ## Common Errors We Hit
 

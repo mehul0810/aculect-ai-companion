@@ -52,7 +52,7 @@ final class Helpers {
 	 * Return the OAuth authorization endpoint URL.
 	 */
 	public static function authorization_endpoint(): string {
-		return self::external_rest_url( self::REST_NAMESPACE . '/oauth/authorize' );
+		return self::normalize_url( self::external_base_url() . '/oauth/authorize' );
 	}
 
 	/**

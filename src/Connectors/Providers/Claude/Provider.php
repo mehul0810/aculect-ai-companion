@@ -36,7 +36,7 @@ final class Provider implements ProviderInterface {
 	 * Return the Claude connector setup URL.
 	 */
 	public function primary_action_url(): string {
-		return 'https://claude.ai/settings/connectors';
+		return 'https://claude.ai/customize/connectors';
 	}
 
 	/**

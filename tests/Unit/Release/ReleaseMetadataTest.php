@@ -31,6 +31,11 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( '0.5.0', (string) ( $lockfile['version'] ?? '' ) );
 		self::assertSame( '0.5.0', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 		self::assertArrayHasKey( '0.5.0', $log );
+		foreach ( $log as $version => $entry ) {
+			self::assertIsString( $version );
+			self::assertIsArray( $entry );
+			self::assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $entry['date'] ?? '' ) );
+		}
 		self::assertStringContainsString( '= 0.5.0 =', $readme );
 	}
 

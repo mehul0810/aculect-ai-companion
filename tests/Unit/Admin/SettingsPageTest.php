@@ -130,6 +130,11 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['roleAbilityPolicy'] );
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( array(), $payload['changelog'] );
+		self::assertIsArray( $payload['providers'] );
+		$providers = array_column( $payload['providers'], null, 'id' );
+		self::assertArrayHasKey( 'claude', $providers );
+		self::assertIsArray( $providers['claude'] );
+		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
@@ -203,6 +208,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertContains( 'changelog', $changelog['hydratedTabs'] );
 		self::assertSame( array(), $changelog['brandProfile'] );
 		self::assertArrayHasKey( '0.5.0', $changelog['changelog'] );
+		self::assertSame( '2026-06-01', $changelog['changelog']['0.5.0']['date'] );
 	}
 
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {

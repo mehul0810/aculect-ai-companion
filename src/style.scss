@@ -10,7 +10,8 @@
 	margin-top: 0;
 }
 
-.aculect-ai-companion-app-root {
+.aculect-ai-companion-app-root,
+.aculect-ai-companion-role-abilities-modal {
 	--aculect-ai-companion-ink: #0f172a;
 	--aculect-ai-companion-muted: #64748b;
 	--aculect-ai-companion-border: #e5e7eb;
@@ -19,6 +20,9 @@
 	--aculect-ai-companion-primary: #2563eb;
 	--aculect-ai-companion-green: #0f9f5f;
 	--aculect-ai-companion-orange: #f97316;
+}
+
+.aculect-ai-companion-app-root {
 	width: 100%;
 	max-width: none;
 	min-height: 100vh;
@@ -30,7 +34,10 @@
 
 .aculect-ai-companion-app-root *,
 .aculect-ai-companion-app-root *::before,
-.aculect-ai-companion-app-root *::after {
+.aculect-ai-companion-app-root *::after,
+.aculect-ai-companion-role-abilities-modal *,
+.aculect-ai-companion-role-abilities-modal *::before,
+.aculect-ai-companion-role-abilities-modal *::after {
 	box-sizing: border-box;
 }
 
@@ -2277,6 +2284,40 @@
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
 	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-role-abilities-modal.components-modal__frame {
+	width: min(1180px, calc(100vw - 48px));
+	max-height: calc(100vh - 64px);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	color: var(--aculect-ai-companion-ink);
+}
+
+.aculect-ai-companion-role-abilities-modal .components-modal__content {
+	padding: 0;
+}
+
+.aculect-ai-companion-role-abilities-modal .components-modal__header {
+	min-height: 56px;
+	margin: 0;
+	padding: 14px 20px;
+	border-bottom: 1px solid var(--aculect-ai-companion-border);
+}
+
+.aculect-ai-companion-role-abilities-modal .components-modal__header h1 {
+	color: var(--aculect-ai-companion-ink);
+	font-size: 18px;
+	line-height: 1.25;
+	letter-spacing: 0;
+}
+
+.aculect-ai-companion-role-abilities.is-modal {
+	margin: 0;
+	padding: 18px;
+	border: 0;
+	border-radius: 0;
+	background: var(--aculect-ai-companion-soft);
 }
 
 .aculect-ai-companion-role-abilities__hero {

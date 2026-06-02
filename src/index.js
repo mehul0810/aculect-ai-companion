@@ -11,6 +11,7 @@ import {
 	CardBody,
 	CardHeader,
 	CheckboxControl,
+	Modal,
 	Notice,
 	TextareaControl,
 	TextControl,
@@ -2862,6 +2863,7 @@ function AbilityDashboard( {
 	onToggleConfirmationGroup,
 	onEnableAll,
 	onDisableAll,
+	onManageRoleAbilities,
 	onResetChanges,
 	onCopy,
 } ) {
@@ -3321,8 +3323,12 @@ function AbilityDashboard( {
 							>
 								Disable all
 							</Button>
-							<Button type="button" variant="secondary" disabled>
-								Manage role abilities
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={ onManageRoleAbilities }
+							>
+								Manage Role Based Abilities
 							</Button>
 						</div>
 					</section>
@@ -3419,6 +3425,7 @@ function RoleAbilitiesEditor( {
 	roleAbilityPolicy,
 	selectedRole,
 	onSelectRole,
+	isModal = false,
 } ) {
 	const roles = Array.isArray( roleAbilityPolicy.roles )
 		? roleAbilityPolicy.roles
@@ -3518,7 +3525,9 @@ function RoleAbilitiesEditor( {
 	return (
 		<section
 			id="aculect-ai-companion-role-abilities"
-			className="aculect-ai-companion-role-abilities"
+			className={ `aculect-ai-companion-role-abilities${
+				isModal ? ' is-modal' : ''
+			}` }
 		>
 			<div className="aculect-ai-companion-role-abilities__hero">
 				<div>
@@ -4377,6 +4386,8 @@ function SettingsApp() {
 			? roleAbilityPolicy.roles[ 0 ]?.id || ''
 			: ''
 	);
+	const [ roleAbilitiesModalOpen, setRoleAbilitiesModalOpen ] =
+		useState( false );
 	const [ connectionFilter, setConnectionFilter ] = useState( 'all' );
 	const [ connectionSearch, setConnectionSearch ] = useState( '' );
 	const adminNoticesRef = useRef( null );
@@ -4508,6 +4519,12 @@ function SettingsApp() {
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
+
+	useEffect( () => {
+		if ( activeTab.name !== 'abilities' ) {
+			setRoleAbilitiesModalOpen( false );
+		}
+	}, [ activeTab.name ] );
 
 	useEffect( () => {
 		const tabName = activeTab.name;
@@ -5348,6 +5365,9 @@ function SettingsApp() {
 										setEnabledAbilities( [] );
 										setEnabledWpAbilities( [] );
 									} }
+									onManageRoleAbilities={ () =>
+										setRoleAbilitiesModalOpen( true )
+									}
 									onResetChanges={ () => {
 										setEnabledAbilities(
 											originalEnabledAbilities
@@ -5361,13 +5381,31 @@ function SettingsApp() {
 									} }
 									onCopy={ copyValue }
 								/>
-								<RoleAbilitiesEditor
-									data={ data }
-									abilities={ abilities }
-									roleAbilityPolicy={ roleAbilityPolicy }
-									selectedRole={ selectedRoleAbilityRole }
-									onSelectRole={ setSelectedRoleAbilityRole }
-								/>
+								{ roleAbilitiesModalOpen && (
+									<Modal
+										title="Manage Role Based Abilities"
+										className="aculect-ai-companion-role-abilities-modal"
+										onRequestClose={ () =>
+											setRoleAbilitiesModalOpen( false )
+										}
+										shouldCloseOnClickOutside={ false }
+									>
+										<RoleAbilitiesEditor
+											data={ data }
+											abilities={ abilities }
+											roleAbilityPolicy={
+												roleAbilityPolicy
+											}
+											selectedRole={
+												selectedRoleAbilityRole
+											}
+											onSelectRole={
+												setSelectedRoleAbilityRole
+											}
+											isModal
+										/>
+									</Modal>
+								) }
 							</>
 						);
 					}

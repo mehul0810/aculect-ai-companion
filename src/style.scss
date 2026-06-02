@@ -184,7 +184,7 @@
 	display: flex;
 	align-items: stretch;
 	gap: 32px;
-	min-height: 56px;
+	min-height: 45px;
 	margin: 0;
 	padding: 0 44px;
 	border-bottom: 1px solid #e5e7eb;
@@ -199,7 +199,7 @@
 	align-items: center;
 	flex: 0 0 auto;
 	justify-content: center;
-	min-height: 56px;
+	min-height: 45px;
 	padding: 0 8px;
 	border: 0;
 	color: #1f2937;
@@ -3357,7 +3357,7 @@
 
 	.aculect-ai-companion-tabs {
 		gap: 20px;
-		min-height: 52px;
+		min-height: 45px;
 		padding: 0 16px;
 	}
 
@@ -3483,12 +3483,12 @@
 
 	.aculect-ai-companion-tabs {
 		gap: 14px;
-		min-height: 48px;
+		min-height: 45px;
 		padding: 0 14px;
 	}
 
 	.aculect-ai-companion-tab {
-		min-height: 48px;
+		min-height: 45px;
 		padding: 0 8px;
 		font-size: 14px;
 	}

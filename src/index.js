@@ -23,6 +23,7 @@ import {
 	SelectControl,
 	TextareaControl,
 	TextControl,
+	Tooltip,
 	ToggleControl,
 } from '@wordpress/components';
 import {
@@ -2821,15 +2822,39 @@ function AbilityDashboard( {
 			direction: 'asc',
 		},
 		fields: [
+			'enabled_toggle',
 			'ability',
 			'scope',
-			'assigned_to',
-			'status',
+			'active_connections',
 			'updated',
 			'actions',
 		],
 		layout: {
 			density: 'balanced',
+			styles: {
+				enabled_toggle: {
+					width: 64,
+					maxWidth: 64,
+					align: 'center',
+				},
+				ability: {
+					width: '38%',
+				},
+				scope: {
+					width: '18%',
+				},
+				active_connections: {
+					width: '14%',
+				},
+				updated: {
+					width: '12%',
+				},
+				actions: {
+					width: 64,
+					maxWidth: 64,
+					align: 'center',
+				},
+			},
 		},
 	};
 	const [ view, setView ] = useState( defaultView );
@@ -2869,19 +2894,65 @@ function AbilityDashboard( {
 	const fields = useMemo(
 		() => [
 			{
+				id: 'enabled_toggle',
+				label: 'Toggle',
+				enableSorting: false,
+				enableHiding: false,
+				getValue: ( { item } ) => Boolean( item.enabled ),
+				render: ( { item: ability } ) => (
+					<div className="aculect-ai-companion-ability-toggle-cell">
+						<ToggleControl
+							label={ `${ ability.title } active state` }
+							checked={ ability.enabled }
+							onChange={ ( checked ) => {
+								if ( ability.source === 'wordpress' ) {
+									onToggleWpAbility(
+										ability.id,
+										Boolean( checked )
+									);
+									return;
+								}
+
+								onToggleAbility(
+									ability.id,
+									Boolean( checked )
+								);
+							} }
+						/>
+					</div>
+				),
+			},
+			{
 				id: 'ability',
-				label: 'Ability',
+				label: 'Ability Title',
 				enableGlobalSearch: true,
 				enableHiding: false,
 				getValue: ( { item } ) => abilitySearchText( item ),
 				render: ( { item: ability } ) => (
 					<div className="aculect-ai-companion-ability-name-cell">
-						<strong>{ ability.title }</strong>
-						<code>{ ability.id }</code>
-						<p>
-							{ ability.description ||
-								'No description provided.' }
-						</p>
+						<div className="aculect-ai-companion-ability-title-row">
+							<strong>{ ability.title }</strong>
+							<Tooltip
+								text={ `${ ability.id }${
+									ability.description
+										? `: ${ ability.description }`
+										: ': No description provided.'
+								}` }
+								placement="top"
+							>
+								<Button
+									type="button"
+									variant="tertiary"
+									className="aculect-ai-companion-ability-info-button"
+									aria-label={ `View ${ ability.title } slug and description` }
+									onClick={ ( event ) =>
+										event.preventDefault()
+									}
+								>
+									<Icon icon={ info } size={ 14 } />
+								</Button>
+							</Tooltip>
+						</div>
 						<div className="aculect-ai-companion-ability-row-tags">
 							<span className="is-source">
 								{ ability.sourceLabel }
@@ -2912,10 +2983,29 @@ function AbilityDashboard( {
 				),
 			},
 			{
-				id: 'assigned_to',
-				label: 'Granted to',
+				id: 'active_connections',
+				label: 'Active connections',
 				enableGlobalSearch: true,
 				getValue: ( { item } ) => item.assignedTo,
+				render: ( { item: ability } ) => (
+					<div className="aculect-ai-companion-ability-connection-cell">
+						<strong>
+							{ ability.enabled ? activeConnectionCount : 0 }
+						</strong>
+						<span>
+							{ ability.enabled
+								? `active connection${
+										activeConnectionCount === 1 ? '' : 's'
+								  }`
+								: 'Not exposed' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'updated',
+				label: 'Updated',
+				getValue: ( { item } ) => item.updated,
 			},
 			{
 				id: 'status',
@@ -2927,40 +3017,6 @@ function AbilityDashboard( {
 				filterBy: { operators: [ 'isAny' ], isPrimary: true },
 				getValue: ( { item } ) =>
 					item.enabled ? 'active' : 'inactive',
-				render: ( { item: ability } ) => (
-					<div className="aculect-ai-companion-ability-status-cell">
-						<span
-							className={ `aculect-ai-companion-ability-status ${
-								ability.enabled ? 'is-active' : 'is-inactive'
-							}` }
-						>
-							{ ability.enabled ? 'Active' : 'Inactive' }
-						</span>
-						<ToggleControl
-							label={ `${ ability.title } active state` }
-							checked={ ability.enabled }
-							onChange={ ( checked ) => {
-								if ( ability.source === 'wordpress' ) {
-									onToggleWpAbility(
-										ability.id,
-										Boolean( checked )
-									);
-									return;
-								}
-
-								onToggleAbility(
-									ability.id,
-									Boolean( checked )
-								);
-							} }
-						/>
-					</div>
-				),
-			},
-			{
-				id: 'updated',
-				label: 'Updated',
-				getValue: ( { item } ) => item.updated,
 			},
 			{
 				id: 'group',
@@ -3011,6 +3067,7 @@ function AbilityDashboard( {
 			},
 		],
 		[
+			activeConnectionCount,
 			categoryOptions,
 			onCopy,
 			onToggleAbility,

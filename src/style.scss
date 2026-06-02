@@ -1186,6 +1186,12 @@
 	min-width: 1060px;
 }
 
+.aculect-ai-companion-data-view--abilities .dataviews-view-table table {
+	width: 100%;
+	min-width: 0;
+	table-layout: fixed;
+}
+
 .aculect-ai-companion-data-view .dataviews-footer {
 	padding: 12px 16px 16px;
 }
@@ -1874,7 +1880,14 @@
 
 .aculect-ai-companion-ability-name-cell {
 	display: grid;
-	gap: 7px;
+	gap: 8px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-ability-title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	min-width: 0;
 }
 
@@ -1882,12 +1895,22 @@
 	color: var(--aculect-ai-companion-ink);
 	font-size: 15px;
 	line-height: 1.3;
+	overflow-wrap: anywhere;
 }
 
-.aculect-ai-companion-ability-name-cell p {
-	margin: 0;
+.aculect-ai-companion-ability-info-button.components-button.is-tertiary {
+	flex: 0 0 auto;
+	width: 24px;
+	min-width: 24px;
+	height: 24px;
+	min-height: 24px;
+	padding: 0;
 	color: var(--aculect-ai-companion-muted);
-	line-height: 1.5;
+}
+
+.aculect-ai-companion-ability-info-button.components-button.is-tertiary:hover,
+.aculect-ai-companion-ability-info-button.components-button.is-tertiary:focus {
+	color: var(--aculect-ai-companion-primary);
 }
 
 .aculect-ai-companion-ability-row-tags {
@@ -1897,7 +1920,7 @@
 }
 
 .aculect-ai-companion-ability-row-tags span,
-.aculect-ai-companion-ability-status {
+.aculect-ai-companion-ability-connection-cell span {
 	display: inline-flex;
 	width: fit-content;
 	padding: 2px 7px;
@@ -1913,27 +1936,17 @@
 	color: var(--aculect-ai-companion-primary);
 }
 
-.aculect-ai-companion-ability-status.is-active {
-	background: #edfaef;
-	color: var(--aculect-ai-companion-green);
-}
-
-.aculect-ai-companion-ability-status.is-inactive {
-	background: #fef2f2;
-	color: #b32d2e;
-}
-
-.aculect-ai-companion-ability-status-cell {
-	display: grid;
-	gap: 8px;
-	min-width: 120px;
-}
-
-.aculect-ai-companion-ability-status-cell .components-base-control {
+.aculect-ai-companion-ability-toggle-cell .components-base-control,
+.aculect-ai-companion-ability-toggle-cell .components-toggle-control {
 	margin-bottom: 0;
 }
 
-.aculect-ai-companion-ability-status-cell .components-toggle-control__label {
+.aculect-ai-companion-ability-toggle-cell {
+	display: flex;
+	justify-content: center;
+}
+
+.aculect-ai-companion-ability-toggle-cell .components-toggle-control__label {
 	position: absolute;
 	width: 1px;
 	height: 1px;
@@ -1941,6 +1954,26 @@
 	overflow: hidden;
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
+}
+
+.aculect-ai-companion-ability-connection-cell {
+	display: grid;
+	gap: 5px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-ability-connection-cell strong {
+	color: var(--aculect-ai-companion-ink);
+	font-size: 16px;
+	line-height: 1;
+}
+
+.aculect-ai-companion-ability-connection-cell span {
+	background: transparent;
+	padding-right: 0;
+	padding-left: 0;
+	font-weight: 700;
+	line-height: 1.35;
 }
 
 .aculect-ai-companion-abilities-side {

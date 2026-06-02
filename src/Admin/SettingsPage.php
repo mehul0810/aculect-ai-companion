@@ -145,7 +145,7 @@ final class SettingsPage {
 
 		$style_path = ACULECT_AI_COMPANION_PLUGIN_DIR . 'build/style-index.css';
 		if ( file_exists( $style_path ) ) {
-			wp_enqueue_style( self::STYLE_HANDLE, ACULECT_AI_COMPANION_PLUGIN_URL . 'build/style-index.css', array(), (string) $asset['version'] );
+			wp_enqueue_style( self::STYLE_HANDLE, ACULECT_AI_COMPANION_PLUGIN_URL . 'build/style-index.css', array( 'wp-components' ), (string) $asset['version'] );
 		}
 
 		wp_localize_script(

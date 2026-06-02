@@ -1,4 +1,10 @@
-import { render, useEffect, useRef, useState } from '@wordpress/element';
+import {
+	render,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
 import './style.scss';
 import {
 	mergeSettingsPayload,
@@ -13,6 +19,8 @@ import {
 	CheckboxControl,
 	Modal,
 	Notice,
+	SearchControl,
+	SelectControl,
 	TextareaControl,
 	TextControl,
 	ToggleControl,
@@ -59,6 +67,7 @@ const SETTINGS_TABS = [
 	{ name: 'logs', title: 'Logs', hidden: true },
 ];
 const EMPTY_ARRAY = [];
+const DATA_VIEW_TABLE_LAYOUTS = { table: true };
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
 	{ name: 'pass', label: 'Passed' },
@@ -528,6 +537,38 @@ function TabLoadingState( { tab, failed = false, isLoading = false } ) {
 	);
 }
 
+function useDataViewsModule() {
+	const [ dataViewsModule, setDataViewsModule ] = useState( null );
+
+	useEffect( () => {
+		let isMounted = true;
+
+		import( '@wordpress/dataviews/wp' ).then( ( nextModule ) => {
+			if ( isMounted ) {
+				setDataViewsModule( nextModule );
+			}
+		} );
+
+		return () => {
+			isMounted = false;
+		};
+	}, [] );
+
+	return dataViewsModule;
+}
+
+function DataViewLoadingState( { label } ) {
+	return (
+		<div className="aculect-ai-companion-data-view__loading">
+			<span
+				className="aculect-ai-companion-tab-loading__spinner"
+				aria-hidden="true"
+			/>
+			<strong>{ label }</strong>
+		</div>
+	);
+}
+
 function ActionForm( {
 	data,
 	action,
@@ -538,30 +579,97 @@ function ActionForm( {
 	onSubmit,
 	isBusy = false,
 	busyLabel = '',
+	disabled = false,
 	variant = '',
 	enctype = '',
+	confirmMessage = '',
+	confirmTitle = 'Confirm action',
+	confirmButtonLabel = '',
 } ) {
+	const [ isConfirmOpen, setIsConfirmOpen ] = useState( false );
+	const formRef = useRef( null );
+	const confirmedSubmitRef = useRef( false );
+	const submitLabel = isBusy && busyLabel ? busyLabel : label;
+	const isDisabled = disabled || isBusy;
+	const handleSubmit = ( event ) => {
+		if ( confirmMessage && ! confirmedSubmitRef.current ) {
+			event.preventDefault();
+			setIsConfirmOpen( true );
+			return false;
+		}
+
+		confirmedSubmitRef.current = false;
+
+		if ( onSubmit ) {
+			return onSubmit( event );
+		}
+
+		return undefined;
+	};
+	const submitConfirmedAction = () => {
+		confirmedSubmitRef.current = true;
+		setIsConfirmOpen( false );
+
+		if ( formRef.current?.requestSubmit ) {
+			formRef.current.requestSubmit();
+			return;
+		}
+
+		formRef.current?.submit();
+	};
+
 	return (
-		<form
-			method="post"
-			action={ data.actions?.adminPostUrl }
-			className="aculect-ai-companion-action-form"
-			onSubmit={ onSubmit }
-			{ ...( enctype ? { encType: enctype } : {} ) }
-		>
-			<input type="hidden" name="action" value={ action } />
-			<input type="hidden" name="_wpnonce" value={ nonce } />
-			{ children }
-			<Button
-				type="submit"
-				variant={ variant || ( destructive ? 'secondary' : 'primary' ) }
-				isDestructive={ destructive }
-				isBusy={ isBusy }
-				disabled={ isBusy }
+		<>
+			<form
+				ref={ formRef }
+				method="post"
+				action={ data.actions?.adminPostUrl }
+				className="aculect-ai-companion-action-form"
+				onSubmit={ handleSubmit }
+				{ ...( enctype ? { encType: enctype } : {} ) }
 			>
-				{ isBusy && busyLabel ? busyLabel : label }
-			</Button>
-		</form>
+				<input type="hidden" name="action" value={ action } />
+				<input type="hidden" name="_wpnonce" value={ nonce } />
+				{ children }
+				<Button
+					type="submit"
+					variant={
+						variant || ( destructive ? 'secondary' : 'primary' )
+					}
+					isDestructive={ destructive }
+					isBusy={ isBusy }
+					disabled={ isDisabled }
+					accessibleWhenDisabled
+				>
+					{ submitLabel }
+				</Button>
+			</form>
+			{ isConfirmOpen && (
+				<Modal
+					title={ confirmTitle }
+					onRequestClose={ () => setIsConfirmOpen( false ) }
+				>
+					<p>{ confirmMessage }</p>
+					<div className="aculect-ai-companion-confirm-dialog__actions">
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={ () => setIsConfirmOpen( false ) }
+						>
+							Cancel
+						</Button>
+						<Button
+							type="button"
+							variant="primary"
+							isDestructive={ destructive }
+							onClick={ submitConfirmedAction }
+						>
+							{ confirmButtonLabel || label }
+						</Button>
+					</div>
+				</Modal>
+			) }
+		</>
 	);
 }
 
@@ -601,6 +709,11 @@ function BrandTextField( {
 } ) {
 	const value = brandFieldValue( fields, name );
 	const defaultValue = brandFieldValue( defaults, name );
+	const [ fieldValue, setFieldValue ] = useState( value );
+
+	useEffect( () => {
+		setFieldValue( value );
+	}, [ value ] );
 
 	return (
 		<div className="aculect-ai-companion-brand-field">
@@ -616,7 +729,8 @@ function BrandTextField( {
 					label={ label }
 					type={ type }
 					name={ `brand_profile[${ name }]` }
-					defaultValue={ value }
+					value={ fieldValue }
+					onChange={ setFieldValue }
 				/>
 			</div>
 			<BrandDefaultValue value={ defaultValue } color={ color } />
@@ -625,12 +739,20 @@ function BrandTextField( {
 }
 
 function BrandTextareaField( { fields, defaults, name, label } ) {
+	const value = brandFieldValue( fields, name );
+	const [ fieldValue, setFieldValue ] = useState( value );
+
+	useEffect( () => {
+		setFieldValue( value );
+	}, [ value ] );
+
 	return (
 		<div className="aculect-ai-companion-brand-field">
 			<TextareaControl
 				label={ label }
 				name={ `brand_profile[${ name }]` }
-				defaultValue={ brandFieldValue( fields, name ) }
+				value={ fieldValue }
+				onChange={ setFieldValue }
 				rows={ 4 }
 			/>
 			<BrandDefaultValue value={ brandFieldValue( defaults, name ) } />
@@ -1350,22 +1472,6 @@ function connectionAbilityLabels( session, abilities, enabledAbilityIds ) {
 	return scopes.map( connectionScopeLabel );
 }
 
-function connectionSearchHaystack( session, abilities, enabledAbilityIds ) {
-	return [
-		session.client_name,
-		session.client_id,
-		session.provider,
-		session.user,
-		session.resource,
-		session.status,
-		...( Array.isArray( session.user_roles ) ? session.user_roles : [] ),
-		...( Array.isArray( session.scopes ) ? session.scopes : [] ),
-		...connectionAbilityLabels( session, abilities, enabledAbilityIds ),
-	]
-		.join( ' ' )
-		.toLowerCase();
-}
-
 function isCurrentUserSession( session, currentUserId ) {
 	return (
 		Number( currentUserId || 0 ) > 0 &&
@@ -1373,140 +1479,58 @@ function isCurrentUserSession( session, currentUserId ) {
 	);
 }
 
-function connectionMatchesFilter(
-	session,
-	filter,
-	isAccessPaused,
-	currentUserId
-) {
+function connectionStatusKey( session, isAccessPaused ) {
 	const status = session.status || 'active';
 
-	if ( filter === 'active' ) {
-		return status === 'active' && ! isAccessPaused;
+	if ( status === 'revoked' ) {
+		return 'revoked';
 	}
 
-	if ( filter === 'paused' ) {
-		return status === 'active' && isAccessPaused;
+	if ( status === 'active' && isAccessPaused ) {
+		return 'paused';
 	}
 
-	if ( filter === 'revoked' ) {
-		return status === 'revoked';
+	if ( status === 'pending' ) {
+		return 'pending';
 	}
 
-	if ( filter === 'pending' ) {
-		return false;
-	}
-
-	if ( filter === 'my' ) {
-		return (
-			status === 'active' &&
-			isCurrentUserSession( session, currentUserId )
-		);
-	}
-
-	if ( filter === 'team' ) {
-		return (
-			status === 'active' &&
-			Number( currentUserId || 0 ) > 0 &&
-			Number( session.user_id || 0 ) > 0 &&
-			! isCurrentUserSession( session, currentUserId )
-		);
-	}
-
-	return true;
+	return 'active';
 }
 
-function connectionFilters(
-	connectionSessions,
-	activeSessions,
-	revokedSessions,
-	isAccessPaused,
-	currentUserId
-) {
-	const myCount = activeSessions.filter( ( session ) =>
-		isCurrentUserSession( session, currentUserId )
-	).length;
-	const teamCount = activeSessions.filter(
-		( session ) =>
-			Number( currentUserId || 0 ) > 0 &&
-			Number( session.user_id || 0 ) > 0 &&
-			! isCurrentUserSession( session, currentUserId )
-	).length;
+function connectionOwnershipKey( session, currentUserId ) {
+	if ( isCurrentUserSession( session, currentUserId ) ) {
+		return 'my';
+	}
 
-	return [
-		{
-			name: 'all',
-			label: 'All',
-			count: connectionSessions.length,
-		},
-		{
-			name: 'active',
-			label: 'Active',
-			count: isAccessPaused ? 0 : activeSessions.length,
-		},
-		{
-			name: 'my',
-			label: 'My',
-			count: myCount,
-		},
-		{
-			name: 'team',
-			label: 'Team',
-			count: teamCount,
-		},
-		{
-			name: 'paused',
-			label: 'Paused',
-			count: isAccessPaused ? activeSessions.length : 0,
-		},
-		{
-			name: 'pending',
-			label: 'Pending',
-			count: 0,
-		},
-		{
-			name: 'revoked',
-			label: 'Revoked',
-			count: revokedSessions.length,
-		},
-	];
+	if (
+		Number( currentUserId || 0 ) > 0 &&
+		Number( session.user_id || 0 ) > 0
+	) {
+		return 'team';
+	}
+
+	return 'unknown';
 }
 
-function filterConnectionSessions( {
-	connectionSessions,
-	filter,
-	searchTerm,
-	isAccessPaused,
-	currentUserId,
-	abilities,
-	enabledAbilityIds,
-} ) {
-	const normalizedSearch = String( searchTerm || '' )
-		.trim()
-		.toLowerCase();
+function connectionTimestamp( value ) {
+	const timestamp = Date.parse( value || '' );
 
-	return connectionSessions.filter( ( session ) => {
-		if (
-			! connectionMatchesFilter(
-				session,
-				filter,
-				isAccessPaused,
-				currentUserId
-			)
-		) {
-			return false;
-		}
+	return Number.isFinite( timestamp ) ? timestamp : 0;
+}
 
-		if ( ! normalizedSearch ) {
-			return true;
-		}
-
-		return connectionSearchHaystack(
-			session,
-			abilities,
-			enabledAbilityIds
-		).includes( normalizedSearch );
-	} );
+function connectionOptionElements( values ) {
+	return Array.from(
+		new Set(
+			values
+				.map( ( value ) => String( value || '' ).trim() )
+				.filter( Boolean )
+		)
+	)
+		.sort()
+		.map( ( value ) => ( {
+			value,
+			label: value,
+		} ) );
 }
 
 function ConnectionStatusChip( { session, isAccessPaused } ) {
@@ -1575,6 +1599,12 @@ function ConnectionWritePermissionControl( { session, data } ) {
 					nonce={ data.actions?.setSessionWritePermissionNonce }
 					label={ enabled ? 'Require confirmation' : 'Enable writes' }
 					variant="secondary"
+					confirmTitle="Enable direct writes"
+					confirmMessage={
+						enabled
+							? ''
+							: 'Enable direct writes for this connection? This assistant can write without per-action confirmation while the connection remains active.'
+					}
 				>
 					<input
 						type="hidden"
@@ -1633,6 +1663,8 @@ function ConnectionActionsMenu( { session, data } ) {
 					nonce={ data.actions?.revokeSessionNonce }
 					label="Disconnect"
 					destructive
+					confirmTitle="Disconnect assistant"
+					confirmMessage="Disconnect this assistant? Its active token and refresh token will be revoked."
 				>
 					<input
 						type="hidden"
@@ -1645,171 +1677,302 @@ function ConnectionActionsMenu( { session, data } ) {
 	);
 }
 
-function connectionEmptyStateCopy( filter, hasSearch, hasConnections ) {
-	if ( hasSearch ) {
-		return {
-			title: 'No matching connections',
-			copy: 'Try a different assistant, WordPress user, role, ability, or provider search.',
-		};
-	}
-
-	if ( filter === 'pending' ) {
-		return {
-			title: 'No pending requests',
-			copy: 'Approval happens during the OAuth consent screen. There are no pending approval requests stored for this site.',
-		};
-	}
-
-	if ( filter === 'revoked' ) {
-		return {
-			title: 'No revoked sessions',
-			copy: 'Disconnected sessions that are still retained by the token store will appear here.',
-		};
-	}
-
-	if ( filter === 'paused' ) {
-		return {
-			title: 'AI access is not paused',
-			copy: 'Use the pause control when you need to stop active assistants without disconnecting them.',
-		};
-	}
-
-	if ( filter === 'my' ) {
-		return {
-			title: 'No connections for your user',
-			copy: 'Connections approved by your WordPress account will appear here.',
-		};
-	}
-
-	if ( filter === 'team' ) {
-		return {
-			title: 'No team connections',
-			copy: 'Connections approved by other WordPress users will appear here when available.',
-		};
-	}
-
-	return {
-		title: hasConnections
-			? 'No connections in this state'
-			: 'No connections',
-		copy: 'Add the connection URL to an AI assistant, then approve the connection in WordPress.',
-	};
-}
-
-function ConnectionsTable( {
+function ConnectionsDataViews( {
 	sessions: connectionSessions,
 	data,
-	filter,
-	searchTerm,
 	isAccessPaused,
+	currentUserId,
 	abilities,
 	enabledAbilityIds,
-	hasConnections,
 } ) {
-	if ( connectionSessions.length === 0 ) {
-		const emptyState = connectionEmptyStateCopy(
-			filter,
-			Boolean( String( searchTerm || '' ).trim() ),
-			hasConnections
-		);
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const defaultView = {
+		type: 'table',
+		search: '',
+		page: 1,
+		perPage: 10,
+		sort: {
+			field: 'last_activity',
+			direction: 'desc',
+		},
+		fields: [
+			'assistant',
+			'user',
+			'roles',
+			'abilities',
+			'last_activity',
+			'write_access',
+			'status',
+			'actions',
+		],
+		layout: {
+			density: 'balanced',
+		},
+	};
+	const [ view, setView ] = useState( defaultView );
+	const roleOptions = useMemo(
+		() =>
+			connectionOptionElements(
+				connectionSessions.flatMap( ( session ) =>
+					Array.isArray( session.user_roles )
+						? session.user_roles
+						: []
+				)
+			),
+		[ connectionSessions ]
+	);
+	const providerOptions = useMemo(
+		() =>
+			connectionOptionElements(
+				connectionSessions.map(
+					( session ) => session.provider || 'mcp'
+				)
+			),
+		[ connectionSessions ]
+	);
+	const fields = useMemo(
+		() => [
+			{
+				id: 'assistant',
+				label: 'Assistant',
+				enableGlobalSearch: true,
+				enableHiding: false,
+				getValue: ( { item } ) =>
+					[ item.client_name, item.client_id, item.provider ].join(
+						' '
+					),
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong className="aculect-ai-companion-connections-table__primary">
+							{ session.client_name || 'AI Assistant' }
+						</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ session.provider || 'mcp' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'user',
+				label: 'WordPress User',
+				enableGlobalSearch: true,
+				getValue: ( { item } ) =>
+					[ item.user, item.resource, item.user_id ].join( ' ' ),
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong className="aculect-ai-companion-connections-table__primary">
+							{ session.user || 'Unknown user' }
+						</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ session.resource || 'Default resource' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'roles',
+				label: 'Role',
+				type: 'array',
+				elements: roleOptions,
+				filterBy:
+					roleOptions.length > 0 ? { operators: [ 'isAny' ] } : false,
+				enableGlobalSearch: true,
+				getValue: ( { item } ) =>
+					Array.isArray( item.user_roles ) ? item.user_roles : [],
+				render: ( { item: session } ) =>
+					Array.isArray( session.user_roles ) &&
+					session.user_roles.length > 0
+						? session.user_roles.join( ', ' )
+						: 'Unknown',
+			},
+			{
+				id: 'abilities',
+				label: 'Granted Abilities',
+				type: 'array',
+				enableSorting: false,
+				enableGlobalSearch: true,
+				getValue: ( { item } ) =>
+					connectionAbilityLabels(
+						item,
+						abilities,
+						enabledAbilityIds
+					),
+				render: ( { item: session } ) => (
+					<ConnectionAbilityChips
+						session={ session }
+						abilities={ abilities }
+						enabledAbilityIds={ enabledAbilityIds }
+					/>
+				),
+			},
+			{
+				id: 'last_activity',
+				label: 'Last Activity',
+				type: 'datetime',
+				getValue: ( { item } ) => item.last_used_at || '',
+				sort: ( first, second, direction ) => {
+					const delta =
+						connectionTimestamp( first.last_used_at ) -
+						connectionTimestamp( second.last_used_at );
 
+					return direction === 'asc' ? delta : -delta;
+				},
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong className="aculect-ai-companion-connections-table__primary">
+							{ connectionDateValue( session.last_used_at ) }
+						</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							Created{ ' ' }
+							{ connectionDateValue(
+								session.created_at,
+								'Unknown'
+							) }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'write_access',
+				label: 'Write Access',
+				elements: [
+					{ value: 'direct', label: 'Direct writes' },
+					{ value: 'confirm', label: 'Confirm writes' },
+				],
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
+				enableSorting: false,
+				getValue: ( { item } ) =>
+					item.writePermissionEnabled ? 'direct' : 'confirm',
+				render: ( { item: session } ) => (
+					<ConnectionWritePermissionControl
+						session={ session }
+						data={ data }
+					/>
+				),
+			},
+			{
+				id: 'status',
+				label: 'Status',
+				elements: [
+					{ value: 'active', label: 'Active' },
+					{ value: 'paused', label: 'Paused' },
+					{ value: 'pending', label: 'Pending' },
+					{ value: 'revoked', label: 'Revoked' },
+				],
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
+				getValue: ( { item } ) =>
+					connectionStatusKey( item, isAccessPaused ),
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<ConnectionStatusChip
+							session={ session }
+							isAccessPaused={ isAccessPaused }
+						/>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							Connection expires{ ' ' }
+							{ connectionDateValue(
+								session.expires_at,
+								'Unknown'
+							) }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'ownership',
+				label: 'Owner',
+				elements: [
+					{ value: 'my', label: 'My connections' },
+					{ value: 'team', label: 'Team connections' },
+					{ value: 'unknown', label: 'Unknown owner' },
+				],
+				filterBy: { operators: [ 'isAny' ] },
+				getValue: ( { item } ) =>
+					connectionOwnershipKey( item, currentUserId ),
+			},
+			{
+				id: 'provider',
+				label: 'Provider',
+				elements: providerOptions,
+				filterBy:
+					providerOptions.length > 0
+						? { operators: [ 'isAny' ] }
+						: false,
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.provider || 'mcp',
+			},
+			{
+				id: 'actions',
+				label: 'Actions',
+				enableSorting: false,
+				enableHiding: false,
+				render: ( { item: session } ) => (
+					<ConnectionActionsMenu session={ session } data={ data } />
+				),
+			},
+		],
+		[
+			abilities,
+			currentUserId,
+			data,
+			enabledAbilityIds,
+			isAccessPaused,
+			providerOptions,
+			roleOptions,
+		]
+	);
+	const { data: visibleSessions, paginationInfo } = useMemo(
+		() =>
+			filterSortAndPaginateRows
+				? filterSortAndPaginateRows( connectionSessions, view, fields )
+				: {
+						data: [],
+						paginationInfo: {
+							totalItems: connectionSessions.length,
+							totalPages: 1,
+						},
+				  },
+		[ connectionSessions, fields, filterSortAndPaginateRows, view ]
+	);
+	const emptyStateTitle =
+		connectionSessions.length > 0
+			? 'No matching connections'
+			: 'No connections';
+
+	if ( ! DataViewsComponent ) {
 		return (
-			<EmptyState title={ emptyState.title }>
-				{ emptyState.copy }
-			</EmptyState>
+			<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
+				<DataViewLoadingState label="Loading connections table" />
+			</div>
 		);
 	}
 
 	return (
-		<div className="aculect-ai-companion-connections-table-wrap">
-			<table className="widefat striped aculect-ai-companion-connections-table">
-				<thead>
-					<tr>
-						<th>Assistant</th>
-						<th>WordPress User</th>
-						<th>Role</th>
-						<th>Granted Abilities</th>
-						<th>Last Activity</th>
-						<th>Write Access</th>
-						<th>Status</th>
-						<th>Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{ connectionSessions.map( ( session ) => (
-						<tr key={ `${ session.status }-${ session.id }` }>
-							<td>
-								<strong className="aculect-ai-companion-connections-table__primary">
-									{ session.client_name || 'AI Assistant' }
-								</strong>
-								<span className="aculect-ai-companion-connections-table__secondary">
-									{ session.provider || 'mcp' }
-								</span>
-							</td>
-							<td>
-								<strong className="aculect-ai-companion-connections-table__primary">
-									{ session.user || 'Unknown user' }
-								</strong>
-								<span className="aculect-ai-companion-connections-table__secondary">
-									{ session.resource || 'Default resource' }
-								</span>
-							</td>
-							<td>
-								{ Array.isArray( session.user_roles ) &&
-								session.user_roles.length > 0
-									? session.user_roles.join( ', ' )
-									: 'Unknown' }
-							</td>
-							<td>
-								<ConnectionAbilityChips
-									session={ session }
-									abilities={ abilities }
-									enabledAbilityIds={ enabledAbilityIds }
-								/>
-							</td>
-							<td>
-								<strong className="aculect-ai-companion-connections-table__primary">
-									{ connectionDateValue(
-										session.last_used_at
-									) }
-								</strong>
-								<span className="aculect-ai-companion-connections-table__secondary">
-									Created{ ' ' }
-									{ connectionDateValue(
-										session.created_at,
-										'Unknown'
-									) }
-								</span>
-							</td>
-							<td>
-								<ConnectionWritePermissionControl
-									session={ session }
-									data={ data }
-								/>
-							</td>
-							<td>
-								<ConnectionStatusChip
-									session={ session }
-									isAccessPaused={ isAccessPaused }
-								/>
-								<span className="aculect-ai-companion-connections-table__secondary">
-									Connection expires{ ' ' }
-									{ connectionDateValue(
-										session.expires_at,
-										'Unknown'
-									) }
-								</span>
-							</td>
-							<td>
-								<ConnectionActionsMenu
-									session={ session }
-									data={ data }
-								/>
-							</td>
-						</tr>
-					) ) }
-				</tbody>
-			</table>
+		<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
+			<DataViewsComponent
+				data={ visibleSessions }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				search
+				searchLabel="Search connections"
+				defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
+				paginationInfo={ paginationInfo }
+				getItemId={ ( session ) =>
+					`${ session.status || 'active' }-${ session.id }`
+				}
+				config={ { perPageSizes: [ 10, 20, 50 ] } }
+				onReset={ () => setView( defaultView ) }
+				empty={
+					<EmptyState title={ emptyStateTitle }>
+						{ connectionSessions.length > 0
+							? 'Try a different assistant, WordPress user, role, ability, provider, or status filter.'
+							: 'Add the connection URL to an AI assistant, then approve the connection in WordPress.' }
+					</EmptyState>
+				}
+			/>
 		</div>
 	);
 }
@@ -2184,12 +2347,8 @@ function AdvancedDashboard( {
 								label="Import Settings"
 								variant="secondary"
 								enctype="multipart/form-data"
-								onSubmit={ () => {
-									// eslint-disable-next-line no-alert
-									return window.confirm(
-										'Import settings from this JSON file? Current supported settings will be overwritten.'
-									);
-								} }
+								confirmTitle="Import settings"
+								confirmMessage="Import settings from this JSON file? Current supported settings will be overwritten."
 							>
 								<label
 									className="aculect-ai-companion-file-field"
@@ -2218,12 +2377,8 @@ function AdvancedDashboard( {
 								nonce={ data.actions?.resetSettingsNonce }
 								label="Reset Settings"
 								destructive
-								onSubmit={ () => {
-									// eslint-disable-next-line no-alert
-									return window.confirm(
-										'Reset Aculect AI Companion settings to defaults? Connections, OAuth material, logs, and activity history will not be deleted.'
-									);
-								} }
+								confirmTitle="Reset settings"
+								confirmMessage="Reset Aculect AI Companion settings to defaults? Connections, OAuth material, logs, and activity history will not be deleted."
 							/>
 						</AdvancedSettingRow>
 					</AdvancedSection>
@@ -2540,15 +2695,6 @@ function OverviewCircuit( { brandIconUrl } ) {
 	);
 }
 
-const ABILITY_PAGE_SIZE = 12;
-const ABILITY_TABS = [
-	{ name: 'all', label: 'All' },
-	{ name: 'system', label: 'System' },
-	{ name: 'custom', label: 'Custom' },
-	{ name: 'active', label: 'Active' },
-	{ name: 'inactive', label: 'Inactive' },
-];
-
 function normalizedAbilityGroup( value ) {
 	return String( value || 'Other' ).trim() || 'Other';
 }
@@ -2643,58 +2789,6 @@ function normalizedAbilityRows( {
 		.sort( sortAbilities );
 }
 
-function filterAbilityRows( {
-	rows,
-	tab,
-	search,
-	selectedCategory,
-	risk,
-	source,
-} ) {
-	const searchTerm = search.trim().toLowerCase();
-
-	return rows.filter( ( ability ) => {
-		if ( tab === 'system' && ability.source !== 'system' ) {
-			return false;
-		}
-
-		if ( tab === 'custom' ) {
-			return false;
-		}
-
-		if ( tab === 'active' && ! ability.enabled ) {
-			return false;
-		}
-
-		if ( tab === 'inactive' && ability.enabled ) {
-			return false;
-		}
-
-		if (
-			selectedCategory !== 'all' &&
-			ability.group !== selectedCategory
-		) {
-			return false;
-		}
-
-		if ( source !== 'all' && ability.source !== source ) {
-			return false;
-		}
-
-		if ( risk === 'read' && ! ability.readOnly ) {
-			return false;
-		}
-
-		if ( risk === 'write' && ability.readOnly ) {
-			return false;
-		}
-
-		return (
-			! searchTerm || abilitySearchText( ability ).includes( searchTerm )
-		);
-	} );
-}
-
 function AbilityDashboard( {
 	data,
 	abilities,
@@ -2714,74 +2808,229 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
-	const [ abilityTab, setAbilityTab ] = useState( 'all' );
-	const [ abilitySearch, setAbilitySearch ] = useState( '' );
-	const [ abilityCategory, setAbilityCategory ] = useState( 'all' );
-	const [ abilityRisk, setAbilityRisk ] = useState( 'all' );
-	const [ abilitySource, setAbilitySource ] = useState( 'all' );
-	const [ abilityPage, setAbilityPage ] = useState( 1 );
-	const rows = normalizedAbilityRows( {
-		abilities,
-		enabledAbilities,
-		wpAbilities,
-		enabledWpAbilities,
-		activeConnectionCount,
-	} );
-	const filteredRows = filterAbilityRows( {
-		rows,
-		tab: abilityTab,
-		search: abilitySearch,
-		selectedCategory: abilityCategory,
-		risk: abilityRisk,
-		source: abilitySource,
-	} );
-	const totalPages = Math.max(
-		1,
-		Math.ceil( filteredRows.length / ABILITY_PAGE_SIZE )
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const defaultView = {
+		type: 'table',
+		search: '',
+		page: 1,
+		perPage: 12,
+		sort: {
+			field: 'ability',
+			direction: 'asc',
+		},
+		fields: [
+			'ability',
+			'scope',
+			'assigned_to',
+			'status',
+			'updated',
+			'actions',
+		],
+		layout: {
+			density: 'balanced',
+		},
+	};
+	const [ view, setView ] = useState( defaultView );
+	const rows = useMemo(
+		() =>
+			normalizedAbilityRows( {
+				abilities,
+				enabledAbilities,
+				wpAbilities,
+				enabledWpAbilities,
+				activeConnectionCount,
+			} ),
+		[
+			abilities,
+			activeConnectionCount,
+			enabledAbilities,
+			enabledWpAbilities,
+			wpAbilities,
+		]
 	);
-	const currentPage = Math.min( abilityPage, totalPages );
-	const visibleRows = filteredRows.slice(
-		( currentPage - 1 ) * ABILITY_PAGE_SIZE,
-		currentPage * ABILITY_PAGE_SIZE
+	const categoryOptions = useMemo(
+		() =>
+			Array.from( new Set( rows.map( ( ability ) => ability.group ) ) )
+				.sort()
+				.map( ( group ) => ( { value: group, label: group } ) ),
+		[ rows ]
 	);
-	const sourceOptions = [
-		{ value: 'all', label: 'All sources' },
-		{ value: 'system', label: 'System' },
-	];
-	const categories = Array.from(
-		new Set( rows.map( ( ability ) => ability.group ) )
-	).sort();
-	const tabCounts = ABILITY_TABS.reduce(
-		( counts, tab ) => ( {
-			...counts,
-			[ tab.name ]:
-				tab.name === 'all'
-					? rows.length
-					: filterAbilityRows( {
-							rows,
-							tab: tab.name,
-							search: '',
-							selectedCategory: 'all',
-							risk: 'all',
-							source: 'all',
-					  } ).length,
-		} ),
-		{}
+	const sourceOptions = useMemo(
+		() => [
+			{ value: 'system', label: 'System' },
+			...( wpAbilities.length > 0
+				? [ { value: 'wordpress', label: 'WordPress API' } ]
+				: [] ),
+		],
+		[ wpAbilities.length ]
 	);
+	const fields = useMemo(
+		() => [
+			{
+				id: 'ability',
+				label: 'Ability',
+				enableGlobalSearch: true,
+				enableHiding: false,
+				getValue: ( { item } ) => abilitySearchText( item ),
+				render: ( { item: ability } ) => (
+					<div className="aculect-ai-companion-ability-name-cell">
+						<strong>{ ability.title }</strong>
+						<code>{ ability.id }</code>
+						<p>
+							{ ability.description ||
+								'No description provided.' }
+						</p>
+						<div className="aculect-ai-companion-ability-row-tags">
+							<span className="is-source">
+								{ ability.sourceLabel }
+							</span>
+							<span>{ ability.group }</span>
+						</div>
+					</div>
+				),
+			},
+			{
+				id: 'scope',
+				label: 'Scope',
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.scope,
+				render: ( { item: ability } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<span
+							className={ `aculect-ai-companion-risk-chip ${
+								ability.readOnly ? 'is-read-only' : 'is-write'
+							}` }
+						>
+							{ ability.readOnly
+								? 'Read-only'
+								: 'Can change site' }
+						</span>
+						<code>{ ability.scope }</code>
+					</div>
+				),
+			},
+			{
+				id: 'assigned_to',
+				label: 'Granted to',
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.assignedTo,
+			},
+			{
+				id: 'status',
+				label: 'Status',
+				elements: [
+					{ value: 'active', label: 'Active' },
+					{ value: 'inactive', label: 'Inactive' },
+				],
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
+				getValue: ( { item } ) =>
+					item.enabled ? 'active' : 'inactive',
+				render: ( { item: ability } ) => (
+					<div className="aculect-ai-companion-ability-status-cell">
+						<span
+							className={ `aculect-ai-companion-ability-status ${
+								ability.enabled ? 'is-active' : 'is-inactive'
+							}` }
+						>
+							{ ability.enabled ? 'Active' : 'Inactive' }
+						</span>
+						<ToggleControl
+							label={ `${ ability.title } active state` }
+							checked={ ability.enabled }
+							onChange={ ( checked ) => {
+								if ( ability.source === 'wordpress' ) {
+									onToggleWpAbility(
+										ability.id,
+										Boolean( checked )
+									);
+									return;
+								}
 
-	if ( wpAbilities.length > 0 ) {
-		sourceOptions.push( { value: 'wordpress', label: 'WordPress API' } );
-	}
-
-	useEffect( () => {
-		setAbilityPage( 1 );
-	}, [
-		abilityTab,
-		abilitySearch,
-		abilityCategory,
-		abilityRisk,
-		abilitySource,
-	] );
+								onToggleAbility(
+									ability.id,
+									Boolean( checked )
+								);
+							} }
+						/>
+					</div>
+				),
+			},
+			{
+				id: 'updated',
+				label: 'Updated',
+				getValue: ( { item } ) => item.updated,
+			},
+			{
+				id: 'group',
+				label: 'Category',
+				elements: categoryOptions,
+				filterBy:
+					categoryOptions.length > 0
+						? { operators: [ 'isAny' ] }
+						: false,
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.group,
+			},
+			{
+				id: 'risk',
+				label: 'Scope risk',
+				elements: [
+					{ value: 'read', label: 'Read-only' },
+					{ value: 'write', label: 'Can change site' },
+				],
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
+				getValue: ( { item } ) => ( item.readOnly ? 'read' : 'write' ),
+			},
+			{
+				id: 'source',
+				label: 'Source',
+				elements: sourceOptions,
+				filterBy: { operators: [ 'isAny' ] },
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.source,
+			},
+			{
+				id: 'actions',
+				label: 'Actions',
+				enableSorting: false,
+				enableHiding: false,
+				render: ( { item: ability } ) => (
+					<Button
+						type="button"
+						variant="tertiary"
+						aria-label={ `Copy ${ ability.title } ability key` }
+						onClick={ () =>
+							onCopy( ability.id, 'Ability key copied' )
+						}
+					>
+						<Icon icon={ copy } size={ 16 } />
+					</Button>
+				),
+			},
+		],
+		[
+			categoryOptions,
+			onCopy,
+			onToggleAbility,
+			onToggleWpAbility,
+			sourceOptions,
+		]
+	);
+	const { data: visibleRows, paginationInfo } = useMemo(
+		() =>
+			filterSortAndPaginateRows
+				? filterSortAndPaginateRows( rows, view, fields )
+				: {
+						data: [],
+						paginationInfo: {
+							totalItems: rows.length,
+							totalPages: 1,
+						},
+				  },
+		[ fields, filterSortAndPaginateRows, rows, view ]
+	);
 
 	return (
 		<form
@@ -2832,6 +3081,7 @@ function AbilityDashboard( {
 					variant="secondary"
 					onClick={ onResetChanges }
 					disabled={ ! hasChanges }
+					accessibleWhenDisabled
 				>
 					Discard changes
 				</Button>
@@ -2839,294 +3089,31 @@ function AbilityDashboard( {
 
 			<div className="aculect-ai-companion-abilities-layout">
 				<section className="aculect-ai-companion-abilities-main">
-					<div className="aculect-ai-companion-ability-actions">
-						<Button type="button" variant="secondary" disabled>
-							Import ability
-						</Button>
-						<Button type="button" variant="secondary" disabled>
-							Export abilities
-						</Button>
-						<Button type="button" variant="secondary" disabled>
-							Create ability
-						</Button>
-						<p>
-							Custom ability storage is not enabled, so custom
-							ability actions stay unavailable.
-						</p>
+					<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--abilities">
+						{ DataViewsComponent ? (
+							<DataViewsComponent
+								data={ visibleRows }
+								fields={ fields }
+								view={ view }
+								onChangeView={ setView }
+								search
+								searchLabel="Search abilities"
+								defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
+								paginationInfo={ paginationInfo }
+								getItemId={ ( ability ) => ability.id }
+								config={ { perPageSizes: [ 12, 24, 48 ] } }
+								onReset={ () => setView( defaultView ) }
+								empty={
+									<EmptyState title="No matching abilities">
+										Adjust the search or filters to show
+										ability rows.
+									</EmptyState>
+								}
+							/>
+						) : (
+							<DataViewLoadingState label="Loading abilities table" />
+						) }
 					</div>
-
-					<div
-						className="aculect-ai-companion-ability-tabs"
-						role="tablist"
-						aria-label="Ability status filters"
-					>
-						{ ABILITY_TABS.map( ( tab ) => (
-							<button
-								key={ tab.name }
-								type="button"
-								role="tab"
-								aria-selected={ abilityTab === tab.name }
-								className={
-									abilityTab === tab.name ? 'is-active' : ''
-								}
-								onClick={ () => setAbilityTab( tab.name ) }
-							>
-								<span>{ tab.label }</span>
-								<strong>{ tabCounts[ tab.name ] || 0 }</strong>
-							</button>
-						) ) }
-					</div>
-
-					<div className="aculect-ai-companion-ability-filters">
-						<TextControl
-							label="Search abilities"
-							value={ abilitySearch }
-							placeholder="Name, key, description, scope, or source"
-							onChange={ setAbilitySearch }
-						/>
-						<label
-							className="aculect-ai-companion-ability-filters__field"
-							htmlFor="aculect-ai-companion-ability-category"
-						>
-							<span className="aculect-ai-companion-ability-filters__label">
-								Category
-							</span>
-							<select
-								id="aculect-ai-companion-ability-category"
-								value={ abilityCategory }
-								onChange={ ( event ) =>
-									setAbilityCategory( event.target.value )
-								}
-							>
-								<option value="all">All categories</option>
-								{ categories.map( ( categoryName ) => (
-									<option
-										key={ categoryName }
-										value={ categoryName }
-									>
-										{ categoryName }
-									</option>
-								) ) }
-							</select>
-						</label>
-						<label
-							className="aculect-ai-companion-ability-filters__field"
-							htmlFor="aculect-ai-companion-ability-risk"
-						>
-							<span className="aculect-ai-companion-ability-filters__label">
-								Status risk
-							</span>
-							<select
-								id="aculect-ai-companion-ability-risk"
-								value={ abilityRisk }
-								onChange={ ( event ) =>
-									setAbilityRisk( event.target.value )
-								}
-							>
-								<option value="all">Read and write</option>
-								<option value="read">Read-only</option>
-								<option value="write">Can change site</option>
-							</select>
-						</label>
-						<label
-							className="aculect-ai-companion-ability-filters__field"
-							htmlFor="aculect-ai-companion-ability-source"
-						>
-							<span className="aculect-ai-companion-ability-filters__label">
-								Source
-							</span>
-							<select
-								id="aculect-ai-companion-ability-source"
-								value={ abilitySource }
-								onChange={ ( event ) =>
-									setAbilitySource( event.target.value )
-								}
-							>
-								{ sourceOptions.map( ( option ) => (
-									<option
-										key={ option.value }
-										value={ option.value }
-									>
-										{ option.label }
-									</option>
-								) ) }
-							</select>
-						</label>
-					</div>
-
-					{ visibleRows.length > 0 ? (
-						<div className="aculect-ai-companion-ability-table-wrap">
-							<table className="aculect-ai-companion-ability-table">
-								<thead>
-									<tr>
-										<th>Ability</th>
-										<th>Scope</th>
-										<th>Granted to</th>
-										<th>Status</th>
-										<th>Updated</th>
-										<th>Actions</th>
-									</tr>
-								</thead>
-								<tbody>
-									{ visibleRows.map( ( ability ) => (
-										<tr key={ ability.id }>
-											<td data-label="Ability">
-												<div className="aculect-ai-companion-ability-name-cell">
-													<strong>
-														{ ability.title }
-													</strong>
-													<code>{ ability.id }</code>
-													<p>
-														{ ability.description ||
-															'No description provided.' }
-													</p>
-													<div className="aculect-ai-companion-ability-row-tags">
-														<span className="is-source">
-															{
-																ability.sourceLabel
-															}
-														</span>
-														<span>
-															{ ability.group }
-														</span>
-													</div>
-												</div>
-											</td>
-											<td data-label="Scope">
-												<span
-													className={ `aculect-ai-companion-risk-chip ${
-														ability.readOnly
-															? 'is-read-only'
-															: 'is-write'
-													}` }
-												>
-													{ ability.readOnly
-														? 'Read-only'
-														: 'Can change site' }
-												</span>
-												<code>{ ability.scope }</code>
-											</td>
-											<td data-label="Granted to">
-												{ ability.assignedTo }
-											</td>
-											<td data-label="Status">
-												<div className="aculect-ai-companion-ability-status-cell">
-													<span
-														className={ `aculect-ai-companion-ability-status ${
-															ability.enabled
-																? 'is-active'
-																: 'is-inactive'
-														}` }
-													>
-														{ ability.enabled
-															? 'Active'
-															: 'Inactive' }
-													</span>
-													<ToggleControl
-														label={ `${ ability.title } active state` }
-														checked={
-															ability.enabled
-														}
-														onChange={ (
-															checked
-														) => {
-															if (
-																ability.source ===
-																'wordpress'
-															) {
-																onToggleWpAbility(
-																	ability.id,
-																	Boolean(
-																		checked
-																	)
-																);
-																return;
-															}
-
-															onToggleAbility(
-																ability.id,
-																Boolean(
-																	checked
-																)
-															);
-														} }
-													/>
-												</div>
-											</td>
-											<td data-label="Updated">
-												{ ability.updated }
-											</td>
-											<td data-label="Actions">
-												<Button
-													type="button"
-													variant="tertiary"
-													aria-label={ `Copy ${ ability.title } ability key` }
-													onClick={ () =>
-														onCopy(
-															ability.id,
-															'Ability key copied'
-														)
-													}
-												>
-													<Icon
-														icon={ copy }
-														size={ 16 }
-													/>
-												</Button>
-											</td>
-										</tr>
-									) ) }
-								</tbody>
-							</table>
-						</div>
-					) : (
-						<EmptyState
-							title={
-								abilityTab === 'custom'
-									? 'No custom abilities'
-									: 'No matching abilities'
-							}
-						>
-							{ abilityTab === 'custom'
-								? 'Custom ability storage is not available, so no custom rows can be listed.'
-								: 'Adjust the search, tabs, or filters to show ability rows.' }
-						</EmptyState>
-					) }
-
-					{ filteredRows.length > ABILITY_PAGE_SIZE && (
-						<div className="aculect-ai-companion-ability-pagination">
-							<Button
-								type="button"
-								variant="secondary"
-								disabled={ currentPage === 1 }
-								onClick={ () =>
-									setAbilityPage( ( currentAbilityPage ) =>
-										Math.max( 1, currentAbilityPage - 1 )
-									)
-								}
-							>
-								Previous
-							</Button>
-							<span>
-								Page { currentPage } of { totalPages }
-							</span>
-							<Button
-								type="button"
-								variant="secondary"
-								disabled={ currentPage === totalPages }
-								onClick={ () =>
-									setAbilityPage( ( currentAbilityPage ) =>
-										Math.min(
-											totalPages,
-											currentAbilityPage + 1
-										)
-									)
-								}
-							>
-								Next
-							</Button>
-						</div>
-					) }
 				</section>
 
 				<aside className="aculect-ai-companion-abilities-side">
@@ -3374,22 +3361,15 @@ function RoleAbilitiesEditor( {
 					</p>
 				</div>
 				<div className="aculect-ai-companion-role-abilities__controls">
-					<label htmlFor="aculect-ai-companion-role-selector">
-						<span>Role</span>
-						<select
-							id="aculect-ai-companion-role-selector"
-							value={ activeRole.id }
-							onChange={ ( event ) =>
-								onSelectRole( event.target.value )
-							}
-						>
-							{ roles.map( ( role ) => (
-								<option key={ role.id } value={ role.id }>
-									{ role.label }
-								</option>
-							) ) }
-						</select>
-					</label>
+					<SelectControl
+						label="Role"
+						value={ activeRole.id }
+						options={ roles.map( ( role ) => ( {
+							value: role.id,
+							label: role.label,
+						} ) ) }
+						onChange={ onSelectRole }
+					/>
 				</div>
 			</div>
 
@@ -3429,43 +3409,34 @@ function RoleAbilitiesEditor( {
 							/>
 						) ) }
 						<div className="aculect-ai-companion-role-abilities__toolbar">
-							<TextControl
+							<SearchControl
 								label="Search role abilities"
 								value={ search }
 								placeholder="Name, key, scope, or description"
 								onChange={ setSearch }
 							/>
-							<label htmlFor="aculect-ai-companion-role-ability-category">
-								<span>Category</span>
-								<select
-									id="aculect-ai-companion-role-ability-category"
-									value={ categoryFilter }
-									onChange={ ( event ) =>
-										setCategoryFilter( event.target.value )
-									}
-								>
-									<option value="all">All categories</option>
-									{ categories.map( ( group ) => (
-										<option key={ group } value={ group }>
-											{ group }
-										</option>
-									) ) }
-								</select>
-							</label>
-							<label htmlFor="aculect-ai-companion-role-ability-status">
-								<span>Status</span>
-								<select
-									id="aculect-ai-companion-role-ability-status"
-									value={ statusFilter }
-									onChange={ ( event ) =>
-										setStatusFilter( event.target.value )
-									}
-								>
-									<option value="all">All states</option>
-									<option value="enabled">Enabled</option>
-									<option value="disabled">Disabled</option>
-								</select>
-							</label>
+							<SelectControl
+								label="Category"
+								value={ categoryFilter }
+								options={ [
+									{ value: 'all', label: 'All categories' },
+									...categories.map( ( group ) => ( {
+										value: group,
+										label: group,
+									} ) ),
+								] }
+								onChange={ setCategoryFilter }
+							/>
+							<SelectControl
+								label="Status"
+								value={ statusFilter }
+								options={ [
+									{ value: 'all', label: 'All states' },
+									{ value: 'enabled', label: 'Enabled' },
+									{ value: 'disabled', label: 'Disabled' },
+								] }
+								onChange={ setStatusFilter }
+							/>
 						</div>
 
 						{ filteredCategories.length > 0 ? (
@@ -3604,6 +3575,7 @@ function RoleAbilitiesEditor( {
 								type="button"
 								variant="secondary"
 								disabled={ ! hasChanges }
+								accessibleWhenDisabled
 								onClick={ () =>
 									setStagedIds( activeRole.allowedIds || [] )
 								}
@@ -3662,26 +3634,15 @@ function RoleAbilitiesEditor( {
 					</section>
 					<section>
 						<h3>Role actions</h3>
-						<form
-							method="post"
-							action={ data.actions?.adminPostUrl }
-							onSubmit={ () => {
-								// eslint-disable-next-line no-alert
-								return window.confirm(
-									'Reset this role to the global ability policy?'
-								);
-							} }
+						<ActionForm
+							data={ data }
+							action={ data.actions?.saveRoleAbilitiesAction }
+							nonce={ data.actions?.saveRoleAbilitiesNonce }
+							label="Reset to default"
+							variant="secondary"
+							confirmTitle="Reset role policy"
+							confirmMessage="Reset this role to the global ability policy?"
 						>
-							<input
-								type="hidden"
-								name="action"
-								value={ data.actions?.saveRoleAbilitiesAction }
-							/>
-							<input
-								type="hidden"
-								name="_wpnonce"
-								value={ data.actions?.saveRoleAbilitiesNonce }
-							/>
 							<input
 								type="hidden"
 								name="role_ability_action"
@@ -3692,30 +3653,17 @@ function RoleAbilitiesEditor( {
 								name="role_ability_role"
 								value={ activeRole.id }
 							/>
-							<Button type="submit" variant="secondary">
-								Reset to default
-							</Button>
-						</form>
-						<form
-							method="post"
-							action={ data.actions?.adminPostUrl }
-							onSubmit={ () => {
-								// eslint-disable-next-line no-alert
-								return window.confirm(
-									'Copy ability policy from the selected role?'
-								);
-							} }
+						</ActionForm>
+						<ActionForm
+							data={ data }
+							action={ data.actions?.saveRoleAbilitiesAction }
+							nonce={ data.actions?.saveRoleAbilitiesNonce }
+							label="Copy from role"
+							variant="secondary"
+							disabled={ ! copyFromRole }
+							confirmTitle="Copy role policy"
+							confirmMessage="Copy ability policy from the selected role?"
 						>
-							<input
-								type="hidden"
-								name="action"
-								value={ data.actions?.saveRoleAbilitiesAction }
-							/>
-							<input
-								type="hidden"
-								name="_wpnonce"
-								value={ data.actions?.saveRoleAbilitiesNonce }
-							/>
 							<input
 								type="hidden"
 								name="role_ability_action"
@@ -3726,41 +3674,21 @@ function RoleAbilitiesEditor( {
 								name="role_ability_role"
 								value={ activeRole.id }
 							/>
-							<label htmlFor="aculect-ai-companion-copy-role">
-								<span className="aculect-ai-companion-role-abilities__side-label">
-									Copy from
-								</span>
-								<select
-									id="aculect-ai-companion-copy-role"
-									name="copy_from_role"
-									value={ copyFromRole }
-									onChange={ ( event ) =>
-										setCopyFromRole( event.target.value )
-									}
-								>
-									{ roles
-										.filter(
-											( role ) =>
-												role.id !== activeRole.id
-										)
-										.map( ( role ) => (
-											<option
-												key={ role.id }
-												value={ role.id }
-											>
-												{ role.label }
-											</option>
-										) ) }
-								</select>
-							</label>
-							<Button
-								type="submit"
-								variant="secondary"
-								disabled={ ! copyFromRole }
-							>
-								Copy from role
-							</Button>
-						</form>
+							<SelectControl
+								label="Copy from"
+								name="copy_from_role"
+								value={ copyFromRole }
+								options={ roles
+									.filter(
+										( role ) => role.id !== activeRole.id
+									)
+									.map( ( role ) => ( {
+										value: role.id,
+										label: role.label,
+									} ) ) }
+								onChange={ setCopyFromRole }
+							/>
+						</ActionForm>
 					</section>
 					<section>
 						<h3>Help</h3>
@@ -4100,28 +4028,32 @@ function SettingsApp() {
 	const providers = Array.isArray( data.providers )
 		? data.providers
 		: EMPTY_ARRAY;
-	const sessions = Array.isArray( data.sessions ) ? data.sessions : [];
+	const sessions = Array.isArray( data.sessions )
+		? data.sessions
+		: EMPTY_ARRAY;
 	const revokedSessions = Array.isArray( data.revokedSessions )
 		? data.revokedSessions
-		: [];
-	const abilities = Array.isArray( data.abilities ) ? data.abilities : [];
+		: EMPTY_ARRAY;
+	const abilities = Array.isArray( data.abilities )
+		? data.abilities
+		: EMPTY_ARRAY;
 	const wpAbilities = Array.isArray( data.wpAbilities )
 		? data.wpAbilities
-		: [];
+		: EMPTY_ARRAY;
 	const originalEnabledAbilities = Array.isArray( data.enabledAbilities )
 		? data.enabledAbilities
-		: [];
+		: EMPTY_ARRAY;
 	const originalEnabledWpAbilities = Array.isArray( data.enabledWpAbilities )
 		? data.enabledWpAbilities
-		: [];
+		: EMPTY_ARRAY;
 	const originalConfirmationGroups = Array.isArray( data.confirmationGroups )
 		? data.confirmationGroups
-		: [];
+		: EMPTY_ARRAY;
 	const confirmationGroupOptions = Array.isArray(
 		data.confirmationGroupOptions
 	)
 		? data.confirmationGroupOptions
-		: [];
+		: EMPTY_ARRAY;
 	const activity =
 		data.activity && typeof data.activity === 'object' ? data.activity : {};
 	const brandProfile =
@@ -4161,7 +4093,28 @@ function SettingsApp() {
 		diagnostics.logs && typeof diagnostics.logs === 'object'
 			? diagnostics.logs
 			: {};
+	const activityFilterDefaults = useMemo(
+		() => ( {
+			range: activityFilters.range || '7d',
+			status: activityFilters.status || '',
+			user: activityFilters.user_id || '',
+			assistant: activityFilters.assistant || '',
+			action: activityFilters.action || '',
+			search: activityFilters.search || '',
+		} ),
+		[
+			activityFilters.action,
+			activityFilters.assistant,
+			activityFilters.range,
+			activityFilters.search,
+			activityFilters.status,
+			activityFilters.user_id,
+		]
+	);
 	const [ copied, setCopied ] = useState( '' );
+	const [ activityFilterValues, setActivityFilterValues ] = useState(
+		activityFilterDefaults
+	);
 	const [ diagnosticFilter, setDiagnosticFilter ] = useState( 'all' );
 	const [ diagnosticsRunning, setDiagnosticsRunning ] = useState( false );
 	const [ openProvider, setOpenProvider ] = useState(
@@ -4194,39 +4147,29 @@ function SettingsApp() {
 	);
 	const [ roleAbilitiesModalOpen, setRoleAbilitiesModalOpen ] =
 		useState( false );
-	const [ connectionFilter, setConnectionFilter ] = useState( 'all' );
-	const [ connectionSearch, setConnectionSearch ] = useState( '' );
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
 	const hasActiveSessions = activeSessionCount > 0;
 	const currentUserId = Number( data.currentUserId || 0 );
-	const activeConnectionSessions = sessions.map( ( session ) =>
-		normalizeConnectionSession( session, 'active' )
+	const activeConnectionSessions = useMemo(
+		() =>
+			sessions.map( ( session ) =>
+				normalizeConnectionSession( session, 'active' )
+			),
+		[ sessions ]
 	);
-	const revokedConnectionSessions = revokedSessions.map( ( session ) =>
-		normalizeConnectionSession( session, 'revoked' )
+	const revokedConnectionSessions = useMemo(
+		() =>
+			revokedSessions.map( ( session ) =>
+				normalizeConnectionSession( session, 'revoked' )
+			),
+		[ revokedSessions ]
 	);
-	const connectionSessions = [
-		...activeConnectionSessions,
-		...revokedConnectionSessions,
-	];
-	const connectionFilterItems = connectionFilters(
-		connectionSessions,
-		activeConnectionSessions,
-		revokedConnectionSessions,
-		isAccessPaused,
-		currentUserId
+	const connectionSessions = useMemo(
+		() => [ ...activeConnectionSessions, ...revokedConnectionSessions ],
+		[ activeConnectionSessions, revokedConnectionSessions ]
 	);
-	const filteredConnectionSessions = filterConnectionSessions( {
-		connectionSessions,
-		filter: connectionFilter,
-		searchTerm: connectionSearch,
-		isAccessPaused,
-		currentUserId,
-		abilities,
-		enabledAbilityIds: enabledAbilities,
-	} );
 	const hasAbilityChanges =
 		! sameStringSet( enabledAbilities, originalEnabledAbilities ) ||
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
@@ -4240,6 +4183,12 @@ function SettingsApp() {
 	const shouldShowAccessControl = Boolean(
 		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
 	);
+	const setActivityFilterValue = ( key ) => ( value ) => {
+		setActivityFilterValues( ( current ) => ( {
+			...current,
+			[ key ]: value,
+		} ) );
+	};
 
 	useEffect(
 		() => () => {
@@ -4249,6 +4198,10 @@ function SettingsApp() {
 		},
 		[]
 	);
+
+	useEffect( () => {
+		setActivityFilterValues( activityFilterDefaults );
+	}, [ activityFilterDefaults ] );
 
 	useEffect( () => {
 		if ( providers.length === 0 ) {
@@ -4972,6 +4925,12 @@ function SettingsApp() {
 													: 'Pause AI Access'
 											}
 											destructive={ ! isAccessPaused }
+											confirmTitle="Pause AI access"
+											confirmMessage={
+												isAccessPaused
+													? ''
+													: 'Pause AI access for all active assistant connections?'
+											}
 										>
 											<input
 												type="hidden"
@@ -4986,76 +4945,14 @@ function SettingsApp() {
 
 								<div className="aculect-ai-companion-connections-layout">
 									<section className="aculect-ai-companion-connections-main">
-										<div className="aculect-ai-companion-connections-toolbar">
-											<div
-												className="aculect-ai-companion-connection-filters"
-												role="tablist"
-												aria-label="Connection states"
-											>
-												{ connectionFilterItems.map(
-													( filter ) => {
-														const isActive =
-															connectionFilter ===
-															filter.name;
-
-														return (
-															<button
-																key={
-																	filter.name
-																}
-																type="button"
-																className={ `aculect-ai-companion-connection-filter ${
-																	isActive
-																		? 'is-active'
-																		: ''
-																}` }
-																role="tab"
-																aria-selected={
-																	isActive
-																}
-																onClick={ () =>
-																	setConnectionFilter(
-																		filter.name
-																	)
-																}
-															>
-																<span>
-																	{
-																		filter.label
-																	}
-																</span>
-																<strong>
-																	{
-																		filter.count
-																	}
-																</strong>
-															</button>
-														);
-													}
-												) }
-											</div>
-											<TextControl
-												label="Search connections"
-												value={ connectionSearch }
-												placeholder="Assistant, user, role, ability, or provider"
-												onChange={ setConnectionSearch }
-											/>
-										</div>
-
-										<ConnectionsTable
-											sessions={
-												filteredConnectionSessions
-											}
+										<ConnectionsDataViews
+											sessions={ connectionSessions }
 											data={ data }
-											filter={ connectionFilter }
-											searchTerm={ connectionSearch }
 											isAccessPaused={ isAccessPaused }
+											currentUserId={ currentUserId }
 											abilities={ abilities }
 											enabledAbilityIds={
 												enabledAbilities
-											}
-											hasConnections={
-												connectionSessions.length > 0
 											}
 										/>
 
@@ -5074,6 +4971,8 @@ function SettingsApp() {
 													}
 													label="Disconnect All"
 													destructive
+													confirmTitle="Disconnect all assistants"
+													confirmMessage="Disconnect all active assistants? Their active tokens and refresh tokens will be revoked."
 												/>
 											</div>
 										) }
@@ -5233,103 +5132,102 @@ function SettingsApp() {
 												name="tab"
 												value="activity"
 											/>
-											<label htmlFor="aculect-ai-companion-activity-range">
-												<span>Range</span>
-												<select
-													id="aculect-ai-companion-activity-range"
-													name="activity_range"
-													defaultValue={
-														activityFilters.range ||
-														'7d'
-													}
-												>
-													<option value="24h">
-														24 hours
-													</option>
-													<option value="7d">
-														7 days
-													</option>
-													<option value="30d">
-														30 days
-													</option>
-													<option value="90d">
-														90 days
-													</option>
-													<option value="all">
-														All time
-													</option>
-												</select>
-											</label>
-											<label htmlFor="aculect-ai-companion-activity-status">
-												<span>Status</span>
-												<select
-													id="aculect-ai-companion-activity-status"
-													name="activity_status"
-													defaultValue={
-														activityFilters.status ||
-														''
-													}
-												>
-													<option value="">
-														Any
-													</option>
-													<option value="success">
-														Success
-													</option>
-													<option value="error">
-														Failed
-													</option>
-												</select>
-											</label>
-											<label htmlFor="aculect-ai-companion-activity-user">
-												<span>User ID</span>
-												<input
-													id="aculect-ai-companion-activity-user"
-													type="number"
-													min="1"
-													name="activity_user"
-													defaultValue={
-														activityFilters.user_id ||
-														''
-													}
-												/>
-											</label>
-											<label htmlFor="aculect-ai-companion-activity-assistant">
-												<span>Assistant</span>
-												<input
-													id="aculect-ai-companion-activity-assistant"
-													type="text"
-													name="activity_assistant"
-													defaultValue={
-														activityFilters.assistant ||
-														''
-													}
-												/>
-											</label>
-											<label htmlFor="aculect-ai-companion-activity-action">
-												<span>Action Type</span>
-												<input
-													id="aculect-ai-companion-activity-action"
-													type="text"
-													name="activity_action"
-													defaultValue={
-														activityFilters.action ||
-														''
-													}
-												/>
-											</label>
-											<label htmlFor="aculect-ai-companion-activity-search">
-												<span>Search</span>
-												<input
-													id="aculect-ai-companion-activity-search"
-													type="search"
-													name="activity_search"
-													defaultValue={
-														activityFilters.search ||
-														''
-													}
-												/>
-											</label>
+											<SelectControl
+												label="Range"
+												name="activity_range"
+												value={
+													activityFilterValues.range
+												}
+												onChange={ setActivityFilterValue(
+													'range'
+												) }
+												options={ [
+													{
+														value: '24h',
+														label: '24 hours',
+													},
+													{
+														value: '7d',
+														label: '7 days',
+													},
+													{
+														value: '30d',
+														label: '30 days',
+													},
+													{
+														value: '90d',
+														label: '90 days',
+													},
+													{
+														value: 'all',
+														label: 'All time',
+													},
+												] }
+											/>
+											<SelectControl
+												label="Status"
+												name="activity_status"
+												value={
+													activityFilterValues.status
+												}
+												onChange={ setActivityFilterValue(
+													'status'
+												) }
+												options={ [
+													{ value: '', label: 'Any' },
+													{
+														value: 'success',
+														label: 'Success',
+													},
+													{
+														value: 'error',
+														label: 'Failed',
+													},
+												] }
+											/>
+											<TextControl
+												label="User ID"
+												type="number"
+												min="1"
+												name="activity_user"
+												value={
+													activityFilterValues.user
+												}
+												onChange={ setActivityFilterValue(
+													'user'
+												) }
+											/>
+											<TextControl
+												label="Assistant"
+												name="activity_assistant"
+												value={
+													activityFilterValues.assistant
+												}
+												onChange={ setActivityFilterValue(
+													'assistant'
+												) }
+											/>
+											<TextControl
+												label="Action Type"
+												name="activity_action"
+												value={
+													activityFilterValues.action
+												}
+												onChange={ setActivityFilterValue(
+													'action'
+												) }
+											/>
+											<TextControl
+												label="Search"
+												type="search"
+												name="activity_search"
+												value={
+													activityFilterValues.search
+												}
+												onChange={ setActivityFilterValue(
+													'search'
+												) }
+											/>
 											<div className="aculect-ai-companion-activity-filter-actions">
 												<Button
 													type="submit"
@@ -5368,6 +5266,7 @@ function SettingsApp() {
 												}
 												variant="secondary"
 												disabled={ ! activity.prevUrl }
+												accessibleWhenDisabled
 											>
 												Previous
 											</Button>
@@ -5378,6 +5277,7 @@ function SettingsApp() {
 												}
 												variant="secondary"
 												disabled={ ! activity.nextUrl }
+												accessibleWhenDisabled
 											>
 												Next
 											</Button>
@@ -5564,6 +5464,8 @@ function SettingsApp() {
 											}
 											label="Clear Logs"
 											destructive
+											confirmTitle="Clear diagnostic logs"
+											confirmMessage="Clear diagnostic logs? This cannot be undone."
 										/>
 									</div>
 									<LogsTable logs={ logs } />
@@ -5572,6 +5474,7 @@ function SettingsApp() {
 											href={ logs.prevUrl || undefined }
 											variant="secondary"
 											disabled={ ! logs.prevUrl }
+											accessibleWhenDisabled
 										>
 											Previous
 										</Button>
@@ -5579,6 +5482,7 @@ function SettingsApp() {
 											href={ logs.nextUrl || undefined }
 											variant="secondary"
 											disabled={ ! logs.nextUrl }
+											accessibleWhenDisabled
 										>
 											Next
 										</Button>

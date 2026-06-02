@@ -1,3 +1,5 @@
+@import "../node_modules/@wordpress/dataviews/build-style/style.css";
+
 .settings_page_aculect-ai-companion #wpcontent {
 	padding: 0;
 }
@@ -941,7 +943,8 @@
 	color: #16a34a;
 }
 
-.aculect-ai-companion-connection-status.is-paused .aculect-ai-companion-connection-status__icon {
+.aculect-ai-companion-connection-status.is-paused
+.aculect-ai-companion-connection-status__icon {
 	background: #ffedd5;
 	color: #9a3412;
 }
@@ -1138,91 +1141,6 @@
 	top: 44px;
 }
 
-.aculect-ai-companion-connections-toolbar {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
-	gap: 12px;
-	align-items: end;
-	padding: 16px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-}
-
-.aculect-ai-companion-connections-toolbar .components-base-control {
-	margin-bottom: 0;
-}
-
-.aculect-ai-companion-connection-filters {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	min-width: 0;
-}
-
-.aculect-ai-companion-connection-filter {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	min-height: 36px;
-	padding: 6px 10px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-soft);
-	color: var(--aculect-ai-companion-ink);
-	cursor: pointer;
-	font-weight: 700;
-}
-
-.aculect-ai-companion-connection-filter:hover,
-.aculect-ai-companion-connection-filter:focus {
-	border-color: #93c5fd;
-	box-shadow: none;
-	outline: none;
-}
-
-.aculect-ai-companion-connection-filter:focus-visible {
-	box-shadow: 0 0 0 2px var(--aculect-ai-companion-primary);
-}
-
-.aculect-ai-companion-connection-filter.is-active {
-	border-color: #93c5fd;
-	background: #eff6ff;
-	color: #1d4ed8;
-}
-
-.aculect-ai-companion-connection-filter strong {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 22px;
-	height: 22px;
-	padding: 0 6px;
-	border-radius: 999px;
-	background: #fff;
-	font-size: 12px;
-	line-height: 1;
-}
-
-.aculect-ai-companion-connections-table-wrap {
-	width: 100%;
-	overflow-x: auto;
-	-webkit-overflow-scrolling: touch;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-}
-
-.aculect-ai-companion-connections-table {
-	min-width: 1180px;
-	border: 0;
-}
-
-.aculect-ai-companion-connections-table th,
-.aculect-ai-companion-connections-table td {
-	vertical-align: top;
-}
-
 .aculect-ai-companion-connections-table__primary {
 	display: block;
 	margin-bottom: 4px;
@@ -1235,6 +1153,57 @@
 	font-size: 12px;
 	line-height: 1.45;
 	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-data-view {
+	min-width: 0;
+	overflow: hidden;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-data-view .dataviews-wrapper {
+	background: var(--aculect-ai-companion-surface);
+}
+
+.aculect-ai-companion-data-view .dataviews-filters__container,
+.aculect-ai-companion-data-view .dataviews-view-table {
+	padding-right: 16px;
+	padding-left: 16px;
+}
+
+.aculect-ai-companion-data-view .dataviews-filters__container {
+	padding-top: 16px;
+}
+
+.aculect-ai-companion-data-view .dataviews-view-table {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.aculect-ai-companion-data-view .dataviews-view-table table {
+	min-width: 1060px;
+}
+
+.aculect-ai-companion-data-view .dataviews-footer {
+	padding: 12px 16px 16px;
+}
+
+.aculect-ai-companion-data-view__stack {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-data-view__loading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 88px;
+	padding: 18px;
+	color: var(--aculect-ai-companion-muted);
+	font-weight: 700;
 }
 
 .aculect-ai-companion-connection-ability-list {
@@ -1313,7 +1282,9 @@
 	color: var(--aculect-ai-companion-green);
 }
 
-.aculect-ai-companion-write-permission .aculect-ai-companion-action-form .components-button.is-secondary {
+.aculect-ai-companion-write-permission
+.aculect-ai-companion-action-form
+.components-button.is-secondary {
 	min-height: 30px;
 	padding: 4px 9px;
 	font-size: 12px;
@@ -1827,16 +1798,13 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-ability-actions,
-.aculect-ai-companion-ability-pagination,
 .aculect-ai-companion-abilities-panel__actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 10px;
-	align-items: center;
+	align-items: stretch;
 }
 
-.aculect-ai-companion-ability-actions p,
 .aculect-ai-companion-abilities-panel p {
 	margin: 0;
 	color: var(--aculect-ai-companion-muted);
@@ -1863,39 +1831,6 @@
 	gap: 18px;
 	min-width: 0;
 	padding: 18px;
-}
-
-.aculect-ai-companion-ability-actions {
-	padding: 14px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-soft);
-}
-
-.aculect-ai-companion-ability-actions p {
-	flex-basis: 100%;
-	font-size: 13px;
-}
-
-.aculect-ai-companion-ability-tabs {
-	display: grid;
-	grid-template-columns: repeat(5, minmax(0, 1fr));
-	gap: 8px;
-}
-
-.aculect-ai-companion-ability-tabs button {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	min-height: 42px;
-	padding: 8px 10px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: #fff;
-	color: var(--aculect-ai-companion-ink);
-	font-weight: 700;
-	cursor: pointer;
 }
 
 .aculect-ai-companion-diagnostic-filters button {
@@ -1925,95 +1860,7 @@
 	cursor: pointer;
 }
 
-.aculect-ai-companion-ability-tabs button:hover,
-.aculect-ai-companion-ability-tabs button:focus {
-	border-color: var(--aculect-ai-companion-primary);
-	color: var(--aculect-ai-companion-primary);
-}
-
-.aculect-ai-companion-ability-tabs button:focus-visible {
-	outline: 2px solid var(--aculect-ai-companion-primary);
-	outline-offset: 2px;
-}
-
-.aculect-ai-companion-ability-tabs button.is-active {
-	border-color: var(--aculect-ai-companion-primary);
-	background: #eff6ff;
-}
-
-.aculect-ai-companion-ability-tabs strong {
-	padding: 2px 7px;
-	border-radius: 999px;
-	background: var(--aculect-ai-companion-soft);
-	color: var(--aculect-ai-companion-muted);
-	font-size: 12px;
-}
-
-.aculect-ai-companion-ability-filters {
-	display: grid;
-	grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(150px, 1fr));
-	gap: 12px;
-	align-items: end;
-}
-
-.aculect-ai-companion-ability-filters .components-base-control {
-	margin-bottom: 0;
-}
-
-.aculect-ai-companion-ability-filters__field {
-	display: grid;
-	gap: 6px;
-}
-
-.aculect-ai-companion-ability-filters__label {
-	font-size: 13px;
-	font-weight: 600;
-}
-
-.aculect-ai-companion-ability-filters select {
-	min-height: 40px;
-	max-width: 100%;
-	border-color: var(--aculect-ai-companion-border);
-	border-radius: 6px;
-}
-
-.aculect-ai-companion-ability-table-wrap {
-	width: 100%;
-	max-width: 100%;
-	min-width: 0;
-	overflow-x: auto;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-}
-
-.aculect-ai-companion-ability-table {
-	width: 100%;
-	min-width: 920px;
-	border-collapse: collapse;
-	background: #fff;
-}
-
-.aculect-ai-companion-ability-table th,
-.aculect-ai-companion-ability-table td {
-	padding: 14px;
-	border-bottom: 1px solid var(--aculect-ai-companion-border);
-	text-align: left;
-	vertical-align: top;
-}
-
-.aculect-ai-companion-ability-table th {
-	background: var(--aculect-ai-companion-soft);
-	color: var(--aculect-ai-companion-muted);
-	font-size: 12px;
-	font-weight: 800;
-	text-transform: uppercase;
-}
-
-.aculect-ai-companion-ability-table tr:last-child > * {
-	border-bottom: 0;
-}
-
-.aculect-ai-companion-ability-table code {
+.aculect-ai-companion-data-view code {
 	display: inline-flex;
 	width: fit-content;
 	max-width: 100%;
@@ -2086,8 +1933,7 @@
 	margin-bottom: 0;
 }
 
-.aculect-ai-companion-ability-status-cell
-.components-toggle-control__label {
+.aculect-ai-companion-ability-status-cell .components-toggle-control__label {
 	position: absolute;
 	width: 1px;
 	height: 1px;
@@ -2095,15 +1941,6 @@
 	overflow: hidden;
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
-}
-
-.aculect-ai-companion-ability-pagination {
-	justify-content: flex-end;
-}
-
-.aculect-ai-companion-ability-pagination span {
-	color: var(--aculect-ai-companion-muted);
-	font-weight: 700;
 }
 
 .aculect-ai-companion-abilities-side {
@@ -2121,10 +1958,6 @@
 	margin: 0;
 	font-size: 16px;
 	line-height: 1.3;
-}
-
-.aculect-ai-companion-abilities-panel__actions {
-	align-items: stretch;
 }
 
 .aculect-ai-companion-role-abilities {
@@ -3315,7 +3148,6 @@
 	.aculect-ai-companion-advanced-layout,
 	.aculect-ai-companion-advanced-setting,
 	.aculect-ai-companion-abilities-layout,
-	.aculect-ai-companion-ability-filters,
 	.aculect-ai-companion-role-abilities__hero,
 	.aculect-ai-companion-role-abilities__layout,
 	.aculect-ai-companion-role-abilities__toolbar,
@@ -3327,7 +3159,6 @@
 	.aculect-ai-companion-changelog-meta-grid,
 	.aculect-ai-companion-connect-step-row,
 	.aculect-ai-companion-connections-layout,
-	.aculect-ai-companion-connections-toolbar,
 	.aculect-ai-companion-diagnostics-layout,
 	.aculect-ai-companion-feature-grid,
 	.aculect-ai-companion-overview-hero,
@@ -3365,10 +3196,6 @@
 	.aculect-ai-companion-tab-panel {
 		padding-right: 16px;
 		padding-left: 16px;
-	}
-
-	.aculect-ai-companion-ability-tabs {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 
 	.aculect-ai-companion-tab-actions {
@@ -3565,54 +3392,6 @@
 
 	.aculect-ai-companion-activity-filters {
 		grid-template-columns: 1fr;
-	}
-
-	.aculect-ai-companion-ability-tabs {
-		grid-template-columns: 1fr;
-	}
-
-	.aculect-ai-companion-ability-table {
-		min-width: 0;
-	}
-
-	.aculect-ai-companion-ability-table thead {
-		display: none;
-	}
-
-	.aculect-ai-companion-ability-table,
-	.aculect-ai-companion-ability-table tbody,
-	.aculect-ai-companion-ability-table tr,
-	.aculect-ai-companion-ability-table td {
-		display: block;
-		width: 100%;
-	}
-
-	.aculect-ai-companion-ability-table tr {
-		padding: 14px;
-		border-bottom: 1px solid var(--aculect-ai-companion-border);
-	}
-
-	.aculect-ai-companion-ability-table tr:last-child {
-		border-bottom: 0;
-	}
-
-	.aculect-ai-companion-ability-table td {
-		display: grid;
-		gap: 6px;
-		padding: 0 0 12px;
-		border-bottom: 0;
-	}
-
-	.aculect-ai-companion-ability-table td:last-child {
-		padding-bottom: 0;
-	}
-
-	.aculect-ai-companion-ability-table td::before {
-		color: var(--aculect-ai-companion-muted);
-		font-size: 12px;
-		font-weight: 800;
-		text-transform: uppercase;
-		content: attr(data-label);
 	}
 
 	.aculect-ai-companion-diagnostic-filters {

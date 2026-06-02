@@ -809,124 +809,18 @@
 	line-height: 1.5;
 }
 
+.aculect-ai-companion-tab-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	justify-content: flex-end;
+	min-width: 0;
+}
+
 .aculect-ai-companion-connect {
 	display: grid;
 	gap: 24px;
-}
-
-.aculect-ai-companion-connect .aculect-ai-companion-eyebrow {
-	color: var(--aculect-ai-companion-primary);
-	font-size: 13px;
-	font-weight: 800;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-connect-hero {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(360px, 0.78fr);
-	gap: 32px;
-	align-items: center;
-	padding: 32px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-	box-shadow: none;
-}
-
-.aculect-ai-companion-connect-hero__content {
-	display: grid;
-	gap: 16px;
-}
-
-.aculect-ai-companion-connect-hero__title {
-	max-width: 660px;
-	margin: 0;
-	font-size: 32px;
-	line-height: 1.18;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-connect-hero__copy {
-	max-width: 640px;
-	margin: 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.65;
-}
-
-.aculect-ai-companion-connect-flow {
-	display: grid;
-	grid-template-columns: 58px minmax(28px, 1fr) 76px minmax(28px, 1fr) 58px;
-	align-items: center;
-	min-height: 156px;
-	padding: 24px 32px;
-	border: 1px solid #dbe3ef;
-	border-radius: 8px;
-	border-color: #dbe3ef;
-	background:
-		linear-gradient(#e5e7eb 1px, transparent 1px),
-		linear-gradient(90deg, #e5e7eb 1px, transparent 1px),
-		#f8fafc;
-	background-size: 24px 24px;
-	box-shadow: none;
-}
-
-.aculect-ai-companion-connect-flow__node {
-	display: grid;
-	width: 58px;
-	height: 58px;
-	place-items: center;
-	border: 1px solid #dbe3ef;
-	border-radius: 8px;
-	background: #fff;
-	color: var(--aculect-ai-companion-primary);
-	border-color: #dbe3ef;
-	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-}
-
-.aculect-ai-companion-connect-flow__node.is-wordpress {
-	color: var(--aculect-ai-companion-green);
-}
-
-.aculect-ai-companion-connect-flow__node.is-site {
-	position: relative;
-	width: 76px;
-	height: 76px;
-	color: var(--aculect-ai-companion-ink);
-}
-
-.aculect-ai-companion-connect-flow__node img {
-	display: block;
-	width: 52px;
-	height: 52px;
-}
-
-.aculect-ai-companion-connect-flow__path {
-	height: 0;
-	border-top: 2px dashed var(--aculect-ai-companion-primary);
-	background: transparent;
-	opacity: 0.8;
-}
-
-.aculect-ai-companion-connect-flow__path.is-muted {
-	border-color: #16a34a;
-	background: transparent;
-}
-
-.aculect-ai-companion-connect-flow__approval {
-	position: absolute;
-	bottom: -14px;
-	left: 50%;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border: 2px solid #fff;
-	border-radius: 999px;
-	background: #16a34a;
-	color: #fff;
-	transform: translateX(-50%);
 }
 
 .aculect-ai-companion-connect-step-row {
@@ -1218,22 +1112,6 @@
 	display: grid;
 	gap: 18px;
 	min-width: 0;
-}
-
-.aculect-ai-companion-connections-hero {
-	padding: 20px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-}
-
-.aculect-ai-companion-connections-hero p {
-	max-width: 780px;
-	margin: 8px 0 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.55;
 }
 
 .aculect-ai-companion-lockdown--connections {
@@ -1949,33 +1827,6 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-abilities-hero {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 20px;
-	align-items: center;
-	padding: 24px;
-	border: 1px solid #bfdbfe;
-	border-radius: 8px;
-	background: #f8fbff;
-}
-
-.aculect-ai-companion-abilities-hero__title {
-	margin: 6px 0 10px;
-	font-size: 28px;
-	line-height: 1.15;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-abilities-hero__copy {
-	max-width: 760px;
-	margin: 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.6;
-}
-
-.aculect-ai-companion-abilities-hero__actions,
 .aculect-ai-companion-ability-actions,
 .aculect-ai-companion-ability-pagination,
 .aculect-ai-companion-abilities-panel__actions {
@@ -2547,32 +2398,6 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-advanced-hero {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 20px;
-	align-items: center;
-	padding: 24px;
-	border: 1px solid #c7d2fe;
-	border-radius: 8px;
-	background: #f8fbff;
-}
-
-.aculect-ai-companion-advanced-hero__title {
-	margin: 6px 0 10px;
-	font-size: 28px;
-	line-height: 1.15;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-advanced-hero__copy {
-	max-width: 760px;
-	margin: 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.6;
-}
-
 .aculect-ai-companion-advanced-layout {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
@@ -2864,22 +2689,6 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-activity-hero {
-	padding: 20px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-}
-
-.aculect-ai-companion-activity-hero p {
-	max-width: 780px;
-	margin: 8px 0 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.55;
-}
-
 .aculect-ai-companion-activity-control-banner {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
@@ -3053,32 +2862,6 @@
 	display: grid;
 	gap: 18px;
 	min-width: 0;
-}
-
-.aculect-ai-companion-changelog-hero {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 20px;
-	align-items: center;
-	padding: 24px;
-	border: 1px solid #bfdbfe;
-	border-radius: 8px;
-	background: #f8fbff;
-}
-
-.aculect-ai-companion-changelog-hero__title {
-	margin: 6px 0 10px;
-	font-size: 28px;
-	line-height: 1.15;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-changelog-hero__copy {
-	max-width: 720px;
-	margin: 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.6;
 }
 
 .aculect-ai-companion-changelog-layout {
@@ -3266,32 +3049,6 @@
 	display: grid;
 	gap: 18px;
 	min-width: 0;
-}
-
-.aculect-ai-companion-diagnostics-hero {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 20px;
-	align-items: center;
-	padding: 24px;
-	border: 1px solid #bfdbfe;
-	border-radius: 8px;
-	background: #f8fbff;
-}
-
-.aculect-ai-companion-diagnostics-hero__title {
-	margin: 6px 0 10px;
-	font-size: 28px;
-	line-height: 1.15;
-	letter-spacing: 0;
-}
-
-.aculect-ai-companion-diagnostics-hero__copy {
-	max-width: 720px;
-	margin: 0;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 15px;
-	line-height: 1.6;
 }
 
 .aculect-ai-companion-diagnostics-layout {
@@ -3555,10 +3312,8 @@
 @media (max-width: 900px) {
 
 	.aculect-ai-companion-app-header,
-	.aculect-ai-companion-advanced-hero,
 	.aculect-ai-companion-advanced-layout,
 	.aculect-ai-companion-advanced-setting,
-	.aculect-ai-companion-abilities-hero,
 	.aculect-ai-companion-abilities-layout,
 	.aculect-ai-companion-ability-filters,
 	.aculect-ai-companion-role-abilities__hero,
@@ -3567,15 +3322,12 @@
 	.aculect-ai-companion-brand-grid,
 	.aculect-ai-companion-brand-grid--colors,
 	.aculect-ai-companion-activity-layout,
-	.aculect-ai-companion-changelog-hero,
 	.aculect-ai-companion-changelog-help,
 	.aculect-ai-companion-changelog-layout,
 	.aculect-ai-companion-changelog-meta-grid,
-	.aculect-ai-companion-connect-hero,
 	.aculect-ai-companion-connect-step-row,
 	.aculect-ai-companion-connections-layout,
 	.aculect-ai-companion-connections-toolbar,
-	.aculect-ai-companion-diagnostics-hero,
 	.aculect-ai-companion-diagnostics-layout,
 	.aculect-ai-companion-feature-grid,
 	.aculect-ai-companion-overview-hero,
@@ -3619,7 +3371,7 @@
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 
-	.aculect-ai-companion-abilities-hero__actions {
+	.aculect-ai-companion-tab-actions {
 		justify-content: flex-start;
 	}
 
@@ -3751,19 +3503,6 @@
 		padding: 22px;
 	}
 
-	.aculect-ai-companion-connect-hero {
-		padding: 22px;
-	}
-
-	.aculect-ai-companion-advanced-hero {
-		padding: 22px;
-	}
-
-	.aculect-ai-companion-diagnostics-hero {
-		padding: 22px;
-	}
-
-	.aculect-ai-companion-abilities-hero,
 	.aculect-ai-companion-abilities-main {
 		padding: 16px;
 	}
@@ -3774,50 +3513,12 @@
 		padding: 14px;
 	}
 
-	.aculect-ai-companion-changelog-hero {
-		padding: 22px;
-	}
-
 	.aculect-ai-companion-overview-hero__title {
 		font-size: 28px;
 	}
 
-	.aculect-ai-companion-abilities-hero__title {
-		font-size: 27px;
-	}
-
-	.aculect-ai-companion-connect-hero__title {
-		font-size: 27px;
-	}
-
-	.aculect-ai-companion-advanced-hero__title {
-		font-size: 25px;
-	}
-
-	.aculect-ai-companion-diagnostics-hero__title,
-	.aculect-ai-companion-changelog-hero__title {
-		font-size: 25px;
-	}
-
 	.aculect-ai-companion-overview-circuit {
 		min-height: 220px;
-	}
-
-	.aculect-ai-companion-connect-flow {
-		grid-template-columns: 1fr;
-		justify-items: center;
-		padding: 18px;
-	}
-
-	.aculect-ai-companion-connect-flow__path {
-		width: 2px;
-		height: 34px;
-		border-top: 0;
-		border-left: 2px dashed var(--aculect-ai-companion-primary);
-	}
-
-	.aculect-ai-companion-connect-flow__path.is-muted {
-		border-left-color: #16a34a;
 	}
 
 	.aculect-ai-companion-connect-card {

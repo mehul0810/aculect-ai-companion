@@ -28,7 +28,6 @@ import {
 	cog,
 	comment,
 	copy,
-	desktop,
 	external,
 	globe,
 	help,
@@ -1168,31 +1167,6 @@ function SetupSection( { provider, section, sectionIndex, onCopy } ) {
 	);
 }
 
-function ConnectFlowGraphic( { brandIconUrl } ) {
-	return (
-		<div className="aculect-ai-companion-connect-flow" aria-hidden="true">
-			<div className="aculect-ai-companion-connect-flow__node is-assistant">
-				<Icon icon={ desktop } size={ 28 } />
-			</div>
-			<span className="aculect-ai-companion-connect-flow__path" />
-			<div className="aculect-ai-companion-connect-flow__node is-site">
-				{ brandIconUrl ? (
-					<img src={ brandIconUrl } alt="" aria-hidden="true" />
-				) : (
-					<Icon icon={ link } size={ 28 } />
-				) }
-				<span className="aculect-ai-companion-connect-flow__approval">
-					<Icon icon={ check } size={ 18 } />
-				</span>
-			</div>
-			<span className="aculect-ai-companion-connect-flow__path is-muted" />
-			<div className="aculect-ai-companion-connect-flow__node is-wordpress">
-				<Icon icon={ globe } size={ 28 } />
-			</div>
-		</div>
-	);
-}
-
 function connectStatusDetails( {
 	isAccessPaused,
 	hasActiveSessions,
@@ -2059,19 +2033,7 @@ function AdvancedDashboard( {
 				) ) }
 			</form>
 
-			<section className="aculect-ai-companion-advanced-hero">
-				<div>
-					<span className="aculect-ai-companion-eyebrow">
-						Advanced settings
-					</span>
-					<h2 className="aculect-ai-companion-advanced-hero__title">
-						Security, permissions, and developer controls
-					</h2>
-					<p className="aculect-ai-companion-advanced-hero__copy">
-						Manage the advanced settings backed by working WordPress
-						options.
-					</p>
-				</div>
+			<div className="aculect-ai-companion-tab-actions">
 				<Button
 					type="submit"
 					form={ advancedSettingsFormId }
@@ -2079,7 +2041,7 @@ function AdvancedDashboard( {
 				>
 					Save Advanced Settings
 				</Button>
-			</section>
+			</div>
 
 			<div className="aculect-ai-companion-advanced-layout">
 				<div className="aculect-ai-companion-advanced-main">
@@ -2408,20 +2370,7 @@ function DiagnosticsDashboard( {
 
 	return (
 		<div className="aculect-ai-companion-diagnostics">
-			<section className="aculect-ai-companion-diagnostics-hero">
-				<div>
-					<span className="aculect-ai-companion-eyebrow">
-						Diagnostics
-					</span>
-					<h2 className="aculect-ai-companion-diagnostics-hero__title">
-						Check the AI Companion connection path
-					</h2>
-					<p className="aculect-ai-companion-diagnostics-hero__copy">
-						Run WordPress-side checks for the connection URL,
-						discovery metadata, OAuth challenge, and approval screen
-						before handing the endpoint to an AI assistant.
-					</p>
-				</div>
+			<div className="aculect-ai-companion-tab-actions">
 				<ActionForm
 					data={ data }
 					action={ data.actions?.runDiagnosticsAction }
@@ -2431,7 +2380,7 @@ function DiagnosticsDashboard( {
 					isBusy={ isRunning }
 					onSubmit={ onRun }
 				/>
-			</section>
+			</div>
 
 			<div className="aculect-ai-companion-diagnostics-layout">
 				<div className="aculect-ai-companion-diagnostics-main">
@@ -2874,34 +2823,19 @@ function AbilityDashboard( {
 					value={ group }
 				/>
 			) ) }
-			<section className="aculect-ai-companion-abilities-hero">
-				<div>
-					<span className="aculect-ai-companion-eyebrow">
-						Abilities
-					</span>
-					<h2 className="aculect-ai-companion-abilities-hero__title">
-						AI capability policy
-					</h2>
-					<p className="aculect-ai-companion-abilities-hero__copy">
-						Control which registered actions connected assistants
-						can request while WordPress permissions continue to
-						authorize every run.
-					</p>
-				</div>
-				<div className="aculect-ai-companion-abilities-hero__actions">
-					<Button type="submit" variant="primary">
-						Save abilities
-					</Button>
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={ onResetChanges }
-						disabled={ ! hasChanges }
-					>
-						Discard changes
-					</Button>
-				</div>
-			</section>
+			<div className="aculect-ai-companion-tab-actions">
+				<Button type="submit" variant="primary">
+					Save abilities
+				</Button>
+				<Button
+					type="button"
+					variant="secondary"
+					onClick={ onResetChanges }
+					disabled={ ! hasChanges }
+				>
+					Discard changes
+				</Button>
+			</div>
 
 			<div className="aculect-ai-companion-abilities-layout">
 				<section className="aculect-ai-companion-abilities-main">
@@ -3967,20 +3901,6 @@ function ChangelogDashboard( { changelog, metadata } ) {
 	if ( entries.length === 0 ) {
 		return (
 			<div className="aculect-ai-companion-changelog-dashboard">
-				<section className="aculect-ai-companion-changelog-hero">
-					<div>
-						<span className="aculect-ai-companion-eyebrow">
-							Changelog
-						</span>
-						<h2 className="aculect-ai-companion-changelog-hero__title">
-							Release history
-						</h2>
-						<p className="aculect-ai-companion-changelog-hero__copy">
-							Bundled changelog data could not be loaded from the
-							plugin source.
-						</p>
-					</div>
-				</section>
 				<EmptyState title="No changelog entries">
 					Check the bundled changelog file or the WordPress.org
 					developer tab for release notes.
@@ -3991,20 +3911,8 @@ function ChangelogDashboard( { changelog, metadata } ) {
 
 	return (
 		<div className="aculect-ai-companion-changelog-dashboard">
-			<section className="aculect-ai-companion-changelog-hero">
-				<div>
-					<span className="aculect-ai-companion-eyebrow">
-						Changelog
-					</span>
-					<h2 className="aculect-ai-companion-changelog-hero__title">
-						Release history and update notes
-					</h2>
-					<p className="aculect-ai-companion-changelog-hero__copy">
-						Review recent releases from the bundled changelog and
-						compare them with the installed plugin metadata.
-					</p>
-				</div>
-				{ wordpressOrgUrl && (
+			{ wordpressOrgUrl && (
+				<div className="aculect-ai-companion-tab-actions">
 					<Button
 						href={ wordpressOrgUrl }
 						target="_blank"
@@ -4013,8 +3921,8 @@ function ChangelogDashboard( { changelog, metadata } ) {
 					>
 						WordPress.org Changelog
 					</Button>
-				) }
-			</section>
+				</div>
+			) }
 
 			<div className="aculect-ai-companion-changelog-layout">
 				<aside className="aculect-ai-companion-changelog-sidebar">
@@ -4866,26 +4774,6 @@ function SettingsApp() {
 					if ( tab.name === 'connect' ) {
 						return (
 							<div className="aculect-ai-companion-connect">
-								<section className="aculect-ai-companion-connect-hero">
-									<div className="aculect-ai-companion-connect-hero__content">
-										<span className="aculect-ai-companion-eyebrow">
-											Connect your AI assistant
-										</span>
-										<h2 className="aculect-ai-companion-connect-hero__title">
-											Connect Aculect AI Companion to your
-											AI assistant
-										</h2>
-										<p className="aculect-ai-companion-connect-hero__copy">
-											Use the secure connection below to
-											allow your AI assistant to interact
-											with your WordPress site.
-										</p>
-									</div>
-									<ConnectFlowGraphic
-										brandIconUrl={ brandIconUrl }
-									/>
-								</section>
-
 								<div className="aculect-ai-companion-connect-step-row">
 									<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
 										<ConnectStepHeading
@@ -5052,23 +4940,6 @@ function SettingsApp() {
 					if ( tab.name === 'connections' ) {
 						return (
 							<div className="aculect-ai-companion-connections-dashboard">
-								<section className="aculect-ai-companion-connections-hero">
-									<div>
-										<span className="aculect-ai-companion-eyebrow">
-											Assistant lifecycle
-										</span>
-										<h2 className="aculect-ai-companion-section-title">
-											Connections
-										</h2>
-										<p>
-											Review approved AI assistants,
-											connected WordPress users, granted
-											abilities, session status, and
-											available lifecycle actions.
-										</p>
-									</div>
-								</section>
-
 								{ shouldShowAccessControl && (
 									<div
 										className={ `aculect-ai-companion-lockdown aculect-ai-companion-lockdown--connections ${
@@ -5327,22 +5198,6 @@ function SettingsApp() {
 					if ( tab.name === 'activity' ) {
 						return (
 							<div className="aculect-ai-companion-activity-dashboard">
-								<section className="aculect-ai-companion-activity-hero">
-									<div>
-										<span className="aculect-ai-companion-eyebrow">
-											Audit history
-										</span>
-										<h2 className="aculect-ai-companion-section-title">
-											Activity
-										</h2>
-										<p>
-											Monitor connected assistant actions
-											with sanitized audit records,
-											bounded pagination, and privacy-safe
-											filters.
-										</p>
-									</div>
-								</section>
 								<div className="aculect-ai-companion-activity-control-banner">
 									<span
 										className="aculect-ai-companion-activity-control-banner__icon"

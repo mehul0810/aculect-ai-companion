@@ -202,18 +202,29 @@ final class McpController {
 						$request,
 						403
 					);
-						return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
+					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
-				$safety                   = new ToolSafety();
-				$is_dry_run               = ! $registry->is_read_only( $tool ) && $safety->is_dry_run( $args );
-				$is_confirmation_required = false;
+				$safety                     = new ToolSafety();
+				$is_write_tool              = ! $registry->is_read_only( $tool );
+				$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
+				$write_permission_unblocked = $this->write_permission_unblocks_tool( $tool, $registry, $auth );
+				$is_confirmation_required   = false;
+				$needs_confirmation_gate    = $is_write_tool
+					&& ! $is_dry_run
+					&& ! $write_permission_unblocked
+					&& $safety->requires_confirmation( $tool, $args )
+					&& ! $safety->consume_confirmation_token( $tool, $args, $auth );
 				if ( $is_dry_run ) {
 					$result = $registry->execute( $tool, $args );
-					if ( ! isset( $result['error'] ) && $safety->requires_confirmation( $tool, $args ) ) {
-						$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
+					if ( ! isset( $result['error'] ) ) {
+						if ( $write_permission_unblocked ) {
+							$result = $this->write_permission_preview_payload( $result );
+						} elseif ( $safety->requires_confirmation( $tool, $args ) ) {
+							$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
+						}
 					}
-				} elseif ( ! $registry->is_read_only( $tool ) && $safety->requires_confirmation( $tool, $args ) && ! $safety->consume_confirmation_token( $tool, $args, $auth ) ) {
+				} elseif ( $needs_confirmation_gate ) {
 					$preview_args             = $safety->strip_control_args( $args );
 					$preview_args['dry_run']  = true;
 					$preview                  = $registry->execute( $tool, $preview_args );
@@ -222,11 +233,11 @@ final class McpController {
 						? $preview
 						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
 				} else {
-					$args   = $registry->is_read_only( $tool ) ? $args : $safety->strip_control_args( $args );
+					$args   = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
 					$result = $registry->execute( $tool, $args );
 				}
 
-				if ( ! $is_dry_run && ! $is_confirmation_required && ! $registry->is_read_only( $tool ) ) {
+				if ( ! $is_dry_run && ! $is_confirmation_required && $is_write_tool ) {
 					( new ActivityLogger() )->record_tool_call(
 						$tool,
 						$args,
@@ -377,6 +388,40 @@ final class McpController {
 			'risk_level'                => $safety->risk_level( $tool, $args ),
 			'preview'                   => $preview,
 		);
+	}
+
+	/**
+	 * Determine whether a connection can execute write tools without confirmation blockers.
+	 *
+	 * This does not bypass OAuth scopes, disabled abilities, role policy, global
+	 * pauses, or WordPress capability checks inside the tool implementation.
+	 *
+	 * @param string               $tool     Internal ability ID.
+	 * @param AbilitiesRegistry    $registry Ability registry.
+	 * @param array<string, mixed> $auth     OAuth context.
+	 */
+	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth ): bool {
+		$enabled = $auth['write_permission_enabled'] ?? false;
+
+		return ! $registry->is_read_only( $tool ) && in_array( $enabled, array( true, 1, '1' ), true );
+	}
+
+	/**
+	 * Mark a dry-run preview as directly executable for trusted write connections.
+	 *
+	 * @param array<string, mixed> $result Preview result.
+	 * @return array<string, mixed>
+	 */
+	private function write_permission_preview_payload( array $result ): array {
+		$result['confirmation_required']    = false;
+		$result['write_permission_enabled'] = true;
+		unset(
+			$result['confirmation_token'],
+			$result['confirmation_expires_in'],
+			$result['confirmation_instructions']
+		);
+
+		return $result;
 	}
 
 	/**

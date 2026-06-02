@@ -14,6 +14,11 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
+use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ScopeEntity;
+use Aculect\AICompanion\Connectors\OAuth\RequestContext;
+use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -95,6 +100,7 @@ final class OAuthRepositoryTest extends TestCase {
 				'connection_expires_at'   => '2026-07-01 00:00:00',
 				'created_at'              => '2026-06-01 00:00:00',
 				'last_used_at'            => '',
+				'write_permission_enabled' => '1',
 				'client_name'             => 'ChatGPT',
 				'provider'                => 'chatgpt',
 			),
@@ -106,10 +112,83 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertCount( 1, $sessions );
 		self::assertSame( 'active', $sessions[0]['status'] );
 		self::assertSame( '2026-07-01 00:00:00', $sessions[0]['expires_at'] );
+		self::assertTrue( $sessions[0]['write_permission_enabled'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
 		self::assertStringContainsString( 'MAX(expires_at) AS expires_at', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'active_refresh.access_token_hash = access_tokens.token_hash', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'access_tokens.write_permission_enabled', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_access_token_context_includes_write_permission_flag(): void {
+		$wpdb      = new FakeAccessTokenWpdb();
+		$wpdb->row = array(
+			'id'                       => '9',
+			'token_hash'               => hash( 'sha256', 'raw-access-token' ),
+			'client_id'                => 'client-1',
+			'user_id'                  => '7',
+			'scopes'                   => '["content:read","content:draft"]',
+			'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+			'revoked'                  => '0',
+			'expires_at'               => '2099-01-01 00:00:00',
+			'last_used_at'             => '2026-06-01 00:00:00',
+			'write_permission_enabled' => '1',
+			'client_name'              => 'Claude',
+			'provider'                 => 'claude',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$context = ( new AccessTokenRepository() )->context_from_token_id( 'raw-access-token' );
+
+		self::assertSame( 7, $context['user_id'] );
+		self::assertSame( 'Claude', $context['client_name'] );
+		self::assertTrue( $context['write_permission_enabled'] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertStringContainsString( 'access_tokens.token_hash = %s', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_set_write_permission_updates_refreshable_active_connection(): void {
+		$wpdb               = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb']    = $wpdb;
+		$wpdb->query_result = 1;
+
+		self::assertTrue( ( new AccessTokenRepository() )->set_write_permission( 5, true ) );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( 1, $wpdb->prepared[0]['args'][2] );
+		self::assertSame( 5, $wpdb->prepared[0]['args'][3] );
+		self::assertStringContainsString( 'SET access_tokens.write_permission_enabled = %d', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'access_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'refresh_tokens.expires_at >= %s', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_refresh_rotation_carries_write_permission_to_replacement_access_token(): void {
+		$wpdb      = new FakeAccessTokenWpdb();
+		$wpdb->row = array(
+			'client_id'                => 'client-refresh',
+			'user_id'                  => '7',
+			'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+			'write_permission_enabled' => '1',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+		$repository      = new AccessTokenRepository();
+
+		$repository->revokeAccessToken( 'old-access-token' );
+
+		RequestContext::set_resource( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp' );
+		$repository->persistNewAccessToken(
+			$this->access_token_entity(
+				'new-access-token',
+				'client-refresh',
+				'7'
+			)
+		);
+		RequestContext::reset();
+
+		self::assertSame( array( 'get_row', 'update', 'update', 'insert' ), $wpdb->operations );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->inserts[0]['table'] );
+		self::assertSame( 1, $wpdb->inserts[0]['data']['write_permission_enabled'] );
 	}
 
 	public function test_revoke_user_marks_only_selected_users_tokens_revoked(): void {
@@ -256,6 +335,29 @@ final class OAuthRepositoryTest extends TestCase {
 
 		return (string) $reflection->invokeArgs( $repository, array( $raw ) );
 	}
+
+	/**
+	 * Build an access-token entity for repository persistence tests.
+	 *
+	 * @param string $identifier Token identifier.
+	 * @param string $client_id  OAuth client identifier.
+	 * @param string $user_id    WordPress user identifier.
+	 */
+	private function access_token_entity( string $identifier, string $client_id, string $user_id ): AccessTokenEntity {
+		$client = new ClientEntity();
+		$client->setIdentifier( $client_id );
+		$client->setName( 'Test client' );
+
+		$token = new AccessTokenEntity();
+		$token->setIdentifier( $identifier );
+		$token->setClient( $client );
+		$token->setUserIdentifier( $user_id );
+		$token->setExpiryDateTime( new DateTimeImmutable( '2099-01-01 00:00:00' ) );
+		$token->addScope( new ScopeEntity( 'content:read' ) );
+		$token->addScope( new ScopeEntity( 'content:draft' ) );
+
+		return $token;
+	}
 }
 
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test double is intentionally local to the repository tests.
@@ -316,6 +418,13 @@ final class FakeAccessTokenWpdb {
 	public int|false $query_result = 1;
 
 	/**
+	 * Configured row returned by get_row().
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	public ?array $row = null;
+
+	/**
 	 * Record a prepared SQL template and arguments.
 	 *
 	 * @param string $query SQL query with placeholders.
@@ -341,6 +450,21 @@ final class FakeAccessTokenWpdb {
 		unset( $query, $output );
 
 		return $this->results;
+	}
+
+	/**
+	 * Return a configured row.
+	 *
+	 * @param string $query  SQL query.
+	 * @param string $output Output format.
+	 * @return array<string, mixed>|null
+	 */
+	public function get_row( string $query, string $output ): ?array {
+		unset( $query, $output );
+
+		$this->operations[] = 'get_row';
+
+		return $this->row;
 	}
 
 	/**
@@ -402,6 +526,7 @@ final class FakeAccessTokenWpdb {
 			'data'  => $data,
 			'where' => $where,
 		);
+		$this->operations[] = 'update';
 
 		return $this->update_result;
 	}

@@ -308,25 +308,27 @@ final class SettingsPage {
 	 */
 	private function actions_payload(): array {
 		return array(
-			'adminPostUrl'            => admin_url( 'admin-post.php' ),
-			'saveAbilitiesAction'     => 'aculect_ai_companion_save_abilities',
-			'saveRoleAbilitiesAction' => 'aculect_ai_companion_save_role_abilities',
-			'saveAdvancedAction'      => 'aculect_ai_companion_save_advanced',
-			'saveBrandAction'         => 'aculect_ai_companion_save_brand',
-			'runDiagnosticsAction'    => 'aculect_ai_companion_run_connection_diagnostics',
-			'clearLogsAction'         => 'aculect_ai_companion_clear_logs',
-			'setLockdownAction'       => 'aculect_ai_companion_set_lockdown',
-			'revokeSessionAction'     => 'aculect_ai_companion_revoke_session',
-			'revokeAllAction'         => 'aculect_ai_companion_revoke_all_sessions',
-			'saveAbilitiesNonce'      => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
-			'saveRoleAbilitiesNonce'  => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
-			'saveAdvancedNonce'       => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
-			'saveBrandNonce'          => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
-			'runDiagnosticsNonce'     => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
-			'clearLogsNonce'          => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
-			'setLockdownNonce'        => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
-			'revokeSessionNonce'      => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
-			'revokeAllNonce'          => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
+			'adminPostUrl'                    => admin_url( 'admin-post.php' ),
+			'saveAbilitiesAction'             => 'aculect_ai_companion_save_abilities',
+			'saveRoleAbilitiesAction'         => 'aculect_ai_companion_save_role_abilities',
+			'saveAdvancedAction'              => 'aculect_ai_companion_save_advanced',
+			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
+			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
+			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
+			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
+			'setSessionWritePermissionAction' => 'aculect_ai_companion_set_session_write_permission',
+			'revokeSessionAction'             => 'aculect_ai_companion_revoke_session',
+			'revokeAllAction'                 => 'aculect_ai_companion_revoke_all_sessions',
+			'saveAbilitiesNonce'              => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
+			'saveRoleAbilitiesNonce'          => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
+			'saveAdvancedNonce'               => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
+			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
+			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
+			'setSessionWritePermissionNonce'  => wp_create_nonce( 'aculect_ai_companion_set_session_write_permission' ),
+			'revokeSessionNonce'              => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
+			'revokeAllNonce'                  => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
 		);
 	}
 
@@ -503,6 +505,33 @@ final class SettingsPage {
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'connections',
 					'access_lockdown' => $paused ? 'paused' : 'resumed',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Toggle direct write permission for one active connector session.
+	 */
+	public function handle_set_session_write_permission(): void {
+		$this->guard_action( 'aculect_ai_companion_set_session_write_permission' );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$session_id = isset( $_POST['session_id'] ) ? absint( $_POST['session_id'] ) : 0;
+		$enabled    = isset( $_POST['write_permission_enabled'] )
+			&& '1' === sanitize_text_field( wp_unslash( (string) $_POST['write_permission_enabled'] ) );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_write_permission( $session_id, $enabled );
+		$status  = $updated ? ( $enabled ? 'enabled' : 'disabled' ) : 'not_updated';
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                     => 'aculect-ai-companion',
+					'tab'                      => 'connections',
+					'session_write_permission' => $status,
 				),
 				$this->settings_url()
 			)
@@ -994,6 +1023,17 @@ final class SettingsPage {
 		if ( isset( $_GET['access_lockdown'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 			return 'paused' === sanitize_key( wp_unslash( (string) $_GET['access_lockdown'] ) ) ? 'access_paused' : 'access_resumed';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['session_write_permission'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			$status = sanitize_key( wp_unslash( (string) $_GET['session_write_permission'] ) );
+
+			return match ( $status ) {
+				'enabled'  => 'session_write_permission_enabled',
+				'disabled' => 'session_write_permission_disabled',
+				default    => 'session_write_permission_not_updated',
+			};
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['diagnostics_run'] ) ) {

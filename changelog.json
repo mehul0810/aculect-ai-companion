@@ -4,10 +4,12 @@
     "New": [
       "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
       "Added brand profile guidance for connected assistants.",
-      "Added role-specific MCP ability policy controls and per-user access pause controls."
+      "Added role-specific MCP ability policy controls and per-user access pause controls.",
+      "Added per-connection write permission controls for trusted assistants that should run write actions without confirmation blockers."
     ],
     "Improved": [
       "Reduced unnecessary admin payload work for tab-specific data.",
+      "Removed statistics card rows from settings tabs so each screen stays focused on actions, filters, and operational state.",
       "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries."
     ],
     "Reliability": [

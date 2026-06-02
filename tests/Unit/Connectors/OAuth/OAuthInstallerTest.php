@@ -55,6 +55,7 @@ final class OAuthInstallerTest extends TestCase {
 
 		self::assertIsString( $sql );
 		self::assertStringContainsString( "registration_fingerprint char(64) NOT NULL DEFAULT ''", $sql );
+		self::assertStringContainsString( 'write_permission_enabled tinyint(1) NOT NULL DEFAULT 0', $sql );
 		self::assertStringContainsString( 'KEY provider_registration_revoked (provider, registration_fingerprint, revoked)', $sql );
 		self::assertStringContainsString( 'KEY revoked_updated_at (revoked, updated_at)', $sql );
 		self::assertStringContainsString( 'KEY active_refresh (revoked, expires_at, access_token_hash)', $sql );

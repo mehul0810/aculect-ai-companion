@@ -139,6 +139,14 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringContainsString( 'scopes = ["content:read", "content:draft"]', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
+		self::assertSame(
+			'aculect_ai_companion_set_session_write_permission',
+			$payload['actions']['setSessionWritePermissionAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_set_session_write_permission',
+			$payload['actions']['setSessionWritePermissionNonce']
+		);
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_logs' ) );

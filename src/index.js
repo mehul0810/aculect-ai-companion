@@ -41,7 +41,6 @@ import {
 	people,
 	plugins,
 	postContent,
-	seen,
 	settings,
 	shield,
 } from '@wordpress/icons';
@@ -539,6 +538,7 @@ function ActionForm( {
 	onSubmit,
 	isBusy = false,
 	busyLabel = '',
+	variant = '',
 } ) {
 	return (
 		<form
@@ -552,7 +552,7 @@ function ActionForm( {
 			{ children }
 			<Button
 				type="submit"
-				variant={ destructive ? 'secondary' : 'primary' }
+				variant={ variant || ( destructive ? 'secondary' : 'primary' ) }
 				isDestructive={ destructive }
 				isBusy={ isBusy }
 				disabled={ isBusy }
@@ -816,69 +816,6 @@ function ActivityTable( { activity } ) {
 	);
 }
 
-function ActivityMetricCard( { icon, label, value, description, tone = '' } ) {
-	return (
-		<div className={ `aculect-ai-companion-activity-metric ${ tone }` }>
-			<span
-				className="aculect-ai-companion-activity-metric__icon"
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 18 } />
-			</span>
-			<div>
-				<span>{ label }</span>
-				<strong>{ value }</strong>
-				<p>{ description }</p>
-			</div>
-		</div>
-	);
-}
-
-function ActivitySummary( { summary } ) {
-	const data = summary && typeof summary === 'object' ? summary : {};
-	const items = [
-		{
-			icon: chartBar,
-			label: 'Total',
-			value: data.total || 0,
-			description: 'Sanitized activity records in this range.',
-		},
-		{
-			icon: postContent,
-			label: 'Content',
-			value: data.content || 0,
-			description: 'Post, page, taxonomy, and content actions.',
-		},
-		{
-			icon: comment,
-			label: 'Comments',
-			value: data.comments || 0,
-			description: 'Comment moderation and reply actions.',
-		},
-		{
-			icon: media,
-			label: 'Media',
-			value: data.media || 0,
-			description: 'Upload and media library actions.',
-		},
-	];
-
-	return (
-		<div className="aculect-ai-companion-activity-summary">
-			{ items.map( ( item ) => (
-				<ActivityMetricCard
-					key={ item.label }
-					icon={ item.icon }
-					label={ item.label }
-					value={ item.value }
-					description={ item.description }
-					tone={ item.tone }
-				/>
-			) ) }
-		</div>
-	);
-}
-
 function ActivityInsightList( { title, items, emptyText } ) {
 	return (
 		<div className="aculect-ai-companion-activity-insight-list">
@@ -1070,37 +1007,6 @@ function StatusBadge( { status } ) {
 		>
 			{ diagnosticStatusLabel( normalizedStatus ) }
 		</span>
-	);
-}
-
-function DiagnosticsSummaryCards( { health } ) {
-	const items = diagnosticItems( health );
-	const counts = diagnosticCounts( items );
-	const cards = [
-		{ label: 'Passed', value: counts.pass, tone: 'is-pass' },
-		{ label: 'Warnings', value: counts.warn, tone: 'is-warn' },
-		{ label: 'Errors', value: counts.fail, tone: 'is-fail' },
-		{ label: 'Last check', value: health?.ranAt || 'Never' },
-	];
-
-	return (
-		<div className="aculect-ai-companion-diagnostic-metrics">
-			{ cards.map( ( card ) => (
-				<div
-					key={ card.label }
-					className={ `aculect-ai-companion-diagnostic-metric ${
-						card.tone || ''
-					}` }
-				>
-					<span className="aculect-ai-companion-diagnostic-metric__label">
-						{ card.label }
-					</span>
-					<strong className="aculect-ai-companion-diagnostic-metric__value">
-						{ card.value }
-					</strong>
-				</div>
-			) ) }
-		</div>
 	);
 }
 
@@ -1390,15 +1296,16 @@ function normalizeConnectionSession( session, status ) {
 	return {
 		...session,
 		status: session.status || status,
+		writePermissionEnabled: isEnabledFlag(
+			session.write_permission_enabled ??
+				session.writePermissionEnabled ??
+				false
+		),
 	};
 }
 
-function connectionUserCount( sessions ) {
-	return new Set(
-		sessions
-			.map( ( session ) => Number( session.user_id || 0 ) )
-			.filter( ( userId ) => userId > 0 )
-	).size;
+function isEnabledFlag( value ) {
+	return value === true || value === 1 || value === '1';
 }
 
 function connectionScopeLabel( scope ) {
@@ -1625,30 +1532,6 @@ function filterConnectionSessions( {
 	} );
 }
 
-function ConnectionMetricCard( {
-	icon,
-	label,
-	value,
-	description,
-	tone = '',
-} ) {
-	return (
-		<div className={ `aculect-ai-companion-connection-metric ${ tone }` }>
-			<span
-				className="aculect-ai-companion-connection-metric__icon"
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 18 } />
-			</span>
-			<div>
-				<span>{ label }</span>
-				<strong>{ value }</strong>
-				<p>{ description }</p>
-			</div>
-		</div>
-	);
-}
-
 function ConnectionStatusChip( { session, isAccessPaused } ) {
 	const status = connectionSessionStatus( session, isAccessPaused );
 
@@ -1680,6 +1563,58 @@ function ConnectionAbilityChips( { session, abilities, enabledAbilityIds } ) {
 				<span key={ label }>{ label }</span>
 			) ) }
 			{ remainingCount > 0 && <span>{ remainingCount } more</span> }
+		</div>
+	);
+}
+
+function ConnectionWritePermissionControl( { session, data } ) {
+	const enabled = Boolean( session.writePermissionEnabled );
+	const canManage =
+		session.status !== 'revoked' &&
+		data.actions?.setSessionWritePermissionAction &&
+		data.actions?.setSessionWritePermissionNonce;
+
+	if ( session.status === 'revoked' ) {
+		return (
+			<span className="aculect-ai-companion-connection-action-note">
+				Unavailable
+			</span>
+		);
+	}
+
+	return (
+		<div className="aculect-ai-companion-write-permission">
+			<span
+				className={ `aculect-ai-companion-write-permission__state ${
+					enabled ? 'is-enabled' : ''
+				}` }
+			>
+				{ enabled ? 'Direct writes' : 'Confirm writes' }
+			</span>
+			{ canManage ? (
+				<ActionForm
+					data={ data }
+					action={ data.actions?.setSessionWritePermissionAction }
+					nonce={ data.actions?.setSessionWritePermissionNonce }
+					label={ enabled ? 'Require confirmation' : 'Enable writes' }
+					variant="secondary"
+				>
+					<input
+						type="hidden"
+						name="session_id"
+						value={ session.id }
+					/>
+					<input
+						type="hidden"
+						name="write_permission_enabled"
+						value={ enabled ? '0' : '1' }
+					/>
+				</ActionForm>
+			) : (
+				<span className="aculect-ai-companion-connection-action-note">
+					Unavailable
+				</span>
+			) }
 		</div>
 	);
 }
@@ -1818,6 +1753,7 @@ function ConnectionsTable( {
 						<th>Role</th>
 						<th>Granted Abilities</th>
 						<th>Last Activity</th>
+						<th>Write Access</th>
 						<th>Status</th>
 						<th>Actions</th>
 					</tr>
@@ -1867,6 +1803,12 @@ function ConnectionsTable( {
 										'Unknown'
 									) }
 								</span>
+							</td>
+							<td>
+								<ConnectionWritePermissionControl
+									session={ session }
+									data={ data }
+								/>
 							</td>
 							<td>
 								<ConnectionStatusChip
@@ -1956,30 +1898,6 @@ function ConnectionsSidePanels( {
 				</a>
 			</div>
 		</aside>
-	);
-}
-
-function AdvancedStatusCard( { icon, label, value, description, tone = '' } ) {
-	return (
-		<div className={ `aculect-ai-companion-advanced-status ${ tone }` }>
-			<span
-				className="aculect-ai-companion-advanced-status__icon"
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 18 } />
-			</span>
-			<div>
-				<span className="aculect-ai-companion-advanced-status__label">
-					{ label }
-				</span>
-				<strong className="aculect-ai-companion-advanced-status__value">
-					{ value }
-				</strong>
-				<p className="aculect-ai-companion-advanced-status__description">
-					{ description }
-				</p>
-			</div>
-		</div>
 	);
 }
 
@@ -2131,17 +2049,13 @@ function AdvancedDashboard( {
 	onRoleConnectionsChange,
 	roleConnectionRoles,
 	onToggleRole,
-	abilities,
 	enabledAbilities,
-	wpAbilities,
 	enabledWpAbilities,
 	onCopy,
 } ) {
 	const retentionDays = diagnostics.retentionDays || 30;
-	const availableAbilityCount = abilities.length + wpAbilities.length;
 	const enabledAbilityCount =
 		enabledAbilities.length + enabledWpAbilities.length;
-	const selectedRoleCount = roleConnectionRoles.length;
 	const abilitiesUrl = tabUrl( 'abilities', data.adminPageUrl );
 	const diagnosticsUrl = tabUrl( 'diagnostics', data.adminPageUrl );
 
@@ -2198,37 +2112,6 @@ function AdvancedDashboard( {
 					Save Advanced Settings
 				</Button>
 			</section>
-
-			<div className="aculect-ai-companion-advanced-status-grid">
-				<AdvancedStatusCard
-					icon={ chartBar }
-					label="Diagnostic logging"
-					value={ loggingEnabled ? 'On' : 'Off' }
-					description="Sanitized OAuth and MCP events"
-					tone={ loggingEnabled ? 'is-active' : '' }
-				/>
-				<AdvancedStatusCard
-					icon={ people }
-					label="Role entry points"
-					value={ roleConnectionsEnabled ? 'On' : 'Off' }
-					description={ `${ selectedRoleCount } allowed role${
-						selectedRoleCount === 1 ? '' : 's'
-					}` }
-					tone={ roleConnectionsEnabled ? 'is-active' : '' }
-				/>
-				<AdvancedStatusCard
-					icon={ plugins }
-					label="Enabled abilities"
-					value={ `${ enabledAbilityCount }/${ availableAbilityCount }` }
-					description="MCP and WordPress ability policy"
-				/>
-				<AdvancedStatusCard
-					icon={ lock }
-					label="Audit retention"
-					value={ `${ retentionDays } days` }
-					description="Diagnostic log pruning window"
-				/>
-			</div>
 
 			<div className="aculect-ai-companion-advanced-layout">
 				<div className="aculect-ai-companion-advanced-main">
@@ -2651,8 +2534,6 @@ function DiagnosticsDashboard( {
 				/>
 			</section>
 
-			<DiagnosticsSummaryCards health={ health } />
-
 			<div className="aculect-ai-companion-diagnostics-layout">
 				<div className="aculect-ai-companion-diagnostics-main">
 					<div className="aculect-ai-companion-diagnostics-checks">
@@ -2966,24 +2847,6 @@ function filterAbilityRows( {
 	} );
 }
 
-function AbilitySummaryCard( { icon, label, value, description } ) {
-	return (
-		<div className="aculect-ai-companion-ability-summary-card">
-			<span
-				className="aculect-ai-companion-ability-summary-card__icon"
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 18 } />
-			</span>
-			<div>
-				<span>{ label }</span>
-				<strong>{ value }</strong>
-				<p>{ description }</p>
-			</div>
-		</div>
-	);
-}
-
 function AbilityDashboard( {
 	data,
 	abilities,
@@ -3031,10 +2894,6 @@ function AbilityDashboard( {
 	const visibleRows = filteredRows.slice(
 		( currentPage - 1 ) * ABILITY_PAGE_SIZE,
 		currentPage * ABILITY_PAGE_SIZE
-	);
-	const activeRows = rows.filter( ( ability ) => ability.enabled );
-	const systemRows = rows.filter(
-		( ability ) => ability.source === 'system'
 	);
 	const sourceOptions = [
 		{ value: 'all', label: 'All sources' },
@@ -3143,33 +3002,6 @@ function AbilityDashboard( {
 					</Button>
 				</div>
 			</section>
-
-			<div className="aculect-ai-companion-ability-summary">
-				<AbilitySummaryCard
-					icon={ plugins }
-					label="Total abilities"
-					value={ rows.length }
-					description="Registered from the live ability registry."
-				/>
-				<AbilitySummaryCard
-					icon={ check }
-					label="Active abilities"
-					value={ activeRows.length }
-					description="Currently exposed to connected assistants."
-				/>
-				<AbilitySummaryCard
-					icon={ people }
-					label="Assigned access"
-					value={ activeConnectionCount }
-					description="Active connections still use WordPress caps."
-				/>
-				<AbilitySummaryCard
-					icon={ lock }
-					label="System abilities"
-					value={ systemRows.length }
-					description="Bundled actions protected from destructive edits."
-				/>
-			</div>
 
 			<div className="aculect-ai-companion-abilities-layout">
 				<section className="aculect-ai-companion-abilities-main">
@@ -4569,13 +4401,6 @@ function SettingsApp() {
 		isAccessPaused,
 		currentUserId
 	);
-	const connectionFilterCounts = connectionFilterItems.reduce(
-		( counts, item ) => ( {
-			...counts,
-			[ item.name ]: item.count,
-		} ),
-		{}
-	);
 	const filteredConnectionSessions = filterConnectionSessions( {
 		connectionSessions,
 		filter: connectionFilter,
@@ -4585,7 +4410,6 @@ function SettingsApp() {
 		abilities,
 		enabledAbilityIds: enabledAbilities,
 	} );
-	const connectionUserTotal = connectionUserCount( activeConnectionSessions );
 	const hasAbilityChanges =
 		! sameStringSet( enabledAbilities, originalEnabledAbilities ) ||
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
@@ -4911,6 +4735,22 @@ function SettingsApp() {
 			{ data.status === 'access_resumed' && (
 				<Notice status="success" isDismissible={ false }>
 					AI access resumed.
+				</Notice>
+			) }
+			{ data.status === 'session_write_permission_enabled' && (
+				<Notice status="success" isDismissible={ false }>
+					Direct writes enabled for the connection.
+				</Notice>
+			) }
+			{ data.status === 'session_write_permission_disabled' && (
+				<Notice status="success" isDismissible={ false }>
+					Write confirmation restored for the connection.
+				</Notice>
+			) }
+			{ data.status === 'session_write_permission_not_updated' && (
+				<Notice status="warning" isDismissible={ false }>
+					Write permission was not changed because the connection is
+					no longer active.
 				</Notice>
 			) }
 			{ data.status === 'diagnostics_run' && (
@@ -5298,42 +5138,6 @@ function SettingsApp() {
 									</div>
 								</section>
 
-								<div className="aculect-ai-companion-connection-metrics">
-									<ConnectionMetricCard
-										icon={ people }
-										label="Total"
-										value={ connectionSessions.length }
-										description="Active and retained revoked sessions."
-									/>
-									<ConnectionMetricCard
-										icon={ seen }
-										label="My"
-										value={ connectionFilterCounts.my || 0 }
-										description="Approved by your WordPress user."
-									/>
-									<ConnectionMetricCard
-										icon={ shield }
-										label="Team"
-										value={
-											connectionFilterCounts.team || 0
-										}
-										description="Approved by other WordPress users."
-									/>
-									<ConnectionMetricCard
-										icon={ lock }
-										label="Access"
-										value={
-											isAccessPaused ? 'Paused' : 'Active'
-										}
-										description={ `${ connectionUserTotal } connected user${
-											connectionUserTotal === 1 ? '' : 's'
-										}` }
-										tone={
-											isAccessPaused ? 'is-paused' : ''
-										}
-									/>
-								</div>
-
 								{ shouldShowAccessControl && (
 									<div
 										className={ `aculect-ai-companion-lockdown aculect-ai-companion-lockdown--connections ${
@@ -5587,7 +5391,6 @@ function SettingsApp() {
 										</p>
 									</div>
 								</section>
-								<ActivitySummary summary={ activity.summary } />
 								<div className="aculect-ai-companion-activity-control-banner">
 									<span
 										className="aculect-ai-companion-activity-control-banner__icon"
@@ -5925,9 +5728,7 @@ function SettingsApp() {
 								}
 								roleConnectionRoles={ roleConnectionRoles }
 								onToggleRole={ toggleRoleConnectionRole }
-								abilities={ abilities }
 								enabledAbilities={ enabledAbilities }
-								wpAbilities={ wpAbilities }
 								enabledWpAbilities={ enabledWpAbilities }
 								onCopy={ copyValue }
 							/>

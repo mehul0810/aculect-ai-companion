@@ -193,6 +193,67 @@ final class McpControllerTest extends TestCase {
 		self::assertFalse( $this->invokePrivate( $controller, 'has_scopes', array( array( 'content:read' ), array( 'content:draft' ) ) ) );
 	}
 
+	public function test_connection_write_permission_unblocks_only_write_tools(): void {
+		$controller = new McpController();
+		$registry   = new AbilitiesRegistry();
+
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'content.update_item',
+					$registry,
+					array( 'write_permission_enabled' => true ),
+				)
+			)
+		);
+		self::assertFalse(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'content.update_item',
+					$registry,
+					array( 'write_permission_enabled' => false ),
+				)
+			)
+		);
+		self::assertFalse(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'content.get_item',
+					$registry,
+					array( 'write_permission_enabled' => true ),
+				)
+			)
+		);
+	}
+
+	public function test_write_permission_preview_removes_confirmation_metadata(): void {
+		$result = $this->invokePrivate(
+			new McpController(),
+			'write_permission_preview_payload',
+			array(
+				array(
+					'dry_run'                   => true,
+					'confirmation_required'     => true,
+					'confirmation_token'        => 'token',
+					'confirmation_expires_in'   => 300,
+					'confirmation_instructions' => 'Repeat with token.',
+				),
+			)
+		);
+
+		self::assertFalse( $result['confirmation_required'] );
+		self::assertTrue( $result['write_permission_enabled'] );
+		self::assertArrayNotHasKey( 'confirmation_token', $result );
+		self::assertArrayNotHasKey( 'confirmation_expires_in', $result );
+		self::assertArrayNotHasKey( 'confirmation_instructions', $result );
+	}
+
 	public function test_auth_challenge_response_includes_mcp_www_authenticate_metadata(): void {
 		$response = $this->invokePrivate(
 			new McpController(),

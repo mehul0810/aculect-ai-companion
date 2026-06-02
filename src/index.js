@@ -540,6 +540,7 @@ function ActionForm( {
 	isBusy = false,
 	busyLabel = '',
 	variant = '',
+	enctype = '',
 } ) {
 	return (
 		<form
@@ -547,6 +548,7 @@ function ActionForm( {
 			action={ data.actions?.adminPostUrl }
 			className="aculect-ai-companion-action-form"
 			onSubmit={ onSubmit }
+			{ ...( enctype ? { encType: enctype } : {} ) }
 		>
 			<input type="hidden" name="action" value={ action } />
 			<input type="hidden" name="_wpnonce" value={ nonce } />
@@ -1934,14 +1936,9 @@ function AdvancedSettingRow( {
 	status,
 	statusTone = '',
 	children,
-	disabled = false,
 } ) {
 	return (
-		<div
-			className={ `aculect-ai-companion-advanced-setting ${
-				disabled ? 'is-disabled' : ''
-			}` }
-		>
+		<div className="aculect-ai-companion-advanced-setting">
 			<div className="aculect-ai-companion-advanced-setting__content">
 				<div className="aculect-ai-companion-advanced-setting__title">
 					<h4 className="aculect-ai-companion-advanced-setting__heading">
@@ -1965,17 +1962,6 @@ function AdvancedSettingRow( {
 				</div>
 			) }
 		</div>
-	);
-}
-
-function AdvancedDisabledToggle( { label, checked = false } ) {
-	return (
-		<ToggleControl
-			label={ label }
-			checked={ checked }
-			disabled
-			onChange={ () => {} }
-		/>
 	);
 }
 
@@ -2014,32 +2000,6 @@ function AdvancedRoleControls( {
 	);
 }
 
-function AdvancedIntegrationList( { roleConnections } ) {
-	const integrations = [
-		{ label: 'Shortcode', value: roleConnections.shortcode },
-		{ label: 'Block', value: roleConnections.blockName },
-		{ label: 'PHP function', value: roleConnections.functionName },
-	];
-
-	return (
-		<div className="aculect-ai-companion-advanced-integration-list">
-			{ integrations.map( ( item ) => (
-				<div
-					key={ item.label }
-					className="aculect-ai-companion-advanced-integration-list__item"
-				>
-					<span className="aculect-ai-companion-advanced-integration-list__label">
-						{ item.label }
-					</span>
-					<code className="aculect-ai-companion-advanced-integration-list__value">
-						{ item.value || 'Unavailable' }
-					</code>
-				</div>
-			) ) }
-		</div>
-	);
-}
-
 function AdvancedDashboard( {
 	data,
 	diagnostics,
@@ -2052,48 +2012,52 @@ function AdvancedDashboard( {
 	onToggleRole,
 	enabledAbilities,
 	enabledWpAbilities,
-	onCopy,
 } ) {
 	const retentionDays = diagnostics.retentionDays || 30;
 	const enabledAbilityCount =
 		enabledAbilities.length + enabledWpAbilities.length;
 	const abilitiesUrl = tabUrl( 'abilities', data.adminPageUrl );
 	const diagnosticsUrl = tabUrl( 'diagnostics', data.adminPageUrl );
+	const advancedSettingsFormId =
+		'aculect-ai-companion-advanced-settings-form';
 
 	return (
-		<form
-			method="post"
-			action={ data.actions?.adminPostUrl }
-			className="aculect-ai-companion-form aculect-ai-companion-form--advanced-dashboard"
-		>
-			<input
-				type="hidden"
-				name="action"
-				value={ data.actions?.saveAdvancedAction }
-			/>
-			<input
-				type="hidden"
-				name="_wpnonce"
-				value={ data.actions?.saveAdvancedNonce }
-			/>
-			<input
-				type="hidden"
-				name="diagnostic_logging_enabled"
-				value={ loggingEnabled ? '1' : '0' }
-			/>
-			<input
-				type="hidden"
-				name="role_connections_enabled"
-				value={ roleConnectionsEnabled ? '1' : '0' }
-			/>
-			{ roleConnectionRoles.map( ( role ) => (
+		<div className="aculect-ai-companion-form aculect-ai-companion-form--advanced-dashboard">
+			<form
+				id={ advancedSettingsFormId }
+				method="post"
+				action={ data.actions?.adminPostUrl }
+				className="aculect-ai-companion-advanced-save-form"
+			>
 				<input
-					key={ role }
 					type="hidden"
-					name="role_connection_roles[]"
-					value={ role }
+					name="action"
+					value={ data.actions?.saveAdvancedAction }
 				/>
-			) ) }
+				<input
+					type="hidden"
+					name="_wpnonce"
+					value={ data.actions?.saveAdvancedNonce }
+				/>
+				<input
+					type="hidden"
+					name="diagnostic_logging_enabled"
+					value={ loggingEnabled ? '1' : '0' }
+				/>
+				<input
+					type="hidden"
+					name="role_connections_enabled"
+					value={ roleConnectionsEnabled ? '1' : '0' }
+				/>
+				{ roleConnectionRoles.map( ( role ) => (
+					<input
+						key={ role }
+						type="hidden"
+						name="role_connection_roles[]"
+						value={ role }
+					/>
+				) ) }
+			</form>
 
 			<section className="aculect-ai-companion-advanced-hero">
 				<div>
@@ -2104,12 +2068,15 @@ function AdvancedDashboard( {
 						Security, permissions, and developer controls
 					</h2>
 					<p className="aculect-ai-companion-advanced-hero__copy">
-						Manage the advanced settings backed by WordPress
-						options. Controls that need new server behavior are
-						locked until that behavior exists.
+						Manage the advanced settings backed by working WordPress
+						options.
 					</p>
 				</div>
-				<Button type="submit" variant="primary">
+				<Button
+					type="submit"
+					form={ advancedSettingsFormId }
+					variant="primary"
+				>
 					Save Advanced Settings
 				</Button>
 			</section>
@@ -2119,7 +2086,7 @@ function AdvancedDashboard( {
 					<AdvancedSection
 						icon={ shield }
 						title="Security and access"
-						description="Connection approval, session lifetime, and user-facing entry points."
+						description="Connection approval, permission policy, and user-facing entry points."
 					>
 						<AdvancedSettingRow
 							title="Approval requirement"
@@ -2142,11 +2109,6 @@ function AdvancedDashboard( {
 								Review Abilities
 							</Button>
 						</AdvancedSettingRow>
-						<AdvancedSettingRow
-							title="Session timeout"
-							description="Connections stay active for 30 days from last assistant use. Access tokens remain short-lived and are refreshed by the assistant."
-							status="Fixed"
-						/>
 						<AdvancedSettingRow
 							title="Role-based connection entry points"
 							description="Allow selected logged-in roles to copy the MCP connection URL from a shortcode, block, or PHP template function."
@@ -2180,7 +2142,7 @@ function AdvancedDashboard( {
 					<AdvancedSection
 						icon={ plugins }
 						title="Capabilities and permissions"
-						description="Default and future custom ability boundaries for connected assistants."
+						description="Ability boundaries for connected assistants."
 					>
 						<AdvancedSettingRow
 							title="Default capability set"
@@ -2198,119 +2160,14 @@ function AdvancedDashboard( {
 								Edit Abilities
 							</Button>
 						</AdvancedSettingRow>
-						<AdvancedSettingRow
-							title="Custom capability sets"
-							description="Multiple named ability profiles are not available until server-side policy storage exists."
-							status="Not available"
-							disabled
-						>
-							<Button type="button" variant="secondary" disabled>
-								Create Set
-							</Button>
-						</AdvancedSettingRow>
-					</AdvancedSection>
-
-					<AdvancedSection
-						icon={ globe }
-						title="Integrations"
-						description="Endpoint configuration and integration entry points."
-					>
-						<AdvancedSettingRow
-							title="MCP endpoint"
-							description="Copy the generated endpoint used by supported AI assistants for OAuth discovery and MCP requests."
-							status="Generated"
-						>
-							<CopyField
-								label="MCP endpoint"
-								value={ data.mcpUrl }
-								onCopy={ ( value ) =>
-									onCopy( value, 'MCP endpoint copied.' )
-								}
-							/>
-						</AdvancedSettingRow>
-						<AdvancedSettingRow
-							title="Connection entry points"
-							description="Use these entry points when role-based connection sharing is enabled."
-							status={
-								roleConnectionsEnabled ? 'Available' : 'Off'
-							}
-						>
-							<AdvancedIntegrationList
-								roleConnections={ roleConnections }
-							/>
-						</AdvancedSettingRow>
-						<AdvancedSettingRow
-							title="Webhook URL"
-							description="Incoming webhook configuration is not active in 0.5.0 and has no server-side handler yet."
-							status="Not available"
-							disabled
-						>
-							<TextControl
-								label="Webhook URL"
-								value="Not configured"
-								disabled
-								__next40pxDefaultSize
-								onChange={ () => {} }
-							/>
-						</AdvancedSettingRow>
 					</AdvancedSection>
 				</div>
 
 				<aside className="aculect-ai-companion-advanced-sidebar">
 					<AdvancedSection
-						icon={ settings }
-						title="Performance"
-						description="Runtime controls that are fixed in this release."
-					>
-						<AdvancedSettingRow
-							title="Background processing"
-							description="OAuth and diagnostic storage pruning already run through bounded maintenance tasks."
-							status="Automatic"
-						/>
-						<AdvancedSettingRow
-							title="Rate limiting"
-							description="No configurable rate limit option exists in 0.5.0."
-							status="Not available"
-							disabled
-						>
-							<AdvancedDisabledToggle label="Enable rate limiting" />
-						</AdvancedSettingRow>
-						<AdvancedSettingRow
-							title="Caching controls"
-							description="Authorization checks read current token state directly so revocation remains immediate."
-							status="Fixed"
-						/>
-					</AdvancedSection>
-
-					<AdvancedSection
-						icon={ lock }
-						title="Data and privacy"
-						description="What the plugin stores and exposes to support workflows."
-					>
-						<AdvancedSettingRow
-							title="Data sharing"
-							description="The plugin does not add a separate data-sharing toggle in 0.5.0."
-							status="No option"
-						/>
-						<AdvancedSettingRow
-							title="Encrypted communication"
-							description="Hosted assistants require a public HTTPS endpoint; OAuth tokens and signing keys remain server-side."
-							status="Protocol enforced"
-						/>
-						<AdvancedSettingRow
-							title="Anonymization"
-							description="A configurable anonymization mode is not available until log redaction policy is specified."
-							status="Not available"
-							disabled
-						>
-							<AdvancedDisabledToggle label="Anonymize logs" />
-						</AdvancedSettingRow>
-					</AdvancedSection>
-
-					<AdvancedSection
 						icon={ cog }
 						title="Developer"
-						description="Diagnostics and maintenance controls for troubleshooting."
+						description="Diagnostics and troubleshooting controls."
 					>
 						<AdvancedSettingRow
 							title="Diagnostic logging"
@@ -2335,41 +2192,82 @@ function AdvancedDashboard( {
 								Open Diagnostics
 							</Button>
 						</AdvancedSettingRow>
+					</AdvancedSection>
+
+					<AdvancedSection
+						icon={ settings }
+						title="Settings JSON"
+						description="Export, import, or reset plugin configuration."
+					>
 						<AdvancedSettingRow
-							title="Log level"
-							description="The current logger records sanitized lifecycle events without a configurable verbosity level."
-							status="Fixed"
-						/>
-						<AdvancedSettingRow
-							title="Export settings"
-							description="Disabled until a sanitized export endpoint exists that excludes secrets, salts, OAuth keys, tokens, and private payloads."
-							status="Not available"
-							disabled
+							title="Export settings JSON"
+							description="Download a sanitized settings file that excludes OAuth records, tokens, keys, logs, and activity history."
 						>
-							<Button type="button" variant="secondary" disabled>
-								Export Settings
-							</Button>
+							<ActionForm
+								data={ data }
+								action={ data.actions?.exportSettingsAction }
+								nonce={ data.actions?.exportSettingsNonce }
+								label="Export Settings"
+								variant="secondary"
+							/>
 						</AdvancedSettingRow>
 						<AdvancedSettingRow
-							title="Reset settings"
-							description="Disabled until a confirmed, capability-checked reset action exists."
-							status="Not available"
-							statusTone="is-danger"
-							disabled
+							title="Import settings JSON"
+							description="Upload a settings file exported from Aculect AI Companion to replace supported configuration values."
 						>
-							<Button
-								type="button"
+							<ActionForm
+								data={ data }
+								action={ data.actions?.importSettingsAction }
+								nonce={ data.actions?.importSettingsNonce }
+								label="Import Settings"
 								variant="secondary"
-								isDestructive
-								disabled
+								enctype="multipart/form-data"
+								onSubmit={ () => {
+									// eslint-disable-next-line no-alert
+									return window.confirm(
+										'Import settings from this JSON file? Current supported settings will be overwritten.'
+									);
+								} }
 							>
-								Reset Settings
-							</Button>
+								<label
+									className="aculect-ai-companion-file-field"
+									htmlFor="aculect-ai-companion-settings-import-file"
+								>
+									<span>Settings JSON</span>
+									<input
+										id="aculect-ai-companion-settings-import-file"
+										type="file"
+										name="settings_file"
+										accept="application/json,.json"
+										required
+									/>
+								</label>
+							</ActionForm>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Reset settings to default"
+							description="Restore plugin configuration defaults. Connections, OAuth material, logs, and activity history are not deleted."
+							status="Destructive"
+							statusTone="is-danger"
+						>
+							<ActionForm
+								data={ data }
+								action={ data.actions?.resetSettingsAction }
+								nonce={ data.actions?.resetSettingsNonce }
+								label="Reset Settings"
+								destructive
+								onSubmit={ () => {
+									// eslint-disable-next-line no-alert
+									return window.confirm(
+										'Reset Aculect AI Companion settings to defaults? Connections, OAuth material, logs, and activity history will not be deleted.'
+									);
+								} }
+							/>
 						</AdvancedSettingRow>
 					</AdvancedSection>
 				</aside>
 			</div>
-		</form>
+		</div>
 	);
 }
 
@@ -4734,6 +4632,22 @@ function SettingsApp() {
 					Advanced settings saved.
 				</Notice>
 			) }
+			{ data.status === 'settings_imported' && (
+				<Notice status="success" isDismissible={ false }>
+					Settings imported.
+				</Notice>
+			) }
+			{ data.status === 'settings_import_failed' && (
+				<Notice status="error" isDismissible={ false }>
+					Settings import failed. Choose a valid Aculect AI Companion
+					settings JSON file.
+				</Notice>
+			) }
+			{ data.status === 'settings_reset' && (
+				<Notice status="warning" isDismissible={ false }>
+					Settings reset to defaults.
+				</Notice>
+			) }
 			{ data.status === 'brand_saved' && (
 				<Notice status="success" isDismissible={ false }>
 					Brand profile saved.
@@ -5768,7 +5682,6 @@ function SettingsApp() {
 								onToggleRole={ toggleRoleConnectionRole }
 								enabledAbilities={ enabledAbilities }
 								enabledWpAbilities={ enabledWpAbilities }
-								onCopy={ copyValue }
 							/>
 						);
 					}

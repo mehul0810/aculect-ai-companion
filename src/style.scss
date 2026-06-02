@@ -2651,10 +2651,6 @@
 	border-bottom: 0;
 }
 
-.aculect-ai-companion-advanced-setting.is-disabled {
-	background: #fbfcfe;
-}
-
 .aculect-ai-companion-advanced-setting__content,
 .aculect-ai-companion-advanced-setting__control {
 	min-width: 0;
@@ -2723,29 +2719,19 @@
 	margin-bottom: 0;
 }
 
-.aculect-ai-companion-advanced-integration-list {
+.aculect-ai-companion-file-field {
 	display: grid;
-	gap: 8px;
+	gap: 6px;
 	min-width: 0;
 }
 
-.aculect-ai-companion-advanced-integration-list__item {
-	display: grid;
-	gap: 4px;
-	min-width: 0;
-}
-
-.aculect-ai-companion-advanced-integration-list__label {
+.aculect-ai-companion-file-field span {
 	color: var(--aculect-ai-companion-muted);
-	font-size: 12px;
 	font-weight: 700;
-	text-transform: uppercase;
 }
 
-.aculect-ai-companion-advanced-integration-list__value {
+.aculect-ai-companion-file-field input {
 	max-width: 100%;
-	white-space: normal;
-	overflow-wrap: anywhere;
 }
 
 .aculect-ai-companion-form--brand {

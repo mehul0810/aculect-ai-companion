@@ -33,6 +33,19 @@ final class LogSettings {
 	}
 
 	/**
+	 * Persist a bounded diagnostic log retention window.
+	 *
+	 * @param int $days Retention window in days.
+	 */
+	public static function set_retention_days( int $days ): void {
+		if ( $days < self::MIN_RETENTION_DAYS ) {
+			$days = self::DEFAULT_RETENTION_DAYS;
+		}
+
+		update_option( self::OPTION_RETENTION_DAYS, min( $days, self::MAX_RETENTION_DAYS ), false );
+	}
+
+	/**
 	 * Return the configured retention window in days.
 	 */
 	public static function retention_days(): int {

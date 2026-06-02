@@ -312,6 +312,9 @@ final class SettingsPage {
 			'saveAbilitiesAction'             => 'aculect_ai_companion_save_abilities',
 			'saveRoleAbilitiesAction'         => 'aculect_ai_companion_save_role_abilities',
 			'saveAdvancedAction'              => 'aculect_ai_companion_save_advanced',
+			'exportSettingsAction'            => 'aculect_ai_companion_export_settings',
+			'importSettingsAction'            => 'aculect_ai_companion_import_settings',
+			'resetSettingsAction'             => 'aculect_ai_companion_reset_settings',
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
@@ -322,6 +325,9 @@ final class SettingsPage {
 			'saveAbilitiesNonce'              => wp_create_nonce( 'aculect_ai_companion_save_abilities' ),
 			'saveRoleAbilitiesNonce'          => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
 			'saveAdvancedNonce'               => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
+			'exportSettingsNonce'             => wp_create_nonce( 'aculect_ai_companion_export_settings' ),
+			'importSettingsNonce'             => wp_create_nonce( 'aculect_ai_companion_import_settings' ),
+			'resetSettingsNonce'              => wp_create_nonce( 'aculect_ai_companion_reset_settings' ),
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
@@ -437,6 +443,125 @@ final class SettingsPage {
 					'page'           => 'aculect-ai-companion',
 					'tab'            => 'advanced',
 					'advanced_saved' => '1',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Stream sanitized plugin settings as a JSON download.
+	 */
+	public function handle_export_settings(): void {
+		$this->guard_action( 'aculect_ai_companion_export_settings' );
+
+		if ( ! headers_sent() ) {
+			nocache_headers();
+			header( 'Content-Type: application/json; charset=utf-8' );
+			header(
+				'Content-Disposition: attachment; filename="' .
+				sanitize_file_name( 'aculect-ai-companion-settings-' . gmdate( 'Y-m-d' ) . '.json' ) .
+				'"'
+			);
+		}
+
+		echo ( new SettingsTransfer() )->export_json(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON is encoded by SettingsTransfer::export_json().
+		exit;
+	}
+
+	/**
+	 * Import sanitized plugin settings from a JSON upload.
+	 */
+	public function handle_import_settings(): void {
+		$this->guard_action( 'aculect_ai_companion_import_settings' );
+
+		$transfer = new SettingsTransfer();
+		$imported = false;
+		$json     = $this->uploaded_settings_json();
+
+		if ( '' !== $json ) {
+			$imported = $transfer->import_payload( $transfer->decode_json( $json ) );
+		}
+
+		$this->redirect_to_advanced(
+			array(
+				'settings_imported' => $imported ? '1' : '0',
+			)
+		);
+	}
+
+	/**
+	 * Restore plugin settings to defaults.
+	 */
+	public function handle_reset_settings(): void {
+		$this->guard_action( 'aculect_ai_companion_reset_settings' );
+
+		( new SettingsTransfer() )->reset();
+
+		$this->redirect_to_advanced(
+			array(
+				'settings_reset' => '1',
+			)
+		);
+	}
+
+	/**
+	 * Return uploaded settings JSON when the file passes basic safety checks.
+	 */
+	private function uploaded_settings_json(): string {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this upload read.
+		if ( empty( $_FILES['settings_file'] ) || ! is_array( $_FILES['settings_file'] ) ) {
+			return '';
+		}
+
+		$file  = $_FILES['settings_file'];
+		$error = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+		if ( ! is_scalar( $error ) || UPLOAD_ERR_OK !== (int) $error ) {
+			return '';
+		}
+
+		$size = $file['size'] ?? 0;
+		if ( ! is_scalar( $size ) ) {
+			return '';
+		}
+
+		$size = absint( $size );
+		if ( $size <= 0 || $size > SettingsTransfer::MAX_IMPORT_BYTES ) {
+			return '';
+		}
+
+		$tmp_name = $file['tmp_name'] ?? '';
+		if ( ! is_scalar( $tmp_name ) ) {
+			return '';
+		}
+
+		$tmp_name = (string) $tmp_name;
+		if ( '' === $tmp_name || ! is_uploaded_file( $tmp_name ) ) {
+			return '';
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads a bounded PHP-uploaded temporary file.
+		$json = file_get_contents( $tmp_name, false, null, 0, SettingsTransfer::MAX_IMPORT_BYTES + 1 );
+
+		return is_string( $json ) && strlen( $json ) <= SettingsTransfer::MAX_IMPORT_BYTES ? $json : '';
+	}
+
+	/**
+	 * Redirect back to Advanced with a status flag.
+	 *
+	 * @param array<string, string> $args Additional query args.
+	 */
+	private function redirect_to_advanced( array $args ): void {
+		wp_safe_redirect(
+			add_query_arg(
+				array_merge(
+					array(
+						'page' => 'aculect-ai-companion',
+						'tab'  => 'advanced',
+					),
+					$args
 				),
 				$this->settings_url()
 			)
@@ -1010,6 +1135,15 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['advanced_saved'] ) ) {
 			return 'advanced_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['settings_imported'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return '1' === sanitize_key( wp_unslash( (string) $_GET['settings_imported'] ) ) ? 'settings_imported' : 'settings_import_failed';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['settings_reset'] ) ) {
+			return 'settings_reset';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['brand_saved'] ) ) {

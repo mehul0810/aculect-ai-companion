@@ -179,6 +179,41 @@ final class RoleAbilitiesPolicy {
 	}
 
 	/**
+	 * Return sanitized explicit role policies for settings export.
+	 *
+	 * @param AbilitiesRegistry $registry Ability registry.
+	 * @return array<string, list<string>>
+	 */
+	public function saved_policies( AbilitiesRegistry $registry ): array {
+		return $this->policies( $registry );
+	}
+
+	/**
+	 * Replace explicit role policies from a sanitized settings import map.
+	 *
+	 * @param array<string, list<string>> $policies Raw role policies.
+	 * @param AbilitiesRegistry           $registry Ability registry.
+	 */
+	public function replace_policies( array $policies, AbilitiesRegistry $registry ): void {
+		$sanitized = array();
+		foreach ( $policies as $role => $ability_ids ) {
+			$role = $this->sanitize_role( (string) $role );
+			if ( '' === $role ) {
+				continue;
+			}
+
+			$sanitized[ $role ] = $this->sanitize_ability_ids( $ability_ids, $registry );
+		}
+
+		if ( array() === $sanitized ) {
+			self::delete();
+			return;
+		}
+
+		update_option( self::OPTION_ROLE_ABILITIES, $sanitized, false );
+	}
+
+	/**
 	 * Delete stored policy.
 	 */
 	public static function delete(): void {

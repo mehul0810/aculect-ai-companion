@@ -2001,8 +2001,8 @@ function ConnectionsDataViews( {
 			density: 'balanced',
 			styles: {
 				assistant: {
-					width: 64,
-					maxWidth: 64,
+					width: 120,
+					maxWidth: 120,
 					align: 'center',
 				},
 				user: {

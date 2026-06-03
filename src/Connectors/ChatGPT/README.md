@@ -142,7 +142,7 @@ Regression check: approve consent and confirm ChatGPT reaches token exchange wit
 
 Possible cause: the ability is disabled under `AI Companion > Abilities`.
 
-Fix: enable the relevant ability and save. `tools/list` only advertises enabled abilities, and `tools/call` rejects disabled abilities even if a client cached an older tool list.
+Fix: enable the relevant ability and save. `tools/list` advertises always-on read-only Aculect Intelligence tools plus enabled user-managed abilities. `tools/call` rejects disabled user-managed abilities even if a client cached an older tool list.
 
 ## Required Smoke Tests Before ChatGPT OAuth Betas
 

@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use ReflectionMethod;
@@ -36,14 +37,15 @@ final class McpControllerTest extends TestCase {
 		self::assertIsArray( $result['tools'] );
 		self::assertNotEmpty( $result['tools'] );
 
-		$registry = new AbilitiesRegistry();
+		$registry     = new AbilitiesRegistry();
+		$intelligence = new IntelligenceRegistry();
 
 		foreach ( $result['tools'] as $tool ) {
 			self::assertIsArray( $tool );
 			self::assertArrayHasKey( 'name', $tool );
 			self::assertIsString( $tool['name'] );
 			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $tool['name'] );
-			self::assertTrue( $registry->is_known( $tool['name'] ) );
+			self::assertTrue( $registry->is_known( $tool['name'] ) || $intelligence->is_known( $tool['name'] ) );
 		}
 	}
 
@@ -113,7 +115,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'object', $health_schema['type'] );
 		self::assertInstanceOf( \stdClass::class, $health_schema['properties'] );
 
-		$brand_schema = $this->schemaForTool( 'brand_get_profile' );
+		$brand_schema = $this->schemaForTool( 'intelligence_brand_get_context' );
 		self::assertSame( 'object', $brand_schema['type'] );
 		self::assertInstanceOf( \stdClass::class, $brand_schema['properties'] );
 
@@ -150,6 +152,11 @@ final class McpControllerTest extends TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function schemaForTool( string $tool ): array {
+		$intelligence = new IntelligenceRegistry();
+		if ( $intelligence->is_known( $tool ) ) {
+			return $intelligence->input_schema( $tool );
+		}
+
 		return ( new AbilitiesRegistry() )->input_schema( $tool );
 	}
 
@@ -180,7 +187,12 @@ final class McpControllerTest extends TestCase {
 		$names  = array_column( $result['tools'], 'name' );
 
 		self::assertContains( 'content_list_items', $names );
+		self::assertContains( 'intelligence_site_get_context', $names );
+		self::assertContains( 'intelligence_brand_get_context', $names );
+		self::assertContains( 'intelligence_blocks_list_available', $names );
 		self::assertNotContains( 'content_update_item', $names );
+		self::assertNotContains( 'brand_get_profile', $names );
+		self::assertNotContains( 'blocks_list_available', $names );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.list_items', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );

@@ -145,10 +145,17 @@ final class McpController {
 				return $this->rpc_result( $id, $this->list_tools() );
 
 			case 'tools/call':
-				$registry = new AbilitiesRegistry();
-				$tool     = $registry->internal_id( (string) ( $body['params']['name'] ?? '' ) );
-				$args     = (array) ( $body['params']['arguments'] ?? array() );
-				$error    = $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
+				$registry             = new AbilitiesRegistry();
+				$intelligence         = new IntelligenceRegistry();
+				$requested_tool       = (string) ( $body['params']['name'] ?? '' );
+				$tool                 = $intelligence->internal_id( $requested_tool );
+				$is_intelligence_tool = $intelligence->is_known( $tool );
+				if ( ! $is_intelligence_tool ) {
+					$tool = $registry->internal_id( $requested_tool );
+				}
+
+				$args  = (array) ( $body['params']['arguments'] ?? array() );
+				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
 				if ( 'unknown_tool' === $error ) {
 					( new Logger() )->warning(
 						'mcp.unknown_tool',
@@ -193,7 +200,7 @@ final class McpController {
 					return $this->tool_error_result( $id, 'AI access is paused in Aculect AI Companion settings.' );
 				}
 
-				$required = $registry->required_scopes( $tool );
+				$required = $is_intelligence_tool ? $intelligence->required_scopes( $tool ) : $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
 					( new Logger() )->warning(
 						'mcp.insufficient_scope',
@@ -206,9 +213,9 @@ final class McpController {
 				}
 
 				$safety                     = new ToolSafety();
-				$is_write_tool              = ! $registry->is_read_only( $tool );
+				$is_write_tool              = ! $is_intelligence_tool && ! $registry->is_read_only( $tool );
 				$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
-				$write_permission_unblocked = $this->write_permission_unblocks_tool( $tool, $registry, $auth );
+				$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
 				$is_confirmation_required   = false;
 				$needs_confirmation_gate    = $is_write_tool
 					&& ! $is_dry_run
@@ -216,7 +223,7 @@ final class McpController {
 					&& $safety->requires_confirmation( $tool, $args )
 					&& ! $safety->consume_confirmation_token( $tool, $args, $auth );
 				if ( $is_dry_run ) {
-					$result = $registry->execute( $tool, $args );
+					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool );
 					if ( ! isset( $result['error'] ) ) {
 						if ( $write_permission_unblocked ) {
 							$result = $this->write_permission_preview_payload( $result );
@@ -227,14 +234,14 @@ final class McpController {
 				} elseif ( $needs_confirmation_gate ) {
 					$preview_args             = $safety->strip_control_args( $args );
 					$preview_args['dry_run']  = true;
-					$preview                  = $registry->execute( $tool, $preview_args );
+					$preview                  = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool );
 					$is_confirmation_required = ! isset( $preview['error'] );
 					$result                   = isset( $preview['error'] )
 						? $preview
 						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
 				} else {
 					$args   = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-					$result = $registry->execute( $tool, $args );
+					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool );
 				}
 
 				if ( ! $is_dry_run && ! $is_confirmation_required && $is_write_tool ) {
@@ -312,14 +319,16 @@ final class McpController {
 	}
 
 	/**
-	 * Build the MCP tools/list payload from enabled Aculect AI Companion abilities.
+	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
 	 *
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
 	private function list_tools(): array {
-		$registry = new AbilitiesRegistry();
-		$user_id  = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
-		$modules  = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( (int) $user_id, $registry );
+		$registry      = new AbilitiesRegistry();
+		$intelligence  = new IntelligenceRegistry();
+		$user_id       = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$ability_tools = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( (int) $user_id, $registry );
+		$modules       = array_merge( $intelligence->modules(), $ability_tools );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
@@ -346,6 +355,20 @@ final class McpController {
 			'_meta'           => array( 'securitySchemes' => $security ),
 			'annotations'     => array( 'readOnlyHint' => $module->is_read_only() ),
 		);
+	}
+
+	/**
+	 * Execute an MCP tool from either the internal intelligence or ability registry.
+	 *
+	 * @param string               $tool                 Internal tool ID.
+	 * @param array<string, mixed> $args                 Tool arguments.
+	 * @param AbilitiesRegistry    $registry             User-managed ability registry.
+	 * @param IntelligenceRegistry $intelligence         Internal intelligence registry.
+	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
+	 * @return array<string, mixed>
+	 */
+	private function execute_tool( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool ): array {
+		return $is_intelligence_tool ? $intelligence->execute( $tool, $args ) : $registry->execute( $tool, $args );
 	}
 
 	/**

@@ -11,9 +11,30 @@ When adding or changing tools:
 - Keep the internal ability ID stable where possible.
 - Expose only tool names matching `^[a-zA-Z0-9_-]{1,64}$`.
 - Add legacy aliases in `AbilitiesRegistry::normalize_alias()` when renaming a tool.
+- Add legacy aliases in `IntelligenceRegistry::normalize_alias()` when moving a context tool out of user-managed abilities.
 - Update PHPUnit coverage for tool-name mapping and `tools/list` output.
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
+
+## Aculect Intelligence
+
+Aculect Intelligence tools are always-on read-only MCP context tools. They are
+not user-managed abilities, do not appear in the admin Abilities list, and are
+not controlled by global or role-based ability toggles. They still require an
+authenticated connection, the `content:read` OAuth scope, and active AI access.
+
+The intelligence layer is divided into four context domains:
+
+- Site Intelligence: site identity, WordPress runtime, active theme, and connector context.
+- Content Intelligence: content types, taxonomies, registered block and pattern summaries, and generation constraints.
+- Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
+- Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.
+
+Block and pattern inspection helpers also live in this layer so assistant
+clients can understand the site's editable content surface without administrators
+having to enable a separate user-managed ability. All intelligence guidance must
+continue to state that assistants should never use the Custom HTML block
+(`core/html`) for generated content.
 
 ## WordPress Abilities Bridge
 
@@ -30,11 +51,11 @@ abilities may modify data even when their names are not obvious.
 
 ## Content Surface
 
-Aculect AI Companion's built-in MCP tools cover posts/pages/custom post types, taxonomies,
+Aculect AI Companion's built-in user-managed MCP abilities cover posts/pages/custom post types, taxonomies,
 comments, media library listing/upload, safe site settings, site information,
-site health summaries, and plugin/theme inventory. New tool groups should stay
-deterministic, paginated where applicable, and capability-checked at execution
-time.
+site health summaries, and plugin/theme inventory. New user-managed ability groups
+should stay deterministic, paginated where applicable, and capability-checked at
+execution time.
 
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The

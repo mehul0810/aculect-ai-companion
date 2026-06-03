@@ -71,13 +71,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		);
 
 		self::assertContains( 'Content', $groups );
-			self::assertContains( 'Content Groups', $groups );
-			self::assertContains( 'Brand', $groups );
-			self::assertContains( 'Comments', $groups );
+		self::assertContains( 'Content Groups', $groups );
+		self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
-		self::assertContains( 'Block Knowledge', $groups );
+		self::assertNotContains( 'Brand', $groups );
+		self::assertNotContains( 'Block Knowledge', $groups );
 
 		$by_id = array_column( $definitions, null, 'id' );
 
@@ -100,7 +100,6 @@ final class AbilitiesRegistryTest extends TestCase {
 				'comments.create_item',
 				'comments.update_item',
 				'comments.bulk_update',
-				'brand.get_profile',
 				'media.upload_item',
 				'media.get_item',
 				'media.update_item',
@@ -108,11 +107,6 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.get_health',
 				'site.list_plugins',
 				'site.list_themes',
-				'blocks.list_available',
-				'blocks.get_info',
-				'patterns.list_available',
-				'patterns.get_info',
-				'content.validate_blocks',
 			) as $ability_id
 		) {
 			self::assertArrayHasKey( $ability_id, $definitions );
@@ -123,8 +117,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
-		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'blocks.list_available' ) );
-		self::assertTrue( $this->registry->is_read_only( 'content_validate_blocks' ) );
+		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
+		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
+		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );
+		self::assertArrayNotHasKey( 'content.validate_blocks', $definitions );
 	}
 
 	public function test_registered_module_keeps_metadata_schema_and_handler_together(): void {

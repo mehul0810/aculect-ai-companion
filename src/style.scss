@@ -160,12 +160,13 @@
 }
 
 .aculect-ai-companion-admin-notices {
-	margin: 16px 0 0;
-	padding: 0 44px;
+	margin: 0;
+	padding: 16px 44px 0;
 }
 
 .aculect-ai-companion-admin-notices:empty {
 	display: none;
+	padding: 0;
 }
 
 .aculect-ai-companion-admin-notices .notice,
@@ -1207,6 +1208,16 @@
 
 .aculect-ai-companion-data-view--connections
 .dataviews-view-table
+td:first-child
+.dataviews-view-table__cell-content-wrapper {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	justify-content: flex-start;
+}
+
+.aculect-ai-companion-data-view--connections
+.dataviews-view-table
 td:last-child
 .dataviews-view-table__cell-content-wrapper {
 	width: 100%;
@@ -1238,7 +1249,8 @@ td:last-child
 .aculect-ai-companion-connection-assistant-cell {
 	display: flex;
 	align-items: center;
-	justify-content: center;
+	justify-content: flex-start;
+	width: 100%;
 	min-width: 0;
 }
 
@@ -2166,6 +2178,23 @@ td:last-child
 
 .aculect-ai-companion-ability-toggle-cell {
 	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-width: 52px;
+}
+
+.aculect-ai-companion-ability-toggle-cell .components-base-control__field {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-data-view--abilities
+.dataviews-view-table
+td:first-child
+.dataviews-view-table__cell-content-wrapper {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
 	justify-content: center;
 }
 
@@ -2489,7 +2518,7 @@ td:last-child
 
 .aculect-ai-companion-advanced-layout {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+	grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
 	gap: 18px;
 	align-items: start;
 	min-width: 0;

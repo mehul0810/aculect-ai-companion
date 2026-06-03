@@ -2356,7 +2356,7 @@ function ConnectionsDataViews( {
 				assistant: {
 					width: 120,
 					maxWidth: 120,
-					align: 'center',
+					align: 'left',
 				},
 				user: {
 					width: '18%',
@@ -2948,38 +2948,6 @@ function AdvancedDashboard( {
 							</Button>
 						</AdvancedSettingRow>
 					</AdvancedSection>
-				</div>
-
-				<aside className="aculect-ai-companion-advanced-sidebar">
-					<AdvancedSection
-						icon={ cog }
-						title="Developer"
-						description="Diagnostics and troubleshooting controls."
-					>
-						<AdvancedSettingRow
-							title="Diagnostic logging"
-							description={ `Stores sanitized OAuth and MCP lifecycle events for ${ retentionDays } days.` }
-							status={ loggingEnabled ? 'Enabled' : 'Disabled' }
-							statusTone={ loggingEnabled ? 'is-active' : '' }
-						>
-							<ToggleControl
-								label="Enable diagnostic logging"
-								checked={ loggingEnabled }
-								onChange={ ( checked ) =>
-									onLoggingChange( Boolean( checked ) )
-								}
-							/>
-							<Button
-								href={ diagnosticsUrl }
-								variant="secondary"
-								onClick={ ( event ) =>
-									maybeSelectTab( event, 'diagnostics' )
-								}
-							>
-								Open Diagnostics
-							</Button>
-						</AdvancedSettingRow>
-					</AdvancedSection>
 
 					<AdvancedSection
 						icon={ settings }
@@ -3042,6 +3010,38 @@ function AdvancedDashboard( {
 								confirmTitle="Reset settings"
 								confirmMessage="Reset Aculect AI Companion settings to defaults? Connections, OAuth material, logs, and activity history will not be deleted."
 							/>
+						</AdvancedSettingRow>
+					</AdvancedSection>
+				</div>
+
+				<aside className="aculect-ai-companion-advanced-sidebar">
+					<AdvancedSection
+						icon={ cog }
+						title="Developer"
+						description="Diagnostics and troubleshooting controls."
+					>
+						<AdvancedSettingRow
+							title="Diagnostic logging"
+							description={ `Stores sanitized OAuth and MCP lifecycle events for ${ retentionDays } days.` }
+							status={ loggingEnabled ? 'Enabled' : 'Disabled' }
+							statusTone={ loggingEnabled ? 'is-active' : '' }
+						>
+							<ToggleControl
+								label="Enable diagnostic logging"
+								checked={ loggingEnabled }
+								onChange={ ( checked ) =>
+									onLoggingChange( Boolean( checked ) )
+								}
+							/>
+							<Button
+								href={ diagnosticsUrl }
+								variant="secondary"
+								onClick={ ( event ) =>
+									maybeSelectTab( event, 'diagnostics' )
+								}
+							>
+								Open Diagnostics
+							</Button>
 						</AdvancedSettingRow>
 					</AdvancedSection>
 				</aside>
@@ -3494,8 +3494,8 @@ function AbilityDashboard( {
 			density: 'balanced',
 			styles: {
 				enabled_toggle: {
-					width: 64,
-					maxWidth: 64,
+					width: 92,
+					maxWidth: 92,
 					align: 'center',
 				},
 				ability: {

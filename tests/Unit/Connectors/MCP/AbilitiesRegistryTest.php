@@ -77,6 +77,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
+		self::assertContains( 'Block Knowledge', $groups );
 
 		$by_id = array_column( $definitions, null, 'id' );
 
@@ -107,6 +108,11 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.get_health',
 				'site.list_plugins',
 				'site.list_themes',
+				'blocks.list_available',
+				'blocks.get_info',
+				'patterns.list_available',
+				'patterns.get_info',
+				'content.validate_blocks',
 			) as $ability_id
 		) {
 			self::assertArrayHasKey( $ability_id, $definitions );
@@ -117,6 +123,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'blocks.list_available' ) );
+		self::assertTrue( $this->registry->is_read_only( 'content_validate_blocks' ) );
 	}
 
 	public function test_registered_module_keeps_metadata_schema_and_handler_together(): void {
@@ -143,6 +151,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'dry_run', $schema['properties'] );
 		self::assertArrayHasKey( 'confirmation_token', $schema['properties'] );
 		self::assertArrayHasKey( 'title', $schema['properties'] );
+		self::assertStringContainsString( 'never use the Custom HTML block', $schema['properties']['content']['description'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_item' ) );
 		self::assertFalse( $this->registry->is_read_only( 'content_update_item' ) );
 	}

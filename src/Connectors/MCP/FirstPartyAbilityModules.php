@@ -75,6 +75,124 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new BrandProfile() )->public_profile()
 			),
 			$this->module(
+				'blocks.list_available',
+				'List Available Blocks',
+				'List registered WordPress blocks with usage guidance. Never use the Custom HTML block (core/html).',
+				'Block Knowledge',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'search'    => array( 'type' => 'string' ),
+						'namespace' => array(
+							'type'        => 'string',
+							'description' => 'Optional block namespace such as core, woocommerce, or a plugin namespace.',
+						),
+						'category'  => array( 'type' => 'string' ),
+						'inserter'  => array(
+							'type'        => 'boolean',
+							'description' => 'Filter by whether the block is intended to appear in inserter-style selection flows.',
+						),
+						'page'      => array( 'type' => 'integer' ),
+						'per_page'  => array( 'type' => 'integer' ),
+						'context'   => array(
+							'type'        => 'string',
+							'enum'        => array( 'compact', 'full' ),
+							'description' => 'Use compact for browsing or full to include attribute/support keys. Defaults to compact.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new BlockKnowledgeAbilities() )->list_blocks( $args )
+			),
+			$this->module(
+				'blocks.get_info',
+				'Inspect a Block',
+				'Read detailed guidance for one registered WordPress block. Never use the Custom HTML block (core/html).',
+				'Block Knowledge',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'name' => array(
+							'type'        => 'string',
+							'description' => 'Registered block name such as core/paragraph.',
+						),
+					),
+					array( 'name' )
+				),
+				static fn ( array $args ): array => ( new BlockKnowledgeAbilities() )->get_block_info( $args )
+			),
+			$this->module(
+				'patterns.list_available',
+				'List Available Patterns',
+				'List registered WordPress block patterns with usage guidance. Avoid patterns that contain Custom HTML blocks.',
+				'Block Knowledge',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'search'     => array( 'type' => 'string' ),
+						'category'   => array( 'type' => 'string' ),
+						'block_type' => array(
+							'type'        => 'string',
+							'description' => 'Optional related block type such as core/post-content or core/query.',
+						),
+						'inserter'   => array(
+							'type'        => 'boolean',
+							'description' => 'Filter by whether the pattern is intended to appear in inserter-style selection flows.',
+						),
+						'page'       => array( 'type' => 'integer' ),
+						'per_page'   => array( 'type' => 'integer' ),
+						'context'    => array(
+							'type'        => 'string',
+							'enum'        => array( 'compact', 'full' ),
+							'description' => 'Use compact for browsing or full to include bounded content previews. Defaults to compact.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new BlockKnowledgeAbilities() )->list_patterns( $args )
+			),
+			$this->module(
+				'patterns.get_info',
+				'Inspect a Pattern',
+				'Read detailed guidance for one registered WordPress block pattern and optionally include bounded block markup.',
+				'Block Knowledge',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'name'            => array(
+							'type'        => 'string',
+							'description' => 'Registered pattern name such as theme/hero.',
+						),
+						'include_content' => array(
+							'type'        => 'boolean',
+							'description' => 'When true, include bounded pattern block markup. Use only when the exact pattern markup is needed.',
+						),
+					),
+					array( 'name' )
+				),
+				static fn ( array $args ): array => ( new BlockKnowledgeAbilities() )->get_pattern_info( $args )
+			),
+			$this->module(
+				'content.validate_blocks',
+				'Validate Block Content',
+				'Validate serialized block content before writing it and reject Custom HTML block usage.',
+				'Block Knowledge',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'content' => array(
+							'type'        => 'string',
+							'description' => 'Serialized WordPress block content to validate before create or update operations.',
+						),
+					),
+					array( 'content' )
+				),
+				static fn ( array $args ): array => ( new BlockKnowledgeAbilities() )->validate_block_content( $args )
+			),
+			$this->module(
 				'content.create_item',
 				'Create a Post or Page',
 				'Create a post, page, or custom content item.',
@@ -85,7 +203,10 @@ final class FirstPartyAbilityModules {
 					array(
 						'post_type'      => array( 'type' => 'string' ),
 						'title'          => array( 'type' => 'string' ),
-						'content'        => array( 'type' => 'string' ),
+						'content'        => array(
+							'type'        => 'string',
+							'description' => 'Serialized WordPress block content. Use registered blocks and patterns, and never use the Custom HTML block (core/html).',
+						),
 						'excerpt'        => array( 'type' => 'string' ),
 						'slug'           => array( 'type' => 'string' ),
 						'status'         => array( 'type' => 'string' ),
@@ -114,7 +235,10 @@ final class FirstPartyAbilityModules {
 					array(
 						'id'                   => array( 'type' => 'integer' ),
 						'title'                => array( 'type' => 'string' ),
-						'content'              => array( 'type' => 'string' ),
+						'content'              => array(
+							'type'        => 'string',
+							'description' => 'Serialized WordPress block content. Use registered blocks and patterns, and never use the Custom HTML block (core/html).',
+						),
 						'excerpt'              => array( 'type' => 'string' ),
 						'slug'                 => array( 'type' => 'string' ),
 						'status'               => array( 'type' => 'string' ),

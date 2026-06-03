@@ -60,6 +60,8 @@ $GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'author'        => array( 'name' => 'Author' ),
 );
 $GLOBALS['aculect_ai_companion_test_users']       = array();
+$GLOBALS['aculect_ai_companion_test_blocks']      = array();
+$GLOBALS['aculect_ai_companion_test_patterns']    = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -755,6 +757,29 @@ if ( ! function_exists( 'wp_unslash' ) ) {
 		return is_array( $value ) ? array_map( 'wp_unslash', $value ) : stripslashes( (string) $value );
 	}
 }
+
+if ( ! function_exists( 'parse_blocks' ) ) {
+	/**
+	 * Parse serialized block comments well enough for unit tests.
+	 *
+	 * @param string $content Serialized block content.
+	 * @return list<array<string, mixed>>
+	 */
+	function parse_blocks( string $content ): array {
+		preg_match_all( '/<!--\s+wp:([A-Za-z0-9_\/.-]+)(?:\s+[^>]*)?-->/i', $content, $matches );
+
+		$blocks = array();
+		foreach ( $matches[1] ?? array() as $name ) {
+			$name     = str_contains( (string) $name, '/' ) ? (string) $name : 'core/' . (string) $name;
+			$blocks[] = array(
+				'blockName'   => $name,
+				'innerBlocks' => array(),
+			);
+		}
+
+		return $blocks;
+	}
+}
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames
 
 if ( ! class_exists( 'WP_REST_Server' ) ) {
@@ -767,6 +792,116 @@ if ( ! class_exists( 'WP_REST_Server' ) ) {
 		public const EDITABLE   = 'POST, PUT, PATCH';
 		public const DELETABLE  = 'DELETE';
 		public const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+	}
+}
+
+if ( ! class_exists( 'WP_Block_Type_Registry' ) ) {
+	/**
+	 * Minimal block type registry test double.
+	 */
+	class WP_Block_Type_Registry {
+
+		private static ?self $instance = null;
+
+		/**
+		 * Return the singleton registry.
+		 */
+		public static function get_instance(): self {
+			if ( null === self::$instance ) {
+				self::$instance = new self();
+			}
+
+			return self::$instance;
+		}
+
+		/**
+		 * Register a test block.
+		 *
+		 * @param string              $name Block name.
+		 * @param array<string,mixed> $args Block metadata.
+		 */
+		public function register( string $name, array|object $args = array() ): object {
+			$block       = is_object( $args ) ? $args : (object) $args;
+			$block->name = $name;
+
+			$GLOBALS['aculect_ai_companion_test_blocks'][ $name ] = $block;
+
+			return $block;
+		}
+
+		/**
+		 * Return all registered test blocks.
+		 *
+		 * @return array<string, object>
+		 */
+		public function get_all_registered(): array {
+			return $GLOBALS['aculect_ai_companion_test_blocks'];
+		}
+
+		/**
+		 * Return one registered test block.
+		 */
+		public function get_registered( string $name ): ?object {
+			return $GLOBALS['aculect_ai_companion_test_blocks'][ $name ] ?? null;
+		}
+
+		/**
+		 * Reset registered test blocks.
+		 */
+		public function unregister_all(): void {
+			$GLOBALS['aculect_ai_companion_test_blocks'] = array();
+		}
+	}
+}
+
+if ( ! class_exists( 'WP_Block_Patterns_Registry' ) ) {
+	/**
+	 * Minimal block patterns registry test double.
+	 */
+	class WP_Block_Patterns_Registry {
+
+		private static ?self $instance = null;
+
+		/**
+		 * Return the singleton registry.
+		 */
+		public static function get_instance(): self {
+			if ( null === self::$instance ) {
+				self::$instance = new self();
+			}
+
+			return self::$instance;
+		}
+
+		/**
+		 * Register a test pattern.
+		 *
+		 * @param string              $name    Pattern name.
+		 * @param array<string,mixed> $pattern Pattern metadata.
+		 */
+		public function register( string $name, array $pattern ): bool {
+			$pattern['name'] = $pattern['name'] ?? $name;
+
+			$GLOBALS['aculect_ai_companion_test_patterns'][ $name ] = $pattern;
+
+			return true;
+		}
+
+		/**
+		 * Return all registered test patterns.
+		 *
+		 * @return array<string, array<string, mixed>>
+		 */
+		public function get_all_registered(): array {
+			return $GLOBALS['aculect_ai_companion_test_patterns'];
+		}
+
+		/**
+		 * Reset registered test patterns.
+		 */
+		public function unregister_all(): void {
+			$GLOBALS['aculect_ai_companion_test_patterns'] = array();
+		}
 	}
 }
 

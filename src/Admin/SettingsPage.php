@@ -167,9 +167,11 @@ final class SettingsPage {
 			: $this->normalize_payload_tab( $requested_tab );
 		$access_tokens        = new AccessTokenRepository();
 		$ability_registry     = new AbilitiesRegistry();
-		$active_session_count = $access_tokens->active_token_count();
+		$sample_data          = new LocalSampleData();
+		$real_session_count   = $access_tokens->active_token_count();
+		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
 
-		return array_merge(
+		$payload = array_merge(
 			$this->base_payload( $payload_tab, $active_session_count ),
 			$this->connection_payload( $payload_tab, $access_tokens ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
@@ -178,6 +180,8 @@ final class SettingsPage {
 				'actions' => $this->actions_payload(),
 			)
 		);
+
+		return $sample_data->apply( $payload, $payload_tab, $real_session_count );
 	}
 
 	/**

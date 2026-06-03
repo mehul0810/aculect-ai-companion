@@ -4133,6 +4133,13 @@ function SettingsApp() {
 		data.diagnostics && typeof data.diagnostics === 'object'
 			? data.diagnostics
 			: {};
+	const sampleData =
+		data.sampleData && typeof data.sampleData === 'object'
+			? data.sampleData
+			: {};
+	const sampleDataTabs = Array.isArray( sampleData.tabs )
+		? sampleData.tabs
+		: EMPTY_ARRAY;
 	const activeSessionCount = Number( data.activeSessionCount || 0 );
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
@@ -4323,6 +4330,9 @@ function SettingsApp() {
 	const activeTabName = useActiveTabName( tabs );
 	const activeTab =
 		tabs.find( ( tab ) => tab.name === activeTabName ) || tabs[ 0 ];
+	const sampleDataActive = Boolean(
+		sampleData.enabled && sampleDataTabs.includes( activeTab.name )
+	);
 	const hydratedTabKey = Array.isArray( data.hydratedTabs )
 		? data.hydratedTabs.join( '|' )
 		: '';
@@ -4523,6 +4533,12 @@ function SettingsApp() {
 			{ copied && (
 				<Notice status="success" isDismissible={ false }>
 					{ copied }
+				</Notice>
+			) }
+			{ sampleDataActive && (
+				<Notice status="info" isDismissible={ false }>
+					{ sampleData.message ||
+						'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.' }
 				</Notice>
 			) }
 			{ data.status === 'abilities_saved' && (

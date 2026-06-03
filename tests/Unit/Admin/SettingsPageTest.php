@@ -41,6 +41,7 @@ final class SettingsPageTest extends TestCase {
 
 		$GLOBALS['wpdb']                                      = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'production';
 		$GLOBALS['aculect_ai_companion_test_admin_pages']     = array(
 			'menu'    => array(),
 			'options' => array(),
@@ -241,6 +242,91 @@ final class SettingsPageTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 
+	public function test_production_payload_does_not_apply_local_samples(): void {
+		$this->wpdb->return_empty_results = true;
+		$_GET['tab']                      = 'connections';
+
+		$payload = $this->settings_payload();
+
+		self::assertArrayNotHasKey( 'sampleData', $payload );
+		self::assertSame( 0, $payload['activeSessionCount'] );
+		self::assertFalse( $payload['isConnected'] );
+		self::assertSame( array(), $payload['sessions'] );
+		self::assertSame( array(), $payload['revokedSessions'] );
+	}
+
+	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$this->wpdb->return_empty_results                      = true;
+		$_GET['tab']                                           = 'connections';
+
+		$payload = $this->settings_payload();
+
+		self::assertSame( 3, $payload['activeSessionCount'] );
+		self::assertTrue( $payload['isConnected'] );
+		self::assertCount( 3, $payload['sessions'] );
+		self::assertCount( 1, $payload['revokedSessions'] );
+		self::assertSame( 'ChatGPT Local QA', $payload['sessions'][0]['client_name'] );
+		self::assertSame( 'revoked', $payload['revokedSessions'][0]['status'] );
+		self::assertSame( array( 'connections' ), $payload['sampleData']['appliedTabs'] );
+	}
+
+	public function test_local_abilities_payload_reports_sample_connection_count_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$this->wpdb->return_empty_results                      = true;
+		$_GET['tab']                                           = 'abilities';
+
+		$payload = $this->settings_payload();
+
+		self::assertSame( 'abilities', $payload['payloadTab'] );
+		self::assertSame( 3, $payload['activeSessionCount'] );
+		self::assertTrue( $payload['isConnected'] );
+		self::assertContains( 'abilities', $payload['sampleData']['appliedTabs'] );
+		self::assertNotEmpty( $payload['abilities'] );
+	}
+
+	public function test_local_activity_payload_applies_sample_rows_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$this->wpdb->return_empty_results                      = true;
+		$_GET['tab']                                           = 'activity';
+
+		$payload = $this->settings_payload();
+
+		self::assertSame( 5, $payload['activity']['total'] );
+		self::assertCount( 5, $payload['activity']['items'] );
+		self::assertSame( 4, $payload['activity']['summary']['successes'] );
+		self::assertSame( 1, $payload['activity']['summary']['failures'] );
+		self::assertSame( 'content.update_item', $payload['activity']['items'][0]['action'] );
+		self::assertSame( array( 'activity' ), $payload['sampleData']['appliedTabs'] );
+	}
+
+	public function test_local_logs_payload_applies_sample_rows_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$this->wpdb->return_empty_results                      = true;
+		$_GET['tab']                                           = 'logs';
+
+		$payload = $this->settings_payload();
+
+		self::assertTrue( $payload['diagnostics']['loggingEnabled'] );
+		self::assertSame( 4, $payload['diagnostics']['logs']['total'] );
+		self::assertCount( 4, $payload['diagnostics']['logs']['items'] );
+		self::assertSame( 'oauth.registered', $payload['diagnostics']['logs']['items'][0]['event'] );
+		self::assertSame( array( 'logs' ), $payload['sampleData']['appliedTabs'] );
+	}
+
+	public function test_local_diagnostics_payload_applies_sample_checks_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$this->wpdb->return_empty_results                      = true;
+		$_GET['tab']                                           = 'diagnostics';
+
+		$payload = $this->settings_payload();
+
+		self::assertSame( 'warn', $payload['connectionHealth']['summary'] );
+		self::assertCount( 5, $payload['connectionHealth']['items'] );
+		self::assertSame( 'local', $payload['connectionHealth']['system']['environment_type'] );
+		self::assertSame( array( 'diagnostics' ), $payload['sampleData']['appliedTabs'] );
+	}
+
 	/**
 	 * Invoke the private settings payload builder.
 	 *
@@ -274,6 +360,8 @@ final class FakeSettingsPageWpdb {
 
 	public string $prefix = 'wp_';
 
+	public bool $return_empty_results = false;
+
 	/**
 	 * @var string[]
 	 */
@@ -301,14 +389,26 @@ final class FakeSettingsPageWpdb {
 		$this->queries[] = $query;
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_activity' ) ) {
+			if ( $this->return_empty_results ) {
+				return 0;
+			}
+
 			return 7;
 		}
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_logs' ) ) {
+			if ( $this->return_empty_results ) {
+				return 0;
+			}
+
 			return 3;
 		}
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_access_tokens' ) ) {
+			if ( $this->return_empty_results ) {
+				return 0;
+			}
+
 			return 2;
 		}
 
@@ -328,6 +428,10 @@ final class FakeSettingsPageWpdb {
 		$this->queries[] = $query;
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_activity' ) ) {
+			if ( $this->return_empty_results ) {
+				return null;
+			}
+
 			return array(
 				'total'           => '7',
 				'successes'       => '6',
@@ -356,6 +460,10 @@ final class FakeSettingsPageWpdb {
 		$this->queries[] = $query;
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_activity' ) ) {
+			if ( $this->return_empty_results ) {
+				return array();
+			}
+
 			return array(
 				array(
 					'id'          => '11',
@@ -376,6 +484,10 @@ final class FakeSettingsPageWpdb {
 		}
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_logs' ) ) {
+			if ( $this->return_empty_results ) {
+				return array();
+			}
+
 			return array(
 				array(
 					'id'             => '4',

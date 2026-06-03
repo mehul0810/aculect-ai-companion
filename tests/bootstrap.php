@@ -53,6 +53,7 @@ $GLOBALS['aculect_ai_companion_test_hooks']       = array(
 	'filters' => array(),
 );
 $GLOBALS['aculect_ai_companion_test_rest_routes'] = array();
+$GLOBALS['aculect_ai_companion_test_environment_type'] = 'production';
 $GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'administrator' => array( 'name' => 'Administrator' ),
 	'editor'        => array( 'name' => 'Editor' ),
@@ -594,7 +595,7 @@ if ( ! function_exists( 'wp_get_environment_type' ) ) {
 	 * Return a deterministic test environment type.
 	 */
 	function wp_get_environment_type(): string {
-		return 'local';
+		return (string) ( $GLOBALS['aculect_ai_companion_test_environment_type'] ?? 'production' );
 	}
 }
 

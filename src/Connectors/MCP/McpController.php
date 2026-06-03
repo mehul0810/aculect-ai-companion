@@ -223,7 +223,7 @@ final class McpController {
 					&& $safety->requires_confirmation( $tool, $args )
 					&& ! $safety->consume_confirmation_token( $tool, $args, $auth );
 				if ( $is_dry_run ) {
-					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool );
+					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
 					if ( ! isset( $result['error'] ) ) {
 						if ( $write_permission_unblocked ) {
 							$result = $this->write_permission_preview_payload( $result );
@@ -234,14 +234,14 @@ final class McpController {
 				} elseif ( $needs_confirmation_gate ) {
 					$preview_args             = $safety->strip_control_args( $args );
 					$preview_args['dry_run']  = true;
-					$preview                  = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool );
+					$preview                  = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
 					$is_confirmation_required = ! isset( $preview['error'] );
 					$result                   = isset( $preview['error'] )
 						? $preview
 						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
 				} else {
 					$args   = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool );
+					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
 				}
 
 				if ( ! $is_dry_run && ! $is_confirmation_required && $is_write_tool ) {
@@ -365,10 +365,26 @@ final class McpController {
 	 * @param AbilitiesRegistry    $registry             User-managed ability registry.
 	 * @param IntelligenceRegistry $intelligence         Internal intelligence registry.
 	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
+	 * @param array<string, mixed> $auth                 OAuth token context.
 	 * @return array<string, mixed>
 	 */
-	private function execute_tool( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool ): array {
-		return $is_intelligence_tool ? $intelligence->execute( $tool, $args ) : $registry->execute( $tool, $args );
+	private function execute_tool( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth = array() ): array {
+		return $is_intelligence_tool ? $intelligence->execute( $tool, $args, $this->intelligence_source_from_auth( $auth ) ) : $registry->execute( $tool, $args );
+	}
+
+	/**
+	 * Return bounded source metadata for intelligence feedback suggestions.
+	 *
+	 * @param array<string, mixed> $auth OAuth token context.
+	 * @return array<string, mixed>
+	 */
+	private function intelligence_source_from_auth( array $auth ): array {
+		return array(
+			'provider'    => (string) ( $auth['provider'] ?? 'mcp' ),
+			'client_id'   => (string) ( $auth['client_id'] ?? '' ),
+			'client_name' => (string) ( $auth['client_name'] ?? '' ),
+			'user_id'     => (int) ( $auth['user_id'] ?? 0 ),
+		);
 	}
 
 	/**

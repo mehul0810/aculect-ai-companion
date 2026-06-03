@@ -26,14 +26,15 @@ final class IntelligenceContext {
 	 */
 	public function site(): array {
 		return array(
-			'type'        => 'site',
-			'label'       => 'Site Intelligence',
-			'description' => 'Stable WordPress site, theme, locale, and connector context.',
-			'site'        => $this->site_identity(),
-			'wordpress'   => $this->wordpress_context(),
-			'theme'       => $this->active_theme(),
-			'connector'   => $this->connector_context(),
-			'guidance'    => $this->shared_generation_guidance(),
+			'type'              => 'site',
+			'label'             => 'Site Intelligence',
+			'description'       => 'Stable WordPress site, theme, locale, and connector context.',
+			'site'              => $this->site_identity(),
+			'wordpress'         => $this->wordpress_context(),
+			'theme'             => $this->active_theme(),
+			'connector'         => $this->connector_context(),
+			'guidance'          => $this->shared_generation_guidance(),
+			'learning_protocol' => $this->learning_protocol(),
 		);
 	}
 
@@ -44,14 +45,15 @@ final class IntelligenceContext {
 	 */
 	public function content(): array {
 		return array(
-			'type'            => 'content',
-			'label'           => 'Content Intelligence',
-			'description'     => 'Readable content types, taxonomies, block guidance, and content-generation constraints.',
-			'post_types'      => $this->post_types(),
-			'taxonomies'      => $this->taxonomies(),
-			'block_summary'   => $this->block_collection_summary(),
-			'pattern_summary' => $this->pattern_collection_summary(),
-			'guidance'        => $this->shared_generation_guidance(),
+			'type'              => 'content',
+			'label'             => 'Content Intelligence',
+			'description'       => 'Readable content types, taxonomies, block guidance, and content-generation constraints.',
+			'post_types'        => $this->post_types(),
+			'taxonomies'        => $this->taxonomies(),
+			'block_summary'     => $this->block_collection_summary(),
+			'pattern_summary'   => $this->pattern_collection_summary(),
+			'guidance'          => $this->shared_generation_guidance(),
+			'learning_protocol' => $this->learning_protocol(),
 		);
 	}
 
@@ -62,24 +64,25 @@ final class IntelligenceContext {
 	 */
 	public function developer(): array {
 		return array(
-			'type'             => 'developer',
-			'label'            => 'Developer Intelligence',
-			'description'      => 'Safe implementation context for understanding the WordPress runtime and available extension surfaces.',
-			'wordpress'        => $this->wordpress_context(),
-			'theme'            => $this->active_theme(),
-			'features'         => array(
+			'type'              => 'developer',
+			'label'             => 'Developer Intelligence',
+			'description'       => 'Safe implementation context for understanding the WordPress runtime and available extension surfaces.',
+			'wordpress'         => $this->wordpress_context(),
+			'theme'             => $this->active_theme(),
+			'features'          => array(
 				'rest_api_url'                 => $this->function_exists( 'rest_url' ) ? rest_url() : '',
 				'block_registry_available'     => $this->block_registry_available(),
 				'pattern_registry_available'   => $this->pattern_registry_available(),
 				'wordpress_abilities_api'      => $this->function_exists( 'wp_get_abilities' ),
 				'custom_html_block_disallowed' => true,
 			),
-			'content_contract' => array(
+			'content_contract'  => array(
 				'preferred_format' => 'Serialized WordPress block markup using registered blocks and patterns.',
 				'never_use'        => array( self::CUSTOM_HTML_BLOCK_NAME ),
 				'validation_tool'  => ( new AbilitiesRegistry() )->tool_name( 'intelligence.content.validate_blocks' ),
 			),
-			'connector'        => $this->connector_context(),
+			'connector'         => $this->connector_context(),
+			'learning_protocol' => $this->learning_protocol(),
 		);
 	}
 
@@ -90,15 +93,33 @@ final class IntelligenceContext {
 	 */
 	public function brand(): array {
 		return array(
-			'type'        => 'brand',
-			'label'       => 'Brand Intelligence',
-			'description' => 'Safe brand identity, visual, and editorial guidance for future assistant work.',
-			'profile'     => ( new BrandProfile() )->public_profile(),
-			'guidance'    => array(
+			'type'              => 'brand',
+			'label'             => 'Brand Intelligence',
+			'description'       => 'Safe brand identity, visual, and editorial guidance for future assistant work.',
+			'profile'           => ( new BrandProfile() )->public_profile(),
+			'guidance'          => array(
 				'use_saved_values_first' => true,
 				'respect_empty_fields'   => 'When a field is empty, infer conservatively from the existing site instead of inventing a new brand direction.',
 				'never_use'              => array( self::CUSTOM_HTML_BLOCK_NAME ),
 			),
+			'learning_protocol' => $this->learning_protocol(),
+		);
+	}
+
+	/**
+	 * Return the review-first learning protocol for MCP clients.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function learning_protocol(): array {
+		return array(
+			'feedback_tool'         => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
+			'status'                => 'suggestion_only',
+			'admin_review_required' => true,
+			'direct_memory_updates' => false,
+			'domains'               => array( 'site', 'content', 'developer', 'brand' ),
+			'instruction'           => 'If this intelligence is incomplete or causes poor results, submit a bounded learning suggestion. Suggestions are queued for admin review and never update site, content, developer, or brand memory directly.',
+			'do_not_include'        => array( 'secrets', 'credentials', 'personal data', 'raw tool arguments' ),
 		);
 	}
 

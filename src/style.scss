@@ -2719,6 +2719,226 @@ td:last-child
 	word-break: break-word;
 }
 
+.aculect-ai-companion-learning-dashboard {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-toolbar {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 16px;
+	align-items: center;
+}
+
+.aculect-ai-companion-learning-toolbar h2 {
+	margin: 0;
+	font-size: 22px;
+	line-height: 1.25;
+}
+
+.aculect-ai-companion-learning-toolbar p {
+	margin: 5px 0 0;
+	color: var(--aculect-ai-companion-muted);
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-learning-summary {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(88px, 1fr));
+	gap: 8px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-summary span {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-learning-summary strong {
+	color: var(--aculect-ai-companion-ink);
+	font-size: 18px;
+	line-height: 1.1;
+}
+
+.aculect-ai-companion-learning-list {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-card {
+	display: grid;
+	gap: 14px;
+	min-width: 0;
+	padding: 16px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.aculect-ai-companion-learning-card__header,
+.aculect-ai-companion-learning-card__footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-card__badges,
+.aculect-ai-companion-learning-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-card__date {
+	flex-shrink: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-learning-card__body {
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-card__body h3 {
+	margin: 0 0 12px;
+	font-size: 17px;
+	line-height: 1.35;
+}
+
+.aculect-ai-companion-learning-pill {
+	display: inline-flex;
+	align-items: center;
+	min-height: 24px;
+	padding: 3px 8px;
+	border-radius: 999px;
+	background: #f1f5f9;
+	color: #475569;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.aculect-ai-companion-learning-pill.is-site {
+	background: #eef6ff;
+	color: #1d4ed8;
+}
+
+.aculect-ai-companion-learning-pill.is-content {
+	background: #ecfdf5;
+	color: #047857;
+}
+
+.aculect-ai-companion-learning-pill.is-developer {
+	background: #f5f3ff;
+	color: #6d28d9;
+}
+
+.aculect-ai-companion-learning-pill.is-brand {
+	background: #fff7ed;
+	color: #c2410c;
+}
+
+.aculect-ai-companion-learning-pill.is-pending {
+	background: #eff6ff;
+	color: var(--aculect-ai-companion-primary);
+}
+
+.aculect-ai-companion-learning-pill.is-approved {
+	background: #edfaef;
+	color: var(--aculect-ai-companion-green);
+}
+
+.aculect-ai-companion-learning-pill.is-dismissed {
+	background: #f8fafc;
+	color: var(--aculect-ai-companion-muted);
+}
+
+.aculect-ai-companion-learning-pill.is-confidence {
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-muted);
+}
+
+.aculect-ai-companion-learning-details {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+}
+
+.aculect-ai-companion-learning-details div {
+	display: grid;
+	gap: 5px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-learning-details dt {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-learning-details dd {
+	margin: 0;
+	color: var(--aculect-ai-companion-ink);
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+}
+
+.aculect-ai-companion-learning-source {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-learning-source code {
+	padding: 2px 6px;
+	border-radius: 999px;
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-muted);
+}
+
+.aculect-ai-companion-learning-actions .aculect-ai-companion-action-form {
+	width: auto;
+	margin: 0;
+}
+
+.aculect-ai-companion-learning-actions .components-button {
+	gap: 6px;
+	min-height: 34px;
+}
+
+.aculect-ai-companion-learning-edit-form {
+	display: grid;
+	gap: 14px;
+	min-width: min(560px, 100%);
+}
+
+.aculect-ai-companion-learning-edit-form .components-base-control {
+	margin-bottom: 0;
+}
+
 .aculect-ai-companion-setting-row {
 	padding: 18px;
 	border: 1px solid var(--aculect-ai-companion-border);
@@ -3417,6 +3637,7 @@ td:last-child
 	.aculect-ai-companion-connections-layout,
 	.aculect-ai-companion-diagnostics-layout,
 	.aculect-ai-companion-feature-grid,
+	.aculect-ai-companion-learning-toolbar,
 	.aculect-ai-companion-overview-hero,
 	.aculect-ai-companion-setting-summary,
 	.aculect-ai-companion-setup-method.has-copy-fields,
@@ -3461,7 +3682,9 @@ td:last-child
 	.aculect-ai-companion-log-toolbar,
 	.aculect-ai-companion-log-pagination,
 	.aculect-ai-companion-health-toolbar,
-	.aculect-ai-companion-activity-table-toolbar {
+	.aculect-ai-companion-activity-table-toolbar,
+	.aculect-ai-companion-learning-card__header,
+	.aculect-ai-companion-learning-card__footer {
 		align-items: flex-start;
 		flex-direction: column;
 	}
@@ -3550,6 +3773,10 @@ td:last-child
 
 	.aculect-ai-companion-header-divider {
 		display: none;
+	}
+
+	.aculect-ai-companion-learning-summary {
+		grid-template-columns: 1fr;
 	}
 
 	.aculect-ai-companion-tab-loading {

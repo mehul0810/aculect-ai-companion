@@ -23,6 +23,7 @@ use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
+use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -279,14 +280,18 @@ final class SettingsPage {
 		$brand_profile    = 'brand' === $payload_tab
 			? ( new BrandProfile() )->admin_payload()
 			: array();
+		$learning         = 'learning' === $payload_tab
+			? ( new LearningSuggestionRepository() )->admin_payload()
+			: LearningSuggestionRepository::empty_payload();
 		$changelog        = 'changelog' === $payload_tab
 			? $this->load_changelog()
 			: array();
 
 		return array(
-			'activity'     => $activity_payload,
-			'brandProfile' => $brand_profile,
-			'changelog'    => $changelog,
+			'activity'            => $activity_payload,
+			'brandProfile'        => $brand_profile,
+			'learningSuggestions' => $learning,
+			'changelog'           => $changelog,
 		);
 	}
 
@@ -321,6 +326,7 @@ final class SettingsPage {
 			'importSettingsAction'            => 'aculect_ai_companion_import_settings',
 			'resetSettingsAction'             => 'aculect_ai_companion_reset_settings',
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
+			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
 			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
@@ -335,6 +341,7 @@ final class SettingsPage {
 			'importSettingsNonce'             => wp_create_nonce( 'aculect_ai_companion_import_settings' ),
 			'resetSettingsNonce'              => wp_create_nonce( 'aculect_ai_companion_reset_settings' ),
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
+			'reviewLearningSuggestionNonce'   => wp_create_nonce( 'aculect_ai_companion_review_learning_suggestion' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
@@ -593,6 +600,47 @@ final class SettingsPage {
 					'page'        => 'aculect-ai-companion',
 					'tab'         => 'brand',
 					'brand_saved' => '1',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Review an MCP-submitted learning suggestion.
+	 */
+	public function handle_review_learning_suggestion(): void {
+		$this->guard_action( 'aculect_ai_companion_review_learning_suggestion' );
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before these reads.
+		$suggestion_id = isset( $_POST['suggestion_id'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['suggestion_id'] ) ) : '';
+		$action        = isset( $_POST['learning_action'] ) ? sanitize_key( wp_unslash( (string) $_POST['learning_action'] ) ) : '';
+		$review_note   = isset( $_POST['review_note'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['review_note'] ) ) : '';
+		$suggestion    = isset( $_POST['learning_suggestion'] ) && is_array( $_POST['learning_suggestion'] )
+			? (array) wp_unslash( $_POST['learning_suggestion'] )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$repository = new LearningSuggestionRepository();
+		$updated    = 'update' === $action
+			? $repository->update( $suggestion_id, $suggestion, $review_note )
+			: $repository->review( $suggestion_id, $action, $review_note );
+		$status     = $updated
+			? match ( $action ) {
+				'approve' => 'approved',
+				'dismiss' => 'dismissed',
+				'update'  => 'updated',
+				default   => 'not_updated',
+			}
+			: 'not_updated';
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'              => 'aculect-ai-companion',
+					'tab'               => 'learning',
+					'learning_reviewed' => $status,
 				),
 				$this->settings_url()
 			)
@@ -1024,6 +1072,11 @@ final class SettingsPage {
 				'menu_title' => __( 'Activity', 'aculect-ai-companion' ),
 			),
 			array(
+				'tab'        => 'learning',
+				'title'      => __( 'Learning', 'aculect-ai-companion' ),
+				'menu_title' => __( 'Learning', 'aculect-ai-companion' ),
+			),
+			array(
 				'tab'        => 'diagnostics',
 				'title'      => __( 'Diagnostics', 'aculect-ai-companion' ),
 				'menu_title' => __( 'Diagnostics', 'aculect-ai-companion' ),
@@ -1118,6 +1171,7 @@ final class SettingsPage {
 			'connections',
 			'abilities',
 			'activity',
+			'learning',
 			'brand',
 			'logs',
 			'changelog',
@@ -1182,6 +1236,16 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['brand_saved'] ) ) {
 			return 'brand_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['learning_reviewed'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return match ( sanitize_key( wp_unslash( (string) $_GET['learning_reviewed'] ) ) ) {
+				'approved'     => 'learning_suggestion_approved',
+				'dismissed'    => 'learning_suggestion_dismissed',
+				'updated'      => 'learning_suggestion_updated',
+				default        => 'learning_suggestion_not_updated',
+			};
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['logs_cleared'] ) ) {

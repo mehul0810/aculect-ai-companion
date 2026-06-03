@@ -62,6 +62,7 @@ const SETTINGS_TABS = [
 	{ name: 'connections', title: 'Connections', icon: people },
 	{ name: 'abilities', title: 'Abilities', icon: plugins },
 	{ name: 'activity', title: 'Activity', icon: chartBar },
+	{ name: 'learning', title: 'Learning', icon: comment },
 	{ name: 'diagnostics', title: 'Diagnostics', icon: shield },
 	{ name: 'advanced', title: 'Advanced', icon: cog },
 	{ name: 'changelog', title: 'Changelog', icon: page },
@@ -87,6 +88,22 @@ const CHANGELOG_METADATA_KEYS = new Set( [
 	'releasedAt',
 	'type',
 ] );
+const LEARNING_DOMAIN_LABELS = {
+	site: 'Site',
+	content: 'Content',
+	developer: 'Developer',
+	brand: 'Brand',
+};
+const LEARNING_STATUS_LABELS = {
+	pending: 'Pending',
+	approved: 'Approved',
+	dismissed: 'Dismissed',
+};
+const LEARNING_CONFIDENCE_LABELS = {
+	low: 'Low confidence',
+	medium: 'Medium confidence',
+	high: 'High confidence',
+};
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -839,6 +856,342 @@ function BrandTextareaField( { fields, defaults, name, label } ) {
 				rows={ 4 }
 			/>
 			<BrandDefaultValue value={ brandFieldValue( defaults, name ) } />
+		</div>
+	);
+}
+
+function learningSuggestionsList( learningSuggestions ) {
+	return Array.isArray( learningSuggestions?.items )
+		? learningSuggestions.items
+		: EMPTY_ARRAY;
+}
+
+function learningSuggestionsSummary( learningSuggestions ) {
+	return learningSuggestions?.summary &&
+		typeof learningSuggestions.summary === 'object'
+		? learningSuggestions.summary
+		: {};
+}
+
+function learningDomainLabel( domain ) {
+	return LEARNING_DOMAIN_LABELS[ domain ] || 'Content';
+}
+
+function learningStatusLabel( status ) {
+	return LEARNING_STATUS_LABELS[ status ] || 'Pending';
+}
+
+function learningConfidenceLabel( confidence ) {
+	return LEARNING_CONFIDENCE_LABELS[ confidence ] || 'Medium confidence';
+}
+
+function learningSourceLabel( source ) {
+	if ( ! source || typeof source !== 'object' ) {
+		return 'MCP client';
+	}
+
+	return source.client_name || source.provider || 'MCP client';
+}
+
+function LearningSuggestionReviewForm( {
+	data,
+	suggestion,
+	action,
+	label,
+	icon,
+	destructive = false,
+} ) {
+	return (
+		<ActionForm
+			data={ data }
+			action={ data.actions?.reviewLearningSuggestionAction }
+			nonce={ data.actions?.reviewLearningSuggestionNonce }
+			label={ label }
+			variant={ destructive ? 'secondary' : 'primary' }
+			destructive={ destructive }
+			confirmMessage={
+				destructive ? 'Dismiss this learning suggestion?' : ''
+			}
+			confirmTitle="Review suggestion"
+			buttonContent={
+				<>
+					<Icon icon={ icon } size={ 16 } />
+					<span>{ label }</span>
+				</>
+			}
+			disabled={
+				! data.actions?.reviewLearningSuggestionAction ||
+				! data.actions?.reviewLearningSuggestionNonce
+			}
+		>
+			<input
+				type="hidden"
+				name="suggestion_id"
+				value={ suggestion.id || '' }
+			/>
+			<input type="hidden" name="learning_action" value={ action } />
+		</ActionForm>
+	);
+}
+
+function LearningSuggestionEditModal( { data, suggestion, onClose } ) {
+	const [ formValues, setFormValues ] = useState( {
+		domain: suggestion.domain || 'content',
+		issue: suggestion.issue || '',
+		evidence: suggestion.evidence || '',
+		suggested_update: suggestion.suggested_update || '',
+		confidence: suggestion.confidence || 'medium',
+		review_note: suggestion.review_note || '',
+	} );
+	const updateValue = ( key ) => ( value ) => {
+		setFormValues( ( current ) => ( {
+			...current,
+			[ key ]: value,
+		} ) );
+	};
+
+	return (
+		<Modal title="Edit learning suggestion" onRequestClose={ onClose }>
+			<form
+				method="post"
+				action={ data.actions?.adminPostUrl }
+				className="aculect-ai-companion-learning-edit-form"
+			>
+				<input
+					type="hidden"
+					name="action"
+					value={ data.actions?.reviewLearningSuggestionAction }
+				/>
+				<input
+					type="hidden"
+					name="_wpnonce"
+					value={ data.actions?.reviewLearningSuggestionNonce }
+				/>
+				<input
+					type="hidden"
+					name="suggestion_id"
+					value={ suggestion.id || '' }
+				/>
+				<input type="hidden" name="learning_action" value="update" />
+				<SelectControl
+					label="Domain"
+					name="learning_suggestion[domain]"
+					value={ formValues.domain }
+					options={ Object.entries( LEARNING_DOMAIN_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'domain' ) }
+				/>
+				<TextControl
+					label="Issue"
+					name="learning_suggestion[issue]"
+					value={ formValues.issue }
+					onChange={ updateValue( 'issue' ) }
+				/>
+				<TextareaControl
+					label="Suggested update"
+					name="learning_suggestion[suggested_update]"
+					value={ formValues.suggested_update }
+					onChange={ updateValue( 'suggested_update' ) }
+					rows={ 4 }
+				/>
+				<TextareaControl
+					label="Evidence"
+					name="learning_suggestion[evidence]"
+					value={ formValues.evidence }
+					onChange={ updateValue( 'evidence' ) }
+					rows={ 3 }
+				/>
+				<SelectControl
+					label="Confidence"
+					name="learning_suggestion[confidence]"
+					value={ formValues.confidence }
+					options={ Object.entries( LEARNING_CONFIDENCE_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'confidence' ) }
+				/>
+				<TextareaControl
+					label="Review note"
+					name="review_note"
+					value={ formValues.review_note }
+					onChange={ updateValue( 'review_note' ) }
+					rows={ 2 }
+				/>
+				<div className="aculect-ai-companion-confirm-dialog__actions">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ onClose }
+					>
+						Cancel
+					</Button>
+					<Button
+						type="submit"
+						variant="primary"
+						disabled={
+							! data.actions?.reviewLearningSuggestionAction ||
+							! data.actions?.reviewLearningSuggestionNonce
+						}
+						accessibleWhenDisabled
+					>
+						Save Suggestion
+					</Button>
+				</div>
+			</form>
+		</Modal>
+	);
+}
+
+function LearningSuggestionCard( { data, suggestion } ) {
+	const [ isEditing, setIsEditing ] = useState( false );
+	const status = suggestion.status || 'pending';
+	const domain = suggestion.domain || 'content';
+	const isPending = status === 'pending';
+	const source = suggestion.source || {};
+
+	return (
+		<article
+			className={ `aculect-ai-companion-learning-card is-${ status }` }
+		>
+			<div className="aculect-ai-companion-learning-card__header">
+				<div className="aculect-ai-companion-learning-card__badges">
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ domain }` }
+					>
+						{ learningDomainLabel( domain ) }
+					</span>
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ status }` }
+					>
+						{ learningStatusLabel( status ) }
+					</span>
+					<span className="aculect-ai-companion-learning-pill is-confidence">
+						{ learningConfidenceLabel( suggestion.confidence ) }
+					</span>
+				</div>
+				<span className="aculect-ai-companion-learning-card__date">
+					{ connectionDateValue( suggestion.created_at, 'Queued' ) }
+				</span>
+			</div>
+			<div className="aculect-ai-companion-learning-card__body">
+				<h3>{ suggestion.issue || 'Learning suggestion' }</h3>
+				<dl className="aculect-ai-companion-learning-details">
+					<div>
+						<dt>Suggested update</dt>
+						<dd>{ suggestion.suggested_update || '-' }</dd>
+					</div>
+					{ suggestion.evidence && (
+						<div>
+							<dt>Evidence</dt>
+							<dd>{ suggestion.evidence }</dd>
+						</div>
+					) }
+				</dl>
+			</div>
+			<div className="aculect-ai-companion-learning-card__footer">
+				<div className="aculect-ai-companion-learning-source">
+					<span>{ learningSourceLabel( source ) }</span>
+					{ source.user_id > 0 && (
+						<code>User #{ source.user_id }</code>
+					) }
+				</div>
+				<div className="aculect-ai-companion-learning-actions">
+					{ domain === 'brand' && (
+						<Button
+							href={ tabUrl( 'brand', data.adminPageUrl ) }
+							variant="secondary"
+							onClick={ ( event ) =>
+								maybeSelectTab( event, 'brand' )
+							}
+						>
+							Edit Brand Profile
+						</Button>
+					) }
+					{ isPending && (
+						<>
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={ () => setIsEditing( true ) }
+							>
+								Edit
+							</Button>
+							<LearningSuggestionReviewForm
+								data={ data }
+								suggestion={ suggestion }
+								action="approve"
+								label="Approve"
+								icon={ check }
+							/>
+							<LearningSuggestionReviewForm
+								data={ data }
+								suggestion={ suggestion }
+								action="dismiss"
+								label="Dismiss"
+								icon={ trash }
+								destructive
+							/>
+						</>
+					) }
+				</div>
+			</div>
+			{ isEditing && (
+				<LearningSuggestionEditModal
+					data={ data }
+					suggestion={ suggestion }
+					onClose={ () => setIsEditing( false ) }
+				/>
+			) }
+		</article>
+	);
+}
+
+function LearningSuggestionsDashboard( { data, learningSuggestions } ) {
+	const items = learningSuggestionsList( learningSuggestions );
+	const summary = learningSuggestionsSummary( learningSuggestions );
+
+	return (
+		<div className="aculect-ai-companion-learning-dashboard">
+			<div className="aculect-ai-companion-learning-toolbar">
+				<div>
+					<h2>Learning Review</h2>
+					<p>
+						Review MCP suggestions before they influence Aculect
+						Intelligence.
+					</p>
+				</div>
+				<div className="aculect-ai-companion-learning-summary">
+					<span>
+						<strong>{ Number( summary.pending || 0 ) }</strong>
+						Pending
+					</span>
+					<span>
+						<strong>{ Number( summary.approved || 0 ) }</strong>
+						Approved
+					</span>
+					<span>
+						<strong>{ Number( summary.dismissed || 0 ) }</strong>
+						Dismissed
+					</span>
+				</div>
+			</div>
+			{ items.length === 0 ? (
+				<EmptyState title="No learning suggestions">
+					MCP clients can queue suggestions when site, content,
+					developer, or brand intelligence needs review.
+				</EmptyState>
+			) : (
+				<div className="aculect-ai-companion-learning-list">
+					{ items.map( ( suggestion ) => (
+						<LearningSuggestionCard
+							key={ suggestion.id }
+							data={ data }
+							suggestion={ suggestion }
+						/>
+					) ) }
+				</div>
+			) }
 		</div>
 	);
 }
@@ -4421,6 +4774,10 @@ function SettingsApp() {
 		: EMPTY_ARRAY;
 	const activity =
 		data.activity && typeof data.activity === 'object' ? data.activity : {};
+	const learningSuggestions =
+		data.learningSuggestions && typeof data.learningSuggestions === 'object'
+			? data.learningSuggestions
+			: {};
 	const brandProfile =
 		data.brandProfile && typeof data.brandProfile === 'object'
 			? data.brandProfile
@@ -4893,6 +5250,26 @@ function SettingsApp() {
 			{ data.status === 'brand_saved' && (
 				<Notice status="success" isDismissible={ false }>
 					Brand profile saved.
+				</Notice>
+			) }
+			{ data.status === 'learning_suggestion_approved' && (
+				<Notice status="success" isDismissible={ false }>
+					Learning suggestion approved.
+				</Notice>
+			) }
+			{ data.status === 'learning_suggestion_dismissed' && (
+				<Notice status="warning" isDismissible={ false }>
+					Learning suggestion dismissed.
+				</Notice>
+			) }
+			{ data.status === 'learning_suggestion_updated' && (
+				<Notice status="success" isDismissible={ false }>
+					Learning suggestion updated.
+				</Notice>
+			) }
+			{ data.status === 'learning_suggestion_not_updated' && (
+				<Notice status="warning" isDismissible={ false }>
+					Learning suggestion was not updated.
 				</Notice>
 			) }
 			{ data.status === 'logs_cleared' && (
@@ -5808,6 +6185,15 @@ function SettingsApp() {
 									</form>
 								</CardBody>
 							</Card>
+						);
+					}
+
+					if ( tab.name === 'learning' ) {
+						return (
+							<LearningSuggestionsDashboard
+								data={ data }
+								learningSuggestions={ learningSuggestions }
+							/>
 						);
 					}
 

@@ -47,6 +47,9 @@ final class McpControllerTest extends TestCase {
 			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $tool['name'] );
 			self::assertTrue( $registry->is_known( $tool['name'] ) || $intelligence->is_known( $tool['name'] ) );
 		}
+
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
+		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
 	}
 
 	public function test_input_schema_accepts_public_tool_name_aliases(): void {
@@ -119,6 +122,11 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'object', $brand_schema['type'] );
 		self::assertInstanceOf( \stdClass::class, $brand_schema['properties'] );
 
+		$feedback_schema = $this->schemaForTool( 'intelligence_feedback_submit' );
+		self::assertSame( 'object', $feedback_schema['type'] );
+		self::assertSame( array( 'domain', 'issue', 'suggested_update' ), $feedback_schema['required'] );
+		self::assertSame( array( 'site', 'content', 'developer', 'brand' ), $feedback_schema['properties']['domain']['enum'] );
+
 		$create_schema = $this->schemaForTool( 'content_create_item' );
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
@@ -190,6 +198,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'intelligence_site_get_context', $names );
 		self::assertContains( 'intelligence_brand_get_context', $names );
 		self::assertContains( 'intelligence_blocks_list_available', $names );
+		self::assertContains( 'intelligence_feedback_submit', $names );
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
 		self::assertNotContains( 'blocks_list_available', $names );

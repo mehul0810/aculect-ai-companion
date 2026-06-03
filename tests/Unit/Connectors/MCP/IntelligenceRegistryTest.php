@@ -31,8 +31,8 @@ final class IntelligenceRegistryTest extends TestCase {
 		$this->register_test_blocks();
 	}
 
-	public function test_intelligence_tools_are_read_only_and_claude_safe(): void {
-		$expected = array(
+	public function test_intelligence_tools_are_claude_safe_and_scoped(): void {
+		$read_only = array(
 			'intelligence.site.get_context',
 			'intelligence.content.get_context',
 			'intelligence.developer.get_context',
@@ -44,7 +44,7 @@ final class IntelligenceRegistryTest extends TestCase {
 			'intelligence.content.validate_blocks',
 		);
 
-		foreach ( $expected as $id ) {
+		foreach ( $read_only as $id ) {
 			$module    = $this->registry->module( $id );
 			$tool_name = $this->registry->tool_name( $id );
 
@@ -55,6 +55,12 @@ final class IntelligenceRegistryTest extends TestCase {
 			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $tool_name );
 			self::assertSame( $id, $this->registry->internal_id( $tool_name ) );
 		}
+
+		$feedback = $this->registry->module( 'intelligence.feedback.submit' );
+		self::assertNotNull( $feedback );
+		self::assertFalse( $feedback->is_read_only() );
+		self::assertSame( array( 'content:read' ), $feedback->required_scopes() );
+		self::assertSame( 'intelligence.feedback.submit', $this->registry->internal_id( 'intelligence_feedback_submit' ) );
 	}
 
 	public function test_intelligence_aliases_preserve_cached_client_calls(): void {
@@ -82,6 +88,8 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertSame( 'Aculect Test Site', $site['site']['name'] );
 		self::assertFalse( $site['connector']['managed_as_user_ability'] );
 		self::assertContains( 'core/html', $site['guidance']['never_use'] );
+		self::assertSame( 'intelligence_feedback_submit', $site['learning_protocol']['feedback_tool'] );
+		self::assertTrue( $site['learning_protocol']['admin_review_required'] );
 
 		$brand = $this->registry->execute( 'brand_get_profile', array() );
 
@@ -97,6 +105,29 @@ final class IntelligenceRegistryTest extends TestCase {
 
 		self::assertFalse( $validation['valid'] );
 		self::assertContains( 'core/html', $validation['content_guidance']['never_use'] );
+	}
+
+	public function test_feedback_tool_queues_review_suggestion_with_source_context(): void {
+		$result = $this->registry->execute(
+			'intelligence_feedback_submit',
+			array(
+				'domain'           => 'brand',
+				'issue'            => 'Generated copy missed the saved tone.',
+				'suggested_update' => 'Prefer the saved brand tone before inference.',
+				'confidence'       => 'high',
+			),
+			array(
+				'provider'    => 'chatgpt',
+				'client_id'   => 'client-1',
+				'client_name' => 'ChatGPT',
+				'user_id'     => 3,
+			)
+		);
+
+		self::assertSame( 'queued', $result['status'] );
+		self::assertSame( 'brand', $result['suggestion']['domain'] );
+		self::assertSame( 'chatgpt', $result['suggestion']['source']['provider'] );
+		self::assertFalse( $result['review_status']['updates_memory'] );
 	}
 
 	private function register_test_blocks(): void {

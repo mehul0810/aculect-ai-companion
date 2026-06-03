@@ -9,10 +9,11 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use Closure;
 
 /**
- * Registry of always-on read-only intelligence tools exposed through MCP.
+ * Registry of always-on intelligence tools exposed through MCP.
  */
 final class IntelligenceRegistry {
 
@@ -81,12 +82,18 @@ final class IntelligenceRegistry {
 	/**
 	 * Execute a registered intelligence tool.
 	 *
-	 * @param string               $id   Internal ID, legacy alias, or public tool name.
-	 * @param array<string, mixed> $args Tool arguments.
+	 * @param string               $id     Internal ID, legacy alias, or public tool name.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $source Authenticated MCP connection context.
 	 * @return array<string, mixed>
 	 */
-	public function execute( string $id, array $args ): array {
-		$module = $this->module( $id );
+	public function execute( string $id, array $args, array $source = array() ): array {
+		$internal_id = $this->internal_id( $id );
+		if ( 'intelligence.feedback.submit' === $internal_id ) {
+			return ( new LearningSuggestionRepository() )->submit( $args, $source );
+		}
+
+		$module = $this->module( $internal_id );
 
 		return null === $module ? array( 'error' => 'Unknown tool' ) : $module->execute( $args );
 	}
@@ -295,6 +302,47 @@ final class IntelligenceRegistry {
 				),
 				static fn ( array $args ): array => $block_knowledge->validate_block_content( $args )
 			),
+			$this->build_module(
+				'intelligence.feedback.submit',
+				'Submit Learning Suggestion',
+				'Queue an admin-reviewed suggestion when site, content, developer, or brand intelligence should improve. Do not include secrets, credentials, personal data, or raw tool arguments.',
+				$this->object_schema(
+					array(
+						'domain'           => array(
+							'type'        => 'string',
+							'enum'        => array( 'site', 'content', 'developer', 'brand' ),
+							'description' => 'The intelligence domain that should improve.',
+						),
+						'issue'            => array(
+							'type'        => 'string',
+							'description' => 'Short description of what went wrong or what was missing.',
+						),
+						'evidence'         => array(
+							'type'        => 'string',
+							'description' => 'Optional bounded, non-sensitive evidence from the interaction.',
+						),
+						'suggested_update' => array(
+							'type'        => 'string',
+							'description' => 'Suggested improvement for future site, content, developer, or brand intelligence.',
+						),
+						'confidence'       => array(
+							'type'        => 'string',
+							'enum'        => array( 'low', 'medium', 'high' ),
+							'description' => 'Confidence that this suggestion should be reviewed.',
+						),
+					),
+					array( 'domain', 'issue', 'suggested_update' )
+				),
+				static function ( array $args ): array {
+					unset( $args );
+
+					return array(
+						'status'  => 'unavailable',
+						'message' => 'Learning suggestions must be submitted through the registry executor.',
+					);
+				},
+				false
+			),
 		);
 
 		$keyed = array();
@@ -306,22 +354,23 @@ final class IntelligenceRegistry {
 	}
 
 	/**
-	 * Build a read-only intelligence module.
+	 * Build an intelligence module.
 	 *
 	 * @param string  $id          Internal intelligence ID.
 	 * @param string  $title       Tool title.
 	 * @param string  $description Tool description.
 	 * @param array   $schema      Input schema.
 	 * @param Closure $handler     Execution callback.
+	 * @param bool    $read_only   Whether the module is read-only.
 	 */
-	private function build_module( string $id, string $title, string $description, array $schema, Closure $handler ): AbilityModuleInterface {
+	private function build_module( string $id, string $title, string $description, array $schema, Closure $handler, bool $read_only = true ): AbilityModuleInterface {
 		return new CallbackAbilityModule(
 			$id,
 			$title,
 			$description,
 			'Aculect Intelligence',
 			array( 'content:read' ),
-			true,
+			$read_only,
 			$schema,
 			$handler
 		);

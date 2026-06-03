@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Brand\BrandProfile;
+use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use WP_REST_Request;
@@ -130,6 +131,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['revokedSessions'] );
 		self::assertSame( array(), $payload['roleAbilityPolicy'] );
 		self::assertSame( array(), $payload['brandProfile'] );
+		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
@@ -155,6 +157,14 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame(
 			'nonce-aculect_ai_companion_set_session_write_permission',
 			$payload['actions']['setSessionWritePermissionNonce']
+		);
+		self::assertSame(
+			'aculect_ai_companion_review_learning_suggestion',
+			$payload['actions']['reviewLearningSuggestionAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_review_learning_suggestion',
+			$payload['actions']['reviewLearningSuggestionNonce']
 		);
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
@@ -228,6 +238,31 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $changelog['brandProfile'] );
 		self::assertArrayHasKey( '0.5.0', $changelog['changelog'] );
 		self::assertSame( '2026-06-01', $changelog['changelog']['0.5.0']['date'] );
+	}
+
+	public function test_learning_payload_loads_suggestions_only_for_learning_tab(): void {
+		( new LearningSuggestionRepository() )->submit(
+			array(
+				'domain'           => 'site',
+				'issue'            => 'Missing site guidance.',
+				'suggested_update' => 'Include more durable site context.',
+			)
+		);
+
+		$_GET['tab'] = 'learning';
+		$learning    = $this->settings_payload();
+
+		self::assertSame( 'learning', $learning['payloadTab'] );
+		self::assertContains( 'learning', $learning['hydratedTabs'] );
+		self::assertSame( 1, $learning['learningSuggestions']['summary']['total'] );
+		self::assertSame( 'Missing site guidance.', $learning['learningSuggestions']['items'][0]['issue'] );
+
+		$_GET['tab'] = 'overview';
+		$overview    = $this->settings_payload();
+
+		self::assertSame( 'overview', $overview['payloadTab'] );
+		self::assertSame( 0, $overview['learningSuggestions']['summary']['total'] );
+		self::assertSame( array(), $overview['learningSuggestions']['items'] );
 	}
 
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {
@@ -320,6 +355,18 @@ final class SettingsPageTest extends TestCase {
 		self::assertCount( 4, $payload['diagnostics']['logs']['items'] );
 		self::assertSame( 'oauth.registered', $payload['diagnostics']['logs']['items'][0]['event'] );
 		self::assertSame( array( 'logs' ), $payload['sampleData']['appliedTabs'] );
+	}
+
+	public function test_local_learning_payload_applies_sample_rows_when_empty(): void {
+		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
+		$_GET['tab']                                           = 'learning';
+
+		$payload = $this->settings_payload();
+
+		self::assertSame( 3, $payload['learningSuggestions']['summary']['total'] );
+		self::assertCount( 3, $payload['learningSuggestions']['items'] );
+		self::assertSame( 'learn_local_brand', $payload['learningSuggestions']['items'][0]['id'] );
+		self::assertSame( array( 'learning' ), $payload['sampleData']['appliedTabs'] );
 	}
 
 	public function test_local_diagnostics_payload_applies_sample_checks_when_empty(): void {

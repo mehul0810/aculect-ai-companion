@@ -70,6 +70,11 @@ final class LocalSampleData {
 			$applied_tabs[]      = 'activity';
 		}
 
+		if ( 'learning' === $payload_tab && $this->has_empty_learning_suggestions( $payload ) ) {
+			$payload['learningSuggestions'] = $this->learning_suggestions_payload();
+			$applied_tabs[]                 = 'learning';
+		}
+
 		if ( 'logs' === $payload_tab && $this->has_empty_logs( $payload ) ) {
 			$payload['diagnostics']['loggingEnabled'] = true;
 			$payload['diagnostics']['logs']           = $this->logs_payload();
@@ -118,6 +123,20 @@ final class LocalSampleData {
 		}
 
 		return $this->has_empty_list_payload( $diagnostics['logs'] ?? array() );
+	}
+
+	/**
+	 * Check whether the learning suggestion queue has no rows to render.
+	 *
+	 * @param array<string, mixed> $payload Settings payload.
+	 */
+	private function has_empty_learning_suggestions( array $payload ): bool {
+		$learning = $payload['learningSuggestions'] ?? array();
+		if ( ! is_array( $learning ) ) {
+			return false;
+		}
+
+		return empty( $learning['items'] ) && 0 === (int) ( $learning['summary']['total'] ?? 0 );
 	}
 
 	/**
@@ -437,6 +456,109 @@ final class LocalSampleData {
 	}
 
 	/**
+	 * Return sample learning suggestions for local UI review.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function learning_suggestions_payload(): array {
+		$items = array(
+			$this->learning_suggestion(
+				'learn_local_brand',
+				'brand',
+				'The generated homepage copy sounded more casual than the saved brand profile.',
+				'Prioritize concise, enterprise-oriented language before making tone inferences.',
+				'Claude suggested a playful headline after reading a brand profile that favors direct product language.',
+				'high',
+				'pending',
+				'Claude Content Review',
+				'claude',
+				2
+			),
+			$this->learning_suggestion(
+				'learn_local_content',
+				'content',
+				'The assistant asked for custom HTML even though block markup is required.',
+				'Remind clients to use registered blocks, patterns, and validation before writing content.',
+				'The tool response included the block validation guardrail but the assistant still tried raw markup.',
+				'medium',
+				'approved',
+				'ChatGPT Local QA',
+				'chatgpt',
+				1
+			),
+			$this->learning_suggestion(
+				'learn_local_developer',
+				'developer',
+				'Runtime context did not mention that commands should not run from MCP.',
+				'Clarify that developer intelligence is read-only implementation context and not command execution.',
+				'Codex requested command-level details from a read-only intelligence response.',
+				'low',
+				'dismissed',
+				'Codex Release Helper',
+				'codex',
+				3
+			),
+		);
+
+		return array(
+			'items'   => $items,
+			'summary' => array(
+				'total'     => count( $items ),
+				'pending'   => 1,
+				'approved'  => 1,
+				'dismissed' => 1,
+			),
+		);
+	}
+
+	/**
+	 * Build one local learning suggestion row.
+	 *
+	 * @param string $id               Suggestion ID.
+	 * @param string $domain           Intelligence domain.
+	 * @param string $issue            Suggestion issue.
+	 * @param string $suggested_update Suggested improvement.
+	 * @param string $evidence         Bounded evidence.
+	 * @param string $confidence       Confidence level.
+	 * @param string $status           Review status.
+	 * @param string $client_name      Sample client name.
+	 * @param string $provider         Sample provider slug.
+	 * @param int    $user_id          Sample WordPress user ID.
+	 * @return array<string, mixed>
+	 */
+	private function learning_suggestion(
+		string $id,
+		string $domain,
+		string $issue,
+		string $suggested_update,
+		string $evidence,
+		string $confidence,
+		string $status,
+		string $client_name,
+		string $provider,
+		int $user_id
+	): array {
+		return array(
+			'id'               => $id,
+			'domain'           => $domain,
+			'issue'            => $issue,
+			'evidence'         => $evidence,
+			'suggested_update' => $suggested_update,
+			'confidence'       => $confidence,
+			'status'           => $status,
+			'created_at'       => '2026-06-03T09:00:00Z',
+			'updated_at'       => '2026-06-03T09:20:00Z',
+			'review_note'      => '',
+			'source'           => array(
+				'provider'    => $provider,
+				'client_id'   => 'local-' . $provider . '-client',
+				'client_name' => $client_name,
+				'user_id'     => $user_id,
+			),
+		);
+	}
+
+	/**
 	 * Build one sample diagnostic log row.
 	 *
 	 * @param int                  $id             Row ID.
@@ -544,7 +666,7 @@ final class LocalSampleData {
 		return array(
 			'enabled'         => true,
 			'environmentType' => self::ENVIRONMENT_TYPE,
-			'tabs'            => array( 'connections', 'abilities', 'activity', 'diagnostics', 'logs' ),
+			'tabs'            => array( 'connections', 'abilities', 'activity', 'learning', 'diagnostics', 'logs' ),
 			'appliedTabs'     => array_values( array_unique( $applied_tabs ) ),
 			'message'         => __( 'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.', 'aculect-ai-companion' ),
 		);

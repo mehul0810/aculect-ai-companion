@@ -81,6 +81,7 @@ final class Plugin {
 		add_action( 'admin_post_aculect_ai_companion_import_settings', array( $this, 'handle_import_settings' ) );
 		add_action( 'admin_post_aculect_ai_companion_reset_settings', array( $this, 'handle_reset_settings' ) );
 		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
+		add_action( 'admin_post_aculect_ai_companion_review_learning_suggestion', array( $this, 'handle_review_learning_suggestion' ) );
 		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
 		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
@@ -265,6 +266,13 @@ final class Plugin {
 	 */
 	public function handle_save_brand(): void {
 		( new SettingsPage() )->handle_save_brand();
+	}
+
+	/**
+	 * Proxy learning suggestion review handling to the settings controller.
+	 */
+	public function handle_review_learning_suggestion(): void {
+		( new SettingsPage() )->handle_review_learning_suggestion();
 	}
 
 	/**

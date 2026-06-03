@@ -64,6 +64,38 @@ test( 'merges lazy tab payloads without clearing previously hydrated tab data', 
 	);
 } );
 
+test( 'keeps learning suggestions scoped to the learning tab', () => {
+	const currentData = {
+		hydratedTabs: [ 'overview', 'learning' ],
+		learningSuggestions: {
+			summary: { total: 1 },
+			items: [ { id: 'learn_1' } ],
+		},
+	};
+	const payload = {
+		payloadTab: 'activity',
+		hydratedTabs: [ 'overview', 'activity' ],
+		learningSuggestions: {
+			summary: { total: 0 },
+			items: [],
+		},
+		activity: { total: 2, items: [ { id: 2 } ] },
+	};
+
+	assert.deepEqual(
+		mergeSettingsPayload( currentData, payload, 'activity' ),
+		{
+			hydratedTabs: [ 'overview', 'learning', 'activity' ],
+			payloadTab: 'activity',
+			learningSuggestions: {
+				summary: { total: 1 },
+				items: [ { id: 'learn_1' } ],
+			},
+			activity: { total: 2, items: [ { id: 2 } ] },
+		}
+	);
+} );
+
 test( 'merges diagnostic updates without clearing loaded logs', () => {
 	const currentData = {
 		hydratedTabs: [ 'overview', 'logs' ],

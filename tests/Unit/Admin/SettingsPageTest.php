@@ -141,6 +141,14 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(
+			'aculect_ai_companion_set_session_access_level',
+			$payload['actions']['setSessionAccessLevelAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_set_session_access_level',
+			$payload['actions']['setSessionAccessLevelNonce']
+		);
+		self::assertSame(
 			'aculect_ai_companion_set_session_write_permission',
 			$payload['actions']['setSessionWritePermissionAction']
 		);

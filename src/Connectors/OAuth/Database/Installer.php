@@ -18,7 +18,7 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned OAuth protocol tables require uncached reads/writes and controlled schema changes.
 
-	private const DB_VERSION                 = '2026.06.01.2';
+	private const DB_VERSION                 = '2026.06.03.1';
 	private const OPTION_DB_VERSION          = 'aculect_ai_companion_oauth_db_version';
 	private const OPTION_MIGRATED_LEGACY     = 'aculect_ai_companion_oauth_legacy_migrated';
 	private const FINGERPRINT_BACKFILL_LIMIT = 500;
@@ -181,6 +181,8 @@ final class Installer {
             expires_at datetime NOT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             last_used_at datetime DEFAULT NULL,
+            write_permission_enabled tinyint(1) NOT NULL DEFAULT 0,
+            access_level varchar(32) NOT NULL DEFAULT 'selective_read',
             PRIMARY KEY  (id),
             UNIQUE KEY token_hash (token_hash),
             KEY client_id (client_id),

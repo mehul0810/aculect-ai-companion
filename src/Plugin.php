@@ -84,6 +84,7 @@ final class Plugin {
 		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
 		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
+		add_action( 'admin_post_aculect_ai_companion_set_session_access_level', array( $this, 'handle_set_session_access_level' ) );
 		add_action( 'admin_post_aculect_ai_companion_set_session_write_permission', array( $this, 'handle_set_session_write_permission' ) );
 		add_action( 'admin_post_aculect_ai_companion_revoke_session', array( $this, 'handle_revoke_session' ) );
 		add_action( 'admin_post_aculect_ai_companion_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
@@ -278,6 +279,13 @@ final class Plugin {
 	 */
 	public function handle_set_lockdown(): void {
 		( new SettingsPage() )->handle_set_lockdown();
+	}
+
+	/**
+	 * Set the admin-managed access level for one connector session.
+	 */
+	public function handle_set_session_access_level(): void {
+		( new SettingsPage() )->handle_set_session_access_level();
 	}
 
 	/**

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
@@ -101,6 +102,7 @@ final class OAuthRepositoryTest extends TestCase {
 				'created_at'              => '2026-06-01 00:00:00',
 				'last_used_at'            => '',
 				'write_permission_enabled' => '1',
+				'access_level'             => ConnectionAccessLevel::FULL_WRITE,
 				'client_name'             => 'ChatGPT',
 				'provider'                => 'chatgpt',
 			),
@@ -113,11 +115,13 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'active', $sessions[0]['status'] );
 		self::assertSame( '2026-07-01 00:00:00', $sessions[0]['expires_at'] );
 		self::assertTrue( $sessions[0]['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::FULL_WRITE, $sessions[0]['access_level'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
 		self::assertStringContainsString( 'MAX(expires_at) AS expires_at', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'active_refresh.access_token_hash = access_tokens.token_hash', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.write_permission_enabled', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'access_tokens.access_level', $wpdb->prepared[0]['query'] );
 	}
 
 	public function test_access_token_context_includes_write_permission_flag(): void {
@@ -133,6 +137,7 @@ final class OAuthRepositoryTest extends TestCase {
 			'expires_at'               => '2099-01-01 00:00:00',
 			'last_used_at'             => '2026-06-01 00:00:00',
 			'write_permission_enabled' => '1',
+			'access_level'             => ConnectionAccessLevel::SELECTIVE_WRITE,
 			'client_name'              => 'Claude',
 			'provider'                 => 'claude',
 		);
@@ -143,6 +148,7 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 7, $context['user_id'] );
 		self::assertSame( 'Claude', $context['client_name'] );
 		self::assertTrue( $context['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::SELECTIVE_WRITE, $context['access_level'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
 		self::assertStringContainsString( 'access_tokens.token_hash = %s', $wpdb->prepared[0]['query'] );
 	}
@@ -156,14 +162,70 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
 		self::assertSame( 1, $wpdb->prepared[0]['args'][2] );
-		self::assertSame( 5, $wpdb->prepared[0]['args'][3] );
+		self::assertSame( ConnectionAccessLevel::SELECTIVE_WRITE, $wpdb->prepared[0]['args'][3] );
+		self::assertSame( 5, $wpdb->prepared[0]['args'][4] );
 		self::assertStringContainsString( 'SET access_tokens.write_permission_enabled = %d', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'access_tokens.access_level = %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'refresh_tokens.revoked = 0', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'refresh_tokens.expires_at >= %s', $wpdb->prepared[0]['query'] );
 	}
 
+	public function test_set_access_level_updates_refreshable_active_connection(): void {
+		$wpdb               = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb']    = $wpdb;
+		$wpdb->query_result = 1;
+
+		self::assertTrue( ( new AccessTokenRepository() )->set_access_level( 5, ConnectionAccessLevel::EXECUTE ) );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( 1, $wpdb->prepared[0]['args'][2] );
+		self::assertSame( ConnectionAccessLevel::EXECUTE, $wpdb->prepared[0]['args'][3] );
+		self::assertSame( 5, $wpdb->prepared[0]['args'][4] );
+		self::assertStringContainsString( 'access_tokens.access_level = %s', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_set_access_level_read_disables_direct_write_flag(): void {
+		$wpdb               = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb']    = $wpdb;
+		$wpdb->query_result = 1;
+
+		self::assertTrue( ( new AccessTokenRepository() )->set_access_level( 5, ConnectionAccessLevel::READ ) );
+		self::assertSame( 0, $wpdb->prepared[0]['args'][2] );
+		self::assertSame( ConnectionAccessLevel::READ, $wpdb->prepared[0]['args'][3] );
+	}
+
 	public function test_refresh_rotation_carries_write_permission_to_replacement_access_token(): void {
+		$wpdb      = new FakeAccessTokenWpdb();
+		$wpdb->row = array(
+			'client_id'                => 'client-refresh',
+			'user_id'                  => '7',
+			'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+			'write_permission_enabled' => '1',
+			'access_level'             => ConnectionAccessLevel::FULL_WRITE,
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+		$repository      = new AccessTokenRepository();
+
+		$repository->revokeAccessToken( 'old-access-token' );
+
+		RequestContext::set_resource( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp' );
+		$repository->persistNewAccessToken(
+			$this->access_token_entity(
+				'new-access-token',
+				'client-refresh',
+				'7'
+			)
+		);
+		RequestContext::reset();
+
+		self::assertSame( array( 'get_row', 'update', 'update', 'insert' ), $wpdb->operations );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->inserts[0]['table'] );
+		self::assertSame( 1, $wpdb->inserts[0]['data']['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::FULL_WRITE, $wpdb->inserts[0]['data']['access_level'] );
+	}
+
+	public function test_refresh_rotation_maps_legacy_write_permission_to_selective_write(): void {
 		$wpdb      = new FakeAccessTokenWpdb();
 		$wpdb->row = array(
 			'client_id'                => 'client-refresh',
@@ -186,9 +248,8 @@ final class OAuthRepositoryTest extends TestCase {
 		);
 		RequestContext::reset();
 
-		self::assertSame( array( 'get_row', 'update', 'update', 'insert' ), $wpdb->operations );
-		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->inserts[0]['table'] );
 		self::assertSame( 1, $wpdb->inserts[0]['data']['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::SELECTIVE_WRITE, $wpdb->inserts[0]['data']['access_level'] );
 	}
 
 	public function test_revoke_user_marks_only_selected_users_tokens_revoked(): void {

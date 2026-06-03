@@ -14,6 +14,7 @@ use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
 use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
@@ -323,6 +324,7 @@ final class SettingsPage {
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
 			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
+			'setSessionAccessLevelAction'     => 'aculect_ai_companion_set_session_access_level',
 			'setSessionWritePermissionAction' => 'aculect_ai_companion_set_session_write_permission',
 			'revokeSessionAction'             => 'aculect_ai_companion_revoke_session',
 			'revokeAllAction'                 => 'aculect_ai_companion_revoke_all_sessions',
@@ -336,6 +338,7 @@ final class SettingsPage {
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
+			'setSessionAccessLevelNonce'      => wp_create_nonce( 'aculect_ai_companion_set_session_access_level' ),
 			'setSessionWritePermissionNonce'  => wp_create_nonce( 'aculect_ai_companion_set_session_write_permission' ),
 			'revokeSessionNonce'              => wp_create_nonce( 'aculect_ai_companion_revoke_session' ),
 			'revokeAllNonce'                  => wp_create_nonce( 'aculect_ai_companion_revoke_all_sessions' ),
@@ -634,6 +637,33 @@ final class SettingsPage {
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'connections',
 					'access_lockdown' => $paused ? 'paused' : 'resumed',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Set the admin-managed access level for one active connector session.
+	 */
+	public function handle_set_session_access_level(): void {
+		$this->guard_action( 'aculect_ai_companion_set_session_access_level' );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$session_id   = isset( $_POST['session_id'] ) ? absint( $_POST['session_id'] ) : 0;
+		$access_level = isset( $_POST['session_access_level'] )
+			? ConnectionAccessLevel::normalize( wp_unslash( (string) $_POST['session_access_level'] ) )
+			: ConnectionAccessLevel::DEFAULT;
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_access_level( $session_id, $access_level );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                 => 'aculect-ai-companion',
+					'tab'                  => 'connections',
+					'session_access_level' => $updated ? 'updated' : 'not_updated',
 				),
 				$this->settings_url()
 			)
@@ -1161,6 +1191,11 @@ final class SettingsPage {
 		if ( isset( $_GET['access_lockdown'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 			return 'paused' === sanitize_key( wp_unslash( (string) $_GET['access_lockdown'] ) ) ? 'access_paused' : 'access_resumed';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['session_access_level'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return 'updated' === sanitize_key( wp_unslash( (string) $_GET['session_access_level'] ) ) ? 'session_access_level_updated' : 'session_access_level_not_updated';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['session_write_permission'] ) ) {

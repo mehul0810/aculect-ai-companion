@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
@@ -26,15 +27,15 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	private const DEFAULT_PRUNE_BATCH_SIZE       = 500;
 
 	/**
-	 * Request-local write permission state captured during refresh-token rotation.
+	 * Request-local access level state captured during refresh-token rotation.
 	 *
 	 * League revokes the old access token before persisting the replacement. This
-	 * map lets the new access-token row inherit the trusted connection setting
+	 * map lets the new access-token row inherit the admin-managed access setting
 	 * without expanding the public OAuth token payload.
 	 *
-	 * @var array<string, int>
+	 * @var array<string, string>
 	 */
-	private static array $pending_write_permission_transfers = array();
+	private static array $pending_access_level_transfers = array();
 
 	/**
 	 * Create an access token entity for league/oauth2-server.
@@ -78,11 +79,12 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		}
 
 		$resource                 = RequestContext::resource();
-		$write_permission_enabled = $this->consume_pending_write_permission_transfer(
+		$access_level             = $this->consume_pending_access_level_transfer(
 			(string) $accessTokenEntity->getClient()->getIdentifier(),
 			$accessTokenEntity->getUserIdentifier(),
 			$resource
 		);
+		$write_permission_enabled = ConnectionAccessLevel::allows_direct_write( $access_level ) ? 1 : 0;
 
 		$wpdb->insert(
 			$table,
@@ -94,9 +96,10 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 				'resource'                 => $resource,
 				'revoked'                  => 0,
 				'write_permission_enabled' => $write_permission_enabled,
+				'access_level'             => $access_level,
 				'expires_at'               => $accessTokenEntity->getExpiryDateTime()->format( 'Y-m-d H:i:s' ),
 			),
-			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s' )
+			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
 	}
 
@@ -109,7 +112,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		global $wpdb;
 
 		$table = Installer::table_names()['access_tokens'];
-		$this->capture_write_permission_transfer( $tokenId );
+		$this->capture_access_level_transfer( $tokenId );
 		$wpdb->update( $table, array( 'revoked' => 1 ), array( 'token_hash' => $this->hash_identifier( $tokenId ) ), array( '%d' ), array( '%s' ) );
 		( new RefreshTokenRepository() )->revoke_by_access_token_id( $tokenId );
 	}
@@ -180,6 +183,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			'scopes'                   => is_array( $scopes ) ? array_values( array_map( 'strval', $scopes ) ) : array(),
 			'resource'                 => (string) ( $row['resource'] ?? '' ),
 			'expires_at'               => (string) ( $row['expires_at'] ?? '' ),
+			'access_level'             => $this->access_level_from_row( $row ),
 			'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
 		);
 	}
@@ -217,7 +221,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 				$wpdb->prepare(
 					'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
                     access_tokens.resource, access_tokens.expires_at, access_tokens.created_at, access_tokens.last_used_at,
-                    access_tokens.write_permission_enabled, clients.client_name, clients.provider
+                    access_tokens.write_permission_enabled, access_tokens.access_level, clients.client_name, clients.provider
                 FROM %i access_tokens
                 LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
                 WHERE access_tokens.revoked = 1
@@ -234,7 +238,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id, access_tokens.scopes,
                     access_tokens.resource, access_tokens.expires_at AS access_token_expires_at,
                     active_refresh.expires_at AS connection_expires_at, access_tokens.created_at,
-                    access_tokens.last_used_at, access_tokens.write_permission_enabled, clients.client_name, clients.provider
+                    access_tokens.last_used_at, access_tokens.write_permission_enabled, access_tokens.access_level, clients.client_name, clients.provider
                 FROM %i access_tokens
                 INNER JOIN (
                     SELECT access_token_hash, MAX(expires_at) AS expires_at
@@ -260,7 +264,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		}
 
 		return array_map(
-			static function ( array $row ) use ( $revoked ): array {
+			function ( array $row ) use ( $revoked ): array {
 				$scopes     = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
 				$user_id    = (int) ( $row['user_id'] ?? 0 );
 				$user       = get_user_by( 'id', $user_id );
@@ -289,6 +293,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'created_at'               => (string) ( $row['created_at'] ?? '' ),
 					'last_used_at'             => (string) ( $row['last_used_at'] ?? '' ),
 					'expires_at'               => (string) ( $row['connection_expires_at'] ?? $row['expires_at'] ?? '' ),
+					'access_level'             => $this->access_level_from_row( $row ),
 					'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
 				);
 			},
@@ -401,6 +406,20 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * @return bool Whether a row was updated.
 	 */
 	public function set_write_permission( int $session_id, bool $enabled ): bool {
+		return $this->set_access_level( $session_id, ConnectionAccessLevel::from_write_permission( $enabled ) );
+	}
+
+	/**
+	 * Set the admin-managed access level for one active connector session.
+	 *
+	 * Revoked or non-refreshable rows are intentionally ignored so the setting
+	 * only applies while the connection is still available to the assistant.
+	 *
+	 * @param int    $session_id Access-token table primary key.
+	 * @param string $level      Requested access level.
+	 * @return bool Whether a row was updated.
+	 */
+	public function set_access_level( int $session_id, string $level ): bool {
 		$session_id = absint( $session_id );
 		if ( $session_id <= 0 ) {
 			return false;
@@ -408,19 +427,23 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 
 		global $wpdb;
 
-		$tables = Installer::table_names();
-		$result = $wpdb->query(
+		$tables                   = Installer::table_names();
+		$access_level             = ConnectionAccessLevel::normalize( $level );
+		$write_permission_enabled = ConnectionAccessLevel::allows_direct_write( $access_level ) ? 1 : 0;
+		$result                   = $wpdb->query(
 			$wpdb->prepare(
 				'UPDATE %i access_tokens
 				INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
-				SET access_tokens.write_permission_enabled = %d
+				SET access_tokens.write_permission_enabled = %d,
+					access_tokens.access_level = %s
 				WHERE access_tokens.id = %d
 				AND access_tokens.revoked = 0
 				AND refresh_tokens.revoked = 0
 				AND refresh_tokens.expires_at >= %s',
 				$tables['access_tokens'],
 				$tables['refresh_tokens'],
-				$enabled ? 1 : 0,
+				$write_permission_enabled,
+				$access_level,
 				$session_id,
 				gmdate( 'Y-m-d H:i:s' )
 			)
@@ -526,51 +549,70 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * Capture write permission state from an access token before refresh rotation revokes it.
+	 * Capture access level state from an access token before refresh rotation revokes it.
 	 *
 	 * @param string $token_id Raw OAuth token identifier.
 	 */
-	private function capture_write_permission_transfer( string $token_id ): void {
+	private function capture_access_level_transfer( string $token_id ): void {
 		global $wpdb;
 
 		$table = Installer::table_names()['access_tokens'];
 		$row   = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT client_id, user_id, resource, write_permission_enabled FROM %i WHERE token_hash = %s LIMIT 1',
+				'SELECT client_id, user_id, resource, write_permission_enabled, access_level FROM %i WHERE token_hash = %s LIMIT 1',
 				$table,
 				$this->hash_identifier( $token_id )
 			),
 			ARRAY_A
 		);
 
-		if ( ! is_array( $row ) || '1' !== (string) ( $row['write_permission_enabled'] ?? '0' ) ) {
+		if ( ! is_array( $row ) ) {
 			return;
 		}
 
-		self::$pending_write_permission_transfers[ $this->write_permission_transfer_key(
+		$access_level = $this->access_level_from_row( $row );
+		if ( ConnectionAccessLevel::DEFAULT === $access_level ) {
+			return;
+		}
+
+		self::$pending_access_level_transfers[ $this->write_permission_transfer_key(
 			(string) ( $row['client_id'] ?? '' ),
 			isset( $row['user_id'] ) ? (string) $row['user_id'] : null,
 			(string) ( $row['resource'] ?? '' )
-		) ] = 1;
+		) ] = $access_level;
 	}
 
 	/**
-	 * Return pending write permission state for a replacement access token.
+	 * Return pending access level state for a replacement access token.
 	 *
 	 * @param string      $client_id Client identifier.
 	 * @param string|null $user_id   User identifier.
 	 * @param string      $resource  Resource URL.
 	 */
-	private function consume_pending_write_permission_transfer( string $client_id, ?string $user_id, string $resource ): int {
+	private function consume_pending_access_level_transfer( string $client_id, ?string $user_id, string $resource ): string {
 		$key = $this->write_permission_transfer_key( $client_id, $user_id, $resource );
-		if ( ! isset( self::$pending_write_permission_transfers[ $key ] ) ) {
-			return 0;
+		if ( ! isset( self::$pending_access_level_transfers[ $key ] ) ) {
+			return ConnectionAccessLevel::DEFAULT;
 		}
 
-		$enabled = self::$pending_write_permission_transfers[ $key ];
-		unset( self::$pending_write_permission_transfers[ $key ] );
+		$access_level = self::$pending_access_level_transfers[ $key ];
+		unset( self::$pending_access_level_transfers[ $key ] );
 
-		return $enabled;
+		return ConnectionAccessLevel::normalize( $access_level );
+	}
+
+	/**
+	 * Return the normalized access level for a token row.
+	 *
+	 * @param array<string, mixed> $row Access-token row.
+	 */
+	private function access_level_from_row( array $row ): string {
+		$access_level = ConnectionAccessLevel::normalize( (string) ( $row['access_level'] ?? '' ) );
+		if ( ConnectionAccessLevel::DEFAULT === $access_level && '1' === (string) ( $row['write_permission_enabled'] ?? '0' ) ) {
+			return ConnectionAccessLevel::SELECTIVE_WRITE;
+		}
+
+		return $access_level;
 	}
 
 	/**

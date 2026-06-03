@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -146,6 +147,7 @@ final class LocalSampleData {
 				array( 'Administrator' ),
 				array( 'content:read', 'content:draft' ),
 				true,
+				ConnectionAccessLevel::SELECTIVE_WRITE,
 				'2026-06-03 09:25:00',
 				'2026-07-03 09:25:00'
 			),
@@ -158,6 +160,7 @@ final class LocalSampleData {
 				array( 'Editor' ),
 				array( 'content:read' ),
 				false,
+				ConnectionAccessLevel::SELECTIVE_READ,
 				'2026-06-03 08:40:00',
 				'2026-07-03 08:40:00'
 			),
@@ -170,6 +173,7 @@ final class LocalSampleData {
 				array( 'Administrator', 'Editor' ),
 				array( 'content:read', 'content:draft' ),
 				true,
+				ConnectionAccessLevel::FULL_WRITE,
 				'2026-06-02 18:12:00',
 				'2026-07-02 18:12:00'
 			),
@@ -191,6 +195,7 @@ final class LocalSampleData {
 			array( 'Author' ),
 			array( 'content:read' ),
 			false,
+			ConnectionAccessLevel::READ,
 			'2026-05-30 11:05:00',
 			'2026-06-01 11:05:00'
 		);
@@ -211,6 +216,7 @@ final class LocalSampleData {
 	 * @param array  $roles                    User roles.
 	 * @param array  $scopes                   Granted scopes.
 	 * @param bool   $write_permission_enabled Direct write permission flag.
+	 * @param string $access_level             Access level.
 	 * @param string $last_used_at             Last activity date.
 	 * @param string $expires_at               Connection expiry date.
 	 * @return array<string, mixed>
@@ -224,6 +230,7 @@ final class LocalSampleData {
 		array $roles,
 		array $scopes,
 		bool $write_permission_enabled,
+		string $access_level,
 		string $last_used_at,
 		string $expires_at
 	): array {
@@ -242,6 +249,7 @@ final class LocalSampleData {
 			'last_used_at'             => $last_used_at,
 			'expires_at'               => $expires_at,
 			'write_permission_enabled' => $write_permission_enabled,
+			'access_level'             => ConnectionAccessLevel::normalize( $access_level ),
 		);
 	}
 

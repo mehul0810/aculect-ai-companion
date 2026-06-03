@@ -1236,16 +1236,10 @@ td:last-child
 }
 
 .aculect-ai-companion-connection-assistant-cell {
-	display: grid;
-	grid-template-columns: 32px minmax(0, 1fr);
-	gap: 10px;
+	display: flex;
 	align-items: center;
+	justify-content: center;
 	min-width: 0;
-}
-
-.aculect-ai-companion-connection-assistant-cell
-.aculect-ai-companion-data-view__stack {
-	overflow: hidden;
 }
 
 .aculect-ai-companion-connection-provider-logo {
@@ -1275,6 +1269,22 @@ td:last-child
 	font-weight: 800;
 	line-height: 1.35;
 	text-decoration: none;
+}
+
+.aculect-ai-companion-connection-access .components-button.is-link {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 1.35;
+	text-decoration: none;
+}
+
+.aculect-ai-companion-connection-access .components-button.is-link:hover,
+.aculect-ai-companion-connection-access .components-button.is-link:focus {
+	color: #1d4ed8;
+	text-decoration: underline;
 }
 
 .aculect-ai-companion-connection-assigned-abilities
@@ -1308,6 +1318,10 @@ td:last-child
 
 .aculect-ai-companion-connection-abilities-modal.components-modal__frame {
 	width: min(680px, calc(100vw - 32px));
+}
+
+.aculect-ai-companion-connection-access-modal.components-modal__frame {
+	width: min(560px, calc(100vw - 32px));
 }
 
 .aculect-ai-companion-connection-abilities-modal__intro {
@@ -1374,6 +1388,24 @@ td:last-child
 	max-width: 220px;
 }
 
+.aculect-ai-companion-connection-access-modal__copy {
+	margin: 0 0 16px;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+.aculect-ai-companion-connection-access-modal__description {
+	margin: 0;
+	padding: 12px;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	background: #eff6ff;
+	color: var(--aculect-ai-companion-ink);
+	font-size: 13px;
+	line-height: 1.45;
+}
+
 .aculect-ai-companion-connection-status-chip {
 	display: inline-flex;
 	align-items: center;
@@ -1404,16 +1436,24 @@ td:last-child
 	color: #b32d2e;
 }
 
-.aculect-ai-companion-write-permission {
+.aculect-ai-companion-connection-access {
 	display: grid;
-	gap: 8px;
-	justify-items: start;
-	min-width: 160px;
+	gap: 4px;
+	min-width: 0;
 }
 
-.aculect-ai-companion-write-permission__state {
+.aculect-ai-companion-connection-access__summary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+	align-items: center;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-access__pill {
 	display: inline-flex;
 	align-items: center;
+	width: fit-content;
 	min-height: 24px;
 	padding: 3px 8px;
 	border-radius: 999px;
@@ -1422,22 +1462,31 @@ td:last-child
 	font-size: 12px;
 	font-weight: 800;
 	line-height: 1.2;
-	text-transform: uppercase;
 }
 
-.aculect-ai-companion-write-permission__state.is-enabled {
+.aculect-ai-companion-connection-access__pill.is-read {
+	background: #eef2ff;
+	color: #3730a3;
+}
+
+.aculect-ai-companion-connection-access__pill.is-selective-read {
+	background: #eff6ff;
+	color: #1d4ed8;
+}
+
+.aculect-ai-companion-connection-access__pill.is-selective-write {
 	background: #edfaef;
 	color: var(--aculect-ai-companion-green);
 }
 
-.aculect-ai-companion-write-permission
-.aculect-ai-companion-action-form
-.components-button.is-secondary {
-	min-height: 30px;
-	padding: 4px 9px;
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 1.2;
+.aculect-ai-companion-connection-access__pill.is-full-write {
+	background: #fff7ed;
+	color: #c2410c;
+}
+
+.aculect-ai-companion-connection-access__pill.is-execute {
+	background: #fef2f2;
+	color: #b91c1c;
 }
 
 .aculect-ai-companion-connection-action-menu {
@@ -1857,6 +1906,11 @@ td:last-child
 
 .aculect-ai-companion-action-form {
 	margin: 0;
+}
+
+.aculect-ai-companion-connection-access-modal
+.aculect-ai-companion-action-form {
+	gap: 14px;
 }
 
 .aculect-ai-companion-form--abilities {

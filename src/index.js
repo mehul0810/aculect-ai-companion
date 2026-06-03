@@ -1843,9 +1843,6 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 					</Button>
 				) }
 			</div>
-			<span className="aculect-ai-companion-connections-table__secondary">
-				{ accessLevel.description }
-			</span>
 			{ ! canManage && session.status !== 'revoked' && (
 				<span className="aculect-ai-companion-connection-action-note">
 					Unavailable
@@ -2004,7 +2001,9 @@ function ConnectionsDataViews( {
 			density: 'balanced',
 			styles: {
 				assistant: {
-					width: '8%',
+					width: 64,
+					maxWidth: 64,
+					align: 'center',
 				},
 				user: {
 					width: '18%',

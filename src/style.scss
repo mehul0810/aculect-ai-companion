@@ -1143,16 +1143,23 @@
 
 .aculect-ai-companion-connections-table__primary {
 	display: block;
+	max-width: 100%;
 	margin-bottom: 4px;
+	overflow: hidden;
 	color: var(--aculect-ai-companion-ink);
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .aculect-ai-companion-connections-table__secondary {
 	display: block;
+	max-width: 100%;
+	overflow: hidden;
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	line-height: 1.45;
 	overflow-wrap: anywhere;
+	text-overflow: ellipsis;
 }
 
 .aculect-ai-companion-data-view {
@@ -1192,6 +1199,22 @@
 	table-layout: fixed;
 }
 
+.aculect-ai-companion-data-view--connections .dataviews-view-table table {
+	width: 100%;
+	min-width: 0;
+	table-layout: fixed;
+}
+
+.aculect-ai-companion-data-view--connections
+.dataviews-view-table
+td:last-child
+.dataviews-view-table__cell-content-wrapper {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	justify-content: center;
+}
+
 .aculect-ai-companion-data-view .dataviews-footer {
 	padding: 12px 16px 16px;
 }
@@ -1212,24 +1235,143 @@
 	font-weight: 700;
 }
 
-.aculect-ai-companion-connection-ability-list {
+.aculect-ai-companion-connection-assistant-cell {
+	display: grid;
+	grid-template-columns: 32px minmax(0, 1fr);
+	gap: 10px;
+	align-items: center;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-assistant-cell
+.aculect-ai-companion-data-view__stack {
+	overflow: hidden;
+}
+
+.aculect-ai-companion-connection-provider-logo {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	font-size: 11px;
+}
+
+.aculect-ai-companion-connection-provider-logo svg {
+	width: 18px;
+	height: 18px;
+}
+
+.aculect-ai-companion-connection-assigned-abilities {
+	display: grid;
+	gap: 3px;
+	justify-items: start;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-assigned-abilities
+.components-button.is-link {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+	font-weight: 800;
+	line-height: 1.35;
+	text-decoration: none;
+}
+
+.aculect-ai-companion-connection-assigned-abilities
+.components-button.is-link:hover,
+.aculect-ai-companion-connection-assigned-abilities
+.components-button.is-link:focus {
+	color: #1d4ed8;
+	text-decoration: underline;
+}
+
+.aculect-ai-companion-connection-assigned-abilities span {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.aculect-ai-companion-connection-status-cell {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-status-cell__summary {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-	max-width: 280px;
+	align-items: center;
+	min-width: 0;
 }
 
-.aculect-ai-companion-connection-ability-list span {
-	display: inline-flex;
+.aculect-ai-companion-connection-abilities-modal.components-modal__frame {
+	width: min(680px, calc(100vw - 32px));
+}
+
+.aculect-ai-companion-connection-abilities-modal__intro {
+	display: flex;
+	gap: 12px;
 	align-items: center;
-	min-height: 24px;
-	padding: 3px 7px;
-	border-radius: 999px;
-	background: #edf5ff;
-	color: #135e96;
+	margin-bottom: 16px;
+}
+
+.aculect-ai-companion-connection-abilities-modal__intro strong,
+.aculect-ai-companion-connection-abilities-modal__intro span {
+	display: block;
+}
+
+.aculect-ai-companion-connection-abilities-modal__intro strong {
+	color: var(--aculect-ai-companion-ink);
+	font-size: 15px;
+	line-height: 1.3;
+}
+
+.aculect-ai-companion-connection-abilities-modal__intro span {
+	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	font-weight: 700;
-	line-height: 1.2;
+	line-height: 1.4;
+}
+
+.aculect-ai-companion-connection-abilities-modal__list {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.aculect-ai-companion-connection-abilities-modal__list li {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: start;
+	padding: 12px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: #fff;
+}
+
+.aculect-ai-companion-connection-abilities-modal__list strong {
+	display: block;
+	margin-bottom: 4px;
+	color: var(--aculect-ai-companion-ink);
+	font-size: 14px;
+	line-height: 1.3;
+}
+
+.aculect-ai-companion-connection-abilities-modal__list p {
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.aculect-ai-companion-connection-abilities-modal__list code {
+	justify-self: end;
+	max-width: 220px;
 }
 
 .aculect-ai-companion-connection-status-chip {
@@ -1237,7 +1379,7 @@
 	align-items: center;
 	width: fit-content;
 	min-height: 24px;
-	margin-bottom: 6px;
+	margin-bottom: 0;
 	padding: 3px 8px;
 	border-radius: 999px;
 	background: #f0f0f1;
@@ -1299,6 +1441,7 @@
 }
 
 .aculect-ai-companion-connection-action-menu {
+	position: relative;
 	width: fit-content;
 }
 
@@ -1332,12 +1475,38 @@
 }
 
 .aculect-ai-companion-connection-action-menu__content {
-	margin-top: 8px;
+	position: absolute;
+	z-index: 20;
+	top: calc(100% + 6px);
+	right: 0;
+	padding: 8px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: var(--aculect-ai-companion-surface);
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+
+.aculect-ai-companion-connection-action-menu:not([open])
+.aculect-ai-companion-connection-action-menu__content {
+	display: none;
+}
+
+.aculect-ai-companion-connection-action-menu__button.components-button {
+	width: 34px;
+	min-width: 34px;
+	height: 34px;
+	padding: 0;
+	justify-content: center;
 }
 
 .aculect-ai-companion-connection-action-note {
 	display: inline-flex;
-	max-width: 150px;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	font-weight: 700;

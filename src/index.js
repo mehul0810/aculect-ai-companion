@@ -52,6 +52,7 @@ import {
 	postContent,
 	settings,
 	shield,
+	trash,
 } from '@wordpress/icons';
 
 const TAB_QUERY_PARAM = 'tab';
@@ -459,6 +460,44 @@ function ConnectProviderBadge( { provider } ) {
 	);
 }
 
+function connectionProviderKey( session ) {
+	return String( session.provider || 'mcp' )
+		.toLowerCase()
+		.replace( /[^a-z0-9_-]+/g, '' );
+}
+
+function connectionProviderLabel( session ) {
+	const provider = connectionProviderKey( session );
+	const labels = {
+		chatgpt: 'ChatGPT',
+		claude: 'Claude',
+		codex: 'Codex',
+	};
+
+	return labels[ provider ] || session.provider || 'AI';
+}
+
+function ConnectionProviderLogo( { session } ) {
+	const provider = connectionProviderKey( session );
+	const logoPath = CONNECTOR_LOGO_PATHS[ provider ] || '';
+	const label = connectionProviderLabel( session );
+
+	return (
+		<span
+			className={ `aculect-ai-companion-provider-badge aculect-ai-companion-connection-provider-logo is-${ provider }` }
+			aria-hidden="true"
+		>
+			{ logoPath ? (
+				<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+					<path d={ logoPath } />
+				</svg>
+			) : (
+				label.slice( 0, 2 ).toUpperCase()
+			) }
+		</span>
+	);
+}
+
 function ConnectCapabilityCard( { icon, title, children, tone = 'blue' } ) {
 	return (
 		<div className="aculect-ai-companion-connect-capability-card">
@@ -586,6 +625,9 @@ function ActionForm( {
 	confirmMessage = '',
 	confirmTitle = 'Confirm action',
 	confirmButtonLabel = '',
+	buttonContent = null,
+	buttonClassName = '',
+	accessibleLabel = '',
 } ) {
 	const [ isConfirmOpen, setIsConfirmOpen ] = useState( false );
 	const formRef = useRef( null );
@@ -634,6 +676,7 @@ function ActionForm( {
 				{ children }
 				<Button
 					type="submit"
+					className={ buttonClassName }
 					variant={
 						variant || ( destructive ? 'secondary' : 'primary' )
 					}
@@ -641,8 +684,9 @@ function ActionForm( {
 					isBusy={ isBusy }
 					disabled={ isDisabled }
 					accessibleWhenDisabled
+					aria-label={ accessibleLabel || undefined }
 				>
-					{ submitLabel }
+					{ buttonContent || submitLabel }
 				</Button>
 			</form>
 			{ isConfirmOpen && (
@@ -1435,6 +1479,32 @@ function connectionDateValue( value, fallback = 'Never' ) {
 	} ).format( parsedDate );
 }
 
+function connectionRelativeExpiry( value ) {
+	const rawValue = String( value || '' ).trim();
+
+	if ( ! rawValue ) {
+		return 'Expiry unknown';
+	}
+
+	const parsedDate = new Date( rawValue.replace( ' ', 'T' ) );
+	if ( Number.isNaN( parsedDate.getTime() ) ) {
+		return `Expires ${ rawValue }`;
+	}
+
+	const diffMilliseconds = parsedDate.getTime() - Date.now();
+	if ( diffMilliseconds <= 0 ) {
+		return 'Expired';
+	}
+
+	const diffHours = Math.ceil( diffMilliseconds / ( 1000 * 60 * 60 ) );
+	if ( diffHours < 48 ) {
+		return `Expires in ${ diffHours } hour${ diffHours === 1 ? '' : 's' }`;
+	}
+
+	const diffDays = Math.ceil( diffHours / 24 );
+	return `Expires in ${ diffDays } day${ diffDays === 1 ? '' : 's' }`;
+}
+
 function connectionSessionStatus( session, isAccessPaused ) {
 	if ( session.status === 'revoked' ) {
 		return {
@@ -1546,26 +1616,129 @@ function ConnectionStatusChip( { session, isAccessPaused } ) {
 	);
 }
 
-function ConnectionAbilityChips( { session, abilities, enabledAbilityIds } ) {
-	const labels = connectionAbilityLabels(
+function connectionUserRolesLabel( session ) {
+	const roles = Array.isArray( session.user_roles ) ? session.user_roles : [];
+
+	return roles.length > 0 ? roles.join( ', ' ) : 'Role unknown';
+}
+
+function connectionAssignedAbilities( session, abilities, enabledAbilityIds ) {
+	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
+	const enabledIds = new Set(
+		Array.isArray( enabledAbilityIds ) ? enabledAbilityIds : []
+	);
+	const abilityItems = Array.isArray( abilities ) ? abilities : [];
+	const assignedAbilities = abilityItems
+		.filter(
+			( ability ) =>
+				enabledIds.has( ability.id ) && scopes.includes( ability.scope )
+		)
+		.map( ( ability ) => ( {
+			id: ability.id,
+			title: ability.title || ability.id,
+			description: ability.description || '',
+			scope: ability.scope || '',
+		} ) );
+
+	if ( assignedAbilities.length > 0 ) {
+		const seenIds = new Set();
+		return assignedAbilities.filter( ( ability ) => {
+			if ( seenIds.has( ability.id ) ) {
+				return false;
+			}
+
+			seenIds.add( ability.id );
+			return true;
+		} );
+	}
+
+	return [ ...new Set( scopes ) ].map( ( scope ) => ( {
+		id: scope,
+		title: connectionScopeLabel( scope ),
+		description: 'Granted OAuth scope.',
+		scope,
+	} ) );
+}
+
+function ConnectionAssignedAbilitiesControl( {
+	session,
+	abilities,
+	enabledAbilityIds,
+	onOpen,
+} ) {
+	const assignedAbilities = connectionAssignedAbilities(
 		session,
 		abilities,
 		enabledAbilityIds
 	);
-	const visibleLabels = labels.slice( 0, 3 );
-	const remainingCount = labels.length - visibleLabels.length;
 
-	if ( labels.length === 0 ) {
-		return <span className="aculect-ai-companion-muted">No scopes</span>;
+	if ( assignedAbilities.length === 0 ) {
+		return <span className="aculect-ai-companion-muted">No abilities</span>;
 	}
 
 	return (
-		<div className="aculect-ai-companion-connection-ability-list">
-			{ visibleLabels.map( ( label ) => (
-				<span key={ label }>{ label }</span>
-			) ) }
-			{ remainingCount > 0 && <span>{ remainingCount } more</span> }
+		<div className="aculect-ai-companion-connection-assigned-abilities">
+			<Button
+				type="button"
+				variant="link"
+				onClick={ () => onOpen( session ) }
+			>
+				View Assigned Abilities
+			</Button>
+			<span>
+				{ assignedAbilities.length } assigned
+				{ assignedAbilities.length === 1 ? '' : ' abilities' }
+			</span>
 		</div>
+	);
+}
+
+function ConnectionAssignedAbilitiesModal( {
+	session,
+	abilities,
+	enabledAbilityIds,
+	onClose,
+} ) {
+	const assignedAbilities = connectionAssignedAbilities(
+		session,
+		abilities,
+		enabledAbilityIds
+	);
+
+	return (
+		<Modal
+			title="Assigned abilities"
+			className="aculect-ai-companion-connection-abilities-modal"
+			onRequestClose={ onClose }
+		>
+			<div className="aculect-ai-companion-connection-abilities-modal__intro">
+				<ConnectionProviderLogo session={ session } />
+				<div>
+					<strong>{ session.client_name || 'AI Assistant' }</strong>
+					<span>{ connectionProviderLabel( session ) }</span>
+				</div>
+			</div>
+			{ assignedAbilities.length > 0 ? (
+				<ul className="aculect-ai-companion-connection-abilities-modal__list">
+					{ assignedAbilities.map( ( ability ) => (
+						<li key={ ability.id }>
+							<div>
+								<strong>{ ability.title }</strong>
+								{ ability.description && (
+									<p>{ ability.description }</p>
+								) }
+							</div>
+							<code>{ ability.scope || ability.id }</code>
+						</li>
+					) ) }
+				</ul>
+			) : (
+				<EmptyState title="No assigned abilities">
+					This connection does not currently have any granted
+					abilities.
+				</EmptyState>
+			) }
+		</Modal>
 	);
 }
 
@@ -1632,21 +1805,23 @@ function ConnectionActionsMenu( { session, data } ) {
 		session.status !== 'revoked' &&
 		data.actions?.revokeSessionAction &&
 		data.actions?.revokeSessionNonce;
+	const renderUnavailableAction = ( label ) => (
+		<Tooltip text={ label }>
+			<span
+				className="aculect-ai-companion-connection-action-note"
+				aria-label={ label }
+			>
+				<Icon icon={ lock } size={ 16 } />
+			</span>
+		</Tooltip>
+	);
 
 	if ( session.status === 'revoked' ) {
-		return (
-			<span className="aculect-ai-companion-connection-action-note">
-				Reconnect required
-			</span>
-		);
+		return renderUnavailableAction( 'Reconnect required' );
 	}
 
 	if ( ! canRevoke ) {
-		return (
-			<span className="aculect-ai-companion-connection-action-note">
-				Unavailable
-			</span>
-		);
+		return renderUnavailableAction( 'Unavailable' );
 	}
 
 	return (
@@ -1664,6 +1839,10 @@ function ConnectionActionsMenu( { session, data } ) {
 					nonce={ data.actions?.revokeSessionNonce }
 					label="Disconnect"
 					destructive
+					variant="tertiary"
+					buttonClassName="aculect-ai-companion-connection-action-menu__button"
+					accessibleLabel="Disconnect assistant"
+					buttonContent={ <Icon icon={ trash } size={ 16 } /> }
 					confirmTitle="Disconnect assistant"
 					confirmMessage="Disconnect this assistant? Its active token and refresh token will be revoked."
 				>
@@ -1689,41 +1868,52 @@ function ConnectionsDataViews( {
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const [ assignedAbilitiesSession, setAssignedAbilitiesSession ] =
+		useState( null );
 	const defaultView = {
 		type: 'table',
 		search: '',
 		page: 1,
 		perPage: 10,
 		sort: {
-			field: 'last_activity',
+			field: 'status',
 			direction: 'desc',
 		},
 		fields: [
 			'assistant',
 			'user',
-			'roles',
 			'abilities',
-			'last_activity',
 			'write_access',
 			'status',
 			'actions',
 		],
 		layout: {
 			density: 'balanced',
+			styles: {
+				assistant: {
+					width: '22%',
+				},
+				user: {
+					width: '18%',
+				},
+				abilities: {
+					width: '18%',
+				},
+				write_access: {
+					width: '16%',
+				},
+				status: {
+					width: '22%',
+				},
+				actions: {
+					width: 80,
+					maxWidth: 80,
+					align: 'center',
+				},
+			},
 		},
 	};
 	const [ view, setView ] = useState( defaultView );
-	const roleOptions = useMemo(
-		() =>
-			connectionOptionElements(
-				connectionSessions.flatMap( ( session ) =>
-					Array.isArray( session.user_roles )
-						? session.user_roles
-						: []
-				)
-			),
-		[ connectionSessions ]
-	);
 	const providerOptions = useMemo(
 		() =>
 			connectionOptionElements(
@@ -1745,48 +1935,39 @@ function ConnectionsDataViews( {
 						' '
 					),
 				render: ( { item: session } ) => (
-					<div className="aculect-ai-companion-data-view__stack">
-						<strong className="aculect-ai-companion-connections-table__primary">
-							{ session.client_name || 'AI Assistant' }
-						</strong>
-						<span className="aculect-ai-companion-connections-table__secondary">
-							{ session.provider || 'mcp' }
-						</span>
+					<div className="aculect-ai-companion-connection-assistant-cell">
+						<ConnectionProviderLogo session={ session } />
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong className="aculect-ai-companion-connections-table__primary">
+								{ session.client_name || 'AI Assistant' }
+							</strong>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ connectionProviderLabel( session ) }
+							</span>
+						</div>
 					</div>
 				),
 			},
 			{
 				id: 'user',
-				label: 'WordPress User',
+				label: 'User',
 				enableGlobalSearch: true,
 				getValue: ( { item } ) =>
-					[ item.user, item.resource, item.user_id ].join( ' ' ),
+					[
+						item.user,
+						connectionUserRolesLabel( item ),
+						item.user_id,
+					].join( ' ' ),
 				render: ( { item: session } ) => (
 					<div className="aculect-ai-companion-data-view__stack">
 						<strong className="aculect-ai-companion-connections-table__primary">
 							{ session.user || 'Unknown user' }
 						</strong>
 						<span className="aculect-ai-companion-connections-table__secondary">
-							{ session.resource || 'Default resource' }
+							{ connectionUserRolesLabel( session ) }
 						</span>
 					</div>
 				),
-			},
-			{
-				id: 'roles',
-				label: 'Role',
-				type: 'array',
-				elements: roleOptions,
-				filterBy:
-					roleOptions.length > 0 ? { operators: [ 'isAny' ] } : false,
-				enableGlobalSearch: true,
-				getValue: ( { item } ) =>
-					Array.isArray( item.user_roles ) ? item.user_roles : [],
-				render: ( { item: session } ) =>
-					Array.isArray( session.user_roles ) &&
-					session.user_roles.length > 0
-						? session.user_roles.join( ', ' )
-						: 'Unknown',
 			},
 			{
 				id: 'abilities',
@@ -1801,38 +1982,12 @@ function ConnectionsDataViews( {
 						enabledAbilityIds
 					),
 				render: ( { item: session } ) => (
-					<ConnectionAbilityChips
+					<ConnectionAssignedAbilitiesControl
 						session={ session }
 						abilities={ abilities }
 						enabledAbilityIds={ enabledAbilityIds }
+						onOpen={ setAssignedAbilitiesSession }
 					/>
-				),
-			},
-			{
-				id: 'last_activity',
-				label: 'Last Activity',
-				type: 'datetime',
-				getValue: ( { item } ) => item.last_used_at || '',
-				sort: ( first, second, direction ) => {
-					const delta =
-						connectionTimestamp( first.last_used_at ) -
-						connectionTimestamp( second.last_used_at );
-
-					return direction === 'asc' ? delta : -delta;
-				},
-				render: ( { item: session } ) => (
-					<div className="aculect-ai-companion-data-view__stack">
-						<strong className="aculect-ai-companion-connections-table__primary">
-							{ connectionDateValue( session.last_used_at ) }
-						</strong>
-						<span className="aculect-ai-companion-connections-table__secondary">
-							Created{ ' ' }
-							{ connectionDateValue(
-								session.created_at,
-								'Unknown'
-							) }
-						</span>
-					</div>
 				),
 			},
 			{
@@ -1865,16 +2020,37 @@ function ConnectionsDataViews( {
 				filterBy: { operators: [ 'isAny' ], isPrimary: true },
 				getValue: ( { item } ) =>
 					connectionStatusKey( item, isAccessPaused ),
+				sort: ( first, second, direction ) => {
+					const delta =
+						connectionTimestamp( first.last_used_at ) -
+						connectionTimestamp( second.last_used_at );
+
+					return direction === 'asc' ? delta : -delta;
+				},
 				render: ( { item: session } ) => (
-					<div className="aculect-ai-companion-data-view__stack">
-						<ConnectionStatusChip
-							session={ session }
-							isAccessPaused={ isAccessPaused }
-						/>
+					<div className="aculect-ai-companion-connection-status-cell">
+						<div className="aculect-ai-companion-connection-status-cell__summary">
+							<ConnectionStatusChip
+								session={ session }
+								isAccessPaused={ isAccessPaused }
+							/>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ connectionRelativeExpiry(
+									session.expires_at
+								) }
+							</span>
+						</div>
 						<span className="aculect-ai-companion-connections-table__secondary">
-							Connection expires{ ' ' }
+							Last activity:{ ' ' }
 							{ connectionDateValue(
-								session.expires_at,
+								session.last_used_at,
+								'Never'
+							) }
+						</span>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							Created:{ ' ' }
+							{ connectionDateValue(
+								session.created_at,
 								'Unknown'
 							) }
 						</span>
@@ -1921,7 +2097,7 @@ function ConnectionsDataViews( {
 			enabledAbilityIds,
 			isAccessPaused,
 			providerOptions,
-			roleOptions,
+			setAssignedAbilitiesSession,
 		]
 	);
 	const { data: visibleSessions, paginationInfo } = useMemo(
@@ -1951,30 +2127,40 @@ function ConnectionsDataViews( {
 	}
 
 	return (
-		<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
-			<DataViewsComponent
-				data={ visibleSessions }
-				fields={ fields }
-				view={ view }
-				onChangeView={ setView }
-				search
-				searchLabel="Search connections"
-				defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
-				paginationInfo={ paginationInfo }
-				getItemId={ ( session ) =>
-					`${ session.status || 'active' }-${ session.id }`
-				}
-				config={ { perPageSizes: [ 10, 20, 50 ] } }
-				onReset={ () => setView( defaultView ) }
-				empty={
-					<EmptyState title={ emptyStateTitle }>
-						{ connectionSessions.length > 0
-							? 'Try a different assistant, WordPress user, role, ability, provider, or status filter.'
-							: 'Add the connection URL to an AI assistant, then approve the connection in WordPress.' }
-					</EmptyState>
-				}
-			/>
-		</div>
+		<>
+			<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
+				<DataViewsComponent
+					data={ visibleSessions }
+					fields={ fields }
+					view={ view }
+					onChangeView={ setView }
+					search
+					searchLabel="Search connections"
+					defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
+					paginationInfo={ paginationInfo }
+					getItemId={ ( session ) =>
+						`${ session.status || 'active' }-${ session.id }`
+					}
+					config={ { perPageSizes: [ 10, 20, 50 ] } }
+					onReset={ () => setView( defaultView ) }
+					empty={
+						<EmptyState title={ emptyStateTitle }>
+							{ connectionSessions.length > 0
+								? 'Try a different assistant, WordPress user, role, ability, provider, or status filter.'
+								: 'Add the connection URL to an AI assistant, then approve the connection in WordPress.' }
+						</EmptyState>
+					}
+				/>
+			</div>
+			{ assignedAbilitiesSession && (
+				<ConnectionAssignedAbilitiesModal
+					session={ assignedAbilitiesSession }
+					abilities={ abilities }
+					enabledAbilityIds={ enabledAbilityIds }
+					onClose={ () => setAssignedAbilitiesSession( null ) }
+				/>
+			) }
+		</>
 	);
 }
 

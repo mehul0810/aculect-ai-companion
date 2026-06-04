@@ -53,7 +53,57 @@ final class McpControllerTest extends TestCase {
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
 	}
 
-	public function test_tools_list_prioritizes_operational_tools_before_intelligence_tools(): void {
+	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
+		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$names  = array_column( $result['tools'], 'name' );
+
+		foreach ( $names as $name ) {
+			self::assertIsString( $name );
+			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $name );
+			self::assertStringNotContainsString( '.', $name );
+			self::assertStringNotContainsString( '/', $name );
+		}
+	}
+
+	public function test_openai_chatgpt_and_codex_tool_descriptors_keep_mcp_security_contract(): void {
+		$result           = $this->invokePrivate( new McpController(), 'list_tools' );
+		$supported_scopes = Helpers::supported_scopes();
+
+		foreach ( $result['tools'] as $tool ) {
+			self::assertIsArray( $tool );
+			foreach ( array( 'name', 'title', 'description', 'inputSchema', 'securitySchemes', '_meta', 'annotations' ) as $field ) {
+				self::assertArrayHasKey( $field, $tool );
+			}
+
+			self::assertIsString( $tool['name'] );
+			self::assertIsString( $tool['title'] );
+			self::assertIsString( $tool['description'] );
+			self::assertIsArray( $tool['inputSchema'] );
+			self::assertSame( 'object', $tool['inputSchema']['type'] ?? null );
+			self::assertArrayHasKey( 'properties', $tool['inputSchema'] );
+
+			self::assertIsArray( $tool['securitySchemes'] );
+			self::assertNotEmpty( $tool['securitySchemes'] );
+			self::assertIsArray( $tool['_meta'] );
+			self::assertArrayHasKey( 'securitySchemes', $tool['_meta'] );
+			self::assertSame( $tool['securitySchemes'], $tool['_meta']['securitySchemes'] );
+
+			foreach ( $tool['securitySchemes'] as $scheme ) {
+				self::assertIsArray( $scheme );
+				self::assertSame( 'oauth2', $scheme['type'] ?? null );
+				self::assertIsArray( $scheme['scopes'] ?? null );
+				foreach ( $scheme['scopes'] as $scope ) {
+					self::assertContains( $scope, $supported_scopes );
+				}
+			}
+
+			self::assertIsArray( $tool['annotations'] );
+			self::assertArrayHasKey( 'readOnlyHint', $tool['annotations'] );
+			self::assertIsBool( $tool['annotations']['readOnlyHint'] );
+		}
+	}
+
+	public function test_chatgpt_codex_and_claude_tools_prioritize_operational_tools_before_intelligence_tools(): void {
 		$result = $this->invokePrivate( new McpController(), 'list_tools' );
 		$names  = array_column( $result['tools'], 'name' );
 
@@ -94,7 +144,7 @@ final class McpControllerTest extends TestCase {
 		}
 	}
 
-	public function test_tools_list_schemas_use_client_safe_json_schema_subset(): void {
+	public function test_openai_chatgpt_codex_and_claude_input_schemas_use_client_safe_json_schema_subset(): void {
 		$result = $this->invokePrivate( new McpController(), 'list_tools' );
 
 		foreach ( $result['tools'] as $tool ) {

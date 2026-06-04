@@ -201,13 +201,16 @@ Composer dependencies for production releases are installed with:
 * Added the Aculect Intelligence Layer with site, content, developer, and brand intelligence context.
 * Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.
 * Added settings import, export, and reset actions for safer configuration transfer and recovery.
+* Added an authenticated MCP tool manifest export for diagnosing client-specific tool discovery differences.
 * Reduced unnecessary admin payload work for tab-specific data.
 * Refined Connections and Abilities list views with assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.
 * Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.
 * Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.
 * Fixed Claude MCP tool invocation while keeping ChatGPT and Codex scope metadata aligned.
 * Improved MCP tool discovery compatibility for Claude, ChatGPT, OpenAI, and Codex by prioritizing operational tools and simplifying input schemas.
+* Aligned Intelligence Layer operation availability with the same global ability, role policy, and OAuth scope checks used by the MCP tools list.
 * Added provider compatibility guards for MCP tool descriptors and schemas.
+* Included per-tool availability, policy blockers, required scopes, and read-only hints in intelligence context so assistants can decide which enabled abilities to use.
 * Expanded cleanup coverage for full uninstall data removal.
 
 = 0.4.0 =

@@ -160,12 +160,13 @@ final class McpControllerTest extends TestCase {
 	public function test_intelligence_context_lists_operational_tool_names(): void {
 		$site = ( new IntelligenceContext() )->site();
 
-		self::assertSame( 'content_list_items', $site['operations']['content']['list_items'] );
-		self::assertSame( 'content_update_item', $site['operations']['content']['update'] );
-		self::assertSame( 'content_update_seo', $site['operations']['content']['seo'] );
-		self::assertSame( 'media_upload_item', $site['operations']['media']['upload'] );
-		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms'] );
-		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run'] );
+		self::assertSame( 'content_list_items', $site['operations']['content']['list_items']['tool'] );
+		self::assertTrue( $site['operations']['content']['list_items']['available'] );
+		self::assertSame( 'content_update_item', $site['operations']['content']['update']['tool'] );
+		self::assertSame( 'content_update_seo', $site['operations']['content']['seo']['tool'] );
+		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
+		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms']['tool'] );
+		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run']['tool'] );
 	}
 
 	public function test_input_schema_accepts_public_tool_name_aliases(): void {

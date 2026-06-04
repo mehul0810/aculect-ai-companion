@@ -39,6 +39,7 @@ The MCP endpoint must be the only primary value shown to users. Metadata and OAu
 - Connector settings UI data: `src/Admin/SettingsPage.php`
 - Shared URL/resource helpers: `src/Connectors/Helpers.php`
 - MCP endpoint and OAuth challenges: `src/Connectors/MCP/McpController.php`
+- MCP tool availability policy: `src/Connectors/MCP/McpToolAvailability.php`
 - MCP ability definitions and enabled/disabled state: `src/Connectors/MCP/AbilitiesRegistry.php`
 - MCP tool manifest diagnostics/export: `src/Diagnostics/McpToolManifest.php`
 - OAuth metadata/discovery: `src/Connectors/OAuth/DiscoveryController.php`
@@ -56,8 +57,11 @@ Current rule:
 - Keep internal ability IDs stable for settings and dispatch.
 - Expose Claude-safe MCP tool names in `tools/list`, for example `content_list_items`.
 - Accept both Claude-safe names and legacy dotted aliases in `tools/call` so cached clients do not break immediately.
+- Build `tools/list`, admin diagnostics, and intelligence `operations` from the shared MCP tool availability policy.
 
 Regression check: inspect `tools/list` and confirm every returned `tools[].name` matches `^[a-zA-Z0-9_-]{1,64}$`.
+
+Intelligence context `operations` entries are structured as `{ ability_id, tool, available, blocked_by, required_scopes, read_only }`. Admin/global ability settings and role policy decide whether an operation is callable. Intelligence should choose among `available: true` tools; unavailable entries exist to explain blocked workflows without implying WordPress data is missing.
 
 When Claude appears to see fewer tools than ChatGPT, export the MCP tool manifest from `AI Companion > Diagnostics` or from the active connection's actions menu. The export captures the exact `tools/list` payload for the selected WordPress user plus `ability_policy` details:
 

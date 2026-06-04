@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Diagnostics;
 
 use Aculect\AICompanion\Connectors\Helpers;
-use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
-use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
+use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 
 /**
  * Builds support-safe MCP tool manifest exports and summaries.
@@ -73,36 +72,7 @@ final class McpToolManifest {
 	 * @return array<string, mixed>
 	 */
 	public function ability_policy_context(): array {
-		$registry       = new AbilitiesRegistry();
-		$policy         = new RoleAbilitiesPolicy();
-		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
-		$all_ids        = array_keys( $registry->definitions() );
-		$global_enabled = $registry->enabled_ids();
-		$allowed        = $policy->allowed_ids_for_user( (int) $user_id, $registry );
-		$exposed        = array_intersect( $all_ids, $allowed, $global_enabled );
-		$roles          = $this->current_user_context()['roles'];
-
-		return array(
-			'user_id'                   => (int) $user_id,
-			'user_roles'                => $roles,
-			'global_enabled_count'      => count( $global_enabled ),
-			'role_allowed_count'        => count( $allowed ),
-			'exposed_ability_count'     => count( $exposed ),
-			'all_ability_count'         => count( $all_ids ),
-			'global_enabled_ids'        => array_values( $global_enabled ),
-			'role_allowed_ids'          => array_values( $allowed ),
-			'exposed_ability_ids'       => array_values( $exposed ),
-			'blocked_by_global_ids'     => array_values( array_diff( $all_ids, $global_enabled ) ),
-			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $allowed ) ),
-			'explicit_role_policy'      => count(
-				array_filter(
-					$roles,
-					static fn ( string $role ): bool => $policy->has_explicit_policy( $role )
-				)
-			) > 0,
-			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
-			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
-		);
+		return ( new McpToolAvailability() )->ability_policy_for_current_user();
 	}
 
 	/**

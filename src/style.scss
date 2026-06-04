@@ -183,6 +183,30 @@
 	margin-bottom: 0;
 }
 
+.aculect-ai-companion-status-notices {
+	margin: 0;
+	padding: 16px 44px 0;
+}
+
+.aculect-ai-companion-status-notices:empty {
+	display: none;
+	padding: 0;
+}
+
+.aculect-ai-companion-admin-notices:not(:empty) + .aculect-ai-companion-status-notices:not(:empty) {
+	padding-top: 10px;
+}
+
+.aculect-ai-companion-status-notices .components-notice {
+	box-sizing: border-box;
+	margin: 0 0 10px;
+	width: 100%;
+}
+
+.aculect-ai-companion-status-notices .components-notice:last-child {
+	margin-bottom: 0;
+}
+
 .aculect-ai-companion-tabs {
 	display: flex;
 	align-items: stretch;
@@ -3699,6 +3723,7 @@ td:first-child
 	}
 
 	.aculect-ai-companion-admin-notices,
+	.aculect-ai-companion-status-notices,
 	.aculect-ai-companion-tab-panel {
 		padding-right: 16px;
 		padding-left: 16px;
@@ -3833,6 +3858,7 @@ td:first-child
 	}
 
 	.aculect-ai-companion-admin-notices,
+	.aculect-ai-companion-status-notices,
 	.aculect-ai-companion-tab-panel {
 		padding-right: 14px;
 		padding-left: 14px;

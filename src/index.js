@@ -5195,130 +5195,135 @@ function SettingsApp() {
 				aria-live="polite"
 			/>
 
-			{ copied && (
-				<Notice status="success" isDismissible={ false }>
-					{ copied }
-				</Notice>
-			) }
-			{ sampleDataActive && (
-				<Notice status="info" isDismissible={ false }>
-					{ sampleData.message ||
-						'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.' }
-				</Notice>
-			) }
-			{ data.status === 'abilities_saved' && (
-				<Notice status="success" isDismissible={ false }>
-					Abilities saved.
-				</Notice>
-			) }
-			{ data.status === 'role_abilities_saved' && (
-				<Notice status="success" isDismissible={ false }>
-					Role ability policy saved.
-				</Notice>
-			) }
-			{ data.status === 'revoked' && (
-				<Notice status="warning" isDismissible={ false }>
-					AI assistant disconnected.
-				</Notice>
-			) }
-			{ data.status === 'revoked_all' && (
-				<Notice status="warning" isDismissible={ false }>
-					All AI assistants disconnected.
-				</Notice>
-			) }
-			{ data.status === 'advanced_saved' && (
-				<Notice status="success" isDismissible={ false }>
-					Advanced settings saved.
-				</Notice>
-			) }
-			{ data.status === 'settings_imported' && (
-				<Notice status="success" isDismissible={ false }>
-					Settings imported.
-				</Notice>
-			) }
-			{ data.status === 'settings_import_failed' && (
-				<Notice status="error" isDismissible={ false }>
-					Settings import failed. Choose a valid Aculect AI Companion
-					settings JSON file.
-				</Notice>
-			) }
-			{ data.status === 'settings_reset' && (
-				<Notice status="warning" isDismissible={ false }>
-					Settings reset to defaults.
-				</Notice>
-			) }
-			{ data.status === 'brand_saved' && (
-				<Notice status="success" isDismissible={ false }>
-					Brand profile saved.
-				</Notice>
-			) }
-			{ data.status === 'learning_suggestion_approved' && (
-				<Notice status="success" isDismissible={ false }>
-					Learning suggestion approved.
-				</Notice>
-			) }
-			{ data.status === 'learning_suggestion_dismissed' && (
-				<Notice status="warning" isDismissible={ false }>
-					Learning suggestion dismissed.
-				</Notice>
-			) }
-			{ data.status === 'learning_suggestion_updated' && (
-				<Notice status="success" isDismissible={ false }>
-					Learning suggestion updated.
-				</Notice>
-			) }
-			{ data.status === 'learning_suggestion_not_updated' && (
-				<Notice status="warning" isDismissible={ false }>
-					Learning suggestion was not updated.
-				</Notice>
-			) }
-			{ data.status === 'logs_cleared' && (
-				<Notice status="warning" isDismissible={ false }>
-					Diagnostic logs cleared.
-				</Notice>
-			) }
-			{ data.status === 'access_paused' && (
-				<Notice status="warning" isDismissible={ false }>
-					AI access paused.
-				</Notice>
-			) }
-			{ data.status === 'access_resumed' && (
-				<Notice status="success" isDismissible={ false }>
-					AI access resumed.
-				</Notice>
-			) }
-			{ data.status === 'session_access_level_updated' && (
-				<Notice status="success" isDismissible={ false }>
-					Connection access updated.
-				</Notice>
-			) }
-			{ data.status === 'session_access_level_not_updated' && (
-				<Notice status="warning" isDismissible={ false }>
-					Connection access was not changed because the connection is
-					no longer active.
-				</Notice>
-			) }
-			{ data.status === 'session_write_permission_enabled' && (
-				<Notice status="success" isDismissible={ false }>
-					Direct writes enabled for the connection.
-				</Notice>
-			) }
-			{ data.status === 'session_write_permission_disabled' && (
-				<Notice status="success" isDismissible={ false }>
-					Write confirmation restored for the connection.
-				</Notice>
-			) }
-			{ data.status === 'session_write_permission_not_updated' && (
-				<Notice status="warning" isDismissible={ false }>
-					Write permission was not changed because the connection is
-					no longer active.
-				</Notice>
-			) }
-			{ data.status === 'diagnostics_run' && (
-				<Notice status="success" isDismissible={ false }>
-					Connection diagnostics updated.
-				</Notice>
-			) }
+			<div
+				className="aculect-ai-companion-status-notices"
+				aria-live="polite"
+			>
+				{ copied && (
+					<Notice status="success" isDismissible={ false }>
+						{ copied }
+					</Notice>
+				) }
+				{ sampleDataActive && (
+					<Notice status="info" isDismissible={ false }>
+						{ sampleData.message ||
+							'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.' }
+					</Notice>
+				) }
+				{ data.status === 'abilities_saved' && (
+					<Notice status="success" isDismissible={ false }>
+						Abilities saved.
+					</Notice>
+				) }
+				{ data.status === 'role_abilities_saved' && (
+					<Notice status="success" isDismissible={ false }>
+						Role ability policy saved.
+					</Notice>
+				) }
+				{ data.status === 'revoked' && (
+					<Notice status="warning" isDismissible={ false }>
+						AI assistant disconnected.
+					</Notice>
+				) }
+				{ data.status === 'revoked_all' && (
+					<Notice status="warning" isDismissible={ false }>
+						All AI assistants disconnected.
+					</Notice>
+				) }
+				{ data.status === 'advanced_saved' && (
+					<Notice status="success" isDismissible={ false }>
+						Advanced settings saved.
+					</Notice>
+				) }
+				{ data.status === 'settings_imported' && (
+					<Notice status="success" isDismissible={ false }>
+						Settings imported.
+					</Notice>
+				) }
+				{ data.status === 'settings_import_failed' && (
+					<Notice status="error" isDismissible={ false }>
+						Settings import failed. Choose a valid Aculect AI
+						Companion settings JSON file.
+					</Notice>
+				) }
+				{ data.status === 'settings_reset' && (
+					<Notice status="warning" isDismissible={ false }>
+						Settings reset to defaults.
+					</Notice>
+				) }
+				{ data.status === 'brand_saved' && (
+					<Notice status="success" isDismissible={ false }>
+						Brand profile saved.
+					</Notice>
+				) }
+				{ data.status === 'learning_suggestion_approved' && (
+					<Notice status="success" isDismissible={ false }>
+						Learning suggestion approved.
+					</Notice>
+				) }
+				{ data.status === 'learning_suggestion_dismissed' && (
+					<Notice status="warning" isDismissible={ false }>
+						Learning suggestion dismissed.
+					</Notice>
+				) }
+				{ data.status === 'learning_suggestion_updated' && (
+					<Notice status="success" isDismissible={ false }>
+						Learning suggestion updated.
+					</Notice>
+				) }
+				{ data.status === 'learning_suggestion_not_updated' && (
+					<Notice status="warning" isDismissible={ false }>
+						Learning suggestion was not updated.
+					</Notice>
+				) }
+				{ data.status === 'logs_cleared' && (
+					<Notice status="warning" isDismissible={ false }>
+						Diagnostic logs cleared.
+					</Notice>
+				) }
+				{ data.status === 'access_paused' && (
+					<Notice status="warning" isDismissible={ false }>
+						AI access paused.
+					</Notice>
+				) }
+				{ data.status === 'access_resumed' && (
+					<Notice status="success" isDismissible={ false }>
+						AI access resumed.
+					</Notice>
+				) }
+				{ data.status === 'session_access_level_updated' && (
+					<Notice status="success" isDismissible={ false }>
+						Connection access updated.
+					</Notice>
+				) }
+				{ data.status === 'session_access_level_not_updated' && (
+					<Notice status="warning" isDismissible={ false }>
+						Connection access was not changed because the connection
+						is no longer active.
+					</Notice>
+				) }
+				{ data.status === 'session_write_permission_enabled' && (
+					<Notice status="success" isDismissible={ false }>
+						Direct writes enabled for the connection.
+					</Notice>
+				) }
+				{ data.status === 'session_write_permission_disabled' && (
+					<Notice status="success" isDismissible={ false }>
+						Write confirmation restored for the connection.
+					</Notice>
+				) }
+				{ data.status === 'session_write_permission_not_updated' && (
+					<Notice status="warning" isDismissible={ false }>
+						Write permission was not changed because the connection
+						is no longer active.
+					</Notice>
+				) }
+				{ data.status === 'diagnostics_run' && (
+					<Notice status="success" isDismissible={ false }>
+						Connection diagnostics updated.
+					</Notice>
+				) }
+			</div>
 
 			<main className="aculect-ai-companion-tab-panel">
 				{ ( () => {

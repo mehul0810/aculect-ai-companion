@@ -1,20 +1,28 @@
 {
   "0.5.0": {
-    "date": "2026-06-01",
+    "date": "2026-06-04",
     "New": [
       "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
       "Added brand profile guidance for connected assistants.",
       "Added role-specific MCP ability policy controls and per-user access pause controls.",
-      "Added per-connection write permission controls for trusted assistants that should run write actions without confirmation blockers."
+      "Added per-connection write permission controls for trusted assistants that should run write actions without confirmation blockers.",
+      "Added the Aculect Intelligence Layer with site, content, developer, and brand intelligence context for connected assistants.",
+      "Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.",
+      "Added settings import, export, and reset actions for safer configuration transfer and recovery."
     ],
     "Improved": [
       "Reduced unnecessary admin payload work for tab-specific data.",
       "Removed statistics card rows from settings tabs so each screen stays focused on actions, filters, and operational state.",
-      "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries."
+      "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.",
+      "Refined Connections and Abilities list views with tighter columns, assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.",
+      "Separated role-based abilities management from the main Abilities list behind a focused modal workflow.",
+      "Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding."
     ],
     "Reliability": [
       "Fixed Claude MCP tool invocation by requesting the full connector scope set during OAuth discovery while keeping ChatGPT and Codex scope metadata aligned.",
-      "Expanded cleanup coverage for full uninstall data removal."
+      "Added a reviewed learning-suggestion path so assistants can report improvement opportunities without silently mutating memory or brand profile data.",
+      "Expanded cleanup coverage for full uninstall data removal.",
+      "Kept settings export/import/reset free of OAuth material, tokens, keys, logs, and activity history."
     ]
   },
   "0.4.0": {

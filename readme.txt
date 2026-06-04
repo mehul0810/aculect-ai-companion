@@ -197,8 +197,15 @@ Composer dependencies for production releases are installed with:
 * Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.
 * Added brand profile guidance for connected assistants.
 * Added role-specific MCP ability policy controls and per-user access pause controls.
+* Added per-connection write permission controls for trusted assistants.
+* Added the Aculect Intelligence Layer with site, content, developer, and brand intelligence context.
+* Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.
+* Added settings import, export, and reset actions for safer configuration transfer and recovery.
 * Reduced unnecessary admin payload work for tab-specific data.
+* Refined Connections and Abilities list views with assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.
+* Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.
 * Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.
+* Fixed Claude MCP tool invocation while keeping ChatGPT and Codex scope metadata aligned.
 * Expanded cleanup coverage for full uninstall data removal.
 
 = 0.4.0 =

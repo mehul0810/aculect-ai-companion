@@ -23,6 +23,7 @@ use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
+use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -323,6 +324,7 @@ final class SettingsPage {
 			'saveRoleAbilitiesAction'         => 'aculect_ai_companion_save_role_abilities',
 			'saveAdvancedAction'              => 'aculect_ai_companion_save_advanced',
 			'exportSettingsAction'            => 'aculect_ai_companion_export_settings',
+			'exportMcpToolManifestAction'     => 'aculect_ai_companion_export_mcp_tool_manifest',
 			'importSettingsAction'            => 'aculect_ai_companion_import_settings',
 			'resetSettingsAction'             => 'aculect_ai_companion_reset_settings',
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
@@ -338,6 +340,7 @@ final class SettingsPage {
 			'saveRoleAbilitiesNonce'          => wp_create_nonce( 'aculect_ai_companion_save_role_abilities' ),
 			'saveAdvancedNonce'               => wp_create_nonce( 'aculect_ai_companion_save_advanced' ),
 			'exportSettingsNonce'             => wp_create_nonce( 'aculect_ai_companion_export_settings' ),
+			'exportMcpToolManifestNonce'      => wp_create_nonce( 'aculect_ai_companion_export_mcp_tool_manifest' ),
 			'importSettingsNonce'             => wp_create_nonce( 'aculect_ai_companion_import_settings' ),
 			'resetSettingsNonce'              => wp_create_nonce( 'aculect_ai_companion_reset_settings' ),
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
@@ -485,6 +488,35 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Stream the exact MCP tools/list manifest for support diagnostics.
+	 */
+	public function handle_export_mcp_tool_manifest(): void {
+		$this->guard_action( 'aculect_ai_companion_export_mcp_tool_manifest' );
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$session_id = isset( $_POST['session_id'] ) ? absint( $_POST['session_id'] ) : 0;
+		$session    = $this->active_session_by_id( $session_id );
+		$exporter   = new McpToolManifest();
+		$manifest   = array() !== $session
+			? $exporter->export_for_user( (int) ( $session['user_id'] ?? 0 ), $session )
+			: $exporter->export_for_current_user();
+
+		if ( ! headers_sent() ) {
+			nocache_headers();
+			header( 'Content-Type: application/json; charset=utf-8' );
+			header(
+				'Content-Disposition: attachment; filename="' .
+				sanitize_file_name( 'aculect-ai-companion-mcp-tools-' . gmdate( 'Y-m-d' ) . '.json' ) .
+				'"'
+			);
+		}
+
+		$json = wp_json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+		echo is_string( $json ) ? $json : '{}'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON is encoded immediately above.
+		exit;
+	}
+
+	/**
 	 * Import sanitized plugin settings from a JSON upload.
 	 */
 	public function handle_import_settings(): void {
@@ -518,6 +550,26 @@ final class SettingsPage {
 				'settings_reset' => '1',
 			)
 		);
+	}
+
+	/**
+	 * Find one active connector session by admin-visible ID.
+	 *
+	 * @param int $session_id Access-token table primary key.
+	 * @return array<string, mixed>
+	 */
+	private function active_session_by_id( int $session_id ): array {
+		if ( $session_id <= 0 ) {
+			return array();
+		}
+
+		foreach ( ( new AccessTokenRepository() )->list_active_sessions() as $session ) {
+			if ( (int) ( $session['id'] ?? 0 ) === $session_id ) {
+				return $session;
+			}
+		}
+
+		return array();
 	}
 
 	/**

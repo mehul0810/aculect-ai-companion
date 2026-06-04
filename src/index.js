@@ -37,6 +37,7 @@ import {
 	cog,
 	comment,
 	copy,
+	download,
 	external,
 	globe,
 	help,
@@ -2267,6 +2268,10 @@ function ConnectionActionsMenu( { session, data } ) {
 		session.status !== 'revoked' &&
 		data.actions?.revokeSessionAction &&
 		data.actions?.revokeSessionNonce;
+	const canExportManifest =
+		session.status !== 'revoked' &&
+		data.actions?.exportMcpToolManifestAction &&
+		data.actions?.exportMcpToolManifestNonce;
 	const renderUnavailableAction = ( label ) => (
 		<Tooltip text={ label }>
 			<span
@@ -2295,6 +2300,24 @@ function ConnectionActionsMenu( { session, data } ) {
 				<Icon icon={ moreVertical } size={ 18 } />
 			</summary>
 			<div className="aculect-ai-companion-connection-action-menu__content">
+				{ canExportManifest && (
+					<ActionForm
+						data={ data }
+						action={ data.actions?.exportMcpToolManifestAction }
+						nonce={ data.actions?.exportMcpToolManifestNonce }
+						label="Export tool manifest"
+						variant="tertiary"
+						buttonClassName="aculect-ai-companion-connection-action-menu__button"
+						accessibleLabel="Export MCP tool manifest"
+						buttonContent={ <Icon icon={ download } size={ 16 } /> }
+					>
+						<input
+							type="hidden"
+							name="session_id"
+							value={ session.id }
+						/>
+					</ActionForm>
+				) }
 				<ActionForm
 					data={ data }
 					action={ data.actions?.revokeSessionAction }
@@ -3196,6 +3219,13 @@ function DiagnosticsDashboard( {
 					busyLabel="Running checks"
 					isBusy={ isRunning }
 					onSubmit={ onRun }
+				/>
+				<ActionForm
+					data={ data }
+					action={ data.actions?.exportMcpToolManifestAction }
+					nonce={ data.actions?.exportMcpToolManifestNonce }
+					label="Export Tool Manifest"
+					variant="secondary"
 				/>
 			</div>
 

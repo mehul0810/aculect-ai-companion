@@ -40,6 +40,7 @@ The MCP endpoint must be the only primary value shown to users. Metadata and OAu
 - Shared URL/resource helpers: `src/Connectors/Helpers.php`
 - MCP endpoint and OAuth challenges: `src/Connectors/MCP/McpController.php`
 - MCP ability definitions and enabled/disabled state: `src/Connectors/MCP/AbilitiesRegistry.php`
+- MCP tool manifest diagnostics/export: `src/Diagnostics/McpToolManifest.php`
 - OAuth metadata/discovery: `src/Connectors/OAuth/DiscoveryController.php`
 - DCR endpoint: `src/Connectors/OAuth/ClientRegistrationController.php`
 - OAuth authorize and consent handoff: `src/Connectors/OAuth/AuthorizationController.php`
@@ -57,6 +58,12 @@ Current rule:
 - Accept both Claude-safe names and legacy dotted aliases in `tools/call` so cached clients do not break immediately.
 
 Regression check: inspect `tools/list` and confirm every returned `tools[].name` matches `^[a-zA-Z0-9_-]{1,64}$`.
+
+When Claude appears to see fewer tools than ChatGPT, export the MCP tool manifest from `AI Companion > Diagnostics` or from the active connection's actions menu. The export captures the exact `tools/list` payload for the selected WordPress user plus `ability_policy` details:
+
+- `blocked_by_global_ids`: user-managed abilities disabled globally.
+- `blocked_by_role_ids`: globally enabled abilities hidden by role policy.
+- empty blocked lists with missing Claude-visible tools: likely Claude connector cache/tool-search behavior rather than server-side exposure.
 
 ## Key Fixes That Made The Flow Work
 
@@ -143,6 +150,8 @@ Regression check: approve consent and confirm ChatGPT reaches token exchange wit
 Possible cause: the ability is disabled under `AI Companion > Abilities`.
 
 Fix: enable the relevant ability and save. `tools/list` advertises always-on read-only Aculect Intelligence tools plus enabled user-managed abilities. `tools/call` rejects disabled user-managed abilities even if a client cached an older tool list.
+
+For Claude, first remove and re-add the custom connector after tool metadata changes, then export the active connection's MCP tool manifest. If `tools_list_payload.tools` contains the missing tools but Claude's tool search does not surface them, treat it as Claude-side connector cache or tool-search retrieval. If the export omits them, check `ability_policy.blocked_by_global_ids` and `ability_policy.blocked_by_role_ids`.
 
 ## Required Smoke Tests Before ChatGPT OAuth Betas
 

@@ -1,0 +1,247 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Aculect\AICompanion\Diagnostics;
+
+use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
+
+/**
+ * Builds support-safe MCP tool manifest exports and summaries.
+ */
+final class McpToolManifest {
+
+	private const CLAUDE_SAFE_TOOL_NAME_PATTERN = '/^[a-zA-Z0-9_-]{1,64}$/';
+
+	/**
+	 * Return the exact tools/list result payload for the current WordPress user.
+	 *
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
+	public function tools_list_payload_for_current_user(): array {
+		return ( new McpController() )->tool_manifest_for_current_user();
+	}
+
+	/**
+	 * Build a full admin export for the current WordPress user.
+	 *
+	 * @param array<string, mixed> $session Optional active connector session context.
+	 * @return array<string, mixed>
+	 */
+	public function export_for_current_user( array $session = array() ): array {
+		$payload = $this->tools_list_payload_for_current_user();
+
+		return array(
+			'generated_at'        => gmdate( 'c' ),
+			'connection_url'      => Helpers::mcp_resource(),
+			'user'                => $this->current_user_context(),
+			'session'             => $this->session_context( $session ),
+			'summary'             => $this->summary( $payload ),
+			'ability_policy'      => $this->ability_policy_context(),
+			'tools_list_payload'  => $payload,
+			'json_rpc_method'     => 'tools/list',
+			'json_rpc_result_key' => 'result',
+		);
+	}
+
+	/**
+	 * Build a full admin export for the WordPress user attached to a connector session.
+	 *
+	 * @param int                  $user_id WordPress user ID.
+	 * @param array<string, mixed> $session Active connector session context.
+	 * @return array<string, mixed>
+	 */
+	public function export_for_user( int $user_id, array $session = array() ): array {
+		return $this->with_user( $user_id, fn (): array => $this->export_for_current_user( $session ) );
+	}
+
+	/**
+	 * Return a compact manifest summary for diagnostics.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function summary_for_current_user(): array {
+		return $this->summary( $this->tools_list_payload_for_current_user() );
+	}
+
+	/**
+	 * Return role/global ability policy context for the current WordPress user.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function ability_policy_context(): array {
+		$registry       = new AbilitiesRegistry();
+		$policy         = new RoleAbilitiesPolicy();
+		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$all_ids        = array_keys( $registry->definitions() );
+		$global_enabled = $registry->enabled_ids();
+		$allowed        = $policy->allowed_ids_for_user( (int) $user_id, $registry );
+		$exposed        = array_intersect( $all_ids, $allowed, $global_enabled );
+		$roles          = $this->current_user_context()['roles'];
+
+		return array(
+			'user_id'                   => (int) $user_id,
+			'user_roles'                => $roles,
+			'global_enabled_count'      => count( $global_enabled ),
+			'role_allowed_count'        => count( $allowed ),
+			'exposed_ability_count'     => count( $exposed ),
+			'all_ability_count'         => count( $all_ids ),
+			'global_enabled_ids'        => array_values( $global_enabled ),
+			'role_allowed_ids'          => array_values( $allowed ),
+			'exposed_ability_ids'       => array_values( $exposed ),
+			'blocked_by_global_ids'     => array_values( array_diff( $all_ids, $global_enabled ) ),
+			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $allowed ) ),
+			'explicit_role_policy'      => count(
+				array_filter(
+					$roles,
+					static fn ( string $role ): bool => $policy->has_explicit_policy( $role )
+				)
+			) > 0,
+			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
+			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
+		);
+	}
+
+	/**
+	 * Build a compact validation summary from a tools/list payload.
+	 *
+	 * @param array<string, mixed> $payload MCP tools/list result payload.
+	 * @return array<string, mixed>
+	 */
+	public function summary( array $payload ): array {
+		$tools       = isset( $payload['tools'] ) && is_array( $payload['tools'] ) ? array_values( $payload['tools'] ) : array();
+		$names       = array();
+		$seen        = array();
+		$duplicates  = array();
+		$invalid     = array();
+		$read_only   = 0;
+		$write_tools = 0;
+
+		foreach ( $tools as $tool ) {
+			if ( ! is_array( $tool ) ) {
+				continue;
+			}
+
+			$name = (string) ( $tool['name'] ?? '' );
+			if ( '' === $name ) {
+				$invalid[] = $name;
+				continue;
+			}
+
+			$names[] = $name;
+			if ( isset( $seen[ $name ] ) ) {
+				$duplicates[ $name ] = $name;
+			}
+			$seen[ $name ] = true;
+
+			if ( 1 !== preg_match( self::CLAUDE_SAFE_TOOL_NAME_PATTERN, $name ) ) {
+				$invalid[] = $name;
+			}
+
+			$annotations = isset( $tool['annotations'] ) && is_array( $tool['annotations'] ) ? $tool['annotations'] : array();
+			if ( true === ( $annotations['readOnlyHint'] ?? null ) ) {
+				++$read_only;
+			} else {
+				++$write_tools;
+			}
+		}
+
+		$intelligence_count = count(
+			array_filter(
+				$names,
+				static fn ( string $name ): bool => str_starts_with( $name, 'intelligence_' )
+			)
+		);
+
+		return array(
+			'tool_count'              => count( $tools ),
+			'operation_tool_count'    => count( $names ) - $intelligence_count,
+			'intelligence_tool_count' => $intelligence_count,
+			'read_only_tool_count'    => $read_only,
+			'write_tool_count'        => $write_tools,
+			'duplicate_tool_names'    => array_values( $duplicates ),
+			'invalid_tool_names'      => array_values( array_unique( $invalid ) ),
+			'first_tool_names'        => array_slice( $names, 0, 10 ),
+			'last_tool_names'         => array_slice( $names, -5 ),
+			'claude_name_pattern'     => '^[a-zA-Z0-9_-]{1,64}$',
+		);
+	}
+
+	/**
+	 * Run a callback under another current user, then restore the previous user.
+	 *
+	 * @param int      $user_id  WordPress user ID.
+	 * @param callable $callback Export callback.
+	 * @return array<string, mixed>
+	 */
+	private function with_user( int $user_id, callable $callback ): array {
+		$previous_user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+
+		$this->set_current_user_id( $user_id );
+
+		try {
+			$result = $callback();
+		} finally {
+			$this->set_current_user_id( $previous_user_id );
+		}
+
+		return is_array( $result ) ? $result : array();
+	}
+
+	/**
+	 * Switch the current user in WordPress or the lightweight unit-test runtime.
+	 *
+	 * @param int $user_id WordPress user ID.
+	 */
+	private function set_current_user_id( int $user_id ): void {
+		if ( function_exists( 'wp_set_current_user' ) ) {
+			wp_set_current_user( $user_id );
+			return;
+		}
+
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = $user_id;
+	}
+
+	/**
+	 * Return safe context for the current WordPress user.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function current_user_context(): array {
+		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$user    = function_exists( 'get_user_by' ) ? get_user_by( 'id', $user_id ) : false;
+
+		return array(
+			'id'    => $user_id,
+			'roles' => is_object( $user ) ? array_values( array_map( 'strval', (array) $user->roles ) ) : array(),
+		);
+	}
+
+	/**
+	 * Return safe active-session metadata without OAuth material.
+	 *
+	 * @param array<string, mixed> $session Active connector session context.
+	 * @return array<string, mixed>
+	 */
+	private function session_context( array $session ): array {
+		if ( array() === $session ) {
+			return array();
+		}
+
+		return array(
+			'id'                       => absint( $session['id'] ?? 0 ),
+			'provider'                 => sanitize_text_field( (string) ( $session['provider'] ?? '' ) ),
+			'client_name'              => sanitize_text_field( (string) ( $session['client_name'] ?? '' ) ),
+			'user_id'                  => absint( $session['user_id'] ?? 0 ),
+			'user_roles'               => array_values( array_map( 'sanitize_text_field', array_map( 'strval', is_array( $session['user_roles'] ?? null ) ? $session['user_roles'] : array() ) ) ),
+			'scopes'                   => array_values( array_map( 'sanitize_text_field', array_map( 'strval', is_array( $session['scopes'] ?? null ) ? $session['scopes'] : array() ) ) ),
+			'resource'                 => esc_url_raw( (string) ( $session['resource'] ?? '' ) ),
+			'status'                   => sanitize_key( (string) ( $session['status'] ?? '' ) ),
+			'access_level'             => sanitize_key( (string) ( $session['access_level'] ?? '' ) ),
+			'write_permission_enabled' => true === ( $session['write_permission_enabled'] ?? false ),
+		);
+	}
+}

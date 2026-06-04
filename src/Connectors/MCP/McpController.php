@@ -323,6 +323,15 @@ final class McpController {
 	 *
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
+	public function tool_manifest_for_current_user(): array {
+		return $this->list_tools();
+	}
+
+	/**
+	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
+	 *
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
 	private function list_tools(): array {
 		$registry      = new AbilitiesRegistry();
 		$intelligence  = new IntelligenceRegistry();

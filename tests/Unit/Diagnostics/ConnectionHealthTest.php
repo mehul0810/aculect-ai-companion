@@ -98,6 +98,17 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertArrayNotHasKey('wp_salt', $result['system']);
 	}
 
+	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_mcp_tool_manifest' );
+
+		self::assertSame( 'mcp_tool_manifest', $result['id'] );
+		self::assertSame( 'pass', $result['status'] );
+		self::assertGreaterThan( 0, $result['details']['tool_count'] );
+		self::assertSame( array(), $result['details']['duplicate_tool_names'] );
+		self::assertSame( array(), $result['details']['invalid_tool_names'] );
+		self::assertArrayHasKey( 'ability_policy', $result['details'] );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

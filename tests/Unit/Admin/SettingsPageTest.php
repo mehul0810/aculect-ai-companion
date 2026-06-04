@@ -159,6 +159,14 @@ final class SettingsPageTest extends TestCase {
 			$payload['actions']['setSessionWritePermissionNonce']
 		);
 		self::assertSame(
+			'aculect_ai_companion_export_mcp_tool_manifest',
+			$payload['actions']['exportMcpToolManifestAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_export_mcp_tool_manifest',
+			$payload['actions']['exportMcpToolManifestNonce']
+		);
+		self::assertSame(
 			'aculect_ai_companion_review_learning_suggestion',
 			$payload['actions']['reviewLearningSuggestionAction']
 		);

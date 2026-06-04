@@ -28,6 +28,7 @@ final class ConnectionHealth {
 			$this->check_protected_resource_metadata(),
 			$this->check_authorization_metadata(),
 			$this->check_mcp_auth_challenge(),
+			$this->check_mcp_tool_manifest(),
 			$this->check_approval_screen_target(),
 		);
 
@@ -193,6 +194,54 @@ final class ConnectionHealth {
 				'url'        => $url,
 				'httpStatus' => $status,
 			)
+		);
+	}
+
+	/**
+	 * Verify the local MCP tools/list manifest has client-safe tool descriptors.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_mcp_tool_manifest(): array {
+		$manifest = new McpToolManifest();
+		$summary  = $manifest->summary_for_current_user();
+		$details  = array_merge(
+			$summary,
+			array(
+				'ability_policy' => $manifest->ability_policy_context(),
+			)
+		);
+
+		if ( 0 === (int) ( $summary['tool_count'] ?? 0 ) ) {
+			return $this->item(
+				'mcp_tool_manifest',
+				'fail',
+				'MCP tools/list did not expose any tools for the current WordPress user.',
+				'Check ability settings and role-specific tool access before reconnecting the assistant.',
+				$details
+			);
+		}
+
+		if ( array() !== ( $summary['duplicate_tool_names'] ?? array() ) || array() !== ( $summary['invalid_tool_names'] ?? array() ) ) {
+			return $this->item(
+				'mcp_tool_manifest',
+				'fail',
+				'MCP tools/list contains tool names that may be rejected by strict clients.',
+				'Export the MCP tool manifest and check duplicate_tool_names or invalid_tool_names.',
+				$details
+			);
+		}
+
+		return $this->item(
+			'mcp_tool_manifest',
+			'pass',
+			sprintf(
+				/* translators: %d: MCP tool count. */
+				'MCP tools/list exposes %d tools with Claude-safe names.',
+				(int) $summary['tool_count']
+			),
+			'If Claude reports fewer tools after a plugin update, remove and re-add the Claude custom connector, then compare an exported MCP tool manifest.',
+			$details
 		);
 	}
 

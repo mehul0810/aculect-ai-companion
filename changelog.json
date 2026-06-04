@@ -16,10 +16,12 @@
       "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.",
       "Refined Connections and Abilities list views with tighter columns, assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.",
       "Separated role-based abilities management from the main Abilities list behind a focused modal workflow.",
-      "Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding."
+      "Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.",
+      "Improved MCP tool discovery compatibility by prioritizing operational tools before intelligence tools and using simpler client-safe input schemas."
     ],
     "Reliability": [
       "Fixed Claude MCP tool invocation by requesting the full connector scope set during OAuth discovery while keeping ChatGPT and Codex scope metadata aligned.",
+      "Added provider compatibility guards for Claude, ChatGPT, OpenAI, and Codex MCP tool descriptors and input schemas.",
       "Added a reviewed learning-suggestion path so assistants can report improvement opportunities without silently mutating memory or brand profile data.",
       "Expanded cleanup coverage for full uninstall data removal.",
       "Kept settings export/import/reset free of OAuth material, tokens, keys, logs, and activity history."

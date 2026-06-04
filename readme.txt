@@ -206,6 +206,8 @@ Composer dependencies for production releases are installed with:
 * Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.
 * Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.
 * Fixed Claude MCP tool invocation while keeping ChatGPT and Codex scope metadata aligned.
+* Improved MCP tool discovery compatibility for Claude, ChatGPT, OpenAI, and Codex by prioritizing operational tools and simplifying input schemas.
+* Added provider compatibility guards for MCP tool descriptors and schemas.
 * Expanded cleanup coverage for full uninstall data removal.
 
 = 0.4.0 =

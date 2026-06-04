@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\IntelligenceContext;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
@@ -50,6 +51,71 @@ final class McpControllerTest extends TestCase {
 
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
+	}
+
+	public function test_tools_list_prioritizes_operational_tools_before_intelligence_tools(): void {
+		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$names  = array_column( $result['tools'], 'name' );
+
+		$critical_tools = array(
+			'site_list_post_types',
+			'content_list_items',
+			'content_get_item',
+			'content_create_item',
+			'content_update_item',
+			'content_update_seo',
+			'taxonomy_list_taxonomies',
+			'taxonomy_list_terms',
+			'taxonomy_create_term',
+			'taxonomy_update_term',
+			'media_list_items',
+			'media_get_item',
+			'media_upload_item',
+			'media_update_item',
+		);
+
+		foreach ( $critical_tools as $tool_name ) {
+			self::assertContains( $tool_name, $names );
+		}
+
+		$first_intelligence_index = null;
+		foreach ( $names as $index => $name ) {
+			if ( is_string( $name ) && str_starts_with( $name, 'intelligence_' ) ) {
+				$first_intelligence_index = $index;
+				break;
+			}
+		}
+
+		self::assertNotNull( $first_intelligence_index );
+		foreach ( $critical_tools as $tool_name ) {
+			$tool_index = array_search( $tool_name, $names, true );
+			self::assertIsInt( $tool_index );
+			self::assertLessThan( $first_intelligence_index, $tool_index );
+		}
+	}
+
+	public function test_tools_list_schemas_use_client_safe_json_schema_subset(): void {
+		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+
+		foreach ( $result['tools'] as $tool ) {
+			self::assertIsArray( $tool );
+			self::assertArrayHasKey( 'name', $tool );
+			self::assertArrayHasKey( 'inputSchema', $tool );
+			self::assertIsArray( $tool['inputSchema'] );
+
+			$this->assertSchemaDoesNotContainCompositionKeywords( $tool['inputSchema'], (string) $tool['name'] . '.inputSchema' );
+		}
+	}
+
+	public function test_intelligence_context_lists_operational_tool_names(): void {
+		$site = ( new IntelligenceContext() )->site();
+
+		self::assertSame( 'content_list_items', $site['operations']['content']['list_items'] );
+		self::assertSame( 'content_update_item', $site['operations']['content']['update'] );
+		self::assertSame( 'content_update_seo', $site['operations']['content']['seo'] );
+		self::assertSame( 'media_upload_item', $site['operations']['media']['upload'] );
+		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms'] );
+		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run'] );
 	}
 
 	public function test_input_schema_accepts_public_tool_name_aliases(): void {
@@ -166,6 +232,24 @@ final class McpControllerTest extends TestCase {
 		}
 
 		return ( new AbilitiesRegistry() )->input_schema( $tool );
+	}
+
+	/**
+	 * Assert a schema avoids composition keywords that some MCP clients drop silently.
+	 *
+	 * @param array<string, mixed> $schema Schema fragment.
+	 * @param string               $path   Debug path for assertion failures.
+	 */
+	private function assertSchemaDoesNotContainCompositionKeywords( array $schema, string $path ): void {
+		foreach ( array( 'oneOf', 'anyOf', 'allOf' ) as $keyword ) {
+			self::assertArrayNotHasKey( $keyword, $schema, $path . ' must not contain ' . $keyword );
+		}
+
+		foreach ( $schema as $key => $value ) {
+			if ( is_array( $value ) ) {
+				$this->assertSchemaDoesNotContainCompositionKeywords( $value, $path . '.' . (string) $key );
+			}
+		}
 	}
 
 	public function test_global_pause_blocks_tool_calls(): void {

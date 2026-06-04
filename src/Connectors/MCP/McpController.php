@@ -328,7 +328,7 @@ final class McpController {
 		$intelligence  = new IntelligenceRegistry();
 		$user_id       = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$ability_tools = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( (int) $user_id, $registry );
-		$modules       = array_merge( $intelligence->modules(), $ability_tools );
+		$modules       = array_merge( $ability_tools, $intelligence->modules() );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),

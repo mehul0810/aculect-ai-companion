@@ -33,6 +33,7 @@ final class IntelligenceContext {
 			'wordpress'         => $this->wordpress_context(),
 			'theme'             => $this->active_theme(),
 			'connector'         => $this->connector_context(),
+			'operations'        => $this->operations_manifest(),
 			'guidance'          => $this->shared_generation_guidance(),
 			'learning_protocol' => $this->learning_protocol(),
 		);
@@ -52,6 +53,7 @@ final class IntelligenceContext {
 			'taxonomies'        => $this->taxonomies(),
 			'block_summary'     => $this->block_collection_summary(),
 			'pattern_summary'   => $this->pattern_collection_summary(),
+			'operations'        => $this->operations_manifest(),
 			'guidance'          => $this->shared_generation_guidance(),
 			'learning_protocol' => $this->learning_protocol(),
 		);
@@ -82,6 +84,7 @@ final class IntelligenceContext {
 				'validation_tool'  => ( new AbilitiesRegistry() )->tool_name( 'intelligence.content.validate_blocks' ),
 			),
 			'connector'         => $this->connector_context(),
+			'operations'        => $this->operations_manifest(),
 			'learning_protocol' => $this->learning_protocol(),
 		);
 	}
@@ -135,6 +138,55 @@ final class IntelligenceContext {
 			'custom_html_rule'         => 'Never use the Custom HTML block (core/html). Use semantic core blocks, registered site blocks, or patterns instead.',
 			'fallback_rule'            => 'If a requested layout cannot be represented with registered blocks or patterns, ask for an approved block or pattern instead of adding raw HTML.',
 			'permission_rule'          => 'Content changes still require the connected WordPress user to have the required permission and OAuth scope.',
+		);
+	}
+
+	/**
+	 * Return exact MCP operation names for assistants that receive intelligence context first.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function operations_manifest(): array {
+		$registry = new AbilitiesRegistry();
+
+		return array(
+			'description'     => 'Exact MCP tool names for operational WordPress work when the tool is globally enabled, allowed for the connected user role, covered by OAuth scope, and surfaced by the assistant client.',
+			'visibility_rule' => 'If a tool is not visible in the assistant, check global abilities, role ability policy, OAuth scopes, and client-side tool routing before assuming WordPress data is unavailable.',
+			'content'         => array(
+				'list_types' => $registry->tool_name( 'site.list_post_types' ),
+				'list_items' => $registry->tool_name( 'content.list_items' ),
+				'get_item'   => $registry->tool_name( 'content.get_item' ),
+				'create'     => $registry->tool_name( 'content.create_item' ),
+				'update'     => $registry->tool_name( 'content.update_item' ),
+				'seo'        => $registry->tool_name( 'content.update_seo' ),
+			),
+			'content_groups'  => array(
+				'list_taxonomies' => $registry->tool_name( 'taxonomy.list_taxonomies' ),
+				'list_terms'      => $registry->tool_name( 'taxonomy.list_terms' ),
+				'create_term'     => $registry->tool_name( 'taxonomy.create_term' ),
+				'update_term'     => $registry->tool_name( 'taxonomy.update_term' ),
+				'set_term_image'  => $registry->tool_name( 'taxonomy.set_term_image' ),
+			),
+			'media'           => array(
+				'list'   => $registry->tool_name( 'media.list_items' ),
+				'get'    => $registry->tool_name( 'media.get_item' ),
+				'upload' => $registry->tool_name( 'media.upload_item' ),
+				'update' => $registry->tool_name( 'media.update_item' ),
+				'trash'  => $registry->tool_name( 'media.delete_item' ),
+				'rename' => $registry->tool_name( 'media.rename_file' ),
+			),
+			'comments'        => array(
+				'list'        => $registry->tool_name( 'comments.list_items' ),
+				'get'         => $registry->tool_name( 'comments.get_item' ),
+				'reply'       => $registry->tool_name( 'comments.create_item' ),
+				'moderate'    => $registry->tool_name( 'comments.update_item' ),
+				'bulk_update' => $registry->tool_name( 'comments.bulk_update' ),
+			),
+			'actions'         => array(
+				'discover' => $registry->tool_name( 'wp_abilities.discover' ),
+				'inspect'  => $registry->tool_name( 'wp_abilities.get_info' ),
+				'run'      => $registry->tool_name( 'wp_abilities.run' ),
+			),
 		);
 	}
 

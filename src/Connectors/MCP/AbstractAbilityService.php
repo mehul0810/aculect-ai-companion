@@ -13,8 +13,12 @@ abstract class AbstractAbilityService {
 	protected const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish', 'trash' );
 	protected function statuses_from_args( array $args, array $default ): array {
 		$statuses = $args['status'] ?? $default;
-		$statuses = is_array( $statuses ) ? $statuses : array( $statuses );
-		$allowed  = get_post_stati( array(), 'names' );
+		if ( is_string( $statuses ) ) {
+			$statuses = array_map( 'trim', explode( ',', $statuses ) );
+		} else {
+			$statuses = is_array( $statuses ) ? $statuses : array( $statuses );
+		}
+		$allowed = get_post_stati( array(), 'names' );
 
 		$statuses = array_values(
 			array_intersect(

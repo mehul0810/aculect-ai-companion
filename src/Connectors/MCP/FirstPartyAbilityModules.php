@@ -38,7 +38,7 @@ final class FirstPartyAbilityModules {
 				$this->object_schema(
 					array(
 						'post_type' => array( 'type' => 'string' ),
-						'status'    => $this->string_or_string_list_schema(),
+						'status'    => $this->string_or_string_list_schema( 'Single post status or comma-separated post statuses.' ),
 						'page'      => array( 'type' => 'integer' ),
 						'per_page'  => array( 'type' => 'integer' ),
 						'context'   => array(
@@ -149,7 +149,7 @@ final class FirstPartyAbilityModules {
 						),
 						'meta_title'       => array( 'type' => 'string' ),
 						'meta_description' => array( 'type' => 'string' ),
-						'focus_keywords'   => $this->string_or_string_list_schema(),
+						'focus_keywords'   => $this->string_or_string_list_schema( 'Single focus keyword or comma-separated focus keywords.' ),
 					),
 					array( 'id' )
 				),
@@ -672,17 +672,13 @@ final class FirstPartyAbilityModules {
 	/**
 	 * Build a schema that accepts a string or list of strings.
 	 *
+	 * @param string $description Schema description.
 	 * @return array<string, mixed>
 	 */
-	private function string_or_string_list_schema(): array {
+	private function string_or_string_list_schema( string $description ): array {
 		return array(
-			'oneOf' => array(
-				array( 'type' => 'string' ),
-				array(
-					'type'  => 'array',
-					'items' => array( 'type' => 'string' ),
-				),
-			),
+			'type'        => 'string',
+			'description' => $description,
 		);
 	}
 
@@ -707,22 +703,8 @@ final class FirstPartyAbilityModules {
 	private function taxonomy_assignment_schema( string $description ): array {
 		return array(
 			'type'                 => 'object',
-			'description'          => $description,
-			'additionalProperties' => array(
-				'oneOf' => array(
-					array( 'type' => 'integer' ),
-					array( 'type' => 'string' ),
-					array(
-						'type'  => 'array',
-						'items' => array(
-							'oneOf' => array(
-								array( 'type' => 'integer' ),
-								array( 'type' => 'string' ),
-							),
-						),
-					),
-				),
-			),
+			'description'          => $description . ' Values may be an existing term ID, term slug, or array of existing term IDs/slugs.',
+			'additionalProperties' => true,
 		);
 	}
 

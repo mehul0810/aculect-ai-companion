@@ -67,6 +67,13 @@ jobs:
 
           npm -g --no-fund i @wordpress/env@11.6.0
           wp-env start --update
+          for attempt in {1..12}; do
+            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          wp-env run cli wp core is-installed
           wp-env run cli wp plugin activate "${PLUGIN_SLUG}"
           wp-env run cli wp plugin check "${PLUGIN_SLUG}" --format=json --ignore-warnings --exclude-files=.wp-env.json --slug="${PLUGIN_SLUG}" --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
           cat "${RUNNER_TEMP}/plugin-check-results.txt"

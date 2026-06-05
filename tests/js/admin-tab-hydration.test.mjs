@@ -4,6 +4,7 @@ import {
 	hydratedTabsFromData,
 	mergeSettingsPayload,
 	normalizeTabName,
+	settingsPayloadFetchUrl,
 	tabNameIsHydrated,
 } from '../../src/admin-tab-hydration.mjs';
 
@@ -27,6 +28,17 @@ test( 'uses server-provided hydrated tabs when present', () => {
 		true
 	);
 	assert.equal( tabNameIsHydrated( 'activity', data, fallbackTabs ), false );
+} );
+
+test( 'normalizes settings payload fetches to the current admin origin', () => {
+	assert.equal(
+		settingsPayloadFetchUrl(
+			'https://example.com/wp-json/aculect-ai-companion/v1/settings-payload',
+			'abilities',
+			'https://admin.example.test/wp-admin/options-general.php?page=aculect-ai-companion'
+		),
+		'https://admin.example.test/wp-json/aculect-ai-companion/v1/settings-payload?tab=abilities'
+	);
 } );
 
 test( 'falls back to all local tabs when old payloads omit hydration metadata', () => {

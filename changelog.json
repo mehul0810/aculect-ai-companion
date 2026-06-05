@@ -1,6 +1,6 @@
 {
   "0.5.0": {
-    "date": "2026-06-04",
+    "date": "2026-06-05",
     "New": [
       "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
       "Added brand profile guidance for connected assistants.",
@@ -19,13 +19,16 @@
       "Separated role-based abilities management from the main Abilities list behind a focused modal workflow.",
       "Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.",
       "Improved MCP tool discovery compatibility by prioritizing operational tools before intelligence tools and using simpler client-safe input schemas.",
-      "Aligned Intelligence Layer operation availability with the same global ability, role policy, and OAuth scope checks used by the MCP tools list."
+      "Aligned Intelligence Layer operation availability with the same global ability, role policy, and OAuth scope checks used by the MCP tools list.",
+      "Added MCP initialize guidance, intelligence output schemas, and OpenAI invocation labels so assistants can discover and use Aculect Intelligence context more reliably.",
+      "Polished the connection access modal logo and form spacing."
     ],
     "Reliability": [
       "Fixed Claude MCP tool invocation by requesting the full connector scope set during OAuth discovery while keeping ChatGPT and Codex scope metadata aligned.",
       "Added provider compatibility guards for Claude, ChatGPT, OpenAI, and Codex MCP tool descriptors and input schemas.",
       "Included per-tool availability, policy blockers, required scopes, and read-only hints in intelligence context so assistants can decide which enabled abilities to use.",
       "Added a reviewed learning-suggestion path so assistants can report improvement opportunities without silently mutating memory or brand profile data.",
+      "Normalized lazy settings payload requests to the current admin origin to avoid 403 errors when WordPress REST URLs use a different host or scheme.",
       "Expanded cleanup coverage for full uninstall data removal.",
       "Kept settings export/import/reset free of OAuth material, tokens, keys, logs, and activity history."
     ]

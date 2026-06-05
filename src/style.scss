@@ -1367,18 +1367,37 @@ td:last-child
 	margin-bottom: 16px;
 }
 
+.aculect-ai-companion-connection-access-modal__intro {
+	display: grid;
+	grid-template-columns: 40px minmax(0, 1fr);
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.aculect-ai-companion-connection-access-modal__intro
+.aculect-ai-companion-connection-provider-logo {
+	width: 40px;
+	height: 40px;
+}
+
 .aculect-ai-companion-connection-abilities-modal__intro strong,
-.aculect-ai-companion-connection-abilities-modal__intro span {
+.aculect-ai-companion-connection-abilities-modal__intro span,
+.aculect-ai-companion-connection-access-modal__intro strong,
+.aculect-ai-companion-connection-access-modal__intro span {
 	display: block;
 }
 
-.aculect-ai-companion-connection-abilities-modal__intro strong {
+.aculect-ai-companion-connection-abilities-modal__intro strong,
+.aculect-ai-companion-connection-access-modal__intro strong {
 	color: var(--aculect-ai-companion-ink);
 	font-size: 15px;
 	line-height: 1.3;
+	overflow-wrap: anywhere;
 }
 
-.aculect-ai-companion-connection-abilities-modal__intro span {
+.aculect-ai-companion-connection-abilities-modal__intro span,
+.aculect-ai-companion-connection-access-modal__intro span {
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	font-weight: 700;
@@ -1944,9 +1963,18 @@ td:last-child
 	margin: 0;
 }
 
-.aculect-ai-companion-connection-access-modal
-.aculect-ai-companion-action-form {
+.aculect-ai-companion-connection-access-form {
+	display: grid;
 	gap: 14px;
+}
+
+.aculect-ai-companion-connection-access-field {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-connection-access-submit {
+	justify-self: start;
+	margin-top: 2px;
 }
 
 .aculect-ai-companion-form--abilities {

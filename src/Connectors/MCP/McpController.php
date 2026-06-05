@@ -127,19 +127,7 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
-				return $this->rpc_result(
-					$id,
-					array(
-						'protocolVersion' => '2025-06-18',
-						'serverInfo'      => array(
-							'name'    => 'Aculect AI Companion MCP',
-							'version' => ACULECT_AI_COMPANION_VERSION,
-						),
-						'capabilities'    => array(
-							'tools' => new \stdClass(),
-						),
-					)
-				);
+				return $this->rpc_result( $id, $this->initialize_payload() );
 
 			case 'tools/list':
 				return $this->rpc_result( $id, $this->list_tools() );
@@ -351,16 +339,137 @@ final class McpController {
 		$registry = new AbilitiesRegistry();
 		$scopes   = $module->required_scopes();
 		$security = $this->security_schemes( $scopes );
+		$meta     = array(
+			'securitySchemes'                => $security,
+			'openai/toolInvocation/invoking' => $this->tool_invocation_status( $module, 'Running' ),
+			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
+		);
 
-		return array(
+		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
 			'title'           => $module->title(),
 			'description'     => $module->description(),
 			'inputSchema'     => $module->input_schema(),
 			'securitySchemes' => $security,
-			'_meta'           => array( 'securitySchemes' => $security ),
+			'_meta'           => $meta,
 			'annotations'     => array( 'readOnlyHint' => $module->is_read_only() ),
 		);
+
+		$output_schema = $this->output_schema_for_module( $module );
+		if ( array() !== $output_schema ) {
+			$descriptor['outputSchema'] = $output_schema;
+		}
+
+		return $descriptor;
+	}
+
+	/**
+	 * Build the MCP initialize payload.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function initialize_payload(): array {
+		return array(
+			'protocolVersion' => '2025-06-18',
+			'serverInfo'      => array(
+				'name'    => 'Aculect AI Companion MCP',
+				'version' => ACULECT_AI_COMPANION_VERSION,
+			),
+			'instructions'    => $this->mcp_instructions(),
+			'capabilities'    => array(
+				'tools' => new \stdClass(),
+			),
+		);
+	}
+
+	/**
+	 * Return server-wide workflow guidance for MCP clients.
+	 */
+	private function mcp_instructions(): string {
+		return implode(
+			' ',
+			array(
+				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
+				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
+				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'If intelligence is incomplete, stale, or causes poor results, call intelligence_feedback_submit with a bounded learning suggestion for admin review.',
+				'Never use raw Custom HTML blocks or core/html; use registered WordPress blocks and patterns, and validate block content before write operations.',
+			)
+		);
+	}
+
+	/**
+	 * Return a top-level output schema for modules that publish structured content.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @return array<string, mixed>
+	 */
+	private function output_schema_for_module( AbilityModuleInterface $module ): array {
+		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
+			return array();
+		}
+
+		if ( 'intelligence.feedback.submit' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'status'        => array(
+						'type'        => 'string',
+						'description' => 'queued when accepted for admin review, or rejected when required fields are missing.',
+					),
+					'message'       => array( 'type' => 'string' ),
+					'error'         => array( 'type' => 'string' ),
+					'suggestion'    => array( 'type' => 'object' ),
+					'review_status' => array( 'type' => 'object' ),
+				),
+				array( 'status' )
+			);
+		}
+
+		return $this->object_output_schema(
+			array(
+				'type'              => array( 'type' => 'string' ),
+				'label'             => array( 'type' => 'string' ),
+				'description'       => array( 'type' => 'string' ),
+				'operations'        => array( 'type' => 'object' ),
+				'guidance'          => array( 'type' => 'object' ),
+				'learning_protocol' => array( 'type' => 'object' ),
+				'items'             => array( 'type' => 'array' ),
+				'summary'           => array( 'type' => 'object' ),
+			)
+		);
+	}
+
+	/**
+	 * Build a client-safe object output schema.
+	 *
+	 * @param array<string, mixed> $properties Schema properties.
+	 * @param string[]             $required   Required property names.
+	 * @return array<string, mixed>
+	 */
+	private function object_output_schema( array $properties, array $required = array() ): array {
+		$schema = array(
+			'type'                 => 'object',
+			'properties'           => $properties,
+			'additionalProperties' => true,
+		);
+
+		if ( array() !== $required ) {
+			$schema['required'] = $required;
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Return short OpenAI tool invocation status text.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @param string                 $prefix Status prefix.
+	 */
+	private function tool_invocation_status( AbilityModuleInterface $module, string $prefix ): string {
+		$status = sprintf( '%s %s', $prefix, $module->title() );
+
+		return strlen( $status ) > 64 ? substr( $status, 0, 61 ) . '...' : $status;
 	}
 
 	/**

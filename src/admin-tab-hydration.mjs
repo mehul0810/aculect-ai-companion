@@ -12,6 +12,8 @@ const TAB_SCOPED_PAYLOAD_KEYS = {
 	changelog: [ 'changelog' ],
 };
 
+const TAB_QUERY_PARAM = 'tab';
+
 function hasOwn( object, key ) {
 	return Object.prototype.hasOwnProperty.call( object, key );
 }
@@ -36,6 +38,24 @@ export function tabNameIsHydrated( tabName, data, fallbackTabs ) {
 	return hydratedTabsFromData( data, fallbackTabs ).includes(
 		normalizeTabName( tabName )
 	);
+}
+
+export function settingsPayloadFetchUrl(
+	settingsPayloadUrl,
+	tabName,
+	currentLocation = globalThis?.location?.href || 'https://example.com/'
+) {
+	const currentUrl = new URL( currentLocation );
+	const url = new URL( settingsPayloadUrl, currentUrl.origin );
+
+	if ( url.origin !== currentUrl.origin ) {
+		url.protocol = currentUrl.protocol;
+		url.host = currentUrl.host;
+	}
+
+	url.searchParams.set( TAB_QUERY_PARAM, normalizeTabName( tabName ) );
+
+	return url.toString();
 }
 
 export function mergeSettingsPayload(

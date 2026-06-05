@@ -87,6 +87,12 @@ final class McpControllerTest extends TestCase {
 			self::assertIsArray( $tool['_meta'] );
 			self::assertArrayHasKey( 'securitySchemes', $tool['_meta'] );
 			self::assertSame( $tool['securitySchemes'], $tool['_meta']['securitySchemes'] );
+			self::assertArrayHasKey( 'openai/toolInvocation/invoking', $tool['_meta'] );
+			self::assertArrayHasKey( 'openai/toolInvocation/invoked', $tool['_meta'] );
+			self::assertIsString( $tool['_meta']['openai/toolInvocation/invoking'] );
+			self::assertIsString( $tool['_meta']['openai/toolInvocation/invoked'] );
+			self::assertLessThanOrEqual( 64, strlen( $tool['_meta']['openai/toolInvocation/invoking'] ) );
+			self::assertLessThanOrEqual( 64, strlen( $tool['_meta']['openai/toolInvocation/invoked'] ) );
 
 			foreach ( $tool['securitySchemes'] as $scheme ) {
 				self::assertIsArray( $scheme );
@@ -101,6 +107,40 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'readOnlyHint', $tool['annotations'] );
 			self::assertIsBool( $tool['annotations']['readOnlyHint'] );
 		}
+	}
+
+	public function test_initialize_payload_includes_chatgpt_workflow_instructions(): void {
+		$result = $this->invokePrivate( new McpController(), 'initialize_payload' );
+
+		self::assertSame( '2025-06-18', $result['protocolVersion'] );
+		self::assertSame( 'Aculect AI Companion MCP', $result['serverInfo']['name'] );
+		self::assertIsString( $result['instructions'] );
+		self::assertStringContainsString( 'intelligence_site_get_context', $result['instructions'] );
+		self::assertStringContainsString( 'intelligence_content_get_context', $result['instructions'] );
+		self::assertStringContainsString( 'operations manifest', $result['instructions'] );
+		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );
+		self::assertStringContainsString( 'Never use raw Custom HTML blocks', $result['instructions'] );
+		self::assertArrayHasKey( 'tools', $result['capabilities'] );
+	}
+
+	public function test_intelligence_tools_advertise_output_schemas(): void {
+		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+
+		foreach ( $result['tools'] as $tool ) {
+			$name = (string) ( $tool['name'] ?? '' );
+			if ( ! str_starts_with( $name, 'intelligence_' ) ) {
+				continue;
+			}
+
+			self::assertArrayHasKey( 'outputSchema', $tool, $name );
+			self::assertSame( 'object', $tool['outputSchema']['type'] ?? null, $name );
+			self::assertIsArray( $tool['outputSchema']['properties'] ?? null, $name );
+			self::assertTrue( $tool['outputSchema']['additionalProperties'] ?? false, $name );
+		}
+
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
+		self::assertSame( array( 'status' ), $tools_by_name['intelligence_feedback_submit']['outputSchema']['required'] );
+		self::assertArrayHasKey( 'learning_protocol', $tools_by_name['intelligence_site_get_context']['outputSchema']['properties'] );
 	}
 
 	public function test_chatgpt_codex_and_claude_tools_prioritize_operational_tools_before_intelligence_tools(): void {

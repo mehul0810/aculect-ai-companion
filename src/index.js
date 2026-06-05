@@ -9,6 +9,7 @@ import './style.scss';
 import {
 	mergeSettingsPayload,
 	normalizeTabName,
+	settingsPayloadFetchUrl,
 	tabNameIsHydrated,
 } from './admin-tab-hydration.mjs';
 import {
@@ -269,9 +270,6 @@ async function fetchSettingsPayload( data, tabName ) {
 		throw new Error( 'Settings payload URL is unavailable.' );
 	}
 
-	const url = new URL( data.settingsPayloadUrl, window.location.origin );
-	url.searchParams.set( TAB_QUERY_PARAM, normalizeTabName( tabName ) );
-
 	const headers = {
 		Accept: 'application/json',
 	};
@@ -280,13 +278,24 @@ async function fetchSettingsPayload( data, tabName ) {
 		headers[ 'X-WP-Nonce' ] = data.settingsRestNonce;
 	}
 
-	const response = await window.fetch( url.toString(), {
-		credentials: 'same-origin',
-		headers,
-	} );
+	const response = await window.fetch(
+		settingsPayloadFetchUrl(
+			data.settingsPayloadUrl,
+			tabName,
+			window.location.href
+		),
+		{
+			credentials: 'same-origin',
+			headers,
+		}
+	);
 
 	if ( ! response.ok ) {
-		throw new Error( 'Settings payload request failed.' );
+		const error = new Error(
+			`Settings payload request failed with HTTP ${ response.status }`
+		);
+		error.status = response.status;
+		throw error;
 	}
 
 	const payload = await response.json();
@@ -580,13 +589,23 @@ function EmptyState( { title, children } ) {
 	);
 }
 
-function TabLoadingState( { tab, failed = false, isLoading = false } ) {
+function TabLoadingState( {
+	tab,
+	failed = false,
+	error = null,
+	isLoading = false,
+} ) {
 	if ( failed ) {
+		const errorStatus = Number( error?.status || 0 );
+		const message =
+			403 === errorStatus
+				? `${ tab.title } could not be loaded because WordPress rejected the admin REST request. Refresh the page and sign in again if the problem persists.`
+				: `${ tab.title } could not be loaded. Use the direct tab link if the problem persists.`;
+
 		return (
 			<div className="aculect-ai-companion-tab-loading is-error">
 				<Notice status="error" isDismissible={ false }>
-					{ tab.title } could not be loaded. Use the direct tab link
-					if the problem persists.
+					{ message }
 				</Notice>
 			</div>
 		);
@@ -683,6 +702,7 @@ function ActionForm( {
 	confirmButtonLabel = '',
 	buttonContent = null,
 	buttonClassName = '',
+	formClassName = '',
 	accessibleLabel = '',
 } ) {
 	const [ isConfirmOpen, setIsConfirmOpen ] = useState( false );
@@ -723,7 +743,12 @@ function ActionForm( {
 				ref={ formRef }
 				method="post"
 				action={ data.actions?.adminPostUrl }
-				className="aculect-ai-companion-action-form"
+				className={ [
+					'aculect-ai-companion-action-form',
+					formClassName,
+				]
+					.filter( Boolean )
+					.join( ' ' ) }
 				onSubmit={ handleSubmit }
 				{ ...( enctype ? { encType: enctype } : {} ) }
 			>
@@ -2219,8 +2244,11 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 			className="aculect-ai-companion-connection-access-modal"
 			onRequestClose={ onClose }
 		>
-			<div className="aculect-ai-companion-connection-abilities-modal__intro">
-				<ConnectionProviderLogo session={ session } />
+			<div className="aculect-ai-companion-connection-access-modal__intro">
+				<ConnectionProviderLogo
+					session={ session }
+					decorative={ false }
+				/>
 				<div>
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
 					<span>{ connectionProviderLabel( session ) }</span>
@@ -2238,6 +2266,8 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				variant="primary"
 				confirmTitle="Change connection access"
 				confirmMessage="Update this connection access level?"
+				formClassName="aculect-ai-companion-connection-access-form"
+				buttonClassName="aculect-ai-companion-connection-access-submit"
 			>
 				<input type="hidden" name="session_id" value={ session.id } />
 				<input
@@ -2246,6 +2276,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 					value={ selectedAccessLevel }
 				/>
 				<SelectControl
+					className="aculect-ai-companion-connection-access-field"
 					label="Access"
 					value={ selectedAccessLevel }
 					__next40pxDefaultSize
@@ -4766,7 +4797,7 @@ function SettingsApp() {
 	const initialSettingsData = window.aculectAICompanionSettingsData || {};
 	const [ settingsData, setSettingsData ] = useState( initialSettingsData );
 	const [ loadingTab, setLoadingTab ] = useState( '' );
-	const [ tabLoadError, setTabLoadError ] = useState( '' );
+	const [ tabLoadError, setTabLoadError ] = useState( null );
 	const tabPayloadRequestsRef = useRef( new Set() );
 	const data = settingsData;
 	const brandIconUrl = data.brandIconUrl || '';
@@ -5041,7 +5072,7 @@ function SettingsApp() {
 	const settingsRestNonce = data.settingsRestNonce || '';
 	const activeTabHydrated = hasHydratedTab( activeTab.name, data );
 	const activeTabLoadFailed =
-		! activeTabHydrated && tabLoadError === activeTab.name;
+		! activeTabHydrated && tabLoadError?.tabName === activeTab.name;
 
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
@@ -5060,7 +5091,10 @@ function SettingsApp() {
 		}
 
 		if ( ! settingsPayloadUrl ) {
-			setTabLoadError( tabName );
+			setTabLoadError( {
+				tabName,
+				status: 0,
+			} );
 			return;
 		}
 
@@ -5070,7 +5104,7 @@ function SettingsApp() {
 
 		tabPayloadRequestsRef.current.add( tabName );
 		setLoadingTab( tabName );
-		setTabLoadError( '' );
+		setTabLoadError( null );
 
 		fetchSettingsPayload(
 			{
@@ -5084,9 +5118,12 @@ function SettingsApp() {
 					mergeSettingsPayload( currentData, payload, tabName )
 				);
 			} )
-			.catch( () => {
+			.catch( ( error ) => {
 				tabPayloadRequestsRef.current.delete( tabName );
-				setTabLoadError( tabName );
+				setTabLoadError( {
+					tabName,
+					status: Number( error?.status || 0 ),
+				} );
 			} )
 			.finally( () => {
 				setLoadingTab( ( currentTab ) =>
@@ -5370,6 +5407,7 @@ function SettingsApp() {
 							<TabLoadingState
 								tab={ activeTab }
 								failed={ activeTabLoadFailed }
+								error={ tabLoadError }
 								isLoading={ loadingTab === activeTab.name }
 							/>
 						);

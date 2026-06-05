@@ -2166,7 +2166,7 @@ function ConnectionAssignedAbilitiesModal( {
 		>
 			<div className="aculect-ai-companion-connection-abilities-modal__intro">
 				<ConnectionProviderLogo session={ session } />
-				<div>
+				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
 					<span>{ connectionProviderLabel( session ) }</span>
 				</div>
@@ -2249,7 +2249,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 					session={ session }
 					decorative={ false }
 				/>
-				<div>
+				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
 					<span>{ connectionProviderLabel( session ) }</span>
 				</div>
@@ -2264,8 +2264,6 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				nonce={ data.actions?.setSessionAccessLevelNonce }
 				label="Update"
 				variant="primary"
-				confirmTitle="Change connection access"
-				confirmMessage="Update this connection access level?"
 				formClassName="aculect-ai-companion-connection-access-form"
 				buttonClassName="aculect-ai-companion-connection-access-submit"
 			>

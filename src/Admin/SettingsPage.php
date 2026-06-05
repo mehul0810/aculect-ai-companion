@@ -427,6 +427,7 @@ final class SettingsPage {
 			add_query_arg(
 				array(
 					'page'            => 'aculect-ai-companion',
+					'tab'             => 'abilities',
 					'abilities_saved' => '1',
 				),
 				$this->settings_url()

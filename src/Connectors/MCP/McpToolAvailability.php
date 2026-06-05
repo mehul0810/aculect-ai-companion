@@ -61,6 +61,16 @@ final class McpToolAvailability {
 		$exposed        = array_values( array_intersect( $all_ids, $global_enabled, $role_allowed ) );
 		$roles          = $this->roles_for_user( $user_id );
 
+		$explicit_role_policy     = count(
+			array_filter(
+				$roles,
+				static fn ( string $role ): bool => $policy->has_explicit_policy( $role )
+			)
+		) > 0;
+		$default_read_only_policy = array() !== $roles
+			&& ! in_array( 'administrator', $roles, true )
+			&& ! $explicit_role_policy;
+
 		return array(
 			'user_id'                   => $user_id,
 			'user_roles'                => $roles,
@@ -73,12 +83,8 @@ final class McpToolAvailability {
 			'exposed_ability_ids'       => $exposed,
 			'blocked_by_global_ids'     => array_values( array_diff( $all_ids, $global_enabled ) ),
 			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $role_allowed ) ),
-			'explicit_role_policy'      => count(
-				array_filter(
-					$roles,
-					static fn ( string $role ): bool => $policy->has_explicit_policy( $role )
-				)
-			) > 0,
+			'explicit_role_policy'      => $explicit_role_policy,
+			'default_read_only_policy'  => $default_read_only_policy,
 			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
 			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
 		);
@@ -110,15 +116,16 @@ final class McpToolAvailability {
 			'decision_rule'   => 'Admin/global ability settings and role policy decide what is callable. Intelligence should choose only among available tools unless it needs to explain a blocked workflow.',
 			'visibility_rule' => 'If a tool is unavailable, check blocked_by_global_ids and blocked_by_role_ids before assuming WordPress data or permissions are unavailable.',
 			'policy'          => array(
-				'user_id'               => $policy['user_id'],
-				'user_roles'            => $policy['user_roles'],
-				'global_enabled_count'  => $policy['global_enabled_count'],
-				'role_allowed_count'    => $policy['role_allowed_count'],
-				'exposed_ability_count' => $policy['exposed_ability_count'],
-				'all_ability_count'     => $policy['all_ability_count'],
-				'explicit_role_policy'  => $policy['explicit_role_policy'],
-				'blocked_by_global_ids' => $policy['blocked_by_global_ids'],
-				'blocked_by_role_ids'   => $policy['blocked_by_role_ids'],
+				'user_id'                  => $policy['user_id'],
+				'user_roles'               => $policy['user_roles'],
+				'global_enabled_count'     => $policy['global_enabled_count'],
+				'role_allowed_count'       => $policy['role_allowed_count'],
+				'exposed_ability_count'    => $policy['exposed_ability_count'],
+				'all_ability_count'        => $policy['all_ability_count'],
+				'explicit_role_policy'     => $policy['explicit_role_policy'],
+				'default_read_only_policy' => $policy['default_read_only_policy'],
+				'blocked_by_global_ids'    => $policy['blocked_by_global_ids'],
+				'blocked_by_role_ids'      => $policy['blocked_by_role_ids'],
 			),
 			'content'         => $this->operation_group(
 				array(
@@ -223,7 +230,9 @@ final class McpToolAvailability {
 		if ( ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
 		} elseif ( ! in_array( $ability_id, $role_allowed, true ) ) {
-			$blocked_by = 'role_policy';
+			$blocked_by = true === ( $policy['default_read_only_policy'] ?? false ) && null !== $module && ! $module->is_read_only()
+				? 'role_default_read_only'
+				: 'role_policy';
 		}
 
 		return array(

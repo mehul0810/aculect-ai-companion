@@ -15,6 +15,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 final class RoleAbilitiesPolicy {
 
 	public const OPTION_ROLE_ABILITIES = 'aculect_ai_companion_role_abilities';
+	private const ADMINISTRATOR_ROLE   = 'administrator';
 
 	/**
 	 * Return admin-facing role policy data.
@@ -28,6 +29,10 @@ final class RoleAbilitiesPolicy {
 		$user_counts = $this->role_user_counts();
 
 		foreach ( $this->registered_roles() as $slug => $role ) {
+			if ( self::ADMINISTRATOR_ROLE === (string) $slug ) {
+				continue;
+			}
+
 			$allowed_ids = $this->allowed_ids_for_role( (string) $slug, $registry );
 			$roles[]     = array(
 				'id'           => (string) $slug,
@@ -43,7 +48,7 @@ final class RoleAbilitiesPolicy {
 		return array(
 			'roles'             => $roles,
 			'globalEnabledIds'  => $registry->enabled_ids(),
-			'defaultPolicyName' => 'Global ability policy',
+			'defaultPolicyName' => 'Default read-only policy',
 		);
 	}
 
@@ -57,13 +62,13 @@ final class RoleAbilitiesPolicy {
 	public function allowed_ids_for_role( string $role, AbilitiesRegistry $registry ): array {
 		$role           = $this->sanitize_role( $role );
 		$global_enabled = $registry->enabled_ids();
-		if ( '' === $role ) {
+		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 			return $global_enabled;
 		}
 
 		$policies = $this->policies( $registry );
 		if ( ! array_key_exists( $role, $policies ) ) {
-			return $global_enabled;
+			return $this->default_read_only_ids( $registry );
 		}
 
 		return array_values( array_intersect( $policies[ $role ], $global_enabled ) );
@@ -84,6 +89,10 @@ final class RoleAbilitiesPolicy {
 		$user  = get_userdata( $user_id );
 		$roles = (array) ( $user->roles ?? array() );
 		if ( array() === $roles ) {
+			return $registry->enabled_ids();
+		}
+
+		if ( in_array( self::ADMINISTRATOR_ROLE, array_map( 'strval', $roles ), true ) ) {
 			return $registry->enabled_ids();
 		}
 
@@ -131,7 +140,7 @@ final class RoleAbilitiesPolicy {
 	 */
 	public function save_role_policy( string $role, array $ability_ids, AbilitiesRegistry $registry ): bool {
 		$role = $this->sanitize_role( $role );
-		if ( '' === $role ) {
+		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 			return false;
 		}
 
@@ -152,7 +161,13 @@ final class RoleAbilitiesPolicy {
 	public function copy_role_policy( string $from_role, string $to_role, AbilitiesRegistry $registry ): bool {
 		$from_role = $this->sanitize_role( $from_role );
 		$to_role   = $this->sanitize_role( $to_role );
-		if ( '' === $from_role || '' === $to_role || $from_role === $to_role ) {
+		if (
+			'' === $from_role
+			|| '' === $to_role
+			|| $from_role === $to_role
+			|| self::ADMINISTRATOR_ROLE === $from_role
+			|| self::ADMINISTRATOR_ROLE === $to_role
+		) {
 			return false;
 		}
 
@@ -167,7 +182,7 @@ final class RoleAbilitiesPolicy {
 	 */
 	public function reset_role_policy( string $role, AbilitiesRegistry $registry ): bool {
 		$role = $this->sanitize_role( $role );
-		if ( '' === $role ) {
+		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 			return false;
 		}
 
@@ -198,7 +213,7 @@ final class RoleAbilitiesPolicy {
 		$sanitized = array();
 		foreach ( $policies as $role => $ability_ids ) {
 			$role = $this->sanitize_role( (string) $role );
-			if ( '' === $role ) {
+			if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 				continue;
 			}
 
@@ -227,7 +242,7 @@ final class RoleAbilitiesPolicy {
 	 */
 	public function has_explicit_policy( string $role ): bool {
 		$role = $this->sanitize_role( $role );
-		if ( '' === $role ) {
+		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 			return false;
 		}
 
@@ -250,7 +265,7 @@ final class RoleAbilitiesPolicy {
 		$policies = array();
 		foreach ( $stored as $role => $ability_ids ) {
 			$role = $this->sanitize_role( (string) $role );
-			if ( '' === $role || ! is_array( $ability_ids ) ) {
+			if ( '' === $role || self::ADMINISTRATOR_ROLE === $role || ! is_array( $ability_ids ) ) {
 				continue;
 			}
 
@@ -281,6 +296,21 @@ final class RoleAbilitiesPolicy {
 		}
 
 		return array_values( array_unique( $sanitized ) );
+	}
+
+	/**
+	 * Return globally enabled read-only abilities for non-admin default policy.
+	 *
+	 * @param AbilitiesRegistry $registry Ability registry.
+	 * @return list<string>
+	 */
+	private function default_read_only_ids( AbilitiesRegistry $registry ): array {
+		return array_values(
+			array_filter(
+				$registry->enabled_ids(),
+				static fn ( string $ability_id ): bool => $registry->is_read_only( $ability_id )
+			)
+		);
 	}
 
 	/**

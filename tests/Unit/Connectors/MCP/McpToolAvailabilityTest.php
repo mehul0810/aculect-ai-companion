@@ -74,6 +74,20 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertContains( 'content.list_items', $operations['policy']['blocked_by_global_ids'] );
 	}
 
+	public function test_operations_manifest_distinguishes_default_read_only_role_blocks(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
+
+		self::assertTrue( $operations['policy']['default_read_only_policy'] );
+		self::assertFalse( $operations['policy']['explicit_role_policy'] );
+		self::assertTrue( $operations['content']['get_item']['available'] );
+		self::assertSame( '', $operations['content']['get_item']['blocked_by'] );
+		self::assertFalse( $operations['content']['update']['available'] );
+		self::assertSame( 'role_default_read_only', $operations['content']['update']['blocked_by'] );
+	}
+
 	/**
 	 * Flatten operation entries from a structured operation manifest.
 	 *

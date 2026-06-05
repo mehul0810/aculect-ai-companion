@@ -36,7 +36,14 @@ final class SettingsTransferTest extends TestCase {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 		( new ToolSafety() )->save_confirmation_groups( array( 'Content' ) );
-		( new RoleAbilitiesPolicy() )->save_role_policy( 'editor', array( 'content.get_item' ), $registry );
+		update_option(
+			RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES,
+			array(
+				'administrator' => array( 'content.update_item' ),
+				'editor'        => array( 'content.get_item' ),
+			),
+			false
+		);
 		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
 		LogSettings::set_enabled( true );
 		LogSettings::set_retention_days( 14 );
@@ -58,6 +65,7 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( array( 'content.get_item', 'content.update_item' ), $payload['settings']['enabledAbilities'] );
 		self::assertSame( array( 'Content' ), $payload['settings']['confirmationGroups'] );
 		self::assertSame( array( 'content.get_item' ), $payload['settings']['roleAbilityPolicies']['editor'] );
+		self::assertArrayNotHasKey( 'administrator', $payload['settings']['roleAbilityPolicies'] );
 		self::assertSame( true, $payload['settings']['roleConnections']['enabled'] );
 		self::assertSame( array( 'editor' ), $payload['settings']['roleConnections']['allowedRoles'] );
 		self::assertSame( true, $payload['settings']['diagnostics']['loggingEnabled'] );
@@ -76,8 +84,9 @@ final class SettingsTransferTest extends TestCase {
 				'enabledWpAbilities'  => array( 'wp/example', '<b>wp/html</b>' ),
 				'confirmationGroups'  => array( 'Content', 'Unknown Group' ),
 				'roleAbilityPolicies' => array(
-					'editor'       => array( 'content.update_item', 'unknown.tool' ),
-					'missing-role' => array( 'content.get_item' ),
+					'administrator' => array( 'content.get_item' ),
+					'editor'        => array( 'content.update_item', 'unknown.tool' ),
+					'missing-role'  => array( 'content.get_item' ),
 				),
 				'roleConnections'     => array(
 					'enabled'      => 'yes',
@@ -102,6 +111,10 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame(
 			array( 'content.update_item' ),
 			( new RoleAbilitiesPolicy() )->saved_policies( new AbilitiesRegistry() )['editor']
+		);
+		self::assertArrayNotHasKey(
+			'administrator',
+			( new RoleAbilitiesPolicy() )->saved_policies( new AbilitiesRegistry() )
 		);
 		self::assertTrue( RoleConnectionEntryPoint::is_enabled() );
 		self::assertSame( array( 'editor' ), RoleConnectionEntryPoint::allowed_roles() );

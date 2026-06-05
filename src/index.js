@@ -3980,7 +3980,7 @@ function roleAbilitySourceLabel( ability, activeRole, isChecked ) {
 	}
 
 	if ( ! activeRole.explicit ) {
-		return 'Inherited from global';
+		return 'Default read-only';
 	}
 
 	return isChecked ? 'Explicitly enabled' : 'Explicitly disabled';
@@ -4037,7 +4037,13 @@ function RoleAbilitiesEditor( {
 	] );
 
 	if ( ! activeRole ) {
-		return null;
+		return (
+			<EmptyState title="No editable roles">
+				Administrator inherits all globally enabled abilities. Add or
+				select another WordPress role to customize non-administrator
+				assistant access.
+			</EmptyState>
+		);
 	}
 
 	const groups = roleAbilityGroups( abilities, stagedIds, globalEnabledIds );
@@ -4103,9 +4109,9 @@ function RoleAbilitiesEditor( {
 					</span>
 					<h2>Manage role abilities</h2>
 					<p>
-						Choose the tools exposed to users in each WordPress
-						role. Unknown, unavailable, and globally disabled tools
-						remain blocked by the server policy.
+						Choose the tools exposed to users in non-administrator
+						roles. Administrators inherit all globally enabled
+						abilities.
 					</p>
 				</div>
 				<div className="aculect-ai-companion-role-abilities__controls">
@@ -4441,9 +4447,9 @@ function RoleAbilitiesEditor( {
 					<section>
 						<h3>Help</h3>
 						<p>
-							Role policies narrow the globally enabled ability
-							list. WordPress capabilities are still checked for
-							each tool execution.
+							Other roles start with read-only abilities until a
+							custom policy is saved. WordPress capabilities are
+							still checked for each tool execution.
 						</p>
 					</section>
 				</aside>

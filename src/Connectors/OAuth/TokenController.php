@@ -91,6 +91,7 @@ final class TokenController {
 			);
 			return Psr7Bridge::to_rest_response( $exception->generateHttpResponse( Psr7Bridge::response() ) );
 		} catch ( Exception $exception ) {
+			unset( $exception );
 			$logger->error(
 				'token.failed',
 				'OAuth token request failed.',
@@ -98,10 +99,17 @@ final class TokenController {
 				$request,
 				500
 			);
-			return $this->error( 'server_error', $exception->getMessage(), 500 );
+			return $this->error( 'server_error', $this->server_error_description(), 500 );
 		} finally {
 			RequestContext::reset();
 		}
+	}
+
+	/**
+	 * Return a generic server-error description safe for OAuth clients.
+	 */
+	private function server_error_description(): string {
+		return 'The OAuth token request failed. Try again or reconnect the client.';
 	}
 
 	/**

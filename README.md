@@ -96,7 +96,7 @@ Admins can enable or disable these abilities from `AI Companion > Abilities` aft
 
 ## Activity Logging
 
-`AI Companion > Activity` shows write actions requested by connected AI assistants, including the assistant, connected WordPress user, action, target, status, and sanitized metadata. Read-only actions are not logged in this version to keep the table focused on site-changing activity and reduce stored data.
+`AI Companion > Activity` shows MCP actions requested by connected AI assistants, including the assistant, connected WordPress user, action, target, status, and sanitized metadata. Large content payloads are not stored in activity metadata.
 
 ## Project Docs
 

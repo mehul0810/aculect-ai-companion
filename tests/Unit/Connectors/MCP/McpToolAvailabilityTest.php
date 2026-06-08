@@ -88,6 +88,61 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'role_default_read_only', $operations['content']['update']['blocked_by'] );
 	}
 
+	public function test_workflow_operations_require_underlying_atomic_operations(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content_workflow.create_draft' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertArrayHasKey( 'workflows', $operations );
+		self::assertArrayHasKey( 'intelligence_index', $operations );
+		self::assertFalse( $operations['workflows']['create_draft']['available'] );
+		self::assertSame( 'global_disabled', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertSame( array( 'content.create_item' ), $operations['workflows']['create_draft']['blocked_dependency_ids'] );
+		self::assertNotContains( 'content_workflow_create_draft', $tool_names );
+	}
+
+	public function test_workflow_operations_are_available_when_self_and_dependencies_are_allowed(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content_workflow.create_draft', 'content.create_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
+
+		self::assertTrue( $operations['workflows']['create_draft']['available'] );
+		self::assertSame( '', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertSame( 'content_workflow_create_draft', $operations['workflows']['create_draft']['tool'] );
+	}
+
+	public function test_intelligence_index_operations_are_reported_with_read_and_write_policy(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids(
+			array(
+				'content_search.items',
+				'content_search.chunks',
+				'content_find.internal_links',
+				'memory.list',
+				'memory.save',
+			)
+		);
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
+
+		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
+		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
+		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
+		self::assertFalse( $operations['intelligence_index']['memory_save']['available'] );
+		self::assertSame( 'role_default_read_only', $operations['intelligence_index']['memory_save']['blocked_by'] );
+	}
+
 	/**
 	 * Flatten operation entries from a structured operation manifest.
 	 *
@@ -96,7 +151,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'content', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

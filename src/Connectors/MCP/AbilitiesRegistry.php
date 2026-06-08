@@ -189,6 +189,22 @@ final class AbilitiesRegistry {
 	}
 
 	/**
+	 * Return operational ability IDs that must also be available before a workflow can run.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 * @return list<string>
+	 */
+	public function dependency_ids( string $id ): array {
+		return match ( $this->internal_id( $id ) ) {
+			'content_workflow.prepare_post' => array( 'site.list_post_types' ),
+			'content_workflow.create_draft' => array( 'content.create_item' ),
+			'content_workflow.update_post' => array( 'content.update_item' ),
+			'seo_workflow.update_rankmath' => array( 'content.update_seo' ),
+			default => array(),
+		};
+	}
+
+	/**
 	 * Convert a public tool name or legacy alias back to the internal ID.
 	 *
 	 * @param string $id Internal ID, legacy alias, or public tool name.

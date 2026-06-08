@@ -265,6 +265,7 @@ final class AuthorizationController {
 				)
 			);
 		} catch ( Exception $exception ) {
+			unset( $exception );
 			( new Logger() )->error(
 				'consent.failed',
 				'OAuth consent approval failed.',
@@ -272,10 +273,17 @@ final class AuthorizationController {
 				null,
 				500
 			);
-			$this->render_error( 'Authorization failed', $exception->getMessage(), 500 );
+			$this->render_error( 'Authorization failed', $this->server_error_description(), 500 );
 		} finally {
 			RequestContext::reset();
 		}
+	}
+
+	/**
+	 * Return a generic server-error description safe for OAuth browser output.
+	 */
+	private function server_error_description(): string {
+		return 'Aculect AI Companion could not complete the authorization request. Try reconnecting the client.';
 	}
 
 	/**

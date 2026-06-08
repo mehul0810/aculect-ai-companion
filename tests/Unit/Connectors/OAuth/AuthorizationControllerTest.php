@@ -125,6 +125,14 @@ final class AuthorizationControllerTest extends TestCase {
 		);
 	}
 
+	public function test_server_error_description_does_not_expose_exception_details(): void {
+		$description = $this->invokePrivate( new AuthorizationController(), 'server_error_description' );
+
+		self::assertSame( 'Aculect AI Companion could not complete the authorization request. Try reconnecting the client.', $description );
+		self::assertStringNotContainsString( 'SQL', $description );
+		self::assertStringNotContainsString( 'Exception', $description );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *

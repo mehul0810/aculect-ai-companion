@@ -39,6 +39,12 @@ final class ToolSafetyTest extends TestCase {
 
 		self::assertSame( 'update', $this->safety->risk_level( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
+
+		self::assertSame( 'draft', $this->safety->risk_level( 'content_workflow.create_draft', array( 'title' => 'Draft' ) ) );
+		self::assertSame( 'destructive', $this->safety->risk_level( 'content_workflow.update_post', array( 'id' => 123, 'content' => '<!-- wp:paragraph --><p>Updated</p><!-- /wp:paragraph -->' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'content_workflow.update_post', array( 'id' => 123, 'content' => '<!-- wp:paragraph --><p>Updated</p><!-- /wp:paragraph -->' ) ) );
+		self::assertSame( 'destructive', $this->safety->risk_level( 'content_workflow.update_post', array( 'id' => 123, 'section_map' => array( 'intro' => '<!-- wp:paragraph --><p>Updated</p><!-- /wp:paragraph -->' ) ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'content_workflow.update_post', array( 'id' => 123, 'section_map' => array( 'intro' => '<!-- wp:paragraph --><p>Updated</p><!-- /wp:paragraph -->' ) ) ) );
 	}
 
 	public function test_configured_groups_require_confirmation_for_all_write_actions(): void {

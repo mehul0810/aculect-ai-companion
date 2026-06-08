@@ -68,6 +68,14 @@ final class TokenControllerTest extends TestCase {
 		self::assertSame( 'no-cache', $response->header( 'Pragma' ) );
 	}
 
+	public function test_server_error_description_does_not_expose_exception_details(): void {
+		$description = $this->invokePrivate( new TokenController(), 'server_error_description' );
+
+		self::assertSame( 'The OAuth token request failed. Try again or reconnect the client.', $description );
+		self::assertStringNotContainsString( 'SQL', $description );
+		self::assertStringNotContainsString( 'Exception', $description );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

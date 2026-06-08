@@ -22,7 +22,7 @@ final class ActivityLogger {
 	}
 
 	/**
-	 * Record one write-capable MCP tool call.
+	 * Record one MCP tool call with sanitized metadata only.
 	 *
 	 * @param string               $action Tool action.
 	 * @param array<string, mixed> $args   Tool arguments.
@@ -128,9 +128,9 @@ final class ActivityLogger {
 	 */
 	private function target( string $action, array $args, array $result ): array {
 		return match ( $action ) {
-			'content.create_item', 'content.update_item' => array(
+			'content.create_item', 'content.update_item', 'content.update_seo', 'content_workflow.create_draft', 'content_workflow.update_post', 'seo_workflow.update_rankmath' => array(
 				'type' => sanitize_key( (string) ( $result['type'] ?? $args['post_type'] ?? 'content' ) ),
-				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
+				'id'   => $this->first_id( $result, $args, array( 'id', 'post_id' ) ),
 			),
 			'taxonomy.create_term', 'taxonomy.update_term' => array(
 				'type' => sanitize_key( (string) ( $result['taxonomy'] ?? $args['taxonomy'] ?? 'term' ) ),
@@ -146,6 +146,14 @@ final class ActivityLogger {
 			),
 			'wp_abilities.run' => array(
 				'type' => 'wp_ability',
+				'id'   => null,
+			),
+			'content_index.refresh_batch', 'content_batch.status' => array(
+				'type' => 'intelligence_job',
+				'id'   => null,
+			),
+			'memory.save', 'memory.list' => array(
+				'type' => 'memory',
 				'id'   => null,
 			),
 			default => array(
@@ -202,7 +210,7 @@ final class ActivityLogger {
 			'action' => $action,
 		);
 
-		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'term_id', 'post_id' ) as $key ) {
+		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'term_id', 'post_id', 'update_mode', 'job_key' ) as $key ) {
 			if ( isset( $args[ $key ] ) && is_scalar( $args[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $args[ $key ] ) ? absint( $args[ $key ] ) : sanitize_text_field( (string) $args[ $key ] );
 			}
@@ -231,7 +239,7 @@ final class ActivityLogger {
 	private function result_metadata( array $result ): array {
 		$metadata = array();
 
-		foreach ( array( 'id', 'type', 'status', 'taxonomy', 'mime_type' ) as $key ) {
+		foreach ( array( 'id', 'post_id', 'type', 'status', 'workflow', 'taxonomy', 'mime_type' ) as $key ) {
 			if ( isset( $result[ $key ] ) && is_scalar( $result[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $result[ $key ] ) ? absint( $result[ $key ] ) : sanitize_text_field( (string) $result[ $key ] );
 			}

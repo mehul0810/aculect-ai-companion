@@ -112,11 +112,13 @@ final class ToolSafety {
 				'publish' => 'publish',
 				default => 'draft',
 			},
+			'content_workflow.create_draft' => 'draft',
 			'content.update_item' => match ( $status ) {
 				'trash' => 'destructive',
 				'publish' => 'publish',
 				default => 'update',
 			},
+				'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
@@ -131,6 +133,9 @@ final class ToolSafety {
 			'media.delete_item' => 'destructive',
 			'wp_abilities.run' => 'system',
 			'content.update_seo',
+			'content_index.refresh_batch',
+			'memory.save',
+			'seo_workflow.update_rankmath',
 			'media.rename_file',
 			'media.update_item',
 			'media.upload_item',

@@ -41,6 +41,34 @@ final class SettingsPage {
 	private const STYLE_HANDLE         = 'aculect-ai-companion-settings-style';
 
 	/**
+	 * Cached ability payload for the current request.
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private static ?array $ability_payload_cache = null;
+
+	/**
+	 * Cached changelog payload for the current request.
+	 *
+	 * @var array<int, array<string, mixed>>|null
+	 */
+	private static ?array $changelog_cache = null;
+
+	/**
+	 * Cached plugin metadata for the current request.
+	 *
+	 * @var array<string, string>|null
+	 */
+	private static ?array $plugin_metadata_cache = null;
+
+	/**
+	 * Cached readme headers for the current request.
+	 *
+	 * @var array<string, string>|null
+	 */
+	private static ?array $readme_headers_cache = null;
+
+	/**
 	 * Register the settings page and page-specific assets.
 	 */
 	public function register(): void {
@@ -251,20 +279,28 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function ability_payload( string $payload_tab, AbilitiesRegistry $ability_registry ): array {
-		$wp_abilities        = new WordPressAbilitiesPolicy();
-		$tool_safety         = new ToolSafety();
+		if ( null === self::$ability_payload_cache ) {
+			$wp_abilities                = new WordPressAbilitiesPolicy();
+			$tool_safety                 = new ToolSafety();
+			self::$ability_payload_cache = array(
+				'abilities'                => $ability_registry->public_definitions(),
+				'enabledAbilities'         => $ability_registry->enabled_ids(),
+				'wpAbilities'              => $wp_abilities->public_definitions(),
+				'enabledWpAbilities'       => $wp_abilities->allowed_ids(),
+				'confirmationGroups'       => $tool_safety->confirmation_groups(),
+				'confirmationGroupOptions' => $tool_safety->available_confirmation_groups(),
+			);
+		}
+
 		$role_ability_policy = 'abilities' === $payload_tab
 			? ( new RoleAbilitiesPolicy() )->admin_payload( $ability_registry )
 			: array();
 
-		return array(
-			'abilities'                => $ability_registry->public_definitions(),
-			'enabledAbilities'         => $ability_registry->enabled_ids(),
-			'roleAbilityPolicy'        => $role_ability_policy,
-			'wpAbilities'              => $wp_abilities->public_definitions(),
-			'enabledWpAbilities'       => $wp_abilities->allowed_ids(),
-			'confirmationGroups'       => $tool_safety->confirmation_groups(),
-			'confirmationGroupOptions' => $tool_safety->available_confirmation_groups(),
+		return array_merge(
+			self::$ability_payload_cache,
+			array(
+				'roleAbilityPolicy' => $role_ability_policy,
+			)
 		);
 	}
 
@@ -1355,19 +1391,26 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function load_changelog(): array {
+		if ( null !== self::$changelog_cache ) {
+			return self::$changelog_cache;
+		}
+
 		$file = ACULECT_AI_COMPANION_PLUGIN_DIR . 'changelog.json';
 		if ( ! file_exists( $file ) ) {
-			return array();
+			self::$changelog_cache = array();
+			return self::$changelog_cache;
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local plugin file read.
 		$json = file_get_contents( $file );
 		if ( false === $json || '' === $json ) {
-			return array();
+			self::$changelog_cache = array();
+			return self::$changelog_cache;
 		}
 
-		$decoded = json_decode( $json, true );
-		return is_array( $decoded ) ? $decoded : array();
+		$decoded               = json_decode( $json, true );
+		self::$changelog_cache = is_array( $decoded ) ? $decoded : array();
+		return self::$changelog_cache;
 	}
 
 	/**
@@ -1376,6 +1419,10 @@ final class SettingsPage {
 	 * @return array<string, string>
 	 */
 	private function plugin_metadata(): array {
+		if ( null !== self::$plugin_metadata_cache ) {
+			return self::$plugin_metadata_cache;
+		}
+
 		$plugin_data = function_exists( 'get_file_data' )
 			? get_file_data(
 				ACULECT_AI_COMPANION_PLUGIN_FILE,
@@ -1389,7 +1436,7 @@ final class SettingsPage {
 			: array();
 		$readme_data = $this->readme_headers();
 
-		return array(
+		self::$plugin_metadata_cache = array(
 			'version'          => sanitize_text_field( (string) ( $plugin_data['version'] ?? ACULECT_AI_COMPANION_VERSION ) ),
 			'requiresAtLeast'  => sanitize_text_field( (string) ( $plugin_data['requiresAtLeast'] ?? '' ) ),
 			'requiresPhp'      => sanitize_text_field( (string) ( $plugin_data['requiresPhp'] ?? '' ) ),
@@ -1400,6 +1447,8 @@ final class SettingsPage {
 			'supportUrl'       => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/' ),
 			'reviewUrl'        => esc_url_raw( 'https://wordpress.org/support/plugin/aculect-ai-companion/reviews/#new-post' ),
 		);
+
+		return self::$plugin_metadata_cache;
 	}
 
 	/**
@@ -1408,15 +1457,21 @@ final class SettingsPage {
 	 * @return array<string, string>
 	 */
 	private function readme_headers(): array {
+		if ( null !== self::$readme_headers_cache ) {
+			return self::$readme_headers_cache;
+		}
+
 		$file = ACULECT_AI_COMPANION_PLUGIN_DIR . 'readme.txt';
 		if ( ! file_exists( $file ) ) {
-			return array();
+			self::$readme_headers_cache = array();
+			return self::$readme_headers_cache;
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local plugin file read.
 		$contents = file_get_contents( $file );
 		if ( false === $contents || '' === $contents ) {
-			return array();
+			self::$readme_headers_cache = array();
+			return self::$readme_headers_cache;
 		}
 
 		$headers = array();
@@ -1443,7 +1498,8 @@ final class SettingsPage {
 			}
 		}
 
-		return $headers;
+		self::$readme_headers_cache = $headers;
+		return self::$readme_headers_cache;
 	}
 
 	/**

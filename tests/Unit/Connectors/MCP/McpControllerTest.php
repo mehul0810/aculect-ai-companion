@@ -105,8 +105,19 @@ final class McpControllerTest extends TestCase {
 
 			self::assertIsArray( $tool['annotations'] );
 			self::assertArrayHasKey( 'readOnlyHint', $tool['annotations'] );
+			self::assertArrayHasKey( 'destructiveHint', $tool['annotations'] );
+			self::assertArrayHasKey( 'idempotentHint', $tool['annotations'] );
+			self::assertArrayHasKey( 'openWorldHint', $tool['annotations'] );
 			self::assertIsBool( $tool['annotations']['readOnlyHint'] );
+			self::assertIsBool( $tool['annotations']['destructiveHint'] );
+			self::assertIsBool( $tool['annotations']['idempotentHint'] );
+			self::assertIsBool( $tool['annotations']['openWorldHint'] );
 		}
+
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
+		self::assertTrue( $tools_by_name['media_delete_item']['annotations']['destructiveHint'] );
+		self::assertTrue( $tools_by_name['content_create_item']['annotations']['openWorldHint'] );
+		self::assertTrue( $tools_by_name['content_index_refresh_batch']['annotations']['idempotentHint'] );
 	}
 
 	public function test_initialize_payload_includes_chatgpt_workflow_instructions(): void {
@@ -118,6 +129,12 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'intelligence_site_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_content_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'operations manifest', $result['instructions'] );
+		self::assertStringContainsString( 'content_search_items', $result['instructions'] );
+		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
+		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
+		self::assertStringContainsString( 'memory_list', $result['instructions'] );
+		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
+		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );
 		self::assertStringContainsString( 'Never use raw Custom HTML blocks', $result['instructions'] );
 		self::assertArrayHasKey( 'tools', $result['capabilities'] );
@@ -143,11 +160,46 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'learning_protocol', $tools_by_name['intelligence_site_get_context']['outputSchema']['properties'] );
 	}
 
+	public function test_operational_and_workflow_tools_advertise_output_schemas(): void {
+		$result        = $this->invokePrivate( new McpController(), 'list_tools' );
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
+
+		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
+			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
+			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+			self::assertArrayHasKey( 'post_id', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+			self::assertArrayHasKey( 'next_actions', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+		}
+
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_list_items'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'total', $tools_by_name['content_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'per_page', $tools_by_name['content_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_search_chunks'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'visible_total', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
+		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'intelligence_context', $tools_by_name['content_workflow_prepare_post']['outputSchema']['properties'] );
+	}
+
 	public function test_chatgpt_codex_and_claude_tools_prioritize_operational_tools_before_intelligence_tools(): void {
 		$result = $this->invokePrivate( new McpController(), 'list_tools' );
 		$names  = array_column( $result['tools'], 'name' );
 
 		$critical_tools = array(
+			'content_workflow_prepare_post',
+			'content_workflow_create_draft',
+			'content_workflow_update_post',
+			'seo_workflow_update_rankmath',
+			'content_index_refresh_batch',
+			'content_search_items',
+			'content_search_chunks',
+			'content_find_related',
+			'content_find_internal_links',
+			'memory_list',
 			'site_list_post_types',
 			'content_list_items',
 			'content_get_item',
@@ -204,6 +256,9 @@ final class McpControllerTest extends TestCase {
 		self::assertTrue( $site['operations']['content']['list_items']['available'] );
 		self::assertSame( 'content_update_item', $site['operations']['content']['update']['tool'] );
 		self::assertSame( 'content_update_seo', $site['operations']['content']['seo']['tool'] );
+		self::assertSame( 'content_search_items', $site['operations']['intelligence_index']['search_items']['tool'] );
+		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
+		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
 		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
 		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms']['tool'] );
 		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run']['tool'] );
@@ -298,6 +353,23 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( array( 'taxonomy', 'term_id' ), $term_image_schema['required'] );
 		self::assertArrayHasKey( 'image_id', $term_image_schema['properties'] );
 		self::assertArrayHasKey( 'clear_image', $term_image_schema['properties'] );
+
+		$workflow_prepare_schema = $this->schemaForTool( 'content_workflow_prepare_post' );
+		self::assertSame( array( 'brief' ), $workflow_prepare_schema['required'] );
+		self::assertArrayHasKey( 'desired_word_count', $workflow_prepare_schema['properties'] );
+
+		$workflow_create_schema = $this->schemaForTool( 'content_workflow_create_draft' );
+		self::assertSame( array( 'title', 'content' ), $workflow_create_schema['required'] );
+		self::assertArrayHasKey( 'meta_title', $workflow_create_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $workflow_create_schema['properties'] );
+
+		$workflow_update_schema = $this->schemaForTool( 'content_workflow_update_post' );
+		self::assertSame( array( 'id' ), $workflow_update_schema['required'] );
+		self::assertArrayHasKey( 'section_map', $workflow_update_schema['properties'] );
+
+		$rankmath_workflow_schema = $this->schemaForTool( 'seo_workflow_update_rankmath' );
+		self::assertSame( array( 'id' ), $rankmath_workflow_schema['required'] );
+		self::assertArrayHasKey( 'focus_keywords', $rankmath_workflow_schema['properties'] );
 	}
 
 	public function test_write_tool_schemas_include_safety_controls(): void {
@@ -379,6 +451,7 @@ final class McpControllerTest extends TestCase {
 		self::assertNotContains( 'blocks_list_available', $names );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.list_items', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
+		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );
 	}
 

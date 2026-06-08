@@ -60,6 +60,7 @@ $GLOBALS['aculect_ai_companion_test_roles']       = array(
 	'author'        => array( 'name' => 'Author' ),
 );
 $GLOBALS['aculect_ai_companion_test_users']       = array();
+$GLOBALS['aculect_ai_companion_test_posts']       = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
 
@@ -194,6 +195,66 @@ if ( ! function_exists( 'register_rest_route' ) ) {
 		);
 
 		return true;
+	}
+}
+
+if ( ! class_exists( 'WP_Post' ) ) {
+	/**
+	 * Minimal post object used by unit tests.
+	 */
+	class WP_Post {
+		public int $ID = 0;
+		public string $post_type = 'post';
+		public string $post_status = 'draft';
+		public string $post_title = '';
+		public string $post_content = '';
+		public string $post_excerpt = '';
+		public string $post_name = '';
+		public int $post_author = 0;
+		public string $post_date = '';
+		public string $post_date_gmt = '';
+
+		/**
+		 * @param array<string, mixed> $data Post fields.
+		 */
+		public function __construct( array $data = array() ) {
+			foreach ( $data as $key => $value ) {
+				if ( property_exists( $this, (string) $key ) ) {
+					$this->{$key} = is_int( $this->{$key} ) ? absint( $value ) : (string) $value;
+				}
+			}
+		}
+	}
+}
+
+if ( ! function_exists( 'get_post' ) ) {
+	/**
+	 * Return a test post object.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	function get_post( int $post_id ): ?WP_Post {
+		$post = $GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] ?? null;
+		if ( $post instanceof WP_Post ) {
+			return $post;
+		}
+
+		return is_array( $post ) ? new WP_Post( $post ) : null;
+	}
+}
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	/**
+	 * Return test capability checks.
+	 *
+	 * @param string $capability Capability name.
+	 * @param mixed  ...$args    Capability args.
+	 */
+	function current_user_can( string $capability, mixed ...$args ): bool {
+		unset( $args );
+
+		$denied = $GLOBALS['aculect_ai_companion_test_denied_caps'] ?? array();
+		return ! in_array( $capability, is_array( $denied ) ? $denied : array(), true );
 	}
 }
 
@@ -694,6 +755,18 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 	 */
 	function sanitize_text_field( string $str ): string {
 		return trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( $str ) ) ?? '' );
+	}
+}
+
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	/**
+	 * Strip all HTML tags for tests.
+	 *
+	 * @param string $text Raw text.
+	 */
+	function wp_strip_all_tags( string $text ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.strip_tags_strip_tags -- Test stub implements the WordPress helper.
+		return strip_tags( $text );
 	}
 }
 

@@ -69,6 +69,12 @@ final class UninstallTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_logs' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_content_index' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_content_chunks' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_link_graph' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_memory_items' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_jobs' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_cache' ) );
 	}
 }
 

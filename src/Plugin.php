@@ -16,6 +16,8 @@ use Aculect\AICompanion\Connectors\OAuth\DiscoveryController;
 use Aculect\AICompanion\Connectors\OAuth\StorageMaintenance as OAuthStorageMaintenance;
 use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
+use Aculect\AICompanion\Intelligence\ContentIndexer;
+use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -47,6 +49,7 @@ final class Plugin {
 		OAuthInstaller::activate();
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
+		IntelligenceInstaller::activate();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
@@ -92,10 +95,19 @@ final class Plugin {
 		add_action( 'admin_post_aculect_ai_companion_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
+		add_action( 'save_post', array( $this, 'handle_content_index_save' ), 50, 3 );
+		add_action( 'before_delete_post', array( $this, 'handle_content_index_delete' ), 10, 1 );
+		add_action( 'trashed_post', array( $this, 'handle_content_index_delete' ), 10, 1 );
+		add_action( 'set_object_terms', array( $this, 'handle_content_index_terms_changed' ), 10, 6 );
+		add_action( 'added_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
+		add_action( 'updated_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
+		add_action( 'deleted_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
+		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
+		IntelligenceInstaller::install();
 		OAuthStorageMaintenance::maybe_prune();
 	}
 
@@ -337,6 +349,79 @@ final class Plugin {
 	 */
 	public function handle_oauth_consent(): void {
 		( new AuthorizationController() )->handle_admin_consent();
+	}
+
+	/**
+	 * Refresh the local content intelligence index after a post save.
+	 *
+	 * @param int   $post_id Post ID.
+	 * @param mixed $post    WordPress post object.
+	 * @param bool  $update  Whether this was an update.
+	 */
+	public function handle_content_index_save( int $post_id, mixed $post = null, bool $update = false ): void {
+		unset( $post, $update );
+
+		if ( $this->is_skipped_content_index_post( $post_id ) ) {
+			return;
+		}
+
+		( new ContentIndexer() )->index_post( $post_id );
+	}
+
+	/**
+	 * Delete local content intelligence rows for a removed or trashed post.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function handle_content_index_delete( int $post_id ): void {
+		( new ContentIndexer() )->delete_post( $post_id );
+	}
+
+	/**
+	 * Mark indexed content stale when terms change after post save.
+	 *
+	 * @param int   $object_id Object ID.
+	 * @param mixed ...$args   Remaining WordPress hook args.
+	 */
+	public function handle_content_index_terms_changed( int $object_id, mixed ...$args ): void {
+		unset( $args );
+
+		( new ContentIndexer() )->mark_post_stale( $object_id );
+	}
+
+	/**
+	 * Mark indexed content stale when post metadata changes.
+	 *
+	 * @param mixed $meta_id   Metadata row ID.
+	 * @param int   $object_id Object ID.
+	 * @param mixed ...$args   Remaining WordPress hook args.
+	 */
+	public function handle_content_index_meta_changed( mixed $meta_id, int $object_id, mixed ...$args ): void {
+		unset( $meta_id, $args );
+
+		( new ContentIndexer() )->mark_post_stale( $object_id );
+	}
+
+	/**
+	 * Execute a queued content intelligence refresh job.
+	 *
+	 * @param string $job_key Job key.
+	 */
+	public function handle_content_index_refresh_job( string $job_key ): void {
+		( new ContentIndexer() )->run_queued_refresh_job( $job_key );
+	}
+
+	/**
+	 * Check whether a post save should not affect the content index.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function is_skipped_content_index_post( int $post_id ): bool {
+		if ( function_exists( 'wp_is_post_revision' ) && wp_is_post_revision( $post_id ) ) {
+			return true;
+		}
+
+		return function_exists( 'wp_is_post_autosave' ) && (bool) wp_is_post_autosave( $post_id );
 	}
 
 	/**

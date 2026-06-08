@@ -42,7 +42,15 @@ final class McpToolAvailability {
 	public function ability_modules_for_user( int $user_id, ?AbilitiesRegistry $registry = null ): array {
 		$registry = $registry ?? new AbilitiesRegistry();
 
-		return ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry );
+		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry );
+		$policy         = $this->ability_policy_for_user( $user_id, $registry );
+		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
+		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
+
+		return array_filter(
+			$modules,
+			fn ( AbilityModuleInterface $module ): bool => $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry )
+		);
 	}
 
 	/**
@@ -58,7 +66,12 @@ final class McpToolAvailability {
 		$all_ids        = array_keys( $registry->definitions() );
 		$global_enabled = $registry->enabled_ids();
 		$role_allowed   = $policy->allowed_ids_for_user( $user_id, $registry );
-		$exposed        = array_values( array_intersect( $all_ids, $global_enabled, $role_allowed ) );
+		$exposed        = array_values(
+			array_filter(
+				array_intersect( $all_ids, $global_enabled, $role_allowed ),
+				fn ( string $ability_id ): bool => $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry )
+			)
+		);
 		$roles          = $this->roles_for_user( $user_id );
 
 		$explicit_role_policy     = count(
@@ -112,10 +125,10 @@ final class McpToolAvailability {
 		$policy   = $this->ability_policy_for_user( $user_id, $registry );
 
 		return array(
-			'description'     => 'Exact MCP operational tool names and availability for the connected WordPress user.',
-			'decision_rule'   => 'Admin/global ability settings and role policy decide what is callable. Intelligence should choose only among available tools unless it needs to explain a blocked workflow.',
-			'visibility_rule' => 'If a tool is unavailable, check blocked_by_global_ids and blocked_by_role_ids before assuming WordPress data or permissions are unavailable.',
-			'policy'          => array(
+			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user.',
+			'decision_rule'      => 'Admin/global ability settings and role policy decide what is callable. Intelligence should choose only among available tools unless it needs to explain a blocked workflow.',
+			'visibility_rule'    => 'If a tool is unavailable, check blocked_by_global_ids and blocked_by_role_ids before assuming WordPress data or permissions are unavailable.',
+			'policy'             => array(
 				'user_id'                  => $policy['user_id'],
 				'user_roles'               => $policy['user_roles'],
 				'global_enabled_count'     => $policy['global_enabled_count'],
@@ -127,7 +140,7 @@ final class McpToolAvailability {
 				'blocked_by_global_ids'    => $policy['blocked_by_global_ids'],
 				'blocked_by_role_ids'      => $policy['blocked_by_role_ids'],
 			),
-			'content'         => $this->operation_group(
+			'content'            => $this->operation_group(
 				array(
 					'list_types' => 'site.list_post_types',
 					'list_items' => 'content.list_items',
@@ -139,7 +152,31 @@ final class McpToolAvailability {
 				$policy,
 				$registry
 			),
-			'content_groups'  => $this->operation_group(
+			'workflows'          => $this->operation_group(
+				array(
+					'prepare_post'        => 'content_workflow.prepare_post',
+					'create_draft'        => 'content_workflow.create_draft',
+					'update_post'         => 'content_workflow.update_post',
+					'update_rankmath_seo' => 'seo_workflow.update_rankmath',
+				),
+				$policy,
+				$registry
+			),
+			'intelligence_index' => $this->operation_group(
+				array(
+					'refresh_batch'  => 'content_index.refresh_batch',
+					'search_items'   => 'content_search.items',
+					'search_chunks'  => 'content_search.chunks',
+					'find_related'   => 'content_find.related',
+					'internal_links' => 'content_find.internal_links',
+					'memory_list'    => 'memory.list',
+					'memory_save'    => 'memory.save',
+					'batch_status'   => 'content_batch.status',
+				),
+				$policy,
+				$registry
+			),
+			'content_groups'     => $this->operation_group(
 				array(
 					'list_taxonomies' => 'taxonomy.list_taxonomies',
 					'list_terms'      => 'taxonomy.list_terms',
@@ -150,7 +187,7 @@ final class McpToolAvailability {
 				$policy,
 				$registry
 			),
-			'media'           => $this->operation_group(
+			'media'              => $this->operation_group(
 				array(
 					'list'   => 'media.list_items',
 					'get'    => 'media.get_item',
@@ -162,7 +199,7 @@ final class McpToolAvailability {
 				$policy,
 				$registry
 			),
-			'comments'        => $this->operation_group(
+			'comments'           => $this->operation_group(
 				array(
 					'list'        => 'comments.list_items',
 					'get'         => 'comments.get_item',
@@ -173,7 +210,7 @@ final class McpToolAvailability {
 				$policy,
 				$registry
 			),
-			'actions'         => $this->operation_group(
+			'actions'            => $this->operation_group(
 				array(
 					'discover' => 'wp_abilities.discover',
 					'inspect'  => 'wp_abilities.get_info',
@@ -221,11 +258,12 @@ final class McpToolAvailability {
 	 * @return array<string, mixed>
 	 */
 	private function operation_entry( string $ability_id, array $policy, AbilitiesRegistry $registry ): array {
-		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
-		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
-		$exposed        = (array) ( $policy['exposed_ability_ids'] ?? array() );
-		$module         = $registry->module( $ability_id );
-		$blocked_by     = '';
+		$global_enabled       = (array) ( $policy['global_enabled_ids'] ?? array() );
+		$role_allowed         = (array) ( $policy['role_allowed_ids'] ?? array() );
+		$exposed              = (array) ( $policy['exposed_ability_ids'] ?? array() );
+		$module               = $registry->module( $ability_id );
+		$blocked_by           = '';
+		$blocked_dependencies = array();
 
 		if ( ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
@@ -233,16 +271,48 @@ final class McpToolAvailability {
 			$blocked_by = true === ( $policy['default_read_only_policy'] ?? false ) && null !== $module && ! $module->is_read_only()
 				? 'role_default_read_only'
 				: 'role_policy';
+		} else {
+			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
+				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
+					$blocked_by             = 'global_disabled';
+					$blocked_dependencies[] = $dependency_id;
+				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
+					$dependency             = $registry->module( $dependency_id );
+					$blocked_by             = true === ( $policy['default_read_only_policy'] ?? false ) && null !== $dependency && ! $dependency->is_read_only()
+						? 'role_default_read_only'
+						: 'role_policy';
+					$blocked_dependencies[] = $dependency_id;
+				}
+			}
 		}
 
 		return array(
-			'ability_id'      => $ability_id,
-			'tool'            => $registry->tool_name( $ability_id ),
-			'available'       => in_array( $ability_id, $exposed, true ),
-			'blocked_by'      => $blocked_by,
-			'required_scopes' => null === $module ? array() : $module->required_scopes(),
-			'read_only'       => null === $module || $module->is_read_only(),
+			'ability_id'             => $ability_id,
+			'tool'                   => $registry->tool_name( $ability_id ),
+			'available'              => in_array( $ability_id, $exposed, true ) && '' === $blocked_by,
+			'blocked_by'             => $blocked_by,
+			'blocked_dependency_ids' => array_values( array_unique( $blocked_dependencies ) ),
+			'required_scopes'        => null === $module ? array() : $module->required_scopes(),
+			'read_only'              => null === $module || $module->is_read_only(),
 		);
+	}
+
+	/**
+	 * Check workflow dependencies against global and role policy.
+	 *
+	 * @param string            $ability_id     Ability ID.
+	 * @param string[]          $global_enabled Globally enabled IDs.
+	 * @param string[]          $role_allowed   Role-allowed IDs.
+	 * @param AbilitiesRegistry $registry       Ability registry.
+	 */
+	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry ): bool {
+		foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
+			if ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

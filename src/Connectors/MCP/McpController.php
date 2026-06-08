@@ -145,6 +145,16 @@ final class McpController {
 				$args  = (array) ( $body['params']['arguments'] ?? array() );
 				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
 				if ( 'unknown_tool' === $error ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'unknown_tool',
+							'message' => 'Unknown tool.',
+						),
+						$auth
+					);
 					( new Logger() )->warning(
 						'mcp.unknown_tool',
 						'MCP tool call referenced an unknown tool.',
@@ -156,6 +166,16 @@ final class McpController {
 				}
 
 				if ( 'tool_disabled' === $error ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_disabled',
+							'message' => 'This ability is disabled in Aculect AI Companion settings.',
+						),
+						$auth
+					);
 					( new Logger() )->warning(
 						'mcp.tool_disabled',
 						'MCP tool call referenced a disabled tool.',
@@ -167,6 +187,16 @@ final class McpController {
 				}
 
 				if ( 'tool_forbidden_for_role' === $error ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_forbidden_for_role',
+							'message' => 'This ability is not available for the connected WordPress role.',
+						),
+						$auth
+					);
 					( new Logger() )->warning(
 						'mcp.tool_forbidden_for_role',
 						'MCP tool call was blocked by role ability policy.',
@@ -178,6 +208,16 @@ final class McpController {
 				}
 
 				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'access_paused',
+							'message' => 'AI access is paused in Aculect AI Companion settings.',
+						),
+						$auth
+					);
 					( new Logger() )->warning(
 						'mcp.access_paused',
 						'MCP tool call was blocked because AI access is paused.',
@@ -190,6 +230,17 @@ final class McpController {
 
 				$required = $is_intelligence_tool ? $intelligence->required_scopes( $tool ) : $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'          => 'error',
+							'error'           => 'insufficient_scope',
+							'message'         => 'The connection token does not include every required OAuth scope.',
+							'required_scopes' => $required,
+						),
+						$auth
+					);
 					( new Logger() )->warning(
 						'mcp.insufficient_scope',
 						'MCP tool call did not include every required OAuth scope.',
@@ -232,14 +283,7 @@ final class McpController {
 					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
 				}
 
-				if ( ! $is_dry_run && ! $is_confirmation_required && $is_write_tool ) {
-					( new ActivityLogger() )->record_tool_call(
-						$tool,
-						$args,
-						$result,
-						$auth
-					);
-				}
+				$this->record_tool_activity( $tool, $args, $result, $auth );
 
 				return $this->rpc_result(
 					$id,
@@ -352,7 +396,7 @@ final class McpController {
 			'inputSchema'     => $module->input_schema(),
 			'securitySchemes' => $security,
 			'_meta'           => $meta,
-			'annotations'     => array( 'readOnlyHint' => $module->is_read_only() ),
+			'annotations'     => $this->tool_annotations( $module ),
 		);
 
 		$output_schema = $this->output_schema_for_module( $module );
@@ -361,6 +405,34 @@ final class McpController {
 		}
 
 		return $descriptor;
+	}
+
+	/**
+	 * Return provider-facing tool annotations.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @return array<string, bool>
+	 */
+	private function tool_annotations( AbilityModuleInterface $module ): array {
+		$risk = ( new ToolSafety() )->risk_level( $module->id(), array() );
+
+		return array(
+			'readOnlyHint'    => $module->is_read_only(),
+			'destructiveHint' => in_array( $risk, array( 'destructive', 'system' ), true ),
+			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save' ), true ),
+			'openWorldHint'   => in_array(
+				$module->id(),
+				array(
+					'content.create_item',
+					'content.update_item',
+					'comments.create_item',
+					'comments.update_item',
+					'comments.bulk_update',
+					'wp_abilities.run',
+				),
+				true
+			),
+		);
 	}
 
 	/**
@@ -392,6 +464,10 @@ final class McpController {
 				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
+				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site.',
+				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
+				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
 				'If intelligence is incomplete, stale, or causes poor results, call intelligence_feedback_submit with a bounded learning suggestion for admin review.',
 				'Never use raw Custom HTML blocks or core/html; use registered WordPress blocks and patterns, and validate block content before write operations.',
 			)
@@ -406,7 +482,9 @@ final class McpController {
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
-			return array();
+			return $this->is_collection_module( $module )
+				? $this->collection_output_schema()
+				: $this->operational_output_schema();
 		}
 
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
@@ -435,6 +513,88 @@ final class McpController {
 				'learning_protocol' => array( 'type' => 'object' ),
 				'items'             => array( 'type' => 'array' ),
 				'summary'           => array( 'type' => 'object' ),
+			)
+		);
+	}
+
+	/**
+	 * Check whether an operational module returns a collection shape.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 */
+	private function is_collection_module( AbilityModuleInterface $module ): bool {
+		return in_array(
+			$module->id(),
+			array(
+				'site.list_post_types',
+				'content.list_items',
+				'content_search.items',
+				'content_search.chunks',
+				'content_find.related',
+				'content_find.internal_links',
+				'memory.list',
+				'taxonomy.list_taxonomies',
+				'taxonomy.list_terms',
+				'media.list_items',
+				'comments.list_items',
+				'wp_abilities.discover',
+			),
+			true
+		);
+	}
+
+	/**
+	 * Return a common output schema for paginated and item collections.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function collection_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'items'              => array( 'type' => 'array' ),
+				'total'              => array( 'type' => 'integer' ),
+				'visible_total'      => array( 'type' => 'integer' ),
+				'page'               => array( 'type' => 'integer' ),
+				'per_page'           => array( 'type' => 'integer' ),
+				'context'            => array( 'type' => 'string' ),
+				'index'              => array( 'type' => 'object' ),
+				'filtered_by_access' => array( 'type' => 'boolean' ),
+				'total_is_estimated' => array( 'type' => 'boolean' ),
+				'error'              => array( 'type' => 'string' ),
+				'message'            => array( 'type' => 'string' ),
+			)
+		);
+	}
+
+	/**
+	 * Return a common output schema for operational and workflow tools.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function operational_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'status'                => array( 'type' => 'string' ),
+				'error'                 => array( 'type' => 'string' ),
+				'message'               => array( 'type' => 'string' ),
+				'workflow'              => array( 'type' => 'string' ),
+				'post_id'               => array( 'type' => 'integer' ),
+				'post_type'             => array( 'type' => 'string' ),
+				'intelligence_context'  => array( 'type' => 'object' ),
+				'edit_url'              => array( 'type' => 'string' ),
+				'permalink'             => array( 'type' => 'string' ),
+				'fields'                => array( 'type' => 'object' ),
+				'items'                 => array( 'type' => 'array' ),
+				'job'                   => array( 'type' => 'object' ),
+				'index'                 => array( 'type' => 'object' ),
+				'changes'               => array( 'type' => 'array' ),
+				'warnings'              => array( 'type' => 'array' ),
+				'next_actions'          => array( 'type' => 'array' ),
+				'block_validation'      => array( 'type' => 'object' ),
+				'seo'                   => array( 'type' => 'object' ),
+				'dry_run'               => array( 'type' => 'boolean' ),
+				'confirmation_required' => array( 'type' => 'boolean' ),
+				'confirmation_token'    => array( 'type' => 'string' ),
 			)
 		);
 	}
@@ -485,6 +645,22 @@ final class McpController {
 	 */
 	private function execute_tool( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth = array() ): array {
 		return $is_intelligence_tool ? $intelligence->execute( $tool, $args, $this->intelligence_source_from_auth( $auth ) ) : $registry->execute( $tool, $args );
+	}
+
+	/**
+	 * Record one MCP tool event without making activity storage part of request success.
+	 *
+	 * @param string               $tool   Internal tool ID.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $result Tool result or error payload.
+	 * @param array<string, mixed> $auth   OAuth token context.
+	 */
+	private function record_tool_activity( string $tool, array $args, array $result, array $auth ): void {
+		try {
+			( new ActivityLogger() )->record_tool_call( $tool, $args, $result, $auth );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
 	}
 
 	/**
@@ -605,6 +781,16 @@ final class McpController {
 
 		if ( ! ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $tool, $user_id, $registry ) ) {
 			return 'tool_forbidden_for_role';
+		}
+
+		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
+			if ( ! $registry->is_enabled( $dependency_id ) ) {
+				return 'tool_disabled';
+			}
+
+			if ( ! ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
+				return 'tool_forbidden_for_role';
+			}
 		}
 
 		return '';

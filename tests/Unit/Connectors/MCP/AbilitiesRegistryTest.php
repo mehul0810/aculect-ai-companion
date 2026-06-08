@@ -103,6 +103,18 @@ final class AbilitiesRegistryTest extends TestCase {
 				'media.upload_item',
 				'media.get_item',
 				'media.update_item',
+				'content_workflow.prepare_post',
+				'content_workflow.create_draft',
+				'content_workflow.update_post',
+				'seo_workflow.update_rankmath',
+				'content_index.refresh_batch',
+				'content_search.items',
+				'content_search.chunks',
+				'content_find.related',
+				'content_find.internal_links',
+				'memory.list',
+				'memory.save',
+				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
 				'site.list_plugins',
@@ -115,6 +127,12 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'wp_abilities.run' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_workflow.prepare_post' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_workflow.create_draft' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
+		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
+		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );

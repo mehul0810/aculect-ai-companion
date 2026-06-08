@@ -92,6 +92,56 @@ final class ActivityLoggerTest extends TestCase {
 		);
 	}
 
+	public function test_target_handles_workflow_and_index_events_without_payloads(): void {
+		$workflow_target = $this->invokePrivate(
+			new ActivityLogger(),
+			'target',
+			array(
+				'content_workflow.update_post',
+				array(
+					'id'          => 12,
+					'section_map' => array(
+						'introduction' => '<!-- wp:paragraph --><p>Private body.</p><!-- /wp:paragraph -->',
+					),
+				),
+				array(
+					'post_id'  => 12,
+					'workflow' => 'content_workflow_update_post',
+				),
+			)
+		);
+
+		$metadata = $this->invokePrivate(
+			new ActivityLogger(),
+			'safe_argument_metadata',
+			array(
+				'content_workflow.update_post',
+				array(
+					'id'          => 12,
+					'update_mode' => 'sections',
+					'section_map' => array(
+						'introduction' => '<!-- wp:paragraph --><p>Private body.</p><!-- /wp:paragraph -->',
+					),
+				),
+			)
+		);
+
+		$index_target = $this->invokePrivate(
+			new ActivityLogger(),
+			'target',
+			array(
+				'content_index.refresh_batch',
+				array( 'post_type' => 'post' ),
+				array( 'status' => 'queued' ),
+			)
+		);
+
+		self::assertSame( array( 'type' => 'content', 'id' => 12 ), $workflow_target );
+		self::assertSame( 'sections', $metadata['update_mode'] );
+		self::assertArrayNotHasKey( 'section_map', $metadata );
+		self::assertSame( array( 'type' => 'intelligence_job', 'id' => null ), $index_target );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

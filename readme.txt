@@ -156,14 +156,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. About tab with a plain-language overview of Aculect AI Companion.
-2. Connect tab with the MCP connection URL and guided setup for AI tools.
-3. Diagnostics tab for checking endpoint, OAuth, and MCP readiness.
-4. Connections tab for reviewing connected AI assistants and access state.
-5. Activity tab showing write actions requested by connected AI assistants.
-6. Advanced tab with diagnostic logging and retention controls.
-7. Logs tab showing sanitized connection lifecycle and error events.
-8. Changelog tab with recent release notes.
+1. Overview tab showing the 0.5.0 AI Companion experience.
+2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
+3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
+4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
+5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
+6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
+7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
+8. Changelog tab with the current 0.5.0 release notes.
 
 == Development ==
 

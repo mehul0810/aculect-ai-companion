@@ -195,36 +195,23 @@ Composer dependencies for production releases are installed with:
 = 0.5.0 =
 
 * Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.
-* Added brand profile guidance for connected assistants.
+* Added AI Activity logging.
 * Added role-specific MCP ability policy controls and per-user access pause controls.
 * Added per-connection write permission controls for trusted assistants.
-* Added the Aculect Intelligence Layer with site, content, developer, and brand intelligence context.
+* Added Intelligence Layer.
 * Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.
 * Added settings import, export, and reset actions for safer configuration transfer and recovery.
 * Added an authenticated MCP tool manifest export for diagnosing client-specific tool discovery differences.
 * Added guided MCP content workflow tools for long-form post planning, draft creation, section-based post updates, and Rank Math SEO updates.
-* Added a local content intelligence index with batch refresh, content search, section search, related-content discovery, and internal-link suggestions.
-* Added local Aculect memory tools for durable site, brand, content, SEO, and workflow guidance independent of assistant-side memory.
+* Added reviewed learning suggestions so assistants can report improvement opportunities for admin review.
 * Reduced unnecessary admin payload work for tab-specific data.
 * Refined Connections and Abilities list views with assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.
 * Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.
 * Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.
-* Fixed Claude MCP tool invocation while keeping ChatGPT and Codex scope metadata aligned.
-* Improved MCP tool discovery compatibility for Claude, ChatGPT, OpenAI, and Codex by prioritizing operational tools and simplifying input schemas.
-* Aligned Intelligence Layer operation availability with the same global ability, role policy, and OAuth scope checks used by the MCP tools list.
-* Added MCP initialize guidance, intelligence output schemas, and OpenAI invocation labels so assistants can discover and use Aculect Intelligence context more reliably.
-* Normalized lazy settings payload requests to the current admin origin to avoid 403 errors when WordPress REST URLs use a different host or scheme.
 * Polished the connection access modal logo and form spacing.
 * Updated workflow tool availability so workflows only appear when the required underlying global abilities, role policy, and OAuth scopes allow them.
-* Improved long-form section updates so named section maps merge into existing block documents instead of replacing untouched sections.
-* Improved content intelligence search performance with full-text database indexes and bounded overfetch for capability-filtered results.
-* Added request-local caching for repeated settings ability, changelog, plugin metadata, and readme payload work.
 * Added provider compatibility guards for MCP tool descriptors and schemas.
-* Included per-tool availability, policy blockers, required scopes, and read-only hints in intelligence context so assistants can decide which enabled abilities to use.
 * Expanded cleanup coverage for full uninstall data removal.
-* Logged blocked, read-only, dry-run, workflow, memory, and index MCP activity with sanitized metadata.
-* Hardened content indexing jobs with duplicate schedule checks, claim-before-run behavior, and permission-safe job summaries.
-* Hardened OAuth authorization and token server errors so internal exception details are not exposed to connector clients.
 * Expanded unit coverage for workflow tools, content intelligence indexing, activity logging, OAuth error handling, tool safety, and cleanup.
 
 = 0.4.0 =

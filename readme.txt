@@ -1,6 +1,6 @@
 === Aculect AI Companion ===
 Contributors: mehul0810
-Tags: ai, content, claude, codex, chatgpt
+Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
@@ -8,11 +8,29 @@ Stable tag: 0.5.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect WordPress to ChatGPT, Claude, Codex, and other AI assistants through secure MCP workflows.
+Use ChatGPT, Claude, Codex, and other MCP AI assistants to manage WordPress content, media, comments, and site workflows.
 
 == Description ==
 
-Aculect AI Companion lets site owners manage their WordPress site using an AI assistant. Instead of navigating WordPress menus, you can ask your AI assistant in plain English to create posts, update pages, moderate comments, upload media, and review safe site information.
+Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI assistants such as ChatGPT, Claude, Codex, and OpenAI-compatible tools work with your WordPress content, media, comments, and site information through permission-aware workflows.
+
+Instead of switching between WordPress admin screens, you can ask your AI assistant in plain English to draft a post, update a page, review comments, upload media, inspect safe site details, or prepare long-form content using WordPress blocks.
+
+WordPress remains the source of truth. Aculect AI Companion checks the connected WordPress user's permissions before every action, lets administrators choose which abilities are available, and keeps risky write actions behind configurable controls.
+
+= What is MCP for WordPress? =
+
+MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives supported AI assistants a structured, permission-controlled way to request WordPress actions. The assistant does not receive direct database access. It can only use the enabled tools exposed by WordPress and approved by an administrator.
+
+= Why use Aculect AI Companion? =
+
+* Connect WordPress to ChatGPT, Claude, Codex, and OpenAI-compatible MCP clients
+* Create, update, and organize WordPress content through controlled AI workflows
+* Work with posts, pages, custom post types, categories, tags, comments, and media
+* Use block-aware content workflows instead of raw custom HTML
+* Review AI activity with sanitized audit logs
+* Control access globally, by connection, by role, and by WordPress user permissions
+* Use diagnostics to verify OAuth, MCP, endpoint, and environment readiness
 
 Setup is designed to be simple:
 
@@ -21,20 +39,22 @@ Setup is designed to be simple:
 3. Paste the URL when prompted.
 4. Approve the connection on the screen that appears.
 
-After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI can do and disconnect assistants at any time.
+After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI assistant can do and disconnect assistants at any time.
 
 = Features =
 
-* Create, edit, and publish posts and pages
-* Manage categories, tags, and content groups
-* Moderate and reply to comments
-* Upload and list media
-* View site settings, active plugins, and themes
-* Connect and disconnect AI assistants
+* Create, edit, and publish posts, pages, and supported custom post types
+* Plan and draft long-form block content for WordPress
+* Manage categories, tags, custom taxonomies, and content groups
+* Moderate, reply to, and bulk-manage comments
+* Upload, list, update, attach, detach, and safely rename media
+* View safe site settings, active plugins, active themes, and diagnostics
+* Connect, pause, review, and disconnect AI assistants
+* Control which MCP abilities each assistant can use
 
 = Supported AI Tools =
 
-Aculect AI Companion currently includes setup guidance for:
+Aculect AI Companion includes setup guidance for popular AI assistants and MCP clients:
 
 * ChatGPT app with Developer Mode connectors
 * OpenAI API integrations that support remote connectors
@@ -42,11 +62,18 @@ Aculect AI Companion currently includes setup guidance for:
 * Claude Code
 * Claude API integrations that support remote connectors
 
-Your AI tool must be able to reach your WordPress site over HTTPS to connect.
+Your AI tool must be able to reach your WordPress site over HTTPS to complete OAuth approval and send MCP requests.
 
 = Supported Abilities =
 
 Admins can enable or disable these abilities from AI Companion > Abilities after the first assistant connection is active.
+
+Long-form content workflows:
+
+* Prepare a post outline, section plan, taxonomy recommendations, media recommendations, and SEO recommendations
+* Create a draft from validated serialized WordPress block content
+* Update an existing post with block-safe content workflows
+* Update Rank Math SEO title, description, and focus keywords when Rank Math is active
 
 Content:
 
@@ -121,6 +148,26 @@ Administrators should review the terms and privacy policy for the AI assistant t
 = Does Aculect AI Companion send my data automatically? =
 
 No. Aculect AI Companion does not send site data on activation or admin page load. Data is only available to an AI assistant after an administrator connects that assistant and approves access in WordPress.
+
+= What is Aculect AI Companion used for? =
+
+Aculect AI Companion is used to connect WordPress with AI assistants through MCP. Site owners can use it to draft and update content, manage comments, upload media, review safe site information, and run controlled WordPress workflows from tools such as ChatGPT, Claude, Codex, and OpenAI-compatible MCP clients.
+
+= Does Aculect AI Companion give AI assistants direct database access? =
+
+No. Aculect AI Companion exposes structured MCP tools through WordPress. Connected assistants can only request enabled abilities, and WordPress permissions are checked when each tool runs.
+
+= Can ChatGPT or Claude create WordPress posts with Aculect AI Companion? =
+
+Yes. After an administrator connects and approves the assistant, ChatGPT, Claude, Codex, or another supported MCP client can create WordPress drafts or update content when the required abilities and WordPress permissions are available.
+
+= Can Aculect AI Companion help with long-form WordPress content? =
+
+Yes. Aculect AI Companion includes guided content workflows for planning long-form posts, validating block content, creating drafts, updating existing content, and applying supported SEO metadata.
+
+= Does Aculect AI Companion support Rank Math SEO? =
+
+Yes. Aculect AI Companion can update supported Rank Math SEO fields, including SEO title, meta description, and focus keywords, when Rank Math is active and the connected user has permission to edit the content.
 
 = Can I disconnect access? =
 
@@ -273,7 +320,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.5.0 =
 
-Refreshes the AI Companion admin redesign, adds brand and role controls, and hardens OAuth/client cleanup for larger sites.
+Refreshes the AI Companion admin experience, adds AI activity logging, role ability controls, Intelligence Layer workflows, and stronger MCP diagnostics.
 
 = 0.4.0 =
 

@@ -1,6 +1,6 @@
 {
   "0.5.0": {
-    "date": "2026-06-08",
+    "date": "2026-06-10",
     "New": [
       "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
       "Added AI Activity logging.",

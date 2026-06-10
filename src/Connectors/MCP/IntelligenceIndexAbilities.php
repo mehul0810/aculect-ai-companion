@@ -26,13 +26,88 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	public function search_items( array $args ): array {
 		$result          = $this->repo()->search_items( $args );
 		$result['items'] = $this->filled_readable_items( $args, $result );
+
+		if ( array() === $result['items'] && '' !== trim( (string) ( $args['query'] ?? '' ) ) ) {
+			$live = $this->degraded_live_items( $args );
+			if ( array() !== $live ) {
+				$result['items']           = $live;
+				$result['degraded']        = true;
+				$result['degraded_reason'] = $this->repo()->summary_is_empty() ? 'index_empty' : 'index_no_match';
+			}
+		}
+
 		$result          = $this->filtered_result_metadata( $result, $result['items'] );
 		$result['usage'] = array(
 			'preferred_next_step' => 'Use content_search_chunks when a result needs section-level context or block markup.',
 			'freshness'           => 'Rows marked stale should be refreshed with content_index_refresh_batch before large edits.',
 		);
+		if ( true === ( $result['degraded'] ?? false ) ) {
+			$result['usage']['degraded'] = 'Results came from a live WordPress query, not the intelligence index. Call content_index_refresh_batch with mode=queued, then retry for indexed results with summaries and section data.';
+			$result['next_actions']      = array( 'Call content_index_refresh_batch with mode=queued to build the index, then retry content_search_items.' );
+		}
 
 		return $result;
+	}
+
+	/**
+	 * Run a bounded live WordPress search when the index cannot answer.
+	 *
+	 * AI clients cannot act on an empty result plus a prose freshness hint;
+	 * a degraded live result keeps the tool useful on fresh installs and
+	 * after large imports while the index catches up.
+	 *
+	 * @param array<string, mixed> $args Original search args.
+	 * @return list<array<string, mixed>>
+	 */
+	private function degraded_live_items( array $args ): array {
+		if ( ! function_exists( 'get_posts' ) ) {
+			return array();
+		}
+
+		$per_page  = max( 1, min( 50, absint( $args['per_page'] ?? 10 ) ) );
+		$post_type = sanitize_key( (string) ( $args['post_type'] ?? '' ) );
+		$status    = sanitize_key( (string) ( $args['status'] ?? '' ) );
+
+		$posts = get_posts(
+			array(
+				's'                      => sanitize_text_field( (string) ( $args['query'] ?? '' ) ),
+				'post_type'              => '' === $post_type ? 'any' : $post_type,
+				'post_status'            => '' === $status ? array( 'publish', 'future', 'draft', 'pending', 'private' ) : $status,
+				'posts_per_page'         => $per_page,
+				'perm'                   => 'readable',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+
+		$items = array();
+		foreach ( $posts as $post ) {
+			if ( ! $post instanceof \WP_Post || ! $this->can_read_post( (int) $post->ID ) ) {
+				continue;
+			}
+
+			$text    = wp_strip_all_tags( (string) $post->post_content );
+			$items[] = array(
+				'id'           => (int) $post->ID,
+				'type'         => (string) $post->post_type,
+				'status'       => (string) $post->post_status,
+				'title'        => (string) get_the_title( $post ),
+				'slug'         => (string) $post->post_name,
+				'permalink'    => (string) get_permalink( $post ),
+				'excerpt'      => wp_strip_all_tags( (string) $post->post_excerpt ),
+				'summary'      => wp_trim_words( $text, 45 ),
+				'word_count'   => str_word_count( $text ),
+				'content_hash' => '',
+				'indexed_at'   => '',
+				'modified_gmt' => (string) $post->post_modified_gmt,
+				'stale'        => true,
+				'metadata'     => array(),
+				'degraded'     => true,
+			);
+		}
+
+		return $items;
 	}
 
 	/**

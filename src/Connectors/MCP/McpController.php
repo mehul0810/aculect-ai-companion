@@ -659,6 +659,11 @@ final class McpController {
 				'index'              => array( 'type' => 'object' ),
 				'filtered_by_access' => array( 'type' => 'boolean' ),
 				'total_is_estimated' => array( 'type' => 'boolean' ),
+				'degraded'           => array(
+					'type'        => 'boolean',
+					'description' => 'True when results came from a live WordPress query because the intelligence index could not answer. Queue content_index_refresh_batch and retry for indexed results.',
+				),
+				'degraded_reason'    => array( 'type' => 'string' ),
 				'error'              => array( 'type' => 'string' ),
 				'message'            => array( 'type' => 'string' ),
 			)

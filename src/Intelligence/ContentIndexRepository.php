@@ -195,6 +195,18 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Check whether the content index has no rows at all.
+	 */
+	public function summary_is_empty(): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin table; scalar count.
+		return 0 === (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i', Installer::content_index_table() )
+		);
+	}
+
+	/**
 	 * Return object IDs of stale index rows, most recently modified first.
 	 *
 	 * @param int $limit Maximum IDs to return.

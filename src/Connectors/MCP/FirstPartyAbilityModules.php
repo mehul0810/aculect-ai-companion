@@ -1226,6 +1226,11 @@ final class FirstPartyAbilityModules {
 			'type'        => 'string',
 			'description' => 'Short-lived token returned by a dry run or confirmation-required response for high-risk actions.',
 		);
+		$properties['idempotency_key']    = array(
+			'type'        => 'string',
+			'maxLength'   => 128,
+			'description' => 'Optional client-chosen key that makes this write retry-safe: repeating the call with the same key and arguments returns the stored result instead of executing twice. Use a new key for new work.',
+		);
 		$schema['properties']             = $properties;
 
 		return $schema;

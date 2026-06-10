@@ -354,13 +354,18 @@ final class McpController {
 				$is_write_tool              = ! $is_intelligence_tool && ! $registry->is_read_only( $tool );
 				$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
 				$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
-				$is_confirmation_required   = false;
+				$replay                     = $is_write_tool && ! $is_dry_run
+					? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
+					: null;
 				$needs_confirmation_gate    = $is_write_tool
 					&& ! $is_dry_run
+					&& null === $replay
 					&& ! $write_permission_unblocked
 					&& $safety->requires_confirmation( $tool, $args )
-					&& ! $safety->consume_confirmation_token( $tool, $args, $auth );
-				if ( $is_dry_run ) {
+					&& ! $safety->validate_confirmation_token( $tool, $args, $auth );
+				if ( null !== $replay ) {
+					$result = $replay;
+				} elseif ( $is_dry_run ) {
 					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
 					if ( ! isset( $result['error'] ) ) {
 						if ( $write_permission_unblocked ) {
@@ -370,16 +375,19 @@ final class McpController {
 						}
 					}
 				} elseif ( $needs_confirmation_gate ) {
-					$preview_args             = $safety->strip_control_args( $args );
-					$preview_args['dry_run']  = true;
-					$preview                  = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					$is_confirmation_required = ! isset( $preview['error'] );
-					$result                   = isset( $preview['error'] )
+					$preview_args            = $safety->strip_control_args( $args );
+					$preview_args['dry_run'] = true;
+					$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+					$result                  = isset( $preview['error'] )
 						? $preview
 						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
 				} else {
-					$args   = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
+					$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
+					$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+					if ( $is_write_tool && ! isset( $result['error'] ) ) {
+						$safety->remember_write_result( $tool, $args, $auth, $result );
+					}
+					$args = $exec_args;
 				}
 
 				$this->record_tool_activity( $tool, $args, $result, $auth );
@@ -569,6 +577,7 @@ final class McpController {
 				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
 				'If intelligence is incomplete, stale, or causes poor results, call intelligence_feedback_submit with a bounded learning suggestion for admin review.',
 				'Never use raw Custom HTML blocks or core/html; use registered WordPress blocks and patterns, and validate block content before write operations.',
+				'Pass a unique idempotency_key on create and update tool calls so network retries replay the stored result instead of duplicating work.',
 			)
 		);
 	}
@@ -699,6 +708,10 @@ final class McpController {
 				'dry_run'               => array( 'type' => 'boolean' ),
 				'confirmation_required' => array( 'type' => 'boolean' ),
 				'confirmation_token'    => array( 'type' => 'string' ),
+				'replayed'              => array(
+					'type'        => 'boolean',
+					'description' => 'True when this result was replayed from a previous successful call with the same idempotency_key or confirmation_token; the write did not execute again.',
+				),
 			)
 		);
 	}

@@ -60,7 +60,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		$tool_names = array_column( $tools['tools'], 'name' );
 
 		self::assertTrue( $operations['content']['get_item']['available'] );
-		self::assertSame( '', $operations['content']['get_item']['blocked_by'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
 		self::assertContains( 'content_get_item', $tool_names );
 
 		self::assertFalse( $operations['content']['update']['available'] );
@@ -70,8 +70,6 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['content']['list_items']['available'] );
 		self::assertSame( 'global_disabled', $operations['content']['list_items']['blocked_by'] );
 		self::assertNotContains( 'content_list_items', $tool_names );
-		self::assertContains( 'content.update_item', $operations['policy']['blocked_by_role_ids'] );
-		self::assertContains( 'content.list_items', $operations['policy']['blocked_by_global_ids'] );
 	}
 
 	public function test_operations_manifest_distinguishes_default_read_only_role_blocks(): void {
@@ -83,7 +81,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['policy']['default_read_only_policy'] );
 		self::assertFalse( $operations['policy']['explicit_role_policy'] );
 		self::assertTrue( $operations['content']['get_item']['available'] );
-		self::assertSame( '', $operations['content']['get_item']['blocked_by'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
 		self::assertFalse( $operations['content']['update']['available'] );
 		self::assertSame( 'role_default_read_only', $operations['content']['update']['blocked_by'] );
 	}
@@ -101,8 +99,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayHasKey( 'workflows', $operations );
 		self::assertArrayHasKey( 'intelligence_index', $operations );
 		self::assertFalse( $operations['workflows']['create_draft']['available'] );
-		self::assertSame( 'global_disabled', $operations['workflows']['create_draft']['blocked_by'] );
-		self::assertSame( array( 'content.create_item' ), $operations['workflows']['create_draft']['blocked_dependency_ids'] );
+		self::assertSame( 'global_disabled:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
 		self::assertNotContains( 'content_workflow_create_draft', $tool_names );
 	}
 
@@ -115,7 +112,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
 
 		self::assertTrue( $operations['workflows']['create_draft']['available'] );
-		self::assertSame( '', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
 		self::assertSame( 'content_workflow_create_draft', $operations['workflows']['create_draft']['tool'] );
 	}
 

@@ -427,6 +427,8 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return list<array<string, mixed>>
 	 */
 	private function filter_readable_items( array $items ): array {
+		$this->prime_post_caches( $items, 'id' );
+
 		return array_values(
 			array_filter(
 				$items,
@@ -442,12 +444,41 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return list<array<string, mixed>>
 	 */
 	private function filter_readable_chunks( array $items ): array {
+		$this->prime_post_caches( $items, 'post_id' );
+
 		return array_values(
 			array_filter(
 				$items,
 				fn ( mixed $item ): bool => is_array( $item ) && $this->can_read_post( (int) ( $item['post_id'] ?? 0 ) )
 			)
 		);
+	}
+
+	/**
+	 * Warm the post cache for one result page before capability filtering.
+	 *
+	 * current_user_can( 'read_post', $id ) loads the post; without priming,
+	 * each row costs one query (N+1 across overfetch pages).
+	 *
+	 * @param array<int, mixed> $items    Raw result rows.
+	 * @param string            $id_field Post ID field name.
+	 */
+	private function prime_post_caches( array $items, string $id_field ): void {
+		if ( ! function_exists( '_prime_post_caches' ) ) {
+			return;
+		}
+
+		$ids = array();
+		foreach ( $items as $item ) {
+			$id = is_array( $item ) ? absint( $item[ $id_field ] ?? 0 ) : 0;
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			}
+		}
+
+		if ( array() !== $ids ) {
+			_prime_post_caches( array_values( array_unique( $ids ) ), false, false );
+		}
 	}
 
 	/**

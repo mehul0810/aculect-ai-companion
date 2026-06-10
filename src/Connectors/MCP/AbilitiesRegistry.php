@@ -17,11 +17,15 @@ final class AbilitiesRegistry {
 	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
 
 	/**
-	 * Cached ability modules.
+	 * Process-wide cached ability modules.
+	 *
+	 * The registry is instantiated many times within one MCP request; module
+	 * construction is pure and definition data is immutable per request, so
+	 * one shared map avoids rebuilding ~45 module objects per instantiation.
 	 *
 	 * @var array<string, AbilityModuleInterface>|null
 	 */
-	private ?array $modules = null;
+	private static ?array $shared_modules = null;
 
 	/**
 	 * Return all abilities Aculect AI Companion can expose to assistant clients.
@@ -69,11 +73,18 @@ final class AbilitiesRegistry {
 	 * @return array<string, AbilityModuleInterface>
 	 */
 	public function modules(): array {
-		if ( null === $this->modules ) {
-			$this->modules = ( new FirstPartyAbilityModules() )->all();
+		if ( null === self::$shared_modules ) {
+			self::$shared_modules = ( new FirstPartyAbilityModules() )->all();
 		}
 
-		return $this->modules;
+		return self::$shared_modules;
+	}
+
+	/**
+	 * Reset the shared module cache (used by tests).
+	 */
+	public static function reset_module_cache(): void {
+		self::$shared_modules = null;
 	}
 
 	/**

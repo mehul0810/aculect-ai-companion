@@ -30,6 +30,8 @@ final class ConnectionHealth {
 			$this->check_mcp_auth_challenge(),
 			$this->check_mcp_tool_manifest(),
 			$this->check_approval_screen_target(),
+			$this->check_transient_persistence(),
+			$this->check_secret_storage(),
 		);
 
 		$result = array(
@@ -78,6 +80,62 @@ final class ConnectionHealth {
 	 *
 	 * @return array<string, mixed>
 	 */
+	/**
+	 * Verify transients persist between requests.
+	 *
+	 * Confirmation tokens, idempotency replay, and OAuth rate limiting are
+	 * transient-backed; a broken or non-shared object cache silently breaks
+	 * all three, so surface it as a diagnostic instead.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_transient_persistence(): array {
+		$key   = 'aculect_ai_companion_health_probe';
+		$value = (string) time();
+		set_transient( $key, $value, 60 );
+		$readback = get_transient( $key );
+		delete_transient( $key );
+
+		if ( $readback === $value ) {
+			return $this->item( 'transient_persistence', 'pass', 'Transient storage round-trips correctly; confirmation tokens and rate limits persist between requests.' );
+		}
+
+		return $this->item(
+			'transient_persistence',
+			'fail',
+			'Transient storage did not round-trip. Confirmation tokens, idempotency replay, and OAuth rate limiting will not work between requests.',
+			'Check the object cache configuration. On multi-server hosting, confirm a shared persistent object cache (Redis or Memcached) is configured.'
+		);
+	}
+
+	/**
+	 * Report the at-rest posture of stored OAuth secrets.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_secret_storage(): array {
+		$status = \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::storage_status();
+
+		if ( true !== $status['vault_available'] ) {
+			return $this->item(
+				'secret_storage',
+				'fail',
+				'The PHP sodium extension is unavailable, so OAuth signing keys are stored unencrypted in the database.',
+				'Ask the host to enable the sodium extension (bundled with PHP 7.2+).'
+			);
+		}
+
+		$message = true === $status['dedicated_constant']
+			? 'OAuth keys are encrypted at rest with the dedicated ACULECT_AI_COMPANION_ENCRYPTION_KEY constant.'
+			: 'OAuth keys are encrypted at rest with a key derived from the WordPress salts.';
+
+		$remediation = true === $status['dedicated_constant']
+			? ''
+			: 'Optional hardening: define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php so key material survives salt rotation. Connected AI clients re-authorize once after the change.';
+
+		return $this->item( 'secret_storage', 'pass', $message, $remediation );
+	}
+
 	private function check_https_url(): array {
 		$url    = Helpers::mcp_resource();
 		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );

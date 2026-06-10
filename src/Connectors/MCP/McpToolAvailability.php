@@ -125,20 +125,14 @@ final class McpToolAvailability {
 		$policy   = $this->ability_policy_for_user( $user_id, $registry );
 
 		return array(
-			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user.',
-			'decision_rule'      => 'Admin/global ability settings and role policy decide what is callable. Intelligence should choose only among available tools unless it needs to explain a blocked workflow.',
-			'visibility_rule'    => 'If a tool is unavailable, check blocked_by_global_ids and blocked_by_role_ids before assuming WordPress data or permissions are unavailable.',
+			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, or role_default_read_only) before assuming WordPress data or permissions are missing.',
 			'policy'             => array(
 				'user_id'                  => $policy['user_id'],
 				'user_roles'               => $policy['user_roles'],
-				'global_enabled_count'     => $policy['global_enabled_count'],
-				'role_allowed_count'       => $policy['role_allowed_count'],
 				'exposed_ability_count'    => $policy['exposed_ability_count'],
 				'all_ability_count'        => $policy['all_ability_count'],
 				'explicit_role_policy'     => $policy['explicit_role_policy'],
 				'default_read_only_policy' => $policy['default_read_only_policy'],
-				'blocked_by_global_ids'    => $policy['blocked_by_global_ids'],
-				'blocked_by_role_ids'      => $policy['blocked_by_role_ids'],
 			),
 			'content'            => $this->operation_group(
 				array(
@@ -286,15 +280,23 @@ final class McpToolAvailability {
 			}
 		}
 
-		return array(
-			'ability_id'             => $ability_id,
-			'tool'                   => $registry->tool_name( $ability_id ),
-			'available'              => in_array( $ability_id, $exposed, true ) && '' === $blocked_by,
-			'blocked_by'             => $blocked_by,
-			'blocked_dependency_ids' => array_values( array_unique( $blocked_dependencies ) ),
-			'required_scopes'        => null === $module ? array() : $module->required_scopes(),
-			'read_only'              => null === $module || $module->is_read_only(),
+		$available = in_array( $ability_id, $exposed, true ) && '' === $blocked_by;
+
+		// Compact on purpose: scopes, read-only flags, and schemas already ship
+		// in tools/list. Repeating them per operation in every intelligence
+		// context response burns AI-client context tokens for no decision value.
+		$entry = array(
+			'tool'      => $registry->tool_name( $ability_id ),
+			'available' => $available,
 		);
+
+		if ( ! $available ) {
+			$entry['blocked_by'] = array() === $blocked_dependencies
+				? $blocked_by
+				: $blocked_by . ':' . implode( ',', array_unique( $blocked_dependencies ) );
+		}
+
+		return $entry;
 	}
 
 	/**

@@ -41,8 +41,8 @@ jobs:
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
-      - name: Run PHP checks and tests
-        run: composer test
+      - name: Run PHP CI checks and tests
+        run: composer ci:php
 
   assets:
     name: Assets

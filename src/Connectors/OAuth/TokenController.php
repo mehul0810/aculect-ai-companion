@@ -31,9 +31,25 @@ final class TokenController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'token' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'check_token_permission' ),
 			)
 		);
+
+		RateLimiter::register_retry_after_header();
+	}
+
+	/**
+	 * Permit rate-limited public access to the OAuth token endpoint.
+	 *
+	 * RFC 6749 token endpoints authenticate with grant credentials in the
+	 * request body, not WordPress auth, so the route must stay public. The
+	 * per-IP window blunts authorization-code and refresh-token brute force
+	 * without breaking normal Claude/ChatGPT/Codex refresh cycles.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public function check_token_permission(): bool|\WP_Error {
+		return ( new RateLimiter() )->check( 'oauth_token', 30, MINUTE_IN_SECONDS );
 	}
 
 	/**

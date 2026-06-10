@@ -44,15 +44,29 @@ final class AuthorizationController {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( $this, 'authorize' ),
-					'permission_callback' => '__return_true',
+					'permission_callback' => array( $this, 'check_authorize_permission' ),
 				),
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'authorize' ),
-					'permission_callback' => '__return_true',
+					'permission_callback' => array( $this, 'check_authorize_permission' ),
 				),
 			)
 		);
+	}
+
+	/**
+	 * Permit public access to the OAuth authorization endpoint.
+	 *
+	 * RFC 6749 authorization endpoints are entered by browser redirect before
+	 * authentication; the user authenticates through the WordPress login and
+	 * consent screens this controller redirects to. Request parameters are
+	 * allowlisted and validated by the authorization server before any action.
+	 *
+	 * @return true
+	 */
+	public function check_authorize_permission(): bool {
+		return true;
 	}
 
 	/**

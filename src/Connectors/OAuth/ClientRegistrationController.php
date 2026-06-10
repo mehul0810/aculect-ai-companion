@@ -28,9 +28,25 @@ final class ClientRegistrationController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'register_client' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'check_registration_permission' ),
 			)
 		);
+
+		RateLimiter::register_retry_after_header();
+	}
+
+	/**
+	 * Permit rate-limited public access to Dynamic Client Registration.
+	 *
+	 * RFC 7591 DCR is intentionally unauthenticated: AI clients (Claude,
+	 * ChatGPT, Codex) register themselves before any credential exists.
+	 * Abuse is bounded by a per-IP fixed window plus an active-client cap
+	 * enforced in register_client().
+	 *
+	 * @return true|WP_Error
+	 */
+	public function check_registration_permission(): bool|WP_Error {
+		return ( new RateLimiter() )->check( 'oauth_register', 5, HOUR_IN_SECONDS );
 	}
 
 	/**

@@ -101,6 +101,10 @@ final class ClientRepository implements ClientRepositoryInterface {
 			gmdate( 'Y-m-d H:i:s' )
 		);
 
+		if ( $this->count_active_clients() >= $this->max_active_clients() ) {
+			return null;
+		}
+
 		$result = $wpdb->insert(
 			$table,
 			array(
@@ -126,6 +130,29 @@ final class ClientRepository implements ClientRepositoryInterface {
 			'client_secret' => $client_secret,
 			'provider'      => $provider,
 		);
+	}
+
+	/**
+	 * Count non-revoked OAuth clients.
+	 */
+	public function count_active_clients(): int {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin table; bounded scalar count.
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE revoked = 0', Installer::table_names()['clients'] )
+		);
+	}
+
+	/**
+	 * Return the cap on concurrently registered active clients.
+	 *
+	 * Dynamic Client Registration is unauthenticated, so an unbounded client
+	 * table is a storage-exhaustion vector. 100 covers realistic multi-user
+	 * sites with several AI clients each; filterable for larger fleets.
+	 */
+	public function max_active_clients(): int {
+		return max( 1, (int) apply_filters( 'aculect_ai_companion_max_active_oauth_clients', 100 ) );
 	}
 
 	/**

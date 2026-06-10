@@ -18,7 +18,14 @@ use WP_REST_Server;
 final class McpController {
 
 	/**
-	 * Register the public MCP endpoint.
+	 * OAuth context resolved by the permission callback for the current request.
+	 *
+	 * @var array<string, mixed>
+	 */
+	private array $request_auth = array();
+
+	/**
+	 * Register the OAuth-protected MCP endpoint.
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -27,7 +34,7 @@ final class McpController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'describe' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'check_mcp_permission' ),
 			)
 		);
 
@@ -37,9 +44,116 @@ final class McpController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'handle_rpc' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'check_mcp_permission' ),
 			)
 		);
+
+		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
+	}
+
+	/**
+	 * Authenticate MCP requests with the OAuth resource server.
+	 *
+	 * JSON-RPC notifications are auth-exempt per the MCP streamable HTTP
+	 * transport: they carry no id and receive an empty 202 acknowledgement.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return true|\WP_Error
+	 */
+	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
+		$this->request_auth = array();
+
+		if ( $this->is_auth_exempt_notification( $request ) ) {
+			return true;
+		}
+
+		$auth = ( new TokenValidator() )->authenticate( $request );
+		if ( array() === $auth ) {
+			( new Logger() )->warning(
+				'mcp.invalid_token',
+				'MCP request did not include a valid bearer token.',
+				$this->log_context( $this->rpc_method_from_request( $request ), '', 'invalid_token' ),
+				$request,
+				401
+			);
+
+			return new \WP_Error( 'rest_unauthorized', 'Authorization required.', array( 'status' => 401 ) );
+		}
+
+		$this->request_auth = $auth;
+
+		return true;
+	}
+
+	/**
+	 * Reshape MCP permission failures into the OAuth challenge MCP clients expect.
+	 *
+	 * Claude, ChatGPT, and Codex connectors all rely on the WWW-Authenticate
+	 * header with resource metadata to start the OAuth discovery flow, and on a
+	 * JSON-RPC shaped body instead of the default WP_Error envelope.
+	 *
+	 * @param mixed           $response Dispatch result.
+	 * @param mixed           $server   REST server.
+	 * @param WP_REST_Request $request  REST request.
+	 * @return mixed
+	 */
+	public function filter_mcp_auth_response( mixed $response, mixed $server, WP_REST_Request $request ): mixed {
+		unset( $server );
+
+		if ( '/' . Helpers::REST_NAMESPACE . '/mcp' !== $request->get_route() ) {
+			return $response;
+		}
+
+		if ( ! $response instanceof WP_REST_Response || 401 !== $response->get_status() ) {
+			return $response;
+		}
+
+		$data = $response->get_data();
+		if ( is_array( $data ) && array_key_exists( 'jsonrpc', $data ) ) {
+			return $response;
+		}
+
+		return $this->auth_challenge_response( $this->rpc_id_from_request( $request ), $this->initial_auth_scope(), 401, 'invalid_token' );
+	}
+
+	/**
+	 * Check whether the request is an auth-exempt JSON-RPC notification.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 */
+	private function is_auth_exempt_notification( WP_REST_Request $request ): bool {
+		if ( 'POST' !== $request->get_method() ) {
+			return false;
+		}
+
+		$body = $request->get_json_params();
+
+		return is_array( $body )
+			&& ! array_key_exists( 'id', $body )
+			&& str_starts_with( (string) ( $body['method'] ?? '' ), 'notifications/' );
+	}
+
+	/**
+	 * Read the JSON-RPC method for diagnostics without trusting the payload.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 */
+	private function rpc_method_from_request( WP_REST_Request $request ): string {
+		$body = $request->get_json_params();
+
+		return is_array( $body ) ? (string) ( $body['method'] ?? '' ) : '';
+	}
+
+	/**
+	 * Read the JSON-RPC request ID for challenge responses.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 */
+	private function rpc_id_from_request( WP_REST_Request $request ): string|int|null {
+		$body = $request->get_json_params();
+		$id   = is_array( $body ) ? ( $body['id'] ?? null ) : null;
+
+		return is_string( $id ) || is_int( $id ) ? $id : null;
 	}
 
 	/**
@@ -49,15 +163,7 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
-		$auth = ( new TokenValidator() )->authenticate( $request );
-		if ( array() === $auth ) {
-			( new Logger() )->warning(
-				'mcp.invalid_token',
-				'MCP endpoint description request did not include a valid bearer token.',
-				$this->log_context( 'describe', '', 'invalid_token' ),
-				$request,
-				401
-			);
+		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
@@ -111,15 +217,8 @@ final class McpController {
 			return new WP_REST_Response( null, 202 );
 		}
 
-		$auth = ( new TokenValidator() )->authenticate( $request );
+		$auth = $this->request_auth;
 		if ( array() === $auth ) {
-			( new Logger() )->warning(
-				'mcp.invalid_token',
-				'MCP request did not include a valid bearer token.',
-				$this->log_context( $method, '', 'invalid_token' ),
-				$request,
-				401
-			);
 			return $this->auth_challenge_response( $id, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 

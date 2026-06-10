@@ -33,6 +33,19 @@ final class DiscoveryController {
 	}
 
 	/**
+	 * Permit public access to OAuth discovery metadata.
+	 *
+	 * RFC 8414 / RFC 9728 metadata documents must be readable before any
+	 * credential exists so MCP clients can locate the authorization server.
+	 * Responses contain only public endpoint URLs and supported capabilities.
+	 *
+	 * @return true
+	 */
+	public function check_discovery_permission(): bool {
+		return true;
+	}
+
+	/**
 	 * Register REST aliases for OAuth metadata documents.
 	 */
 	public function register_rest_routes(): void {
@@ -42,7 +55,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->protected_resource_metadata(),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( \$this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -52,7 +65,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->authorization_server_metadata(),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( \$this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -62,7 +75,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->protected_resource_metadata(),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( \$this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -72,7 +85,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->authorization_server_metadata(),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( \$this, 'check_discovery_permission' ),
 			)
 		);
 	}

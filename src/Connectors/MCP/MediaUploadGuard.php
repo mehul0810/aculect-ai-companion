@@ -108,11 +108,11 @@ final class MediaUploadGuard {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			wp_delete_file( $tmp );
-			return array(
-				'code'    => $response->get_error_code(),
-				'message' => $response->get_error_message(),
-			);
+				wp_delete_file( $tmp );
+				return array(
+					'code'    => (string) $response->get_error_code(),
+					'message' => $response->get_error_message(),
+				);
 		}
 
 		$status = (int) wp_remote_retrieve_response_code( $response );

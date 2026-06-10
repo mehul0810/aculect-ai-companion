@@ -14,7 +14,8 @@ final class ConnectionHealth {
 
 	public const OPTION_LAST_RESULT = 'aculect_ai_companion_connection_health';
 
-	private const REQUEST_TIMEOUT = 8;
+	private const OPTION_TRANSIENT_PROBE = 'aculect_ai_companion_connection_health_transient_probe';
+	private const REQUEST_TIMEOUT        = 8;
 
 	/**
 	 * Run the connection checks and persist the latest result.
@@ -72,14 +73,18 @@ final class ConnectionHealth {
 	 * Delete stored diagnostics state.
 	 */
 	public static function delete(): void {
+		$probe = get_option( self::OPTION_TRANSIENT_PROBE, array() );
+		if ( is_array( $probe ) && isset( $probe['key'] ) ) {
+			$key = sanitize_key( (string) $probe['key'] );
+			if ( '' !== $key ) {
+				delete_transient( $key );
+			}
+		}
+
 		delete_option( self::OPTION_LAST_RESULT );
+		delete_option( self::OPTION_TRANSIENT_PROBE );
 	}
 
-	/**
-	 * Verify the connection URL is suitable for external AI tools.
-	 *
-	 * @return array<string, mixed>
-	 */
 	/**
 	 * Verify transients persist between requests.
 	 *
@@ -90,21 +95,48 @@ final class ConnectionHealth {
 	 * @return array<string, mixed>
 	 */
 	private function check_transient_persistence(): array {
-		$key   = 'aculect_ai_companion_health_probe';
-		$value = (string) time();
-		set_transient( $key, $value, 60 );
-		$readback = get_transient( $key );
-		delete_transient( $key );
+		$probe = get_option( self::OPTION_TRANSIENT_PROBE, array() );
+		if ( is_array( $probe ) && isset( $probe['key'], $probe['value'], $probe['created_at'] ) ) {
+			$key        = sanitize_key( (string) $probe['key'] );
+			$value      = sanitize_text_field( (string) $probe['value'] );
+			$created_at = absint( $probe['created_at'] );
+			$readback   = '' === $key ? false : get_transient( $key );
 
-		if ( $readback === $value ) {
-			return $this->item( 'transient_persistence', 'pass', 'Transient storage round-trips correctly; confirmation tokens and rate limits persist between requests.' );
+			delete_option( self::OPTION_TRANSIENT_PROBE );
+			if ( '' !== $key ) {
+				delete_transient( $key );
+			}
+
+			if ( $readback === $value && time() - $created_at <= 10 * MINUTE_IN_SECONDS ) {
+				return $this->item( 'transient_persistence', 'pass', 'Transient storage persisted across diagnostics runs; confirmation tokens and rate limits can survive request boundaries.' );
+			}
+
+			return $this->item(
+				'transient_persistence',
+				'fail',
+				'Transient storage did not persist across diagnostics runs. Confirmation tokens, idempotency replay, and OAuth rate limiting may not work between requests.',
+				'Check the object cache configuration. On multi-server hosting, confirm a shared persistent object cache (Redis or Memcached) is configured.'
+			);
 		}
+
+		$key   = 'aculect_ai_companion_health_probe_' . bin2hex( random_bytes( 6 ) );
+		$value = bin2hex( random_bytes( 10 ) );
+		set_transient( $key, $value, 10 * MINUTE_IN_SECONDS );
+		update_option(
+			self::OPTION_TRANSIENT_PROBE,
+			array(
+				'key'        => $key,
+				'value'      => $value,
+				'created_at' => time(),
+			),
+			false
+		);
 
 		return $this->item(
 			'transient_persistence',
-			'fail',
-			'Transient storage did not round-trip. Confirmation tokens, idempotency replay, and OAuth rate limiting will not work between requests.',
-			'Check the object cache configuration. On multi-server hosting, confirm a shared persistent object cache (Redis or Memcached) is configured.'
+			'warn',
+			'Transient storage probe was created. Run diagnostics again to verify persistence across request boundaries.',
+			'Run AI Companion diagnostics one more time. A pass on the second run confirms confirmation tokens, idempotency replay, and OAuth rate limiting can persist.'
 		);
 	}
 
@@ -116,26 +148,41 @@ final class ConnectionHealth {
 	private function check_secret_storage(): array {
 		$status = \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::storage_status();
 
-		if ( true !== $status['vault_available'] ) {
+		if ( true !== $status['sodium_available'] ) {
 			return $this->item(
 				'secret_storage',
 				'fail',
-				'The PHP sodium extension is unavailable, so OAuth signing keys are stored unencrypted in the database.',
+				'The PHP sodium extension is unavailable, so OAuth signing keys cannot be securely encrypted.',
 				'Ask the host to enable the sodium extension (bundled with PHP 7.2+).'
 			);
 		}
 
-		$message = true === $status['dedicated_constant']
-			? 'OAuth keys are encrypted at rest with the dedicated ACULECT_AI_COMPANION_ENCRYPTION_KEY constant.'
-			: 'OAuth keys are encrypted at rest with a key derived from the WordPress salts.';
+		if ( true !== $status['dedicated_constant'] ) {
+			return $this->item(
+				'secret_storage',
+				'fail',
+				'ACULECT_AI_COMPANION_ENCRYPTION_KEY is not configured, so OAuth clients cannot be connected securely.',
+				'Define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php with at least 32 random characters, then reconnect AI clients.'
+			);
+		}
 
-		$remediation = true === $status['dedicated_constant']
-			? ''
-			: 'Optional hardening: define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php so key material survives salt rotation. Connected AI clients re-authorize once after the change.';
+		if ( true === $status['plaintext_secret_present'] ) {
+			return $this->item(
+				'secret_storage',
+				'warn',
+				'Legacy plaintext OAuth key material was detected and will be migrated to encrypted storage on the next OAuth key access.',
+				'Run diagnostics again after reconnecting an AI client to confirm encrypted storage.'
+			);
+		}
 
-		return $this->item( 'secret_storage', 'pass', $message, $remediation );
+		return $this->item( 'secret_storage', 'pass', 'OAuth keys are encrypted at rest with the dedicated ACULECT_AI_COMPANION_ENCRYPTION_KEY constant.' );
 	}
 
+	/**
+	 * Validate the public MCP URL scheme.
+	 *
+	 * @return array<string, mixed>
+	 */
 	private function check_https_url(): array {
 		$url    = Helpers::mcp_resource();
 		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );

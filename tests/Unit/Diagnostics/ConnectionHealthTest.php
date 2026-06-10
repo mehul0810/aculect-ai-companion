@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Diagnostics;
 
+use Aculect\AICompanion\Connectors\OAuth\Server\SecretsVault;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -17,6 +18,14 @@ use ReflectionMethod;
  * Verifies connection diagnostics summarize and sanitize stored results.
  */
 final class ConnectionHealthTest extends TestCase {
+
+	protected function tearDown(): void {
+		delete_option( ConnectionHealth::OPTION_LAST_RESULT );
+		delete_option( 'aculect_ai_companion_connection_health_transient_probe' );
+		$GLOBALS['aculect_ai_companion_test_transients'] = array();
+
+		parent::tearDown();
+	}
 
 	public function test_summary_status_prefers_failures_over_warnings(): void {
 		$health = new ConnectionHealth();
@@ -107,6 +116,51 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( array(), $result['details']['duplicate_tool_names'] );
 		self::assertSame( array(), $result['details']['invalid_tool_names'] );
 		self::assertArrayHasKey( 'ability_policy', $result['details'] );
+	}
+
+	public function test_transient_persistence_check_requires_second_run(): void {
+		$health = new ConnectionHealth();
+
+		$first = $this->invokePrivate( $health, 'check_transient_persistence' );
+		self::assertSame( 'transient_persistence', $first['id'] );
+		self::assertSame( 'warn', $first['status'] );
+		self::assertIsArray( get_option( 'aculect_ai_companion_connection_health_transient_probe', array() ) );
+
+		$second = $this->invokePrivate( $health, 'check_transient_persistence' );
+		self::assertSame( 'transient_persistence', $second['id'] );
+		self::assertSame( 'pass', $second['status'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_connection_health_transient_probe', array() ) );
+	}
+
+	public function test_secret_storage_reports_dedicated_encryption_key(): void {
+		if ( ! SecretsVault::sodium_available() ) {
+			self::markTestSkipped( 'The sodium extension is required for secret storage diagnostics.' );
+		}
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_secret_storage' );
+
+		self::assertSame( 'secret_storage', $result['id'] );
+		self::assertSame( 'pass', $result['status'] );
+	}
+
+	public function test_delete_removes_transient_probe_state(): void {
+		$key = 'aculect_ai_companion_health_probe_delete';
+
+		set_transient( $key, 'probe-value', 60 );
+		update_option(
+			'aculect_ai_companion_connection_health_transient_probe',
+			array(
+				'key'        => $key,
+				'value'      => 'probe-value',
+				'created_at' => time(),
+			),
+			false
+		);
+
+		ConnectionHealth::delete();
+
+		self::assertFalse( get_transient( $key ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_connection_health_transient_probe', 'missing' ) );
 	}
 
 	/**

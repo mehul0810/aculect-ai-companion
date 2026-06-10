@@ -43,7 +43,10 @@ $forbidden_paths = array(
 	'.wordpress-org',
 	'AGENTS.md',
 	'CONTRIBUTING.md',
+	'README.md',
+	'SECURITY.md',
 	'bin',
+	'composer.json',
 	'composer.lock',
 	'eslint.config.cjs',
 	'node_modules',
@@ -51,6 +54,7 @@ $forbidden_paths = array(
 	'package.json',
 	'phpcs.xml.dist',
 	'phpstan-bootstrap.php',
+	'phpstan-baseline.neon',
 	'phpstan.neon.dist',
 	'phpunit.xml.dist',
 	'tests',
@@ -86,6 +90,11 @@ foreach ( $iterator as $file ) {
 	if ( in_array( $file_name, $forbidden_file_names, true ) ) {
 		$relative_path = ltrim( str_replace( $release_dir, '', $file->getPathname() ), '/\\' );
 		$failures[]    = "Development-only file is present: {$relative_path}";
+	}
+
+	if ( preg_match( '/^CODE-REVIEW.*\.md$/', $file_name ) ) {
+		$relative_path = ltrim( str_replace( $release_dir, '', $file->getPathname() ), '/\\' );
+		$failures[]    = "Internal review file is present: {$relative_path}";
 	}
 }
 

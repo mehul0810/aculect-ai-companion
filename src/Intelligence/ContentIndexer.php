@@ -42,6 +42,18 @@ final class ContentIndexer {
 	}
 
 	/**
+	 * Delete queued indexing state and scheduled index jobs.
+	 */
+	public static function delete_options(): void {
+		delete_option( self::PENDING_IDS_OPTION );
+
+		if ( function_exists( 'wp_unschedule_hook' ) ) {
+			wp_unschedule_hook( self::STALE_SWEEP_HOOK );
+			wp_unschedule_hook( 'aculect_ai_companion_content_index_refresh_job' );
+		}
+	}
+
+	/**
 	 * Defer indexing of one post to the queued stale sweep.
 	 *
 	 * Used by bulk contexts (WP-CLI imports, cron, REST batch writes) where
@@ -299,6 +311,7 @@ final class ContentIndexer {
 	 *
 	 * @param string $job_key  Job key.
 	 * @param array  $post_ids Resolved post IDs.
+	 * @phpstan-param list<int> $post_ids
 	 * @return array<string, mixed>
 	 */
 	private function run_refresh_job( string $job_key, array $post_ids ): array {
@@ -641,7 +654,7 @@ final class ContentIndexer {
 	/**
 	 * Flatten parsed blocks, recursing into layout containers.
 	 *
-	 * @param array<int, mixed>                         $blocks Parsed block list.
+	 * @param array<int|string, mixed>                  $blocks Parsed block list.
 	 * @param list<array{name: string, markup: string}> $flat   Output accumulator.
 	 */
 	private function flatten_blocks( array $blocks, array &$flat ): void {

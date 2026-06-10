@@ -8,12 +8,17 @@ namespace Aculect\AICompanion\Connectors\MCP;
  * Taxonomy abilities implementation.
  */
 final class TaxonomyAbilities extends AbstractAbilityService {
+	/**
+	 * List taxonomies available to MCP tools.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
 	public function list_taxonomies(): array {
 		$taxonomies = get_taxonomies( array(), 'objects' );
 		$items      = array();
 
 		foreach ( $taxonomies as $taxonomy ) {
-			if ( ! $this->is_supported_taxonomy( $taxonomy ) ) {
+			if ( ! $taxonomy instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $taxonomy ) ) {
 				continue;
 			}
 
@@ -90,7 +95,7 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$object   = get_taxonomy( $taxonomy );
 		$name     = sanitize_text_field( (string) ( $data['name'] ?? '' ) );
 
-		if ( ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to create terms in this taxonomy.' );
 		}
 
@@ -113,7 +118,7 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 
 		$result = wp_insert_term( $name, $taxonomy, $payload );
 		if ( is_wp_error( $result ) ) {
-			return $this->error( $result->get_error_code(), $result->get_error_message() );
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		$term = get_term( (int) $result['term_id'], $taxonomy );
@@ -131,17 +136,17 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$term_id  = absint( $data['term_id'] ?? 0 );
 		$object   = get_taxonomy( $taxonomy );
 
-		if ( ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update terms in this taxonomy.' );
 		}
 
-		if ( 0 === $term_id || ! get_term( $term_id, $taxonomy ) ) {
+		$term = get_term( $term_id, $taxonomy );
+		if ( 0 === $term_id || ! $term instanceof \WP_Term ) {
 			return $this->error( 'not_found', 'Term not found.' );
 		}
 
 		$payload = $this->term_payload( $data, $object );
 		if ( $this->is_dry_run( $data ) ) {
-			$term = get_term( $term_id, $taxonomy );
 			return $this->preview_response(
 				'taxonomy.update_term',
 				$data,
@@ -149,23 +154,21 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 					'type' => $taxonomy,
 					'id'   => $term_id,
 				),
-				$term instanceof \WP_Term
-					? $this->term_payload_changes(
-						array(
-							'name'        => $term->name,
-							'slug'        => $term->slug,
-							'description' => $term->description,
-							'parent'      => (int) $term->parent,
-						),
-						$payload
-					)
-					: array()
+				$this->term_payload_changes(
+					array(
+						'name'        => $term->name,
+						'slug'        => $term->slug,
+						'description' => $term->description,
+						'parent'      => (int) $term->parent,
+					),
+					$payload
+				)
 			);
 		}
 
 		$result = wp_update_term( $term_id, $taxonomy, $payload );
 		if ( is_wp_error( $result ) ) {
-			return $this->error( $result->get_error_code(), $result->get_error_message() );
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		$term = get_term( $term_id, $taxonomy );
@@ -183,7 +186,7 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$term_id  = absint( $data['term_id'] ?? 0 );
 		$object   = get_taxonomy( $taxonomy );
 
-		if ( ! $this->is_supported_taxonomy( $object ) ) {
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
 			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
 		}
 

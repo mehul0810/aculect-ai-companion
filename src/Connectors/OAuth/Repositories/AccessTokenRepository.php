@@ -10,6 +10,7 @@ use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
+use League\OAuth2\Server\Entities\ScopeEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
 /**
@@ -43,6 +44,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * @param ClientEntityInterface $clientEntity   OAuth client.
 	 * @param array                 $scopes         Granted scope entities.
 	 * @param string|null           $userIdentifier WordPress user ID, when user-bound.
+	 * @phpstan-param list<ScopeEntityInterface> $scopes
 	 * @return AccessTokenEntityInterface
 	 */
 	public function getNewToken(

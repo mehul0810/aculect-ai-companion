@@ -538,6 +538,7 @@ final class ContentIndexRepository {
 	 *
 	 * @param string               $key Job key.
 	 * @param array<string, mixed> $data Job data.
+	 * @return array<string, mixed>
 	 */
 	public function update_job( string $key, array $data ): array {
 		global $wpdb;

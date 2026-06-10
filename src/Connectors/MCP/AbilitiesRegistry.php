@@ -152,7 +152,7 @@ final class AbilitiesRegistry {
 	/**
 	 * Persist enabled ability IDs after normalizing aliases and public names.
 	 *
-	 * @param array $ids Ability IDs or public tool names.
+	 * @param array<int|string, mixed> $ids Ability IDs or public tool names.
 	 */
 	public function save_enabled_ids( array $ids ): void {
 		update_option( self::OPTION_ENABLED_ABILITIES, $this->sanitize_ids( $ids ), false );
@@ -280,7 +280,7 @@ final class AbilitiesRegistry {
 	/**
 	 * Sanitize persisted enabled IDs and drop unknown values.
 	 *
-	 * @param array $ids Ability IDs or public tool names.
+	 * @param array<int|string, mixed> $ids Ability IDs or public tool names.
 	 * @return list<string>
 	 */
 	private function sanitize_ids( array $ids ): array {

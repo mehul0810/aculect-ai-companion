@@ -356,12 +356,12 @@ final class IntelligenceRegistry {
 	/**
 	 * Build an intelligence module.
 	 *
-	 * @param string  $id          Internal intelligence ID.
-	 * @param string  $title       Tool title.
-	 * @param string  $description Tool description.
-	 * @param array   $schema      Input schema.
-	 * @param Closure $handler     Execution callback.
-	 * @param bool    $read_only   Whether the module is read-only.
+	 * @param string               $id          Internal intelligence ID.
+	 * @param string               $title       Tool title.
+	 * @param string               $description Tool description.
+	 * @param array<string, mixed> $schema Input schema.
+	 * @param Closure              $handler     Execution callback.
+	 * @param bool                 $read_only   Whether the module is read-only.
 	 */
 	private function build_module( string $id, string $title, string $description, array $schema, Closure $handler, bool $read_only = true ): AbilityModuleInterface {
 		return new CallbackAbilityModule(
@@ -381,6 +381,7 @@ final class IntelligenceRegistry {
 	 *
 	 * @param array<string, mixed> $properties Schema properties.
 	 * @param array                $required   Required property names.
+	 * @phpstan-param list<string> $required
 	 * @return array<string, mixed>
 	 */
 	private function object_schema( array $properties, array $required = array() ): array {

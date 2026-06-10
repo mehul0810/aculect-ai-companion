@@ -11,12 +11,17 @@ use DateTimeZone;
  * Content abilities implementation.
  */
 final class ContentAbilities extends AbstractAbilityService {
+	/**
+	 * List supported post types visible through MCP.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
 	public function list_post_types(): array {
 		$types = get_post_types( array(), 'objects' );
 		$items = array();
 
 		foreach ( $types as $type ) {
-			if ( ! $this->is_supported_post_type( $type ) ) {
+			if ( ! $type instanceof \WP_Post_Type || ! $this->is_supported_post_type( $type ) ) {
 				continue;
 			}
 
@@ -46,7 +51,7 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_type        = sanitize_key( (string) ( $args['post_type'] ?? 'post' ) );
 		$post_type_object = get_post_type_object( $post_type );
 
-		if ( ! $this->is_supported_post_type( $post_type_object ) || ! $this->can_read_post_type( $post_type_object ) ) {
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! $this->can_read_post_type( $post_type_object ) ) {
 			return $this->empty_collection( $page, $per_page );
 		}
 
@@ -68,7 +73,12 @@ final class ContentAbilities extends AbstractAbilityService {
 			)
 		);
 
-		$mapper = 'full' === $this->collection_context( $args ) ? 'map_post' : 'map_post_compact';
+			/**
+			 * Readable query posts.
+			 *
+			 * @var list<\WP_Post> $posts
+			 */
+			$mapper = 'full' === $this->collection_context( $args ) ? 'map_post' : 'map_post_compact';
 
 		return array(
 			'items'    => array_map( array( $this, $mapper ), $posts ),
@@ -87,12 +97,12 @@ final class ContentAbilities extends AbstractAbilityService {
 	 */
 	public function get_item( int $post_id ): array {
 		$post = get_post( $post_id );
-		if ( ! $post ) {
+		if ( ! $post instanceof \WP_Post ) {
 			return array();
 		}
 
 		$post_type_object = get_post_type_object( $post->post_type );
-		if ( ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'read_post', $post_id ) ) {
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'read_post', $post_id ) ) {
 			return array();
 		}
 
@@ -109,7 +119,7 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_type        = sanitize_key( (string) ( $data['post_type'] ?? 'post' ) );
 		$post_type_object = get_post_type_object( $post_type );
 
-		if ( ! $this->is_supported_post_type( $post_type_object ) || ! $this->can_create_post_type( $post_type_object ) ) {
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! $this->can_create_post_type( $post_type_object ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to create this post type.' );
 		}
 
@@ -148,7 +158,8 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		$date_payload = $this->post_date_payload_from_data( $data );
 		if ( isset( $date_payload['error'] ) ) {
-			return $date_payload['error'];
+			$error = $date_payload['error'];
+			return is_array( $error ) ? $error : $this->error( 'invalid_date', 'Date could not be resolved.' );
 		}
 
 		$payload = array_merge( $payload, $date_payload );
@@ -165,8 +176,19 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post_type );
 		if ( isset( $taxonomy_assignments['error'] ) ) {
-			return $taxonomy_assignments['error'];
+			/**
+			 * Taxonomy assignment error payload.
+			 *
+			 * @var array<string, mixed> $error
+			 */
+			$error = $taxonomy_assignments['error'];
+			return $error;
 		}
+		/**
+		 * Resolved taxonomy assignments.
+		 *
+		 * @var array<string, list<int>> $taxonomy_assignments
+		 */
 
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
@@ -187,7 +209,7 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_id = wp_insert_post( $payload, true );
 
 		if ( is_wp_error( $post_id ) ) {
-			return $this->error( $post_id->get_error_code(), $post_id->get_error_message() );
+			return $this->error( (string) $post_id->get_error_code(), $post_id->get_error_message() );
 		}
 
 		if ( null !== $featured_media && false === set_post_thumbnail( (int) $post_id, $featured_media ) ) {
@@ -223,12 +245,12 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_id = absint( $data['id'] ?? 0 );
 		$post    = get_post( $post_id );
 
-		if ( ! $post ) {
+		if ( ! $post instanceof \WP_Post ) {
 			return $this->error( 'not_found', 'Content item not found.' );
 		}
 
 		$post_type_object = get_post_type_object( $post->post_type );
-		if ( ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
 		}
 
@@ -298,15 +320,27 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		$date_payload = $this->post_date_payload_from_data( $data );
 		if ( isset( $date_payload['error'] ) ) {
-			return $date_payload['error'];
+			$error = $date_payload['error'];
+			return is_array( $error ) ? $error : $this->error( 'invalid_date', 'Date could not be resolved.' );
 		}
 
 		$update = array_merge( $update, $date_payload );
 
 		$taxonomy_assignments = $this->taxonomy_assignments( $data, $post->post_type );
 		if ( isset( $taxonomy_assignments['error'] ) ) {
-			return $taxonomy_assignments['error'];
+			/**
+			 * Taxonomy assignment error payload.
+			 *
+			 * @var array<string, mixed> $error
+			 */
+			$error = $taxonomy_assignments['error'];
+			return $error;
 		}
+		/**
+		 * Resolved taxonomy assignments.
+		 *
+		 * @var array<string, list<int>> $taxonomy_assignments
+		 */
 
 		$featured_media_change = $this->featured_media_change( $data, $post->post_type );
 		if ( isset( $featured_media_change['error'] ) ) {
@@ -345,7 +379,7 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		$result = wp_update_post( $update, true );
 		if ( is_wp_error( $result ) ) {
-			return $this->error( $result->get_error_code(), $result->get_error_message() );
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		$assignment_result = $this->apply_taxonomy_assignments( $post_id, $taxonomy_assignments );

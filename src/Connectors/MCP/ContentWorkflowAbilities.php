@@ -514,9 +514,10 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	/**
 	 * Apply optional Rank Math fields without bypassing content_update_seo availability.
 	 *
-	 * @param int      $post_id  Post ID.
-	 * @param array    $args     Workflow args.
-	 * @param string[] $warnings Warning accumulator passed by reference.
+	 * @param int                  $post_id  Post ID.
+	 * @param array<string, mixed> $args     Workflow args.
+	 * @param array                $warnings Warning accumulator passed by reference.
+	 * @phpstan-param list<string> $warnings
 	 * @return array<string, mixed>
 	 */
 	private function maybe_update_rank_math_seo( int $post_id, array $args, array &$warnings ): array {

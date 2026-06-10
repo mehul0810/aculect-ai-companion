@@ -8,6 +8,11 @@ namespace Aculect\AICompanion\Connectors\MCP;
  * Site abilities implementation.
  */
 final class SiteAbilities extends AbstractAbilityService {
+	/**
+	 * Return editable site settings exposed through MCP.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function get_settings(): array {
 		return array(
 			'name'                => get_option( 'blogname' ),

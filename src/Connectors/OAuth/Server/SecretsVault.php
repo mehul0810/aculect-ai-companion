@@ -10,19 +10,15 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
 /**
- * Encrypts plugin secrets with a site-bound default key that admins can
- * override with a dedicated wp-config constant.
+ * Encrypts plugin secrets with a dedicated wp-config constant.
  *
- * Key material, in priority order:
- * 1. ACULECT_AI_COMPANION_ENCRYPTION_KEY constant (recommended; survives
- *    salt rotation and lives outside the database).
- * 2. A default key derived from the WordPress AUTH_KEY and SECURE_AUTH_KEY
- *    salts via HKDF.
+ * Key material comes only from ACULECT_AI_COMPANION_ENCRYPTION_KEY. WordPress
+ * auth salts are deliberately not used: salts may be rotated by hosts, and in
+ * weak installs they may not provide a reliable secret boundary for OAuth keys.
  *
- * If the key changes (salt rotation, constant change), decryption fails and
- * callers regenerate the affected OAuth keys; connected AI clients simply
- * re-authorize. That graceful degradation is what makes salt-derived keys
- * acceptable here: OAuth signing keys are re-issuable, unlike user data.
+ * If the dedicated constant changes, decryption fails and callers regenerate
+ * the affected OAuth keys; connected AI clients re-authorize through the normal
+ * OAuth challenge. No site content data is lost.
  */
 final class SecretsVault {
 
@@ -85,6 +81,13 @@ final class SecretsVault {
 	 * Check whether authenticated encryption is available on this host.
 	 */
 	public static function is_available(): bool {
+		return self::sodium_available() && self::uses_dedicated_constant();
+	}
+
+	/**
+	 * Check whether PHP sodium secretbox support exists.
+	 */
+	public static function sodium_available(): bool {
 		return function_exists( 'sodium_crypto_secretbox' ) && function_exists( 'sodium_crypto_secretbox_open' );
 	}
 
@@ -105,7 +108,7 @@ final class SecretsVault {
 
 		$value = constant( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' );
 
-		return is_string( $value ) ? $value : '';
+		return is_string( $value ) ? trim( $value ) : '';
 	}
 
 	/**
@@ -115,6 +118,10 @@ final class SecretsVault {
 	 * deliberate state instead of silent decryption failures.
 	 */
 	public static function key_check_value(): string {
+		if ( ! self::is_available() ) {
+			return '';
+		}
+
 		return hash( 'sha256', 'aculect-key-check|' . self::master_key() );
 	}
 
@@ -122,25 +129,6 @@ final class SecretsVault {
 	 * Derive the 32-byte master key.
 	 */
 	private static function master_key(): string {
-		if ( self::uses_dedicated_constant() ) {
-			return hash_hkdf( 'sha256', self::dedicated_constant_value(), 32, self::HKDF_INFO );
-		}
-
-		return hash_hkdf( 'sha256', self::salt_value( 'AUTH_KEY' ) . '|' . self::salt_value( 'SECURE_AUTH_KEY' ), 32, self::HKDF_INFO );
-	}
-
-	/**
-	 * Read one WordPress salt constant defensively.
-	 *
-	 * @param string $name Constant name.
-	 */
-	private static function salt_value( string $name ): string {
-		if ( ! defined( $name ) ) {
-			return '';
-		}
-
-		$value = constant( $name );
-
-		return is_string( $value ) ? $value : '';
+		return hash_hkdf( 'sha256', self::dedicated_constant_value(), 32, self::HKDF_INFO );
 	}
 }

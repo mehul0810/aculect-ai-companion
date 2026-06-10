@@ -8,6 +8,12 @@ namespace Aculect\AICompanion\Connectors\MCP;
  * Comment abilities implementation.
  */
 final class CommentAbilities extends AbstractAbilityService {
+	/**
+	 * List comments visible to the connected user.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_comments( array $args ): array {
 		if ( ! current_user_can( 'moderate_comments' ) && ! current_user_can( 'edit_posts' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to list comments.' );
@@ -129,11 +135,11 @@ final class CommentAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_comment', 'Comment content is required.' );
 		}
 
-		$user        = wp_get_current_user();
-		$author_name = '' !== $user->display_name ? $user->display_name : $user->user_login;
-		$approved    = 'hold';
+		$user         = wp_get_current_user();
+		$author_name  = '' !== $user->display_name ? $user->display_name : $user->user_login;
+			$approved = 'hold';
 		if ( current_user_can( 'moderate_comments' ) ) {
-			$approved = $this->comment_status( (string) ( $data['status'] ?? 'approve' ), false );
+			$approved = $this->comment_moderation_status( (string) ( $data['status'] ?? 'approve' ) );
 		}
 
 		if ( $this->is_dry_run( $data ) ) {
@@ -201,7 +207,7 @@ final class CommentAbilities extends AbstractAbilityService {
 		}
 
 		if ( array_key_exists( 'status', $data ) ) {
-			$status = $this->comment_status( (string) $data['status'], false );
+			$status = $this->comment_moderation_status( (string) $data['status'] );
 			if ( $this->is_dry_run( $data ) ) {
 				return $this->preview_response(
 					'comments.update_item',
@@ -275,8 +281,8 @@ final class CommentAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_comments', 'At least one comment ID is required.' );
 		}
 
-		$status  = $this->comment_status( (string) ( $data['status'] ?? '' ), false );
-		$changes = array();
+			$status = $this->comment_moderation_status( (string) ( $data['status'] ?? '' ) );
+		$changes    = array();
 		foreach ( $comment_ids as $comment_id ) {
 			$comment = get_comment( $comment_id );
 			if ( ! $comment instanceof \WP_Comment ) {

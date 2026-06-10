@@ -137,11 +137,12 @@ Administrators should review the terms and privacy policy for the AI assistant t
 
 1. Upload the `aculect-ai-companion` folder to the `/wp-content/plugins/` directory, or install the plugin ZIP from WordPress.
 2. Activate Aculect AI Companion from the Plugins screen.
-3. Open AI Companion > Connect.
-4. Copy your connection URL.
-5. Open your AI tool and add a new connector.
-6. Paste the URL when prompted.
-7. Approve the connection on the screen that appears.
+3. On production sites, define `ACULECT_AI_COMPANION_ENCRYPTION_KEY` in `wp-config.php` with a unique random value of at least 32 characters before connecting assistants.
+4. Open AI Companion > Connect.
+5. Copy your connection URL.
+6. Open your AI tool and add a new connector.
+7. Paste the URL when prompted.
+8. Approve the connection on the screen that appears.
 
 == Frequently Asked Questions ==
 
@@ -176,6 +177,10 @@ Yes. Open AI Companion > Connections and disconnect one AI assistant or all acti
 = Can I control what my AI assistant can do? =
 
 Yes. After a connection exists, open AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
+
+= Why do diagnostics ask for ACULECT_AI_COMPANION_ENCRYPTION_KEY? =
+
+Aculect AI Companion encrypts OAuth signing key material at rest. It does not use WordPress `AUTH_KEY` or other salts for this. Define a unique `ACULECT_AI_COMPANION_ENCRYPTION_KEY` constant in `wp-config.php` before connecting assistants. If the key is changed later, connected assistants must reconnect through the normal approval flow.
 
 = Can I review what connected AI assistants changed? =
 

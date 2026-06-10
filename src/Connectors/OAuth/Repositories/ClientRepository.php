@@ -239,10 +239,16 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 *
 	 * @param array<string, mixed> $row Client row.
 	 * @return ClientEntity
+	 * @throws \UnexpectedValueException When the stored client row is missing a client ID.
 	 */
 	private function hydrate( array $row ): ClientEntity {
-		$client = new ClientEntity();
-		$client->setIdentifier( (string) $row['client_id'] );
+		$client    = new ClientEntity();
+		$client_id = trim( (string) $row['client_id'] );
+		if ( '' === $client_id ) {
+			throw new \UnexpectedValueException( 'OAuth client row is missing a client_id.' );
+		}
+
+		$client->setIdentifier( $client_id );
 		$client->setName( (string) $row['client_name'] );
 		$client->setRedirectUri( $this->redirect_uris_from_row( $row ) );
 		$client->setConfidential( '1' === (string) $row['is_confidential'] );

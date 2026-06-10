@@ -18,6 +18,7 @@ use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Diagnostics\LogSettings;
+use Aculect\AICompanion\Intelligence\ContentIndexer;
 
 /**
  * Owns the sanitized JSON contract for settings transfer actions.
@@ -114,6 +115,7 @@ final class SettingsTransfer {
 		BrandProfile::delete();
 		AccessLockdown::delete();
 		UserAccessControl::delete();
+		ContentIndexer::delete_options();
 	}
 
 	/**

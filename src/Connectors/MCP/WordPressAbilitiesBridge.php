@@ -289,7 +289,7 @@ final class WordPressAbilitiesBridge {
 	 */
 	private function normalize_result( mixed $result ): mixed {
 		if ( $result instanceof WP_Error ) {
-			return $this->error( $result->get_error_code(), $result->get_error_message() );
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		if ( $result instanceof WP_REST_Response ) {

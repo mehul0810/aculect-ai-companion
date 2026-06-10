@@ -735,14 +735,14 @@ final class FirstPartyAbilityModules {
 	/**
 	 * Build a first-party module.
 	 *
-	 * @param string  $id          Internal ability ID.
-	 * @param string  $title       Admin-facing title.
-	 * @param string  $description Assistant-facing description.
-	 * @param string  $group       Admin grouping label.
-	 * @param string  $scope       Required OAuth scope.
-	 * @param bool    $read_only   Whether the ability is read-only.
-	 * @param array   $schema      Input schema.
-	 * @param Closure $handler     Execution callback.
+	 * @param string               $id          Internal ability ID.
+	 * @param string               $title       Admin-facing title.
+	 * @param string               $description Assistant-facing description.
+	 * @param string               $group       Admin grouping label.
+	 * @param string               $scope       Required OAuth scope.
+	 * @param bool                 $read_only   Whether the ability is read-only.
+	 * @param array<string, mixed> $schema Input schema.
+	 * @param Closure              $handler     Execution callback.
 	 */
 	private function module( string $id, string $title, string $description, string $group, string $scope, bool $read_only, array $schema, Closure $handler ): AbilityModuleInterface {
 		return new CallbackAbilityModule(
@@ -762,6 +762,7 @@ final class FirstPartyAbilityModules {
 	 *
 	 * @param array<string, mixed> $properties Schema properties.
 	 * @param array                $required   Required property names.
+	 * @phpstan-param list<string> $required
 	 * @return array<string, mixed>
 	 */
 	private function object_schema( array $properties, array $required = array() ): array {

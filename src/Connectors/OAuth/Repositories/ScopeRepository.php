@@ -33,7 +33,8 @@ final class ScopeRepository implements ScopeRepositoryInterface {
 	 * @param ClientEntityInterface $clientEntity   OAuth client.
 	 * @param string|null           $userIdentifier WordPress user ID.
 	 * @param string|null           $authCodeId     Authorization code ID.
-	 * @return ScopeEntityInterface[]
+	 * @phpstan-param list<ScopeEntityInterface> $scopes
+	 * @return list<ScopeEntityInterface>
 	 */
 	public function finalizeScopes(
 		array $scopes,

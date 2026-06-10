@@ -21,14 +21,15 @@ final class CallbackAbilityModule implements AbilityModuleInterface {
 	/**
 	 * Create a callback-backed ability module.
 	 *
-	 * @param string  $id              Internal ability ID.
-	 * @param string  $title           Admin-facing title.
-	 * @param string  $description     Assistant-facing description.
-	 * @param string  $group           Admin grouping label.
-	 * @param array   $required_scopes Required OAuth scopes.
-	 * @param bool    $read_only       Whether the ability is read-only.
-	 * @param array   $input_schema    JSON schema for tool input.
-	 * @param Closure $handler         Ability execution callback.
+	 * @param string               $id              Internal ability ID.
+	 * @param string               $title           Admin-facing title.
+	 * @param string               $description     Assistant-facing description.
+	 * @param string               $group           Admin grouping label.
+	 * @param array                $required_scopes Required OAuth scopes.
+	 * @param bool                 $read_only       Whether the ability is read-only.
+	 * @param array<string, mixed> $input_schema JSON schema for tool input.
+	 * @param Closure              $handler         Ability execution callback.
+	 * @phpstan-param list<string> $required_scopes
 	 */
 	public function __construct(
 		private readonly string $id,

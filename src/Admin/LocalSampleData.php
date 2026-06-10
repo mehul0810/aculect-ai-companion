@@ -238,6 +238,8 @@ final class LocalSampleData {
 	 * @param string $access_level             Access level.
 	 * @param string $last_used_at             Last activity date.
 	 * @param string $expires_at               Connection expiry date.
+	 * @phpstan-param list<string> $roles
+	 * @phpstan-param list<string> $scopes
 	 * @return array<string, mixed>
 	 */
 	private function session(
@@ -660,6 +662,7 @@ final class LocalSampleData {
 	 * Return sample-data metadata for the React app.
 	 *
 	 * @param array $applied_tabs Tabs where empty rows were replaced.
+	 * @phpstan-param list<string> $applied_tabs
 	 * @return array<string, mixed>
 	 */
 	private function metadata( array $applied_tabs ): array {

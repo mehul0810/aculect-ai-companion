@@ -17,11 +17,10 @@ use RuntimeException;
  * signing key and the Defuse encryption key are encrypted at rest through
  * SecretsVault; the public key is stored as-is because it is public material.
  *
- * When the vault master key changes (salt rotation or a new
- * ACULECT_AI_COMPANION_ENCRYPTION_KEY constant), stored secrets become
- * undecryptable. That is handled by regenerating the key pair: existing
- * access tokens stop validating and connected AI clients re-authorize
- * through the normal OAuth challenge. No data is lost.
+ * When the vault master key changes, stored secrets become undecryptable. That
+ * is handled by regenerating the key pair: existing access tokens stop
+ * validating and connected AI clients re-authorize through the normal OAuth
+ * challenge. No site content data is lost.
  */
 final class KeyManager {
 
@@ -34,6 +33,7 @@ final class KeyManager {
 	 * Return the Defuse encryption key used by league/oauth2-server.
 	 */
 	public static function encryption_key(): string {
+		self::assert_vault_available();
 		self::guard_master_key_rotation();
 
 		$key = self::read_secret_option( self::OPTION_ENCRYPTION_KEY );
@@ -51,6 +51,7 @@ final class KeyManager {
 	 * @throws RuntimeException When a valid private key cannot be generated.
 	 */
 	public static function private_key(): string {
+		self::assert_vault_available();
 		self::guard_master_key_rotation();
 
 		$key = self::read_secret_option( self::OPTION_PRIVATE_KEY );
@@ -72,6 +73,7 @@ final class KeyManager {
 	 * @throws RuntimeException When a valid public key cannot be generated.
 	 */
 	public static function public_key(): string {
+		self::assert_vault_available();
 		self::guard_master_key_rotation();
 
 		$key = (string) get_option( self::OPTION_PUBLIC_KEY, '' );
@@ -93,15 +95,17 @@ final class KeyManager {
 	 * Used by diagnostics so site owners can verify the at-rest posture and
 	 * see whether the dedicated constant is active.
 	 *
-	 * @return array{encrypted: bool, vault_available: bool, dedicated_constant: bool}
+	 * @return array{encrypted: bool, vault_available: bool, sodium_available: bool, dedicated_constant: bool, plaintext_secret_present: bool}
 	 */
 	public static function storage_status(): array {
 		$stored = (string) get_option( self::OPTION_PRIVATE_KEY, '' );
 
 		return array(
-			'encrypted'          => '' !== $stored && SecretsVault::is_encrypted( $stored ),
-			'vault_available'    => SecretsVault::is_available(),
-			'dedicated_constant' => SecretsVault::uses_dedicated_constant(),
+			'encrypted'                => '' !== $stored && SecretsVault::is_encrypted( $stored ),
+			'vault_available'          => SecretsVault::is_available(),
+			'sodium_available'         => SecretsVault::sodium_available(),
+			'dedicated_constant'       => SecretsVault::uses_dedicated_constant(),
+			'plaintext_secret_present' => '' !== $stored && ! SecretsVault::is_encrypted( $stored ),
 		);
 	}
 
@@ -141,11 +145,49 @@ final class KeyManager {
 	 *
 	 * @param string $option Option name.
 	 * @param string $value  Secret value.
+	 * @throws RuntimeException When the dedicated encryption key is unavailable.
 	 */
 	private static function write_secret_option( string $option, string $value ): void {
 		$encrypted = SecretsVault::encrypt( $value );
-		update_option( $option, '' === $encrypted ? $value : $encrypted, false );
+		if ( '' === $encrypted ) {
+			throw new RuntimeException( 'Aculect AI Companion cannot store OAuth secrets until ACULECT_AI_COMPANION_ENCRYPTION_KEY is configured.' );
+		}
+
+		update_option( $option, $encrypted, false );
 		update_option( self::OPTION_KEY_CHECK, SecretsVault::key_check_value(), false );
+	}
+
+	/**
+	 * Require a dedicated encryption constant before any OAuth secret is used.
+	 *
+	 * If the site was upgraded from a plaintext-key build and the constant is
+	 * missing, purge the stored key material instead of continuing to rely on
+	 * database-readable secrets.
+	 *
+	 * @throws RuntimeException When the dedicated encryption key is unavailable.
+	 */
+	private static function assert_vault_available(): void {
+		if ( SecretsVault::is_available() ) {
+			return;
+		}
+
+		$had_keys = '' !== (string) get_option( self::OPTION_ENCRYPTION_KEY, '' )
+			|| '' !== (string) get_option( self::OPTION_PRIVATE_KEY, '' )
+			|| '' !== (string) get_option( self::OPTION_PUBLIC_KEY, '' );
+
+		if ( $had_keys ) {
+			self::delete_keys();
+
+			if ( class_exists( Logger::class ) ) {
+				( new Logger() )->warning(
+					'oauth.secret_vault_unavailable',
+					'OAuth key material was cleared because ACULECT_AI_COMPANION_ENCRYPTION_KEY is not configured.',
+					array( 'error_code' => 'secret_vault_unavailable' )
+				);
+			}
+		}
+
+		throw new RuntimeException( 'Define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php with at least 32 random characters before connecting AI clients.' );
 	}
 
 	/**
@@ -177,7 +219,7 @@ final class KeyManager {
 		if ( class_exists( Logger::class ) ) {
 			( new Logger() )->warning(
 				'oauth.key_rotation_detected',
-				'OAuth secret encryption key changed (salt rotation or new constant). Signing keys were regenerated; connected AI clients must re-authorize.',
+				'OAuth secret encryption key changed. Signing keys were regenerated; connected AI clients must re-authorize.',
 				array( 'error_code' => 'key_rotation' )
 			);
 		}

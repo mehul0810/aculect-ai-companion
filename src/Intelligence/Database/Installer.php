@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Intelligence\Database;
 
+use Aculect\AICompanion\Intelligence\ContentIndexer;
+
 /**
  * Owns the content index, chunk, link graph, memory, job, and cache tables.
  */
@@ -118,6 +120,7 @@ final class Installer {
 		}
 
 		delete_option( self::OPTION_DB_VERSION );
+		ContentIndexer::delete_options();
 	}
 
 	/**

@@ -40,6 +40,15 @@ if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_URL' ) ) {
 if ( ! defined( 'ARRAY_A' ) ) {
 	define( 'ARRAY_A', 'ARRAY_A' );
 }
+if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
+	define( 'HOUR_IN_SECONDS', 3600 );
+}
+if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
+	define( 'MINUTE_IN_SECONDS', 60 );
+}
+if ( ! defined( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' ) ) {
+	define( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY', 'unit-test-aculect-ai-companion-encryption-key-32chars' );
+}
 
 $GLOBALS['aculect_ai_companion_test_options']     = array();
 $GLOBALS['aculect_ai_companion_test_transients']  = array();

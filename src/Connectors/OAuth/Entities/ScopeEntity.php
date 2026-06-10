@@ -20,8 +20,14 @@ final class ScopeEntity implements ScopeEntityInterface {
 	 * Create a scope entity.
 	 *
 	 * @param string $identifier Scope identifier.
+	 * @throws \InvalidArgumentException When the scope identifier is empty.
 	 */
 	public function __construct( string $identifier ) {
+		$identifier = trim( $identifier );
+		if ( '' === $identifier ) {
+			throw new \InvalidArgumentException( 'OAuth scope identifier cannot be empty.' );
+		}
+
 		$this->setIdentifier( $identifier );
 	}
 

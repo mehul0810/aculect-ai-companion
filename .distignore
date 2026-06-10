@@ -21,8 +21,13 @@ phpcs.xml.dist
 phpunit.xml.dist
 phpstan.neon.dist
 phpstan-bootstrap.php
+phpstan-baseline.neon
 AGENTS.md
 CONTRIBUTING.md
+CODE-REVIEW*.md
+README.md
+SECURITY.md
+composer.json
 composer.lock
 package.json
 package-lock.json

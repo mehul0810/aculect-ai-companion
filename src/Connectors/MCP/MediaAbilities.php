@@ -8,6 +8,12 @@ namespace Aculect\AICompanion\Connectors\MCP;
  * Media abilities implementation.
  */
 final class MediaAbilities extends AbstractAbilityService {
+	/**
+	 * List media attachments.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array<string, mixed>
+	 */
 	public function list_media( array $args ): array {
 		if ( ! current_user_can( 'upload_files' ) && ! current_user_can( 'edit_posts' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to list media.' );
@@ -50,6 +56,11 @@ final class MediaAbilities extends AbstractAbilityService {
 		}
 
 		$result = new \WP_Query( $query );
+		/**
+		 * Readable media posts.
+		 *
+		 * @var list<\WP_Post> $posts
+		 */
 		$posts  = array_values(
 			array_filter(
 				$result->posts,
@@ -151,7 +162,7 @@ final class MediaAbilities extends AbstractAbilityService {
 		if ( count( $update ) > 1 ) {
 			$result = wp_update_post( $update, true );
 			if ( is_wp_error( $result ) ) {
-				return $this->error( $result->get_error_code(), $result->get_error_message() );
+				return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 			}
 		}
 
@@ -323,6 +334,11 @@ final class MediaAbilities extends AbstractAbilityService {
 			return $this->error( $download['code'], $download['message'] );
 		}
 
+		/**
+		 * Successful download payload.
+		 *
+		 * @var array{tmp: string} $download
+		 */
 		$tmp            = $download['tmp'];
 		$download_error = $guard->validate_downloaded_file( $tmp, $filename );
 		if ( null !== $download_error ) {
@@ -340,7 +356,7 @@ final class MediaAbilities extends AbstractAbilityService {
 
 		if ( is_wp_error( $attachment_id ) ) {
 			wp_delete_file( $tmp );
-			return $this->error( $attachment_id->get_error_code(), $attachment_id->get_error_message() );
+			return $this->error( (string) $attachment_id->get_error_code(), $attachment_id->get_error_message() );
 		}
 
 		$update = array( 'ID' => (int) $attachment_id );

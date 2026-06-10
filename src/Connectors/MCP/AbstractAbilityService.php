@@ -11,6 +11,15 @@ abstract class AbstractAbilityService {
 
 	protected const DEFAULT_POST_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
 	protected const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish', 'trash' );
+
+	/**
+	 * Normalize post status filters from tool arguments.
+	 *
+	 * @param array<string, mixed> $args    Tool arguments.
+	 * @param array                $default Default statuses.
+	 * @phpstan-param list<string> $default
+	 * @return list<string>
+	 */
 	protected function statuses_from_args( array $args, array $default ): array {
 		$statuses = $args['status'] ?? $default;
 		if ( is_string( $statuses ) ) {
@@ -161,12 +170,17 @@ abstract class AbstractAbilityService {
 			return array( 'error' => $this->error( 'invalid_taxonomies', 'Taxonomies must be provided as an object keyed by taxonomy slug.' ) );
 		}
 
+		/**
+		 * Resolved taxonomy term IDs.
+		 *
+		 * @var array<string, list<int>> $assignments
+		 */
 		$assignments = array();
 		foreach ( $data['taxonomies'] as $taxonomy_name => $terms ) {
 			$taxonomy_name = sanitize_key( (string) $taxonomy_name );
 			$taxonomy      = get_taxonomy( $taxonomy_name );
 
-			if ( ! $this->is_supported_taxonomy( $taxonomy ) ) {
+			if ( ! $taxonomy instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $taxonomy ) ) {
 				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' ) );
 			}
 
@@ -180,9 +194,15 @@ abstract class AbstractAbilityService {
 
 			$resolved = $this->resolve_taxonomy_terms( $taxonomy_name, $terms );
 			if ( isset( $resolved['error'] ) ) {
-				return $resolved;
+				$error = $resolved['error'];
+				return array( 'error' => is_array( $error ) ? $error : $this->error( 'invalid_terms', 'Taxonomy terms could not be resolved.' ) );
 			}
 
+			/**
+			 * Resolved term IDs.
+			 *
+			 * @var list<int> $resolved
+			 */
 			$assignments[ $taxonomy_name ] = $resolved;
 		}
 
@@ -243,7 +263,7 @@ abstract class AbstractAbilityService {
 		foreach ( $assignments as $taxonomy_name => $term_ids ) {
 			$result = wp_set_object_terms( $post_id, $term_ids, $taxonomy_name, false );
 			if ( is_wp_error( $result ) ) {
-				return array( 'error' => $this->error( $result->get_error_code(), $result->get_error_message() ) );
+				return array( 'error' => $this->error( (string) $result->get_error_code(), $result->get_error_message() ) );
 			}
 		}
 
@@ -397,6 +417,18 @@ abstract class AbstractAbilityService {
 		$allowed = $allow_all ? array( 'all', 'hold', 'approve', 'spam', 'trash' ) : array( 'hold', 'approve', 'spam', 'trash' );
 
 		return in_array( $status, $allowed, true ) ? $status : ( $allow_all ? 'all' : 'hold' );
+	}
+
+	/**
+	 * Normalize comment moderation status for wp_set_comment_status().
+	 *
+	 * @param string $status Requested status.
+	 * @return 'approve'|'hold'|'spam'|'trash'
+	 */
+	protected function comment_moderation_status( string $status ): string {
+		$status = $this->comment_status( $status, false );
+
+		return in_array( $status, array( 'approve', 'hold', 'spam', 'trash' ), true ) ? $status : 'hold';
 	}
 
 	/**

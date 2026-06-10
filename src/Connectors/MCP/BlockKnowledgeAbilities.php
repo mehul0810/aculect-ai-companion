@@ -631,7 +631,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	/**
 	 * Return flattened block names from parsed block arrays.
 	 *
-	 * @param array<int, mixed> $blocks Parsed blocks.
+	 * @param array<int|string, mixed> $blocks Parsed blocks.
 	 * @return list<string>
 	 */
 	private function flatten_block_names( array $blocks ): array {

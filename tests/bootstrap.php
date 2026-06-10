@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.5.0' );
+	define( 'ACULECT_AI_COMPANION_VERSION', '0.5.1' );
 }
 
 if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {
@@ -46,10 +46,6 @@ if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
 if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
 	define( 'MINUTE_IN_SECONDS', 60 );
 }
-if ( ! defined( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' ) ) {
-	define( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY', 'unit-test-aculect-ai-companion-encryption-key-32chars' );
-}
-
 $GLOBALS['aculect_ai_companion_test_options']     = array();
 $GLOBALS['aculect_ai_companion_test_transients']  = array();
 $GLOBALS['aculect_ai_companion_test_admin_pages'] = array(

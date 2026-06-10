@@ -157,15 +157,6 @@ final class ConnectionHealth {
 			);
 		}
 
-		if ( true !== $status['dedicated_constant'] ) {
-			return $this->item(
-				'secret_storage',
-				'fail',
-				'ACULECT_AI_COMPANION_ENCRYPTION_KEY is not configured, so OAuth clients cannot be connected securely.',
-				'Define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php with at least 32 random characters, then reconnect AI clients.'
-			);
-		}
-
 		if ( true === $status['plaintext_secret_present'] ) {
 			return $this->item(
 				'secret_storage',
@@ -175,7 +166,25 @@ final class ConnectionHealth {
 			);
 		}
 
-		return $this->item( 'secret_storage', 'pass', 'OAuth keys are encrypted at rest with the dedicated ACULECT_AI_COMPANION_ENCRYPTION_KEY constant.' );
+		if ( true === $status['dedicated_constant'] ) {
+			return $this->item( 'secret_storage', 'pass', 'OAuth keys are encrypted at rest with the dedicated ACULECT_AI_COMPANION_ENCRYPTION_KEY constant.' );
+		}
+
+		if ( true === $status['database_key'] ) {
+			return $this->item(
+				'secret_storage',
+				'warn',
+				'OAuth keys are encrypted at rest with an auto-generated database-managed key.',
+				'For stronger production hardening, define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php with at least 32 random characters, then reconnect AI clients.'
+			);
+		}
+
+		return $this->item(
+			'secret_storage',
+			'fail',
+			'Encrypted OAuth secret storage is unavailable.',
+			'Ask the host to enable the PHP sodium extension, or define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php after sodium is available.'
+		);
 	}
 
 	/**

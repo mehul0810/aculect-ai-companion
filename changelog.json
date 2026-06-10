@@ -1,4 +1,12 @@
 {
+  "0.5.1": {
+    "date": "2026-06-10",
+    "Improved": [
+      "Improved OAuth secret storage so sites without ACULECT_AI_COMPANION_ENCRYPTION_KEY automatically use a generated database-managed encryption key instead of blocking assistant authorization.",
+      "Updated diagnostics to warn, not fail, when OAuth secrets are encrypted with the database-managed fallback key.",
+      "Kept ACULECT_AI_COMPANION_ENCRYPTION_KEY as the strongest production option for storing the encryption key outside the database."
+    ]
+  },
   "0.5.0": {
     "date": "2026-06-10",
     "New": [

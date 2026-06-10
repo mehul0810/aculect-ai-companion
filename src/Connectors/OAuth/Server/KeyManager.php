@@ -95,16 +95,18 @@ final class KeyManager {
 	 * Used by diagnostics so site owners can verify the at-rest posture and
 	 * see whether the dedicated constant is active.
 	 *
-	 * @return array{encrypted: bool, vault_available: bool, sodium_available: bool, dedicated_constant: bool, plaintext_secret_present: bool}
+	 * @return array{encrypted: bool, vault_available: bool, sodium_available: bool, dedicated_constant: bool, database_key: bool, plaintext_secret_present: bool}
 	 */
 	public static function storage_status(): array {
 		$stored = (string) get_option( self::OPTION_PRIVATE_KEY, '' );
+		$sodium = SecretsVault::sodium_available();
 
 		return array(
 			'encrypted'                => '' !== $stored && SecretsVault::is_encrypted( $stored ),
-			'vault_available'          => SecretsVault::is_available(),
-			'sodium_available'         => SecretsVault::sodium_available(),
+			'vault_available'          => $sodium && SecretsVault::is_available(),
+			'sodium_available'         => $sodium,
 			'dedicated_constant'       => SecretsVault::uses_dedicated_constant(),
+			'database_key'             => $sodium && SecretsVault::uses_database_key(),
 			'plaintext_secret_present' => '' !== $stored && ! SecretsVault::is_encrypted( $stored ),
 		);
 	}
@@ -117,6 +119,7 @@ final class KeyManager {
 		delete_option( self::OPTION_PRIVATE_KEY );
 		delete_option( self::OPTION_PUBLIC_KEY );
 		delete_option( self::OPTION_KEY_CHECK );
+		SecretsVault::delete_database_key();
 	}
 
 	/**
@@ -145,12 +148,12 @@ final class KeyManager {
 	 *
 	 * @param string $option Option name.
 	 * @param string $value  Secret value.
-	 * @throws RuntimeException When the dedicated encryption key is unavailable.
+	 * @throws RuntimeException When encrypted secret storage is unavailable.
 	 */
 	private static function write_secret_option( string $option, string $value ): void {
 		$encrypted = SecretsVault::encrypt( $value );
 		if ( '' === $encrypted ) {
-			throw new RuntimeException( 'Aculect AI Companion cannot store OAuth secrets until ACULECT_AI_COMPANION_ENCRYPTION_KEY is configured.' );
+			throw new RuntimeException( 'Aculect AI Companion cannot store OAuth secrets until encrypted secret storage is available.' );
 		}
 
 		update_option( $option, $encrypted, false );
@@ -158,13 +161,13 @@ final class KeyManager {
 	}
 
 	/**
-	 * Require a dedicated encryption constant before any OAuth secret is used.
+	 * Require encrypted secret storage before any OAuth secret is used.
 	 *
-	 * If the site was upgraded from a plaintext-key build and the constant is
-	 * missing, purge the stored key material instead of continuing to rely on
-	 * database-readable secrets.
+	 * A dedicated wp-config constant is preferred, but when it is not present a
+	 * random database-managed key is used so OAuth setup does not fall back to
+	 * plaintext secrets.
 	 *
-	 * @throws RuntimeException When the dedicated encryption key is unavailable.
+	 * @throws RuntimeException When encrypted secret storage is unavailable.
 	 */
 	private static function assert_vault_available(): void {
 		if ( SecretsVault::is_available() ) {
@@ -176,18 +179,21 @@ final class KeyManager {
 			|| '' !== (string) get_option( self::OPTION_PUBLIC_KEY, '' );
 
 		if ( $had_keys ) {
-			self::delete_keys();
+			delete_option( self::OPTION_ENCRYPTION_KEY );
+			delete_option( self::OPTION_PRIVATE_KEY );
+			delete_option( self::OPTION_PUBLIC_KEY );
+			delete_option( self::OPTION_KEY_CHECK );
 
 			if ( class_exists( Logger::class ) ) {
 				( new Logger() )->warning(
 					'oauth.secret_vault_unavailable',
-					'OAuth key material was cleared because ACULECT_AI_COMPANION_ENCRYPTION_KEY is not configured.',
+					'OAuth key material was cleared because encrypted secret storage is unavailable.',
 					array( 'error_code' => 'secret_vault_unavailable' )
 				);
 			}
 		}
 
-		throw new RuntimeException( 'Define ACULECT_AI_COMPANION_ENCRYPTION_KEY in wp-config.php with at least 32 random characters before connecting AI clients.' );
+		throw new RuntimeException( 'Encrypted secret storage is unavailable. Ask the host to enable the PHP sodium extension.' );
 	}
 
 	/**

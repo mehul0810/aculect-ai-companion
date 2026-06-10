@@ -37,6 +37,7 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_paused_user_access'   => array( 7 ),
 			'aculect_ai_companion_oauth_last_pruned_at' => 123,
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 456,
+			'aculect_ai_companion_secret_storage_key'   => 'delete-secret-storage-key',
 			'aculect_ai_companion_logging_enabled'      => '1',
 			'aculect_ai_companion_log_retention_days'   => 90,
 			'aculect_ai_companion_pending_index_ids'    => array( 10, 11 ),
@@ -66,6 +67,7 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_paused_user_access', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_secret_storage_key', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_remove_data_on_uninstall', 'missing' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );

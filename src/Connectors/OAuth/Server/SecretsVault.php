@@ -10,21 +10,24 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
 /**
- * Encrypts plugin secrets with a dedicated wp-config constant.
+ * Encrypts plugin secrets with a dedicated wp-config constant or fallback key.
  *
- * Key material comes only from ACULECT_AI_COMPANION_ENCRYPTION_KEY. WordPress
- * auth salts are deliberately not used: salts may be rotated by hosts, and in
- * weak installs they may not provide a reliable secret boundary for OAuth keys.
+ * Key material prefers ACULECT_AI_COMPANION_ENCRYPTION_KEY. When the constant
+ * is absent, a random database-managed key is generated so setup can proceed
+ * without plaintext OAuth secrets. WordPress auth salts are deliberately not
+ * used: salts may be rotated by hosts, and in weak installs they may not
+ * provide a reliable secret boundary for OAuth keys.
  *
- * If the dedicated constant changes, decryption fails and callers regenerate
- * the affected OAuth keys; connected AI clients re-authorize through the normal
+ * If the active master key changes, decryption fails and callers regenerate the
+ * affected OAuth keys; connected AI clients re-authorize through the normal
  * OAuth challenge. No site content data is lost.
  */
 final class SecretsVault {
 
-	private const PREFIX       = 'v1:';
-	private const HKDF_INFO    = 'aculect-ai-companion-oauth-v1';
-	private const NONCE_LENGTH = 24;
+	private const PREFIX              = 'v1:';
+	private const HKDF_INFO           = 'aculect-ai-companion-oauth-v1';
+	private const NONCE_LENGTH        = 24;
+	private const OPTION_DATABASE_KEY = 'aculect_ai_companion_secret_storage_key';
 
 	/**
 	 * Encrypt a secret for option storage.
@@ -81,7 +84,7 @@ final class SecretsVault {
 	 * Check whether authenticated encryption is available on this host.
 	 */
 	public static function is_available(): bool {
-		return self::sodium_available() && self::uses_dedicated_constant();
+		return self::sodium_available() && ( self::uses_dedicated_constant() || self::uses_database_key() );
 	}
 
 	/**
@@ -99,6 +102,23 @@ final class SecretsVault {
 	}
 
 	/**
+	 * Check whether the fallback database-managed key is available.
+	 *
+	 * Calling this method may lazily generate the fallback key when the
+	 * dedicated constant is absent.
+	 */
+	public static function uses_database_key(): bool {
+		return ! self::uses_dedicated_constant() && strlen( self::database_key_value() ) >= 32;
+	}
+
+	/**
+	 * Delete the fallback database-managed key during full uninstall cleanup.
+	 */
+	public static function delete_database_key(): void {
+		delete_option( self::OPTION_DATABASE_KEY );
+	}
+
+	/**
 	 * Read the optional wp-config encryption constant.
 	 */
 	private static function dedicated_constant_value(): string {
@@ -109,6 +129,30 @@ final class SecretsVault {
 		$value = constant( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' );
 
 		return is_string( $value ) ? trim( $value ) : '';
+	}
+
+	/**
+	 * Read or create the database-managed fallback key.
+	 */
+	private static function database_key_value(): string {
+		$stored = get_option( self::OPTION_DATABASE_KEY, '' );
+		if ( is_string( $stored ) && strlen( trim( $stored ) ) >= 32 ) {
+			return trim( $stored );
+		}
+
+		$generated = bin2hex( random_bytes( 32 ) );
+		if ( add_option( self::OPTION_DATABASE_KEY, $generated, '', false ) ) {
+			return $generated;
+		}
+
+		$stored = get_option( self::OPTION_DATABASE_KEY, '' );
+		if ( is_string( $stored ) && strlen( trim( $stored ) ) >= 32 ) {
+			return trim( $stored );
+		}
+
+		update_option( self::OPTION_DATABASE_KEY, $generated, false );
+
+		return $generated;
 	}
 
 	/**
@@ -129,6 +173,11 @@ final class SecretsVault {
 	 * Derive the 32-byte master key.
 	 */
 	private static function master_key(): string {
-		return hash_hkdf( 'sha256', self::dedicated_constant_value(), 32, self::HKDF_INFO );
+		$key_material = self::dedicated_constant_value();
+		if ( '' === $key_material ) {
+			$key_material = self::database_key_value();
+		}
+
+		return hash_hkdf( 'sha256', $key_material, 32, self::HKDF_INFO );
 	}
 }

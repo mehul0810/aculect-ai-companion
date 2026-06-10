@@ -55,6 +55,7 @@ final class SettingsTransferTest extends TestCase {
 		);
 		update_option( 'aculect_ai_companion_oauth_private_key', 'secret-private-key', false );
 		update_option( 'aculect_ai_companion_oauth_encryption_key', 'secret-encryption-key', false );
+		update_option( 'aculect_ai_companion_secret_storage_key', 'secret-storage-key', false );
 
 		$transfer = new SettingsTransfer();
 		$payload  = $transfer->export_payload();
@@ -73,6 +74,7 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( 'Exported Brand', $payload['settings']['brandProfile']['site_name'] );
 		self::assertStringNotContainsString( 'secret-private-key', $json );
 		self::assertStringNotContainsString( 'secret-encryption-key', $json );
+		self::assertStringNotContainsString( 'secret-storage-key', $json );
 	}
 
 	public function test_import_payload_sanitizes_and_persists_supported_settings(): void {

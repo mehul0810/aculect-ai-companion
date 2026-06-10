@@ -22,6 +22,7 @@ final class ConnectionHealthTest extends TestCase {
 	protected function tearDown(): void {
 		delete_option( ConnectionHealth::OPTION_LAST_RESULT );
 		delete_option( 'aculect_ai_companion_connection_health_transient_probe' );
+		delete_option( 'aculect_ai_companion_secret_storage_key' );
 		$GLOBALS['aculect_ai_companion_test_transients'] = array();
 
 		parent::tearDown();
@@ -132,7 +133,7 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( array(), get_option( 'aculect_ai_companion_connection_health_transient_probe', array() ) );
 	}
 
-	public function test_secret_storage_reports_dedicated_encryption_key(): void {
+	public function test_secret_storage_reports_database_managed_fallback_key(): void {
 		if ( ! SecretsVault::sodium_available() ) {
 			self::markTestSkipped( 'The sodium extension is required for secret storage diagnostics.' );
 		}
@@ -140,7 +141,9 @@ final class ConnectionHealthTest extends TestCase {
 		$result = $this->invokePrivate( new ConnectionHealth(), 'check_secret_storage' );
 
 		self::assertSame( 'secret_storage', $result['id'] );
-		self::assertSame( 'pass', $result['status'] );
+		self::assertSame( 'warn', $result['status'] );
+		self::assertStringContainsString( 'database-managed key', $result['message'] );
+		self::assertIsString( get_option( 'aculect_ai_companion_secret_storage_key', '' ) );
 	}
 
 	public function test_delete_removes_transient_probe_state(): void {

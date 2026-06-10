@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.5.0
+Stable tag: 0.5.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -137,7 +137,7 @@ Administrators should review the terms and privacy policy for the AI assistant t
 
 1. Upload the `aculect-ai-companion` folder to the `/wp-content/plugins/` directory, or install the plugin ZIP from WordPress.
 2. Activate Aculect AI Companion from the Plugins screen.
-3. On production sites, define `ACULECT_AI_COMPANION_ENCRYPTION_KEY` in `wp-config.php` with a unique random value of at least 32 characters before connecting assistants.
+3. For stronger production hardening, define `ACULECT_AI_COMPANION_ENCRYPTION_KEY` in `wp-config.php` with a unique random value of at least 32 characters. If the constant is not defined, Aculect AI Companion generates a database-managed encryption key automatically.
 4. Open AI Companion > Connect.
 5. Copy your connection URL.
 6. Open your AI tool and add a new connector.
@@ -178,9 +178,9 @@ Yes. Open AI Companion > Connections and disconnect one AI assistant or all acti
 
 Yes. After a connection exists, open AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
 
-= Why do diagnostics ask for ACULECT_AI_COMPANION_ENCRYPTION_KEY? =
+= Why do diagnostics recommend ACULECT_AI_COMPANION_ENCRYPTION_KEY? =
 
-Aculect AI Companion encrypts OAuth signing key material at rest. It does not use WordPress `AUTH_KEY` or other salts for this. Define a unique `ACULECT_AI_COMPANION_ENCRYPTION_KEY` constant in `wp-config.php` before connecting assistants. If the key is changed later, connected assistants must reconnect through the normal approval flow.
+Aculect AI Companion encrypts OAuth signing key material at rest. It does not use WordPress `AUTH_KEY` or other salts for this. If `ACULECT_AI_COMPANION_ENCRYPTION_KEY` is not defined, the plugin generates a random database-managed key so OAuth setup can continue securely. Define a unique `ACULECT_AI_COMPANION_ENCRYPTION_KEY` constant in `wp-config.php` for stronger protection because the key then lives outside the database. If the active key changes later, connected assistants must reconnect through the normal approval flow.
 
 = Can I review what connected AI assistants changed? =
 
@@ -208,14 +208,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.5.0 AI Companion experience.
+1. Overview tab showing the 0.5.1 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.5.0 release notes.
+8. Changelog tab with the current 0.5.1 release notes.
 
 == Development ==
 
@@ -243,6 +243,12 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.5.1 =
+
+* Improved OAuth secret storage so sites without `ACULECT_AI_COMPANION_ENCRYPTION_KEY` automatically use a generated database-managed encryption key instead of blocking assistant authorization.
+* Updated diagnostics to warn, not fail, when OAuth secrets are encrypted with the database-managed fallback key.
+* Kept `ACULECT_AI_COMPANION_ENCRYPTION_KEY` as the strongest production option for storing the encryption key outside the database.
 
 = 0.5.0 =
 
@@ -322,6 +328,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.5.1 =
+
+Improves OAuth authorization reliability by adding an encrypted database-managed fallback key when the wp-config encryption constant is not defined.
 
 = 0.5.0 =
 

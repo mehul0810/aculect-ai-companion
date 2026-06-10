@@ -103,6 +103,7 @@ final class Plugin {
 		add_action( 'updated_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'deleted_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
+		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
@@ -365,7 +366,42 @@ final class Plugin {
 			return;
 		}
 
+		if ( $this->is_bulk_content_context() ) {
+			( new ContentIndexer() )->defer_index_post( $post_id );
+			return;
+		}
+
 		( new ContentIndexer() )->index_post( $post_id );
+	}
+
+	/**
+	 * Detect bulk write contexts where inline indexing would multiply runtime.
+	 *
+	 * WP-CLI imports, WordPress importers, and cron-driven writes run the
+	 * save_post hook once per post; deferring to the queued stale sweep keeps
+	 * those flows fast while the index catches up within a minute.
+	 */
+	private function is_bulk_content_context(): bool {
+		if ( defined( 'WP_IMPORTING' ) && WP_IMPORTING ) {
+			return true;
+		}
+
+		if ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() && ! doing_action( ContentIndexer::STALE_SWEEP_HOOK ) ) {
+			return true;
+		}
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			return true;
+		}
+
+		return (bool) apply_filters( 'aculect_ai_companion_defer_content_indexing', false );
+	}
+
+	/**
+	 * Run the queued content index stale sweep.
+	 */
+	public function handle_content_index_stale_sweep(): void {
+		( new ContentIndexer() )->run_stale_sweep();
 	}
 
 	/**
@@ -386,20 +422,63 @@ final class Plugin {
 	public function handle_content_index_terms_changed( int $object_id, mixed ...$args ): void {
 		unset( $args );
 
-		( new ContentIndexer() )->mark_post_stale( $object_id );
+		$this->mark_post_stale_once( $object_id );
 	}
 
 	/**
 	 * Mark indexed content stale when post metadata changes.
+	 *
+	 * Meta hooks fire dozens of times per editor save (edit locks, SEO and
+	 * page-builder fields) and for every post type, so this path must stay
+	 * close to free: skip internal meta keys, skip non-indexable post types,
+	 * and write the stale flag at most once per post per request.
 	 *
 	 * @param mixed $meta_id   Metadata row ID.
 	 * @param int   $object_id Object ID.
 	 * @param mixed ...$args   Remaining WordPress hook args.
 	 */
 	public function handle_content_index_meta_changed( mixed $meta_id, int $object_id, mixed ...$args ): void {
-		unset( $meta_id, $args );
+		unset( $meta_id );
 
-		( new ContentIndexer() )->mark_post_stale( $object_id );
+		$meta_key = isset( $args[0] ) && is_string( $args[0] ) ? $args[0] : '';
+		if ( str_starts_with( $meta_key, '_' ) && ! $this->is_indexed_internal_meta_key( $meta_key ) ) {
+			return;
+		}
+
+		$this->mark_post_stale_once( $object_id );
+	}
+
+	/**
+	 * Internal (underscore-prefixed) meta keys that still affect indexed output.
+	 *
+	 * @param string $meta_key Meta key.
+	 */
+	private function is_indexed_internal_meta_key( string $meta_key ): bool {
+		$keys = apply_filters( 'aculect_ai_companion_indexed_internal_meta_keys', array( '_thumbnail_id' ) );
+
+		return is_array( $keys ) && in_array( $meta_key, $keys, true );
+	}
+
+	/**
+	 * Mark a post stale at most once per request, for indexable types only.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function mark_post_stale_once( int $post_id ): void {
+		static $marked = array();
+
+		$post_id = absint( $post_id );
+		if ( 0 >= $post_id || isset( $marked[ $post_id ] ) ) {
+			return;
+		}
+
+		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
+		if ( in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true ) ) {
+			return;
+		}
+
+		$marked[ $post_id ] = true;
+		( new ContentIndexer() )->mark_post_stale( $post_id );
 	}
 
 	/**

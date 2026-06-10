@@ -195,6 +195,29 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return object IDs of stale index rows, most recently modified first.
+	 *
+	 * @param int $limit Maximum IDs to return.
+	 * @return list<int>
+	 */
+	public function stale_object_ids( int $limit ): array {
+		global $wpdb;
+
+		$limit = max( 1, min( 500, $limit ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin table; bounded sweep query.
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				'SELECT object_id FROM %i WHERE stale = 1 ORDER BY modified_gmt DESC LIMIT %d',
+				Installer::content_index_table(),
+				$limit
+			)
+		);
+
+		return array_values( array_filter( array_map( 'absint', (array) $ids ) ) );
+	}
+
+	/**
 	 * Return one indexed content item.
 	 *
 	 * @param int $object_id Content item ID.

@@ -16,14 +16,116 @@ use Aculect\AICompanion\Brand\BrandProfile;
  */
 final class ContentIndexer {
 
-	private const DEFAULT_BATCH_LIMIT = 25;
-	private const MAX_BATCH_LIMIT     = 100;
-	private const MAX_CHUNK_WORDS     = 750;
-	private const INDEXABLE_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
+	public const STALE_SWEEP_HOOK = 'aculect_ai_companion_content_index_stale_sweep';
+
+	private const DEFAULT_BATCH_LIMIT  = 25;
+	private const MAX_BATCH_LIMIT      = 100;
+	private const MAX_CHUNK_WORDS      = 750;
+	private const MAX_RESOLVED_LINKS   = 50;
+	private const MAX_PENDING_IDS      = 1000;
+	private const PENDING_IDS_OPTION   = 'aculect_ai_companion_pending_index_ids';
+	private const INDEXABLE_STATUSES   = array( 'publish', 'future', 'draft', 'pending', 'private' );
+
+	/**
+	 * Per-request URL to post ID resolution cache.
+	 *
+	 * url_to_postid() is one of the most expensive single calls in WordPress;
+	 * link-heavy posts repeat the same internal URLs constantly.
+	 *
+	 * @var array<string, int>
+	 */
+	private static array $url_post_ids = array();
 
 	public function __construct(
 		private readonly ?ContentIndexRepository $repository = null
 	) {
+	}
+
+	/**
+	 * Defer indexing of one post to the queued stale sweep.
+	 *
+	 * Used by bulk contexts (WP-CLI imports, cron, REST batch writes) where
+	 * running the full indexer inline per post would multiply request time.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function defer_index_post( int $post_id ): void {
+		$post_id = absint( $post_id );
+		if ( 0 >= $post_id ) {
+			return;
+		}
+
+		$pending = get_option( self::PENDING_IDS_OPTION, array() );
+		$pending = is_array( $pending ) ? array_values( array_filter( array_map( 'absint', $pending ) ) ) : array();
+
+		if ( ! in_array( $post_id, $pending, true ) ) {
+			$pending[] = $post_id;
+			update_option( self::PENDING_IDS_OPTION, array_slice( $pending, -self::MAX_PENDING_IDS ), false );
+		}
+
+		$this->mark_post_stale( $post_id );
+		$this->schedule_stale_sweep();
+	}
+
+	/**
+	 * Schedule one debounced stale-sweep cron event.
+	 *
+	 * @param int $delay Seconds before the sweep runs.
+	 */
+	public function schedule_stale_sweep( int $delay = 60 ): void {
+		if ( ! function_exists( 'wp_schedule_single_event' ) ) {
+			return;
+		}
+
+		if ( function_exists( 'wp_next_scheduled' ) && false !== wp_next_scheduled( self::STALE_SWEEP_HOOK ) ) {
+			return;
+		}
+
+		wp_schedule_single_event( time() + max( 5, $delay ), self::STALE_SWEEP_HOOK );
+	}
+
+	/**
+	 * Re-index deferred posts and stale rows in bounded batches.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function run_stale_sweep(): array {
+		$pending = get_option( self::PENDING_IDS_OPTION, array() );
+		$pending = is_array( $pending ) ? array_values( array_unique( array_filter( array_map( 'absint', $pending ) ) ) ) : array();
+
+		$ids = array_slice( $pending, 0, self::MAX_BATCH_LIMIT );
+		if ( count( $ids ) < self::MAX_BATCH_LIMIT ) {
+			$stale = $this->repo()->stale_object_ids( self::MAX_BATCH_LIMIT - count( $ids ) );
+			$ids   = array_values( array_unique( array_merge( $ids, $stale ) ) );
+		}
+
+		$remaining = array_values( array_diff( $pending, $ids ) );
+		if ( array() === $remaining ) {
+			delete_option( self::PENDING_IDS_OPTION );
+		} else {
+			update_option( self::PENDING_IDS_OPTION, $remaining, false );
+		}
+
+		$processed = 0;
+		$errors    = 0;
+		foreach ( $ids as $post_id ) {
+			$result = $this->index_post( $post_id );
+			if ( 'error' === ( $result['status'] ?? '' ) ) {
+				++$errors;
+			}
+			++$processed;
+		}
+
+		if ( array() !== $remaining || count( $ids ) >= self::MAX_BATCH_LIMIT ) {
+			$this->schedule_stale_sweep( 30 );
+		}
+
+		return array(
+			'status'          => 'complete',
+			'processed_items' => $processed,
+			'error_count'     => $errors,
+			'remaining_items' => count( $remaining ),
+		);
 	}
 
 	/**
@@ -386,15 +488,22 @@ final class ContentIndexer {
 			return array();
 		}
 
-		$links = array();
+		$links    = array();
+		$resolved = 0;
 		foreach ( array_slice( $matches, 0, 300 ) as $match ) {
 			$url = esc_url_raw( html_entity_decode( (string) $match[2], ENT_QUOTES ) );
 			if ( '' === $url ) {
 				continue;
 			}
 
+			$target_id = 0;
+			if ( $resolved < self::MAX_RESOLVED_LINKS && $this->is_internal_url( $url ) ) {
+				$target_id = $this->target_post_id( $url );
+				++$resolved;
+			}
+
 			$links[] = array(
-				'target_id'   => $this->target_post_id( $url ),
+				'target_id'   => $target_id,
 				'target_url'  => $url,
 				'anchor_text' => $this->plain_text( (string) $match[3] ),
 				'rel'         => '',
@@ -403,6 +512,26 @@ final class ContentIndexer {
 		}
 
 		return $links;
+	}
+
+	/**
+	 * Check whether a URL points at this site before resolving it to a post.
+	 *
+	 * Cheap host comparison so external links never trigger url_to_postid().
+	 *
+	 * @param string $url Link URL.
+	 */
+	private function is_internal_url( string $url ): bool {
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		if ( '' === $host ) {
+			return str_starts_with( $url, '/' );
+		}
+
+		if ( ! function_exists( 'home_url' ) ) {
+			return false;
+		}
+
+		return $host === strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
 	}
 
 	/**
@@ -730,7 +859,11 @@ final class ContentIndexer {
 			return 0;
 		}
 
-		return absint( url_to_postid( $url ) );
+		if ( ! isset( self::$url_post_ids[ $url ] ) ) {
+			self::$url_post_ids[ $url ] = absint( url_to_postid( $url ) );
+		}
+
+		return self::$url_post_ids[ $url ];
 	}
 
 	/**

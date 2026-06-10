@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Server;
 
+use Aculect\AICompanion\Diagnostics\Logger;
 use Defuse\Crypto\Key;
 use phpseclib3\Crypt\RSA;
 use RuntimeException;
@@ -12,22 +13,33 @@ use RuntimeException;
  * Manages OAuth signing and encryption keys.
  *
  * Keys are generated lazily and stored in non-autoloaded WordPress options to
- * avoid filesystem permission issues on managed WordPress hosts.
+ * avoid filesystem permission issues on managed WordPress hosts. The private
+ * signing key and the Defuse encryption key are encrypted at rest through
+ * SecretsVault; the public key is stored as-is because it is public material.
+ *
+ * When the vault master key changes (salt rotation or a new
+ * ACULECT_AI_COMPANION_ENCRYPTION_KEY constant), stored secrets become
+ * undecryptable. That is handled by regenerating the key pair: existing
+ * access tokens stop validating and connected AI clients re-authorize
+ * through the normal OAuth challenge. No data is lost.
  */
 final class KeyManager {
 
 	private const OPTION_ENCRYPTION_KEY = 'aculect_ai_companion_oauth_encryption_key';
 	private const OPTION_PRIVATE_KEY    = 'aculect_ai_companion_oauth_private_key';
 	private const OPTION_PUBLIC_KEY     = 'aculect_ai_companion_oauth_public_key';
+	private const OPTION_KEY_CHECK      = 'aculect_ai_companion_oauth_key_check';
 
 	/**
 	 * Return the Defuse encryption key used by league/oauth2-server.
 	 */
 	public static function encryption_key(): string {
-		$key = (string) get_option( self::OPTION_ENCRYPTION_KEY, '' );
+		self::guard_master_key_rotation();
+
+		$key = self::read_secret_option( self::OPTION_ENCRYPTION_KEY );
 		if ( '' === $key ) {
 			$key = Key::createNewRandomKey()->saveToAsciiSafeString();
-			update_option( self::OPTION_ENCRYPTION_KEY, $key, false );
+			self::write_secret_option( self::OPTION_ENCRYPTION_KEY, $key );
 		}
 
 		return $key;
@@ -39,10 +51,12 @@ final class KeyManager {
 	 * @throws RuntimeException When a valid private key cannot be generated.
 	 */
 	public static function private_key(): string {
-		$key = (string) get_option( self::OPTION_PRIVATE_KEY, '' );
+		self::guard_master_key_rotation();
+
+		$key = self::read_secret_option( self::OPTION_PRIVATE_KEY );
 		if ( '' === $key || ! self::is_private_key_valid( $key ) ) {
 			self::generate_key_pair();
-			$key = (string) get_option( self::OPTION_PRIVATE_KEY, '' );
+			$key = self::read_secret_option( self::OPTION_PRIVATE_KEY );
 		}
 
 		if ( '' === $key || ! self::is_private_key_valid( $key ) ) {
@@ -58,6 +72,8 @@ final class KeyManager {
 	 * @throws RuntimeException When a valid public key cannot be generated.
 	 */
 	public static function public_key(): string {
+		self::guard_master_key_rotation();
+
 		$key = (string) get_option( self::OPTION_PUBLIC_KEY, '' );
 		if ( '' === $key || ! self::is_public_key_valid( $key ) ) {
 			self::generate_key_pair();
@@ -72,12 +88,99 @@ final class KeyManager {
 	}
 
 	/**
+	 * Check whether secrets are currently stored encrypted.
+	 *
+	 * Used by diagnostics so site owners can verify the at-rest posture and
+	 * see whether the dedicated constant is active.
+	 *
+	 * @return array{encrypted: bool, vault_available: bool, dedicated_constant: bool}
+	 */
+	public static function storage_status(): array {
+		$stored = (string) get_option( self::OPTION_PRIVATE_KEY, '' );
+
+		return array(
+			'encrypted'          => '' !== $stored && SecretsVault::is_encrypted( $stored ),
+			'vault_available'    => SecretsVault::is_available(),
+			'dedicated_constant' => SecretsVault::uses_dedicated_constant(),
+		);
+	}
+
+	/**
 	 * Delete stored OAuth keys during full uninstall cleanup.
 	 */
 	public static function delete_keys(): void {
 		delete_option( self::OPTION_ENCRYPTION_KEY );
 		delete_option( self::OPTION_PRIVATE_KEY );
 		delete_option( self::OPTION_PUBLIC_KEY );
+		delete_option( self::OPTION_KEY_CHECK );
+	}
+
+	/**
+	 * Read a secret option, decrypting and migrating legacy plaintext rows.
+	 *
+	 * @param string $option Option name.
+	 */
+	private static function read_secret_option( string $option ): string {
+		$stored = (string) get_option( $option, '' );
+		if ( '' === $stored ) {
+			return '';
+		}
+
+		if ( SecretsVault::is_encrypted( $stored ) ) {
+			return SecretsVault::decrypt( $stored );
+		}
+
+		// Legacy plaintext row from <= 0.5.0: migrate in place.
+		self::write_secret_option( $option, $stored );
+
+		return $stored;
+	}
+
+	/**
+	 * Persist a secret option encrypted when the vault is available.
+	 *
+	 * @param string $option Option name.
+	 * @param string $value  Secret value.
+	 */
+	private static function write_secret_option( string $option, string $value ): void {
+		$encrypted = SecretsVault::encrypt( $value );
+		update_option( $option, '' === $encrypted ? $value : $encrypted, false );
+		update_option( self::OPTION_KEY_CHECK, SecretsVault::key_check_value(), false );
+	}
+
+	/**
+	 * Detect master-key rotation and regenerate keys instead of failing.
+	 *
+	 * Runs before any secret read. When the stored key-check no longer
+	 * matches the active master key, every encrypted secret is unreadable;
+	 * deleting them triggers lazy regeneration and clients re-authorize.
+	 */
+	private static function guard_master_key_rotation(): void {
+		if ( ! SecretsVault::is_available() ) {
+			return;
+		}
+
+		$stored_check = (string) get_option( self::OPTION_KEY_CHECK, '' );
+		if ( '' === $stored_check ) {
+			return;
+		}
+
+		if ( hash_equals( $stored_check, SecretsVault::key_check_value() ) ) {
+			return;
+		}
+
+		delete_option( self::OPTION_ENCRYPTION_KEY );
+		delete_option( self::OPTION_PRIVATE_KEY );
+		delete_option( self::OPTION_PUBLIC_KEY );
+		delete_option( self::OPTION_KEY_CHECK );
+
+		if ( class_exists( Logger::class ) ) {
+			( new Logger() )->warning(
+				'oauth.key_rotation_detected',
+				'OAuth secret encryption key changed (salt rotation or new constant). Signing keys were regenerated; connected AI clients must re-authorize.',
+				array( 'error_code' => 'key_rotation' )
+			);
+		}
 	}
 
 	/**
@@ -95,7 +198,7 @@ final class KeyManager {
 			throw new RuntimeException( 'Unable to generate OAuth signing keys.' );
 		}
 
-		update_option( self::OPTION_PRIVATE_KEY, $key_pair['private'], false );
+		self::write_secret_option( self::OPTION_PRIVATE_KEY, $key_pair['private'] );
 		update_option( self::OPTION_PUBLIC_KEY, $key_pair['public'], false );
 	}
 

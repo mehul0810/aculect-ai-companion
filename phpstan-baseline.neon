@@ -1,0 +1,6 @@
+# PHPStan baseline: existing debt frozen at the level-6 -> level-8 bump.
+# Regenerate with:
+#   vendor/bin/phpstan analyse -c phpstan.neon.dist --memory-limit=1G --generate-baseline
+# Policy: new code must pass level 8 clean; shrink this file every release.
+parameters:
+  ignoreErrors: []

@@ -229,7 +229,8 @@ final class McpController {
 				return $this->rpc_result( $id, $this->initialize_payload() );
 
 			case 'tools/list':
-				return $this->rpc_result( $id, $this->list_tools() );
+				$cursor = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
+				return $this->rpc_result( $id, $this->list_tools( $cursor ) );
 
 			case 'tools/call':
 				$registry             = new AbilitiesRegistry();
@@ -446,6 +447,11 @@ final class McpController {
 
 	/**
 	 * Return a minimal server-sent event stream for clients probing SSE support.
+	 *
+	 * Deliberately echoes and exits inside a REST callback: SSE cannot be
+	 * represented as a WP_REST_Response, and exiting skips rest_post_dispatch.
+	 * Auth has already passed in the permission callback by this point, so no
+	 * challenge headers are needed on this path.
 	 */
 	private function send_event_stream(): void {
 		status_header( 200 );
@@ -458,26 +464,65 @@ final class McpController {
 	}
 
 	/**
-	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
+	 * Build the complete, unpaginated tool manifest for diagnostics and exports.
 	 *
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
 	public function tool_manifest_for_current_user(): array {
-		return $this->list_tools();
-	}
-
-	/**
-	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
-	 *
-	 * @return array{tools: list<array<string, mixed>>}
-	 */
-	private function list_tools(): array {
 		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$modules = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
 		);
+	}
+
+	/**
+	 * Tools returned per tools/list page. Below typical client truncation
+	 * thresholds while keeping most installs single-page.
+	 */
+	private const TOOLS_PAGE_SIZE = 60;
+
+	/**
+	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
+	 *
+	 * Supports MCP cursor pagination so large tool manifests are not
+	 * truncated by clients with payload limits.
+	 *
+	 * @param string $cursor Opaque cursor from a previous page.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 */
+	private function list_tools( string $cursor = '' ): array {
+		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id );
+		$tools   = array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
+
+		$offset = $this->tools_cursor_offset( $cursor );
+		$page   = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
+		$result = array( 'tools' => $page );
+
+		if ( $offset + count( $page ) < count( $tools ) ) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Opaque MCP pagination cursor, not obfuscation.
+			$result['nextCursor'] = base64_encode( (string) ( $offset + count( $page ) ) );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Decode a tools/list cursor into a list offset.
+	 *
+	 * @param string $cursor Opaque cursor value.
+	 */
+	private function tools_cursor_offset( string $cursor ): int {
+		if ( '' === $cursor ) {
+			return 0;
+		}
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Opaque MCP pagination cursor, not obfuscation.
+		$decoded = base64_decode( $cursor, true );
+
+		return false === $decoded ? 0 : max( 0, absint( $decoded ) );
 	}
 
 	/**

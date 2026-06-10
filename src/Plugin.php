@@ -77,22 +77,7 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
-		add_action( 'admin_post_aculect_ai_companion_save_abilities', array( $this, 'handle_save_abilities' ) );
-		add_action( 'admin_post_aculect_ai_companion_save_role_abilities', array( $this, 'handle_save_role_abilities' ) );
-		add_action( 'admin_post_aculect_ai_companion_save_advanced', array( $this, 'handle_save_advanced' ) );
-		add_action( 'admin_post_aculect_ai_companion_export_settings', array( $this, 'handle_export_settings' ) );
-		add_action( 'admin_post_aculect_ai_companion_export_mcp_tool_manifest', array( $this, 'handle_export_mcp_tool_manifest' ) );
-		add_action( 'admin_post_aculect_ai_companion_import_settings', array( $this, 'handle_import_settings' ) );
-		add_action( 'admin_post_aculect_ai_companion_reset_settings', array( $this, 'handle_reset_settings' ) );
-		add_action( 'admin_post_aculect_ai_companion_save_brand', array( $this, 'handle_save_brand' ) );
-		add_action( 'admin_post_aculect_ai_companion_review_learning_suggestion', array( $this, 'handle_review_learning_suggestion' ) );
-		add_action( 'admin_post_aculect_ai_companion_run_connection_diagnostics', array( $this, 'handle_run_connection_diagnostics' ) );
-		add_action( 'admin_post_aculect_ai_companion_clear_logs', array( $this, 'handle_clear_logs' ) );
-		add_action( 'admin_post_aculect_ai_companion_set_lockdown', array( $this, 'handle_set_lockdown' ) );
-		add_action( 'admin_post_aculect_ai_companion_set_session_access_level', array( $this, 'handle_set_session_access_level' ) );
-		add_action( 'admin_post_aculect_ai_companion_set_session_write_permission', array( $this, 'handle_set_session_write_permission' ) );
-		add_action( 'admin_post_aculect_ai_companion_revoke_session', array( $this, 'handle_revoke_session' ) );
-		add_action( 'admin_post_aculect_ai_companion_revoke_all_sessions', array( $this, 'handle_revoke_all_sessions' ) );
+		$this->register_settings_actions();
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'save_post', array( $this, 'handle_content_index_save' ), 50, 3 );
@@ -110,6 +95,43 @@ final class Plugin {
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();
 		OAuthStorageMaintenance::maybe_prune();
+	}
+
+	/**
+	 * Admin-post action suffixes mapped to their SettingsPage handlers.
+	 *
+	 * One map instead of sixteen one-line proxy methods; the proxies added
+	 * no behavior and doubled the surface to keep in sync.
+	 */
+	private const SETTINGS_ACTIONS = array(
+		'save_abilities'               => 'handle_save_abilities',
+		'save_role_abilities'          => 'handle_save_role_abilities',
+		'save_advanced'                => 'handle_save_advanced',
+		'export_settings'              => 'handle_export_settings',
+		'export_mcp_tool_manifest'     => 'handle_export_mcp_tool_manifest',
+		'import_settings'              => 'handle_import_settings',
+		'reset_settings'               => 'handle_reset_settings',
+		'save_brand'                   => 'handle_save_brand',
+		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
+		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
+		'clear_logs'                   => 'handle_clear_logs',
+		'set_lockdown'                 => 'handle_set_lockdown',
+		'set_session_access_level'     => 'handle_set_session_access_level',
+		'set_session_write_permission' => 'handle_set_session_write_permission',
+		'revoke_session'               => 'handle_revoke_session',
+		'revoke_all_sessions'          => 'handle_revoke_all_sessions',
+	);
+
+	/**
+	 * Register all SettingsPage admin-post handlers from the action map.
+	 */
+	private function register_settings_actions(): void {
+		foreach ( self::SETTINGS_ACTIONS as $action => $method ) {
+			add_action(
+				'admin_post_aculect_ai_companion_' . $action,
+				static fn () => ( new SettingsPage() )->{$method}()
+			);
+		}
 	}
 
 	/**
@@ -231,118 +253,6 @@ final class Plugin {
 	 */
 	public function register_user_access_controls(): void {
 		( new UserAccessControls() )->register();
-	}
-
-	/**
-	 * Proxy abilities-save form handling to the settings controller.
-	 */
-	public function handle_save_abilities(): void {
-		( new SettingsPage() )->handle_save_abilities();
-	}
-
-	/**
-	 * Proxy role abilities-save form handling to the settings controller.
-	 */
-	public function handle_save_role_abilities(): void {
-		( new SettingsPage() )->handle_save_role_abilities();
-	}
-
-	/**
-	 * Proxy advanced settings form handling to the settings controller.
-	 */
-	public function handle_save_advanced(): void {
-		( new SettingsPage() )->handle_save_advanced();
-	}
-
-	/**
-	 * Proxy settings export handling to the settings controller.
-	 */
-	public function handle_export_settings(): void {
-		( new SettingsPage() )->handle_export_settings();
-	}
-
-	/**
-	 * Proxy MCP tool manifest export handling to the settings controller.
-	 */
-	public function handle_export_mcp_tool_manifest(): void {
-		( new SettingsPage() )->handle_export_mcp_tool_manifest();
-	}
-
-	/**
-	 * Proxy settings import handling to the settings controller.
-	 */
-	public function handle_import_settings(): void {
-		( new SettingsPage() )->handle_import_settings();
-	}
-
-	/**
-	 * Proxy settings reset handling to the settings controller.
-	 */
-	public function handle_reset_settings(): void {
-		( new SettingsPage() )->handle_reset_settings();
-	}
-
-	/**
-	 * Proxy brand profile form handling to the settings controller.
-	 */
-	public function handle_save_brand(): void {
-		( new SettingsPage() )->handle_save_brand();
-	}
-
-	/**
-	 * Proxy learning suggestion review handling to the settings controller.
-	 */
-	public function handle_review_learning_suggestion(): void {
-		( new SettingsPage() )->handle_review_learning_suggestion();
-	}
-
-	/**
-	 * Proxy diagnostic log clearing to the settings controller.
-	 */
-	public function handle_clear_logs(): void {
-		( new SettingsPage() )->handle_clear_logs();
-	}
-
-	/**
-	 * Handle global AI access pause/resume actions.
-	 */
-	public function handle_set_lockdown(): void {
-		( new SettingsPage() )->handle_set_lockdown();
-	}
-
-	/**
-	 * Set the admin-managed access level for one connector session.
-	 */
-	public function handle_set_session_access_level(): void {
-		( new SettingsPage() )->handle_set_session_access_level();
-	}
-
-	/**
-	 * Toggle direct write permission for one connector session.
-	 */
-	public function handle_set_session_write_permission(): void {
-		( new SettingsPage() )->handle_set_session_write_permission();
-	}
-
-	/**
-	 * Run connection diagnostics from the settings screen.
-	 */
-	public function handle_run_connection_diagnostics(): void {
-		( new SettingsPage() )->handle_run_connection_diagnostics();
-	}
-
-	/**
-	 * Proxy single-session revocation to the settings controller.
-	 */
-	public function handle_revoke_session(): void {
-		( new SettingsPage() )->handle_revoke_session();
-	}
-
-	/**
-	 * Proxy all-session revocation to the settings controller.
-	 */
-	public function handle_revoke_all_sessions(): void {
-		( new SettingsPage() )->handle_revoke_all_sessions();
 	}
 
 	/**

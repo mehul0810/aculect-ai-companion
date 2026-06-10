@@ -619,10 +619,71 @@ final class ContentIndexer {
 	/**
 	 * Extract a deterministic block list from serialized block markup.
 	 *
+	 * Uses the core block parser so nested inner blocks of layout containers
+	 * are chunked individually instead of being swallowed into the parent
+	 * match, which degraded chunk quality on builder-style pages. The regex
+	 * path remains as a non-WordPress fallback for isolated unit tests.
+	 *
 	 * @param string $content Serialized content.
 	 * @return list<array{name: string, markup: string}>
 	 */
 	private function serialized_blocks( string $content ): array {
+		if ( ! function_exists( 'parse_blocks' ) || ! function_exists( 'serialize_block' ) ) {
+			return $this->serialized_blocks_from_regex( $content );
+		}
+
+		$flat = array();
+		$this->flatten_blocks( (array) parse_blocks( $content ), $flat );
+
+		return $flat;
+	}
+
+	/**
+	 * Flatten parsed blocks, recursing into layout containers.
+	 *
+	 * @param array<int, mixed>                        $blocks Parsed block list.
+	 * @param list<array{name: string, markup: string}> $flat   Output accumulator.
+	 */
+	private function flatten_blocks( array $blocks, array &$flat ): void {
+		$containers = array( 'core/group', 'core/columns', 'core/column', 'core/cover', 'core/stack', 'core/row' );
+
+		foreach ( $blocks as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+
+			$name = (string) ( $block['blockName'] ?? '' );
+			if ( '' === $name ) {
+				$html = trim( (string) ( $block['innerHTML'] ?? '' ) );
+				if ( '' !== $html ) {
+					$flat[] = array(
+						'name'   => 'core/freeform',
+						'markup' => $html,
+					);
+				}
+				continue;
+			}
+
+			$inner = is_array( $block['innerBlocks'] ?? null ) ? $block['innerBlocks'] : array();
+			if ( array() !== $inner && in_array( $name, $containers, true ) ) {
+				$this->flatten_blocks( $inner, $flat );
+				continue;
+			}
+
+			$flat[] = array(
+				'name'   => $name,
+				'markup' => (string) serialize_block( $block ),
+			);
+		}
+	}
+
+	/**
+	 * Regex fallback block extraction for environments without the parser.
+	 *
+	 * @param string $content Serialized content.
+	 * @return list<array{name: string, markup: string}>
+	 */
+	private function serialized_blocks_from_regex( string $content ): array {
 		if ( ! preg_match_all( '/<!--\s+wp:([A-Za-z0-9_\/.-]+)(?:\s+[^>]*)?(\/)?-->(?:(.*?)<!--\s+\/wp:\1\s+-->)?/is', $content, $matches, PREG_SET_ORDER ) ) {
 			return array();
 		}

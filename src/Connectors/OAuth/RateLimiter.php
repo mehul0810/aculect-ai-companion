@@ -73,10 +73,11 @@ final class RateLimiter {
 	 * limiter error code so other 429 responses are untouched.
 	 */
 	public static function register_retry_after_header(): void {
-		if ( false !== has_filter( 'rest_post_dispatch', array( self::class, 'filter_retry_after_header' ) ) ) {
+		if ( function_exists( 'has_filter' ) && false !== has_filter( 'rest_post_dispatch', array( self::class, 'filter_retry_after_header' ) ) ) {
 			return;
 		}
 
+		// Identical callback + priority: WordPress deduplicates re-registration.
 		add_filter( 'rest_post_dispatch', array( self::class, 'filter_retry_after_header' ), 10, 1 );
 	}
 

@@ -18,18 +18,18 @@ final class ContentIndexer {
 
 	public const STALE_SWEEP_HOOK = 'aculect_ai_companion_content_index_stale_sweep';
 
-	private const DEFAULT_BATCH_LIMIT  = 25;
-	private const MAX_BATCH_LIMIT      = 100;
-	private const MAX_CHUNK_WORDS      = 750;
-	private const MAX_RESOLVED_LINKS   = 50;
-	private const MAX_PENDING_IDS      = 1000;
-	private const PENDING_IDS_OPTION   = 'aculect_ai_companion_pending_index_ids';
-	private const INDEXABLE_STATUSES   = array( 'publish', 'future', 'draft', 'pending', 'private' );
+	private const DEFAULT_BATCH_LIMIT = 25;
+	private const MAX_BATCH_LIMIT     = 100;
+	private const MAX_CHUNK_WORDS     = 750;
+	private const MAX_RESOLVED_LINKS  = 50;
+	private const MAX_PENDING_IDS     = 1000;
+	private const PENDING_IDS_OPTION  = 'aculect_ai_companion_pending_index_ids';
+	private const INDEXABLE_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
 
 	/**
 	 * Per-request URL to post ID resolution cache.
 	 *
-	 * url_to_postid() is one of the most expensive single calls in WordPress;
+	 * Calling url_to_postid() is one of the most expensive operations in WordPress;
 	 * link-heavy posts repeat the same internal URLs constantly.
 	 *
 	 * @var array<string, int>
@@ -531,7 +531,7 @@ final class ContentIndexer {
 			return false;
 		}
 
-		return $host === strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+		return strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ) === $host;
 	}
 
 	/**
@@ -641,7 +641,7 @@ final class ContentIndexer {
 	/**
 	 * Flatten parsed blocks, recursing into layout containers.
 	 *
-	 * @param array<int, mixed>                        $blocks Parsed block list.
+	 * @param array<int, mixed>                         $blocks Parsed block list.
 	 * @param list<array{name: string, markup: string}> $flat   Output accumulator.
 	 */
 	private function flatten_blocks( array $blocks, array &$flat ): void {

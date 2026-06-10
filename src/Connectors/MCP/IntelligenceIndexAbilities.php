@@ -457,7 +457,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	/**
 	 * Warm the post cache for one result page before capability filtering.
 	 *
-	 * current_user_can( 'read_post', $id ) loads the post; without priming,
+	 * Checking current_user_can( 'read_post', $id ) loads the post; without priming,
 	 * each row costs one query (N+1 across overfetch pages).
 	 *
 	 * @param array<int, mixed> $items    Raw result rows.

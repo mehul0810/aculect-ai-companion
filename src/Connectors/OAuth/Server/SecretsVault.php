@@ -92,9 +92,20 @@ final class SecretsVault {
 	 * Check whether the admin defined the dedicated encryption constant.
 	 */
 	public static function uses_dedicated_constant(): bool {
-		return defined( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' )
-			&& is_string( ACULECT_AI_COMPANION_ENCRYPTION_KEY )
-			&& strlen( ACULECT_AI_COMPANION_ENCRYPTION_KEY ) >= 32;
+		return strlen( self::dedicated_constant_value() ) >= 32;
+	}
+
+	/**
+	 * Read the optional wp-config encryption constant.
+	 */
+	private static function dedicated_constant_value(): string {
+		if ( ! defined( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' ) ) {
+			return '';
+		}
+
+		$value = constant( 'ACULECT_AI_COMPANION_ENCRYPTION_KEY' );
+
+		return is_string( $value ) ? $value : '';
 	}
 
 	/**
@@ -112,12 +123,24 @@ final class SecretsVault {
 	 */
 	private static function master_key(): string {
 		if ( self::uses_dedicated_constant() ) {
-			return hash_hkdf( 'sha256', (string) ACULECT_AI_COMPANION_ENCRYPTION_KEY, 32, self::HKDF_INFO );
+			return hash_hkdf( 'sha256', self::dedicated_constant_value(), 32, self::HKDF_INFO );
 		}
 
-		$auth_key        = defined( 'AUTH_KEY' ) && is_string( AUTH_KEY ) ? AUTH_KEY : '';
-		$secure_auth_key = defined( 'SECURE_AUTH_KEY' ) && is_string( SECURE_AUTH_KEY ) ? SECURE_AUTH_KEY : '';
+		return hash_hkdf( 'sha256', self::salt_value( 'AUTH_KEY' ) . '|' . self::salt_value( 'SECURE_AUTH_KEY' ), 32, self::HKDF_INFO );
+	}
 
-		return hash_hkdf( 'sha256', $auth_key . '|' . $secure_auth_key, 32, self::HKDF_INFO );
+	/**
+	 * Read one WordPress salt constant defensively.
+	 *
+	 * @param string $name Constant name.
+	 */
+	private static function salt_value( string $name ): string {
+		if ( ! defined( $name ) ) {
+			return '';
+		}
+
+		$value = constant( $name );
+
+		return is_string( $value ) ? $value : '';
 	}
 }

@@ -140,8 +140,11 @@ final class McpController {
 	 */
 	private function rpc_method_from_request( WP_REST_Request $request ): string {
 		$body = $request->get_json_params();
+		if ( ! is_array( $body ) ) {
+			return '';
+		}
 
-		return is_array( $body ) ? (string) ( $body['method'] ?? '' ) : '';
+		return (string) ( $body['method'] ?? '' );
 	}
 
 	/**
@@ -151,7 +154,11 @@ final class McpController {
 	 */
 	private function rpc_id_from_request( WP_REST_Request $request ): string|int|null {
 		$body = $request->get_json_params();
-		$id   = is_array( $body ) ? ( $body['id'] ?? null ) : null;
+		if ( ! is_array( $body ) ) {
+			return null;
+		}
+
+		$id = $body['id'] ?? null;
 
 		return is_string( $id ) || is_int( $id ) ? $id : null;
 	}

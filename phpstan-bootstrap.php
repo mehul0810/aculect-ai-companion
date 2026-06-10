@@ -18,3 +18,4 @@ defined( 'ACULECT_AI_COMPANION_PLUGIN_URL' ) || define( 'ACULECT_AI_COMPANION_PL
 defined( 'ABSPATH' ) || define( 'ABSPATH', dirname( __DIR__, 3 ) . '/' );
 defined( 'ARRAY_A' ) || define( 'ARRAY_A', 'ARRAY_A' );
 defined( 'HOUR_IN_SECONDS' ) || define( 'HOUR_IN_SECONDS', 3600 );
+defined( 'MINUTE_IN_SECONDS' ) || define( 'MINUTE_IN_SECONDS', 60 );

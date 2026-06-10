@@ -11,10 +11,10 @@ final class ToolSafety {
 
 	public const OPTION_CONFIRMATION_GROUPS = 'aculect_ai_companion_confirmation_groups';
 
-	private const CONFIRMATION_TTL        = 600;
-	private const CONSUMED_RESULT_TTL     = 3600;
-	private const IDEMPOTENCY_TTL         = 86400;
-	private const CONTROL_KEYS            = array( 'dry_run', 'confirmation_token', 'idempotency_key' );
+	private const CONFIRMATION_TTL    = 600;
+	private const CONSUMED_RESULT_TTL = 3600;
+	private const IDEMPOTENCY_TTL     = 86400;
+	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key' );
 
 	/**
 	 * Return selectable non-read-only ability groups.

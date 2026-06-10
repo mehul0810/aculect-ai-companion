@@ -55,7 +55,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->protected_resource_metadata(),
-				'permission_callback' => array( \$this, 'check_discovery_permission' ),
+				'permission_callback' => array( $this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -65,7 +65,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->authorization_server_metadata(),
-				'permission_callback' => array( \$this, 'check_discovery_permission' ),
+				'permission_callback' => array( $this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -75,7 +75,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->protected_resource_metadata(),
-				'permission_callback' => array( \$this, 'check_discovery_permission' ),
+				'permission_callback' => array( $this, 'check_discovery_permission' ),
 			)
 		);
 
@@ -85,7 +85,7 @@ final class DiscoveryController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => fn() => $this->authorization_server_metadata(),
-				'permission_callback' => array( \$this, 'check_discovery_permission' ),
+				'permission_callback' => array( $this, 'check_discovery_permission' ),
 			)
 		);
 	}

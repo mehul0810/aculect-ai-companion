@@ -18,6 +18,7 @@ use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use ReflectionMethod;
+use ReflectionProperty;
 
 /**
  * Verifies public MCP tool payloads remain compatible with assistant clients.
@@ -72,6 +73,26 @@ final class McpControllerTest extends TestCase {
 			self::assertStringNotContainsString( '.', $name );
 			self::assertStringNotContainsString( '/', $name );
 		}
+	}
+
+	public function test_tools_list_filters_write_tools_by_granted_oauth_scopes(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'scopes' => array( 'content:read' ),
+			)
+		);
+
+		$result         = $this->invokePrivate( $controller, 'list_tools' );
+		$tools_by_name  = array_column( $result['tools'], null, 'name' );
+
+		self::assertArrayHasKey( 'content_get_item', $tools_by_name );
+		self::assertArrayNotHasKey( 'content_update_item', $tools_by_name );
 	}
 
 	public function test_openai_chatgpt_and_codex_tool_descriptors_keep_mcp_security_contract(): void {
@@ -581,5 +602,18 @@ final class McpControllerTest extends TestCase {
 		$reflection = new ReflectionMethod( $object, $method );
 
 		return $reflection->invokeArgs( $object, $arguments );
+	}
+
+	/**
+	 * Set a private property for focused unit coverage without widening runtime API.
+	 *
+	 * @param object $object Object instance.
+	 * @param string $name   Property name.
+	 * @param mixed  $value  Property value.
+	 */
+	private function setPrivateProperty( object $object, string $name, mixed $value ): void {
+		$reflection = new ReflectionProperty( $object, $name );
+		$reflection->setAccessible( true );
+		$reflection->setValue( $object, $value );
 	}
 }

@@ -91,7 +91,7 @@ final class RoleAbilitiesPolicy {
 			return $this->default_read_only_ids( $registry );
 		}
 
-		$roles = (array) ( $user->roles ?? array() );
+		$roles = (array) $user->roles;
 		if ( array() === $roles ) {
 			return $this->default_read_only_ids( $registry );
 		}

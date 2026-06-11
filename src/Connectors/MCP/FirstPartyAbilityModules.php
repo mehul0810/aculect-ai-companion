@@ -200,7 +200,7 @@ final class FirstPartyAbilityModules {
 						),
 						'excerpt'        => array( 'type' => 'string' ),
 						'slug'           => array( 'type' => 'string' ),
-						'status'         => array( 'type' => 'string' ),
+						'status'         => $this->content_status_schema(),
 						'date'           => $this->content_date_schema(),
 						'featured_media' => array(
 							'type'        => 'integer',
@@ -232,7 +232,7 @@ final class FirstPartyAbilityModules {
 						),
 						'excerpt'              => array( 'type' => 'string' ),
 						'slug'                 => array( 'type' => 'string' ),
-						'status'               => array( 'type' => 'string' ),
+						'status'               => $this->content_status_schema(),
 						'date'                 => $this->content_date_schema(),
 						'featured_media'       => array(
 							'type'        => 'integer',
@@ -884,6 +884,7 @@ final class FirstPartyAbilityModules {
 						'description'          => 'Map section IDs to serialized block content or objects with a content field. The workflow combines sections into a full block document before validation.',
 						'additionalProperties' => true,
 					),
+					'status'      => $this->content_status_schema(),
 				),
 				$this->workflow_content_fields(),
 				$this->rankmath_fields()
@@ -1193,7 +1194,20 @@ final class FirstPartyAbilityModules {
 	private function content_date_schema(): array {
 		return array(
 			'type'        => 'string',
-			'description' => 'Publication date as YYYY-MM-DDTHH:MM:SS in the site timezone, YYYY-MM-DD HH:MM:SS, or ISO 8601 with a timezone offset. Future publish dates may schedule the item according to WordPress rules.',
+			'description' => 'Publication date as YYYY-MM-DDTHH:MM:SS in the site timezone, YYYY-MM-DD HH:MM:SS, or ISO 8601 with a timezone offset. Pass date, not date_gmt. Use status future with a future date to schedule.',
+		);
+	}
+
+	/**
+	 * Build the writable content status schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function content_status_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ),
+			'description' => 'Writable WordPress status. Use future with date to schedule. Invalid statuses are rejected instead of being converted to draft.',
 		);
 	}
 

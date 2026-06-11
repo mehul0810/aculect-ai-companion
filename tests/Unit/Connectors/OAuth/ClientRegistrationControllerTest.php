@@ -19,6 +19,12 @@ use ReflectionMethod;
  */
 final class ClientRegistrationControllerTest extends TestCase {
 
+	public function test_registration_permission_does_not_rate_limit_valid_dcr_retries(): void {
+		$controller = new ClientRegistrationController();
+
+		self::assertTrue( $controller->check_registration_permission() );
+	}
+
 	public function test_redirect_uris_are_validated_deduplicated_and_limited_to_safe_schemes(): void {
 		$uris = $this->invokePrivate(
 			new ClientRegistrationController(),

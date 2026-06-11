@@ -161,26 +161,40 @@ For Claude, first remove and re-add the custom connector after tool metadata cha
 
 Run these before creating a beta release that touches OAuth, MCP discovery, settings setup, rewrites, or connector metadata.
 
-### DCR Should Not 429
+### Automated OAuth Connector Smoke
+
+Run the automated smoke gate against a local or staging WordPress site with Aculect AI Companion active. `ACULECT_SMOKE_COOKIE_HEADER` must be copied from a logged-in WordPress admin browser session for the target site. Do not paste this value into issue comments, logs, or release notes.
+
+```bash
+ACULECT_SMOKE_BASE_URL='http://localhost:8895' \
+ACULECT_SMOKE_COOKIE_HEADER='wordpress_logged_in_...=...' \
+composer smoke:oauth
+```
+
+Expected: DCR returns `201`, logged-out authorize redirects to `wp-login.php` with `redirect_to` targeting `options-general.php?page=aculect-ai-companion&view=oauth-consent`, and logged-in authorize redirects directly to the consent screen.
+
+The script prints only sanitized pass/fail output. It does not print cookies, client secrets, tokens, authorization codes, or raw response bodies. Increase retry coverage with `ACULECT_SMOKE_DCR_ATTEMPTS=3` or `--dcr-attempts=3` when validating DCR retry behavior.
+
+### Manual DCR Fallback
+
+Use these commands only when debugging a failing automated smoke run.
 
 ```bash
 base='http://localhost:8895'
-for i in 1 2 3; do
-  curl -sS -o "/tmp/aculect-ai-companion-dcr-${i}.json" -w "dcr_${i}_status=%{http_code}\n" \
-    -X POST "$base/wp-json/aculect-ai-companion/v1/oauth/register" \
-    -H 'Content-Type: application/json' \
-    --data "{\"client_name\":\"Aculect AI Companion DCR Smoke ${i}\",\"redirect_uris\":[\"https://chatgpt.com/connector/oauth/smoke-${i}\"]}"
-done
+curl -sS -o /tmp/aculect-ai-companion-dcr.json -w "dcr_status=%{http_code}\n" \
+  -X POST "$base/wp-json/aculect-ai-companion/v1/oauth/register" \
+  -H 'Content-Type: application/json' \
+  --data '{"client_name":"Aculect AI Companion DCR Smoke","redirect_uris":["https://chatgpt.com/connector/oauth/smoke"]}'
 ```
 
-Expected: every response is `201`.
+Expected: response is `201`.
 
 ### Logged-Out Authorize Should Return To Consent After Login
 
 ```bash
 base='http://localhost:8895'
 client_id='CLIENT_FROM_DCR_RESPONSE'
-curl -sSI "$base/wp-json/aculect-ai-companion/v1/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
+curl -sSI "$base/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
   | tr -d '\r' \
   | grep -Ei '^(HTTP/|location:)'
 ```
@@ -208,6 +222,6 @@ Before a ChatGPT OAuth beta release:
 - Run `composer test`.
 - Run `npm run lint:css` if CSS changed.
 - Run `npm run lint:js` and `npm run build` if settings JS changed.
-- Run the DCR and authorize smoke tests above.
+- Run `composer smoke:oauth` against a local or staging site.
 - Confirm the settings UI still shows only the MCP endpoint as the primary ChatGPT setup field.
 - Confirm the release notes mention any OAuth behavior changes.

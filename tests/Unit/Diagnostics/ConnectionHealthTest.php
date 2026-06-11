@@ -24,6 +24,13 @@ final class ConnectionHealthTest extends TestCase {
 		delete_option( 'aculect_ai_companion_connection_health_transient_probe' );
 		delete_option( 'aculect_ai_companion_secret_storage_key' );
 		$GLOBALS['aculect_ai_companion_test_transients'] = array();
+		unset(
+			$_SERVER['HTTP_CF_RAY'],
+			$_SERVER['HTTP_CF_VISITOR'],
+			$_SERVER['HTTP_CF_CONNECTING_IP'],
+			$_SERVER['HTTP_CF_IPCOUNTRY'],
+			$_SERVER['HTTP_CF_MITIGATED']
+		);
 
 		parent::tearDown();
 	}
@@ -117,6 +124,29 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( array(), $result['details']['duplicate_tool_names'] );
 		self::assertSame( array(), $result['details']['invalid_tool_names'] );
 		self::assertArrayHasKey( 'ability_policy', $result['details'] );
+	}
+
+	public function test_cloudflare_compatibility_check_reports_best_effort_when_not_detected(): void {
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_cloudflare_compatibility' );
+
+		self::assertSame( 'cloudflare_compatibility', $result['id'] );
+		self::assertSame( 'pass', $result['status'] );
+		self::assertFalse( $result['details']['detected'] );
+		self::assertStringContainsString( '/wp-json/aculect-ai-companion/v1/', $result['details']['rule_expression'] );
+	}
+
+	public function test_cloudflare_compatibility_check_warns_when_cloudflare_headers_are_visible(): void {
+		$_SERVER['HTTP_CF_RAY']       = 'test-ray';
+		$_SERVER['HTTP_CF_MITIGATED'] = 'challenge';
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_cloudflare_compatibility' );
+
+		self::assertSame( 'cloudflare_compatibility', $result['id'] );
+		self::assertSame( 'warn', $result['status'] );
+		self::assertTrue( $result['details']['detected'] );
+		self::assertSame( 'test-ray', $result['details']['detected_by']['cf-ray'] );
+		self::assertSame( 'challenge', $result['details']['detected_by']['cf-mitigated'] );
+		self::assertStringContainsString( 'Flexible SSL', $result['remediation'] );
 	}
 
 	public function test_transient_persistence_check_requires_second_run(): void {

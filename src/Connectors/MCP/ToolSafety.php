@@ -111,16 +111,16 @@ final class ToolSafety {
 		return match ( $tool ) {
 			'content.create_item' => match ( $status ) {
 				'trash' => 'destructive',
-				'publish' => 'publish',
+				'future', 'publish' => 'publish',
 				default => 'draft',
 			},
 			'content_workflow.create_draft' => 'draft',
 			'content.update_item' => match ( $status ) {
 				'trash' => 'destructive',
-				'publish' => 'publish',
+				'future', 'publish' => 'publish',
 				default => 'update',
 			},
-				'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
+			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',

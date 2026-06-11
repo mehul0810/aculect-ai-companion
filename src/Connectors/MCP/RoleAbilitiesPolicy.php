@@ -83,13 +83,17 @@ final class RoleAbilitiesPolicy {
 	 */
 	public function allowed_ids_for_user( int $user_id, AbilitiesRegistry $registry ): array {
 		if ( $user_id <= 0 || ! function_exists( 'get_userdata' ) ) {
-			return $registry->enabled_ids();
+			return $this->default_read_only_ids( $registry );
 		}
 
-		$user  = get_userdata( $user_id );
-		$roles = (array) ( $user->roles ?? array() );
+		$user = get_userdata( $user_id );
+		if ( ! is_object( $user ) ) {
+			return $this->default_read_only_ids( $registry );
+		}
+
+		$roles = (array) $user->roles;
 		if ( array() === $roles ) {
-			return $registry->enabled_ids();
+			return $this->default_read_only_ids( $registry );
 		}
 
 		if ( in_array( self::ADMINISTRATOR_ROLE, array_map( 'strval', $roles ), true ) ) {

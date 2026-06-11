@@ -26,7 +26,14 @@
   "scripts": {
     "lint:php": "find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l",
     "lint:wpcs": "phpcs --standard=phpcs.xml.dist",
-    "analyse:mcp": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Connectors/MCP",
+    "analyse:mcp:registry": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/AbilitiesRegistry.php src/Connectors/MCP/AbilityModuleInterface.php src/Connectors/MCP/CallbackAbilityModule.php src/Connectors/MCP/FirstPartyAbilityModules.php src/Connectors/MCP/IntelligenceRegistry.php",
+    "analyse:mcp:runtime": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/AccessLockdown.php src/Connectors/MCP/McpController.php src/Connectors/MCP/McpToolAvailability.php src/Connectors/MCP/RoleAbilitiesPolicy.php src/Connectors/MCP/RoleConnectionEntryPoint.php src/Connectors/MCP/ToolSafety.php src/Connectors/MCP/UserAccessControl.php src/Connectors/MCP/WordPressAbilitiesBridge.php src/Connectors/MCP/WordPressAbilitiesPolicy.php",
+    "analyse:mcp:abilities": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/AbstractAbilityService.php src/Connectors/MCP/AbilitiesService.php src/Connectors/MCP/BlockKnowledgeAbilities.php src/Connectors/MCP/CommentAbilities.php src/Connectors/MCP/ContentAbilities.php src/Connectors/MCP/ContentController.php src/Connectors/MCP/ContentWorkflowAbilities.php src/Connectors/MCP/IntelligenceContext.php src/Connectors/MCP/IntelligenceIndexAbilities.php src/Connectors/MCP/MediaAbilities.php src/Connectors/MCP/MediaUploadGuard.php src/Connectors/MCP/SeoAbilities.php src/Connectors/MCP/SiteAbilities.php src/Connectors/MCP/TaxonomyAbilities.php",
+    "analyse:mcp": [
+      "@analyse:mcp:registry",
+      "@analyse:mcp:runtime",
+      "@analyse:mcp:abilities"
+    ],
     "analyse:core": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Activity src/Admin src/Connectors/OAuth src/Connectors/Providers src/Connectors/Helpers.php src/Diagnostics src/Intelligence src/Plugin.php aculect-ai-companion.php",
     "analyse": [
       "@analyse:mcp",
@@ -36,6 +43,7 @@
     "ci:php": [
       "@lint:php",
       "@lint:wpcs",
+      "@analyse:mcp",
       "@test:unit"
     ],
     "release:ready": [

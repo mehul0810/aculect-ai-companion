@@ -97,20 +97,23 @@ final class McpToolAvailability {
 			)
 		);
 		$roles          = $this->roles_for_user( $user_id );
+		$user_state     = $this->user_policy_state( $user_id, $roles );
 
-		$explicit_role_policy     = count(
+		$explicit_role_policy = count(
 			array_filter(
 				$roles,
 				static fn ( string $role ): bool => $policy->has_explicit_policy( $role )
 			)
 		) > 0;
-		$default_read_only_policy = array() !== $roles
-			&& ! in_array( 'administrator', $roles, true )
-			&& ! $explicit_role_policy;
+		if ( 'default_read_only' === $user_state && $explicit_role_policy ) {
+			$user_state = 'explicit_role_policy';
+		}
+		$default_read_only_policy = 'default_read_only' === $user_state && ! $explicit_role_policy;
 
 		return array(
 			'user_id'                   => $user_id,
 			'user_roles'                => $roles,
+			'user_policy_state'         => $user_state,
 			'global_enabled_count'      => count( $global_enabled ),
 			'role_allowed_count'        => count( $role_allowed ),
 			'exposed_ability_count'     => count( $exposed ),
@@ -122,6 +125,8 @@ final class McpToolAvailability {
 			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $role_allowed ) ),
 			'explicit_role_policy'      => $explicit_role_policy,
 			'default_read_only_policy'  => $default_read_only_policy,
+			'missing_user'              => 'missing_user' === $user_state,
+			'missing_role'              => 'missing_role' === $user_state,
 			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
 			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
 			'scope_aware'               => null !== $scopes,
@@ -152,16 +157,19 @@ final class McpToolAvailability {
 		$policy   = $this->ability_policy_for_user( $user_id, $registry, $granted_scopes );
 
 		return array(
-			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, or oauth_scope) before assuming WordPress data or permissions are missing.',
+			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, missing_user, missing_role, or oauth_scope) before assuming WordPress data or permissions are missing.',
 			'policy'             => array(
 				'user_id'                  => $policy['user_id'],
 				'user_roles'               => $policy['user_roles'],
+				'user_policy_state'        => $policy['user_policy_state'],
 				'exposed_ability_count'    => $policy['exposed_ability_count'],
 				'all_ability_count'        => $policy['all_ability_count'],
 				'explicit_role_policy'     => $policy['explicit_role_policy'],
 				'default_read_only_policy' => $policy['default_read_only_policy'],
 				'scope_aware'              => $policy['scope_aware'],
 				'granted_scopes'           => $policy['granted_scopes'],
+				'missing_user'             => $policy['missing_user'],
+				'missing_role'             => $policy['missing_role'],
 			),
 			'content'            => $this->operation_group(
 				array(
@@ -296,22 +304,19 @@ final class McpToolAvailability {
 		if ( ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
 		} elseif ( ! in_array( $ability_id, $role_allowed, true ) ) {
-			$blocked_by = true === ( $policy['default_read_only_policy'] ?? false ) && null !== $module && ! $module->is_read_only()
-				? 'role_default_read_only'
-				: 'role_policy';
+			$blocked_by = $this->role_block_reason( $policy, $module );
 		} elseif ( $scope_aware && ! $this->scopes_available( $required_scopes, $granted_scopes ) ) {
 			$blocked_by     = 'oauth_scope';
 			$missing_scopes = $this->missing_scopes( $required_scopes, $granted_scopes );
 		} else {
 			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
+				$dependency = $registry->module( $dependency_id );
+
 				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
 					$blocked_by             = 'global_disabled';
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
-					$dependency             = $registry->module( $dependency_id );
-					$blocked_by             = true === ( $policy['default_read_only_policy'] ?? false ) && null !== $dependency && ! $dependency->is_read_only()
-						? 'role_default_read_only'
-						: 'role_policy';
+					$blocked_by             = $this->role_block_reason( $policy, $dependency );
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( $scope_aware ) {
 					$dependency_scopes = null === $dependency ? $registry->required_scopes( $dependency_id ) : $dependency->required_scopes();
@@ -440,6 +445,28 @@ final class McpToolAvailability {
 	}
 
 	/**
+	 * Resolve a role-policy blocker label for operation diagnostics.
+	 *
+	 * @param array<string, mixed>        $policy Ability policy details.
+	 * @param AbilityModuleInterface|null $module Blocked module, if known.
+	 */
+	private function role_block_reason( array $policy, ?AbilityModuleInterface $module ): string {
+		if ( true === ( $policy['missing_user'] ?? false ) ) {
+			return 'missing_user';
+		}
+
+		if ( true === ( $policy['missing_role'] ?? false ) ) {
+			return 'missing_role';
+		}
+
+		if ( true === ( $policy['default_read_only_policy'] ?? false ) && null !== $module && ! $module->is_read_only() ) {
+			return 'role_default_read_only';
+		}
+
+		return 'role_policy';
+	}
+
+	/**
 	 * Return the current WordPress user ID.
 	 */
 	private function current_user_id(): int {
@@ -463,5 +490,33 @@ final class McpToolAvailability {
 		}
 
 		return array_values( array_map( 'strval', (array) $user->roles ) );
+	}
+
+	/**
+	 * Return the role-policy state for a user.
+	 *
+	 * @param int   $user_id WordPress user ID.
+	 * @param array $roles   User role slugs.
+	 * @phpstan-param list<string> $roles
+	 */
+	private function user_policy_state( int $user_id, array $roles ): string {
+		if ( $user_id <= 0 || ! function_exists( 'get_userdata' ) ) {
+			return 'missing_user';
+		}
+
+		$user = get_userdata( $user_id );
+		if ( ! is_object( $user ) ) {
+			return 'missing_user';
+		}
+
+		if ( array() === $roles ) {
+			return 'missing_role';
+		}
+
+		if ( in_array( 'administrator', $roles, true ) ) {
+			return 'administrator';
+		}
+
+		return 'default_read_only';
 	}
 }

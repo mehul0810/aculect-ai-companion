@@ -31,22 +31,21 @@ final class ClientRegistrationController {
 				'permission_callback' => array( $this, 'check_registration_permission' ),
 			)
 		);
-
-		RateLimiter::register_retry_after_header();
 	}
 
 	/**
-	 * Permit rate-limited public access to Dynamic Client Registration.
+	 * Permit public access to Dynamic Client Registration.
 	 *
 	 * RFC 7591 DCR is intentionally unauthenticated: AI clients (Claude,
 	 * ChatGPT, Codex) register themselves before any credential exists.
-	 * Abuse is bounded by a per-IP fixed window plus an active-client cap
-	 * enforced in register_client().
+	 * Valid connector retries must not fail behind a plugin-level 429. Abuse is
+	 * bounded by redirect URI validation, duplicate-client pruning, and the
+	 * active-client cap enforced in register_client().
 	 *
-	 * @return true|WP_Error
+	 * @return true
 	 */
-	public function check_registration_permission(): bool|WP_Error {
-		return ( new RateLimiter() )->check( 'oauth_register', 5, HOUR_IN_SECONDS );
+	public function check_registration_permission(): bool {
+		return true;
 	}
 
 	/**

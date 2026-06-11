@@ -86,6 +86,39 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'role_default_read_only', $operations['content']['update']['blocked_by'] );
 	}
 
+	public function test_operations_manifest_distinguishes_oauth_scope_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array( 'content:read' ) );
+
+		self::assertTrue( $operations['policy']['scope_aware'] );
+		self::assertSame( array( 'content:read' ), $operations['policy']['granted_scopes'] );
+		self::assertTrue( $operations['content']['get_item']['available'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
+		self::assertSame( array( 'content:read' ), $operations['content']['get_item']['required_scopes'] );
+		self::assertTrue( $operations['content']['get_item']['read_only'] );
+		self::assertFalse( $operations['content']['update']['available'] );
+		self::assertSame( 'oauth_scope', $operations['content']['update']['blocked_by'] );
+		self::assertSame( array( 'content:draft' ), $operations['content']['update']['required_scopes'] );
+		self::assertSame( array( 'content:draft' ), $operations['content']['update']['missing_scopes'] );
+		self::assertFalse( $operations['content']['update']['read_only'] );
+	}
+
+	public function test_tool_modules_for_user_filters_by_granted_oauth_scopes(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array( 'content:read' ) );
+
+		self::assertArrayHasKey( 'content.get_item', $modules );
+		self::assertArrayNotHasKey( 'content.update_item', $modules );
+	}
+
 	public function test_workflow_operations_require_underlying_atomic_operations(): void {
 		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
 

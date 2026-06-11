@@ -62,6 +62,7 @@ final class McpController {
 	 */
 	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
 		$this->request_auth = array();
+		McpToolAvailability::set_current_granted_scopes( null );
 
 		if ( $this->is_auth_exempt_notification( $request ) ) {
 			return true;
@@ -81,6 +82,7 @@ final class McpController {
 		}
 
 		$this->request_auth = $auth;
+		McpToolAvailability::set_current_granted_scopes( (array) ( $auth['scopes'] ?? array() ) );
 
 		return true;
 	}
@@ -500,9 +502,10 @@ final class McpController {
 	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
 	 */
 	private function list_tools( string $cursor = '' ): array {
-		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id );
-		$tools   = array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
+		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
+		$modules        = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id, null, null, $granted_scopes );
+		$tools          = array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
 
 		$offset = $this->tools_cursor_offset( $cursor );
 		$page   = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );

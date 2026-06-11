@@ -46,6 +46,12 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 				'display_name' => 'Ava Author',
 				'user_login'   => 'ava',
 			),
+			13 => (object) array(
+				'ID'           => 13,
+				'roles'        => array(),
+				'display_name' => 'No Role',
+				'user_login'   => 'norole',
+			),
 		);
 		$this->registry                               = new AbilitiesRegistry();
 		$this->policy                                 = new RoleAbilitiesPolicy();
@@ -125,6 +131,14 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 		self::assertSame( array( 'content.get_item', 'content.update_item' ), $this->policy->allowed_ids_for_user( 7, $this->registry ) );
 		self::assertSame( array( 'content.update_item' ), $this->policy->allowed_ids_for_user( 11, $this->registry ) );
 		self::assertFalse( $this->policy->is_allowed_for_user( 'media.delete_item', 11, $this->registry ) );
+	}
+
+	public function test_missing_invalid_and_roleless_users_use_read_only_default(): void {
+		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 0, $this->registry ) );
+		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 99, $this->registry ) );
+		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 13, $this->registry ) );
 	}
 
 	/**

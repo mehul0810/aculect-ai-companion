@@ -27,7 +27,16 @@ final class McpControllerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
+		$GLOBALS['aculect_ai_companion_test_users']           = array(
+			1 => (object) array(
+				'ID'           => 1,
+				'roles'        => array( 'administrator' ),
+				'display_name' => 'Ada Admin',
+				'user_login'   => 'ada',
+			),
+		);
 	}
 
 	public function test_tools_list_exposes_safe_public_tool_names(): void {

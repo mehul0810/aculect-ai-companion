@@ -32,6 +32,12 @@ final class McpToolAvailabilityTest extends TestCase {
 				'display_name' => 'Ed Editor',
 				'user_login'   => 'ed',
 			),
+			13 => (object) array(
+				'ID'           => 13,
+				'roles'        => array(),
+				'display_name' => 'No Role',
+				'user_login'   => 'norole',
+			),
 		);
 	}
 
@@ -79,11 +85,40 @@ final class McpToolAvailabilityTest extends TestCase {
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
 
 		self::assertTrue( $operations['policy']['default_read_only_policy'] );
+		self::assertSame( 'default_read_only', $operations['policy']['user_policy_state'] );
 		self::assertFalse( $operations['policy']['explicit_role_policy'] );
 		self::assertTrue( $operations['content']['get_item']['available'] );
 		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
 		self::assertFalse( $operations['content']['update']['available'] );
 		self::assertSame( 'role_default_read_only', $operations['content']['update']['blocked_by'] );
+	}
+
+	public function test_operations_manifest_identifies_missing_user_blocks(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 99, $registry );
+
+		self::assertSame( 'missing_user', $operations['policy']['user_policy_state'] );
+		self::assertTrue( $operations['policy']['missing_user'] );
+		self::assertFalse( $operations['policy']['missing_role'] );
+		self::assertTrue( $operations['content']['get_item']['available'] );
+		self::assertFalse( $operations['content']['update']['available'] );
+		self::assertSame( 'missing_user', $operations['content']['update']['blocked_by'] );
+	}
+
+	public function test_operations_manifest_identifies_roleless_user_blocks(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 13, $registry );
+
+		self::assertSame( 'missing_role', $operations['policy']['user_policy_state'] );
+		self::assertFalse( $operations['policy']['missing_user'] );
+		self::assertTrue( $operations['policy']['missing_role'] );
+		self::assertTrue( $operations['content']['get_item']['available'] );
+		self::assertFalse( $operations['content']['update']['available'] );
+		self::assertSame( 'missing_role', $operations['content']['update']['blocked_by'] );
 	}
 
 	public function test_workflow_operations_require_underlying_atomic_operations(): void {

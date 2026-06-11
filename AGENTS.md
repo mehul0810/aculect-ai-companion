@@ -6,7 +6,17 @@
 - Prefer WordPress core APIs over custom SQL or duplicated helpers.
 - Follow least privilege and avoid exposing secrets or private options.
 - Minimum PHP version is 8.2.
-- Project-local WordPress agent skills are installed in `.codex/skills`; use `wordpress-router` first for broad WordPress tasks, then the most relevant domain skill.
+- Use locally installed Codex skills for WordPress and GitHub work, especially `$wp-expert` and `$github`; do not depend on repo-local skill copies.
+
+## Project Subagents
+- Project subagents live in `.codex/agents`; `.codex/config.toml` limits concurrency to three threads and one agent depth.
+- Use `aculect-plugin-mapper` for read-only PHP/MCP/OAuth/admin architecture mapping.
+- Use `aculect-admin-ui-mapper` for read-only settings UI, React, CSS, and build-surface mapping.
+- Use `aculect-ci-log-summarizer` for bounded CI, PHPUnit, PHPStan, WPCS, npm, build, and release log summaries.
+- Use `aculect-narrow-fixer` only when the parent agent provides exact files, behavior, and validation commands; it must not commit, push, or broaden scope.
+- Use `aculect-mcp-oauth-reviewer` for high-risk MCP, OAuth, ability-policy, security, and diagnostics review.
+- Use `aculect-release-reviewer` before release merges, production package checks, or wp.org-facing release work.
+- `gpt-5.3-codex-spark` is preferred for bounded mapping, log summarization, and narrow fixes. Stronger reviewer profiles are reserved for security-sensitive MCP/OAuth and release-readiness decisions.
 
 ## PHP and WordPress Coding
 - Follow WPCS (`WordPress-Core`, `WordPress-Docs`, `WordPress-Extra`).

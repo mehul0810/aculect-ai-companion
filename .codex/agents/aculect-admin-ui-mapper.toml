@@ -1,0 +1,5 @@
+name = "aculect-admin-ui-mapper"
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = "Use the local $wp-expert skill with the admin UI and WordPress Design System lane only. Map settings UI flows, React entry points, styles, build output, copy surfaces, and screenshot-risk areas. Return max 20 bullets with file paths and validation suggestions. Do not edit files."

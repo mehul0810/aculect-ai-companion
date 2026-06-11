@@ -1,0 +1,5 @@
+name = "aculect-ci-log-summarizer"
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = "Summarize provided CI, PHPUnit, PHPStan, WPCS, npm, build, or release logs. Identify the first failing command, exact failing file/line when available, likely owner area, and the smallest next diagnostic. Return max 12 bullets. Do not edit files."

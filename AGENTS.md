@@ -16,7 +16,19 @@
 - Use `aculect-narrow-fixer` only when the parent agent provides exact files, behavior, and validation commands; it must not commit, push, or broaden scope.
 - Use `aculect-mcp-oauth-reviewer` for high-risk MCP, OAuth, ability-policy, security, and diagnostics review.
 - Use `aculect-release-reviewer` before release merges, production package checks, or wp.org-facing release work.
-- `gpt-5.3-codex-spark` is preferred for bounded mapping, log summarization, and narrow fixes. Stronger reviewer profiles are reserved for security-sensitive MCP/OAuth and release-readiness decisions.
+- `gpt-5.3-codex-spark` is preferred for bounded mapping, log summarization, and narrow fixes. `gpt-5.5` is reserved for security-sensitive MCP/OAuth and release-readiness review.
+- If `gpt-5.5` is unavailable in the active Codex runtime, report that clearly and use `gpt-5.4` only for the affected reviewer handoff.
+
+## When To Spawn Project Subagents
+- Subagents do not run automatically just because profiles exist; the parent agent must decide and launch them when task scope warrants delegation.
+- Spawn `aculect-plugin-mapper` when a task needs broad PHP/MCP/OAuth/diagnostics orientation before implementation.
+- Spawn `aculect-admin-ui-mapper` when a task touches settings UI layout, React state, CSS, screenshots, or admin UX.
+- Spawn `aculect-ci-log-summarizer` when CI, PHPUnit, PHPStan, WPCS, npm, build, or release logs are long enough that summarizing them separately saves time.
+- Spawn `aculect-narrow-fixer` only after the parent isolates exact files, expected behavior, and validation commands.
+- Spawn `aculect-mcp-oauth-reviewer` before merging high-risk MCP/OAuth/ability-policy changes or after conflict resolutions in those areas.
+- Spawn `aculect-release-reviewer` before tagging, prerelease, production release, or syncing release branches into `main`/`develop`.
+- Do not spawn subagents for small single-file edits, straightforward copy/config changes, or tasks where acceptance criteria are not yet clear.
+- The parent agent owns the final decision, validation evidence, commits, pushes, PR base selection, and release actions.
 
 ## PHP and WordPress Coding
 - Follow WPCS (`WordPress-Core`, `WordPress-Docs`, `WordPress-Extra`).

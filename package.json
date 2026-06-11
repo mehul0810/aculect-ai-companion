@@ -1,6 +1,6 @@
 {
   "name": "aculect-ai-companion",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {

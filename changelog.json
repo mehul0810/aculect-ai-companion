@@ -1,4 +1,21 @@
 {
+  "0.5.2": {
+    "date": "2026-06-11",
+    "Fixed": [
+      "Fixed MCP content scheduling so future post status and date metadata persist correctly.",
+      "Fixed missing or roleless MCP users so they resolve to a safe read-only ability policy.",
+      "Fixed MCP tool availability so OAuth scope blockers are reported before exposing tools unavailable to the connected client."
+    ],
+    "Improved": [
+      "Added Cloudflare compatibility diagnostics for Bot Fight Mode and Flexible SSL/TLS connector issues.",
+      "Updated GitHub Actions for the Node 24 runtime.",
+      "Resolved an npm development dependency security alert."
+    ],
+    "Reliability": [
+      "Added an OAuth connector smoke gate for dynamic client registration and authorization redirects.",
+      "Bounded MCP PHPStan analysis into focused groups so release-readiness static analysis remains reliable."
+    ]
+  },
   "0.5.1": {
     "date": "2026-06-10",
     "Improved": [

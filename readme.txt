@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.5.1
+Stable tag: 0.5.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -208,14 +208,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.5.1 AI Companion experience.
+1. Overview tab showing the 0.5.2 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.5.1 release notes.
+8. Changelog tab with the current 0.5.2 release notes.
 
 == Development ==
 
@@ -243,6 +243,17 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.5.2 =
+
+* Fixed MCP content scheduling so future post status and date metadata persist correctly.
+* Fixed missing or roleless MCP users so they resolve to a safe read-only ability policy.
+* Fixed MCP tool availability so OAuth scope blockers are reported before exposing tools unavailable to the connected client.
+* Added Cloudflare compatibility diagnostics for Bot Fight Mode and Flexible SSL/TLS connector issues.
+* Updated GitHub Actions for the Node 24 runtime.
+* Resolved an npm development dependency security alert.
+* Added an OAuth connector smoke gate for dynamic client registration and authorization redirects.
+* Bounded MCP PHPStan analysis into focused groups so release-readiness static analysis remains reliable.
 
 = 0.5.1 =
 
@@ -328,6 +339,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.5.2 =
+
+Improves MCP scheduling, OAuth-scope-aware availability, connector diagnostics, and release-readiness checks.
 
 = 0.5.1 =
 

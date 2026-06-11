@@ -343,11 +343,13 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
 		self::assertArrayHasKey( 'date', $create_schema['properties'] );
+		self::assertSame( array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ), $create_schema['properties']['status']['enum'] );
 
 		$update_schema = $this->schemaForTool( 'content_update_item' );
 		self::assertArrayHasKey( 'author', $update_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $update_schema['properties'] );
 		self::assertArrayHasKey( 'date', $update_schema['properties'] );
+		self::assertSame( array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ), $update_schema['properties']['status']['enum'] );
 
 		$term_image_schema = $this->schemaForTool( 'taxonomy_set_term_image' );
 		self::assertSame( array( 'taxonomy', 'term_id' ), $term_image_schema['required'] );
@@ -366,6 +368,7 @@ final class McpControllerTest extends TestCase {
 		$workflow_update_schema = $this->schemaForTool( 'content_workflow_update_post' );
 		self::assertSame( array( 'id' ), $workflow_update_schema['required'] );
 		self::assertArrayHasKey( 'section_map', $workflow_update_schema['properties'] );
+		self::assertArrayHasKey( 'status', $workflow_update_schema['properties'] );
 
 		$rankmath_workflow_schema = $this->schemaForTool( 'seo_workflow_update_rankmath' );
 		self::assertSame( array( 'id' ), $rankmath_workflow_schema['required'] );

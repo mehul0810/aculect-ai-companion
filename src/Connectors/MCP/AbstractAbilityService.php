@@ -10,7 +10,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 abstract class AbstractAbilityService {
 
 	protected const DEFAULT_POST_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
-	protected const WRITABLE_POST_STATUSES = array( 'draft', 'pending', 'private', 'publish', 'trash' );
+	protected const WRITABLE_POST_STATUSES = array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' );
 
 	/**
 	 * Normalize post status filters from tool arguments.
@@ -43,11 +43,20 @@ abstract class AbstractAbilityService {
 	 * Restrict writes to statuses Aculect AI Companion explicitly supports.
 	 *
 	 * @param string $status Requested status.
-	 * @return string
+	 * @return string Empty string when the requested status is not supported.
 	 */
 	protected function writable_status( string $status ): string {
 		$status = sanitize_key( $status );
-		return in_array( $status, self::WRITABLE_POST_STATUSES, true ) ? $status : 'draft';
+		return in_array( $status, self::WRITABLE_POST_STATUSES, true ) ? $status : '';
+	}
+
+	/**
+	 * Return supported write statuses for validation messages and schemas.
+	 *
+	 * @return list<string>
+	 */
+	protected function writable_post_statuses(): array {
+		return self::WRITABLE_POST_STATUSES;
 	}
 
 	/**

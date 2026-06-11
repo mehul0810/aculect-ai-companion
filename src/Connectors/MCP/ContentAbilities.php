@@ -124,11 +124,15 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		$status = $this->writable_status( (string) ( $data['status'] ?? 'draft' ) );
+		if ( '' === $status ) {
+			return $this->invalid_status_error();
+		}
+
 		if ( 'trash' === $status ) {
 			return $this->error( 'invalid_status', 'Content cannot be created directly in the trash.' );
 		}
 
-		if ( 'publish' === $status && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
+		if ( in_array( $status, array( 'future', 'publish' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
@@ -278,6 +282,10 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 		if ( array_key_exists( 'status', $data ) ) {
 			$status = $this->writable_status( (string) $data['status'] );
+			if ( '' === $status ) {
+				return $this->invalid_status_error();
+			}
+
 			if ( 'trash' === $status ) {
 				if ( ! current_user_can( 'delete_post', $post_id ) ) {
 					return $this->error( 'forbidden', 'You do not have permission to trash this content item.' );
@@ -312,7 +320,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				return $item;
 			}
 
-			if ( 'publish' === $status && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
+			if ( in_array( $status, array( 'future', 'publish' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 				return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 			}
 			$update['post_status'] = $status;
@@ -396,6 +404,21 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		return $this->get_item( $post_id );
+	}
+
+	/**
+	 * Return a structured invalid status error.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function invalid_status_error(): array {
+		return $this->error(
+			'invalid_status',
+			sprintf(
+				'Status must be one of: %s.',
+				implode( ', ', $this->writable_post_statuses() )
+			)
+		);
 	}
 
 	/**

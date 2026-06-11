@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -24,7 +24,7 @@ jobs:
       - name: Install composer dependencies
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24.16.0"
           cache: "npm"
@@ -44,7 +44,7 @@ jobs:
         run: php bin/verify-production-package.php release/aculect-ai-companion
 
       - name: Setup Node for Plugin Check
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20.19.0"
 

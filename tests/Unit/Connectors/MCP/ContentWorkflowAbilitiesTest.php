@@ -96,6 +96,8 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 						'content' => '<!-- wp:heading --><h2>Introduction</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Opening section.</p><!-- /wp:paragraph -->',
 					),
 				),
+				'status'      => 'future',
+				'date'        => '2026-06-01T09:30:00+00:00',
 				'dry_run'     => true,
 			)
 		);
@@ -105,11 +107,14 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		self::assertSame( 'content_workflow_update_post', $result['workflow'] );
 			self::assertTrue( $result['confirmation_required'] );
 			self::assertTrue( $result['block_validation']['valid'] );
-			self::assertSame( 'content', $result['changes'][0]['field'] );
 			self::assertSame( array( 'introduction' ), $result['section_updates'] );
-			self::assertStringContainsString( 'Opening section.', $result['changes'][0]['to'] );
-			self::assertStringContainsString( 'Existing implementation guidance stays intact.', $result['changes'][0]['to'] );
-			self::assertStringNotContainsString( 'Old opening section.', $result['changes'][0]['to'] );
+			$changes_by_field = array_column( $result['changes'], null, 'field' );
+			self::assertArrayHasKey( 'content', $changes_by_field );
+			self::assertContains( 'status', array_column( $result['changes'], 'field' ) );
+			self::assertContains( 'date', array_column( $result['changes'], 'field' ) );
+			self::assertStringContainsString( 'Opening section.', $changes_by_field['content']['to'] );
+			self::assertStringContainsString( 'Existing implementation guidance stays intact.', $changes_by_field['content']['to'] );
+			self::assertStringNotContainsString( 'Old opening section.', $changes_by_field['content']['to'] );
 		}
 
 		public function test_update_post_section_map_rejects_unknown_section_ids(): void {

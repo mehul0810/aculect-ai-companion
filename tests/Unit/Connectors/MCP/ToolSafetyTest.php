@@ -30,9 +30,13 @@ final class ToolSafetyTest extends TestCase {
 	public function test_high_risk_actions_require_confirmation_by_default(): void {
 		self::assertSame( 'publish', $this->safety->risk_level( 'content.create_item', array( 'status' => 'publish' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'content.create_item', array( 'status' => 'publish' ) ) );
+		self::assertSame( 'publish', $this->safety->risk_level( 'content.create_item', array( 'status' => 'future' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'content.create_item', array( 'status' => 'future' ) ) );
 
 		self::assertSame( 'destructive', $this->safety->risk_level( 'content.update_item', array( 'status' => 'trash' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'content.update_item', array( 'status' => 'trash' ) ) );
+		self::assertSame( 'publish', $this->safety->risk_level( 'content.update_item', array( 'status' => 'future' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'content.update_item', array( 'status' => 'future' ) ) );
 
 		self::assertSame( 'update', $this->safety->risk_level( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
 		self::assertFalse( $this->safety->requires_confirmation( 'content.update_item', array( 'title' => 'Draft edit' ) ) );

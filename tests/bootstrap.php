@@ -101,6 +101,29 @@ if ( ! function_exists( 'update_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_timezone' ) ) {
+	/**
+	 * Return the test site timezone.
+	 */
+	function wp_timezone(): \DateTimeZone {
+		$timezone_string = (string) get_option( 'timezone_string', '' );
+		if ( '' !== $timezone_string ) {
+			try {
+				return new \DateTimeZone( $timezone_string );
+			} catch ( \Exception ) {
+				// Fall through to the numeric GMT offset.
+			}
+		}
+
+		$offset  = (float) get_option( 'gmt_offset', 0 );
+		$hours   = (int) $offset;
+		$minutes = (int) round( abs( $offset - $hours ) * 60 );
+		$sign    = $offset < 0 ? '-' : '+';
+
+		return new \DateTimeZone( sprintf( '%s%02d:%02d', $sign, abs( $hours ), $minutes ) );
+	}
+}
+
 if ( ! function_exists( 'add_option' ) ) {
 	/**
 	 * Add a test option value only when it does not already exist.

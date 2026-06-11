@@ -16,6 +16,7 @@ final class ConnectionHealth {
 
 	private const OPTION_TRANSIENT_PROBE = 'aculect_ai_companion_connection_health_transient_probe';
 	private const REQUEST_TIMEOUT        = 8;
+	private const CLOUDFLARE_RULE        = '(starts_with(http.request.uri.path, "/wp-json/aculect-ai-companion/v1/") or starts_with(http.request.uri.path, "/.well-known/oauth-") or http.request.uri.path eq "/oauth/authorize")';
 
 	/**
 	 * Run the connection checks and persist the latest result.
@@ -29,6 +30,7 @@ final class ConnectionHealth {
 			$this->check_protected_resource_metadata(),
 			$this->check_authorization_metadata(),
 			$this->check_mcp_auth_challenge(),
+			$this->check_cloudflare_compatibility(),
 			$this->check_mcp_tool_manifest(),
 			$this->check_approval_screen_target(),
 			$this->check_transient_persistence(),
@@ -312,6 +314,49 @@ final class ConnectionHealth {
 	}
 
 	/**
+	 * Surface Cloudflare edge-layer setup guidance for connector traffic.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_cloudflare_compatibility(): array {
+		$signals = $this->cloudflare_request_signals();
+		$details = array(
+			'detected'        => array() !== $signals,
+			'detected_by'     => $signals,
+			'rule_expression' => self::CLOUDFLARE_RULE,
+			'connector_paths' => array(
+				'/wp-json/aculect-ai-companion/v1/',
+				'/.well-known/oauth-',
+				'/oauth/authorize',
+			),
+			'guidance'        => array(
+				'Do not challenge Aculect connector routes with browser challenges, Under Attack mode, Bot Fight Mode, Super Bot Fight Mode, or WAF challenge actions.',
+				'Use a narrow skip rule for Aculect routes only; do not bypass all /wp-json/ traffic.',
+				'Use Cloudflare Full or Full (strict) SSL/TLS for proxied connector hostnames, not Flexible.',
+				'If diagnostics logs are empty after a failed connection or tool call, the request may have been blocked before WordPress loaded.',
+			),
+		);
+
+		if ( array() !== $signals ) {
+			return $this->item(
+				'cloudflare_compatibility',
+				'warn',
+				'Cloudflare headers were detected for this request.',
+				'Create a narrow Cloudflare rule that skips browser challenges and bot challenges for Aculect connector routes, and avoid Flexible SSL/TLS on the connector hostname.',
+				$details
+			);
+		}
+
+		return $this->item(
+			'cloudflare_compatibility',
+			'pass',
+			'Cloudflare was not detected from this WordPress request.',
+			'This is a best-effort check. If OAuth or MCP failures produce no WordPress diagnostic logs, review CDN, WAF, and Cloudflare rules for Aculect connector routes.',
+			$details
+		);
+	}
+
+	/**
 	 * Verify the local MCP tools/list manifest has client-safe tool descriptors.
 	 *
 	 * @return array<string, mixed>
@@ -479,12 +524,39 @@ final class ConnectionHealth {
 			$id,
 			'fail',
 			'The request reached a blocking layer before the plugin could answer.',
-			'If Cloudflare is enabled, temporarily disable Bot Fight Mode and avoid Flexible SSL on proxied DNS for this domain while connecting and using the AI tool.',
+			'If Cloudflare is enabled, use the Cloudflare compatibility diagnostic guidance to skip browser and bot challenges for Aculect connector routes, and avoid Flexible SSL on proxied DNS for this domain.',
 			array(
 				'url'        => $url,
 				'httpStatus' => $status,
 			)
 		);
+	}
+
+	/**
+	 * Return Cloudflare request headers visible to WordPress.
+	 *
+	 * @return array<string, string>
+	 */
+	private function cloudflare_request_signals(): array {
+		$headers = array(
+			'HTTP_CF_RAY'           => 'cf-ray',
+			'HTTP_CF_VISITOR'       => 'cf-visitor',
+			'HTTP_CF_CONNECTING_IP' => 'cf-connecting-ip',
+			'HTTP_CF_IPCOUNTRY'     => 'cf-ipcountry',
+			'HTTP_CF_MITIGATED'     => 'cf-mitigated',
+		);
+
+		$signals = array();
+		foreach ( $headers as $server_key => $label ) {
+			$value = isset( $_SERVER[ $server_key ] ) && is_scalar( $_SERVER[ $server_key ] )
+				? sanitize_text_field( (string) $_SERVER[ $server_key ] )
+				: '';
+			if ( '' !== $value ) {
+				$signals[ $label ] = $value;
+			}
+		}
+
+		return $signals;
 	}
 
 	/**

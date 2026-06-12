@@ -1116,3 +1116,40 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 		}
 	}
 }
+
+if ( ! class_exists( 'WP_Error' ) ) {
+	/**
+	 * Minimal WordPress error test double.
+	 */
+	class WP_Error {
+		/**
+		 * @param string               $code    Error code.
+		 * @param string               $message Error message.
+		 * @param array<string, mixed> $data    Error data.
+		 */
+		public function __construct( private string $code = '', private string $message = '', private array $data = array() ) {}
+
+		/**
+		 * Return the first error code.
+		 */
+		public function get_error_code(): string {
+			return $this->code;
+		}
+
+		/**
+		 * Return the first error message.
+		 */
+		public function get_error_message(): string {
+			return $this->message;
+		}
+
+		/**
+		 * Return error data.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_error_data(): array {
+			return $this->data;
+		}
+	}
+}

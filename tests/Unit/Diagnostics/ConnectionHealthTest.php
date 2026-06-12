@@ -124,6 +124,10 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( array(), $result['details']['duplicate_tool_names'] );
 		self::assertSame( array(), $result['details']['invalid_tool_names'] );
 		self::assertArrayHasKey( 'ability_policy', $result['details'] );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $result['details']['metadata_fingerprint'] );
+		self::assertIsString( $result['details']['metadata_generated_at'] );
+		self::assertArrayHasKey( 'chatgpt_app', $result['details']['metadata_refresh_guidance'] );
+		self::assertStringContainsString( 'fingerprint', $result['remediation'] );
 	}
 
 	public function test_cloudflare_compatibility_check_reports_best_effort_when_not_detected(): void {

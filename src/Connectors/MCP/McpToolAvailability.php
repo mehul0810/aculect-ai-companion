@@ -62,14 +62,15 @@ final class McpToolAvailability {
 		$registry = $registry ?? new AbilitiesRegistry();
 		$scopes   = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
 
-		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry );
+		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules();
 		$policy         = $this->ability_policy_for_user( $user_id, $registry, $scopes );
 		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
 		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
 
 		return array_filter(
 			$modules,
-			fn ( AbilityModuleInterface $module ): bool => $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry, $scopes )
+			fn ( AbilityModuleInterface $module ): bool => $this->module_allowed( $module->id(), $global_enabled, $role_allowed, $registry )
+				&& $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry, $scopes )
 				&& $this->scopes_available( $module->required_scopes(), $scopes )
 		);
 	}
@@ -91,8 +92,9 @@ final class McpToolAvailability {
 		$role_allowed   = $policy->allowed_ids_for_user( $user_id, $registry );
 		$exposed        = array_values(
 			array_filter(
-				array_intersect( $all_ids, $global_enabled, $role_allowed ),
-				fn ( string $ability_id ): bool => $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry, $scopes )
+				$all_ids,
+				fn ( string $ability_id ): bool => $this->module_allowed( $ability_id, $global_enabled, $role_allowed, $registry )
+					&& $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry, $scopes )
 					&& $this->scopes_available( $registry->required_scopes( $ability_id ), $scopes )
 			)
 		);
@@ -297,13 +299,14 @@ final class McpToolAvailability {
 		$module               = $registry->module( $ability_id );
 		$required_scopes      = null === $module ? $registry->required_scopes( $ability_id ) : $module->required_scopes();
 		$is_read_only         = null === $module ? $registry->is_read_only( $ability_id ) : $module->is_read_only();
+		$is_derived_workflow  = $registry->is_derived_workflow( $ability_id );
 		$blocked_by           = '';
 		$blocked_dependencies = array();
 		$missing_scopes       = array();
 
-		if ( ! in_array( $ability_id, $global_enabled, true ) ) {
+		if ( ! $is_derived_workflow && ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
-		} elseif ( ! in_array( $ability_id, $role_allowed, true ) ) {
+		} elseif ( ! $is_derived_workflow && ! in_array( $ability_id, $role_allowed, true ) ) {
 			$blocked_by = $this->role_block_reason( $policy, $module );
 		} elseif ( $scope_aware && ! $this->scopes_available( $required_scopes, $granted_scopes ) ) {
 			$blocked_by     = 'oauth_scope';
@@ -337,6 +340,13 @@ final class McpToolAvailability {
 			'required_scopes' => array_values( $required_scopes ),
 			'read_only'       => $is_read_only,
 		);
+
+		if ( $is_derived_workflow ) {
+			$entry['derived']            = true;
+			$entry['dependency_ids']     = $registry->dependency_ids( $ability_id );
+			$entry['dependency_tools']   = array_values( array_map( array( $registry, 'tool_name' ), $entry['dependency_ids'] ) );
+			$entry['availability_model'] = 'derived_from_dependencies';
+		}
 
 		if ( ! $available ) {
 			$entry['blocked_by'] = array() === $blocked_dependencies
@@ -372,6 +382,25 @@ final class McpToolAvailability {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Check whether the module itself is policy-allowed.
+	 *
+	 * Derived workflow tools are not directly policy-managed; their dependencies
+	 * decide availability.
+	 *
+	 * @param string            $ability_id     Ability ID.
+	 * @param string[]          $global_enabled Globally enabled IDs.
+	 * @param string[]          $role_allowed   Role-allowed IDs.
+	 * @param AbilitiesRegistry $registry       Ability registry.
+	 */
+	private function module_allowed( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry ): bool {
+		if ( $registry->is_derived_workflow( $ability_id ) ) {
+			return true;
+		}
+
+		return in_array( $ability_id, $global_enabled, true ) && in_array( $ability_id, $role_allowed, true );
 	}
 
 	/**

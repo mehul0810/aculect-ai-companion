@@ -76,6 +76,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
+		self::assertNotContains( 'Content Workflows', $groups );
+		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
 
@@ -129,6 +131,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_workflow.prepare_post' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_workflow.create_draft' ) );
+		self::assertTrue( $this->registry->is_derived_workflow( 'content_workflow_create_draft' ) );
+		self::assertTrue( $this->registry->is_derived_workflow( 'seo_workflow.update_rankmath' ) );
+		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
@@ -175,6 +180,7 @@ final class AbilitiesRegistryTest extends TestCase {
 			array(
 				'content_list_items',
 				'content.create_draft',
+				'content_workflow.create_draft',
 				'<script>',
 				array(),
 			)

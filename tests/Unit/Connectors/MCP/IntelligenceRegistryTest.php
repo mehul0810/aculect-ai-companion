@@ -23,16 +23,19 @@ final class IntelligenceRegistryTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array(
+		$GLOBALS['aculect_ai_companion_test_options']         = array(
 			'blogname'        => 'Aculect Test Site',
 			'blogdescription' => 'A test site for intelligence context.',
 		);
-		$this->registry                               = new IntelligenceRegistry();
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
+		$GLOBALS['aculect_ai_companion_test_users']           = array();
+		$this->registry                                       = new IntelligenceRegistry();
 		$this->register_test_blocks();
 	}
 
 	public function test_intelligence_tools_are_claude_safe_and_scoped(): void {
 		$read_only = array(
+			'intelligence.capabilities.get_directory',
 			'intelligence.site.get_context',
 			'intelligence.content.get_context',
 			'intelligence.developer.get_context',
@@ -61,6 +64,7 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertFalse( $feedback->is_read_only() );
 		self::assertSame( array( 'content:read' ), $feedback->required_scopes() );
 		self::assertSame( 'intelligence.feedback.submit', $this->registry->internal_id( 'intelligence_feedback_submit' ) );
+		self::assertSame( 'intelligence.capabilities.get_directory', $this->registry->internal_id( 'intelligence_capabilities_get_directory' ) );
 	}
 
 	public function test_intelligence_aliases_preserve_cached_client_calls(): void {
@@ -128,6 +132,34 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertSame( 'brand', $result['suggestion']['domain'] );
 		self::assertSame( 'chatgpt', $result['suggestion']['source']['provider'] );
 		self::assertFalse( $result['review_status']['updates_memory'] );
+	}
+
+	public function test_capability_directory_summarizes_abilities_workflows_and_intelligence(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$GLOBALS['aculect_ai_companion_test_users'][7]        = (object) array(
+			'roles' => array( 'editor' ),
+		);
+
+		$summary = $this->registry->execute( 'intelligence_capabilities_get_directory', array() );
+
+		self::assertSame( 'capability_directory', $summary['type'] );
+		self::assertSame( 'summary', $summary['detail'] );
+		self::assertGreaterThan( 0, $summary['summary']['available_regular_tools'] );
+		self::assertGreaterThan( 0, $summary['summary']['blocked_regular_tools'] );
+		self::assertSame( 'Content', $summary['regular_abilities'][0]['label'] );
+		self::assertSame( 'Guided Workflows', $summary['workflows']['label'] );
+		self::assertContains( 'intelligence_site_get_context', array_column( $summary['intelligence']['context_tools'], 'tool' ) );
+		self::assertContains( 'intelligence_content_validate_blocks', array_column( $summary['intelligence']['knowledge_tools'], 'tool' ) );
+		self::assertArrayHasKey( 'role_default_read_only', $summary['blocked_capabilities']['counts_by_reason'] );
+		self::assertStringContainsString( 'admin review', $summary['intelligence']['learning']['write_policy'] );
+		self::assertFalse( $summary['safety']['secrets_included'] );
+		self::assertStringNotContainsString( 'client_secret', (string) wp_json_encode( $summary ) );
+
+		$full = $this->registry->execute( 'intelligence_capabilities_get_directory', array( 'detail' => 'full' ) );
+
+		self::assertSame( 'full', $full['detail'] );
+		self::assertArrayHasKey( 'entries', $full['regular_abilities'][0] );
+		self::assertArrayHasKey( 'required_scopes', $full['regular_abilities'][0]['entries'][0] );
 	}
 
 	private function register_test_blocks(): void {

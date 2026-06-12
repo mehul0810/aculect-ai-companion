@@ -173,6 +173,16 @@ final class McpToolAvailability {
 				'missing_user'             => $policy['missing_user'],
 				'missing_role'             => $policy['missing_role'],
 			),
+			'site_information'   => $this->operation_group(
+				array(
+					'get_info'     => 'site.get_info',
+					'get_health'   => 'site.get_health',
+					'list_plugins' => 'site.list_plugins',
+					'list_themes'  => 'site.list_themes',
+				),
+				$policy,
+				$registry
+			),
 			'content'            => $this->operation_group(
 				array(
 					'list_types' => 'site.list_post_types',

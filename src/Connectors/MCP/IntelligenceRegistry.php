@@ -172,6 +172,21 @@ final class IntelligenceRegistry {
 		$block_knowledge = new BlockKnowledgeAbilities();
 		$modules         = array(
 			$this->build_module(
+				'intelligence.capabilities.get_directory',
+				'MCP Capability Directory',
+				'Explain what this WordPress MCP connection can do now, what workflows are possible, which intelligence surfaces exist, and why blocked capabilities are unavailable.',
+				$this->object_schema(
+					array(
+						'detail' => array(
+							'type'        => 'string',
+							'enum'        => array( 'summary', 'full' ),
+							'description' => 'Use summary for a concise first-session answer or full to include per-operation entries and scopes. Defaults to summary.',
+						),
+					)
+				),
+				static fn ( array $args ): array => $context->capabilities( $args )
+			),
+			$this->build_module(
 				'intelligence.site.get_context',
 				'Site Intelligence',
 				'Read stable site, theme, locale, and connector context for this WordPress site.',

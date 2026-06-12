@@ -156,6 +156,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '2025-06-18', $result['protocolVersion'] );
 		self::assertSame( 'Aculect AI Companion MCP', $result['serverInfo']['name'] );
 		self::assertIsString( $result['instructions'] );
+		self::assertStringContainsString( 'intelligence_capabilities_get_directory', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_site_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_content_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'operations manifest', $result['instructions'] );
@@ -189,6 +190,7 @@ final class McpControllerTest extends TestCase {
 
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertSame( array( 'status' ), $tools_by_name['intelligence_feedback_submit']['outputSchema']['required'] );
+		self::assertArrayHasKey( 'regular_abilities', $tools_by_name['intelligence_capabilities_get_directory']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'learning_protocol', $tools_by_name['intelligence_site_get_context']['outputSchema']['properties'] );
 	}
 

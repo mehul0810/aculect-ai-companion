@@ -207,7 +207,7 @@ final class Installer {
             value text NOT NULL,
             evidence text DEFAULT NULL,
             confidence varchar(20) NOT NULL DEFAULT 'medium',
-            status varchar(20) NOT NULL DEFAULT 'approved',
+	            status varchar(20) NOT NULL DEFAULT 'pending',
             source varchar(40) NOT NULL DEFAULT 'manual',
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

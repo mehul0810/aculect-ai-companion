@@ -406,7 +406,7 @@ final class ContentIndexRepository {
 			'value'      => $this->text( $memory['value'] ?? '', 4000 ),
 			'evidence'   => $this->text( $memory['evidence'] ?? '', 2000 ),
 			'confidence' => $this->confidence( $memory['confidence'] ?? 'medium' ),
-			'status'     => $this->memory_status( $memory['status'] ?? 'approved' ),
+			'status'     => $this->memory_status( $memory['status'] ?? 'pending' ),
 			'source'     => $this->key( $memory['source'] ?? 'manual', 40 ),
 			'updated_at' => gmdate( 'Y-m-d H:i:s' ),
 		);
@@ -1089,7 +1089,11 @@ final class ContentIndexRepository {
 	private function memory_status( mixed $value ): string {
 		$value = $this->key( $value, 20 );
 
-		return in_array( $value, array( 'approved', 'pending', 'dismissed', '' ), true ) ? $value : 'approved';
+		if ( '' === $value ) {
+			return '';
+		}
+
+		return in_array( $value, array( 'approved', 'pending', 'dismissed' ), true ) ? $value : 'pending';
 	}
 
 	/**

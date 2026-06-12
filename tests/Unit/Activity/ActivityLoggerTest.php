@@ -136,10 +136,49 @@ final class ActivityLoggerTest extends TestCase {
 			)
 		);
 
-		self::assertSame( array( 'type' => 'content', 'id' => 12 ), $workflow_target );
+		self::assertSame(
+			array(
+				'type' => 'content',
+				'id'   => 12,
+			),
+			$workflow_target
+		);
 		self::assertSame( 'sections', $metadata['update_mode'] );
 		self::assertArrayNotHasKey( 'section_map', $metadata );
-		self::assertSame( array( 'type' => 'intelligence_job', 'id' => null ), $index_target );
+		self::assertSame(
+			array(
+				'type' => 'intelligence_job',
+				'id'   => null,
+			),
+			$index_target
+		);
+	}
+
+	public function test_memory_save_activity_context_excludes_memory_values(): void {
+		$logger = new ActivityLogger();
+		$args   = array(
+			'key'      => 'brand.voice.primary',
+			'value'    => 'Private durable guidance that should not be logged.',
+			'evidence' => 'Private evidence that should not be logged.',
+			'status'   => 'approved',
+		);
+
+		$target  = $this->invokePrivate( $logger, 'target', array( 'memory.save', $args, array( 'status' => 'confirmation_required' ) ) );
+		$context = $this->invokePrivate( $logger, 'context', array( 'memory.save', $args, array( 'status' => 'confirmation_required' ), 'update' ) );
+
+		self::assertSame(
+			array(
+				'type' => 'memory',
+				'id'   => null,
+			),
+			$target
+		);
+		self::assertSame( 'update', $context['risk_level'] );
+		self::assertContains( 'value', $context['argument_keys'] );
+		self::assertSame( 'approved', $context['metadata']['status'] );
+		self::assertArrayNotHasKey( 'key', $context['metadata'] );
+		self::assertArrayNotHasKey( 'value', $context['metadata'] );
+		self::assertArrayNotHasKey( 'evidence', $context['metadata'] );
 	}
 
 	/**

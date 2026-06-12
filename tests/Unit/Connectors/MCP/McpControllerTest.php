@@ -88,8 +88,8 @@ final class McpControllerTest extends TestCase {
 			)
 		);
 
-		$result         = $this->invokePrivate( $controller, 'list_tools' );
-		$tools_by_name  = array_column( $result['tools'], null, 'name' );
+		$result        = $this->invokePrivate( $controller, 'list_tools' );
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
 
 		self::assertArrayHasKey( 'content_get_item', $tools_by_name );
 		self::assertArrayNotHasKey( 'content_update_item', $tools_by_name );
@@ -163,6 +163,8 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
 		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
 		self::assertStringContainsString( 'memory_list', $result['instructions'] );
+		self::assertStringContainsString( 'memory_save', $result['instructions'] );
+		self::assertStringContainsString( 'admin review', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );

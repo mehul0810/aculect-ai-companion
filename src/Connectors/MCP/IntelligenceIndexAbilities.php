@@ -257,7 +257,8 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$result                 = $this->repo()->list_memories( $args );
 		$result['protocol']     = array(
 			'source_of_truth' => 'Aculect Intelligence local memory, not ChatGPT or Claude saved memory.',
-			'write_path'      => 'Use memory_save only for explicit, durable, admin-acceptable guidance.',
+			'write_path'      => 'Use intelligence_feedback_submit for normal learning suggestions. Use memory_save only when explicit write permission and confirmation are available.',
+			'review_default'  => 'New memory_save entries default to pending review unless status is explicitly approved.',
 		);
 		$result['next_actions'] = array( 'Use relevant memory items as constraints when preparing content workflows.' );
 
@@ -271,6 +272,11 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function save_memory( array $args ): array {
+		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
+		if ( ! in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ) {
+			$status = 'pending';
+		}
+
 		if ( $this->is_dry_run( $args ) ) {
 			return $this->preview_response(
 				'memory.save',
@@ -281,13 +287,25 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				),
 				array(
 					$this->change( 'value', null, sanitize_text_field( (string) ( $args['value'] ?? '' ) ) ),
-				)
+					$this->change( 'status', null, $status ),
+				),
+				'approved' === $status
+					? array( 'Approved memories affect future Aculect Intelligence responses; use this only for explicit durable guidance.' )
+					: array( 'Pending memories require admin review before they affect future Aculect Intelligence responses.' )
 			);
 		}
 
 		$result = $this->repo()->upsert_memory( $args );
 		if ( 'success' === ( $result['status'] ?? '' ) ) {
-			$result['next_actions'] = array( 'Call memory_list to confirm the durable memory is available to future workflows.' );
+			$memory_status           = (string) ( $result['memory']['status'] ?? $status );
+			$result['review_status'] = array(
+				'status'                => $memory_status,
+				'admin_review_required' => 'approved' !== $memory_status,
+				'updates_memory'        => 'approved' === $memory_status,
+			);
+			$result['next_actions']  = 'approved' === $memory_status
+				? array( 'Call memory_list to confirm the durable memory is available to future workflows.' )
+				: array( 'Review and approve this pending memory in Aculect Intelligence before relying on it in future workflows.' );
 		}
 
 		return $result;

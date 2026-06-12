@@ -121,7 +121,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'memory.save',
 				'Save Aculect Memory',
-				'Save or update one durable local Aculect Intelligence memory item for future site, brand, content, SEO, or workflow guidance.',
+				'Queue or save one durable local Aculect Intelligence memory item. Defaults to pending review; use intelligence_feedback_submit for normal learning suggestions unless explicit write permission and confirmation are available.',
 				'Aculect Memory',
 				'content:draft',
 				false,
@@ -1111,8 +1111,9 @@ final class FirstPartyAbilityModules {
 					'enum' => array( 'low', 'medium', 'high' ),
 				),
 				'status'     => array(
-					'type' => 'string',
-					'enum' => array( 'approved', 'pending', 'dismissed' ),
+					'type'        => 'string',
+					'enum'        => array( 'approved', 'pending', 'dismissed' ),
+					'description' => 'Review status. Defaults to pending; approved memories affect future workflows.',
 				),
 			),
 			array( 'key', 'value' )

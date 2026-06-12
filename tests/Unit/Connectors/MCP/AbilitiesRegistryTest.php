@@ -87,6 +87,11 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertFalse( $by_id['content.list_items']['changesSite'] );
 		self::assertSame( 'write', $by_id['content.update_item']['riskLevel'] );
 		self::assertTrue( $by_id['content.update_item']['changesSite'] );
+		self::assertArrayNotHasKey( 'content_search.items', $by_id );
+		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
+		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'memory.list', $by_id );
+		self::assertArrayHasKey( 'memory.save', $by_id );
 	}
 
 	public function test_requested_expansion_abilities_are_registered(): void {
@@ -135,6 +140,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_derived_workflow( 'seo_workflow.update_rankmath' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
+		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
@@ -181,6 +189,9 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_list_items',
 				'content.create_draft',
 				'content_workflow.create_draft',
+				'content_search.items',
+				'memory.list',
+				'memory.save',
 				'<script>',
 				array(),
 			)
@@ -190,6 +201,7 @@ final class AbilitiesRegistryTest extends TestCase {
 			array(
 				'content.list_items',
 				'content.create_item',
+				'memory.save',
 			),
 			$this->registry->enabled_ids()
 		);

@@ -203,7 +203,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'role_default_read_only:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
 
 		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
-		$operations                                           = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array( 'content:read' ) );
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array( 'content:read' ) );
 
 		self::assertFalse( $operations['workflows']['create_draft']['available'] );
 		self::assertSame( 'oauth_scope', $operations['workflows']['create_draft']['blocked_by'] );
@@ -232,6 +232,43 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertFalse( $operations['intelligence_index']['memory_save']['available'] );
 		self::assertSame( 'role_default_read_only', $operations['intelligence_index']['memory_save']['blocked_by'] );
+	}
+
+	public function test_read_only_intelligence_retrieval_is_available_by_default(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
+		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry );
+
+		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
+		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['intelligence_index']['find_related']['available'] );
+		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
+		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
+		self::assertTrue( $operations['intelligence_index']['batch_status']['available'] );
+		self::assertTrue( $operations['intelligence_index']['search_items']['always_on'] );
+		self::assertSame( 'always_on_read_intelligence', $operations['intelligence_index']['search_items']['availability_model'] );
+		self::assertArrayHasKey( 'content_search.items', $modules );
+		self::assertArrayHasKey( 'memory.list', $modules );
+		self::assertArrayNotHasKey( 'memory.save', $modules );
+	}
+
+	public function test_read_only_intelligence_retrieval_respects_oauth_scope_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array() );
+		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array() );
+
+		self::assertFalse( $operations['intelligence_index']['search_items']['available'] );
+		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
+		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
+		self::assertArrayNotHasKey( 'content_search.items', $modules );
 	}
 
 	/**

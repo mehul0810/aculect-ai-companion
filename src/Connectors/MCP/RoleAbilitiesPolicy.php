@@ -294,7 +294,7 @@ final class RoleAbilitiesPolicy {
 			}
 
 			$ability_id = $registry->internal_id( sanitize_text_field( (string) $ability_id ) );
-			if ( $registry->is_known( $ability_id ) ) {
+			if ( $registry->is_configurable( $ability_id ) ) {
 				$sanitized[] = $ability_id;
 			}
 		}

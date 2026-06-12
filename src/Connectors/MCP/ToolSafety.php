@@ -164,6 +164,10 @@ final class ToolSafety {
 			return true;
 		}
 
+		if ( 'memory.save' === $tool ) {
+			return true;
+		}
+
 		$definition = ( new AbilitiesRegistry() )->definitions()[ $tool ] ?? array();
 		if ( (bool) ( $definition['readOnly'] ?? true ) ) {
 			return false;

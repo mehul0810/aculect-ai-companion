@@ -29,6 +29,9 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'preview', $result['status'] );
 		self::assertSame( 'memory.save', $result['action'] );
 		self::assertSame( 'update', $result['risk_level'] );
-		self::assertFalse( $result['confirmation_required'] );
+		self::assertTrue( $result['confirmation_required'] );
+		self::assertSame( 'status', $result['changes'][1]['field'] );
+		self::assertSame( 'pending', $result['changes'][1]['to'] );
+		self::assertStringContainsString( 'admin review', $result['warnings'][0] );
 	}
 }

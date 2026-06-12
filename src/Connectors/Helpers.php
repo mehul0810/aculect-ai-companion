@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors;
 
+use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
+
 /**
  * Shared connector URL, metadata, and provider helpers.
  */
@@ -239,20 +241,6 @@ final class Helpers {
 	 * @return string
 	 */
 	public static function provider_from_client( string $client_name, array $redirect_uris ): string {
-		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
-
-		if ( str_contains( $haystack, 'codex' ) ) {
-			return 'codex';
-		}
-
-		if ( str_contains( $haystack, 'chatgpt.com' ) || str_contains( $haystack, 'chatgpt' ) || str_contains( $haystack, 'openai' ) ) {
-			return 'chatgpt';
-		}
-
-		if ( str_contains( $haystack, 'claude' ) || str_contains( $haystack, 'anthropic' ) || str_contains( $haystack, 'localhost' ) ) {
-			return 'claude';
-		}
-
-		return 'mcp';
+		return ( new ProviderRegistry() )->detect_provider_id( $client_name, $redirect_uris );
 	}
 }

@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\Providers\Codex;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
 
 /**
  * Provides Codex-specific MCP setup guidance.
  */
-final class Provider implements ProviderInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface {
 
 	/**
 	 * Return the provider slug.
@@ -98,5 +99,17 @@ final class Provider implements ProviderInterface {
 			$mcp_url,
 			$mcp_url
 		);
+	}
+
+	/**
+	 * Return whether DCR metadata belongs to Codex.
+	 *
+	 * @param string   $client_name   Client display name.
+	 * @param string[] $redirect_uris Redirect URIs.
+	 */
+	public function matches_client( string $client_name, array $redirect_uris ): bool {
+		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
+
+		return str_contains( $haystack, 'codex' );
 	}
 }

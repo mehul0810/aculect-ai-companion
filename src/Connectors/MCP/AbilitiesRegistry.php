@@ -15,6 +15,12 @@ final class AbilitiesRegistry {
 
 	public const OPTION_ENABLED_ABILITIES = 'aculect_ai_companion_enabled_abilities';
 	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
+	private const DERIVED_WORKFLOW_IDS    = array(
+		'content_workflow.prepare_post',
+		'content_workflow.create_draft',
+		'content_workflow.update_post',
+		'seo_workflow.update_rankmath',
+	);
 
 	/**
 	 * Process-wide cached ability modules.
@@ -52,7 +58,7 @@ final class AbilitiesRegistry {
 				$definition['riskLevel']   = $read_only ? 'read-only' : 'write';
 				return $definition;
 			},
-			array_values( $this->definitions() )
+			array_values( $this->configurable_definitions() )
 		);
 	}
 
@@ -63,8 +69,20 @@ final class AbilitiesRegistry {
 	 */
 	public function enabled_definitions(): array {
 		$enabled     = $this->enabled_ids();
-		$definitions = $this->definitions();
+		$definitions = $this->configurable_definitions();
 		return array_intersect_key( $definitions, array_flip( $enabled ) );
+	}
+
+	/**
+	 * Return ability definitions that administrators can directly enable or disable.
+	 *
+	 * Workflow tools are derived from their underlying atomic abilities, so they
+	 * stay registered for MCP but are not persisted as independent policy rows.
+	 *
+	 * @return array<string, array<string, bool|string>>
+	 */
+	public function configurable_definitions(): array {
+		return array_diff_key( $this->definitions(), array_flip( self::DERIVED_WORKFLOW_IDS ) );
 	}
 
 	/**
@@ -96,6 +114,15 @@ final class AbilitiesRegistry {
 		$enabled = $this->enabled_ids();
 
 		return array_intersect_key( $this->modules(), array_flip( $enabled ) );
+	}
+
+	/**
+	 * Return derived workflow modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function derived_workflow_modules(): array {
+		return array_intersect_key( $this->modules(), array_flip( self::DERIVED_WORKFLOW_IDS ) );
 	}
 
 	/**
@@ -143,7 +170,7 @@ final class AbilitiesRegistry {
 	public function enabled_ids(): array {
 		$stored = get_option( self::OPTION_ENABLED_ABILITIES, null );
 		if ( ! is_array( $stored ) ) {
-			return array_keys( $this->definitions() );
+			return array_keys( $this->configurable_definitions() );
 		}
 
 		return $this->sanitize_ids( $stored );
@@ -197,6 +224,15 @@ final class AbilitiesRegistry {
 		$module = $this->module( $id );
 
 		return null === $module || $module->is_read_only();
+	}
+
+	/**
+	 * Check whether an ability is a derived workflow over atomic abilities.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_derived_workflow( string $id ): bool {
+		return in_array( $this->internal_id( $id ), self::DERIVED_WORKFLOW_IDS, true );
 	}
 
 	/**
@@ -284,7 +320,7 @@ final class AbilitiesRegistry {
 	 * @return list<string>
 	 */
 	private function sanitize_ids( array $ids ): array {
-		$definitions = $this->definitions();
+		$definitions = $this->configurable_definitions();
 		$sanitized   = array();
 
 		foreach ( $ids as $id ) {

@@ -167,6 +167,14 @@ final class SettingsPageTest extends TestCase {
 			$payload['actions']['exportMcpToolManifestNonce']
 		);
 		self::assertSame(
+			'aculect_ai_companion_run_content_index_sweep',
+			$payload['actions']['runContentIndexSweepAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_run_content_index_sweep',
+			$payload['actions']['runContentIndexSweepNonce']
+		);
+		self::assertSame(
 			'aculect_ai_companion_review_learning_suggestion',
 			$payload['actions']['reviewLearningSuggestionAction']
 		);

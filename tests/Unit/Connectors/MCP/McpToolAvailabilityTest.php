@@ -26,7 +26,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
-			7 => (object) array(
+			7  => (object) array(
 				'ID'           => 7,
 				'roles'        => array( 'editor' ),
 				'display_name' => 'Ed Editor',
@@ -216,7 +216,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

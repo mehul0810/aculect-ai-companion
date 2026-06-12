@@ -624,6 +624,7 @@ final class McpController {
 			' ',
 			array(
 				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
+				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
@@ -668,14 +669,20 @@ final class McpController {
 
 		return $this->object_output_schema(
 			array(
-				'type'              => array( 'type' => 'string' ),
-				'label'             => array( 'type' => 'string' ),
-				'description'       => array( 'type' => 'string' ),
-				'operations'        => array( 'type' => 'object' ),
-				'guidance'          => array( 'type' => 'object' ),
-				'learning_protocol' => array( 'type' => 'object' ),
-				'items'             => array( 'type' => 'array' ),
-				'summary'           => array( 'type' => 'object' ),
+				'type'                 => array( 'type' => 'string' ),
+				'label'                => array( 'type' => 'string' ),
+				'description'          => array( 'type' => 'string' ),
+				'operations'           => array( 'type' => 'object' ),
+				'regular_abilities'    => array( 'type' => 'array' ),
+				'workflows'            => array( 'type' => 'object' ),
+				'intelligence'         => array( 'type' => 'object' ),
+				'blocked_capabilities' => array( 'type' => 'object' ),
+				'example_prompts'      => array( 'type' => 'array' ),
+				'next_actions'         => array( 'type' => 'array' ),
+				'guidance'             => array( 'type' => 'object' ),
+				'learning_protocol'    => array( 'type' => 'object' ),
+				'items'                => array( 'type' => 'array' ),
+				'summary'              => array( 'type' => 'object' ),
 			)
 		);
 	}

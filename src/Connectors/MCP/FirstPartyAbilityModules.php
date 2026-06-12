@@ -59,6 +59,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ContentWorkflowAbilities() )->update_rankmath_seo( $args )
 			),
 			$this->module(
+				'site_workflow.audit',
+				'Audit Site Management Readiness',
+				'Use this read-only workflow when a user asks to audit site health, maintenance posture, connector readiness, update signals, permalinks, HTTPS, REST API, cron, or active theme state before planning site management work.',
+				'Site Workflows',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn ( array $args ): array => ( new SiteWorkflowAbilities() )->audit( $args )
+			),
+			$this->module(
 				'content_index.refresh_batch',
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',

@@ -20,6 +20,7 @@ final class AbilitiesRegistry {
 		'content_workflow.create_draft',
 		'content_workflow.update_post',
 		'seo_workflow.update_rankmath',
+		'site_workflow.audit',
 	);
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS = array(
 		'content_search.items',
@@ -285,6 +286,7 @@ final class AbilitiesRegistry {
 			'content_workflow.create_draft' => array( 'content.create_item' ),
 			'content_workflow.update_post' => array( 'content.update_item' ),
 			'seo_workflow.update_rankmath' => array( 'content.update_seo' ),
+			'site_workflow.audit' => array( 'site.get_info', 'site.get_health' ),
 			default => array(),
 		};
 	}

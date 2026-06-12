@@ -244,8 +244,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'changelog', $changelog['payloadTab'] );
 		self::assertContains( 'changelog', $changelog['hydratedTabs'] );
 		self::assertSame( array(), $changelog['brandProfile'] );
-		self::assertArrayHasKey( '0.5.2', $changelog['changelog'] );
-		self::assertSame( '2026-06-11', $changelog['changelog']['0.5.2']['date'] );
+		self::assertArrayHasKey( '0.5.3', $changelog['changelog'] );
+		self::assertSame( '2026-06-12', $changelog['changelog']['0.5.3']['date'] );
 	}
 
 	public function test_learning_payload_loads_suggestions_only_for_learning_tab(): void {

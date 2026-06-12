@@ -3,7 +3,7 @@
  * Plugin Name: Aculect AI Companion
  * Plugin URI: https://aculect.com
  * Description: Connect WordPress with AI. Aculect AI Companion helps you manage content, comments, media, and more with your AI assistant.
- * Version: 0.5.2
+ * Version: 0.5.3
  * Requires at least: 6.5
  * Requires PHP: 8.2
  * Author: Mehul Gohil
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ACULECT_AI_COMPANION_VERSION', '0.5.2' );
+define( 'ACULECT_AI_COMPANION_VERSION', '0.5.3' );
 define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', __FILE__ );
 define( 'ACULECT_AI_COMPANION_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ACULECT_AI_COMPANION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

@@ -1,4 +1,17 @@
 {
+  "0.5.3": {
+    "date": "2026-06-12",
+    "Improved": [
+      "Improved MCP workflow discovery so content and SEO workflows are derived from the enabled atomic abilities instead of requiring separate workflow toggles.",
+      "Improved read-only intelligence discovery so site, content, developer, brand, and capability context tools are available by default when OAuth read access allows them."
+    ],
+    "New": [
+      "Added an MCP capability help directory so assistants can discover available abilities, workflows, intelligence surfaces, blockers, prompts, and suggested next actions."
+    ],
+    "Reliability": [
+      "Hardened durable intelligence memory writes so direct memory saves require review controls and normal learning suggestions use feedback submission."
+    ]
+  },
   "0.5.2": {
     "date": "2026-06-11",
     "Fixed": [

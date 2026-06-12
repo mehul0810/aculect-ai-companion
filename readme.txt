@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.5.2
+Stable tag: 0.5.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -208,14 +208,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.5.2 AI Companion experience.
+1. Overview tab showing the 0.5.3 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.5.2 release notes.
+8. Changelog tab with the current 0.5.3 release notes.
 
 == Development ==
 
@@ -243,6 +243,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.5.3 =
+
+* Improved MCP workflow discovery so content and SEO workflows are derived from the enabled atomic abilities instead of requiring separate workflow toggles.
+* Improved read-only intelligence discovery so site, content, developer, brand, and capability context tools are available by default when OAuth read access allows them.
+* Added an MCP capability help directory so assistants can discover available abilities, workflows, intelligence surfaces, blockers, prompts, and suggested next actions.
+* Hardened durable intelligence memory writes so direct memory saves require review controls and normal learning suggestions use feedback submission.
 
 = 0.5.2 =
 
@@ -339,6 +346,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.5.3 =
+
+Improves MCP discovery with derived workflows, default read-only intelligence tools, a capability help directory, and reviewed durable memory writes.
 
 = 0.5.2 =
 

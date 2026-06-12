@@ -13,13 +13,21 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class AbilitiesRegistry {
 
-	public const OPTION_ENABLED_ABILITIES = 'aculect_ai_companion_enabled_abilities';
-	private const TOOL_NAME_PATTERN       = '/^[a-zA-Z0-9_-]{1,64}$/';
-	private const DERIVED_WORKFLOW_IDS    = array(
+	public const OPTION_ENABLED_ABILITIES         = 'aculect_ai_companion_enabled_abilities';
+	private const TOOL_NAME_PATTERN               = '/^[a-zA-Z0-9_-]{1,64}$/';
+	private const DERIVED_WORKFLOW_IDS            = array(
 		'content_workflow.prepare_post',
 		'content_workflow.create_draft',
 		'content_workflow.update_post',
 		'seo_workflow.update_rankmath',
+	);
+	private const ALWAYS_ON_READ_INTELLIGENCE_IDS = array(
+		'content_search.items',
+		'content_search.chunks',
+		'content_find.related',
+		'content_find.internal_links',
+		'memory.list',
+		'content_batch.status',
 	);
 
 	/**
@@ -78,11 +86,14 @@ final class AbilitiesRegistry {
 	 *
 	 * Workflow tools are derived from their underlying atomic abilities, so they
 	 * stay registered for MCP but are not persisted as independent policy rows.
+	 * Read-only intelligence retrieval is always available through MCP when the
+	 * connected session has the required scope, so it is not stored as a normal
+	 * ability-policy toggle.
 	 *
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function configurable_definitions(): array {
-		return array_diff_key( $this->definitions(), array_flip( self::DERIVED_WORKFLOW_IDS ) );
+		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS ) ) );
 	}
 
 	/**
@@ -123,6 +134,15 @@ final class AbilitiesRegistry {
 	 */
 	public function derived_workflow_modules(): array {
 		return array_intersect_key( $this->modules(), array_flip( self::DERIVED_WORKFLOW_IDS ) );
+	}
+
+	/**
+	 * Return always-on read intelligence modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function always_on_read_intelligence_modules(): array {
+		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_READ_INTELLIGENCE_IDS ) );
 	}
 
 	/**
@@ -233,6 +253,24 @@ final class AbilitiesRegistry {
 	 */
 	public function is_derived_workflow( string $id ): bool {
 		return in_array( $this->internal_id( $id ), self::DERIVED_WORKFLOW_IDS, true );
+	}
+
+	/**
+	 * Check whether an ability is directly configurable in admin policy.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_configurable( string $id ): bool {
+		return array_key_exists( $this->internal_id( $id ), $this->configurable_definitions() );
+	}
+
+	/**
+	 * Check whether an ability is always-on read intelligence.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_always_on_read_intelligence( string $id ): bool {
+		return in_array( $this->internal_id( $id ), self::ALWAYS_ON_READ_INTELLIGENCE_IDS, true );
 	}
 
 	/**

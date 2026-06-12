@@ -110,7 +110,7 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	public function test_role_policy_sanitizes_unknown_abilities_and_resets_to_default(): void {
 		$this->policy->save_role_policy(
 			'editor',
-			array( 'content.get_item', 'unknown.tool', 'content_get_item' ),
+			array( 'content.get_item', 'unknown.tool', 'content_get_item', 'content_search.items', 'memory.list' ),
 			$this->registry
 		);
 

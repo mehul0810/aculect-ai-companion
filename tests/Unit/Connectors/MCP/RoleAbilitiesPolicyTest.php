@@ -64,6 +64,28 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $this->policy->has_explicit_policy( 'editor' ) );
 	}
 
+	public function test_disabled_role_policy_editor_hides_and_ignores_saved_non_admin_policies(): void {
+		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+		update_option(
+			RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES,
+			array(
+				'editor' => array( 'content.get_item', 'content.update_item' ),
+			),
+			false
+		);
+		$GLOBALS['aculect_ai_companion_count_users_calls'] = 0;
+
+		$payload = $this->policy->admin_payload( $this->registry );
+
+		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
+		self::assertFalse( $payload['enabled'] );
+		self::assertSame( array(), $payload['roles'] );
+		self::assertSame( 0, $GLOBALS['aculect_ai_companion_count_users_calls'] );
+		self::assertSame( array(), $this->policy->saved_policies( $this->registry ) );
+		self::assertFalse( $this->policy->has_explicit_policy( 'editor' ) );
+		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
+	}
+
 	public function test_administrator_receives_global_enabled_abilities_and_ignores_saved_policy(): void {
 		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 		update_option(
@@ -83,6 +105,7 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	}
 
 	public function test_admin_payload_includes_role_metadata(): void {
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$GLOBALS['aculect_ai_companion_count_users_calls'] = 0;
 
 		$payload = $this->policy->admin_payload( $this->registry );
@@ -100,6 +123,8 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	}
 
 	public function test_admin_payload_can_skip_user_samples(): void {
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+
 		$payload = $this->policy->admin_payload( $this->registry, false );
 		$roles   = array_column( $payload['roles'], null, 'id' );
 
@@ -108,6 +133,8 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	}
 
 	public function test_role_policy_sanitizes_unknown_abilities_and_resets_to_default(): void {
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+
 		$this->policy->save_role_policy(
 			'editor',
 			array( 'content.get_item', 'unknown.tool', 'content_get_item', 'content_search.items', 'memory.list' ),
@@ -124,6 +151,7 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	}
 
 	public function test_user_policy_uses_assigned_roles_and_never_exceeds_global_policy(): void {
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 		$this->policy->save_role_policy( 'editor', array( 'content.get_item', 'content.update_item' ), $this->registry );
 		$this->policy->save_role_policy( 'author', array( 'content.update_item', 'media.delete_item' ), $this->registry );

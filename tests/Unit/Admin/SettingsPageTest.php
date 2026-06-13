@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Brand\BrandProfile;
+use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -40,20 +41,20 @@ final class SettingsPageTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new FakeSettingsPageWpdb();
 
-		$GLOBALS['wpdb']                                      = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['wpdb']                                       = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'production';
-		$GLOBALS['aculect_ai_companion_test_admin_pages']     = array(
+		$GLOBALS['aculect_ai_companion_test_admin_pages']      = array(
 			'menu'    => array(),
 			'options' => array(),
 			'submenu' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_hooks']           = array(
+		$GLOBALS['aculect_ai_companion_test_hooks']            = array(
 			'actions' => array(),
 			'filters' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_users']           = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 5;
+		$GLOBALS['aculect_ai_companion_test_users']            = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 5;
 		$_GET = array(
 			'page' => 'aculect-ai-companion',
 		);
@@ -129,6 +130,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 2, $payload['activeSessionCount'] );
 		self::assertSame( array(), $payload['sessions'] );
 		self::assertSame( array(), $payload['revokedSessions'] );
+		self::assertFalse( $payload['roleAbilities']['enabled'] );
 		self::assertSame( array(), $payload['roleAbilityPolicy'] );
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
@@ -317,7 +319,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'connections';
+		$_GET['tab'] = 'connections';
 
 		$payload = $this->settings_payload();
 
@@ -333,7 +335,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_abilities_payload_reports_sample_connection_count_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'abilities';
+		$_GET['tab'] = 'abilities';
 
 		$payload = $this->settings_payload();
 
@@ -344,10 +346,30 @@ final class SettingsPageTest extends TestCase {
 		self::assertNotEmpty( $payload['abilities'] );
 	}
 
+	public function test_abilities_payload_hides_role_policy_editor_until_enabled(): void {
+		$_GET['tab'] = 'abilities';
+
+		$default_payload = $this->settings_payload();
+
+		self::assertFalse( $default_payload['roleAbilities']['enabled'] );
+		self::assertFalse( $default_payload['roleAbilityPolicy']['enabled'] );
+		self::assertSame( array(), $default_payload['roleAbilityPolicy']['roles'] );
+
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+
+		$enabled_payload = $this->settings_payload();
+		$roles           = array_column( $enabled_payload['roleAbilityPolicy']['roles'], null, 'id' );
+
+		self::assertTrue( $enabled_payload['roleAbilities']['enabled'] );
+		self::assertTrue( $enabled_payload['roleAbilityPolicy']['enabled'] );
+		self::assertArrayNotHasKey( 'administrator', $roles );
+		self::assertArrayHasKey( 'editor', $roles );
+	}
+
 	public function test_local_activity_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'activity';
+		$_GET['tab'] = 'activity';
 
 		$payload = $this->settings_payload();
 
@@ -362,7 +384,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_logs_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'logs';
+		$_GET['tab'] = 'logs';
 
 		$payload = $this->settings_payload();
 
@@ -375,7 +397,7 @@ final class SettingsPageTest extends TestCase {
 
 	public function test_local_learning_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
-		$_GET['tab']                                           = 'learning';
+		$_GET['tab'] = 'learning';
 
 		$payload = $this->settings_payload();
 
@@ -388,7 +410,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_diagnostics_payload_applies_sample_checks_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'diagnostics';
+		$_GET['tab'] = 'diagnostics';
 
 		$payload = $this->settings_payload();
 

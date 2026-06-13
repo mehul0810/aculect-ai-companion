@@ -164,6 +164,7 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
 		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
 		self::assertStringContainsString( 'memory_list', $result['instructions'] );
+		self::assertStringContainsString( 'site_workflow_audit', $result['instructions'] );
 		self::assertStringContainsString( 'memory_save', $result['instructions'] );
 		self::assertStringContainsString( 'admin review', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
@@ -205,6 +206,11 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'next_actions', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 		}
 
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['site_workflow_audit'] );
+		self::assertArrayHasKey( 'findings', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'summary', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'operation_entries', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
+
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_list_items'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'total', $tools_by_name['content_list_items']['outputSchema']['properties'] );
@@ -228,6 +234,7 @@ final class McpControllerTest extends TestCase {
 			'content_workflow_create_draft',
 			'content_workflow_update_post',
 			'seo_workflow_update_rankmath',
+			'site_workflow_audit',
 			'content_index_refresh_batch',
 			'content_search_items',
 			'content_search_chunks',

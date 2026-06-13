@@ -176,6 +176,7 @@ final class McpToolAvailability {
 			),
 			'site_information'   => $this->operation_group(
 				array(
+					'get_settings' => 'site.get_settings',
 					'get_info'     => 'site.get_info',
 					'get_health'   => 'site.get_health',
 					'list_plugins' => 'site.list_plugins',
@@ -202,6 +203,7 @@ final class McpToolAvailability {
 					'create_draft'        => 'content_workflow.create_draft',
 					'update_post'         => 'content_workflow.update_post',
 					'update_rankmath_seo' => 'seo_workflow.update_rankmath',
+					'site_audit'          => 'site_workflow.audit',
 				),
 				$policy,
 				$registry

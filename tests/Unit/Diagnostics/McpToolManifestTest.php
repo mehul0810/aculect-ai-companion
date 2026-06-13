@@ -67,7 +67,69 @@ final class McpToolManifestTest extends TestCase {
 		self::assertTrue( $export['ability_policy']['explicit_role_policy'] );
 		self::assertContains( 'content.update_item', $export['ability_policy']['blocked_by_role_ids'] );
 		self::assertSame( 'claude', $export['session']['provider'] );
+		self::assertIsArray( $export['initialize_payload'] );
+		self::assertIsArray( $export['metadata'] );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $export['metadata']['fingerprint'] );
+		self::assertSame( 'sha256:canonical-json:mcp-metadata-v1', $export['metadata']['fingerprint_algorithm'] );
+		self::assertContains( 'initialize.instructions', $export['metadata']['covers'] );
+		self::assertContains( 'tools.inputSchema', $export['metadata']['covers'] );
+		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
+		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
+	}
+
+	public function test_metadata_fingerprint_changes_when_tools_or_instructions_change(): void {
+		$manifest   = new McpToolManifest();
+		$initialize = array(
+			'instructions' => 'Use the current workflow.',
+		);
+		$payload    = array(
+			'tools' => array(
+				array(
+					'name'        => 'content_get_item',
+					'description' => 'Get one item.',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array(
+							'id' => array( 'type' => 'integer' ),
+						),
+					),
+					'annotations' => array( 'readOnlyHint' => true ),
+				),
+			),
+		);
+
+		$baseline = $manifest->metadata_fingerprint( $payload, $initialize );
+
+		$changed_tool                                      = $payload;
+		$changed_tool['tools'][0]['inputSchema']['properties']['context'] = array( 'type' => 'string' );
+
+		$changed_initialize                   = $initialize;
+		$changed_initialize['instructions']   = 'Use the updated workflow.';
+
+		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $changed_tool, $initialize ) );
+		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $payload, $changed_initialize ) );
+		self::assertSame(
+			$baseline,
+			$manifest->metadata_fingerprint(
+				array(
+					'tools' => array(
+						array(
+							'annotations' => array( 'readOnlyHint' => true ),
+							'inputSchema' => array(
+								'properties' => array(
+									'id' => array( 'type' => 'integer' ),
+								),
+								'type'       => 'object',
+							),
+							'description' => 'Get one item.',
+							'name'        => 'content_get_item',
+						),
+					),
+				),
+				$initialize
+			)
+		);
 	}
 
 	public function test_summary_flags_duplicate_and_invalid_tool_names(): void {
@@ -95,5 +157,6 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( array( 'content.get.item' ), $summary['invalid_tool_names'] );
 		self::assertSame( 2, $summary['read_only_tool_count'] );
 		self::assertSame( 1, $summary['write_tool_count'] );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $summary['metadata_fingerprint'] );
 	}
 }

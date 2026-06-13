@@ -16,14 +16,12 @@ use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
-use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
-use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
-use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
+use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -366,6 +364,7 @@ final class SettingsPage {
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
+			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
 			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
 			'setSessionAccessLevelAction'     => 'aculect_ai_companion_set_session_access_level',
@@ -382,6 +381,7 @@ final class SettingsPage {
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
 			'reviewLearningSuggestionNonce'   => wp_create_nonce( 'aculect_ai_companion_review_learning_suggestion' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+			'runContentIndexSweepNonce'       => wp_create_nonce( 'aculect_ai_companion_run_content_index_sweep' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
 			'setSessionAccessLevelNonce'      => wp_create_nonce( 'aculect_ai_companion_set_session_access_level' ),
@@ -857,6 +857,28 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Run one bounded stale index sweep and refresh diagnostics.
+	 */
+	public function handle_run_content_index_sweep(): void {
+		$this->guard_action( 'aculect_ai_companion_run_content_index_sweep' );
+
+		( new ContentIndexer() )->run_stale_sweep();
+		( new ConnectionHealth() )->run();
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'diagnostics',
+					'index_sweep_run' => '1',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
 	 * Revoke a single active connector session.
 	 */
 	public function handle_revoke_session(): void {
@@ -903,24 +925,7 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function providers(): array {
-		$mcp_url = Helpers::mcp_resource();
-		return array_map(
-			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
-				return array(
-					'id'                 => $provider->id(),
-					'label'              => $provider->label(),
-					'description'        => $provider->description(),
-					'primaryActionUrl'   => $provider->primary_action_url(),
-					'primaryActionLabel' => $provider->primary_action_label(),
-					'setupSections'      => $provider->setup_sections( $mcp_url ),
-				);
-			},
-			array(
-				new ClaudeProvider(),
-				new ChatGPTProvider(),
-				new CodexProvider(),
-			)
-		);
+		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
 	}
 
 	/**
@@ -1364,6 +1369,10 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['diagnostics_run'] ) ) {
 			return 'diagnostics_run';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['index_sweep_run'] ) ) {
+			return 'index_sweep_run';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {

@@ -32,6 +32,7 @@ final class ConnectionHealth {
 			$this->check_mcp_auth_challenge(),
 			$this->check_cloudflare_compatibility(),
 			$this->check_mcp_tool_manifest(),
+			$this->check_intelligence_index(),
 			$this->check_approval_screen_target(),
 			$this->check_transient_persistence(),
 			$this->check_secret_storage(),
@@ -367,7 +368,9 @@ final class ConnectionHealth {
 		$details  = array_merge(
 			$summary,
 			array(
-				'ability_policy' => $manifest->ability_policy_context(),
+				'ability_policy'            => $manifest->ability_policy_context(),
+				'metadata_generated_at'     => gmdate( 'c' ),
+				'metadata_refresh_guidance' => $manifest->metadata_refresh_guidance(),
 			)
 		);
 
@@ -399,7 +402,45 @@ final class ConnectionHealth {
 				'MCP tools/list exposes %d tools with Claude-safe names.',
 				(int) $summary['tool_count']
 			),
-			'If Claude reports fewer tools after a plugin update, remove and re-add the Claude custom connector, then compare an exported MCP tool manifest.',
+			'If a client reports stale or missing tools after a plugin update, reconnect or rescan the connector, start a fresh API conversation when applicable, then compare the exported MCP metadata fingerprint.',
+			$details
+		);
+	}
+
+	/**
+	 * Verify the local intelligence index has observable freshness state.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_intelligence_index(): array {
+		$details = ( new IntelligenceIndexHealth() )->status();
+		$status  = (string) ( $details['status'] ?? 'empty' );
+
+		if ( 'empty' === $status ) {
+			return $this->item(
+				'intelligence_index',
+				'warn',
+				'The local content intelligence index is empty.',
+				'Run content workflows or use the stale index sweep after content changes so MCP search and internal-link suggestions have local context.',
+				$details
+			);
+		}
+
+		if ( in_array( $status, array( 'stale', 'backlogged' ), true ) ) {
+			return $this->item(
+				'intelligence_index',
+				'warn',
+				'The local content intelligence index has stale or queued work.',
+				'Run the stale index sweep from Diagnostics, or let the scheduled sweep finish, then run diagnostics again.',
+				$details
+			);
+		}
+
+		return $this->item(
+			'intelligence_index',
+			'pass',
+			'The local content intelligence index has no stale or queued work.',
+			'No action needed.',
 			$details
 		);
 	}

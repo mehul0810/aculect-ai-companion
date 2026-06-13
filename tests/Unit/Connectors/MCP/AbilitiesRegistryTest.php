@@ -78,6 +78,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
+		self::assertNotContains( 'Site Workflows', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
 
@@ -114,6 +115,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.create_draft',
 				'content_workflow.update_post',
 				'seo_workflow.update_rankmath',
+				'site_workflow.audit',
 				'content_index.refresh_batch',
 				'content_search.items',
 				'content_search.chunks',
@@ -138,6 +140,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_workflow.create_draft' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'content_workflow_create_draft' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'seo_workflow.update_rankmath' ) );
+		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
@@ -146,6 +149,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
+		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );

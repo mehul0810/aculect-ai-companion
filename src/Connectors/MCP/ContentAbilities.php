@@ -136,6 +136,14 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
+		$validated_content = $this->validated_block_content_argument( $data );
+		if ( isset( $validated_content['error'] ) ) {
+			return $validated_content;
+		}
+		if ( array_key_exists( 'content', $validated_content ) ) {
+			$data['content'] = $validated_content['content'];
+		}
+
 		$featured_media = null;
 		if ( array_key_exists( 'featured_media', $data ) ) {
 			if ( ! post_type_supports( $post_type, 'thumbnail' ) ) {
@@ -256,6 +264,14 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_type_object = get_post_type_object( $post->post_type );
 		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
+		}
+
+		$validated_content = $this->validated_block_content_argument( $data );
+		if ( isset( $validated_content['error'] ) ) {
+			return $validated_content;
+		}
+		if ( array_key_exists( 'content', $validated_content ) ) {
+			$data['content'] = $validated_content['content'];
 		}
 
 		$update = array( 'ID' => $post_id );
@@ -404,6 +420,50 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		return $this->get_item( $post_id );
+	}
+
+	/**
+	 * Validate serialized block content for atomic content writes.
+	 *
+	 * @param array<string, mixed> $data Content fields.
+	 * @return array<string, mixed>
+	 */
+	private function validated_block_content_argument( array $data ): array {
+		if ( ! array_key_exists( 'content', $data ) ) {
+			return array();
+		}
+
+		$content = trim( (string) $data['content'] );
+		if ( '' === $content ) {
+			return $this->error( 'invalid_block_content', 'Provide serialized WordPress block content.' );
+		}
+
+		if ( ! str_contains( $content, '<!-- wp:' ) ) {
+			return $this->error( 'invalid_block_content', 'Use serialized WordPress block markup, not raw HTML or plain text.' );
+		}
+
+		$validation = ( new BlockKnowledgeAbilities() )->validate_block_content( array( 'content' => $content ) );
+		if ( isset( $validation['error'] ) ) {
+			return array_merge(
+				$this->error( (string) $validation['error'], (string) ( $validation['message'] ?? 'Block validation failed.' ) ),
+				array( 'block_validation' => $validation )
+			);
+		}
+
+		if ( true !== ( $validation['valid'] ?? false ) ) {
+			return array_merge(
+				$this->error( 'invalid_block_content', 'Block content must use registered WordPress blocks and must not include core/html.' ),
+				array(
+					'block_validation' => $validation,
+					'warnings'         => (array) ( $validation['warnings'] ?? array() ),
+				)
+			);
+		}
+
+		return array(
+			'content'          => $content,
+			'block_validation' => $validation,
+		);
 	}
 
 	/**

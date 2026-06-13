@@ -66,6 +66,7 @@ $GLOBALS['aculect_ai_companion_test_roles']       = array(
 );
 $GLOBALS['aculect_ai_companion_test_users']       = array();
 $GLOBALS['aculect_ai_companion_test_posts']       = array();
+$GLOBALS['aculect_ai_companion_test_post_types']  = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
 
@@ -255,6 +256,41 @@ if ( ! class_exists( 'WP_Post' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WP_Post_Type' ) ) {
+	/**
+	 * Minimal post type object used by unit tests.
+	 */
+	class WP_Post_Type {
+		public string $name = 'post';
+		public string $label = 'Posts';
+		public bool $public = true;
+		public bool $show_ui = true;
+		public bool $show_in_rest = true;
+		public object $cap;
+
+		/**
+		 * @param string               $name Post type name.
+		 * @param array<string, mixed> $args Post type args.
+		 */
+		public function __construct( string $name = 'post', array $args = array() ) {
+			$this->name         = $name;
+			$this->label        = (string) ( $args['label'] ?? ucfirst( $name ) );
+			$this->public       = (bool) ( $args['public'] ?? true );
+			$this->show_ui      = (bool) ( $args['show_ui'] ?? true );
+			$this->show_in_rest = (bool) ( $args['show_in_rest'] ?? true );
+			$this->cap          = (object) array_merge(
+				array(
+					'edit_posts'        => 'edit_posts',
+					'create_posts'      => 'edit_posts',
+					'publish_posts'     => 'publish_posts',
+					'edit_others_posts' => 'edit_others_posts',
+				),
+				(array) ( $args['cap'] ?? array() )
+			);
+		}
+	}
+}
+
 if ( ! function_exists( 'get_post' ) ) {
 	/**
 	 * Return a test post object.
@@ -268,6 +304,26 @@ if ( ! function_exists( 'get_post' ) ) {
 		}
 
 		return is_array( $post ) ? new WP_Post( $post ) : null;
+	}
+}
+
+if ( ! function_exists( 'get_post_type_object' ) ) {
+	/**
+	 * Return a test post type object.
+	 *
+	 * @param string $post_type Post type slug.
+	 */
+	function get_post_type_object( string $post_type ): ?WP_Post_Type {
+		$type = $GLOBALS['aculect_ai_companion_test_post_types'][ $post_type ] ?? null;
+		if ( false === $type ) {
+			return null;
+		}
+
+		if ( $type instanceof WP_Post_Type ) {
+			return $type;
+		}
+
+		return new WP_Post_Type( $post_type );
 	}
 }
 
@@ -786,6 +842,17 @@ if ( ! function_exists( 'sanitize_text_field' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_kses_post' ) ) {
+	/**
+	 * Return post HTML unchanged for unit tests.
+	 *
+	 * @param string $data Raw post HTML.
+	 */
+	function wp_kses_post( string $data ): string {
+		return $data;
+	}
+}
+
 if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 	/**
 	 * Strip all HTML tags for tests.
@@ -1113,6 +1180,43 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 			$this->headers[ $key ] = $value;
 
 			return null;
+		}
+	}
+}
+
+if ( ! class_exists( 'WP_Error' ) ) {
+	/**
+	 * Minimal WordPress error test double.
+	 */
+	class WP_Error {
+		/**
+		 * @param string               $code    Error code.
+		 * @param string               $message Error message.
+		 * @param array<string, mixed> $data    Error data.
+		 */
+		public function __construct( private string $code = '', private string $message = '', private array $data = array() ) {}
+
+		/**
+		 * Return the first error code.
+		 */
+		public function get_error_code(): string {
+			return $this->code;
+		}
+
+		/**
+		 * Return the first error message.
+		 */
+		public function get_error_message(): string {
+			return $this->message;
+		}
+
+		/**
+		 * Return error data.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_error_data(): array {
+			return $this->data;
 		}
 	}
 }

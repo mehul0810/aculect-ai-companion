@@ -25,21 +25,34 @@ final class McpToolManifest {
 	}
 
 	/**
+	 * Return the exact initialize result payload for the current server.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function initialize_payload(): array {
+		return ( new McpController() )->initialize_payload_for_diagnostics();
+	}
+
+	/**
 	 * Build a full admin export for the current WordPress user.
 	 *
 	 * @param array<string, mixed> $session Optional active connector session context.
 	 * @return array<string, mixed>
 	 */
 	public function export_for_current_user( array $session = array() ): array {
-		$payload = $this->tools_list_payload_for_current_user();
+		$generated_at = gmdate( 'c' );
+		$payload      = $this->tools_list_payload_for_current_user();
+		$initialize   = $this->initialize_payload();
 
 		return array(
-			'generated_at'        => gmdate( 'c' ),
+			'generated_at'        => $generated_at,
 			'connection_url'      => Helpers::mcp_resource(),
+			'metadata'            => $this->metadata_context( $payload, $initialize, $generated_at ),
 			'user'                => $this->current_user_context(),
 			'session'             => $this->session_context( $session ),
-			'summary'             => $this->summary( $payload ),
+			'summary'             => $this->summary( $payload, $initialize ),
 			'ability_policy'      => $this->ability_policy_context(),
+			'initialize_payload'  => $initialize,
 			'tools_list_payload'  => $payload,
 			'json_rpc_method'     => 'tools/list',
 			'json_rpc_result_key' => 'result',
@@ -63,7 +76,7 @@ final class McpToolManifest {
 	 * @return array<string, mixed>
 	 */
 	public function summary_for_current_user(): array {
-		return $this->summary( $this->tools_list_payload_for_current_user() );
+		return $this->summary( $this->tools_list_payload_for_current_user(), $this->initialize_payload() );
 	}
 
 	/**
@@ -78,10 +91,11 @@ final class McpToolManifest {
 	/**
 	 * Build a compact validation summary from a tools/list payload.
 	 *
-	 * @param array<string, mixed> $payload MCP tools/list result payload.
+	 * @param array<string, mixed> $payload            MCP tools/list result payload.
+	 * @param array<string, mixed> $initialize_payload MCP initialize result payload.
 	 * @return array<string, mixed>
 	 */
-	public function summary( array $payload ): array {
+	public function summary( array $payload, array $initialize_payload = array() ): array {
 		$tools       = isset( $payload['tools'] ) && is_array( $payload['tools'] ) ? array_values( $payload['tools'] ) : array();
 		$names       = array();
 		$seen        = array();
@@ -136,7 +150,72 @@ final class McpToolManifest {
 			'invalid_tool_names'      => array_values( array_unique( $invalid ) ),
 			'first_tool_names'        => array_slice( $names, 0, 10 ),
 			'last_tool_names'         => array_slice( $names, -5 ),
+			'metadata_fingerprint'    => $this->metadata_fingerprint( $payload, $initialize_payload ),
+			'fingerprint_algorithm'   => 'sha256:canonical-json:mcp-metadata-v1',
 			'claude_name_pattern'     => '^[a-zA-Z0-9_-]{1,64}$',
+		);
+	}
+
+	/**
+	 * Build deterministic MCP metadata context for diagnostics.
+	 *
+	 * @param array<string, mixed> $tools_payload      MCP tools/list result payload.
+	 * @param array<string, mixed> $initialize_payload MCP initialize result payload.
+	 * @param string               $generated_at       Export or diagnostics timestamp.
+	 * @return array<string, mixed>
+	 */
+	public function metadata_context( array $tools_payload, array $initialize_payload, string $generated_at ): array {
+		return array(
+			'fingerprint'           => $this->metadata_fingerprint( $tools_payload, $initialize_payload ),
+			'fingerprint_algorithm' => 'sha256:canonical-json:mcp-metadata-v1',
+			'generated_at'          => $generated_at,
+			'covers'                => array(
+				'initialize.protocolVersion',
+				'initialize.serverInfo',
+				'initialize.instructions',
+				'initialize.capabilities',
+				'tools.name',
+				'tools.title',
+				'tools.description',
+				'tools.inputSchema',
+				'tools.outputSchema',
+				'tools.annotations',
+				'tools.securitySchemes',
+				'tools._meta',
+			),
+			'refresh_guidance'      => $this->metadata_refresh_guidance(),
+		);
+	}
+
+	/**
+	 * Return a deterministic fingerprint for MCP metadata snapshots.
+	 *
+	 * @param array<string, mixed> $tools_payload      MCP tools/list result payload.
+	 * @param array<string, mixed> $initialize_payload MCP initialize result payload.
+	 */
+	public function metadata_fingerprint( array $tools_payload, array $initialize_payload = array() ): string {
+		$snapshot = array(
+			'initialize' => $initialize_payload,
+			'tools_list' => $tools_payload,
+		);
+
+		$json = wp_json_encode( $this->canonicalize( $snapshot ), JSON_UNESCAPED_SLASHES );
+
+		return hash( 'sha256', false === $json ? '' : $json );
+	}
+
+	/**
+	 * Return provider-specific cache refresh guidance for diagnostics exports.
+	 *
+	 * @return array<string, string>
+	 */
+	public function metadata_refresh_guidance(): array {
+		return array(
+			'chatgpt_app'        => 'After tool names, schemas, annotations, security schemes, _meta, or instructions change, reconnect or rescan the ChatGPT connector/app version and compare this fingerprint.',
+			'openai_api'         => 'Start a fresh conversation or invalidate cached MCP tools so old mcp_list_tools context is not reused.',
+			'codex_agents_sdk'   => 'If tool-list caching is enabled, call the client cache invalidation path before retrying tool discovery.',
+			'claude_connector'   => 'Remove and re-add or re-authenticate the Claude connector when it reports fewer tools than this manifest export.',
+			'generic_mcp_client' => 'Refresh OAuth and tools/list metadata after plugin updates, ability policy changes, or schema changes.',
 		);
 	}
 
@@ -213,5 +292,38 @@ final class McpToolManifest {
 			'access_level'             => sanitize_key( (string) ( $session['access_level'] ?? '' ) ),
 			'write_permission_enabled' => true === ( $session['write_permission_enabled'] ?? false ),
 		);
+	}
+
+	/**
+	 * Recursively sort associative keys while preserving list order.
+	 *
+	 * @param mixed $value Raw metadata value.
+	 * @return mixed
+	 */
+	private function canonicalize( mixed $value ): mixed {
+		if ( is_object( $value ) ) {
+			$properties = get_object_vars( $value );
+			if ( array() === $properties ) {
+				return new \stdClass();
+			}
+
+			return $this->canonicalize( $properties );
+		}
+
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+
+		if ( array_is_list( $value ) ) {
+			return array_map( array( $this, 'canonicalize' ), $value );
+		}
+
+		ksort( $value );
+
+		foreach ( $value as $key => $item ) {
+			$value[ $key ] = $this->canonicalize( $item );
+		}
+
+		return $value;
 	}
 }

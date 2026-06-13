@@ -116,6 +116,7 @@ final class Plugin {
 		'save_brand'                   => 'handle_save_brand',
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
+		'run_content_index_sweep'      => 'handle_run_content_index_sweep',
 		'clear_logs'                   => 'handle_clear_logs',
 		'set_lockdown'                 => 'handle_set_lockdown',
 		'set_session_access_level'     => 'handle_set_session_access_level',

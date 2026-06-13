@@ -11,6 +11,10 @@ use Closure;
  */
 final class FirstPartyAbilityModules {
 
+	private const MIN_LONG_FORM_WORDS          = 3000;
+	private const MAX_LONG_FORM_WORDS          = 5000;
+	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
+
 	/**
 	 * Return first-party modules keyed by internal ability ID.
 	 *
@@ -168,14 +172,10 @@ final class FirstPartyAbilityModules {
 				$this->object_schema(
 					array(
 						'post_type' => array( 'type' => 'string' ),
-						'status'    => $this->string_or_string_list_schema( 'Single post status or comma-separated post statuses.' ),
-						'page'      => array( 'type' => 'integer' ),
-						'per_page'  => array( 'type' => 'integer' ),
-						'context'   => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for list browsing or full to include full content bodies. Defaults to compact.',
-						),
+						'status'    => $this->status_filter_schema( 'Post statuses to include. Defaults to publish, future, draft, pending, and private.' ),
+						'page'      => $this->page_schema(),
+						'per_page'  => $this->per_page_schema( 100, 'Items per page. Defaults to 20.' ),
+						'context'   => $this->context_schema( 'Use compact for list browsing or full to include full content bodies. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => ( new ContentAbilities() )->list_items( $args )
@@ -206,6 +206,7 @@ final class FirstPartyAbilityModules {
 						'title'          => array( 'type' => 'string' ),
 						'content'        => array(
 							'type'        => 'string',
+							'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 							'description' => 'Serialized WordPress block content. Use registered blocks and patterns, and never use the Custom HTML block (core/html).',
 						),
 						'excerpt'        => array( 'type' => 'string' ),
@@ -238,6 +239,7 @@ final class FirstPartyAbilityModules {
 						'title'                => array( 'type' => 'string' ),
 						'content'              => array(
 							'type'        => 'string',
+							'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 							'description' => 'Serialized WordPress block content. Use registered blocks and patterns, and never use the Custom HTML block (core/html).',
 						),
 						'excerpt'              => array( 'type' => 'string' ),
@@ -279,7 +281,7 @@ final class FirstPartyAbilityModules {
 						),
 						'meta_title'       => array( 'type' => 'string' ),
 						'meta_description' => array( 'type' => 'string' ),
-						'focus_keywords'   => $this->string_or_string_list_schema( 'Single focus keyword or comma-separated focus keywords.' ),
+						'focus_keywords'   => $this->string_list_schema( 'Focus keywords to store for the SEO plugin.', 10 ),
 					),
 					array( 'id' )
 				),
@@ -305,8 +307,8 @@ final class FirstPartyAbilityModules {
 				$this->object_schema(
 					array(
 						'taxonomy'   => array( 'type' => 'string' ),
-						'page'       => array( 'type' => 'integer' ),
-						'per_page'   => array( 'type' => 'integer' ),
+						'page'       => $this->page_schema(),
+						'per_page'   => $this->per_page_schema( 100, 'Terms per page. Defaults to 50.' ),
 						'search'     => array( 'type' => 'string' ),
 						'hide_empty' => array( 'type' => 'boolean' ),
 					),
@@ -390,8 +392,8 @@ final class FirstPartyAbilityModules {
 				true,
 				$this->object_schema(
 					array(
-						'page'        => array( 'type' => 'integer' ),
-						'per_page'    => array( 'type' => 'integer' ),
+						'page'        => $this->page_schema(),
+						'per_page'    => $this->per_page_schema( 100, 'Media items per page. Defaults to 20.' ),
 						'search'      => array( 'type' => 'string' ),
 						'type'        => array(
 							'type'        => 'string',
@@ -404,13 +406,9 @@ final class FirstPartyAbilityModules {
 						),
 						'parent_id'   => array( 'type' => 'integer' ),
 						'author'      => array( 'type' => 'integer' ),
-						'date_after'  => array( 'type' => 'string' ),
-						'date_before' => array( 'type' => 'string' ),
-						'context'     => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for list browsing or full to include full attachment body fields. Defaults to compact.',
-						),
+						'date_after'  => $this->date_boundary_schema( 'Inclusive lower date boundary accepted by WordPress date queries.' ),
+						'date_before' => $this->date_boundary_schema( 'Inclusive upper date boundary accepted by WordPress date queries.' ),
+						'context'     => $this->context_schema( 'Use compact for list browsing or full to include full attachment body fields. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => ( new MediaAbilities() )->list_media( $args )
@@ -569,13 +567,9 @@ final class FirstPartyAbilityModules {
 							'description' => 'Inclusive upper date boundary accepted by WordPress date queries.',
 						),
 						'search'         => array( 'type' => 'string' ),
-						'page'           => array( 'type' => 'integer' ),
-						'per_page'       => array( 'type' => 'integer' ),
-						'context'        => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for moderation queues or full to include comment bodies. Defaults to compact.',
-						),
+						'page'           => $this->page_schema(),
+						'per_page'       => $this->per_page_schema( 100, 'Comments per page. Defaults to 50.' ),
+						'context'        => $this->context_schema( 'Use compact for moderation queues or full to include comment bodies. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => ( new CommentAbilities() )->list_comments( $args )
@@ -671,6 +665,7 @@ final class FirstPartyAbilityModules {
 					array(
 						'url'         => array(
 							'type'        => 'string',
+							'format'      => 'uri',
 							'description' => 'Public HTTP or HTTPS media URL to upload.',
 						),
 						'title'       => array( 'type' => 'string' ),
@@ -694,8 +689,8 @@ final class FirstPartyAbilityModules {
 					array(
 						'search'   => array( 'type' => 'string' ),
 						'category' => array( 'type' => 'string' ),
-						'page'     => array( 'type' => 'integer' ),
-						'per_page' => array( 'type' => 'integer' ),
+						'page'     => $this->page_schema(),
+						'per_page' => $this->per_page_schema( 100, 'Actions per page.' ),
 					)
 				),
 				static fn ( array $args ): array => ( new WordPressAbilitiesBridge() )->discover( $args )
@@ -777,8 +772,9 @@ final class FirstPartyAbilityModules {
 	 */
 	private function object_schema( array $properties, array $required = array() ): array {
 		$schema = array(
-			'type'       => 'object',
-			'properties' => $properties,
+			'type'                 => 'object',
+			'properties'           => $properties,
+			'additionalProperties' => false,
 		);
 
 		if ( array() !== $required ) {
@@ -795,21 +791,96 @@ final class FirstPartyAbilityModules {
 	 */
 	private function empty_schema(): array {
 		return array(
-			'type'       => 'object',
-			'properties' => new \stdClass(),
+			'type'                 => 'object',
+			'properties'           => new \stdClass(),
+			'additionalProperties' => false,
 		);
 	}
 
 	/**
-	 * Build a schema that accepts a string or list of strings.
+	 * Build a canonical list-of-strings schema.
+	 *
+	 * @param string $description Schema description.
+	 * @param int    $max_items   Maximum item count.
+	 * @return array<string, mixed>
+	 */
+	private function string_list_schema( string $description, int $max_items = 20 ): array {
+		return array(
+			'type'        => 'array',
+			'description' => $description,
+			'items'       => array( 'type' => 'string' ),
+			'maxItems'    => $max_items,
+		);
+	}
+
+	/**
+	 * Build a bounded page-number schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function page_schema(): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'description' => 'One-based page number. Defaults to 1.',
+		);
+	}
+
+	/**
+	 * Build a bounded per-page schema.
+	 *
+	 * @param int    $maximum     Maximum value accepted by the handler.
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function per_page_schema( int $maximum, string $description ): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'maximum'     => $maximum,
+			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build a compact/full response context schema.
 	 *
 	 * @param string $description Schema description.
 	 * @return array<string, mixed>
 	 */
-	private function string_or_string_list_schema( string $description ): array {
+	private function context_schema( string $description ): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'compact', 'full' ),
+			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build a date boundary schema for WordPress query arguments.
+	 *
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function date_boundary_schema( string $description ): array {
 		return array(
 			'type'        => 'string',
 			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build a canonical list-of-post-statuses schema.
+	 *
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function status_filter_schema( string $description ): array {
+		return array(
+			'type'        => 'array',
+			'description' => $description,
+			'items'       => array( 'type' => 'string' ),
+			'maxItems'    => 10,
 		);
 	}
 
@@ -839,6 +910,8 @@ final class FirstPartyAbilityModules {
 				),
 				'desired_word_count' => array(
 					'type'        => 'integer',
+					'minimum'     => self::MIN_LONG_FORM_WORDS,
+					'maximum'     => self::MAX_LONG_FORM_WORDS,
 					'description' => 'Target word count for long-form content. Values are clamped to 3000-5000 words.',
 				),
 				'existing_post_id'   => array(
@@ -891,8 +964,35 @@ final class FirstPartyAbilityModules {
 					),
 					'section_map' => array(
 						'type'                 => 'object',
-						'description'          => 'Map section IDs to serialized block content or objects with a content field. The workflow combines sections into a full block document before validation.',
-						'additionalProperties' => true,
+						'description'          => 'Map stable section IDs to updated serialized block section objects. The workflow combines sections into a full block document before validation.',
+						'additionalProperties' => array(
+							'type'                 => 'object',
+							'properties'           => array(
+								'content'    => array(
+									'type'        => 'string',
+									'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
+									'description' => 'Serialized WordPress block markup for this section. Never use raw HTML or core/html.',
+								),
+								'id'         => array(
+									'type'        => 'string',
+									'description' => 'Optional stable section ID. The map key is used when omitted.',
+								),
+								'section_id' => array(
+									'type'        => 'string',
+									'description' => 'Optional alias for id.',
+								),
+								'anchor'     => array(
+									'type'        => 'string',
+									'description' => 'Optional heading anchor for the section.',
+								),
+								'heading'    => array(
+									'type'        => 'string',
+									'description' => 'Optional heading text used to resolve the section ID.',
+								),
+							),
+							'required'             => array( 'content' ),
+							'additionalProperties' => false,
+						),
 					),
 					'status'      => $this->content_status_schema(),
 				),
@@ -935,14 +1035,17 @@ final class FirstPartyAbilityModules {
 					'type'        => 'string',
 					'description' => 'Post type to refresh. Defaults to post.',
 				),
-				'status'    => $this->string_or_string_list_schema( 'Single status or comma-separated statuses. Defaults to publish, future, draft, pending, and private.' ),
+				'status'    => $this->status_filter_schema( 'Post statuses to refresh. Defaults to publish, future, draft, pending, and private.' ),
 				'ids'       => array(
 					'type'        => 'array',
 					'description' => 'Optional explicit content IDs to refresh. Maximum 100 per batch.',
 					'items'       => array( 'type' => 'integer' ),
+					'maxItems'    => 100,
 				),
 				'limit'     => array(
 					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
 					'description' => 'Maximum number of recent items to refresh when ids are not supplied. Maximum 100.',
 				),
 				'mode'      => array(
@@ -976,13 +1079,9 @@ final class FirstPartyAbilityModules {
 					'type'        => 'boolean',
 					'description' => 'Filter to stale or fresh index rows.',
 				),
-				'page'      => array( 'type' => 'integer' ),
-				'per_page'  => array( 'type' => 'integer' ),
-				'context'   => array(
-					'type'        => 'string',
-					'enum'        => array( 'compact', 'full' ),
-					'description' => 'Use compact for normal retrieval. Full is reserved for future expanded item fields.',
-				),
+				'page'      => $this->page_schema(),
+				'per_page'  => $this->per_page_schema( 50, 'Search results per page. Defaults to 10.' ),
+				'context'   => $this->context_schema( 'Use compact for normal retrieval. Full is reserved for future expanded item fields.' ),
 			)
 		);
 	}
@@ -1005,13 +1104,9 @@ final class FirstPartyAbilityModules {
 				),
 				'post_type' => array( 'type' => 'string' ),
 				'status'    => array( 'type' => 'string' ),
-				'page'      => array( 'type' => 'integer' ),
-				'per_page'  => array( 'type' => 'integer' ),
-				'context'   => array(
-					'type'        => 'string',
-					'enum'        => array( 'compact', 'full' ),
-					'description' => 'Use full only when exact serialized block markup is needed.',
-				),
+				'page'      => $this->page_schema(),
+				'per_page'  => $this->per_page_schema( 50, 'Content chunks per page. Defaults to 10.' ),
+				'context'   => $this->context_schema( 'Use full only when exact serialized block markup is needed.' ),
 			)
 		);
 	}
@@ -1034,7 +1129,12 @@ final class FirstPartyAbilityModules {
 				),
 				'post_type' => array( 'type' => 'string' ),
 				'status'    => array( 'type' => 'string' ),
-				'limit'     => array( 'type' => 'integer' ),
+				'limit'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 20,
+					'description' => 'Maximum related items to return. Defaults to 10.',
+				),
 			)
 		);
 	}
@@ -1061,7 +1161,12 @@ final class FirstPartyAbilityModules {
 				),
 				'post_type' => array( 'type' => 'string' ),
 				'status'    => array( 'type' => 'string' ),
-				'limit'     => array( 'type' => 'integer' ),
+				'limit'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 20,
+					'description' => 'Maximum link opportunities to return. Defaults to 10.',
+				),
 			)
 		);
 	}
@@ -1085,8 +1190,8 @@ final class FirstPartyAbilityModules {
 					'description' => 'Memory review status. Defaults to approved.',
 				),
 				'query'    => array( 'type' => 'string' ),
-				'page'     => array( 'type' => 'integer' ),
-				'per_page' => array( 'type' => 'integer' ),
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 50, 'Memory rows per page. Defaults to 10.' ),
 			)
 		);
 	}
@@ -1157,6 +1262,7 @@ final class FirstPartyAbilityModules {
 			'title'                => array( 'type' => 'string' ),
 			'content'              => array(
 				'type'        => 'string',
+				'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 				'description' => 'Serialized WordPress block content for the full document. Required for create. For update, provide content or section_map. Never use raw HTML or core/html.',
 			),
 			'excerpt'              => array( 'type' => 'string' ),
@@ -1193,7 +1299,7 @@ final class FirstPartyAbilityModules {
 				'type'        => 'string',
 				'description' => 'Rank Math SEO meta description.',
 			),
-			'focus_keywords'   => $this->string_or_string_list_schema( 'Single Rank Math focus keyword or comma-separated focus keywords.' ),
+			'focus_keywords'   => $this->string_list_schema( 'Rank Math focus keywords.', 10 ),
 		);
 	}
 
@@ -1231,8 +1337,16 @@ final class FirstPartyAbilityModules {
 	private function taxonomy_assignment_schema( string $description ): array {
 		return array(
 			'type'                 => 'object',
-			'description'          => $description . ' Values may be an existing term ID, term slug, or array of existing term IDs/slugs.',
-			'additionalProperties' => true,
+			'description'          => $description . ' Each taxonomy value should be an array of existing term IDs.',
+			'additionalProperties' => array(
+				'type'        => 'array',
+				'description' => 'Existing term IDs for one taxonomy.',
+				'items'       => array(
+					'type'    => 'integer',
+					'minimum' => 1,
+				),
+				'maxItems'    => 100,
+			),
 		);
 	}
 

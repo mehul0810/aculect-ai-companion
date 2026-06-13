@@ -111,6 +111,7 @@ final class McpControllerTest extends TestCase {
 			self::assertIsArray( $tool['inputSchema'] );
 			self::assertSame( 'object', $tool['inputSchema']['type'] ?? null );
 			self::assertArrayHasKey( 'properties', $tool['inputSchema'] );
+			self::assertFalse( $tool['inputSchema']['additionalProperties'] ?? true, (string) $tool['name'] );
 
 			self::assertIsArray( $tool['securitySchemes'] );
 			self::assertNotEmpty( $tool['securitySchemes'] );
@@ -285,6 +286,7 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'name', $tool );
 			self::assertArrayHasKey( 'inputSchema', $tool );
 			self::assertIsArray( $tool['inputSchema'] );
+			self::assertFalse( $tool['inputSchema']['additionalProperties'] ?? true, (string) $tool['name'] . '.inputSchema must be closed at the top level' );
 
 			$this->assertSchemaDoesNotContainCompositionKeywords( $tool['inputSchema'], (string) $tool['name'] . '.inputSchema' );
 		}
@@ -311,7 +313,12 @@ final class McpControllerTest extends TestCase {
 
 		self::assertSame( $dotted_schema, $public_schema );
 		self::assertSame( 'object', $public_schema['type'] );
+		self::assertFalse( $public_schema['additionalProperties'] );
 		self::assertArrayHasKey( 'post_type', $public_schema['properties'] );
+		self::assertSame( 'array', $public_schema['properties']['status']['type'] );
+		self::assertSame( 'string', $public_schema['properties']['status']['items']['type'] );
+		self::assertSame( 1, $public_schema['properties']['page']['minimum'] );
+		self::assertSame( 100, $public_schema['properties']['per_page']['maximum'] );
 		self::assertArrayHasKey( 'context', $public_schema['properties'] );
 		self::assertSame( array( 'compact', 'full' ), $public_schema['properties']['context']['enum'] );
 	}
@@ -319,7 +326,9 @@ final class McpControllerTest extends TestCase {
 	public function test_expanded_tool_schemas_are_available(): void {
 		$media_schema = $this->schemaForTool( 'media_upload_item' );
 		self::assertSame( 'object', $media_schema['type'] );
+		self::assertFalse( $media_schema['additionalProperties'] );
 		self::assertSame( array( 'url' ), $media_schema['required'] );
+		self::assertSame( 'uri', $media_schema['properties']['url']['format'] );
 		self::assertArrayHasKey( 'alt_text', $media_schema['properties'] );
 
 		$media_get_schema = $this->schemaForTool( 'media_get_item' );
@@ -347,6 +356,9 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'meta_title', $seo_schema['properties'] );
 		self::assertArrayHasKey( 'meta_description', $seo_schema['properties'] );
 		self::assertArrayHasKey( 'focus_keywords', $seo_schema['properties'] );
+		self::assertSame( 'array', $seo_schema['properties']['focus_keywords']['type'] );
+		self::assertSame( 'string', $seo_schema['properties']['focus_keywords']['items']['type'] );
+		self::assertSame( 10, $seo_schema['properties']['focus_keywords']['maxItems'] );
 
 		$comments_schema = $this->schemaForTool( 'comments_update_item' );
 		self::assertSame( array( 'id' ), $comments_schema['required'] );
@@ -369,10 +381,12 @@ final class McpControllerTest extends TestCase {
 
 		$health_schema = $this->schemaForTool( 'site_get_health' );
 		self::assertSame( 'object', $health_schema['type'] );
+		self::assertFalse( $health_schema['additionalProperties'] );
 		self::assertInstanceOf( \stdClass::class, $health_schema['properties'] );
 
 		$brand_schema = $this->schemaForTool( 'intelligence_brand_get_context' );
 		self::assertSame( 'object', $brand_schema['type'] );
+		self::assertFalse( $brand_schema['additionalProperties'] );
 		self::assertInstanceOf( \stdClass::class, $brand_schema['properties'] );
 
 		$feedback_schema = $this->schemaForTool( 'intelligence_feedback_submit' );
@@ -383,7 +397,11 @@ final class McpControllerTest extends TestCase {
 		$create_schema = $this->schemaForTool( 'content_create_item' );
 		self::assertArrayHasKey( 'author', $create_schema['properties'] );
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
+		self::assertIsArray( $create_schema['properties']['taxonomies']['additionalProperties'] );
+		self::assertSame( 'array', $create_schema['properties']['taxonomies']['additionalProperties']['type'] );
+		self::assertSame( 'integer', $create_schema['properties']['taxonomies']['additionalProperties']['items']['type'] );
 		self::assertArrayHasKey( 'date', $create_schema['properties'] );
+		self::assertSame( 300000, $create_schema['properties']['content']['maxLength'] );
 		self::assertSame( array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ), $create_schema['properties']['status']['enum'] );
 
 		$update_schema = $this->schemaForTool( 'content_update_item' );
@@ -400,20 +418,28 @@ final class McpControllerTest extends TestCase {
 		$workflow_prepare_schema = $this->schemaForTool( 'content_workflow_prepare_post' );
 		self::assertSame( array( 'brief' ), $workflow_prepare_schema['required'] );
 		self::assertArrayHasKey( 'desired_word_count', $workflow_prepare_schema['properties'] );
+		self::assertSame( 3000, $workflow_prepare_schema['properties']['desired_word_count']['minimum'] );
+		self::assertSame( 5000, $workflow_prepare_schema['properties']['desired_word_count']['maximum'] );
 
 		$workflow_create_schema = $this->schemaForTool( 'content_workflow_create_draft' );
 		self::assertSame( array( 'title', 'content' ), $workflow_create_schema['required'] );
 		self::assertArrayHasKey( 'meta_title', $workflow_create_schema['properties'] );
 		self::assertArrayHasKey( 'dry_run', $workflow_create_schema['properties'] );
+		self::assertSame( 'array', $workflow_create_schema['properties']['focus_keywords']['type'] );
 
 		$workflow_update_schema = $this->schemaForTool( 'content_workflow_update_post' );
 		self::assertSame( array( 'id' ), $workflow_update_schema['required'] );
 		self::assertArrayHasKey( 'section_map', $workflow_update_schema['properties'] );
 		self::assertArrayHasKey( 'status', $workflow_update_schema['properties'] );
+		self::assertIsArray( $workflow_update_schema['properties']['section_map']['additionalProperties'] );
+		self::assertSame( 'object', $workflow_update_schema['properties']['section_map']['additionalProperties']['type'] );
+		self::assertSame( array( 'content' ), $workflow_update_schema['properties']['section_map']['additionalProperties']['required'] );
+		self::assertFalse( $workflow_update_schema['properties']['section_map']['additionalProperties']['additionalProperties'] );
 
 		$rankmath_workflow_schema = $this->schemaForTool( 'seo_workflow_update_rankmath' );
 		self::assertSame( array( 'id' ), $rankmath_workflow_schema['required'] );
 		self::assertArrayHasKey( 'focus_keywords', $rankmath_workflow_schema['properties'] );
+		self::assertSame( 'array', $rankmath_workflow_schema['properties']['focus_keywords']['type'] );
 	}
 
 	public function test_write_tool_schemas_include_safety_controls(): void {

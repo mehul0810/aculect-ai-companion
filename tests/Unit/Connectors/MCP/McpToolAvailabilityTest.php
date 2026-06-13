@@ -228,6 +228,8 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['intelligence_index']['canonical_search']['available'] );
+		self::assertTrue( $operations['intelligence_index']['canonical_fetch']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertFalse( $operations['intelligence_index']['memory_save']['available'] );
@@ -245,12 +247,19 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['intelligence_index']['canonical_search']['available'] );
+		self::assertTrue( $operations['intelligence_index']['canonical_fetch']['available'] );
 		self::assertTrue( $operations['intelligence_index']['find_related']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertTrue( $operations['intelligence_index']['batch_status']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_items']['always_on'] );
+		self::assertTrue( $operations['intelligence_index']['canonical_search']['always_on'] );
+		self::assertSame( 'search', $operations['intelligence_index']['canonical_search']['tool'] );
+		self::assertSame( 'fetch', $operations['intelligence_index']['canonical_fetch']['tool'] );
 		self::assertSame( 'always_on_read_intelligence', $operations['intelligence_index']['search_items']['availability_model'] );
+		self::assertArrayHasKey( 'search', $modules );
+		self::assertArrayHasKey( 'fetch', $modules );
 		self::assertArrayHasKey( 'content_search.items', $modules );
 		self::assertArrayHasKey( 'memory.list', $modules );
 		self::assertArrayNotHasKey( 'memory.save', $modules );
@@ -266,8 +275,14 @@ final class McpToolAvailabilityTest extends TestCase {
 		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array() );
 
 		self::assertFalse( $operations['intelligence_index']['search_items']['available'] );
+		self::assertFalse( $operations['intelligence_index']['canonical_search']['available'] );
+		self::assertFalse( $operations['intelligence_index']['canonical_fetch']['available'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
+		self::assertSame( 'oauth_scope', $operations['intelligence_index']['canonical_search']['blocked_by'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
+		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['canonical_fetch']['missing_scopes'] );
+		self::assertArrayNotHasKey( 'search', $modules );
+		self::assertArrayNotHasKey( 'fetch', $modules );
 		self::assertArrayNotHasKey( 'content_search.items', $modules );
 	}
 

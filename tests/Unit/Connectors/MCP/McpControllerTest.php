@@ -160,6 +160,8 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'intelligence_site_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_content_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'operations manifest', $result['instructions'] );
+		self::assertStringContainsString( 'call search first', $result['instructions'] );
+		self::assertStringContainsString( 'fetch with a returned ID', $result['instructions'] );
 		self::assertStringContainsString( 'content_search_items', $result['instructions'] );
 		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
 		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
@@ -199,6 +201,17 @@ final class McpControllerTest extends TestCase {
 		$result        = $this->invokePrivate( new McpController(), 'list_tools' );
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['search'] );
+		self::assertArrayHasKey( 'results', $tools_by_name['search']['outputSchema']['properties'] );
+		self::assertSame( array( 'results' ), $tools_by_name['search']['outputSchema']['required'] );
+		self::assertFalse( $tools_by_name['search']['outputSchema']['additionalProperties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['fetch'] );
+		self::assertArrayHasKey( 'id', $tools_by_name['fetch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'title', $tools_by_name['fetch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'text', $tools_by_name['fetch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'url', $tools_by_name['fetch']['outputSchema']['properties'] );
+		self::assertFalse( $tools_by_name['fetch']['outputSchema']['additionalProperties'] );
+
 		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
 			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
 			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
@@ -230,6 +243,8 @@ final class McpControllerTest extends TestCase {
 		$names  = array_column( $result['tools'], 'name' );
 
 		$critical_tools = array(
+			'search',
+			'fetch',
 			'content_workflow_prepare_post',
 			'content_workflow_create_draft',
 			'content_workflow_update_post',
@@ -298,6 +313,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'content_update_item', $site['operations']['content']['update']['tool'] );
 		self::assertSame( 'content_update_seo', $site['operations']['content']['seo']['tool'] );
 		self::assertSame( 'content_search_items', $site['operations']['intelligence_index']['search_items']['tool'] );
+		self::assertSame( 'search', $site['operations']['intelligence_index']['canonical_search']['tool'] );
+		self::assertSame( 'fetch', $site['operations']['intelligence_index']['canonical_fetch']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
 		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
@@ -317,6 +334,16 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_expanded_tool_schemas_are_available(): void {
+		$canonical_search_schema = $this->schemaForTool( 'search' );
+		self::assertSame( 'object', $canonical_search_schema['type'] );
+		self::assertSame( array( 'query' ), $canonical_search_schema['required'] );
+		self::assertFalse( $canonical_search_schema['additionalProperties'] );
+
+		$canonical_fetch_schema = $this->schemaForTool( 'fetch' );
+		self::assertSame( 'object', $canonical_fetch_schema['type'] );
+		self::assertSame( array( 'id' ), $canonical_fetch_schema['required'] );
+		self::assertFalse( $canonical_fetch_schema['additionalProperties'] );
+
 		$media_schema = $this->schemaForTool( 'media_upload_item' );
 		self::assertSame( 'object', $media_schema['type'] );
 		self::assertSame( array( 'url' ), $media_schema['required'] );

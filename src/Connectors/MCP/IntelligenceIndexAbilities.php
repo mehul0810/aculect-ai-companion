@@ -17,6 +17,86 @@ use Aculect\AICompanion\Intelligence\ContentIndexRepository;
  */
 final class IntelligenceIndexAbilities extends AbstractAbilityService {
 
+	private const CANONICAL_FETCH_TEXT_LIMIT = 120000;
+
+	/**
+	 * Search WordPress content using the canonical MCP retrieval contract.
+	 *
+	 * @param array<string, mixed> $args Search args.
+	 * @return array<string, mixed>
+	 */
+	public function canonical_search( array $args ): array {
+		$query = sanitize_text_field( (string) ( $args['query'] ?? '' ) );
+		if ( '' === $query ) {
+			return array( 'results' => array() );
+		}
+
+		$items = array();
+		if ( $this->index_runtime_available() ) {
+			$result = $this->search_items(
+				array(
+					'query'    => $query,
+					'per_page' => 10,
+					'context'  => 'compact',
+				)
+			);
+			$items  = (array) ( $result['items'] ?? array() );
+		}
+
+		if ( array() === $items ) {
+			$items = $this->degraded_live_items(
+				array(
+					'query'    => $query,
+					'per_page' => 10,
+				)
+			);
+		}
+
+		return array(
+			'results' => array_values(
+				array_filter(
+					array_map( array( $this, 'canonical_search_result' ), $items )
+				)
+			),
+		);
+	}
+
+	/**
+	 * Fetch one WordPress content item using the canonical MCP retrieval contract.
+	 *
+	 * @param array<string, mixed> $args Fetch args.
+	 * @return array<string, mixed>
+	 */
+	public function canonical_fetch( array $args ): array {
+		$id = sanitize_text_field( (string) ( $args['id'] ?? '' ) );
+		if ( '' === $id ) {
+			return $this->error_response( 'invalid_id', 'Provide an ID returned by search or a readable WordPress post ID.' );
+		}
+
+		$chunk = $this->canonical_chunk_identity( $id );
+		if ( null !== $chunk ) {
+			return $this->canonical_fetch_chunk( (int) $chunk['post_id'], (string) $chunk['chunk_id'] );
+		}
+
+		$post_id = $this->canonical_post_id( $id );
+		if ( $post_id <= 0 ) {
+			return $this->error_response( 'invalid_id', 'Provide an ID returned by search or a readable WordPress post ID.' );
+		}
+
+		if ( ! $this->can_read_post( $post_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to read that content item.' );
+		}
+
+		$post = function_exists( 'get_post' ) ? get_post( $post_id ) : null;
+		if ( ! $post instanceof \WP_Post ) {
+			return $this->error_response( 'not_found', 'No readable WordPress content item exists for that ID.' );
+		}
+
+		$indexed = $this->index_runtime_available() ? $this->repo()->content_item( $post_id ) : array();
+
+		return $this->canonical_post_document( $post, $indexed );
+	}
+
 	/**
 	 * Search indexed content items.
 	 *
@@ -360,6 +440,303 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			'job'    => $this->public_job_for_current_user( $job ),
 			'index'  => $this->job_index_summary( $job ),
 		);
+	}
+
+	/**
+	 * Convert an indexed item row to the canonical MCP search result shape.
+	 *
+	 * @param array<string, mixed> $item Indexed or live item row.
+	 * @return array<string, string>
+	 */
+	private function canonical_search_result( array $item ): array {
+		$post_id = absint( $item['id'] ?? $item['post_id'] ?? 0 );
+		if ( $post_id <= 0 ) {
+			return array();
+		}
+
+		$title = sanitize_text_field( (string) ( $item['title'] ?? $item['post_title'] ?? '' ) );
+		$url   = $this->canonical_item_url( $item, $post_id );
+		if ( '' === $url ) {
+			return array();
+		}
+
+		return array(
+			'id'    => 'wp-post:' . $post_id,
+			'title' => '' === $title ? 'Untitled' : $title,
+			'url'   => $url,
+		);
+	}
+
+	/**
+	 * Resolve a canonical post ID.
+	 *
+	 * @param string $id Canonical or numeric ID.
+	 */
+	private function canonical_post_id( string $id ): int {
+		if ( 1 === preg_match( '/^(?:wp-)?post:(\d+)$/i', $id, $matches ) ) {
+			return absint( $matches[1] );
+		}
+
+		if ( ctype_digit( $id ) ) {
+			return absint( $id );
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Resolve a canonical chunk identity.
+	 *
+	 * @param string $id Canonical chunk ID.
+	 * @return array{post_id: int, chunk_id: string}|null
+	 */
+	private function canonical_chunk_identity( string $id ): ?array {
+		if ( 1 !== preg_match( '/^(?:wp-)?chunk:(\d+):(.+)$/i', $id, $matches ) ) {
+			return null;
+		}
+
+		$post_id  = absint( $matches[1] );
+		$chunk_id = sanitize_key( (string) $matches[2] );
+		if ( $post_id <= 0 || '' === $chunk_id ) {
+			return null;
+		}
+
+		return array(
+			'post_id'  => $post_id,
+			'chunk_id' => $chunk_id,
+		);
+	}
+
+	/**
+	 * Fetch one indexed chunk as a canonical document.
+	 *
+	 * @param int    $post_id  Parent post ID.
+	 * @param string $chunk_id Chunk ID.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_fetch_chunk( int $post_id, string $chunk_id ): array {
+		if ( ! $this->can_read_post( $post_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to read that content section.' );
+		}
+
+		if ( ! $this->index_runtime_available() ) {
+			return $this->error_response( 'index_unavailable', 'Indexed section fetches require the Aculect content intelligence index.' );
+		}
+
+		$result = $this->search_chunks(
+			array(
+				'post_id'  => $post_id,
+				'context'  => 'full',
+				'per_page' => 50,
+			)
+		);
+
+		foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			if ( (string) ( $item['chunk_id'] ?? '' ) === $chunk_id || (string) ( $item['id'] ?? '' ) === $chunk_id ) {
+				return $this->canonical_chunk_document( $item );
+			}
+		}
+
+		return $this->error_response( 'not_found', 'No readable indexed section exists for that ID.' );
+	}
+
+	/**
+	 * Build a canonical post document.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_post_document( \WP_Post $post, array $indexed ): array {
+		$post_id = absint( $post->ID );
+
+		return array(
+			'id'       => 'wp-post:' . $post_id,
+			'title'    => $this->canonical_post_title( $post, $indexed ),
+			'text'     => $this->canonical_text( (string) $post->post_content ),
+			'url'      => $this->canonical_post_url( $post, $indexed ),
+			'metadata' => $this->canonical_metadata(
+				array(
+					'source'       => 'wordpress',
+					'post_id'      => $post_id,
+					'post_type'    => (string) $post->post_type,
+					'status'       => (string) $post->post_status,
+					'slug'         => (string) $post->post_name,
+					'indexed_at'   => (string) ( $indexed['indexed_at'] ?? '' ),
+					'content_hash' => (string) ( $indexed['content_hash'] ?? '' ),
+					'stale'        => (bool) ( $indexed['stale'] ?? false ),
+				)
+			),
+		);
+	}
+
+	/**
+	 * Build a canonical chunk document.
+	 *
+	 * @param array<string, mixed> $chunk Indexed chunk row.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_chunk_document( array $chunk ): array {
+		$post_id  = absint( $chunk['post_id'] ?? 0 );
+		$chunk_id = sanitize_key( (string) ( $chunk['chunk_id'] ?? $chunk['id'] ?? '' ) );
+		$heading  = sanitize_text_field( (string) ( $chunk['heading'] ?? '' ) );
+		$title    = '' !== $heading ? $heading : sanitize_text_field( (string) ( $chunk['post_title'] ?? '' ) );
+		$text     = (string) ( $chunk['block_markup'] ?? '' );
+		if ( '' === $text ) {
+			$text = (string) ( $chunk['text'] ?? '' );
+		}
+
+		return array(
+			'id'       => 'wp-chunk:' . $post_id . ':' . $chunk_id,
+			'title'    => '' === $title ? 'Untitled section' : $title,
+			'text'     => $this->canonical_text( $text ),
+			'url'      => $this->append_url_fragment(
+				$this->safe_url( (string) ( $chunk['permalink'] ?? '' ) ),
+				(string) ( $chunk['anchor'] ?? '' )
+			),
+			'metadata' => $this->canonical_metadata(
+				array(
+					'source'        => 'wordpress_index_chunk',
+					'post_id'       => $post_id,
+					'post_type'     => (string) ( $chunk['post_type'] ?? '' ),
+					'status'        => (string) ( $chunk['post_status'] ?? '' ),
+					'chunk_id'      => $chunk_id,
+					'section_index' => absint( $chunk['section_index'] ?? 0 ),
+					'content_hash'  => (string) ( $chunk['content_hash'] ?? '' ),
+					'stale'         => (bool) ( $chunk['stale'] ?? false ),
+				)
+			),
+		);
+	}
+
+	/**
+	 * Return a canonical title for one post.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 */
+	private function canonical_post_title( \WP_Post $post, array $indexed ): string {
+		$title = sanitize_text_field( (string) ( $indexed['title'] ?? '' ) );
+		if ( '' === $title ) {
+			$title = sanitize_text_field( (string) $post->post_title );
+		}
+
+		return '' === $title ? 'Untitled' : $title;
+	}
+
+	/**
+	 * Return a canonical URL for one post.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 */
+	private function canonical_post_url( \WP_Post $post, array $indexed ): string {
+		$url = $this->safe_url( (string) ( $indexed['permalink'] ?? '' ) );
+		if ( '' !== $url ) {
+			return $url;
+		}
+
+		if ( function_exists( 'get_permalink' ) ) {
+			$permalink = get_permalink( $post );
+			if ( is_string( $permalink ) ) {
+				$url = $this->safe_url( $permalink );
+			}
+		}
+
+		return '' !== $url ? $url : $this->fallback_post_url( absint( $post->ID ) );
+	}
+
+	/**
+	 * Return a canonical URL for a search item.
+	 *
+	 * @param array<string, mixed> $item    Indexed or live item row.
+	 * @param int                  $post_id Post ID.
+	 */
+	private function canonical_item_url( array $item, int $post_id ): string {
+		$url = $this->safe_url( (string) ( $item['url'] ?? $item['permalink'] ?? '' ) );
+
+		return '' !== $url ? $url : $this->fallback_post_url( $post_id );
+	}
+
+	/**
+	 * Return a fallback post URL when permalink helpers are unavailable.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function fallback_post_url( int $post_id ): string {
+		$path = '?p=' . max( 0, $post_id );
+
+		return function_exists( 'home_url' ) ? $this->safe_url( home_url( $path ) ) : $this->safe_url( 'https://example.com/' . $path );
+	}
+
+	/**
+	 * Strip markup and bound canonical fetch text.
+	 *
+	 * @param string $text Raw text or block markup.
+	 */
+	private function canonical_text( string $text ): string {
+		$text = wp_strip_all_tags( $text );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) ?? '' );
+
+		return strlen( $text ) > self::CANONICAL_FETCH_TEXT_LIMIT ? substr( $text, 0, self::CANONICAL_FETCH_TEXT_LIMIT ) : $text;
+	}
+
+	/**
+	 * Return only useful metadata values.
+	 *
+	 * @param array<string, mixed> $metadata Metadata.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_metadata( array $metadata ): array {
+		return array_filter(
+			$metadata,
+			static fn ( mixed $value ): bool => null !== $value && '' !== $value
+		);
+	}
+
+	/**
+	 * Sanitize a URL string.
+	 *
+	 * @param string $url Raw URL.
+	 */
+	private function safe_url( string $url ): string {
+		$url = trim( $url );
+		if ( '' === $url ) {
+			return '';
+		}
+
+		return function_exists( 'esc_url_raw' ) ? esc_url_raw( $url ) : $url;
+	}
+
+	/**
+	 * Append a fragment to a URL when one is available.
+	 *
+	 * @param string $url      Base URL.
+	 * @param string $fragment Raw fragment.
+	 */
+	private function append_url_fragment( string $url, string $fragment ): string {
+		$fragment = sanitize_key( $fragment );
+		if ( '' === $url || '' === $fragment ) {
+			return $url;
+		}
+
+		return strtok( $url, '#' ) . '#' . $fragment;
+	}
+
+	/**
+	 * Check whether the local index repository can run database-backed queries.
+	 */
+	private function index_runtime_available(): bool {
+		global $wpdb;
+
+		return is_object( $wpdb )
+			&& method_exists( $wpdb, 'prepare' )
+			&& method_exists( $wpdb, 'get_row' )
+			&& method_exists( $wpdb, 'get_results' );
 	}
 
 	/**

@@ -91,6 +91,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'search', $by_id );
+		self::assertArrayNotHasKey( 'fetch', $by_id );
 		self::assertArrayNotHasKey( 'memory.list', $by_id );
 		self::assertArrayHasKey( 'memory.save', $by_id );
 	}
@@ -100,6 +102,8 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		foreach (
 			array(
+				'search',
+				'fetch',
 				'wp_abilities.discover',
 				'wp_abilities.get_info',
 				'wp_abilities.run',
@@ -143,6 +147,12 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( 'search', $this->registry->tool_name( 'search' ) );
+		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
@@ -193,6 +203,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_list_items',
 				'content.create_draft',
 				'content_workflow.create_draft',
+				'search',
+				'fetch',
 				'content_search.items',
 				'memory.list',
 				'memory.save',

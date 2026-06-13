@@ -368,7 +368,9 @@ final class ConnectionHealth {
 		$details  = array_merge(
 			$summary,
 			array(
-				'ability_policy' => $manifest->ability_policy_context(),
+				'ability_policy'            => $manifest->ability_policy_context(),
+				'metadata_generated_at'     => gmdate( 'c' ),
+				'metadata_refresh_guidance' => $manifest->metadata_refresh_guidance(),
 			)
 		);
 
@@ -400,7 +402,7 @@ final class ConnectionHealth {
 				'MCP tools/list exposes %d tools with Claude-safe names.',
 				(int) $summary['tool_count']
 			),
-			'If Claude reports fewer tools after a plugin update, remove and re-add the Claude custom connector, then compare an exported MCP tool manifest.',
+			'If a client reports stale or missing tools after a plugin update, reconnect or rescan the connector, start a fresh API conversation when applicable, then compare the exported MCP metadata fingerprint.',
 			$details
 		);
 	}

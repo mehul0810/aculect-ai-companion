@@ -487,6 +487,15 @@ final class McpController {
 	}
 
 	/**
+	 * Build the exact initialize payload for diagnostics and manifest exports.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function initialize_payload_for_diagnostics(): array {
+		return $this->initialize_payload();
+	}
+
+	/**
 	 * Tools returned per tools/list page. Below typical client truncation
 	 * thresholds while keeping most installs single-page.
 	 */

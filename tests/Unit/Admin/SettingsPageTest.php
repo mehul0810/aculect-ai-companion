@@ -40,20 +40,20 @@ final class SettingsPageTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new FakeSettingsPageWpdb();
 
-		$GLOBALS['wpdb']                                      = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['wpdb']                                       = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'production';
-		$GLOBALS['aculect_ai_companion_test_admin_pages']     = array(
+		$GLOBALS['aculect_ai_companion_test_admin_pages']      = array(
 			'menu'    => array(),
 			'options' => array(),
 			'submenu' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_hooks']           = array(
+		$GLOBALS['aculect_ai_companion_test_hooks']            = array(
 			'actions' => array(),
 			'filters' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_users']           = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 5;
+		$GLOBALS['aculect_ai_companion_test_users']            = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 5;
 		$_GET = array(
 			'page' => 'aculect-ai-companion',
 		);
@@ -140,6 +140,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
 		self::assertArrayHasKey( 'codex', $providers );
 		self::assertStringContainsString( 'scopes = ["content:read", "content:draft"]', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertArrayHasKey( 'gemini', $providers );
+		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(
@@ -317,7 +319,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'connections';
+		$_GET['tab'] = 'connections';
 
 		$payload = $this->settings_payload();
 
@@ -333,7 +335,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_abilities_payload_reports_sample_connection_count_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'abilities';
+		$_GET['tab'] = 'abilities';
 
 		$payload = $this->settings_payload();
 
@@ -347,7 +349,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_activity_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'activity';
+		$_GET['tab'] = 'activity';
 
 		$payload = $this->settings_payload();
 
@@ -362,7 +364,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_logs_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'logs';
+		$_GET['tab'] = 'logs';
 
 		$payload = $this->settings_payload();
 
@@ -375,7 +377,7 @@ final class SettingsPageTest extends TestCase {
 
 	public function test_local_learning_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
-		$_GET['tab']                                           = 'learning';
+		$_GET['tab'] = 'learning';
 
 		$payload = $this->settings_payload();
 
@@ -388,7 +390,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_diagnostics_payload_applies_sample_checks_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'diagnostics';
+		$_GET['tab'] = 'diagnostics';
 
 		$payload = $this->settings_payload();
 

@@ -39,6 +39,7 @@ final class McpToolManifestTest extends TestCase {
 		$policy   = new RoleAbilitiesPolicy();
 
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item', 'media.delete_item' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$policy->save_role_policy( 'editor', array( 'content.get_item', 'media.delete_item' ), $registry );
 
 		$export = ( new McpToolManifest() )->export_for_current_user(
@@ -101,11 +102,11 @@ final class McpToolManifestTest extends TestCase {
 
 		$baseline = $manifest->metadata_fingerprint( $payload, $initialize );
 
-		$changed_tool                                      = $payload;
+		$changed_tool = $payload;
 		$changed_tool['tools'][0]['inputSchema']['properties']['context'] = array( 'type' => 'string' );
 
-		$changed_initialize                   = $initialize;
-		$changed_initialize['instructions']   = 'Use the updated workflow.';
+		$changed_initialize                 = $initialize;
+		$changed_initialize['instructions'] = 'Use the updated workflow.';
 
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $changed_tool, $initialize ) );
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $payload, $changed_initialize ) );

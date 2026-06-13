@@ -59,6 +59,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		$policy   = new RoleAbilitiesPolicy();
 
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item', 'media.delete_item' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$policy->save_role_policy( 'editor', array( 'content.get_item', 'media.delete_item' ), $registry );
 
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );

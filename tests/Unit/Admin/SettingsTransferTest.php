@@ -36,6 +36,7 @@ final class SettingsTransferTest extends TestCase {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 		( new ToolSafety() )->save_confirmation_groups( array( 'Content' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		update_option(
 			RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES,
 			array(
@@ -65,6 +66,7 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( SettingsTransfer::SCHEMA_VERSION, $payload['schemaVersion'] );
 		self::assertSame( array( 'content.get_item', 'content.update_item' ), $payload['settings']['enabledAbilities'] );
 		self::assertSame( array( 'Content' ), $payload['settings']['confirmationGroups'] );
+		self::assertTrue( $payload['settings']['roleAbilityPolicyEditingEnabled'] );
 		self::assertSame( array( 'content.get_item' ), $payload['settings']['roleAbilityPolicies']['editor'] );
 		self::assertArrayNotHasKey( 'administrator', $payload['settings']['roleAbilityPolicies'] );
 		self::assertSame( true, $payload['settings']['roleConnections']['enabled'] );
@@ -82,23 +84,24 @@ final class SettingsTransferTest extends TestCase {
 			'schema'        => SettingsTransfer::SCHEMA,
 			'schemaVersion' => SettingsTransfer::SCHEMA_VERSION,
 			'settings'      => array(
-				'enabledAbilities'    => array( 'content.get_item', 'unknown.tool' ),
-				'enabledWpAbilities'  => array( 'wp/example', '<b>wp/html</b>' ),
-				'confirmationGroups'  => array( 'Content', 'Unknown Group' ),
-				'roleAbilityPolicies' => array(
+				'enabledAbilities'                => array( 'content.get_item', 'unknown.tool' ),
+				'enabledWpAbilities'              => array( 'wp/example', '<b>wp/html</b>' ),
+				'confirmationGroups'              => array( 'Content', 'Unknown Group' ),
+				'roleAbilityPolicyEditingEnabled' => true,
+				'roleAbilityPolicies'             => array(
 					'administrator' => array( 'content.get_item' ),
 					'editor'        => array( 'content.update_item', 'unknown.tool' ),
 					'missing-role'  => array( 'content.get_item' ),
 				),
-				'roleConnections'     => array(
+				'roleConnections'                 => array(
 					'enabled'      => 'yes',
 					'allowedRoles' => array( 'editor', 'missing-role' ),
 				),
-				'diagnostics'         => array(
+				'diagnostics'                     => array(
 					'loggingEnabled' => true,
 					'retentionDays'  => 999,
 				),
-				'brandProfile'        => array(
+				'brandProfile'                    => array(
 					'site_name' => '<strong>Imported Brand</strong>',
 					'tone'      => 'Concise',
 				),
@@ -110,6 +113,7 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( array( 'content.get_item' ), ( new AbilitiesRegistry() )->enabled_ids() );
 		self::assertSame( array( 'wp/example', 'wp/html' ), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
 		self::assertSame( array( 'Content' ), ( new ToolSafety() )->confirmation_groups() );
+		self::assertTrue( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame(
 			array( 'content.update_item' ),
 			( new RoleAbilitiesPolicy() )->saved_policies( new AbilitiesRegistry() )['editor']
@@ -125,11 +129,45 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( 'Imported Brand', ( new BrandProfile() )->saved()['site_name'] );
 	}
 
+	public function test_disabled_role_policy_editor_hides_and_ignores_policy_transfers(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+		update_option(
+			RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES,
+			array(
+				'editor' => array( 'content.get_item', 'content.update_item' ),
+			),
+			false
+		);
+
+		$export = ( new SettingsTransfer() )->export_payload();
+
+		self::assertFalse( $export['settings']['roleAbilityPolicyEditingEnabled'] );
+		self::assertSame( array(), $export['settings']['roleAbilityPolicies'] );
+
+		$payload = array(
+			'schema'        => SettingsTransfer::SCHEMA,
+			'schemaVersion' => SettingsTransfer::SCHEMA_VERSION,
+			'settings'      => array(
+				'roleAbilityPolicyEditingEnabled' => false,
+				'roleAbilityPolicies'             => array(
+					'editor' => array( 'content.update_item' ),
+				),
+			),
+		);
+
+		self::assertTrue( ( new SettingsTransfer() )->import_payload( $payload ) );
+		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
+		self::assertSame( array(), ( new RoleAbilitiesPolicy() )->saved_policies( $registry ) );
+		self::assertSame( array( 'content.get_item' ), ( new RoleAbilitiesPolicy() )->allowed_ids_for_role( 'editor', $registry ) );
+	}
+
 	public function test_reset_restores_defaults_without_protocol_storage_cleanup(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item' ) );
 		( new WordPressAbilitiesPolicy() )->save_allowed_ids( array( 'wp/example' ) );
 		( new ToolSafety() )->save_confirmation_groups( array( 'Content' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		( new RoleAbilitiesPolicy() )->save_role_policy( 'editor', array( 'content.get_item' ), $registry );
 		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
 		LogSettings::set_enabled( true );
@@ -143,6 +181,7 @@ final class SettingsTransferTest extends TestCase {
 		self::assertNull( get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES, null ) );
 		self::assertSame( array(), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
 		self::assertSame( array(), ( new ToolSafety() )->confirmation_groups() );
+		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame( array(), ( new RoleAbilitiesPolicy() )->saved_policies( new AbilitiesRegistry() ) );
 		self::assertFalse( RoleConnectionEntryPoint::is_enabled() );
 		self::assertFalse( LogSettings::is_enabled() );

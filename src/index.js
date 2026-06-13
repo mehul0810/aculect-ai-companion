@@ -2857,6 +2857,8 @@ function AdvancedDashboard( {
 	roleConnections,
 	loggingEnabled,
 	onLoggingChange,
+	roleAbilitiesEnabled,
+	onRoleAbilitiesChange,
 	roleConnectionsEnabled,
 	onRoleConnectionsChange,
 	roleConnectionRoles,
@@ -2899,6 +2901,11 @@ function AdvancedDashboard( {
 					type="hidden"
 					name="role_connections_enabled"
 					value={ roleConnectionsEnabled ? '1' : '0' }
+				/>
+				<input
+					type="hidden"
+					name="role_abilities_enabled"
+					value={ roleAbilitiesEnabled ? '1' : '0' }
 				/>
 				{ roleConnectionRoles.map( ( role ) => (
 					<input
@@ -2998,6 +3005,24 @@ function AdvancedDashboard( {
 							>
 								Edit Abilities
 							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Role ability policy editor"
+							description="Optional editor for non-administrator assistant access. Administrators inherit all globally enabled abilities."
+							status={
+								roleAbilitiesEnabled ? 'Enabled' : 'Disabled'
+							}
+							statusTone={
+								roleAbilitiesEnabled ? 'is-active' : ''
+							}
+						>
+							<ToggleControl
+								label="Enable role ability policies"
+								checked={ roleAbilitiesEnabled }
+								onChange={ ( checked ) =>
+									onRoleAbilitiesChange( Boolean( checked ) )
+								}
+							/>
 						</AdvancedSettingRow>
 					</AdvancedSection>
 
@@ -3527,6 +3552,7 @@ function AbilityDashboard( {
 	confirmationGroups,
 	confirmationGroupOptions,
 	activeConnectionCount,
+	roleAbilitiesEnabled,
 	hasChanges,
 	onToggleAbility,
 	onToggleWpAbility,
@@ -3931,10 +3957,19 @@ function AbilityDashboard( {
 								type="button"
 								variant="secondary"
 								onClick={ onManageRoleAbilities }
+								disabled={ ! roleAbilitiesEnabled }
+								accessibleWhenDisabled
 							>
 								Manage Role Based Abilities
 							</Button>
 						</div>
+						{ ! roleAbilitiesEnabled && (
+							<p className="aculect-ai-companion-help-text">
+								Role policy editing is optional. Enable it from
+								Advanced only when non-administrator assistant
+								access needs custom policies.
+							</p>
+						) }
 					</section>
 					{ confirmationGroupOptions.length > 0 && (
 						<section className="aculect-ai-companion-abilities-panel">
@@ -4883,6 +4918,10 @@ function SettingsApp() {
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
 			: {};
+	const roleAbilities =
+		data.roleAbilities && typeof data.roleAbilities === 'object'
+			? data.roleAbilities
+			: {};
 	const roleAbilityPolicy =
 		data.roleAbilityPolicy && typeof data.roleAbilityPolicy === 'object'
 			? data.roleAbilityPolicy
@@ -4927,6 +4966,9 @@ function SettingsApp() {
 	);
 	const [ roleConnectionsEnabled, setRoleConnectionsEnabled ] = useState(
 		Boolean( roleConnections.enabled )
+	);
+	const [ roleAbilitiesEnabled, setRoleAbilitiesEnabled ] = useState(
+		Boolean( roleAbilities.enabled )
 	);
 	const [ roleConnectionRoles, setRoleConnectionRoles ] = useState(
 		Array.isArray( roleConnections.allowedRoles )
@@ -5085,10 +5127,10 @@ function SettingsApp() {
 	}, [ activeTab.title ] );
 
 	useEffect( () => {
-		if ( activeTab.name !== 'abilities' ) {
+		if ( activeTab.name !== 'abilities' || ! roleAbilitiesEnabled ) {
 			setRoleAbilitiesModalOpen( false );
 		}
-	}, [ activeTab.name ] );
+	}, [ activeTab.name, roleAbilitiesEnabled ] );
 
 	useEffect( () => {
 		const tabName = activeTab.name;
@@ -5297,6 +5339,12 @@ function SettingsApp() {
 				{ data.status === 'role_abilities_saved' && (
 					<Notice status="success" isDismissible={ false }>
 						Role ability policy saved.
+					</Notice>
+				) }
+				{ data.status === 'role_abilities_not_enabled' && (
+					<Notice status="warning" isDismissible={ false }>
+						Role ability policy editing is disabled in Advanced
+						settings.
 					</Notice>
 				) }
 				{ data.status === 'revoked' && (
@@ -5886,6 +5934,9 @@ function SettingsApp() {
 										confirmationGroupOptions
 									}
 									activeConnectionCount={ activeSessionCount }
+									roleAbilitiesEnabled={
+										roleAbilitiesEnabled
+									}
 									hasChanges={ hasAbilityChanges }
 									onToggleAbility={ toggleAbility }
 									onToggleWpAbility={ toggleWpAbility }
@@ -5909,6 +5960,7 @@ function SettingsApp() {
 										setEnabledWpAbilities( [] );
 									} }
 									onManageRoleAbilities={ () =>
+										roleAbilitiesEnabled &&
 										setRoleAbilitiesModalOpen( true )
 									}
 									onResetChanges={ () => {
@@ -5924,31 +5976,34 @@ function SettingsApp() {
 									} }
 									onCopy={ copyValue }
 								/>
-								{ roleAbilitiesModalOpen && (
-									<Modal
-										title="Manage Role Based Abilities"
-										className="aculect-ai-companion-role-abilities-modal"
-										onRequestClose={ () =>
-											setRoleAbilitiesModalOpen( false )
-										}
-										shouldCloseOnClickOutside={ false }
-									>
-										<RoleAbilitiesEditor
-											data={ data }
-											abilities={ abilities }
-											roleAbilityPolicy={
-												roleAbilityPolicy
+								{ roleAbilitiesEnabled &&
+									roleAbilitiesModalOpen && (
+										<Modal
+											title="Manage Role Based Abilities"
+											className="aculect-ai-companion-role-abilities-modal"
+											onRequestClose={ () =>
+												setRoleAbilitiesModalOpen(
+													false
+												)
 											}
-											selectedRole={
-												selectedRoleAbilityRole
-											}
-											onSelectRole={
-												setSelectedRoleAbilityRole
-											}
-											isModal
-										/>
-									</Modal>
-								) }
+											shouldCloseOnClickOutside={ false }
+										>
+											<RoleAbilitiesEditor
+												data={ data }
+												abilities={ abilities }
+												roleAbilityPolicy={
+													roleAbilityPolicy
+												}
+												selectedRole={
+													selectedRoleAbilityRole
+												}
+												onSelectRole={
+													setSelectedRoleAbilityRole
+												}
+												isModal
+											/>
+										</Modal>
+									) }
 							</>
 						);
 					}
@@ -6295,6 +6350,10 @@ function SettingsApp() {
 								roleConnections={ roleConnections }
 								loggingEnabled={ loggingEnabled }
 								onLoggingChange={ setLoggingEnabled }
+								roleAbilitiesEnabled={ roleAbilitiesEnabled }
+								onRoleAbilitiesChange={
+									setRoleAbilitiesEnabled
+								}
 								roleConnectionsEnabled={
 									roleConnectionsEnabled
 								}

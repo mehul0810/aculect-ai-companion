@@ -97,6 +97,29 @@ final class ContentIndexer {
 	}
 
 	/**
+	 * Return the number of pending object IDs waiting for a stale sweep.
+	 */
+	public function pending_index_count(): int {
+		$pending = get_option( self::PENDING_IDS_OPTION, array() );
+		$pending = is_array( $pending ) ? array_values( array_unique( array_filter( array_map( 'absint', $pending ) ) ) ) : array();
+
+		return count( $pending );
+	}
+
+	/**
+	 * Return the scheduled stale-sweep timestamp, if available.
+	 */
+	public function stale_sweep_scheduled_at(): int {
+		if ( ! function_exists( 'wp_next_scheduled' ) ) {
+			return 0;
+		}
+
+		$scheduled = wp_next_scheduled( self::STALE_SWEEP_HOOK );
+
+		return is_numeric( $scheduled ) ? max( 0, (int) $scheduled ) : 0;
+	}
+
+	/**
 	 * Re-index deferred posts and stale rows in bounded batches.
 	 *
 	 * @return array<string, mixed>

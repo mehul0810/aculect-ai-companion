@@ -3256,6 +3256,14 @@ function DiagnosticsDashboard( {
 					label="Export Tool Manifest"
 					variant="secondary"
 				/>
+				<ActionForm
+					data={ data }
+					action={ data.actions?.runContentIndexSweepAction }
+					nonce={ data.actions?.runContentIndexSweepNonce }
+					label="Run index sweep"
+					busyLabel="Running sweep"
+					variant="secondary"
+				/>
 			</div>
 
 			<div className="aculect-ai-companion-diagnostics-layout">
@@ -5392,6 +5400,11 @@ function SettingsApp() {
 				{ data.status === 'diagnostics_run' && (
 					<Notice status="success" isDismissible={ false }>
 						Connection diagnostics updated.
+					</Notice>
+				) }
+				{ data.status === 'index_sweep_run' && (
+					<Notice status="success" isDismissible={ false }>
+						Index sweep completed and diagnostics were updated.
 					</Notice>
 				) }
 			</div>

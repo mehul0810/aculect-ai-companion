@@ -383,6 +383,72 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return job counts grouped by status for one job type.
+	 *
+	 * @param string $type Job type.
+	 * @return array<string, int>
+	 */
+	public function job_status_counts( string $type = 'content_index_refresh' ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT status, COUNT(*) AS total FROM %i WHERE job_type = %s GROUP BY status',
+				Installer::jobs_table(),
+				$this->key( $type, 60 )
+			),
+			ARRAY_A
+		);
+
+		$counts = array(
+			'queued'   => 0,
+			'running'  => 0,
+			'partial'  => 0,
+			'complete' => 0,
+			'failed'   => 0,
+		);
+
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+
+			$status            = $this->job_status( $row['status'] ?? '' );
+			$counts[ $status ] = (int) ( $row['total'] ?? 0 );
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Return recent job summaries without args or result payloads.
+	 *
+	 * @param int    $limit Maximum jobs.
+	 * @param string $type  Job type.
+	 * @return list<array<string, mixed>>
+	 */
+	public function recent_job_summaries( int $limit = 5, string $type = 'content_index_refresh' ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, job_key, job_type, status, total_items, processed_items, error_count, created_at, updated_at FROM %i WHERE job_type = %s ORDER BY updated_at DESC, id DESC LIMIT %d',
+				Installer::jobs_table(),
+				$this->key( $type, 60 ),
+				min( 20, max( 1, $limit ) )
+			),
+			ARRAY_A
+		);
+
+		return array_values(
+			array_map(
+				array( $this, 'public_job_summary_row' ),
+				array_filter( is_array( $rows ) ? $rows : array(), 'is_array' )
+			)
+		);
+	}
+
+	/**
 	 * Upsert one durable memory item.
 	 *
 	 * @param array<string, mixed> $memory Memory fields.
@@ -764,6 +830,26 @@ final class ContentIndexRepository {
 			'error_count'     => (int) ( $row['error_count'] ?? 0 ),
 			'args'            => is_array( $args ) ? $args : array(),
 			'result'          => is_array( $result ) ? $result : array(),
+			'created_at'      => (string) ( $row['created_at'] ?? '' ),
+			'updated_at'      => (string) ( $row['updated_at'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Return a public job summary row without args or result payloads.
+	 *
+	 * @param array<string, mixed> $row Database row.
+	 * @return array<string, mixed>
+	 */
+	private function public_job_summary_row( array $row ): array {
+		return array(
+			'id'              => (int) ( $row['id'] ?? 0 ),
+			'job_key'         => (string) ( $row['job_key'] ?? '' ),
+			'job_type'        => (string) ( $row['job_type'] ?? '' ),
+			'status'          => $this->job_status( $row['status'] ?? '' ),
+			'total_items'     => (int) ( $row['total_items'] ?? 0 ),
+			'processed_items' => (int) ( $row['processed_items'] ?? 0 ),
+			'error_count'     => (int) ( $row['error_count'] ?? 0 ),
 			'created_at'      => (string) ( $row['created_at'] ?? '' ),
 			'updated_at'      => (string) ( $row['updated_at'] ?? '' ),
 		);

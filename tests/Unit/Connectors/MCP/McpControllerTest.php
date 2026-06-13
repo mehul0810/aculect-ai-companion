@@ -95,7 +95,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_update_item', $tools_by_name );
 	}
 
-	public function test_openai_chatgpt_and_codex_tool_descriptors_keep_mcp_security_contract(): void {
+	public function test_openai_chatgpt_codex_and_gemini_tool_descriptors_keep_mcp_security_contract(): void {
 		$result           = $this->invokePrivate( new McpController(), 'list_tools' );
 		$supported_scopes = Helpers::supported_scopes();
 
@@ -225,7 +225,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'intelligence_context', $tools_by_name['content_workflow_prepare_post']['outputSchema']['properties'] );
 	}
 
-	public function test_chatgpt_codex_and_claude_tools_prioritize_operational_tools_before_intelligence_tools(): void {
+	public function test_chatgpt_codex_claude_and_gemini_tools_prioritize_operational_tools_before_intelligence_tools(): void {
 		$result = $this->invokePrivate( new McpController(), 'list_tools' );
 		$names  = array_column( $result['tools'], 'name' );
 
@@ -277,7 +277,7 @@ final class McpControllerTest extends TestCase {
 		}
 	}
 
-	public function test_openai_chatgpt_codex_and_claude_input_schemas_use_client_safe_json_schema_subset(): void {
+	public function test_openai_chatgpt_codex_claude_and_gemini_input_schemas_use_client_safe_json_schema_subset(): void {
 		$result = $this->invokePrivate( new McpController(), 'list_tools' );
 
 		foreach ( $result['tools'] as $tool ) {

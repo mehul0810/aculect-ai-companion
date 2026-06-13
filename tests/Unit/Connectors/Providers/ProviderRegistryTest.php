@@ -25,7 +25,11 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertArrayHasKey( 'chatgpt', $providers );
 		self::assertArrayHasKey( 'codex', $providers );
+		self::assertArrayHasKey( 'gemini', $providers );
 		self::assertArrayHasKey( 'mcp', $providers );
+		self::assertSame( 'Gemini', $providers['gemini']['label'] );
+		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringContainsString( 'gemini mcp list', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
 		self::assertSame( 'MCP Client', $providers['mcp']['label'] );
 		self::assertSame( 'Open MCP Docs', $providers['mcp']['primaryActionLabel'] );
 		self::assertSame(
@@ -48,6 +52,14 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame(
 			'codex',
 			$registry->detect_provider_id( 'Codex MCP Client', array( 'http://127.0.0.1:1455/callback' ) )
+		);
+		self::assertSame(
+			'gemini',
+			$registry->detect_provider_id( 'Gemini CLI MCP Client', array( 'http://localhost:7777/oauth/callback' ) )
+		);
+		self::assertSame(
+			'gemini',
+			$registry->detect_provider_id( 'Google Code Assist Agent', array( 'http://localhost:7777/oauth/callback' ) )
 		);
 		self::assertSame(
 			'mcp',

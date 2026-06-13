@@ -105,14 +105,14 @@ final class ConnectionHealthTest extends TestCase {
 			)
 		);
 
-		self::assertSame('2026-05-20', $result['ranAt']);
-		self::assertSame('ok', $result['items'][0]['message']);
-		self::assertSame('8.2.0', $result['system']['php_version']);
-		self::assertArrayNotHasKey('client_secret', $result['items'][0]['details']);
-		self::assertArrayNotHasKey('access_token', $result['details']);
-		self::assertArrayNotHasKey('auth_header', $result['system']);
-		self::assertArrayNotHasKey('private_payload', $result['system']);
-		self::assertArrayNotHasKey('wp_salt', $result['system']);
+		self::assertSame( '2026-05-20', $result['ranAt'] );
+		self::assertSame( 'ok', $result['items'][0]['message'] );
+		self::assertSame( '8.2.0', $result['system']['php_version'] );
+		self::assertArrayNotHasKey( 'client_secret', $result['items'][0]['details'] );
+		self::assertArrayNotHasKey( 'access_token', $result['details'] );
+		self::assertArrayNotHasKey( 'auth_header', $result['system'] );
+		self::assertArrayNotHasKey( 'private_payload', $result['system'] );
+		self::assertArrayNotHasKey( 'wp_salt', $result['system'] );
 	}
 
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
@@ -127,6 +127,7 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $result['details']['metadata_fingerprint'] );
 		self::assertIsString( $result['details']['metadata_generated_at'] );
 		self::assertArrayHasKey( 'chatgpt_app', $result['details']['metadata_refresh_guidance'] );
+		self::assertArrayHasKey( 'gemini_cli', $result['details']['metadata_refresh_guidance'] );
 		self::assertStringContainsString( 'fingerprint', $result['remediation'] );
 	}
 

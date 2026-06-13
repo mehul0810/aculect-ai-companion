@@ -215,6 +215,7 @@ final class McpToolManifest {
 			'openai_api'         => 'Start a fresh conversation or invalidate cached MCP tools so old mcp_list_tools context is not reused.',
 			'codex_agents_sdk'   => 'If tool-list caching is enabled, call the client cache invalidation path before retrying tool discovery.',
 			'claude_connector'   => 'Remove and re-add or re-authenticate the Claude connector when it reports fewer tools than this manifest export.',
+			'gemini_cli'         => 'Run gemini mcp list or reconnect the MCP server after plugin updates, ability policy changes, or schema changes.',
 			'generic_mcp_client' => 'Refresh OAuth and tools/list metadata after plugin updates, ability policy changes, or schema changes.',
 		);
 	}

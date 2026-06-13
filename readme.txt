@@ -130,6 +130,7 @@ The external service that receives this data is the AI assistant selected and co
 
 * ChatGPT by OpenAI: https://chatgpt.com/, terms at https://openai.com/policies/terms-of-use/, and privacy policy at https://openai.com/policies/row-privacy-policy/
 * Claude by Anthropic: https://claude.ai/, terms at https://www.anthropic.com/legal/consumer-terms, and privacy policy at https://www.anthropic.com/legal/privacy
+* Gemini by Google: https://gemini.google.com/, terms at https://policies.google.com/terms, and privacy policy at https://policies.google.com/privacy
 
 Administrators should review the terms and privacy policy for the AI assistant they connect. Aculect AI Companion controls the WordPress-side approval and permissions checks; it does not control how a connected external assistant processes data after the administrator authorizes access.
 

@@ -34,9 +34,9 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 				'confidence'       => 'high',
 			),
 			array(
-				'provider'    => 'claude',
+				'provider'    => 'gemini',
 				'client_id'   => 'client-123',
-				'client_name' => 'Claude Connector',
+				'client_name' => 'Gemini CLI',
 				'user_id'     => 7,
 			)
 		);
@@ -46,7 +46,7 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertTrue( $result['review_status']['admin_review_required'] );
 		self::assertSame( 'brand', $result['suggestion']['domain'] );
 		self::assertSame( 'Tone drifted', $result['suggestion']['issue'] );
-		self::assertSame( 'claude', $result['suggestion']['source']['provider'] );
+		self::assertSame( 'gemini', $result['suggestion']['source']['provider'] );
 
 		$payload = $repository->admin_payload();
 		self::assertSame( 1, $payload['summary']['total'] );

@@ -75,6 +75,7 @@ final class McpToolManifestTest extends TestCase {
 		self::assertContains( 'tools.inputSchema', $export['metadata']['covers'] );
 		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
 		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
+		self::assertArrayHasKey( 'gemini_cli', $export['metadata']['refresh_guidance'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
 	}
 
@@ -101,11 +102,11 @@ final class McpToolManifestTest extends TestCase {
 
 		$baseline = $manifest->metadata_fingerprint( $payload, $initialize );
 
-		$changed_tool                                      = $payload;
+		$changed_tool = $payload;
 		$changed_tool['tools'][0]['inputSchema']['properties']['context'] = array( 'type' => 'string' );
 
-		$changed_initialize                   = $initialize;
-		$changed_initialize['instructions']   = 'Use the updated workflow.';
+		$changed_initialize                 = $initialize;
+		$changed_initialize['instructions'] = 'Use the updated workflow.';
 
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $changed_tool, $initialize ) );
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $payload, $changed_initialize ) );

@@ -8,6 +8,7 @@ use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider
 use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
 use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
 use Aculect\AICompanion\Connectors\Providers\Generic\Provider as GenericProvider;
+use Aculect\AICompanion\Connectors\Providers\Gemini\Provider as GeminiProvider;
 
 /**
  * Central registry for supported AI client providers.
@@ -26,6 +27,7 @@ final class ProviderRegistry {
 			new ClaudeProvider(),
 			new ChatGPTProvider(),
 			new CodexProvider(),
+			new GeminiProvider(),
 			new GenericProvider(),
 		);
 

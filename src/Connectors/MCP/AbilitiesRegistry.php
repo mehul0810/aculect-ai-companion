@@ -23,6 +23,8 @@ final class AbilitiesRegistry {
 		'site_workflow.audit',
 	);
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS = array(
+		'search',
+		'fetch',
 		'content_search.items',
 		'content_search.chunks',
 		'content_find.related',

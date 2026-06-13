@@ -19,6 +19,26 @@ final class FirstPartyAbilityModules {
 	public function all(): array {
 		$modules = array(
 			$this->module(
+				'search',
+				'Search WordPress Content',
+				'Use this when ChatGPT, Claude, Codex, or another MCP client needs citation-friendly search results from WordPress content before fetching a full item. This canonical read-only search tool returns stable result IDs, titles, and canonical URLs.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->canonical_search_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->canonical_search( $args )
+			),
+			$this->module(
+				'fetch',
+				'Fetch WordPress Content',
+				'Use this after the canonical search tool returns a result ID, or when the user gives a known WordPress post ID, and a client needs full citation-friendly text for one readable content item.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->canonical_fetch_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->canonical_fetch( $args )
+			),
+			$this->module(
 				'content_workflow.prepare_post',
 				'Prepare Long-Form Content Workflow',
 				'Use this when a user asks to create, rewrite, or plan WordPress long-form content. It returns a block-safe outline, section plan, SEO recommendations, and available workflow operations before any write.',
@@ -797,6 +817,44 @@ final class FirstPartyAbilityModules {
 		return array(
 			'type'       => 'object',
 			'properties' => new \stdClass(),
+		);
+	}
+
+	/**
+	 * Build the canonical MCP search schema expected by ChatGPT company knowledge.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_search_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'query' => array(
+					'type'        => 'string',
+					'description' => 'Natural-language query string for WordPress content search.',
+				),
+			),
+			'required'             => array( 'query' ),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build the canonical MCP fetch schema expected by ChatGPT company knowledge.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_fetch_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'id' => array(
+					'type'        => 'string',
+					'description' => 'Search result ID returned by search, such as wp-post:123, or a readable WordPress post ID.',
+				),
+			),
+			'required'             => array( 'id' ),
+			'additionalProperties' => false,
 		);
 	}
 

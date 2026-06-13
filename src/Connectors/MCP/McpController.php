@@ -636,6 +636,7 @@ final class McpController {
 				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
 				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
@@ -655,6 +656,14 @@ final class McpController {
 	 * @return array<string, mixed>
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
+		if ( 'search' === $module->id() ) {
+			return $this->canonical_search_output_schema();
+		}
+
+		if ( 'fetch' === $module->id() ) {
+			return $this->canonical_fetch_output_schema();
+		}
+
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()
@@ -720,6 +729,58 @@ final class McpController {
 				'wp_abilities.discover',
 			),
 			true
+		);
+	}
+
+	/**
+	 * Return the canonical MCP search output schema used by retrieval clients.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_search_output_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'results' => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'properties'           => array(
+							'id'    => array( 'type' => 'string' ),
+							'title' => array( 'type' => 'string' ),
+							'url'   => array( 'type' => 'string' ),
+						),
+						'required'             => array( 'id', 'title', 'url' ),
+						'additionalProperties' => false,
+					),
+				),
+				'error'   => array( 'type' => 'string' ),
+				'message' => array( 'type' => 'string' ),
+			),
+			'required'             => array( 'results' ),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Return the canonical MCP fetch output schema used by retrieval clients.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_fetch_output_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'id'       => array( 'type' => 'string' ),
+				'title'    => array( 'type' => 'string' ),
+				'text'     => array( 'type' => 'string' ),
+				'url'      => array( 'type' => 'string' ),
+				'metadata' => array( 'type' => 'object' ),
+				'status'   => array( 'type' => 'string' ),
+				'error'    => array( 'type' => 'string' ),
+				'message'  => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
 		);
 	}
 

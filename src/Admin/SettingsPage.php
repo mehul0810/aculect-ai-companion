@@ -16,10 +16,7 @@ use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
-use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
-use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
-use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
@@ -928,24 +925,7 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function providers(): array {
-		$mcp_url = Helpers::mcp_resource();
-		return array_map(
-			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
-				return array(
-					'id'                 => $provider->id(),
-					'label'              => $provider->label(),
-					'description'        => $provider->description(),
-					'primaryActionUrl'   => $provider->primary_action_url(),
-					'primaryActionLabel' => $provider->primary_action_label(),
-					'setupSections'      => $provider->setup_sections( $mcp_url ),
-				);
-			},
-			array(
-				new ClaudeProvider(),
-				new ChatGPTProvider(),
-				new CodexProvider(),
-			)
-		);
+		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
 	}
 
 	/**

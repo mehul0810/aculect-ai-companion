@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\Providers\ChatGPT;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
 
 /**
  * Provides ChatGPT-specific connector setup guidance.
  */
-final class Provider implements ProviderInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface {
 
 	/**
 	 * Return the provider slug.
@@ -81,5 +82,19 @@ final class Provider implements ProviderInterface {
 				'actionUrl'   => 'https://developers.openai.com/api/docs/guides/tools-connectors-mcp',
 			),
 		);
+	}
+
+	/**
+	 * Return whether DCR metadata belongs to ChatGPT or OpenAI.
+	 *
+	 * @param string   $client_name   Client display name.
+	 * @param string[] $redirect_uris Redirect URIs.
+	 */
+	public function matches_client( string $client_name, array $redirect_uris ): bool {
+		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
+
+		return str_contains( $haystack, 'chatgpt.com' )
+			|| str_contains( $haystack, 'chatgpt' )
+			|| str_contains( $haystack, 'openai' );
 	}
 }

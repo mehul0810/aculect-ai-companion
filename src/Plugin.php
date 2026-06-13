@@ -9,6 +9,7 @@ use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
@@ -77,6 +78,7 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
+		( new WordPressAbilitiesRegistrar() )->register_hooks();
 		$this->register_settings_actions();
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );

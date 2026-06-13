@@ -21,14 +21,19 @@ final class WordPressAbilitiesPolicy {
 			return array();
 		}
 
-		$allowed = $this->allowed_ids();
-		$items   = array();
+		$allowed   = $this->allowed_ids();
+		$items     = array();
+		$registrar = new WordPressAbilitiesRegistrar();
 		foreach ( $this->abilities() as $ability ) {
 			if ( ! $this->is_public( $ability ) ) {
 				continue;
 			}
 
-			$id      = $this->ability_name( $ability );
+			$id = $this->ability_name( $ability );
+			if ( $registrar->is_first_party_read_intelligence( $id ) ) {
+				continue;
+			}
+
 			$meta    = $this->ability_meta( $ability );
 			$items[] = array(
 				'id'          => $id,
@@ -81,7 +86,12 @@ final class WordPressAbilitiesPolicy {
 	 * @param string $id Ability ID.
 	 */
 	public function is_allowed( string $id ): bool {
-		return in_array( sanitize_text_field( $id ), $this->allowed_ids(), true );
+		$id = sanitize_text_field( $id );
+		if ( ( new WordPressAbilitiesRegistrar() )->is_first_party_read_intelligence( $id ) ) {
+			return true;
+		}
+
+		return in_array( $id, $this->allowed_ids(), true );
 	}
 
 	/**
@@ -107,9 +117,11 @@ final class WordPressAbilitiesPolicy {
 	private function sanitize_ids( array $ids ): array {
 		$known = array();
 		if ( function_exists( 'wp_get_abilities' ) ) {
+			$registrar = new WordPressAbilitiesRegistrar();
 			foreach ( $this->abilities() as $ability ) {
-				if ( $this->is_public( $ability ) ) {
-					$known[] = $this->ability_name( $ability );
+				$name = $this->ability_name( $ability );
+				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $name ) ) {
+					$known[] = $name;
 				}
 			}
 		}

@@ -385,6 +385,55 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 0, $wpdb->inserts[0]['data']['revoked'] );
 	}
 
+	public function test_create_public_client_omits_secret_material(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$credentials = ( new ClientRepository() )->create_client(
+			'Public MCP Client',
+			array( 'http://localhost/callback' ),
+			false
+		);
+
+		self::assertIsArray( $credentials );
+		self::assertNull( $credentials['client_secret'] );
+		self::assertSame( 0, $wpdb->inserts[0]['data']['is_confidential'] );
+		self::assertNull( $wpdb->inserts[0]['data']['client_secret_hash'] );
+	}
+
+	public function test_validate_client_accepts_public_client_without_secret(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'                => 'public-client',
+				'is_confidential'          => '0',
+				'client_secret_hash'       => null,
+				'redirect_uris'            => '["http:\/\/localhost\/callback"]',
+				'registration_fingerprint' => ClientRegistrationFingerprint::from_redirect_uris( array( 'http://localhost/callback' ) ),
+			)
+		);
+
+		self::assertTrue( ( new ClientRepository() )->validateClient( 'public-client', null, 'authorization_code' ) );
+	}
+
+	public function test_validate_client_rejects_confidential_client_without_secret(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'                => 'confidential-client',
+				'is_confidential'          => '1',
+				'client_secret_hash'       => wp_hash_password( 'secret-value' ),
+				'redirect_uris'            => '["https:\/\/chatgpt.com\/oauth\/callback"]',
+				'registration_fingerprint' => ClientRegistrationFingerprint::from_redirect_uris( array( 'https://chatgpt.com/oauth/callback' ) ),
+			)
+		);
+
+		self::assertFalse( ( new ClientRepository() )->validateClient( 'confidential-client', null, 'authorization_code' ) );
+		self::assertTrue( ( new ClientRepository() )->validateClient( 'confidential-client', 'secret-value', 'authorization_code' ) );
+	}
+
 	/**
 	 * Invoke the private hash helper on a repository.
 	 *
@@ -418,6 +467,31 @@ final class OAuthRepositoryTest extends TestCase {
 		$token->addScope( new ScopeEntity( 'content:draft' ) );
 
 		return $token;
+	}
+
+	/**
+	 * Build a hydrated OAuth client row.
+	 *
+	 * @param array<string, mixed> $overrides Row overrides.
+	 * @return array<string, mixed>
+	 */
+	private function client_row( array $overrides ): array {
+		return array_merge(
+			array(
+				'id'                       => '1',
+				'client_id'                => 'client-1',
+				'client_secret_hash'       => wp_hash_password( 'secret-value' ),
+				'client_name'              => 'Test client',
+				'provider'                 => 'mcp',
+				'redirect_uris'            => '["https:\/\/example.com\/callback"]',
+				'registration_fingerprint' => ClientRegistrationFingerprint::from_redirect_uris( array( 'https://example.com/callback' ) ),
+				'user_id'                  => null,
+				'is_confidential'          => '1',
+				'revoked'                  => '0',
+				'created_at'               => '2026-06-01 00:00:00',
+			),
+			$overrides
+		);
 	}
 }
 

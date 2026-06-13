@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\DiscoveryController;
+use Aculect\AICompanion\Connectors\OAuth\TokenEndpointAuthMethod;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -30,5 +31,7 @@ final class DiscoveryControllerTest extends TestCase {
 		self::assertSame( $expected, $auth_metadata['scopes_supported'] );
 		self::assertSame( Helpers::registration_endpoint(), $auth_metadata['registration_endpoint'] );
 		self::assertSame( array( 'S256' ), $auth_metadata['code_challenge_methods_supported'] );
+		self::assertSame( TokenEndpointAuthMethod::supported(), $resource_metadata['token_endpoint_auth_methods_supported'] );
+		self::assertSame( TokenEndpointAuthMethod::supported(), $auth_metadata['token_endpoint_auth_methods_supported'] );
 	}
 }

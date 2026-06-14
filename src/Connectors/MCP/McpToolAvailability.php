@@ -218,7 +218,8 @@ final class McpToolAvailability {
 					'get'  => 'workflow_guides.get',
 				),
 				$policy,
-				$registry
+				$registry,
+				$wp_abilities
 			),
 			'intelligence_index' => $this->operation_group(
 				array(

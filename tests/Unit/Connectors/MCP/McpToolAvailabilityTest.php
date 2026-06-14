@@ -67,6 +67,9 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['content']['get_item']['available'] );
 		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
+		self::assertArrayHasKey( 'wordpress_ability', $operations['content']['get_item'] );
+		self::assertFalse( $operations['content']['get_item']['wordpress_ability']['mirrored'] );
+		self::assertSame( 'not_mirrored', $operations['content']['get_item']['wordpress_ability']['status'] );
 		self::assertContains( 'content_get_item', $tool_names );
 
 		self::assertFalse( $operations['content']['update']['available'] );
@@ -227,6 +230,11 @@ final class McpToolAvailabilityTest extends TestCase {
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
+		self::assertTrue( $operations['intelligence_index']['search_items']['wordpress_ability']['mirrored'] );
+		self::assertContains(
+			$operations['intelligence_index']['search_items']['wordpress_ability']['status'],
+			array( 'abilities_api_unavailable', 'missing_registration', 'available' )
+		);
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );

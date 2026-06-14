@@ -7,6 +7,7 @@ namespace Aculect\AICompanion\Diagnostics;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
 
 /**
  * Builds support-safe MCP tool manifest exports and summaries.
@@ -40,9 +41,11 @@ final class McpToolManifest {
 	 * @return array<string, mixed>
 	 */
 	public function export_for_current_user( array $session = array() ): array {
-		$generated_at = gmdate( 'c' );
-		$payload      = $this->tools_list_payload_for_current_user();
-		$initialize   = $this->initialize_payload();
+		$generated_at         = gmdate( 'c' );
+		$payload              = $this->tools_list_payload_for_current_user();
+		$initialize           = $this->initialize_payload();
+		$operations_manifest  = ( new McpToolAvailability() )->operations_manifest_for_current_user();
+		$wp_abilities_context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
 
 		return array(
 			'generated_at'        => $generated_at,
@@ -52,6 +55,8 @@ final class McpToolManifest {
 			'session'             => $this->session_context( $session ),
 			'summary'             => $this->summary( $payload, $initialize ),
 			'ability_policy'      => $this->ability_policy_context(),
+			'operations_manifest' => $operations_manifest,
+			'wordpress_abilities' => $wp_abilities_context,
 			'initialize_payload'  => $initialize,
 			'tools_list_payload'  => $payload,
 			'json_rpc_method'     => 'tools/list',
@@ -76,7 +81,10 @@ final class McpToolManifest {
 	 * @return array<string, mixed>
 	 */
 	public function summary_for_current_user(): array {
-		return $this->summary( $this->tools_list_payload_for_current_user(), $this->initialize_payload() );
+		$summary                        = $this->summary( $this->tools_list_payload_for_current_user(), $this->initialize_payload() );
+		$summary['wordpress_abilities'] = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
+
+		return $summary;
 	}
 
 	/**

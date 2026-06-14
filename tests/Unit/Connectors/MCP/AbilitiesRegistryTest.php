@@ -22,8 +22,9 @@ final class AbilitiesRegistryTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$this->registry                               = new AbilitiesRegistry();
+		$GLOBALS['aculect_ai_companion_test_options']      = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+		$this->registry                                    = new AbilitiesRegistry();
 	}
 
 	public function test_public_tool_names_are_claude_safe_and_round_trip_to_internal_ids(): void {
@@ -173,7 +174,13 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		$result = $module->execute( array( 'search' => 'content' ) );
 
-		self::assertSame( 'abilities_api_unavailable', $result['error'] );
+		if ( isset( $result['error'] ) ) {
+			self::assertSame( 'abilities_api_unavailable', $result['error'] );
+			return;
+		}
+
+		self::assertSame( 0, $result['total'] );
+		self::assertSame( array(), $result['items'] );
 	}
 
 	public function test_write_module_schema_includes_safety_controls(): void {

@@ -44,6 +44,7 @@ final class McpToolManifestTest extends TestCase {
 		$policy   = new RoleAbilitiesPolicy();
 
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item', 'media.delete_item' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$policy->save_role_policy( 'editor', array( 'content.get_item', 'media.delete_item' ), $registry );
 
 		$export = ( new McpToolManifest() )->export_for_current_user(

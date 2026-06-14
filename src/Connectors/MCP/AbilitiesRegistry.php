@@ -25,6 +25,8 @@ final class AbilitiesRegistry {
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS = array(
 		'search',
 		'fetch',
+		'workflow_guides.list',
+		'workflow_guides.get',
 		'content_search.items',
 		'content_search.chunks',
 		'content_find.related',

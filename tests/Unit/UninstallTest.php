@@ -31,16 +31,17 @@ final class UninstallTest extends TestCase {
 		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array(
 			'aculect_ai_companion_remove_data_on_uninstall' => '1',
-			'aculect_ai_companion_brand_profile'        => array( 'site_name' => 'Delete Me' ),
-			'aculect_ai_companion_learning_suggestions' => array( array( 'id' => 'learn_test' ) ),
-			'aculect_ai_companion_role_abilities'       => array( 'editor' => array( 'content.get_item' ) ),
-			'aculect_ai_companion_paused_user_access'   => array( 7 ),
-			'aculect_ai_companion_oauth_last_pruned_at' => 123,
+			'aculect_ai_companion_brand_profile'          => array( 'site_name' => 'Delete Me' ),
+			'aculect_ai_companion_learning_suggestions'   => array( array( 'id' => 'learn_test' ) ),
+			'aculect_ai_companion_role_abilities'         => array( 'editor' => array( 'content.get_item' ) ),
+			'aculect_ai_companion_role_abilities_enabled' => '1',
+			'aculect_ai_companion_paused_user_access'     => array( 7 ),
+			'aculect_ai_companion_oauth_last_pruned_at'   => 123,
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 456,
-			'aculect_ai_companion_secret_storage_key'   => 'delete-secret-storage-key',
-			'aculect_ai_companion_logging_enabled'      => '1',
-			'aculect_ai_companion_log_retention_days'   => 90,
-			'aculect_ai_companion_pending_index_ids'    => array( 10, 11 ),
+			'aculect_ai_companion_secret_storage_key'     => 'delete-secret-storage-key',
+			'aculect_ai_companion_logging_enabled'        => '1',
+			'aculect_ai_companion_log_retention_days'     => 90,
+			'aculect_ai_companion_pending_index_ids'      => array( 10, 11 ),
 		);
 	}
 
@@ -64,6 +65,7 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_brand_profile', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_learning_suggestions', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_role_abilities', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_role_abilities_enabled', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_paused_user_access', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );

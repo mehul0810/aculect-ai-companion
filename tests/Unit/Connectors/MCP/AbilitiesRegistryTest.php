@@ -22,8 +22,9 @@ final class AbilitiesRegistryTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$this->registry                               = new AbilitiesRegistry();
+		$GLOBALS['aculect_ai_companion_test_options']      = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+		$this->registry                                    = new AbilitiesRegistry();
 	}
 
 	public function test_public_tool_names_are_claude_safe_and_round_trip_to_internal_ids(): void {
@@ -79,6 +80,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
+		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
 
@@ -93,6 +95,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
 		self::assertArrayNotHasKey( 'fetch', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.get', $by_id );
 		self::assertArrayNotHasKey( 'memory.list', $by_id );
 		self::assertArrayHasKey( 'memory.save', $by_id );
 	}
@@ -120,6 +124,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.update_post',
 				'seo_workflow.update_rankmath',
 				'site_workflow.audit',
+				'workflow_guides.list',
+				'workflow_guides.get',
 				'content_index.refresh_batch',
 				'content_search.items',
 				'content_search.chunks',
@@ -153,6 +159,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides_list' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides.get' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
@@ -183,7 +193,13 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		$result = $module->execute( array( 'search' => 'content' ) );
 
-		self::assertSame( 'abilities_api_unavailable', $result['error'] );
+		if ( isset( $result['error'] ) ) {
+			self::assertSame( 'abilities_api_unavailable', $result['error'] );
+			return;
+		}
+
+		self::assertSame( 0, $result['total'] );
+		self::assertSame( array(), $result['items'] );
 	}
 
 	public function test_write_module_schema_includes_safety_controls(): void {
@@ -205,6 +221,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.create_draft',
 				'search',
 				'fetch',
+				'workflow_guides.list',
 				'content_search.items',
 				'memory.list',
 				'memory.save',

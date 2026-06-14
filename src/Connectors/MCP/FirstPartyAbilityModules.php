@@ -39,6 +39,26 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->canonical_fetch( $args )
 			),
 			$this->module(
+				'workflow_guides.list',
+				'List MCP Workflow Guides',
+				'List compact, policy-aware workflow guides so assistants can choose the right multi-tool path without loading large instructions upfront.',
+				'Workflow Guides',
+				'content:read',
+				true,
+				$this->workflow_guides_list_schema(),
+				static fn ( array $args ): array => ( new WorkflowGuideRegistry() )->list_guides( $args )
+			),
+			$this->module(
+				'workflow_guides.get',
+				'Get MCP Workflow Guide',
+				'Read one compact workflow guide with required operations, optional operations, missing blockers, and safe step order.',
+				'Workflow Guides',
+				'content:read',
+				true,
+				$this->workflow_guides_get_schema(),
+				static fn ( array $args ): array => ( new WorkflowGuideRegistry() )->get_guide( $args )
+			),
+			$this->module(
 				'content_workflow.prepare_post',
 				'Prepare Long-Form Content Workflow',
 				'Use this when a user asks to create, rewrite, or plan WordPress long-form content. It returns a block-safe outline, section plan, SEO recommendations, and available workflow operations before any write.',
@@ -868,6 +888,49 @@ final class FirstPartyAbilityModules {
 		return array(
 			'type'        => 'string',
 			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build the workflow guide list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'category'       => array(
+					'type'        => 'string',
+					'enum'        => array( 'content', 'seo', 'site' ),
+					'description' => 'Optional guide category filter.',
+				),
+				'available_only' => array(
+					'type'        => 'boolean',
+					'description' => 'When true, return only guides whose required operations are currently available.',
+				),
+				'detail'         => array(
+					'type'        => 'string',
+					'enum'        => array( 'summary', 'full' ),
+					'description' => 'Use summary for discovery and full for guide steps.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow guide lookup schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'id' => array(
+					'type'        => 'string',
+					'description' => 'Workflow guide ID returned by workflow_guides_list.',
+				),
+			),
+			array( 'id' )
 		);
 	}
 

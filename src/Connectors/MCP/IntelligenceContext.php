@@ -127,6 +127,7 @@ final class IntelligenceContext {
 			$this->capability_group( 'wordpress_actions', 'WordPress Actions', $operations['actions'] ?? array(), $detail ),
 		);
 		$workflows  = $this->capability_group( 'workflows', 'Guided Workflows', $operations['workflows'] ?? array(), $detail );
+		$guides     = $this->capability_group( 'workflow_guides', 'Workflow Guides', $operations['workflow_guides'] ?? array(), $detail );
 		$blocked    = $this->blocked_capability_summary( $operations, $detail );
 
 		return array(
@@ -139,11 +140,13 @@ final class IntelligenceContext {
 				'blocked_regular_tools'   => $this->sum_counts( $regular, 'blocked_count' ),
 				'available_workflows'     => (int) $workflows['available_count'],
 				'blocked_workflows'       => (int) $workflows['blocked_count'],
+				'available_guide_tools'   => (int) $guides['available_count'],
 				'intelligence_surfaces'   => count( $this->intelligence_context_tools() ) + count( $this->intelligence_knowledge_tools() ),
 				'blocked_reason_counts'   => $blocked['counts_by_reason'],
 			),
 			'regular_abilities'    => $regular,
 			'workflows'            => $workflows,
+			'workflow_guides'      => $guides,
 			'intelligence'         => array(
 				'context_tools'   => $this->intelligence_context_tools(),
 				'knowledge_tools' => $this->intelligence_knowledge_tools(),
@@ -348,7 +351,7 @@ final class IntelligenceContext {
 		$items  = array();
 		$counts = array();
 
-		foreach ( array( 'site_information', 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'content', 'workflows', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $key => $entry ) {
 				if ( ! is_array( $entry ) || true === ( $entry['available'] ?? false ) ) {
 					continue;

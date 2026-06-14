@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use PHPUnit\Framework\TestCase;
@@ -64,6 +66,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 				'aculect-ai-companion/intelligence-patterns-list-available',
 				'aculect-ai-companion/intelligence-patterns-get-info',
 				'aculect-ai-companion/intelligence-content-validate-blocks',
+				'aculect-ai-companion/workflow-guides-list',
+				'aculect-ai-companion/workflow-guides-get',
 				'aculect-ai-companion/content-search-items',
 				'aculect-ai-companion/content-search-chunks',
 				'aculect-ai-companion/content-find-related',
@@ -113,6 +117,57 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 
 		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
+	}
+
+	public function test_wordpress_abilities_diagnostics_report_first_party_registration_status(): void {
+		$diagnostics = new WordPressAbilitiesDiagnostics();
+
+		self::assertSame( 'missing_registration', $diagnostics->operation_metadata( 'content_search.items', new AbilitiesRegistry() )['status'] );
+
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$metadata = ( new WordPressAbilitiesDiagnostics() )->operation_metadata( 'content_search.items', new AbilitiesRegistry() );
+
+		self::assertTrue( $metadata['mirrored'] );
+		self::assertSame( 'aculect-ai-companion/content-search-items', $metadata['name'] );
+		self::assertTrue( $metadata['registered'] );
+		self::assertTrue( $metadata['public'] );
+		self::assertTrue( $metadata['allowed'] );
+		self::assertTrue( $metadata['schema_valid'] );
+		self::assertSame( 'available', $metadata['status'] );
+
+		$atomic = ( new WordPressAbilitiesDiagnostics() )->operation_metadata( 'content.get_item', new AbilitiesRegistry() );
+
+		self::assertFalse( $atomic['mirrored'] );
+		self::assertSame( 'not_mirrored', $atomic['status'] );
+	}
+
+	public function test_wordpress_abilities_diagnostics_report_policy_blocked_public_abilities(): void {
+		wp_register_ability(
+			'external-plugin/public-action',
+			array(
+				'label'         => 'External public action',
+				'description'   => 'External action.',
+				'category'      => 'external',
+				'input_schema'  => array(
+					'type'       => 'object',
+					'properties' => array(),
+				),
+				'output_schema' => array(
+					'type'       => 'object',
+					'properties' => array(),
+				),
+				'meta'          => array(
+					'show_in_rest' => true,
+				),
+			)
+		);
+
+		$context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
+
+		self::assertTrue( $context['api_available'] );
+		self::assertSame( 1, $context['policy_blocked_public_count'] );
+		self::assertSame( array( 'external-plugin/public-action' ), $context['policy_blocked_public_names'] );
 	}
 
 	public function test_wordpress_abilities_mirror_does_not_change_mcp_descriptors(): void {

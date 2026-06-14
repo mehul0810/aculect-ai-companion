@@ -230,13 +230,9 @@ final class IntelligenceRegistry {
 							'type'        => 'boolean',
 							'description' => 'Filter by whether the block is intended to appear in inserter-style selection flows.',
 						),
-						'page'      => array( 'type' => 'integer' ),
-						'per_page'  => array( 'type' => 'integer' ),
-						'context'   => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for browsing or full to include attribute/support keys. Defaults to compact.',
-						),
+						'page'      => $this->page_schema(),
+						'per_page'  => $this->per_page_schema( 100, 'Blocks per page. Defaults to 50.' ),
+						'context'   => $this->context_schema( 'Use compact for browsing or full to include attribute/support keys. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => $block_knowledge->list_blocks( $args )
@@ -272,13 +268,9 @@ final class IntelligenceRegistry {
 							'type'        => 'boolean',
 							'description' => 'Filter by whether the pattern is intended to appear in inserter-style selection flows.',
 						),
-						'page'       => array( 'type' => 'integer' ),
-						'per_page'   => array( 'type' => 'integer' ),
-						'context'    => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for browsing or full to include bounded content previews. Defaults to compact.',
-						),
+						'page'       => $this->page_schema(),
+						'per_page'   => $this->per_page_schema( 100, 'Patterns per page. Defaults to 50.' ),
+						'context'    => $this->context_schema( 'Use compact for browsing or full to include bounded content previews. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => $block_knowledge->list_patterns( $args )
@@ -401,8 +393,9 @@ final class IntelligenceRegistry {
 	 */
 	private function object_schema( array $properties, array $required = array() ): array {
 		$schema = array(
-			'type'       => 'object',
-			'properties' => $properties,
+			'type'                 => 'object',
+			'properties'           => $properties,
+			'additionalProperties' => false,
 		);
 
 		if ( array() !== $required ) {
@@ -419,8 +412,52 @@ final class IntelligenceRegistry {
 	 */
 	private function empty_schema(): array {
 		return array(
-			'type'       => 'object',
-			'properties' => new \stdClass(),
+			'type'                 => 'object',
+			'properties'           => new \stdClass(),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build a bounded page-number schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function page_schema(): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'description' => 'One-based page number. Defaults to 1.',
+		);
+	}
+
+	/**
+	 * Build a bounded per-page schema.
+	 *
+	 * @param int    $maximum     Maximum value accepted by the handler.
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function per_page_schema( int $maximum, string $description ): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'maximum'     => $maximum,
+			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build a compact/full response context schema.
+	 *
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function context_schema( string $description ): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'compact', 'full' ),
+			'description' => $description,
 		);
 	}
 }

@@ -85,6 +85,7 @@ final class McpToolManifestTest extends TestCase {
 		self::assertContains( 'tools.inputSchema', $export['metadata']['covers'] );
 		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
 		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
+		self::assertArrayHasKey( 'gemini_cli', $export['metadata']['refresh_guidance'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
 	}
 

@@ -129,6 +129,7 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $result['details']['metadata_fingerprint'] );
 		self::assertIsString( $result['details']['metadata_generated_at'] );
 		self::assertArrayHasKey( 'chatgpt_app', $result['details']['metadata_refresh_guidance'] );
+		self::assertArrayHasKey( 'gemini_cli', $result['details']['metadata_refresh_guidance'] );
 		self::assertStringContainsString( 'fingerprint', $result['remediation'] );
 	}
 

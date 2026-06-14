@@ -148,6 +148,9 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertGreaterThan( 0, $summary['summary']['blocked_regular_tools'] );
 		self::assertSame( 'Content', $summary['regular_abilities'][0]['label'] );
 		self::assertSame( 'Guided Workflows', $summary['workflows']['label'] );
+		self::assertSame( 'Workflow Guides', $summary['workflow_guides']['label'] );
+		self::assertContains( 'workflow_guides_list', $summary['workflow_guides']['available_tools'] );
+		self::assertGreaterThan( 0, $summary['summary']['available_guide_tools'] );
 		self::assertContains( 'intelligence_site_get_context', array_column( $summary['intelligence']['context_tools'], 'tool' ) );
 		self::assertContains( 'intelligence_content_validate_blocks', array_column( $summary['intelligence']['knowledge_tools'], 'tool' ) );
 		self::assertArrayHasKey( 'role_default_read_only', $summary['blocked_capabilities']['counts_by_reason'] );

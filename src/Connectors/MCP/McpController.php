@@ -634,6 +634,7 @@ final class McpController {
 			array(
 				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
 				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
+				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
@@ -655,6 +656,14 @@ final class McpController {
 	 * @return array<string, mixed>
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
+		if ( 'workflow_guides.list' === $module->id() ) {
+			return $this->workflow_guides_list_output_schema();
+		}
+
+		if ( 'workflow_guides.get' === $module->id() ) {
+			return $this->workflow_guides_get_output_schema();
+		}
+
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()
@@ -685,6 +694,7 @@ final class McpController {
 				'operations'           => array( 'type' => 'object' ),
 				'regular_abilities'    => array( 'type' => 'array' ),
 				'workflows'            => array( 'type' => 'object' ),
+				'workflow_guides'      => array( 'type' => 'object' ),
 				'intelligence'         => array( 'type' => 'object' ),
 				'blocked_capabilities' => array( 'type' => 'object' ),
 				'example_prompts'      => array( 'type' => 'array' ),
@@ -707,6 +717,7 @@ final class McpController {
 			$module->id(),
 			array(
 				'site.list_post_types',
+				'workflow_guides.list',
 				'content.list_items',
 				'content_search.items',
 				'content_search.chunks',
@@ -720,6 +731,53 @@ final class McpController {
 				'wp_abilities.discover',
 			),
 			true
+		);
+	}
+
+	/**
+	 * Return workflow guide list output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_list_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'items'        => array( 'type' => 'array' ),
+				'total'        => array( 'type' => 'integer' ),
+				'context'      => array( 'type' => 'string' ),
+				'bounded'      => array( 'type' => 'boolean' ),
+				'max_guides'   => array( 'type' => 'integer' ),
+				'next_actions' => array( 'type' => 'array' ),
+				'error'        => array( 'type' => 'string' ),
+				'message'      => array( 'type' => 'string' ),
+			)
+		);
+	}
+
+	/**
+	 * Return workflow guide lookup output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_get_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'id'                          => array( 'type' => 'string' ),
+				'title'                       => array( 'type' => 'string' ),
+				'summary'                     => array( 'type' => 'string' ),
+				'task_category'               => array( 'type' => 'string' ),
+				'risk_level'                  => array( 'type' => 'string' ),
+				'estimated_response_size'     => array( 'type' => 'string' ),
+				'available'                   => array( 'type' => 'boolean' ),
+				'required_operations'         => array( 'type' => 'array' ),
+				'optional_operations'         => array( 'type' => 'array' ),
+				'missing_required_operations' => array( 'type' => 'array' ),
+				'steps'                       => array( 'type' => 'array' ),
+				'next_actions'                => array( 'type' => 'array' ),
+				'status'                      => array( 'type' => 'string' ),
+				'error'                       => array( 'type' => 'string' ),
+				'message'                     => array( 'type' => 'string' ),
+			)
 		);
 	}
 

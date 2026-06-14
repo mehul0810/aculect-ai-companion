@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Diagnostics;
 
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
 use WP_Error;
 
 /**
@@ -32,6 +33,7 @@ final class ConnectionHealth {
 			$this->check_mcp_auth_challenge(),
 			$this->check_cloudflare_compatibility(),
 			$this->check_mcp_tool_manifest(),
+			$this->check_wordpress_abilities_runtime(),
 			$this->check_intelligence_index(),
 			$this->check_approval_screen_target(),
 			$this->check_transient_persistence(),
@@ -369,6 +371,7 @@ final class ConnectionHealth {
 			$summary,
 			array(
 				'ability_policy'            => $manifest->ability_policy_context(),
+				'wordpress_abilities'       => $summary['wordpress_abilities'] ?? array(),
 				'metadata_generated_at'     => gmdate( 'c' ),
 				'metadata_refresh_guidance' => $manifest->metadata_refresh_guidance(),
 			)
@@ -403,6 +406,53 @@ final class ConnectionHealth {
 				(int) $summary['tool_count']
 			),
 			'If a client reports stale or missing tools after a plugin update, reconnect or rescan the connector, start a fresh API conversation when applicable, then compare the exported MCP metadata fingerprint.',
+			$details
+		);
+	}
+
+	/**
+	 * Verify WordPress Abilities API and first-party mirror diagnostics.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_wordpress_abilities_runtime(): array {
+		$details = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
+
+		if ( ! (bool) ( $details['api_available'] ?? false ) ) {
+			return $this->item(
+				'wordpress_abilities_runtime',
+				'warn',
+				'The WordPress Abilities API is not available on this site.',
+				'MCP tools can still operate directly. Install or enable the WordPress Abilities runtime only if you need wp_abilities discovery and execution.',
+				$details
+			);
+		}
+
+		if ( array() !== ( $details['missing_first_party_names'] ?? array() ) || false === ( $details['schema_valid'] ?? true ) ) {
+			return $this->item(
+				'wordpress_abilities_runtime',
+				'warn',
+				'WordPress Abilities API is available, but Aculect first-party ability mirrors are incomplete.',
+				'Run diagnostics after WordPress initializes abilities. If missing or invalid names remain, export the MCP manifest for support review.',
+				$details
+			);
+		}
+
+		if ( 0 < (int) ( $details['policy_blocked_public_count'] ?? 0 ) ) {
+			return $this->item(
+				'wordpress_abilities_runtime',
+				'warn',
+				'Some public WordPress Abilities are blocked by Aculect policy.',
+				'Review enabled WordPress Abilities in the Abilities settings before expecting wp_abilities_run to execute third-party abilities.',
+				$details
+			);
+		}
+
+		return $this->item(
+			'wordpress_abilities_runtime',
+			'pass',
+			'WordPress Abilities API is available and Aculect first-party ability mirrors are registered.',
+			'No action needed.',
 			$details
 		);
 	}

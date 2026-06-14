@@ -14,8 +14,10 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class RoleAbilitiesPolicy {
 
-	public const OPTION_ROLE_ABILITIES = 'aculect_ai_companion_role_abilities';
-	private const ADMINISTRATOR_ROLE   = 'administrator';
+	public const OPTION_ROLE_ABILITIES         = 'aculect_ai_companion_role_abilities';
+	public const OPTION_POLICY_EDITING_ENABLED = 'aculect_ai_companion_role_abilities_enabled';
+	private const ADMINISTRATOR_ROLE           = 'administrator';
+	private const DEFAULT_POLICY_NAME          = 'Default read-only policy';
 
 	/**
 	 * Return admin-facing role policy data.
@@ -25,6 +27,15 @@ final class RoleAbilitiesPolicy {
 	 * @return array<string, mixed>
 	 */
 	public function admin_payload( AbilitiesRegistry $registry, bool $include_user_samples = true ): array {
+		if ( ! self::is_editing_enabled() ) {
+			return array(
+				'enabled'           => false,
+				'roles'             => array(),
+				'globalEnabledIds'  => $registry->enabled_ids(),
+				'defaultPolicyName' => self::DEFAULT_POLICY_NAME,
+			);
+		}
+
 		$roles       = array();
 		$user_counts = $this->role_user_counts();
 
@@ -46,9 +57,10 @@ final class RoleAbilitiesPolicy {
 		}
 
 		return array(
+			'enabled'           => true,
 			'roles'             => $roles,
 			'globalEnabledIds'  => $registry->enabled_ids(),
-			'defaultPolicyName' => 'Default read-only policy',
+			'defaultPolicyName' => self::DEFAULT_POLICY_NAME,
 		);
 	}
 
@@ -64,6 +76,10 @@ final class RoleAbilitiesPolicy {
 		$global_enabled = $registry->enabled_ids();
 		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
 			return $global_enabled;
+		}
+
+		if ( ! self::is_editing_enabled() ) {
+			return $this->default_read_only_ids( $registry );
 		}
 
 		$policies = $this->policies( $registry );
@@ -204,6 +220,10 @@ final class RoleAbilitiesPolicy {
 	 * @return array<string, list<string>>
 	 */
 	public function saved_policies( AbilitiesRegistry $registry ): array {
+		if ( ! self::is_editing_enabled() ) {
+			return array();
+		}
+
 		return $this->policies( $registry );
 	}
 
@@ -225,7 +245,7 @@ final class RoleAbilitiesPolicy {
 		}
 
 		if ( array() === $sanitized ) {
-			self::delete();
+			delete_option( self::OPTION_ROLE_ABILITIES );
 			return;
 		}
 
@@ -237,6 +257,23 @@ final class RoleAbilitiesPolicy {
 	 */
 	public static function delete(): void {
 		delete_option( self::OPTION_ROLE_ABILITIES );
+		delete_option( self::OPTION_POLICY_EDITING_ENABLED );
+	}
+
+	/**
+	 * Check whether the per-role policy editor is enabled.
+	 */
+	public static function is_editing_enabled(): bool {
+		return '1' === (string) get_option( self::OPTION_POLICY_EDITING_ENABLED, '0' );
+	}
+
+	/**
+	 * Persist whether the per-role policy editor is enabled.
+	 *
+	 * @param bool $enabled Whether the editor should be visible and active.
+	 */
+	public static function set_editing_enabled( bool $enabled ): void {
+		update_option( self::OPTION_POLICY_EDITING_ENABLED, $enabled ? '1' : '0', false );
 	}
 
 	/**
@@ -247,6 +284,10 @@ final class RoleAbilitiesPolicy {
 	public function has_explicit_policy( string $role ): bool {
 		$role = $this->sanitize_role( $role );
 		if ( '' === $role || self::ADMINISTRATOR_ROLE === $role ) {
+			return false;
+		}
+
+		if ( ! self::is_editing_enabled() ) {
 			return false;
 		}
 

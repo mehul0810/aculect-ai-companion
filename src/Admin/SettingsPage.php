@@ -244,6 +244,7 @@ final class SettingsPage {
 			'status'             => $this->status(),
 			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
+			'roleAbilities'      => $this->role_abilities_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
 		);
 	}
@@ -347,6 +348,17 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Return role ability policy editor settings.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function role_abilities_payload(): array {
+		return array(
+			'enabled' => RoleAbilitiesPolicy::is_editing_enabled(),
+		);
+	}
+
+	/**
 	 * Return admin-post action names and nonces for forms.
 	 *
 	 * @return array<string, string>
@@ -407,6 +419,21 @@ final class SettingsPage {
 			: array();
 		$copy_from = isset( $_POST['copy_from_role'] ) ? sanitize_key( wp_unslash( (string) $_POST['copy_from_role'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( ! RoleAbilitiesPolicy::is_editing_enabled() ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'page'                       => 'aculect-ai-companion',
+						'tab'                        => 'abilities',
+						'role_abilities_not_enabled' => '1',
+						'role'                       => $role,
+					),
+					$this->settings_url()
+				)
+			);
+			exit;
+		}
 
 		if ( 'reset' === $action ) {
 			$policy->reset_role_policy( $role, $registry );
@@ -487,9 +514,11 @@ final class SettingsPage {
 		$role_connection_roles    = isset( $_POST['role_connection_roles'] )
 			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['role_connection_roles'] ) )
 			: array();
+		$role_abilities_enabled   = isset( $_POST['role_abilities_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_abilities_enabled'] ) );
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		RoleConnectionEntryPoint::save( $role_connections_enabled, $role_connection_roles );
+		RoleAbilitiesPolicy::set_editing_enabled( $role_abilities_enabled );
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -1381,6 +1410,10 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['role_abilities_saved'] ) ) {
 			return 'role_abilities_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['role_abilities_not_enabled'] ) ) {
+			return 'role_abilities_not_enabled';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['revoked_all'] ) ) {

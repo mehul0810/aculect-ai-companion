@@ -11,8 +11,11 @@ namespace Aculect\AICompanion\Tests\Unit\Diagnostics;
 
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use PHPUnit\Framework\TestCase;
+
+require_once dirname( __DIR__, 2 ) . '/fixtures/wordpress-abilities-stubs.php';
 
 /**
  * Verifies MCP manifest exports distinguish server exposure from client discovery.
@@ -22,9 +25,9 @@ final class McpToolManifestTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
-		$GLOBALS['aculect_ai_companion_test_users']           = array(
+		$GLOBALS['aculect_ai_companion_test_options']               = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']       = 7;
+		$GLOBALS['aculect_ai_companion_test_users']                 = array(
 			7 => (object) array(
 				'ID'           => 7,
 				'roles'        => array( 'editor' ),
@@ -32,6 +35,8 @@ final class McpToolManifestTest extends TestCase {
 				'user_login'   => 'ed',
 			),
 		);
+		$GLOBALS['aculect_ai_companion_test_wp_abilities']          = array();
+		$GLOBALS['aculect_ai_companion_test_wp_ability_categories'] = array();
 	}
 
 	public function test_export_includes_exact_tools_list_payload_and_role_policy_context(): void {
@@ -63,6 +68,10 @@ final class McpToolManifestTest extends TestCase {
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertContains( 'intelligence_site_get_context', $names );
 		self::assertSame( 7, $export['ability_policy']['user_id'] );
+		self::assertArrayHasKey( 'operations_manifest', $export );
+		self::assertArrayHasKey( 'wordpress_ability', $export['operations_manifest']['content']['get_item'] );
+		self::assertArrayHasKey( 'wordpress_abilities', $export );
+		self::assertTrue( $export['wordpress_abilities']['api_available'] );
 		self::assertSame( array( 'editor' ), $export['ability_policy']['user_roles'] );
 		self::assertTrue( $export['ability_policy']['explicit_role_policy'] );
 		self::assertContains( 'content.update_item', $export['ability_policy']['blocked_by_role_ids'] );
@@ -76,6 +85,18 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
 		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
+	}
+
+	public function test_export_reports_registered_first_party_wordpress_abilities(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$export = ( new McpToolManifest() )->export_for_current_user();
+
+		self::assertGreaterThan( 0, $export['wordpress_abilities']['registered_first_party_count'] );
+		self::assertSame( array(), $export['wordpress_abilities']['missing_first_party_names'] );
+		self::assertTrue( $export['wordpress_abilities']['schema_valid'] );
+		self::assertSame( 'available', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['status'] );
+		self::assertSame( 'aculect-ai-companion/content-search-items', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['name'] );
 	}
 
 	public function test_metadata_fingerprint_changes_when_tools_or_instructions_change(): void {
@@ -101,11 +122,11 @@ final class McpToolManifestTest extends TestCase {
 
 		$baseline = $manifest->metadata_fingerprint( $payload, $initialize );
 
-		$changed_tool                                      = $payload;
+		$changed_tool = $payload;
 		$changed_tool['tools'][0]['inputSchema']['properties']['context'] = array( 'type' => 'string' );
 
-		$changed_initialize                   = $initialize;
-		$changed_initialize['instructions']   = 'Use the updated workflow.';
+		$changed_initialize                 = $initialize;
+		$changed_initialize['instructions'] = 'Use the updated workflow.';
 
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $changed_tool, $initialize ) );
 		self::assertNotSame( $baseline, $manifest->metadata_fingerprint( $payload, $changed_initialize ) );

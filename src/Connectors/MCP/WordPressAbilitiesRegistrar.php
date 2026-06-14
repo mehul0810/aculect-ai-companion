@@ -65,15 +65,22 @@ final class WordPressAbilitiesRegistrar {
 	 */
 	public function ability_names(): array {
 		if ( null === $this->ability_names ) {
-			$this->ability_names = array_values(
-				array_map(
-					fn( AbilityModuleInterface $module ): string => $this->ability_name( $module ),
-					$this->read_only_modules()
-				)
-			);
+			$this->ability_names = array_values( $this->module_ability_names() );
 		}
 
 		return $this->ability_names;
+	}
+
+	/**
+	 * Return first-party MCP module IDs mapped to WordPress Ability names.
+	 *
+	 * @return array<string, string>
+	 */
+	public function module_ability_names(): array {
+		return array_map(
+			fn( AbilityModuleInterface $module ): string => $this->ability_name( $module ),
+			$this->read_only_modules()
+		);
 	}
 
 	/**

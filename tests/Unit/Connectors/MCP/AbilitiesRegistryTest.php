@@ -79,6 +79,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
+		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
 
@@ -91,6 +92,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.get', $by_id );
 		self::assertArrayNotHasKey( 'memory.list', $by_id );
 		self::assertArrayHasKey( 'memory.save', $by_id );
 	}
@@ -116,6 +119,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.update_post',
 				'seo_workflow.update_rankmath',
 				'site_workflow.audit',
+				'workflow_guides.list',
+				'workflow_guides.get',
 				'content_index.refresh_batch',
 				'content_search.items',
 				'content_search.chunks',
@@ -143,6 +148,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides_list' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides.get' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
@@ -193,6 +202,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_list_items',
 				'content.create_draft',
 				'content_workflow.create_draft',
+				'workflow_guides.list',
 				'content_search.items',
 				'memory.list',
 				'memory.save',

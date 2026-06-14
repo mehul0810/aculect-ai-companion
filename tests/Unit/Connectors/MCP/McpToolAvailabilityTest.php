@@ -228,6 +228,9 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['workflow_guides']['list']['available'] );
+		self::assertTrue( $operations['workflow_guides']['get']['available'] );
+		self::assertTrue( $operations['workflow_guides']['list']['always_on'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertFalse( $operations['intelligence_index']['memory_save']['available'] );
@@ -245,12 +248,17 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
+		self::assertTrue( $operations['workflow_guides']['list']['available'] );
+		self::assertTrue( $operations['workflow_guides']['get']['available'] );
 		self::assertTrue( $operations['intelligence_index']['find_related']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertTrue( $operations['intelligence_index']['batch_status']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_items']['always_on'] );
 		self::assertSame( 'always_on_read_intelligence', $operations['intelligence_index']['search_items']['availability_model'] );
+		self::assertSame( 'always_on_read_intelligence', $operations['workflow_guides']['list']['availability_model'] );
+		self::assertArrayHasKey( 'workflow_guides.list', $modules );
+		self::assertArrayHasKey( 'workflow_guides.get', $modules );
 		self::assertArrayHasKey( 'content_search.items', $modules );
 		self::assertArrayHasKey( 'memory.list', $modules );
 		self::assertArrayNotHasKey( 'memory.save', $modules );
@@ -266,8 +274,14 @@ final class McpToolAvailabilityTest extends TestCase {
 		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array() );
 
 		self::assertFalse( $operations['intelligence_index']['search_items']['available'] );
+		self::assertFalse( $operations['workflow_guides']['list']['available'] );
+		self::assertFalse( $operations['workflow_guides']['get']['available'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
+		self::assertSame( 'oauth_scope', $operations['workflow_guides']['list']['blocked_by'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
+		self::assertSame( array( 'content:read' ), $operations['workflow_guides']['get']['missing_scopes'] );
+		self::assertArrayNotHasKey( 'workflow_guides.list', $modules );
+		self::assertArrayNotHasKey( 'workflow_guides.get', $modules );
 		self::assertArrayNotHasKey( 'content_search.items', $modules );
 	}
 
@@ -279,7 +293,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'site_information', 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'content', 'workflows', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

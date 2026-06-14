@@ -64,6 +64,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 				'aculect-ai-companion/intelligence-patterns-list-available',
 				'aculect-ai-companion/intelligence-patterns-get-info',
 				'aculect-ai-companion/intelligence-content-validate-blocks',
+				'aculect-ai-companion/workflow-guides-list',
+				'aculect-ai-companion/workflow-guides-get',
 				'aculect-ai-companion/content-search-items',
 				'aculect-ai-companion/content-search-chunks',
 				'aculect-ai-companion/content-find-related',

@@ -157,6 +157,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'Aculect AI Companion MCP', $result['serverInfo']['name'] );
 		self::assertIsString( $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_capabilities_get_directory', $result['instructions'] );
+		self::assertStringContainsString( 'workflow_guides_list', $result['instructions'] );
+		self::assertStringContainsString( 'workflow_guides_get', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_site_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_content_get_context', $result['instructions'] );
 		self::assertStringContainsString( 'operations manifest', $result['instructions'] );
@@ -223,6 +225,12 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'intelligence_context', $tools_by_name['content_workflow_prepare_post']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_guides_list'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['workflow_guides_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'max_guides', $tools_by_name['workflow_guides_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_guides_get'] );
+		self::assertArrayHasKey( 'required_operations', $tools_by_name['workflow_guides_get']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'missing_required_operations', $tools_by_name['workflow_guides_get']['outputSchema']['properties'] );
 	}
 
 	public function test_chatgpt_codex_and_claude_tools_prioritize_operational_tools_before_intelligence_tools(): void {
@@ -230,6 +238,8 @@ final class McpControllerTest extends TestCase {
 		$names  = array_column( $result['tools'], 'name' );
 
 		$critical_tools = array(
+			'workflow_guides_list',
+			'workflow_guides_get',
 			'content_workflow_prepare_post',
 			'content_workflow_create_draft',
 			'content_workflow_update_post',
@@ -298,6 +308,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'content_update_item', $site['operations']['content']['update']['tool'] );
 		self::assertSame( 'content_update_seo', $site['operations']['content']['seo']['tool'] );
 		self::assertSame( 'content_search_items', $site['operations']['intelligence_index']['search_items']['tool'] );
+		self::assertSame( 'workflow_guides_list', $site['operations']['workflow_guides']['list']['tool'] );
+		self::assertSame( 'workflow_guides_get', $site['operations']['workflow_guides']['get']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
 		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
@@ -317,6 +329,15 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_expanded_tool_schemas_are_available(): void {
+		$guide_list_schema = $this->schemaForTool( 'workflow_guides_list' );
+		self::assertSame( 'object', $guide_list_schema['type'] );
+		self::assertArrayHasKey( 'available_only', $guide_list_schema['properties'] );
+		self::assertSame( array( 'summary', 'full' ), $guide_list_schema['properties']['detail']['enum'] );
+
+		$guide_get_schema = $this->schemaForTool( 'workflow_guides_get' );
+		self::assertSame( 'object', $guide_get_schema['type'] );
+		self::assertSame( array( 'id' ), $guide_get_schema['required'] );
+
 		$media_schema = $this->schemaForTool( 'media_upload_item' );
 		self::assertSame( 'object', $media_schema['type'] );
 		self::assertSame( array( 'url' ), $media_schema['required'] );

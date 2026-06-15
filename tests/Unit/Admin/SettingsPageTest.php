@@ -141,7 +141,15 @@ final class SettingsPageTest extends TestCase {
 		self::assertIsArray( $providers['claude'] );
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
 		self::assertArrayHasKey( 'codex', $providers );
-		self::assertStringContainsString( 'scopes = ["content:read", "content:draft"]', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'https://developers.openai.com/codex/mcp', $providers['codex']['primaryActionUrl'] );
+		self::assertStringContainsString( 'Streamable HTTP', $providers['codex']['setupSections'][0]['description'] );
+		self::assertSame( 'MCP Server Name', $providers['codex']['setupSections'][0]['copyFields'][0]['label'] );
+		self::assertSame( 'aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'MCP URL', $providers['codex']['setupSections'][0]['copyFields'][1]['label'] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['codex']['setupSections'][0]['copyFields'][1]['value'] );
+		self::assertStringContainsString( 'codex mcp login aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][2]['value'] );
+		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertArrayHasKey( 'gemini', $providers );
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );

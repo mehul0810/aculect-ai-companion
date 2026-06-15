@@ -27,6 +27,15 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'codex', $providers );
 		self::assertArrayHasKey( 'gemini', $providers );
 		self::assertArrayHasKey( 'mcp', $providers );
+		self::assertSame( 'https://developers.openai.com/codex/mcp', $providers['codex']['primaryActionUrl'] );
+		self::assertSame( 'MCP Server Name', $providers['codex']['setupSections'][0]['copyFields'][0]['label'] );
+		self::assertSame( 'aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'MCP URL', $providers['codex']['setupSections'][0]['copyFields'][1]['label'] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['codex']['setupSections'][0]['copyFields'][1]['value'] );
+		self::assertStringContainsString( 'codex mcp login aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][2]['value'] );
+		self::assertStringContainsString( 'Select Streamable HTTP, not STDIO.', implode( ' ', $providers['codex']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertSame( 'Gemini', $providers['gemini']['label'] );
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( 'gemini mcp list', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );

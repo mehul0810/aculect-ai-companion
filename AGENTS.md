@@ -71,6 +71,8 @@
 - Prefer asynchronous operations for long-running external calls.
 
 ## Maintenance Workflow
+- When an issue is assigned to an active release milestone and a matching `release/<milestone>` branch exists, create the work branch from that release branch and set the PR base explicitly to it.
+- If a PR fully resolves the linked issue, include a GitHub closing keyword such as `Closes #123` in the PR body. If the PR is only related work or a partial slice, link the issue without a closing keyword and leave the remaining scope explicit.
 - Run: `composer test` and JS lint/build before releases.
 - Keep README and route/tool schema docs updated with behavior changes.
 - Maintain backward compatibility for public tool names and response shapes where practical.

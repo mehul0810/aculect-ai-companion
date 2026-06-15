@@ -78,6 +78,7 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
+		add_filter( 'plugin_action_links_' . plugin_basename( ACULECT_AI_COMPANION_PLUGIN_FILE ), array( $this, 'add_plugin_action_links' ) );
 		( new WordPressAbilitiesRegistrar() )->register_hooks();
 		$this->register_settings_actions();
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
@@ -256,6 +257,25 @@ final class Plugin {
 	 */
 	public function register_user_access_controls(): void {
 		( new UserAccessControls() )->register();
+	}
+
+	/**
+	 * Add a direct settings link on the WordPress Plugins screen.
+	 *
+	 * @param array<int|string, string> $links Existing plugin action links.
+	 * @return array<int|string, string>
+	 */
+	public function add_plugin_action_links( array $links ): array {
+		array_unshift(
+			$links,
+			sprintf(
+				'<a href="%s">%s</a>',
+				esc_url( admin_url( 'options-general.php?page=aculect-ai-companion' ) ),
+				esc_html__( 'Settings', 'aculect-ai-companion' )
+			)
+		);
+
+		return $links;
 	}
 
 	/**

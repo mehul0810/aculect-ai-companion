@@ -51,6 +51,19 @@ final class PluginTest extends TestCase {
 		self::assertSame( 'sanitize_key', $route['args']['tab']['sanitize_callback'] );
 	}
 
+	public function test_plugin_action_links_include_settings_link_first(): void {
+		$links = Plugin::instance()->add_plugin_action_links(
+			array(
+				'deactivate' => '<a href="plugins.php?action=deactivate">Deactivate</a>',
+			)
+		);
+
+		self::assertCount( 2, $links );
+		self::assertStringContainsString( 'Settings', $links[0] );
+		self::assertStringContainsString( 'https://example.com/wp-admin/options-general.php?page=aculect-ai-companion', $links[0] );
+		self::assertSame( '<a href="plugins.php?action=deactivate">Deactivate</a>', $links['deactivate'] );
+	}
+
 	public function test_root_authorize_route_is_detected_from_parse_request_query_vars(): void {
 		$wp = (object) array(
 			'query_vars' => array(

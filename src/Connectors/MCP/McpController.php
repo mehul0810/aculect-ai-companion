@@ -1097,15 +1097,17 @@ final class McpController {
 			return 'tool_forbidden_for_role';
 		}
 
-		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id );
+		if ( ! $registry->is_derived_workflow( $tool ) ) {
+			foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
+				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id );
 
-			if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
-				return 'tool_disabled';
-			}
+				if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
+					return 'tool_disabled';
+				}
 
-			if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
-				return 'tool_forbidden_for_role';
+				if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
+					return 'tool_forbidden_for_role';
+				}
 			}
 		}
 

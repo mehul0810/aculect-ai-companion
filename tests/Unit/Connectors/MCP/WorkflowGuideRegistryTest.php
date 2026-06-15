@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Connectors\MCP\WorkflowGuideRegistry;
 use PHPUnit\Framework\TestCase;
 
@@ -30,9 +31,10 @@ final class WorkflowGuideRegistryTest extends TestCase {
 				'user_login'   => 'ed',
 			),
 		);
+		McpToolAvailability::set_current_granted_scopes( null );
 	}
 
-	public function test_list_guides_is_bounded_and_reports_missing_required_operations(): void {
+	public function test_list_guides_is_bounded_and_reports_always_on_workflow_operations(): void {
 		$result = ( new WorkflowGuideRegistry() )->list_guides( array( 'detail' => 'summary' ) );
 
 		self::assertTrue( $result['bounded'] );
@@ -42,13 +44,15 @@ final class WorkflowGuideRegistryTest extends TestCase {
 		$guides = array_column( $result['items'], null, 'id' );
 
 		self::assertArrayHasKey( 'content_long_form_draft', $guides );
-		self::assertFalse( $guides['content_long_form_draft']['available'] );
-		self::assertNotEmpty( $guides['content_long_form_draft']['missing_required_operations'] );
-		self::assertSame( 'workflows.create_draft', $guides['content_long_form_draft']['missing_required_operations'][0]['ref'] );
-		self::assertStringContainsString( 'role_default_read_only', $guides['content_long_form_draft']['missing_required_operations'][0]['blocked_by'] );
+		self::assertTrue( $guides['content_long_form_draft']['available'] );
+		self::assertSame( array(), $guides['content_long_form_draft']['missing_required_operations'] );
+		self::assertSame( 'workflows.create_draft', $guides['content_long_form_draft']['required_operations'][1]['ref'] );
+		self::assertTrue( $guides['content_long_form_draft']['required_operations'][1]['available'] );
 	}
 
-	public function test_available_only_filters_blocked_guides(): void {
+	public function test_available_only_filters_scope_blocked_guides(): void {
+		McpToolAvailability::set_current_granted_scopes( array( 'content:read' ) );
+
 		$result = ( new WorkflowGuideRegistry() )->list_guides(
 			array(
 				'category'       => 'content',

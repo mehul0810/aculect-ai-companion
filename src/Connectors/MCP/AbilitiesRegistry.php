@@ -89,7 +89,7 @@ final class AbilitiesRegistry {
 	/**
 	 * Return ability definitions that administrators can directly enable or disable.
 	 *
-	 * Workflow tools are derived from their underlying atomic abilities, so they
+	 * Workflow tools are first-party orchestration over atomic abilities, so they
 	 * stay registered for MCP but are not persisted as independent policy rows.
 	 * Read-only intelligence retrieval is always available through MCP when the
 	 * connected session has the required scope, so it is not stored as a normal

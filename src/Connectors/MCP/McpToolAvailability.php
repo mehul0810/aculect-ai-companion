@@ -161,7 +161,7 @@ final class McpToolAvailability {
 		$wp_abilities = new WordPressAbilitiesDiagnostics();
 
 		return array(
-			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, missing_user, missing_role, or oauth_scope) before assuming WordPress data or permissions are missing.',
+			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, missing_user, missing_role, or oauth_scope) before assuming WordPress data or permissions are missing. Workflow and read-intelligence tools are always-on first-party guidance surfaces and remain subject to OAuth scopes plus execution-time WordPress capability checks.',
 			'policy'             => array(
 				'user_id'                  => $policy['user_id'],
 				'user_roles'               => $policy['user_roles'],
@@ -351,10 +351,10 @@ final class McpToolAvailability {
 			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
 				$dependency = $registry->module( $dependency_id );
 
-				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
+				if ( ! $is_derived_workflow && ! in_array( $dependency_id, $global_enabled, true ) ) {
 					$blocked_by             = 'global_disabled';
 					$blocked_dependencies[] = $dependency_id;
-				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
+				} elseif ( ! $is_derived_workflow && ! in_array( $dependency_id, $role_allowed, true ) ) {
 					$blocked_by             = $this->role_block_reason( $policy, $dependency );
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( $scope_aware ) {
@@ -382,7 +382,7 @@ final class McpToolAvailability {
 			$entry['derived']            = true;
 			$entry['dependency_ids']     = $registry->dependency_ids( $ability_id );
 			$entry['dependency_tools']   = array_values( array_map( array( $registry, 'tool_name' ), $entry['dependency_ids'] ) );
-			$entry['availability_model'] = 'derived_from_dependencies';
+			$entry['availability_model'] = 'always_on_workflow';
 		}
 
 		if ( $is_always_on ) {
@@ -403,7 +403,11 @@ final class McpToolAvailability {
 	}
 
 	/**
-	 * Check workflow dependencies against global and role policy.
+	 * Check workflow dependency scopes.
+	 *
+	 * First-party workflows are callable even when their atomic operations are
+	 * hidden by global or role policy. The workflow service still enforces OAuth
+	 * scopes, confirmations, and WordPress capabilities before writes occur.
 	 *
 	 * @param string            $ability_id     Ability ID.
 	 * @param string[]          $global_enabled Globally enabled IDs.
@@ -413,8 +417,9 @@ final class McpToolAvailability {
 	 * @phpstan-param list<string>|null $granted_scopes
 	 */
 	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry, ?array $granted_scopes = null ): bool {
+		$ignore_policy = $registry->is_derived_workflow( $ability_id );
 		foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
-			if ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) {
+			if ( ! $ignore_policy && ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) ) {
 				return false;
 			}
 

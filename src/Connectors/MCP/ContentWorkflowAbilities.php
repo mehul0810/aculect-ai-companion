@@ -173,10 +173,6 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function update_rankmath_seo( array $args ): array {
-		if ( ! $this->operation_available( 'content.update_seo' ) ) {
-			return $this->workflow_error( 'workflow_operation_unavailable', 'Rank Math SEO updates require the content_update_seo operation to be available.' );
-		}
-
 		$args['plugin'] = 'rank_math';
 		$result         = ( new SeoAbilities() )->update_seo( $args );
 		if ( isset( $result['error'] ) ) {
@@ -512,7 +508,10 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	}
 
 	/**
-	 * Apply optional Rank Math fields without bypassing content_update_seo availability.
+	 * Apply optional Rank Math fields through the workflow adapter.
+	 *
+	 * The workflow remains callable even when the atomic SEO tool is hidden by
+	 * policy; SeoAbilities still enforces edit_post and dry-run behavior.
 	 *
 	 * @param int                  $post_id  Post ID.
 	 * @param array<string, mixed> $args     Workflow args.
@@ -523,11 +522,6 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	private function maybe_update_rank_math_seo( int $post_id, array $args, array &$warnings ): array {
 		$seo_args = $this->seo_args( $args );
 		if ( 0 >= $post_id || array() === $seo_args ) {
-			return array();
-		}
-
-		if ( ! $this->operation_available( 'content.update_seo' ) ) {
-			$warnings[] = 'SEO fields were provided but content_update_seo is not available for this connection.';
 			return array();
 		}
 
@@ -660,21 +654,6 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		global $wpdb;
 
 		return isset( $wpdb ) && is_object( $wpdb ) && method_exists( $wpdb, 'get_results' );
-	}
-
-	/**
-	 * Return whether an underlying operation is callable for the current user.
-	 *
-	 * @param string $ability_id Ability ID.
-	 */
-	private function operation_available( string $ability_id ): bool {
-		$registry = new AbilitiesRegistry();
-		if ( ! $registry->is_enabled( $ability_id ) ) {
-			return false;
-		}
-
-		$user_id = function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
-		return ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $ability_id, $user_id, $registry );
 	}
 
 	/**

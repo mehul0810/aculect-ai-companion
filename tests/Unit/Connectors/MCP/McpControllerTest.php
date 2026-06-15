@@ -568,6 +568,11 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'workflow_guides_list', $names );
 		self::assertContains( 'search', $names );
 		self::assertContains( 'fetch', $names );
+		self::assertContains( 'content_search_items', $names );
+		self::assertContains( 'content_search_chunks', $names );
+		self::assertContains( 'content_find_related', $names );
+		self::assertContains( 'content_find_internal_links', $names );
+		self::assertContains( 'content_batch_status', $names );
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
 		self::assertNotContains( 'blocks_list_available', $names );
@@ -576,6 +581,11 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_guides.list', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'search', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'fetch', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.items', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.chunks', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );

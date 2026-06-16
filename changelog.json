@@ -1,4 +1,27 @@
 {
+  "0.6.0": {
+    "date": "2026-06-16",
+    "New": [
+      "Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Gemini, generic MCP clients, and OpenAI-compatible integrations.",
+      "Added canonical MCP search and fetch tools for citation-friendly WordPress content retrieval.",
+      "Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
+      "Added a site audit workflow for safe site-management readiness checks.",
+      "Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.",
+      "Added a plugin_issue_report tool that prepares a sanitized public GitHub issue draft when the plugin or MCP workflow fails."
+    ],
+    "Improved": [
+      "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.",
+      "Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.",
+      "Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.",
+      "Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers."
+    ],
+    "Reliability": [
+      "Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.",
+      "Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.",
+      "Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
+      "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier."
+    ]
+  },
   "0.5.3": {
     "date": "2026-06-12",
     "Improved": [

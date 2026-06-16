@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.5.3
+Stable tag: 0.6.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -209,14 +209,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.5.3 AI Companion experience.
+1. Overview tab showing the 0.6.0 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.5.3 release notes.
+8. Changelog tab with the current 0.6.0 release notes.
 
 == Development ==
 
@@ -244,6 +244,23 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.6.0 =
+
+* Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Gemini, generic MCP clients, and OpenAI-compatible integrations.
+* Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.
+* Added canonical MCP `search` and `fetch` tools for citation-friendly WordPress content retrieval.
+* Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.
+* Added a site audit workflow for safe site-management readiness checks.
+* Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.
+* Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.
+* Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.
+* Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.
+* Added a `plugin_issue_report` tool that prepares a sanitized public GitHub issue draft when the plugin or MCP workflow fails.
+* Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.
+* Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.
+* Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.
+* Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.
 
 = 0.5.3 =
 
@@ -347,6 +364,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.6.0 =
+
+Adds provider compatibility, canonical search/fetch, workflow guides, site audit, WordPress Abilities diagnostics, stricter MCP schemas, and safer plugin issue reporting for MCP workflows.
 
 = 0.5.3 =
 

@@ -61,6 +61,8 @@ final class McpControllerTest extends TestCase {
 
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
+		self::assertFalse( $tools_by_name['plugin_issue_report']['annotations']['readOnlyHint'] );
+		self::assertTrue( $tools_by_name['plugin_issue_report']['annotations']['openWorldHint'] );
 	}
 
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
@@ -196,6 +198,9 @@ final class McpControllerTest extends TestCase {
 
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertSame( array( 'status' ), $tools_by_name['intelligence_feedback_submit']['outputSchema']['required'] );
+		self::assertSame( array( 'status' ), $tools_by_name['plugin_issue_report']['outputSchema']['required'] );
+		self::assertArrayHasKey( 'issue_url', $tools_by_name['plugin_issue_report']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'can_create_direct', $tools_by_name['plugin_issue_report']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'regular_abilities', $tools_by_name['intelligence_capabilities_get_directory']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'learning_protocol', $tools_by_name['intelligence_site_get_context']['outputSchema']['properties'] );
 	}
@@ -564,6 +569,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'intelligence_brand_get_context', $names );
 		self::assertContains( 'intelligence_blocks_list_available', $names );
 		self::assertContains( 'intelligence_feedback_submit', $names );
+		self::assertContains( 'plugin_issue_report', $names );
 		self::assertContains( 'memory_list', $names );
 		self::assertContains( 'workflow_guides_list', $names );
 		self::assertContains( 'search', $names );

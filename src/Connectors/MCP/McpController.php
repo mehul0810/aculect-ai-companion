@@ -599,6 +599,7 @@ final class McpController {
 					'comments.create_item',
 					'comments.update_item',
 					'comments.bulk_update',
+					'plugin.issue.report',
 					'wp_abilities.run',
 				),
 				true
@@ -640,6 +641,7 @@ final class McpController {
 				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
 				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
+				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_issue_report to prepare a sanitized public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
 				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
@@ -673,12 +675,6 @@ final class McpController {
 			return $this->workflow_guides_get_output_schema();
 		}
 
-		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
-			return $this->is_collection_module( $module )
-				? $this->collection_output_schema()
-				: $this->operational_output_schema();
-		}
-
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
@@ -693,6 +689,32 @@ final class McpController {
 				),
 				array( 'status' )
 			);
+		}
+
+		if ( 'plugin.issue.report' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'status'            => array(
+						'type'        => 'string',
+						'description' => 'ready_for_client_submission when a public GitHub issue draft was prepared, or rejected when required fields are missing.',
+					),
+					'message'           => array( 'type' => 'string' ),
+					'error'             => array( 'type' => 'string' ),
+					'repository'        => array( 'type' => 'string' ),
+					'title'             => array( 'type' => 'string' ),
+					'body'              => array( 'type' => 'string' ),
+					'issue_url'         => array( 'type' => 'string' ),
+					'can_create_direct' => array( 'type' => 'boolean' ),
+					'next_actions'      => array( 'type' => 'array' ),
+				),
+				array( 'status' )
+			);
+		}
+
+		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
+			return $this->is_collection_module( $module )
+				? $this->collection_output_schema()
+				: $this->operational_output_schema();
 		}
 
 		return $this->object_output_schema(
@@ -902,6 +924,9 @@ final class McpController {
 				'dry_run'               => array( 'type' => 'boolean' ),
 				'confirmation_required' => array( 'type' => 'boolean' ),
 				'confirmation_token'    => array( 'type' => 'string' ),
+				'repository'            => array( 'type' => 'string' ),
+				'issue_url'             => array( 'type' => 'string' ),
+				'can_create_direct'     => array( 'type' => 'boolean' ),
 				'replayed'              => array(
 					'type'        => 'boolean',
 					'description' => 'True when this result was replayed from a previous successful call with the same idempotency_key or confirmation_token; the write did not execute again.',

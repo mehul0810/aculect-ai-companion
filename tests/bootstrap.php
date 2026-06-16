@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.5.3' );
+	define( 'ACULECT_AI_COMPANION_VERSION', '0.6.0' );
 }
 
 if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {

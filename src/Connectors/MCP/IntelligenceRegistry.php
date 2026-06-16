@@ -92,6 +92,9 @@ final class IntelligenceRegistry {
 		if ( 'intelligence.feedback.submit' === $internal_id ) {
 			return ( new LearningSuggestionRepository() )->submit( $args, $source );
 		}
+		if ( 'plugin.issue.report' === $internal_id ) {
+			return ( new PluginIssueReporter() )->report( $args, $source );
+		}
 
 		$module = $this->module( $internal_id );
 
@@ -346,6 +349,61 @@ final class IntelligenceRegistry {
 					return array(
 						'status'  => 'unavailable',
 						'message' => 'Learning suggestions must be submitted through the registry executor.',
+					);
+				},
+				false
+			),
+			$this->build_module(
+				'plugin.issue.report',
+				'Report Aculect Plugin Issue',
+				'Prepare a sanitized public GitHub issue report when this MCP server, plugin behavior, or an assistant workflow fails. The plugin does not need a GitHub token; use the returned issue draft or URL with your own GitHub/browser tools.',
+				$this->object_schema(
+					array(
+						'title'              => array(
+							'type'        => 'string',
+							'description' => 'Short public issue title.',
+						),
+						'summary'            => array(
+							'type'        => 'string',
+							'description' => 'Concise public summary of what went wrong. Do not include secrets, credentials, raw OAuth tokens, raw tool arguments, or private content.',
+						),
+						'client_name'        => array(
+							'type'        => 'string',
+							'description' => 'Assistant client where the issue occurred, such as ChatGPT, Claude, Codex, Gemini, or another MCP client.',
+						),
+						'workflow'           => array(
+							'type'        => 'string',
+							'description' => 'Workflow or task being attempted, such as long-form draft creation or Rank Math SEO update.',
+						),
+						'tool_name'          => array(
+							'type'        => 'string',
+							'description' => 'MCP tool involved, if known.',
+						),
+						'severity'           => array(
+							'type'        => 'string',
+							'enum'        => array( 'bug', 'compatibility', 'usability', 'enhancement' ),
+							'description' => 'Public issue category. Defaults to bug.',
+						),
+						'steps_to_reproduce' => array(
+							'type'        => 'array',
+							'description' => 'Bounded public reproduction steps.',
+							'items'       => array( 'type' => 'string' ),
+						),
+						'expected_behavior'  => array( 'type' => 'string' ),
+						'actual_behavior'    => array( 'type' => 'string' ),
+						'evidence'           => array(
+							'type'        => 'string',
+							'description' => 'Optional bounded, non-sensitive evidence.',
+						),
+					),
+					array( 'title', 'summary' )
+				),
+				static function ( array $args ): array {
+					unset( $args );
+
+					return array(
+						'status'  => 'unavailable',
+						'message' => 'Plugin issue reports must be submitted through the registry executor.',
 					);
 				},
 				false

@@ -152,8 +152,10 @@ final class IntelligenceContext {
 				'knowledge_tools' => $this->intelligence_knowledge_tools(),
 				'index_tools'     => $this->capability_group( 'intelligence_index', 'Content Intelligence Index', $operations['intelligence_index'] ?? array(), $detail ),
 				'learning'        => array(
-					'feedback_tool' => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
-					'write_policy'  => 'Use intelligence_feedback_submit for reviewed learning suggestions. Durable memory updates require memory_save availability, explicit write permission, and admin review/confirmation.',
+					'feedback_tool'       => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
+					'plugin_issue_tool'   => ( new AbilitiesRegistry() )->tool_name( 'plugin.issue.report' ),
+					'write_policy'        => 'Use intelligence_feedback_submit for reviewed learning suggestions. Durable memory updates require memory_save availability, explicit write permission, and admin review/confirmation.',
+					'issue_report_policy' => 'Use plugin_issue_report when the plugin or MCP workflow fails. It prepares a public GitHub issue draft and URL; the assistant should create the issue through its own GitHub or browser tools when available.',
 				),
 			),
 			'blocked_capabilities' => $blocked,
@@ -185,11 +187,12 @@ final class IntelligenceContext {
 	private function learning_protocol(): array {
 		return array(
 			'feedback_tool'         => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
+			'plugin_issue_tool'     => ( new AbilitiesRegistry() )->tool_name( 'plugin.issue.report' ),
 			'status'                => 'suggestion_only',
 			'admin_review_required' => true,
 			'direct_memory_updates' => false,
 			'domains'               => array( 'site', 'content', 'developer', 'brand' ),
-			'instruction'           => 'If this intelligence is incomplete or causes poor results, submit a bounded learning suggestion. Suggestions are queued for admin review and never update site, content, developer, or brand memory directly.',
+			'instruction'           => 'If this intelligence is incomplete or causes poor results, submit a bounded learning suggestion. If the plugin or MCP workflow itself fails, prepare a public GitHub issue with plugin_issue_report and create it through the assistant client when possible. Suggestions are queued for admin review and never update site, content, developer, or brand memory directly.',
 			'do_not_include'        => array( 'secrets', 'credentials', 'personal data', 'raw tool arguments' ),
 		);
 	}
@@ -317,6 +320,7 @@ final class IntelligenceContext {
 			$this->intelligence_tool( 'patterns_get', 'Inspect one registered block pattern.', 'intelligence.patterns.get_info', true, $registry ),
 			$this->intelligence_tool( 'validate_blocks', 'Validate serialized WordPress block content before writes.', 'intelligence.content.validate_blocks', true, $registry ),
 			$this->intelligence_tool( 'feedback_submit', 'Queue bounded learning suggestions for admin review.', 'intelligence.feedback.submit', false, $registry ),
+			$this->intelligence_tool( 'plugin_issue_report', 'Prepare a sanitized public GitHub issue draft when the plugin or MCP workflow fails.', 'plugin.issue.report', false, $registry ),
 		);
 	}
 

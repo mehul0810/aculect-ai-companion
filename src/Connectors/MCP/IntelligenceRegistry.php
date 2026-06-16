@@ -92,8 +92,11 @@ final class IntelligenceRegistry {
 		if ( 'intelligence.feedback.submit' === $internal_id ) {
 			return ( new LearningSuggestionRepository() )->submit( $args, $source );
 		}
-		if ( 'plugin.issue.report' === $internal_id ) {
-			return ( new PluginIssueReporter() )->report( $args, $source );
+		if ( 'plugin.incident.report' === $internal_id ) {
+			return ( new PluginIncidentReporter() )->report( $args, $source );
+		}
+		if ( 'plugin.incident.list' === $internal_id ) {
+			return ( new PluginIncidentReporter() )->list_reports( $args );
 		}
 
 		$module = $this->module( $internal_id );
@@ -160,6 +163,8 @@ final class IntelligenceRegistry {
 			'patterns_get_info'       => 'intelligence.patterns.get_info',
 			'content.validate_blocks' => 'intelligence.content.validate_blocks',
 			'content_validate_blocks' => 'intelligence.content.validate_blocks',
+			'plugin.issue.report'     => 'plugin.incident.report',
+			'plugin_issue_report'     => 'plugin.incident.report',
 		);
 
 		return $aliases[ $id ] ?? $id;
@@ -385,18 +390,22 @@ final class IntelligenceRegistry {
 				false
 			),
 			$this->build_module(
-				'plugin.issue.report',
-				'Report Aculect Plugin Issue',
-				'Prepare a sanitized public GitHub issue report when this MCP server, plugin behavior, or an assistant workflow fails. The plugin does not need a GitHub token; use the returned issue draft or URL with your own GitHub/browser tools.',
+				'plugin.incident.report',
+				'Report Aculect Plugin Incident',
+				'Store a sanitized local incident report and prepare a public GitHub issue draft when this MCP server, plugin behavior, or an assistant workflow fails. The plugin does not need a GitHub token; use the returned issue draft or URL with your own GitHub/browser tools.',
 				$this->object_schema(
 					array(
 						'title'              => array(
 							'type'        => 'string',
-							'description' => 'Short public issue title.',
+							'description' => 'Short public incident title.',
 						),
 						'summary'            => array(
 							'type'        => 'string',
 							'description' => 'Concise public summary of what went wrong. Do not include secrets, credentials, raw OAuth tokens, raw tool arguments, or private content.',
+						),
+						'correlation_id'     => array(
+							'type'        => 'string',
+							'description' => 'Optional correlation ID from a failed tool response or activity row.',
 						),
 						'client_name'        => array(
 							'type'        => 'string',
@@ -410,14 +419,28 @@ final class IntelligenceRegistry {
 							'type'        => 'string',
 							'description' => 'MCP tool involved, if known.',
 						),
+						'category'           => array(
+							'type'        => 'string',
+							'enum'        => array( 'bug', 'compatibility', 'workflow_gap', 'documentation', 'configuration', 'client_behavior', 'usability', 'enhancement' ),
+							'description' => 'Incident category. Defaults to bug.',
+						),
 						'severity'           => array(
 							'type'        => 'string',
-							'enum'        => array( 'bug', 'compatibility', 'usability', 'enhancement' ),
-							'description' => 'Public issue category. Defaults to bug.',
+							'enum'        => array( 'low', 'medium', 'high', 'blocking' ),
+							'description' => 'Incident severity. Defaults to medium.',
+						),
+						'activity_id'        => array(
+							'type'        => 'integer',
+							'description' => 'Optional local Activity tab row ID related to the incident.',
 						),
 						'steps_to_reproduce' => array(
 							'type'        => 'array',
 							'description' => 'Bounded public reproduction steps.',
+							'items'       => array( 'type' => 'string' ),
+						),
+						'recovery_attempts'  => array(
+							'type'        => 'array',
+							'description' => 'Bounded non-sensitive recovery attempts the assistant already tried.',
 							'items'       => array( 'type' => 'string' ),
 						),
 						'expected_behavior'  => array( 'type' => 'string' ),
@@ -434,10 +457,34 @@ final class IntelligenceRegistry {
 
 					return array(
 						'status'  => 'unavailable',
-						'message' => 'Plugin issue reports must be submitted through the registry executor.',
+						'message' => 'Plugin incident reports must be submitted through the registry executor.',
 					);
 				},
 				false
+			),
+			$this->build_module(
+				'plugin.incident.list',
+				'List Aculect Plugin Incidents',
+				'List sanitized local incident reports previously submitted by MCP clients.',
+				$this->object_schema(
+					array(
+						'status'   => array(
+							'type'        => 'string',
+							'enum'        => array( 'open', 'dismissed', 'submitted' ),
+							'description' => 'Optional status filter.',
+						),
+						'page'     => array( 'type' => 'integer' ),
+						'per_page' => array( 'type' => 'integer' ),
+					)
+				),
+				static function ( array $args ): array {
+					unset( $args );
+
+					return array(
+						'status'  => 'unavailable',
+						'message' => 'Plugin incidents must be listed through the registry executor.',
+					);
+				}
 			),
 		);
 

@@ -599,7 +599,7 @@ final class McpController {
 					'comments.create_item',
 					'comments.update_item',
 					'comments.bulk_update',
-					'plugin.issue.report',
+					'plugin.incident.report',
 					'wp_abilities.run',
 				),
 				true
@@ -641,7 +641,7 @@ final class McpController {
 				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
 				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
-				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_issue_report to prepare a sanitized public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
+				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
 				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
@@ -692,23 +692,38 @@ final class McpController {
 			);
 		}
 
-		if ( 'plugin.issue.report' === $module->id() ) {
+		if ( 'plugin.incident.report' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
 					'status'            => array(
 						'type'        => 'string',
-						'description' => 'ready_for_client_submission when a public GitHub issue draft was prepared, or rejected when required fields are missing.',
+						'description' => 'stored_ready_for_client_submission when a local incident and public GitHub issue draft were prepared, or rejected when required fields are missing.',
 					),
 					'message'           => array( 'type' => 'string' ),
 					'error'             => array( 'type' => 'string' ),
+					'report_id'         => array( 'type' => 'string' ),
+					'correlation_id'    => array( 'type' => 'string' ),
 					'repository'        => array( 'type' => 'string' ),
 					'title'             => array( 'type' => 'string' ),
 					'body'              => array( 'type' => 'string' ),
 					'issue_url'         => array( 'type' => 'string' ),
 					'can_create_direct' => array( 'type' => 'boolean' ),
+					'incident'          => array( 'type' => 'object' ),
 					'next_actions'      => array( 'type' => 'array' ),
 				),
 				array( 'status' )
+			);
+		}
+
+		if ( 'plugin.incident.list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'    => array( 'type' => 'array' ),
+					'total'    => array( 'type' => 'integer' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+					'summary'  => array( 'type' => 'object' ),
+				)
 			);
 		}
 

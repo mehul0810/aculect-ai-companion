@@ -7,7 +7,7 @@
       "Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
       "Added a site audit workflow for safe site-management readiness checks.",
       "Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.",
-      "Added a plugin_issue_report tool that prepares a sanitized public GitHub issue draft when the plugin or MCP workflow fails."
+      "Added a plugin_incident_report tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails."
     ],
     "Improved": [
       "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.",

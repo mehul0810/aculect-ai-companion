@@ -33,6 +33,7 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_remove_data_on_uninstall' => '1',
 			'aculect_ai_companion_brand_profile'          => array( 'site_name' => 'Delete Me' ),
 			'aculect_ai_companion_learning_suggestions'   => array( array( 'id' => 'learn_test' ) ),
+			'aculect_ai_companion_incident_reports'       => array( array( 'id' => 'air_test' ) ),
 			'aculect_ai_companion_role_abilities'         => array( 'editor' => array( 'content.get_item' ) ),
 			'aculect_ai_companion_role_abilities_enabled' => '1',
 			'aculect_ai_companion_paused_user_access'     => array( 7 ),
@@ -64,6 +65,7 @@ final class UninstallTest extends TestCase {
 
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_brand_profile', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_learning_suggestions', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_incident_reports', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_role_abilities', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_role_abilities_enabled', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_paused_user_access', 'missing' ) );

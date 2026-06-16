@@ -76,18 +76,26 @@ test( 'merges lazy tab payloads without clearing previously hydrated tab data', 
 	);
 } );
 
-test( 'keeps learning suggestions scoped to the learning tab', () => {
+test( 'keeps learning payloads scoped to the learning tab', () => {
 	const currentData = {
 		hydratedTabs: [ 'overview', 'learning' ],
 		learningSuggestions: {
 			summary: { total: 1 },
 			items: [ { id: 'learn_1' } ],
 		},
+		incidentReports: {
+			summary: { total: 1 },
+			items: [ { report_id: 'incident_1' } ],
+		},
 	};
 	const payload = {
 		payloadTab: 'activity',
 		hydratedTabs: [ 'overview', 'activity' ],
 		learningSuggestions: {
+			summary: { total: 0 },
+			items: [],
+		},
+		incidentReports: {
 			summary: { total: 0 },
 			items: [],
 		},
@@ -102,6 +110,10 @@ test( 'keeps learning suggestions scoped to the learning tab', () => {
 			learningSuggestions: {
 				summary: { total: 1 },
 				items: [ { id: 'learn_1' } ],
+			},
+			incidentReports: {
+				summary: { total: 1 },
+				items: [ { report_id: 'incident_1' } ],
 			},
 			activity: { total: 2, items: [ { id: 2 } ] },
 		}

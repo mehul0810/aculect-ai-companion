@@ -106,6 +106,22 @@ const LEARNING_CONFIDENCE_LABELS = {
 	medium: 'Medium confidence',
 	high: 'High confidence',
 };
+const INCIDENT_CATEGORY_LABELS = {
+	bug: 'Bug',
+	compatibility: 'Compatibility',
+	workflow_gap: 'Workflow gap',
+	documentation: 'Documentation',
+	configuration: 'Configuration',
+	client_behavior: 'Client behavior',
+	usability: 'Usability',
+	enhancement: 'Enhancement',
+};
+const INCIDENT_SEVERITY_LABELS = {
+	low: 'Low',
+	medium: 'Medium',
+	high: 'High',
+	blocking: 'Blocking',
+};
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -921,6 +937,108 @@ function learningSourceLabel( source ) {
 	return source.client_name || source.provider || 'MCP client';
 }
 
+function incidentReportsList( incidentReports ) {
+	return Array.isArray( incidentReports?.items )
+		? incidentReports.items
+		: EMPTY_ARRAY;
+}
+
+function incidentReportsSummary( incidentReports ) {
+	return incidentReports?.summary &&
+		typeof incidentReports.summary === 'object'
+		? incidentReports.summary
+		: {};
+}
+
+function incidentCategoryLabel( categoryName ) {
+	return INCIDENT_CATEGORY_LABELS[ categoryName ] || 'Bug';
+}
+
+function incidentSeverityLabel( severity ) {
+	return INCIDENT_SEVERITY_LABELS[ severity ] || 'Medium';
+}
+
+function IncidentReportCard( { report } ) {
+	const github =
+		report?.github && typeof report.github === 'object'
+			? report.github
+			: {};
+	const source =
+		report?.source && typeof report.source === 'object'
+			? report.source
+			: {};
+	const reportId = report?.id || '';
+
+	return (
+		<article className="aculect-ai-companion-learning-card aculect-ai-companion-incident-card">
+			<div className="aculect-ai-companion-learning-card__header">
+				<div>
+					<h3>{ report?.title || 'Untitled incident' }</h3>
+					<p className="aculect-ai-companion-learning-source">
+						<span>
+							{ source.client_name ||
+								source.provider ||
+								'MCP client' }
+						</span>
+						{ report?.tool_name ? (
+							<code>{ report.tool_name }</code>
+						) : null }
+					</p>
+				</div>
+				<div className="aculect-ai-companion-learning-card__badges">
+					<span className="aculect-ai-companion-learning-pill is-developer">
+						{ incidentCategoryLabel( report?.category ) }
+					</span>
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${
+							report?.severity || 'medium'
+						}` }
+					>
+						{ incidentSeverityLabel( report?.severity ) }
+					</span>
+				</div>
+			</div>
+			<div className="aculect-ai-companion-learning-card__body">
+				<dl className="aculect-ai-companion-learning-details">
+					<div>
+						<dt>Summary</dt>
+						<dd>{ report?.summary || 'No summary provided.' }</dd>
+					</div>
+					<div>
+						<dt>Report ID</dt>
+						<dd>
+							<code>{ reportId }</code>
+						</dd>
+					</div>
+					{ report?.correlation_id ? (
+						<div>
+							<dt>Correlation</dt>
+							<dd>
+								<code>{ report.correlation_id }</code>
+							</dd>
+						</div>
+					) : null }
+				</dl>
+			</div>
+			<div className="aculect-ai-companion-learning-card__footer">
+				<span className="aculect-ai-companion-learning-card__date">
+					{ report?.created_at || 'Pending timestamp' }
+				</span>
+				{ github.issue_url ? (
+					<Button
+						variant="secondary"
+						href={ github.issue_url }
+						target="_blank"
+						icon={ external }
+					>
+						Open issue draft
+					</Button>
+				) : null }
+			</div>
+		</article>
+	);
+}
+
 function LearningSuggestionReviewForm( {
 	data,
 	suggestion,
@@ -1175,9 +1293,15 @@ function LearningSuggestionCard( { data, suggestion } ) {
 	);
 }
 
-function LearningSuggestionsDashboard( { data, learningSuggestions } ) {
+function LearningSuggestionsDashboard( {
+	data,
+	learningSuggestions,
+	incidentReports,
+} ) {
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
+	const incidents = incidentReportsList( incidentReports );
+	const incidentSummary = incidentReportsSummary( incidentReports );
 
 	return (
 		<div className="aculect-ai-companion-learning-dashboard">
@@ -1186,7 +1310,8 @@ function LearningSuggestionsDashboard( { data, learningSuggestions } ) {
 					<h2>Learning Review</h2>
 					<p>
 						Review MCP suggestions before they influence Aculect
-						Intelligence.
+						Intelligence, and inspect incident reports submitted by
+						AI tools when plugin workflows fail.
 					</p>
 				</div>
 				<div className="aculect-ai-companion-learning-summary">
@@ -1202,24 +1327,61 @@ function LearningSuggestionsDashboard( { data, learningSuggestions } ) {
 						<strong>{ Number( summary.dismissed || 0 ) }</strong>
 						Dismissed
 					</span>
+					<span>
+						<strong>{ Number( incidentSummary.open || 0 ) }</strong>
+						Incidents
+					</span>
 				</div>
 			</div>
-			{ items.length === 0 ? (
-				<EmptyState title="No learning suggestions">
-					MCP clients can queue suggestions when site, content,
-					developer, or brand intelligence needs review.
-				</EmptyState>
-			) : (
-				<div className="aculect-ai-companion-learning-list">
-					{ items.map( ( suggestion ) => (
-						<LearningSuggestionCard
-							key={ suggestion.id }
-							data={ data }
-							suggestion={ suggestion }
-						/>
-					) ) }
+			<section className="aculect-ai-companion-incident-section">
+				<div className="aculect-ai-companion-learning-section-heading">
+					<h3>Incident Reports</h3>
+					<p>
+						Local, sanitized reports prepared by MCP clients when a
+						plugin workflow or connector behavior fails.
+					</p>
 				</div>
-			) }
+				{ incidents.length === 0 ? (
+					<EmptyState title="No incident reports">
+						AI clients can call plugin_incident_report to store a
+						local report and prepare a public GitHub issue draft.
+					</EmptyState>
+				) : (
+					<div className="aculect-ai-companion-learning-list">
+						{ incidents.map( ( report ) => (
+							<IncidentReportCard
+								key={ report.id }
+								report={ report }
+							/>
+						) ) }
+					</div>
+				) }
+			</section>
+			<section className="aculect-ai-companion-learning-section">
+				<div className="aculect-ai-companion-learning-section-heading">
+					<h3>Learning Suggestions</h3>
+					<p>
+						Review durable intelligence suggestions before they
+						influence future assistant behavior.
+					</p>
+				</div>
+				{ items.length === 0 ? (
+					<EmptyState title="No learning suggestions">
+						MCP clients can queue suggestions when site, content,
+						developer, or brand intelligence needs review.
+					</EmptyState>
+				) : (
+					<div className="aculect-ai-companion-learning-list">
+						{ items.map( ( suggestion ) => (
+							<LearningSuggestionCard
+								key={ suggestion.id }
+								data={ data }
+								suggestion={ suggestion }
+							/>
+						) ) }
+					</div>
+				) }
+			</section>
 		</div>
 	);
 }
@@ -4888,6 +5050,10 @@ function SettingsApp() {
 		data.learningSuggestions && typeof data.learningSuggestions === 'object'
 			? data.learningSuggestions
 			: {};
+	const incidentReports =
+		data.incidentReports && typeof data.incidentReports === 'object'
+			? data.incidentReports
+			: {};
 	const brandProfile =
 		data.brandProfile && typeof data.brandProfile === 'object'
 			? data.brandProfile
@@ -6340,6 +6506,7 @@ function SettingsApp() {
 							<LearningSuggestionsDashboard
 								data={ data }
 								learningSuggestions={ learningSuggestions }
+								incidentReports={ incidentReports }
 							/>
 						);
 					}

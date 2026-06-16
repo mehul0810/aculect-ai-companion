@@ -9,6 +9,7 @@ use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
@@ -319,6 +320,9 @@ final class SettingsPage {
 		$learning         = 'learning' === $payload_tab
 			? ( new LearningSuggestionRepository() )->admin_payload()
 			: LearningSuggestionRepository::empty_payload();
+		$incidents        = 'learning' === $payload_tab
+			? ( new PluginIncidentReporter() )->admin_payload()
+			: PluginIncidentReporter::empty_payload();
 		$changelog        = 'changelog' === $payload_tab
 			? $this->load_changelog()
 			: array();
@@ -327,6 +331,7 @@ final class SettingsPage {
 			'activity'            => $activity_payload,
 			'brandProfile'        => $brand_profile,
 			'learningSuggestions' => $learning,
+			'incidentReports'     => $incidents,
 			'changelog'           => $changelog,
 		);
 	}

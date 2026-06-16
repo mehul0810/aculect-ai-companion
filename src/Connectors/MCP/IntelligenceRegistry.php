@@ -229,6 +229,11 @@ final class IntelligenceRegistry {
 							'description' => 'Optional block namespace such as core, woocommerce, or a plugin namespace.',
 						),
 						'category'  => array( 'type' => 'string' ),
+						'purpose'   => array(
+							'type'        => 'string',
+							'enum'        => array( 'text', 'media', 'layout', 'navigation', 'data', 'embed', 'design', 'widget' ),
+							'description' => 'Optional generation family filter. Use layout for columns, grids, cards, covers, grouped sections, and visual page composition.',
+						),
 						'inserter'  => array(
 							'type'        => 'boolean',
 							'description' => 'Filter by whether the block is intended to appear in inserter-style selection flows.',
@@ -303,9 +308,35 @@ final class IntelligenceRegistry {
 				'Validate serialized block content before writing it and reject Custom HTML block usage.',
 				$this->object_schema(
 					array(
-						'content' => array(
+						'content'                  => array(
 							'type'        => 'string',
 							'description' => 'Serialized WordPress block content to validate before create or update operations.',
+						),
+						'content_mode'             => array(
+							'type'        => 'string',
+							'enum'        => array( 'article', 'page', 'landing_page', 'visual_layout', 'service_page', 'product_page', 'case_study' ),
+							'description' => 'Expected content shape. Layout-oriented modes return warnings when no layout blocks are present.',
+						),
+						'layout_intent'            => array(
+							'type'        => 'string',
+							'description' => 'Expected layout direction, such as hero plus columns, grid cards, media/text, or visual page sections.',
+						),
+						'visual_reference_summary' => array(
+							'type'        => 'string',
+							'description' => 'Concise non-sensitive summary of any image/screenshot/design reference used to generate this block content.',
+						),
+						'expected_block_families'  => array(
+							'type'        => 'array',
+							'description' => 'Expected block families. Include layout when the document should use grid/columns/page-section blocks.',
+							'items'       => array(
+								'type' => 'string',
+								'enum' => array( 'text', 'media', 'layout', 'navigation', 'data', 'embed', 'design', 'widget' ),
+							),
+						),
+						'expected_blocks'          => array(
+							'type'        => 'array',
+							'description' => 'Specific block names expected in the document, such as core/columns or core/media-text.',
+							'items'       => array( 'type' => 'string' ),
 						),
 					),
 					array( 'content' )

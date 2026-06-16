@@ -14,6 +14,8 @@ final class FirstPartyAbilityModules {
 	private const MIN_LONG_FORM_WORDS          = 3000;
 	private const MAX_LONG_FORM_WORDS          = 5000;
 	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
+	private const CONTENT_MODES                = array( 'article', 'page', 'landing_page', 'visual_layout', 'service_page', 'product_page', 'case_study' );
+	private const BLOCK_FAMILIES               = array( 'text', 'media', 'layout', 'navigation', 'data', 'embed', 'design', 'widget' );
 
 	/**
 	 * Return first-party modules keyed by internal ability ID.
@@ -1013,29 +1015,46 @@ final class FirstPartyAbilityModules {
 	private function workflow_prepare_post_schema(): array {
 		return $this->object_schema(
 			array(
-				'brief'              => array(
+				'brief'                    => array(
 					'type'        => 'string',
 					'description' => 'Content brief or user request to plan against.',
 				),
-				'post_type'          => array(
+				'post_type'                => array(
 					'type'        => 'string',
 					'description' => 'Target WordPress post type. Defaults to post.',
 				),
-				'audience'           => array(
+				'audience'                 => array(
 					'type'        => 'string',
 					'description' => 'Intended reader or customer segment.',
 				),
-				'seo_intent'         => array(
+				'seo_intent'               => array(
 					'type'        => 'string',
 					'description' => 'Search intent, target query, or SEO goal.',
 				),
-				'desired_word_count' => array(
+				'desired_word_count'       => array(
 					'type'        => 'integer',
 					'minimum'     => self::MIN_LONG_FORM_WORDS,
 					'maximum'     => self::MAX_LONG_FORM_WORDS,
 					'description' => 'Target word count for long-form content. Values are clamped to 3000-5000 words.',
 				),
-				'existing_post_id'   => array(
+				'content_mode'             => $this->content_mode_schema(),
+				'content_type'             => array(
+					'type'        => 'string',
+					'description' => 'Optional natural-language content type alias such as blog post, landing page, service page, product page, case study, or visual layout. content_mode is preferred when known.',
+				),
+				'layout_intent'            => array(
+					'type'        => 'string',
+					'description' => 'Layout direction such as hero plus three-column cards, media/text sections, pricing grid, comparison columns, or FSE-style page composition.',
+				),
+				'visual_reference_summary' => array(
+					'type'        => 'string',
+					'description' => 'Concise non-sensitive summary of an attached image/screenshot/design reference. The MCP server does not inspect images directly; the assistant should translate the image into layout requirements here.',
+				),
+				'section_requirements'     => $this->string_list_schema( 'Requested page/article sections, for example hero, feature grid, testimonials, FAQ, comparison, or CTA.', 12 ),
+				'preferred_block_families' => $this->block_family_list_schema( 'Preferred block families such as layout, media, or text.' ),
+				'preferred_blocks'         => $this->string_list_schema( 'Preferred registered block names, for example core/columns, core/group, core/cover, or core/media-text.', 20 ),
+				'preferred_patterns'       => $this->string_list_schema( 'Preferred registered pattern names when known.', 12 ),
+				'existing_post_id'         => array(
 					'type'        => 'integer',
 					'description' => 'Existing post ID when planning an update workflow.',
 				),
@@ -1380,29 +1399,66 @@ final class FirstPartyAbilityModules {
 	 */
 	private function workflow_content_fields(): array {
 		return array(
-			'title'                => array( 'type' => 'string' ),
-			'content'              => array(
+			'title'                    => array( 'type' => 'string' ),
+			'content'                  => array(
 				'type'        => 'string',
 				'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 				'description' => 'Serialized WordPress block content for the full document. Required for create. For update, provide content or section_map. Never use raw HTML or core/html.',
 			),
-			'excerpt'              => array( 'type' => 'string' ),
-			'slug'                 => array( 'type' => 'string' ),
-			'date'                 => $this->content_date_schema(),
-			'featured_media'       => array(
+			'excerpt'                  => array( 'type' => 'string' ),
+			'slug'                     => array( 'type' => 'string' ),
+			'date'                     => $this->content_date_schema(),
+			'featured_media'           => array(
 				'type'        => 'integer',
 				'description' => 'Existing image attachment ID to assign as the featured image.',
 			),
-			'clear_featured_media' => array(
+			'clear_featured_media'     => array(
 				'type'        => 'boolean',
 				'description' => 'Set true to intentionally remove the current featured image.',
 			),
-			'author'               => array(
+			'author'                   => array(
 				'type'        => 'integer',
 				'description' => 'Existing WordPress user ID to assign as author.',
 			),
-			'taxonomies'           => $this->taxonomy_assignment_schema( 'Map taxonomy slugs to existing term IDs or term slugs.' ),
+			'taxonomies'               => $this->taxonomy_assignment_schema( 'Map taxonomy slugs to existing term IDs or term slugs.' ),
+			'content_mode'             => $this->content_mode_schema(),
+			'layout_intent'            => array(
+				'type'        => 'string',
+				'description' => 'Expected layout direction used for block validation warnings.',
+			),
+			'visual_reference_summary' => array(
+				'type'        => 'string',
+				'description' => 'Concise non-sensitive summary of the visual reference used to produce this block document.',
+			),
+			'expected_block_families'  => $this->block_family_list_schema( 'Block families expected in the serialized content. Use layout for columns/grids/cards/page sections.' ),
+			'expected_blocks'          => $this->string_list_schema( 'Specific block names expected in the serialized content, such as core/columns or core/media-text.', 20 ),
 		);
+	}
+
+	/**
+	 * Build the content-mode schema for layout-aware workflows.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function content_mode_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => self::CONTENT_MODES,
+			'description' => 'Content shape. Use article for prose-heavy blog posts, page or landing_page for FSE-style pages, visual_layout when an image/screenshot/layout direction should drive block choice, and service_page/product_page/case_study for those structured page types.',
+		);
+	}
+
+	/**
+	 * Build a block-family list schema.
+	 *
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function block_family_list_schema( string $description ): array {
+		$schema                  = $this->string_list_schema( $description, 8 );
+		$schema['items']['enum'] = self::BLOCK_FAMILIES;
+
+		return $schema;
 	}
 
 	/**

@@ -14,6 +14,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	private const MAX_PATTERN_PREVIEW    = 600;
 	private const MAX_PATTERN_CONTENT    = 20000;
 	private const CUSTOM_HTML_BLOCK_NAME = 'core/html';
+	private const LAYOUT_BLOCKS          = array( 'core/group', 'core/columns', 'core/column', 'core/cover', 'core/media-text', 'core/gallery', 'core/row', 'core/stack' );
+	private const LAYOUT_HINT_TERMS      = array( 'layout', 'visual', 'image', 'screenshot', 'columns', 'column', 'grid', 'cards', 'hero', 'media text', 'section', 'cta', 'call to action' );
 
 	/**
 	 * List registered blocks with bounded metadata and usage guidance.
@@ -205,6 +207,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			$warnings[] = 'No block markup was detected. Prefer registered WordPress blocks or patterns for assistant-generated content.';
 		}
 
+		array_push( $warnings, ...$this->layout_expectation_warnings( $args, $names ) );
+
 		return array(
 			'valid'            => array() === array_filter(
 				$blocks,
@@ -296,6 +300,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'category'               => $category,
 			'description'            => $description,
 			'keywords'               => $this->string_list( $this->object_value( $block, 'keywords' ) ),
+			'families'               => $this->block_families_for_metadata( $name, $category, $title, $description ),
+			'layout_role'            => $this->layout_role( $name, $category, $title, $description ),
 			'supports_inserter'      => $this->supports_inserter( $block ),
 			'allowed_for_generation' => self::CUSTOM_HTML_BLOCK_NAME !== $name,
 			'best_for'               => $guidance['best_for'],
@@ -385,6 +391,11 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			return false;
 		}
 
+		$purpose = sanitize_key( (string) ( $args['purpose'] ?? $args['family'] ?? '' ) );
+		if ( '' !== $purpose && ! in_array( $purpose, (array) $block['families'], true ) ) {
+			return false;
+		}
+
 		$search = strtolower( $this->clean_text( (string) ( $args['search'] ?? '' ) ) );
 		if ( '' === $search ) {
 			return true;
@@ -456,6 +467,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'never_use'        => array( self::CUSTOM_HTML_BLOCK_NAME ),
 			'custom_html_rule' => 'Never use the Custom HTML block (core/html). Use semantic core blocks, registered site blocks, or patterns instead.',
 			'fallback_rule'    => 'If a requested layout cannot be represented with registered blocks or patterns, ask for an approved block or pattern instead of adding raw HTML.',
+			'layout_rule'      => 'When a user provides an image, screenshot, grid, cards, columns, landing page, service page, product page, or other visual layout direction, discover layout/media blocks and patterns first, then compose with editable registered blocks instead of paragraph-only article markup.',
 		);
 	}
 
@@ -487,6 +499,183 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'avoid_for' => array( 'Raw HTML fallbacks or layouts better served by a registered pattern.' ),
 			'guidance'  => 'Use this registered block only when it matches the requested semantic content. Do not use the Custom HTML block as a fallback.',
 		);
+	}
+
+	/**
+	 * Return block families for a registered block.
+	 *
+	 * @param string $name Registered block name.
+	 * @param string $category Block category.
+	 * @param string $title Block title.
+	 * @param string $description Block description.
+	 * @return list<string>
+	 */
+	private function block_families_for_metadata( string $name, string $category, string $title = '', string $description = '' ): array {
+		$families = array();
+		if ( in_array( $name, self::LAYOUT_BLOCKS, true ) ) {
+			$families[] = 'layout';
+		}
+
+		if ( in_array( $name, array( 'core/image', 'core/gallery', 'core/video', 'core/audio', 'core/file', 'core/media-text', 'core/cover' ), true ) ) {
+			$families[] = 'media';
+		}
+
+		if ( in_array( $name, array( 'core/paragraph', 'core/heading', 'core/list', 'core/quote', 'core/pullquote', 'core/table', 'core/buttons', 'core/button' ), true ) ) {
+			$families[] = 'text';
+		}
+
+		if ( str_contains( $name, 'navigation' ) || 'navigation' === $category ) {
+			$families[] = 'navigation';
+		}
+
+		foreach ( array( $category, $title, $description, $name ) as $value ) {
+			$value = strtolower( $value );
+			if ( str_contains( $value, 'layout' ) || str_contains( $value, 'design' ) || str_contains( $value, 'card' ) || str_contains( $value, 'grid' ) || str_contains( $value, 'column' ) ) {
+				$families[] = 'layout';
+			}
+			if ( str_contains( $value, 'media' ) || str_contains( $value, 'image' ) || str_contains( $value, 'gallery' ) || str_contains( $value, 'video' ) ) {
+				$families[] = 'media';
+			}
+		}
+
+		if ( array() === $families && 'text' === $category ) {
+			$families[] = 'text';
+		}
+		if ( array() === $families && 'widgets' === $category ) {
+			$families[] = 'widget';
+		}
+
+		return array_values( array_unique( $families ) );
+	}
+
+	/**
+	 * Return the layout role for a block when it has one.
+	 *
+	 * @param string $name Registered block name.
+	 * @param string $category Block category.
+	 * @param string $title Block title.
+	 * @param string $description Block description.
+	 */
+	private function layout_role( string $name, string $category, string $title, string $description ): string {
+		if ( in_array( $name, array( 'core/group', 'core/cover', 'core/columns', 'core/row', 'core/stack' ), true ) ) {
+			return 'container';
+		}
+		if ( 'core/column' === $name ) {
+			return 'container_child';
+		}
+		if ( 'core/media-text' === $name ) {
+			return 'media_text';
+		}
+		if ( 'core/gallery' === $name ) {
+			return 'media_grid';
+		}
+
+		return in_array( 'layout', $this->block_families_for_metadata( $name, $category, $title, $description ), true ) ? 'layout_candidate' : '';
+	}
+
+	/**
+	 * Return warnings when generated content ignores an expected layout shape.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 * @param array                $names Parsed block names.
+	 * @phpstan-param list<string> $names
+	 * @return list<string>
+	 */
+	private function layout_expectation_warnings( array $args, array $names ): array {
+		$warnings = array();
+		if ( ! $this->layout_expected( $args ) ) {
+			return $warnings;
+		}
+
+		$has_layout = false;
+		foreach ( $names as $name ) {
+			$block    = $this->registered_block( $name );
+			$category = null === $block ? '' : sanitize_key( $this->object_string( $block, 'category' ) );
+			$title    = null === $block ? '' : $this->clean_text( $this->object_string( $block, 'title' ) );
+			$desc     = null === $block ? '' : $this->clean_text( $this->object_string( $block, 'description' ) );
+			if ( in_array( 'layout', $this->block_families_for_metadata( $name, $category, $title, $desc ), true ) ) {
+				$has_layout = true;
+				break;
+			}
+		}
+
+		if ( ! $has_layout ) {
+			$warnings[] = 'Layout intent was provided, but no layout container blocks were detected. Use registered patterns or layout blocks such as core/group, core/columns, core/cover, or core/media-text instead of paragraph-only article markup.';
+		}
+
+		$expected_blocks = $this->expected_block_names( $args );
+		if ( array() !== $expected_blocks ) {
+			$missing = array_values( array_diff( $expected_blocks, $names ) );
+			if ( array() !== $missing ) {
+				$warnings[] = 'Expected block(s) were not detected in the serialized content: ' . implode( ', ', array_slice( $missing, 0, 8 ) ) . '.';
+			}
+		}
+
+		return $warnings;
+	}
+
+	/**
+	 * Determine whether validation should expect layout blocks.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 */
+	private function layout_expected( array $args ): bool {
+		$content_mode = sanitize_key( (string) ( $args['content_mode'] ?? $args['content_type'] ?? '' ) );
+		if ( in_array( $content_mode, array( 'page', 'landing_page', 'visual_layout', 'service_page', 'product_page', 'case_study' ), true ) ) {
+			return true;
+		}
+
+		$families = array();
+		foreach ( array_merge( (array) ( $args['expected_block_families'] ?? array() ), (array) ( $args['preferred_block_families'] ?? array() ) ) as $family ) {
+			if ( is_scalar( $family ) ) {
+				$families[] = sanitize_key( (string) $family );
+			}
+		}
+		if ( in_array( 'layout', $families, true ) ) {
+			return true;
+		}
+
+		$intent = strtolower(
+			implode(
+				' ',
+				array_filter(
+					array_map(
+						static fn( mixed $value ): string => is_scalar( $value ) ? (string) $value : '',
+						array( $args['layout_intent'] ?? '', $args['visual_reference_summary'] ?? '' )
+					)
+				)
+			)
+		);
+
+		foreach ( self::LAYOUT_HINT_TERMS as $term ) {
+			if ( str_contains( $intent, $term ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Return expected block names from validation args.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 * @return list<string>
+	 */
+	private function expected_block_names( array $args ): array {
+		$raw = array_merge( (array) ( $args['expected_blocks'] ?? array() ), (array) ( $args['preferred_blocks'] ?? array() ) );
+		$out = array();
+		foreach ( $raw as $name ) {
+			if ( ! is_scalar( $name ) ) {
+				continue;
+			}
+			$name = $this->sanitize_identifier( (string) $name );
+			if ( '' !== $name ) {
+				$out[] = $name;
+			}
+		}
+
+		return array_values( array_slice( array_unique( $out ), 0, 20 ) );
 	}
 
 	/**

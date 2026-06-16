@@ -473,12 +473,17 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'desired_word_count', $workflow_prepare_schema['properties'] );
 		self::assertSame( 3000, $workflow_prepare_schema['properties']['desired_word_count']['minimum'] );
 		self::assertSame( 5000, $workflow_prepare_schema['properties']['desired_word_count']['maximum'] );
+		self::assertArrayHasKey( 'content_mode', $workflow_prepare_schema['properties'] );
+		self::assertArrayHasKey( 'layout_intent', $workflow_prepare_schema['properties'] );
+		self::assertArrayHasKey( 'visual_reference_summary', $workflow_prepare_schema['properties'] );
+		self::assertContains( 'visual_layout', $workflow_prepare_schema['properties']['content_mode']['enum'] );
 
 		$workflow_create_schema = $this->schemaForTool( 'content_workflow_create_draft' );
 		self::assertSame( array( 'title', 'content' ), $workflow_create_schema['required'] );
 		self::assertArrayHasKey( 'meta_title', $workflow_create_schema['properties'] );
 		self::assertArrayHasKey( 'dry_run', $workflow_create_schema['properties'] );
 		self::assertSame( 'array', $workflow_create_schema['properties']['focus_keywords']['type'] );
+		self::assertArrayHasKey( 'expected_block_families', $workflow_create_schema['properties'] );
 
 		$workflow_update_schema = $this->schemaForTool( 'content_workflow_update_post' );
 		self::assertSame( array( 'id' ), $workflow_update_schema['required'] );

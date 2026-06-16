@@ -44,6 +44,24 @@ final class BlockKnowledgeAbilitiesTest extends TestCase {
 		self::assertStringContainsString( 'Never use the Custom HTML block', $result['content_guidance']['custom_html_rule'] );
 	}
 
+	public function test_list_blocks_can_filter_layout_generation_family(): void {
+		$result = $this->abilities->list_blocks(
+			array(
+				'purpose'  => 'layout',
+				'context'  => 'compact',
+				'per_page' => 10,
+			)
+		);
+
+		$names = array_column( $result['items'], 'name' );
+
+		self::assertContains( 'core/columns', $names );
+		self::assertContains( 'core/group', $names );
+		self::assertContains( 'plugin/feature-card', $names );
+		self::assertContains( 'layout', $result['items'][0]['families'] );
+		self::assertStringContainsString( 'image, screenshot, grid', $result['content_guidance']['layout_rule'] );
+	}
+
 	public function test_custom_html_block_is_registered_but_never_allowed_for_generation(): void {
 		$result = $this->abilities->get_block_info( array( 'name' => 'core/html' ) );
 
@@ -119,6 +137,20 @@ final class BlockKnowledgeAbilitiesTest extends TestCase {
 		self::assertContains( 'Block missing/block is not registered on this site.', $result['warnings'] );
 	}
 
+	public function test_validate_block_content_warns_when_layout_intent_has_no_layout_blocks(): void {
+		$result = $this->abilities->validate_block_content(
+			array(
+				'content'                 => '<!-- wp:paragraph --><p>This reads like a blog post.</p><!-- /wp:paragraph -->',
+				'content_mode'            => 'visual_layout',
+				'layout_intent'           => 'Use a three-column grid of cards.',
+				'expected_block_families' => array( 'layout' ),
+			)
+		);
+
+		self::assertTrue( $result['valid'] );
+		self::assertContains( 'Layout intent was provided, but no layout container blocks were detected. Use registered patterns or layout blocks such as core/group, core/columns, core/cover, or core/media-text instead of paragraph-only article markup.', $result['warnings'] );
+	}
+
 	private function registerTestBlocks(): void {
 		\WP_Block_Type_Registry::get_instance()->unregister_all();
 		\WP_Block_Type_Registry::get_instance()->register(
@@ -162,6 +194,19 @@ final class BlockKnowledgeAbilitiesTest extends TestCase {
 				'category'    => 'design',
 			)
 		);
+		foreach ( array( 'core/columns', 'core/column', 'core/group', 'core/cover', 'core/media-text' ) as $name ) {
+			\WP_Block_Type_Registry::get_instance()->register(
+				$name,
+				array(
+					'title'       => $name,
+					'description' => 'Layout block for visual page composition.',
+					'category'    => 'design',
+					'supports'    => array(
+						'inserter' => true,
+					),
+				)
+			);
+		}
 	}
 
 	private function registerTestPatterns(): void {

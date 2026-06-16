@@ -512,9 +512,36 @@ final class IntelligenceContext {
 		);
 
 		return array(
-			'total'     => (int) ( $result['total'] ?? 0 ),
-			'available' => true,
-			'items'     => (array) ( $result['items'] ?? array() ),
+			'total'          => (int) ( $result['total'] ?? 0 ),
+			'available'      => true,
+			'items'          => (array) ( $result['items'] ?? array() ),
+			'groups'         => array(
+				'text'   => $this->block_family_summary( 'text' ),
+				'media'  => $this->block_family_summary( 'media' ),
+				'layout' => $this->block_family_summary( 'layout' ),
+			),
+			'discovery_rule' => 'For image, screenshot, page-layout, grid, columns, card, hero, service page, product page, or landing page requests, call intelligence_blocks_list_available with purpose=layout and call intelligence_patterns_list_available before drafting.',
+		);
+	}
+
+	/**
+	 * Return a compact block-family summary.
+	 *
+	 * @param string $family Block family.
+	 * @return array<string, mixed>
+	 */
+	private function block_family_summary( string $family ): array {
+		$result = ( new BlockKnowledgeAbilities() )->list_blocks(
+			array(
+				'context'  => 'compact',
+				'purpose'  => $family,
+				'per_page' => 8,
+			)
+		);
+
+		return array(
+			'total' => (int) ( $result['total'] ?? 0 ),
+			'items' => (array) ( $result['items'] ?? array() ),
 		);
 	}
 
@@ -540,9 +567,11 @@ final class IntelligenceContext {
 		);
 
 		return array(
-			'total'     => (int) ( $result['total'] ?? 0 ),
-			'available' => true,
-			'items'     => (array) ( $result['items'] ?? array() ),
+			'total'                    => (int) ( $result['total'] ?? 0 ),
+			'available'                => true,
+			'items'                    => (array) ( $result['items'] ?? array() ),
+			'recommended_search_terms' => array( 'hero', 'landing', 'features', 'cards', 'grid', 'columns', 'media text', 'call to action', 'service', 'product', 'case study' ),
+			'discovery_rule'           => 'Use pattern search terms that match the requested content type and visual layout before composing custom block sections.',
 		);
 	}
 

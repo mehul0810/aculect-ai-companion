@@ -12,6 +12,7 @@
     "Improved": [
       "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.",
       "Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.",
+      "Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.",
       "Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.",
       "Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers."
     ],
@@ -19,7 +20,8 @@
       "Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.",
       "Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.",
       "Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
-      "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier."
+      "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.",
+      "Added layout-aware validation warnings when visual page requests produce paragraph-only block markup."
     ]
   },
   "0.5.3": {

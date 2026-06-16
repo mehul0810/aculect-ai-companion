@@ -259,8 +259,10 @@ Composer dependencies for production releases are installed with:
 * Added a `plugin_issue_report` tool that prepares a sanitized public GitHub issue draft when the plugin or MCP workflow fails.
 * Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.
 * Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.
+* Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.
 * Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.
 * Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.
+* Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.
 
 = 0.5.3 =
 

@@ -620,6 +620,17 @@ if ( ! function_exists( 'admin_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'plugin_basename' ) ) {
+	/**
+	 * Return a deterministic plugin basename for tests.
+	 *
+	 * @param string $file Plugin file path.
+	 */
+	function plugin_basename( string $file ): string {
+		return basename( dirname( $file ) ) . '/' . basename( $file );
+	}
+}
+
 if ( ! function_exists( 'add_query_arg' ) ) {
 	/**
 	 * Add query args to a URL for tests.
@@ -884,6 +895,17 @@ if ( ! function_exists( 'esc_url_raw' ) ) {
 	 */
 	function esc_url_raw( string $url ): string {
 		return filter_var( $url, FILTER_SANITIZE_URL ) ?: '';
+	}
+}
+
+if ( ! function_exists( 'esc_url' ) ) {
+	/**
+	 * Escape a URL for tests.
+	 *
+	 * @param string $url Raw URL.
+	 */
+	function esc_url( string $url ): string {
+		return esc_url_raw( $url );
 	}
 }
 

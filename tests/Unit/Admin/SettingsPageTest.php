@@ -134,6 +134,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['roleAbilityPolicy'] );
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
+		self::assertSame( 0, $payload['memoryRecords']['summary']['total'] );
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
@@ -193,6 +194,14 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame(
 			'nonce-aculect_ai_companion_review_learning_suggestion',
 			$payload['actions']['reviewLearningSuggestionNonce']
+		);
+		self::assertSame(
+			'aculect_ai_companion_review_memory_item',
+			$payload['actions']['reviewMemoryAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_review_memory_item',
+			$payload['actions']['reviewMemoryNonce']
 		);
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
@@ -284,6 +293,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertContains( 'learning', $learning['hydratedTabs'] );
 		self::assertSame( 1, $learning['learningSuggestions']['summary']['total'] );
 		self::assertSame( 'Missing site guidance.', $learning['learningSuggestions']['items'][0]['issue'] );
+		self::assertSame( 0, $learning['memoryRecords']['summary']['total'] );
 
 		$_GET['tab'] = 'overview';
 		$overview    = $this->settings_payload();
@@ -291,6 +301,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'overview', $overview['payloadTab'] );
 		self::assertSame( 0, $overview['learningSuggestions']['summary']['total'] );
 		self::assertSame( array(), $overview['learningSuggestions']['items'] );
+		self::assertSame( 0, $overview['memoryRecords']['summary']['total'] );
+		self::assertSame( array(), $overview['memoryRecords']['items'] );
 	}
 
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {

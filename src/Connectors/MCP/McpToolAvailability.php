@@ -62,7 +62,7 @@ final class McpToolAvailability {
 		$registry = $registry ?? new AbilitiesRegistry();
 		$scopes   = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
 
-		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->always_on_read_intelligence_modules();
+		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->always_on_read_intelligence_modules() + $registry->always_on_write_intelligence_modules();
 		$policy         = $this->ability_policy_for_user( $user_id, $registry, $scopes );
 		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
 		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
@@ -232,6 +232,7 @@ final class McpToolAvailability {
 					'internal_links'   => 'content_find.internal_links',
 					'memory_list'      => 'memory.list',
 					'memory_save'      => 'memory.save',
+					'memory_bootstrap' => 'memory.bootstrap',
 					'batch_status'     => 'content_batch.status',
 				),
 				$policy,
@@ -335,7 +336,9 @@ final class McpToolAvailability {
 		$required_scopes      = null === $module ? $registry->required_scopes( $ability_id ) : $module->required_scopes();
 		$is_read_only         = null === $module ? $registry->is_read_only( $ability_id ) : $module->is_read_only();
 		$is_derived_workflow  = $registry->is_derived_workflow( $ability_id );
-		$is_always_on         = $registry->is_always_on_read_intelligence( $ability_id );
+		$is_always_on_read    = $registry->is_always_on_read_intelligence( $ability_id );
+		$is_always_on_write   = $registry->is_always_on_write_intelligence( $ability_id );
+		$is_always_on         = $is_always_on_read || $is_always_on_write;
 		$blocked_by           = '';
 		$blocked_dependencies = array();
 		$missing_scopes       = array();
@@ -387,7 +390,7 @@ final class McpToolAvailability {
 
 		if ( $is_always_on ) {
 			$entry['always_on']          = true;
-			$entry['availability_model'] = 'always_on_read_intelligence';
+			$entry['availability_model'] = $is_always_on_write ? 'always_on_write_intelligence' : 'always_on_read_intelligence';
 		}
 
 		if ( ! $available ) {
@@ -445,7 +448,7 @@ final class McpToolAvailability {
 	 * @param AbilitiesRegistry $registry       Ability registry.
 	 */
 	private function module_allowed( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry ): bool {
-		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_always_on_read_intelligence( $ability_id ) ) {
+		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_always_on_read_intelligence( $ability_id ) || $registry->is_always_on_write_intelligence( $ability_id ) ) {
 			return true;
 		}
 

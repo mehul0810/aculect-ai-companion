@@ -116,6 +116,7 @@ final class Plugin {
 		'reset_settings'               => 'handle_reset_settings',
 		'save_brand'                   => 'handle_save_brand',
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
+		'review_memory_item'           => 'handle_review_memory_item',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
 		'run_content_index_sweep'      => 'handle_run_content_index_sweep',
 		'clear_logs'                   => 'handle_clear_logs',

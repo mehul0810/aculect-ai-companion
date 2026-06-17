@@ -69,7 +69,9 @@ final class ContentIndexRepositoryTest extends TestCase {
 			}
 
 			public function get_var( string $query ): ?int {
-				unset( $query );
+				if ( str_contains( $query, 'COUNT(*)' ) ) {
+					return count( $this->rows );
+				}
 
 				$key = $this->last_memory_key();
 
@@ -116,6 +118,26 @@ final class ContentIndexRepositoryTest extends TestCase {
 			}
 
 			/**
+			 * Delete one stored row.
+			 *
+			 * @param string               $table         Table name.
+			 * @param array<string, mixed> $where         Where clause data.
+			 * @param array<int, string>   $where_formats Where formats.
+			 */
+			public function delete( string $table, array $where, array $where_formats ): int {
+				unset( $table, $where_formats );
+
+				$key = (string) ( $where['memory_key'] ?? '' );
+				if ( ! isset( $this->rows[ $key ] ) ) {
+					return 0;
+				}
+
+				unset( $this->rows[ $key ] );
+
+				return 1;
+			}
+
+			/**
 			 * Return one stored row.
 			 *
 			 * @param string $query  Prepared query.
@@ -126,6 +148,19 @@ final class ContentIndexRepositoryTest extends TestCase {
 				unset( $query, $output );
 
 				return $this->rows[ $this->last_memory_key() ] ?? null;
+			}
+
+			/**
+			 * Return stored rows.
+			 *
+			 * @param string $query  Prepared query.
+			 * @param string $output Output type.
+			 * @return list<array<string, mixed>>
+			 */
+			public function get_results( string $query, string $output ): array {
+				unset( $query, $output );
+
+				return array_values( $this->rows );
 			}
 
 			private function last_memory_key(): string {
@@ -170,5 +205,24 @@ final class ContentIndexRepositoryTest extends TestCase {
 		self::assertSame( 'success', $result['status'] );
 		self::assertSame( 'approved', $result['memory']['status'] );
 		self::assertSame( 'approved', $this->wpdb->inserts[0]['data']['status'] );
+	}
+
+	public function test_memory_delete_removes_existing_row(): void {
+		$repository = new ContentIndexRepository();
+		$repository->upsert_memory(
+			array(
+				'key'    => 'workflow.blocks.no_custom_html',
+				'domain' => 'workflow',
+				'value'  => 'Do not use core/html.',
+			)
+		);
+
+		$result = $repository->delete_memory( 'workflow.blocks.no_custom_html' );
+		$list   = $repository->list_memories( array( 'status' => '' ) );
+
+		self::assertSame( 'success', $result['status'] );
+		self::assertSame( 1, $result['deleted'] );
+		self::assertSame( array(), $list['items'] );
+		self::assertSame( 0, $list['total'] );
 	}
 }

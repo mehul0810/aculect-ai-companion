@@ -83,6 +83,10 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 			summary: { total: 1 },
 			items: [ { id: 'learn_1' } ],
 		},
+		memoryRecords: {
+			summary: { total: 1 },
+			items: [ { key: 'memory_1' } ],
+		},
 		incidentReports: {
 			summary: { total: 1 },
 			items: [ { report_id: 'incident_1' } ],
@@ -92,6 +96,10 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 		payloadTab: 'activity',
 		hydratedTabs: [ 'overview', 'activity' ],
 		learningSuggestions: {
+			summary: { total: 0 },
+			items: [],
+		},
+		memoryRecords: {
 			summary: { total: 0 },
 			items: [],
 		},
@@ -110,6 +118,10 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 			learningSuggestions: {
 				summary: { total: 1 },
 				items: [ { id: 'learn_1' } ],
+			},
+			memoryRecords: {
+				summary: { total: 1 },
+				items: [ { key: 'memory_1' } ],
 			},
 			incidentReports: {
 				summary: { total: 1 },

@@ -177,12 +177,22 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'memory.save',
 				'Save Aculect Memory',
-				'Queue or save one durable local Aculect Intelligence memory item. Defaults to pending review; use intelligence_feedback_submit for normal learning suggestions unless explicit write permission and confirmation are available.',
+				'Queue or save durable local Aculect Intelligence memory. Empty calls bootstrap an initial memory set from site, brand, content, workflow, and approved learning signals.',
 				'Aculect Memory',
 				'content:draft',
 				false,
 				$this->memory_save_schema(),
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->save_memory( $args )
+			),
+			$this->module(
+				'memory.bootstrap',
+				'Bootstrap Aculect Memory',
+				'Prepare or store an initial durable Aculect Intelligence memory set from site, brand, content, workflow, and approved learning signals.',
+				'Aculect Memory',
+				'content:draft',
+				false,
+				$this->memory_bootstrap_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->bootstrap_memory( $args )
 			),
 			$this->module(
 				'content_batch.status',
@@ -1344,6 +1354,11 @@ final class FirstPartyAbilityModules {
 	private function memory_save_schema(): array {
 		return $this->object_schema(
 			array(
+				'mode'       => array(
+					'type'        => 'string',
+					'enum'        => array( 'save', 'bootstrap' ),
+					'description' => 'Use bootstrap, or omit key/value, to prepare initial Aculect memory from available intelligence signals.',
+				),
 				'key'        => array(
 					'type'        => 'string',
 					'description' => 'Stable key such as brand.voice.primary or content.internal_links.rule.',
@@ -1370,8 +1385,32 @@ final class FirstPartyAbilityModules {
 					'enum'        => array( 'approved', 'pending', 'dismissed' ),
 					'description' => 'Review status. Defaults to pending; approved memories affect future workflows.',
 				),
-			),
-			array( 'key', 'value' )
+				'force'      => array(
+					'type'        => 'boolean',
+					'description' => 'When bootstrapping, update existing memory keys instead of only creating missing ones.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the Aculect memory bootstrap schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function memory_bootstrap_schema(): array {
+		return $this->object_schema(
+			array(
+				'status' => array(
+					'type'        => 'string',
+					'enum'        => array( 'approved', 'pending' ),
+					'description' => 'Review status for created memory rows. Defaults to pending.',
+				),
+				'force'  => array(
+					'type'        => 'boolean',
+					'description' => 'Update existing bootstrap keys instead of only creating missing ones.',
+				),
+			)
 		);
 	}
 

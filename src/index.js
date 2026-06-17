@@ -95,6 +95,8 @@ const LEARNING_DOMAIN_LABELS = {
 	content: 'Content',
 	developer: 'Developer',
 	brand: 'Brand',
+	seo: 'SEO',
+	workflow: 'Workflow',
 };
 const LEARNING_STATUS_LABELS = {
 	pending: 'Pending',
@@ -950,6 +952,18 @@ function incidentReportsSummary( incidentReports ) {
 		: {};
 }
 
+function memoryRecordsList( memoryRecords ) {
+	return Array.isArray( memoryRecords?.items )
+		? memoryRecords.items
+		: EMPTY_ARRAY;
+}
+
+function memoryRecordsSummary( memoryRecords ) {
+	return memoryRecords?.summary && typeof memoryRecords.summary === 'object'
+		? memoryRecords.summary
+		: {};
+}
+
 function incidentCategoryLabel( categoryName ) {
 	return INCIDENT_CATEGORY_LABELS[ categoryName ] || 'Bug';
 }
@@ -1035,6 +1049,296 @@ function IncidentReportCard( { report } ) {
 					</Button>
 				) : null }
 			</div>
+		</article>
+	);
+}
+
+function MemoryRecordHiddenInputs( { record, action } ) {
+	return (
+		<>
+			<input type="hidden" name="memory_key" value={ record.key || '' } />
+			<input type="hidden" name="memory_action" value={ action } />
+			<input
+				type="hidden"
+				name="memory_item[key]"
+				value={ record.key || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[domain]"
+				value={ record.domain || 'content' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[value]"
+				value={ record.value || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[evidence]"
+				value={ record.evidence || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[confidence]"
+				value={ record.confidence || 'medium' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[source]"
+				value={ record.source || 'admin' }
+			/>
+		</>
+	);
+}
+
+function MemoryRecordReviewForm( {
+	data,
+	record,
+	action,
+	label,
+	icon,
+	destructive = false,
+} ) {
+	return (
+		<ActionForm
+			data={ data }
+			action={ data.actions?.reviewMemoryAction }
+			nonce={ data.actions?.reviewMemoryNonce }
+			label={ label }
+			variant={ destructive ? 'secondary' : 'primary' }
+			destructive={ destructive }
+			confirmMessage={ destructive ? `${ label } this memory item?` : '' }
+			confirmTitle="Review memory"
+			buttonContent={
+				<>
+					<Icon icon={ icon } size={ 16 } />
+					<span>{ label }</span>
+				</>
+			}
+			disabled={
+				! data.actions?.reviewMemoryAction ||
+				! data.actions?.reviewMemoryNonce
+			}
+		>
+			<MemoryRecordHiddenInputs record={ record } action={ action } />
+		</ActionForm>
+	);
+}
+
+function MemoryRecordEditModal( { data, record, onClose } ) {
+	const [ formValues, setFormValues ] = useState( {
+		key: record.key || '',
+		domain: record.domain || 'content',
+		value: record.value || '',
+		evidence: record.evidence || '',
+		confidence: record.confidence || 'medium',
+		status: record.status || 'pending',
+		source: record.source || 'admin',
+	} );
+	const updateValue = ( key ) => ( value ) => {
+		setFormValues( ( current ) => ( {
+			...current,
+			[ key ]: value,
+		} ) );
+	};
+
+	return (
+		<Modal title="Edit memory item" onRequestClose={ onClose }>
+			<form
+				method="post"
+				action={ data.actions?.adminPostUrl }
+				className="aculect-ai-companion-learning-edit-form"
+			>
+				<input
+					type="hidden"
+					name="action"
+					value={ data.actions?.reviewMemoryAction }
+				/>
+				<input
+					type="hidden"
+					name="_wpnonce"
+					value={ data.actions?.reviewMemoryNonce }
+				/>
+				<input
+					type="hidden"
+					name="memory_key"
+					value={ record.key || '' }
+				/>
+				<input type="hidden" name="memory_action" value="update" />
+				<TextControl
+					label="Key"
+					name="memory_item[key]"
+					value={ formValues.key }
+					onChange={ updateValue( 'key' ) }
+				/>
+				<SelectControl
+					label="Domain"
+					name="memory_item[domain]"
+					value={ formValues.domain }
+					options={ Object.entries( LEARNING_DOMAIN_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'domain' ) }
+				/>
+				<TextareaControl
+					label="Value"
+					name="memory_item[value]"
+					value={ formValues.value }
+					onChange={ updateValue( 'value' ) }
+					rows={ 4 }
+				/>
+				<TextareaControl
+					label="Evidence"
+					name="memory_item[evidence]"
+					value={ formValues.evidence }
+					onChange={ updateValue( 'evidence' ) }
+					rows={ 3 }
+				/>
+				<SelectControl
+					label="Confidence"
+					name="memory_item[confidence]"
+					value={ formValues.confidence }
+					options={ Object.entries( LEARNING_CONFIDENCE_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'confidence' ) }
+				/>
+				<SelectControl
+					label="Status"
+					name="memory_item[status]"
+					value={ formValues.status }
+					options={ Object.entries( LEARNING_STATUS_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'status' ) }
+				/>
+				<input
+					type="hidden"
+					name="memory_item[source]"
+					value={ formValues.source }
+				/>
+				<div className="aculect-ai-companion-confirm-dialog__actions">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ onClose }
+					>
+						Cancel
+					</Button>
+					<Button
+						type="submit"
+						variant="primary"
+						disabled={
+							! data.actions?.reviewMemoryAction ||
+							! data.actions?.reviewMemoryNonce
+						}
+						accessibleWhenDisabled
+					>
+						Save Memory
+					</Button>
+				</div>
+			</form>
+		</Modal>
+	);
+}
+
+function MemoryRecordCard( { data, record } ) {
+	const [ isEditing, setIsEditing ] = useState( false );
+	const status = record.status || 'pending';
+	const domain = record.domain || 'content';
+	const isApproved = status === 'approved';
+	const isDismissed = status === 'dismissed';
+
+	return (
+		<article
+			className={ `aculect-ai-companion-learning-card aculect-ai-companion-memory-card is-${ status }` }
+		>
+			<div className="aculect-ai-companion-learning-card__header">
+				<div>
+					<h3>{ record.key || 'Memory item' }</h3>
+					<p className="aculect-ai-companion-learning-source">
+						<span>{ record.source || 'manual' }</span>
+					</p>
+				</div>
+				<div className="aculect-ai-companion-learning-card__badges">
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ domain }` }
+					>
+						{ learningDomainLabel( domain ) }
+					</span>
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ status }` }
+					>
+						{ learningStatusLabel( status ) }
+					</span>
+					<span className="aculect-ai-companion-learning-pill is-confidence">
+						{ learningConfidenceLabel( record.confidence ) }
+					</span>
+				</div>
+			</div>
+			<div className="aculect-ai-companion-learning-card__body">
+				<dl className="aculect-ai-companion-learning-details">
+					<div>
+						<dt>Value</dt>
+						<dd>{ record.value || '-' }</dd>
+					</div>
+					{ record.evidence && (
+						<div>
+							<dt>Evidence</dt>
+							<dd>{ record.evidence }</dd>
+						</div>
+					) }
+				</dl>
+			</div>
+			<div className="aculect-ai-companion-learning-card__footer">
+				<span className="aculect-ai-companion-learning-card__date">
+					{ connectionDateValue( record.updated_at, 'Updated' ) }
+				</span>
+				<div className="aculect-ai-companion-learning-actions">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ () => setIsEditing( true ) }
+					>
+						Edit
+					</Button>
+					{ ! isApproved && (
+						<MemoryRecordReviewForm
+							data={ data }
+							record={ record }
+							action="approve"
+							label="Approve"
+							icon={ check }
+						/>
+					) }
+					{ ! isDismissed && (
+						<MemoryRecordReviewForm
+							data={ data }
+							record={ record }
+							action="dismiss"
+							label="Dismiss"
+							icon={ trash }
+							destructive
+						/>
+					) }
+					<MemoryRecordReviewForm
+						data={ data }
+						record={ record }
+						action="delete"
+						label="Delete"
+						icon={ trash }
+						destructive
+					/>
+				</div>
+			</div>
+			{ isEditing && (
+				<MemoryRecordEditModal
+					data={ data }
+					record={ record }
+					onClose={ () => setIsEditing( false ) }
+				/>
+			) }
 		</article>
 	);
 }
@@ -1296,10 +1600,13 @@ function LearningSuggestionCard( { data, suggestion } ) {
 function LearningSuggestionsDashboard( {
 	data,
 	learningSuggestions,
+	memoryRecords,
 	incidentReports,
 } ) {
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
+	const memories = memoryRecordsList( memoryRecords );
+	const memorySummary = memoryRecordsSummary( memoryRecords );
 	const incidents = incidentReportsList( incidentReports );
 	const incidentSummary = incidentReportsSummary( incidentReports );
 
@@ -1328,11 +1635,41 @@ function LearningSuggestionsDashboard( {
 						Dismissed
 					</span>
 					<span>
+						<strong>{ Number( memorySummary.total || 0 ) }</strong>
+						Memories
+					</span>
+					<span>
 						<strong>{ Number( incidentSummary.open || 0 ) }</strong>
 						Incidents
 					</span>
 				</div>
 			</div>
+			<section className="aculect-ai-companion-memory-section">
+				<div className="aculect-ai-companion-learning-section-heading">
+					<h3>Memory Records</h3>
+					<p>
+						Admin-reviewed durable guidance used by MCP workflows
+						alongside approved learning suggestions.
+					</p>
+				</div>
+				{ memories.length === 0 ? (
+					<EmptyState title="No memory records">
+						AI clients can call memory_bootstrap or memory_save
+						without a key and value to prepare initial memory for
+						review.
+					</EmptyState>
+				) : (
+					<div className="aculect-ai-companion-learning-list">
+						{ memories.map( ( record ) => (
+							<MemoryRecordCard
+								key={ record.key }
+								data={ data }
+								record={ record }
+							/>
+						) ) }
+					</div>
+				) }
+			</section>
 			<section className="aculect-ai-companion-incident-section">
 				<div className="aculect-ai-companion-learning-section-heading">
 					<h3>Incident Reports</h3>
@@ -5050,6 +5387,10 @@ function SettingsApp() {
 		data.learningSuggestions && typeof data.learningSuggestions === 'object'
 			? data.learningSuggestions
 			: {};
+	const memoryRecords =
+		data.memoryRecords && typeof data.memoryRecords === 'object'
+			? data.memoryRecords
+			: {};
 	const incidentReports =
 		data.incidentReports && typeof data.incidentReports === 'object'
 			? data.incidentReports
@@ -5569,6 +5910,31 @@ function SettingsApp() {
 				{ data.status === 'learning_suggestion_not_updated' && (
 					<Notice status="warning" isDismissible={ false }>
 						Learning suggestion was not updated.
+					</Notice>
+				) }
+				{ data.status === 'memory_approved' && (
+					<Notice status="success" isDismissible={ false }>
+						Memory item approved.
+					</Notice>
+				) }
+				{ data.status === 'memory_dismissed' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item dismissed.
+					</Notice>
+				) }
+				{ data.status === 'memory_deleted' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item deleted.
+					</Notice>
+				) }
+				{ data.status === 'memory_updated' && (
+					<Notice status="success" isDismissible={ false }>
+						Memory item updated.
+					</Notice>
+				) }
+				{ data.status === 'memory_not_updated' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item was not updated.
 					</Notice>
 				) }
 				{ data.status === 'logs_cleared' && (
@@ -6506,6 +6872,7 @@ function SettingsApp() {
 							<LearningSuggestionsDashboard
 								data={ data }
 								learningSuggestions={ learningSuggestions }
+								memoryRecords={ memoryRecords }
 								incidentReports={ incidentReports }
 							/>
 						);

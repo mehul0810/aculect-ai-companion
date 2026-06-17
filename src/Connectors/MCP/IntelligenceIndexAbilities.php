@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 
 /**
  * Exposes indexed search, chunk retrieval, link suggestions, memories, and batch refresh to MCP clients.
@@ -352,6 +354,10 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function save_memory( array $args ): array {
+		if ( $this->is_memory_bootstrap_request( $args ) ) {
+			return $this->bootstrap_memories( $args, 'memory.save' );
+		}
+
 		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
 		if ( ! in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ) {
 			$status = 'pending';
@@ -389,6 +395,366 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Bootstrap durable memory from local intelligence signals.
+	 *
+	 * @param array<string, mixed> $args Bootstrap args.
+	 * @return array<string, mixed>
+	 */
+	public function bootstrap_memory( array $args ): array {
+		return $this->bootstrap_memories( $args, 'memory.bootstrap' );
+	}
+
+	/**
+	 * Return whether a memory_save request should bootstrap initial memory.
+	 *
+	 * @param array<string, mixed> $args Tool args.
+	 */
+	private function is_memory_bootstrap_request( array $args ): bool {
+		$mode      = sanitize_key( (string) ( $args['mode'] ?? '' ) );
+		$has_key   = '' !== sanitize_text_field( (string) ( $args['key'] ?? $args['memory_key'] ?? '' ) );
+		$has_value = '' !== sanitize_text_field( (string) ( $args['value'] ?? '' ) );
+
+		return 'bootstrap' === $mode || ( ! $has_key && ! $has_value );
+	}
+
+	/**
+	 * Bootstrap missing memory rows.
+	 *
+	 * @param array<string, mixed> $args   Tool args.
+	 * @param string               $action Tool action.
+	 * @return array<string, mixed>
+	 */
+	private function bootstrap_memories( array $args, string $action ): array {
+		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
+		if ( ! in_array( $status, array( 'approved', 'pending' ), true ) ) {
+			$status = 'pending';
+		}
+
+		$force         = ! empty( $args['force'] );
+		$candidates    = $this->initial_memory_candidates();
+		$existing      = $this->repo()->list_memories(
+			array(
+				'status'   => '',
+				'per_page' => 100,
+			)
+		);
+		$existing_keys = array_fill_keys( array_map( 'strval', array_column( (array) ( $existing['items'] ?? array() ), 'key' ) ), true );
+		$items         = array();
+		$skipped       = array();
+
+		foreach ( $candidates as $candidate ) {
+			$key = (string) ( $candidate['key'] ?? '' );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			$memory = array_merge( $candidate, array( 'status' => $status ) );
+			if ( isset( $existing_keys[ $key ] ) && ! $force ) {
+				$skipped[] = array_merge( $memory, array( 'reason' => 'already_exists' ) );
+				continue;
+			}
+
+			$items[] = $memory;
+		}
+
+		if ( $this->is_dry_run( $args ) ) {
+			return array(
+				'dry_run'               => true,
+				'status'                => 'preview',
+				'action'                => $action,
+				'risk_level'            => 'update',
+				'target'                => array(
+					'type' => 'memory_bootstrap',
+					'id'   => 'initial_memory',
+				),
+				'items'                 => $items,
+				'skipped'               => $skipped,
+				'changes'               => array_map(
+					static fn ( array $item ): array => array(
+						'field' => (string) ( $item['key'] ?? '' ),
+						'from'  => null,
+						'to'    => (string) ( $item['value'] ?? '' ),
+					),
+					$items
+				),
+				'warnings'              => $this->bootstrap_warnings( $items, $skipped, $status ),
+				'confirmation_required' => true,
+				'next_actions'          => array( 'Repeat this tool call with confirmation_token to store these memory rows.' ),
+			);
+		}
+
+		$saved = array();
+		foreach ( $items as $item ) {
+			$result = $this->repo()->upsert_memory( $item );
+			if ( 'success' === ( $result['status'] ?? '' ) && is_array( $result['memory'] ?? null ) ) {
+				$saved[] = $result['memory'];
+			}
+		}
+
+		return array(
+			'status'        => array() === $saved ? 'unchanged' : 'success',
+			'message'       => array() === $saved
+				? 'No new Aculect memory rows were created. Existing memory already covers the bootstrap keys.'
+				: 'Aculect memory bootstrap stored local memory rows for future MCP workflows.',
+			'items'         => $saved,
+			'skipped'       => $skipped,
+			'summary'       => array(
+				'created'  => count( $saved ),
+				'skipped'  => count( $skipped ),
+				'status'   => $status,
+				'existing' => (int) ( $existing['total'] ?? count( $existing_keys ) ),
+			),
+			'review_status' => array(
+				'status'                => $status,
+				'admin_review_required' => 'approved' !== $status,
+				'updates_memory'        => 'approved' === $status,
+			),
+			'next_actions'  => 'approved' === $status
+				? array( 'Call memory_list to use the new approved memory in planning.' )
+				: array( 'Review and approve pending memory rows in the Aculect Intelligence admin screen before relying on them in future workflows.' ),
+		);
+	}
+
+	/**
+	 * Return bootstrap warnings.
+	 *
+	 * @param list<array<string, mixed>> $items   Proposed items.
+	 * @param list<array<string, mixed>> $skipped Skipped items.
+	 * @param string                     $status  Review status.
+	 * @return list<string>
+	 */
+	private function bootstrap_warnings( array $items, array $skipped, string $status ): array {
+		$warnings = array();
+		if ( array() === $items && array() !== $skipped ) {
+			$warnings[] = 'Existing memory rows already cover the bootstrap keys. Use force=true to update them.';
+		}
+		if ( 'approved' !== $status ) {
+			$warnings[] = 'Bootstrap memories will be pending by default and must be approved before future workflows treat them as active guidance.';
+		}
+
+		return $warnings;
+	}
+
+	/**
+	 * Build initial memory candidates from local signals.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function initial_memory_candidates(): array {
+		$candidates = array_merge(
+			$this->brand_memory_candidates(),
+			$this->site_memory_candidates(),
+			$this->content_memory_candidates(),
+			$this->workflow_memory_candidates(),
+			$this->approved_learning_memory_candidates()
+		);
+
+		return array_values(
+			array_filter(
+				$candidates,
+				static fn ( array $item ): bool => '' !== trim( (string) ( $item['key'] ?? '' ) ) && '' !== trim( (string) ( $item['value'] ?? '' ) )
+			)
+		);
+	}
+
+	/**
+	 * Return brand-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function brand_memory_candidates(): array {
+		$profile = ( new BrandProfile() )->public_profile();
+		$fields  = array(
+			'brand.site.name'          => array(
+				'domain' => 'brand',
+				'value'  => $profile['site']['name']['value'] ?? '',
+			),
+			'brand.site.tagline'       => array(
+				'domain' => 'brand',
+				'value'  => $profile['site']['tagline']['value'] ?? '',
+			),
+			'brand.editorial.tone'     => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['tone']['value'] ?? '',
+			),
+			'brand.editorial.audience' => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['audience']['value'] ?? '',
+			),
+			'brand.editorial.avoid'    => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['avoid']['value'] ?? '',
+			),
+			'brand.colors.primary'     => array(
+				'domain' => 'brand',
+				'value'  => $profile['colors']['primary']['value'] ?? '',
+			),
+			'brand.colors.accent'      => array(
+				'domain' => 'brand',
+				'value'  => $profile['colors']['accent']['value'] ?? '',
+			),
+		);
+
+		return $this->memory_candidates_from_fields( $fields, 'Detected from saved Aculect brand profile or WordPress site defaults.', 'high', 'bootstrap' );
+	}
+
+	/**
+	 * Return site-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function site_memory_candidates(): array {
+		$timezone = function_exists( 'wp_timezone' ) ? wp_timezone()->getName() : '';
+		$locale   = function_exists( 'get_locale' ) ? (string) get_locale() : '';
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'site.timezone' => array(
+					'domain' => 'site',
+					'value'  => $timezone,
+				),
+				'site.locale'   => array(
+					'domain' => 'site',
+					'value'  => $locale,
+				),
+			),
+			'Detected from WordPress site settings.',
+			'high',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return content-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function content_memory_candidates(): array {
+		$post_types = array();
+		if ( function_exists( 'get_post_types' ) ) {
+			$objects = get_post_types( array( 'show_in_rest' => true ), 'objects' );
+			if ( is_array( $objects ) ) {
+				foreach ( $objects as $name => $object ) {
+					if ( is_object( $object ) && ! empty( $object->show_ui ) ) {
+						$post_types[] = (string) $name;
+					}
+				}
+			}
+		}
+		if ( array() === $post_types ) {
+			$post_types = array( 'post', 'page' );
+		}
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'content.primary_post_types' => array(
+					'domain' => 'content',
+					'value'  => implode( ', ', array_values( array_unique( $post_types ) ) ),
+				),
+			),
+			'Detected from WordPress REST-visible post types.',
+			'medium',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return workflow memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function workflow_memory_candidates(): array {
+		$seo_plugin = defined( 'RANK_MATH_VERSION' ) || class_exists( '\RankMath' ) ? 'Rank Math' : '';
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'workflow.blocks.no_custom_html'     => array(
+					'domain' => 'workflow',
+					'value'  => 'Use registered WordPress blocks and patterns; never use raw Custom HTML or core/html for generated content.',
+				),
+				'workflow.content.prepare_first'     => array(
+					'domain' => 'workflow',
+					'value'  => 'Call content_workflow_prepare_post before normal content creation or editing, then use workflow write tools when available.',
+				),
+				'workflow.content.default_status'    => array(
+					'domain' => 'workflow',
+					'value'  => 'Create and update long-form content as drafts unless the user explicitly asks to publish or schedule and confirmation is available.',
+				),
+				'workflow.long_form.block_authoring' => array(
+					'domain' => 'workflow',
+					'value'  => 'Represent long-form content as sectioned serialized WordPress block markup with stable headings, not HTML blobs.',
+				),
+				'seo.plugin.detected'                => array(
+					'domain' => 'seo',
+					'value'  => $seo_plugin,
+				),
+			),
+			'Bundled Aculect workflow guidance for safer MCP content management.',
+			'high',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return memory candidates from approved learning suggestions.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function approved_learning_memory_candidates(): array {
+		$items      = ( new LearningSuggestionRepository() )->approved_items();
+		$candidates = array();
+
+		foreach ( $items as $item ) {
+			$id     = sanitize_key( (string) ( $item['id'] ?? '' ) );
+			$domain = sanitize_key( (string) ( $item['domain'] ?? 'content' ) );
+			if ( '' === $id ) {
+				continue;
+			}
+
+			$candidates[] = array(
+				'key'        => 'learning.' . $domain . '.' . $id,
+				'domain'     => $domain,
+				'value'      => (string) ( $item['suggested_update'] ?? '' ),
+				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) ),
+				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
+				'source'     => 'learning',
+			);
+		}
+
+		return $candidates;
+	}
+
+	/**
+	 * Convert key/value fields into memory candidates.
+	 *
+	 * @param array<string, array{domain:string,value:mixed}> $fields Fields keyed by memory key.
+	 * @param string                                          $evidence Evidence text.
+	 * @param string                                          $confidence Confidence level.
+	 * @param string                                          $source Source label.
+	 * @return list<array<string, mixed>>
+	 */
+	private function memory_candidates_from_fields( array $fields, string $evidence, string $confidence, string $source ): array {
+		$candidates = array();
+		foreach ( $fields as $key => $field ) {
+			$value = is_scalar( $field['value'] ) ? trim( (string) $field['value'] ) : '';
+			if ( '' === $value ) {
+				continue;
+			}
+
+			$candidates[] = array(
+				'key'        => $key,
+				'domain'     => $field['domain'],
+				'value'      => $value,
+				'evidence'   => $evidence,
+				'confidence' => $confidence,
+				'source'     => $source,
+			);
+		}
+
+		return $candidates;
 	}
 
 	/**

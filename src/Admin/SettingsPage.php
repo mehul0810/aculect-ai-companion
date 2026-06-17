@@ -22,6 +22,7 @@ use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
+use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use WP_REST_Request;
@@ -320,6 +321,9 @@ final class SettingsPage {
 		$learning         = 'learning' === $payload_tab
 			? ( new LearningSuggestionRepository() )->admin_payload()
 			: LearningSuggestionRepository::empty_payload();
+		$memory           = 'learning' === $payload_tab
+			? $this->memory_payload()
+			: $this->empty_memory_payload();
 		$incidents        = 'learning' === $payload_tab
 			? ( new PluginIncidentReporter() )->admin_payload()
 			: PluginIncidentReporter::empty_payload();
@@ -331,8 +335,62 @@ final class SettingsPage {
 			'activity'            => $activity_payload,
 			'brandProfile'        => $brand_profile,
 			'learningSuggestions' => $learning,
+			'memoryRecords'       => $memory,
 			'incidentReports'     => $incidents,
 			'changelog'           => $changelog,
+		);
+	}
+
+	/**
+	 * Return durable memory rows for the admin app.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function memory_payload(): array {
+		$payload = ( new ContentIndexRepository() )->list_memories(
+			array(
+				'status'   => '',
+				'per_page' => 50,
+			)
+		);
+		$items   = is_array( $payload['items'] ?? null ) ? $payload['items'] : array();
+		$summary = array(
+			'total'     => (int) ( $payload['total'] ?? count( $items ) ),
+			'approved'  => 0,
+			'pending'   => 0,
+			'dismissed' => 0,
+		);
+
+		foreach ( $items as $item ) {
+			$status = (string) ( is_array( $item ) ? ( $item['status'] ?? 'pending' ) : 'pending' );
+			if ( array_key_exists( $status, $summary ) ) {
+				++$summary[ $status ];
+			}
+		}
+
+		$payload['summary'] = $summary;
+
+		return $payload;
+	}
+
+	/**
+	 * Return empty memory payload shape.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function empty_memory_payload(): array {
+		return array(
+			'items'    => array(),
+			'total'    => 0,
+			'page'     => 1,
+			'per_page' => 50,
+			'context'  => 'compact',
+			'summary'  => array(
+				'total'     => 0,
+				'approved'  => 0,
+				'pending'   => 0,
+				'dismissed' => 0,
+			),
 		);
 	}
 
@@ -380,6 +438,7 @@ final class SettingsPage {
 			'resetSettingsAction'             => 'aculect_ai_companion_reset_settings',
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
+			'reviewMemoryAction'              => 'aculect_ai_companion_review_memory_item',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
@@ -397,6 +456,7 @@ final class SettingsPage {
 			'resetSettingsNonce'              => wp_create_nonce( 'aculect_ai_companion_reset_settings' ),
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
 			'reviewLearningSuggestionNonce'   => wp_create_nonce( 'aculect_ai_companion_review_learning_suggestion' ),
+			'reviewMemoryNonce'               => wp_create_nonce( 'aculect_ai_companion_review_memory_item' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
 			'runContentIndexSweepNonce'       => wp_create_nonce( 'aculect_ai_companion_run_content_index_sweep' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
@@ -764,6 +824,65 @@ final class SettingsPage {
 					'page'              => 'aculect-ai-companion',
 					'tab'               => 'learning',
 					'learning_reviewed' => $status,
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Review or edit one durable Aculect memory item.
+	 */
+	public function handle_review_memory_item(): void {
+		$this->guard_action( 'aculect_ai_companion_review_memory_item' );
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before these reads.
+		$action       = isset( $_POST['memory_action'] ) ? sanitize_key( wp_unslash( (string) $_POST['memory_action'] ) ) : '';
+		$original_key = isset( $_POST['memory_key'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['memory_key'] ) ) : '';
+		$memory_item  = isset( $_POST['memory_item'] ) && is_array( $_POST['memory_item'] )
+			? (array) wp_unslash( $_POST['memory_item'] )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$repository = new ContentIndexRepository();
+		$updated    = false;
+
+		if ( 'delete' === $action ) {
+			$result  = $repository->delete_memory( $original_key );
+			$updated = 'success' === ( $result['status'] ?? '' );
+		} else {
+			$status = match ( $action ) {
+				'approve' => 'approved',
+				'dismiss' => 'dismissed',
+				default => sanitize_key( (string) ( $memory_item['status'] ?? 'pending' ) ),
+			};
+			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
+
+			$result = $repository->upsert_memory(
+				array(
+					'key'        => $key,
+					'domain'     => $memory_item['domain'] ?? 'content',
+					'value'      => $memory_item['value'] ?? '',
+					'evidence'   => $memory_item['evidence'] ?? '',
+					'confidence' => $memory_item['confidence'] ?? 'medium',
+					'status'     => $status,
+					'source'     => $memory_item['source'] ?? 'admin',
+				)
+			);
+
+			$updated = 'success' === ( $result['status'] ?? '' );
+			if ( $updated && '' !== $original_key && $key !== $original_key ) {
+				$repository->delete_memory( $original_key );
+			}
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'learning',
+					'memory_reviewed' => $updated ? $action : 'not_updated',
 				),
 				$this->settings_url()
 			)
@@ -1373,6 +1492,17 @@ final class SettingsPage {
 				'dismissed'    => 'learning_suggestion_dismissed',
 				'updated'      => 'learning_suggestion_updated',
 				default        => 'learning_suggestion_not_updated',
+			};
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['memory_reviewed'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return match ( sanitize_key( wp_unslash( (string) $_GET['memory_reviewed'] ) ) ) {
+				'approve' => 'memory_approved',
+				'dismiss' => 'memory_dismissed',
+				'delete'  => 'memory_deleted',
+				'update'  => 'memory_updated',
+				default   => 'memory_not_updated',
 			};
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.

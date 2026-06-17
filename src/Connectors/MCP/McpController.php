@@ -590,7 +590,7 @@ final class McpController {
 		return array(
 			'readOnlyHint'    => $module->is_read_only(),
 			'destructiveHint' => in_array( $risk, array( 'destructive', 'system' ), true ),
-			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save' ), true ),
+			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save', 'memory.bootstrap' ), true ),
 			'openWorldHint'   => in_array(
 				$module->id(),
 				array(
@@ -640,7 +640,7 @@ final class McpController {
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
 				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
-				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
+				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. If memory_list is empty or missing obvious site guidance, call memory_bootstrap or memory_save with no key/value to prepare initial memory for admin review. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
 				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
@@ -919,6 +919,9 @@ final class McpController {
 				'status'                => array( 'type' => 'string' ),
 				'error'                 => array( 'type' => 'string' ),
 				'message'               => array( 'type' => 'string' ),
+				'action'                => array( 'type' => 'string' ),
+				'risk_level'            => array( 'type' => 'string' ),
+				'target'                => array( 'type' => 'object' ),
 				'workflow'              => array( 'type' => 'string' ),
 				'post_id'               => array( 'type' => 'integer' ),
 				'post_type'             => array( 'type' => 'string' ),
@@ -933,8 +936,10 @@ final class McpController {
 				'findings'              => array( 'type' => 'array' ),
 				'operation_entries'     => array( 'type' => 'object' ),
 				'changes'               => array( 'type' => 'array' ),
+				'skipped'               => array( 'type' => 'array' ),
 				'warnings'              => array( 'type' => 'array' ),
 				'next_actions'          => array( 'type' => 'array' ),
+				'review_status'         => array( 'type' => 'object' ),
 				'block_validation'      => array( 'type' => 'object' ),
 				'seo'                   => array( 'type' => 'object' ),
 				'dry_run'               => array( 'type' => 'boolean' ),
@@ -1127,7 +1132,7 @@ final class McpController {
 			return 'unknown_tool';
 		}
 
-		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool );
+		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
 		$role_policy       = new RoleAbilitiesPolicy();
 
 		if ( $is_policy_managed && ! $registry->is_enabled( $tool ) ) {
@@ -1140,7 +1145,7 @@ final class McpController {
 
 		if ( ! $registry->is_derived_workflow( $tool ) ) {
 			foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id );
+				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
 
 				if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
 					return 'tool_disabled';

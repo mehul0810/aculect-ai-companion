@@ -17,10 +17,28 @@ use PHPUnit\Framework\TestCase;
  */
 final class LearningSuggestionRepositoryTest extends TestCase {
 
+	private mixed $original_wpdb = null;
+
+	private LearningSuggestionMemoryWpdb $wpdb;
+
 	protected function setUp(): void {
 		parent::setUp();
 
+		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
+		$this->wpdb          = new LearningSuggestionMemoryWpdb();
+
+		$GLOBALS['wpdb']                                  = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
+	}
+
+	protected function tearDown(): void {
+		if ( null !== $this->original_wpdb ) {
+			$GLOBALS['wpdb'] = $this->original_wpdb;
+		} else {
+			unset( $GLOBALS['wpdb'] );
+		}
+
+		parent::tearDown();
 	}
 
 	public function test_submit_queues_sanitized_pending_suggestion(): void {
@@ -86,6 +104,27 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( 'approved', $payload['items'][0]['status'] );
 		self::assertSame( 'Reviewed for beta.', $payload['items'][0]['review_note'] );
 		self::assertSame( 'Prefer registered patterns with clear usage descriptions.', $payload['items'][0]['suggested_update'] );
+		self::assertArrayHasKey( 'learning.content.' . $id, $this->wpdb->rows );
+		self::assertSame( 'approved', $this->wpdb->rows[ 'learning.content.' . $id ]['status'] );
+		self::assertSame( 'learning', $this->wpdb->rows[ 'learning.content.' . $id ]['source'] );
+	}
+
+	public function test_dismissing_approved_learning_removes_synced_memory(): void {
+		$repository = new LearningSuggestionRepository();
+		$result     = $repository->submit(
+			array(
+				'domain'           => 'content',
+				'issue'            => 'Workflow memory should be reversible.',
+				'suggested_update' => 'Use workflow guides for repeated tasks.',
+			)
+		);
+		$id         = (string) $result['suggestion']['id'];
+
+		self::assertTrue( $repository->review( $id, 'approve', 'Approved.' ) );
+		self::assertArrayHasKey( 'learning.content.' . $id, $this->wpdb->rows );
+
+		self::assertTrue( $repository->review( $id, 'dismiss', 'No longer needed.' ) );
+		self::assertArrayNotHasKey( 'learning.content.' . $id, $this->wpdb->rows );
 	}
 
 	public function test_update_edits_pending_suggestion_without_changing_status(): void {
@@ -137,5 +176,97 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		$stored = get_option( 'aculect_ai_companion_learning_suggestions', array() );
 		self::assertCount( 100, $stored );
 		self::assertSame( 'Issue 5', $stored[0]['issue'] );
+	}
+}
+
+/**
+ * Minimal wpdb double for memory sync side effects.
+ */
+final class LearningSuggestionMemoryWpdb {
+
+	public string $prefix = 'wp_';
+
+	/**
+	 * @var array<string, array<string, mixed>>
+	 */
+	public array $rows = array();
+
+	/**
+	 * @var array<int, mixed>
+	 */
+	private array $last_args = array();
+
+	public function prepare( string $query, mixed ...$args ): string {
+		$this->last_args = $args;
+
+		return $query;
+	}
+
+	public function get_var( string $query ): ?int {
+		unset( $query );
+
+		$key = $this->last_memory_key();
+
+		return isset( $this->rows[ $key ] ) ? (int) $this->rows[ $key ]['id'] : null;
+	}
+
+	/**
+	 * @param array<string, mixed> $data Row data.
+	 * @param array<int, string>   $formats Insert formats.
+	 */
+	public function insert( string $table, array $data, array $formats ): int {
+		unset( $table, $formats );
+
+		$data['id']                                  = count( $this->rows ) + 1;
+		$this->rows[ (string) $data['memory_key'] ] = $data;
+
+		return 1;
+	}
+
+	/**
+	 * @param array<string, mixed> $data          Row data.
+	 * @param array<string, mixed> $where         Where clause data.
+	 * @param array<int, string>   $formats       Update formats.
+	 * @param array<int, string>   $where_formats Where formats.
+	 */
+	public function update( string $table, array $data, array $where, array $formats, array $where_formats ): int {
+		unset( $table, $formats, $where_formats );
+
+		$key = (string) ( $where['memory_key'] ?? '' );
+		if ( isset( $this->rows[ $key ] ) ) {
+			$this->rows[ $key ] = array_merge( $this->rows[ $key ], $data );
+		}
+
+		return 1;
+	}
+
+	/**
+	 * @param array<string, mixed> $where         Where clause data.
+	 * @param array<int, string>   $where_formats Where formats.
+	 */
+	public function delete( string $table, array $where, array $where_formats ): int {
+		unset( $table, $where_formats );
+
+		$key = (string) ( $where['memory_key'] ?? '' );
+		if ( ! isset( $this->rows[ $key ] ) ) {
+			return 0;
+		}
+
+		unset( $this->rows[ $key ] );
+
+		return 1;
+	}
+
+	/**
+	 * @return array<string, mixed>|null
+	 */
+	public function get_row( string $query, string $output ): ?array {
+		unset( $query, $output );
+
+		return $this->rows[ $this->last_memory_key() ] ?? null;
+	}
+
+	private function last_memory_key(): string {
+		return (string) ( $this->last_args[1] ?? '' );
 	}
 }

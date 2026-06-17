@@ -522,6 +522,45 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Delete one durable memory item.
+	 *
+	 * @param string $key Memory key.
+	 * @return array<string, mixed>
+	 */
+	public function delete_memory( string $key ): array {
+		global $wpdb;
+
+		$key = $this->memory_key( $key );
+		if ( '' === $key ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'invalid_memory_key',
+				'message' => 'Provide a stable memory key.',
+			);
+		}
+
+		$result = $wpdb->delete(
+			Installer::memory_items_table(),
+			array( 'memory_key' => $key ),
+			array( '%s' )
+		);
+
+		if ( false === $result ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'memory_delete_failed',
+				'message' => 'Memory item could not be deleted.',
+			);
+		}
+
+		return array(
+			'status'  => 'success',
+			'deleted' => (int) $result,
+			'key'     => $key,
+		);
+	}
+
+	/**
 	 * Return memory rows by domain/status.
 	 *
 	 * @param array<string, mixed> $args Query args.

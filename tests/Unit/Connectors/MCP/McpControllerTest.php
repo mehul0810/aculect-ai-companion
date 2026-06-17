@@ -41,7 +41,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_tools_list_exposes_safe_public_tool_names(): void {
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 
 		self::assertIsArray( $result );
 		self::assertArrayHasKey( 'tools', $result );
@@ -67,7 +67,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 		$names  = array_column( $result['tools'], 'name' );
 
 		foreach ( $names as $name ) {
@@ -99,7 +99,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_openai_chatgpt_codex_and_gemini_tool_descriptors_keep_mcp_security_contract(): void {
-		$result           = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result           = $this->list_tools_manifest();
 		$supported_scopes = Helpers::supported_scopes();
 
 		foreach ( $result['tools'] as $tool ) {
@@ -152,6 +152,7 @@ final class McpControllerTest extends TestCase {
 		self::assertTrue( $tools_by_name['media_delete_item']['annotations']['destructiveHint'] );
 		self::assertTrue( $tools_by_name['content_create_item']['annotations']['openWorldHint'] );
 		self::assertTrue( $tools_by_name['content_index_refresh_batch']['annotations']['idempotentHint'] );
+		self::assertTrue( $tools_by_name['memory_bootstrap']['annotations']['idempotentHint'] );
 	}
 
 	public function test_initialize_payload_includes_chatgpt_workflow_instructions(): void {
@@ -174,6 +175,7 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'memory_list', $result['instructions'] );
 		self::assertStringContainsString( 'site_workflow_audit', $result['instructions'] );
 		self::assertStringContainsString( 'memory_save', $result['instructions'] );
+		self::assertStringContainsString( 'memory_bootstrap', $result['instructions'] );
 		self::assertStringContainsString( 'admin review', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
@@ -184,7 +186,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_intelligence_tools_advertise_output_schemas(): void {
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 
 		foreach ( $result['tools'] as $tool ) {
 			$name = (string) ( $tool['name'] ?? '' );
@@ -212,7 +214,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_operational_and_workflow_tools_advertise_output_schemas(): void {
-		$result        = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result        = $this->list_tools_manifest();
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['search'] );
@@ -249,6 +251,9 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['memory_bootstrap'] );
+		self::assertArrayHasKey( 'review_status', $tools_by_name['memory_bootstrap']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'skipped', $tools_by_name['memory_bootstrap']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'intelligence_context', $tools_by_name['content_workflow_prepare_post']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_guides_list'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['workflow_guides_list']['outputSchema']['properties'] );
@@ -259,7 +264,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_chatgpt_codex_claude_and_gemini_tools_prioritize_operational_tools_before_intelligence_tools(): void {
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 		$names  = array_column( $result['tools'], 'name' );
 
 		$critical_tools = array(
@@ -278,6 +283,8 @@ final class McpControllerTest extends TestCase {
 			'content_find_related',
 			'content_find_internal_links',
 			'memory_list',
+			'memory_save',
+			'memory_bootstrap',
 			'site_list_post_types',
 			'content_list_items',
 			'content_get_item',
@@ -315,7 +322,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_openai_chatgpt_codex_claude_and_gemini_input_schemas_use_client_safe_json_schema_subset(): void {
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 
 		foreach ( $result['tools'] as $tool ) {
 			self::assertIsArray( $tool );
@@ -342,6 +349,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'workflow_guides_get', $site['operations']['workflow_guides']['get']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
+		self::assertSame( 'memory_save', $site['operations']['intelligence_index']['memory_save']['tool'] );
+		self::assertSame( 'memory_bootstrap', $site['operations']['intelligence_index']['memory_bootstrap']['tool'] );
 		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
 		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms']['tool'] );
 		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run']['tool'] );
@@ -572,7 +581,7 @@ final class McpControllerTest extends TestCase {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.list_items' ) );
 
-		$result = $this->invokePrivate( new McpController(), 'list_tools' );
+		$result = $this->list_tools_manifest();
 		$names  = array_column( $result['tools'], 'name' );
 
 		self::assertContains( 'content_list_items', $names );
@@ -583,6 +592,8 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'plugin_incident_report', $names );
 		self::assertContains( 'plugin_incident_list', $names );
 		self::assertContains( 'memory_list', $names );
+		self::assertContains( 'memory_save', $names );
+		self::assertContains( 'memory_bootstrap', $names );
 		self::assertContains( 'workflow_guides_list', $names );
 		self::assertContains( 'search', $names );
 		self::assertContains( 'fetch', $names );
@@ -597,6 +608,8 @@ final class McpControllerTest extends TestCase {
 		self::assertNotContains( 'blocks_list_available', $names );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.list_items', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.list', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.save', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.bootstrap', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_guides.list', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'search', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'fetch', $registry ) ) );
@@ -717,6 +730,28 @@ final class McpControllerTest extends TestCase {
 
 		self::assertStringContainsString( 'scope="content:read content:draft"', $header );
 		self::assertStringContainsString( 'scope="content:read content:draft"', $data['result']['_meta']['mcp/www_authenticate'][0] );
+	}
+
+	/**
+	 * Return every tools/list page as one manifest for descriptor assertions.
+	 *
+	 * @param McpController|null $controller Controller instance.
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
+	private function list_tools_manifest( ?McpController $controller = null ): array {
+		$controller ??= new McpController();
+		$tools       = array();
+		$cursor      = '';
+
+		do {
+			$page   = '' === $cursor
+				? $this->invokePrivate( $controller, 'list_tools' )
+				: $this->invokePrivate( $controller, 'list_tools', array( $cursor ) );
+			$tools  = array_merge( $tools, (array) ( $page['tools'] ?? array() ) );
+			$cursor = (string) ( $page['nextCursor'] ?? '' );
+		} while ( '' !== $cursor );
+
+		return array( 'tools' => $tools );
 	}
 
 	/**

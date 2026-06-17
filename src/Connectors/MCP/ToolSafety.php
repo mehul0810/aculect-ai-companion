@@ -137,6 +137,7 @@ final class ToolSafety {
 			'content.update_seo',
 			'content_index.refresh_batch',
 			'memory.save',
+			'memory.bootstrap',
 			'seo_workflow.update_rankmath',
 			'media.rename_file',
 			'media.update_item',
@@ -164,7 +165,7 @@ final class ToolSafety {
 			return true;
 		}
 
-		if ( 'memory.save' === $tool ) {
+		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap' ), true ) ) {
 			return true;
 		}
 

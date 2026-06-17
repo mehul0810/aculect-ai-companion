@@ -2829,7 +2829,7 @@ td:first-child
 
 .aculect-ai-companion-learning-summary {
 	display: grid;
-	grid-template-columns: repeat(4, minmax(88px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
 	gap: 8px;
 	min-width: 0;
 }
@@ -2861,6 +2861,7 @@ td:first-child
 }
 
 .aculect-ai-companion-learning-section,
+.aculect-ai-companion-memory-section,
 .aculect-ai-companion-incident-section {
 	display: grid;
 	gap: 12px;
@@ -2960,6 +2961,16 @@ td:first-child
 .aculect-ai-companion-learning-pill.is-brand {
 	background: #fff7ed;
 	color: #c2410c;
+}
+
+.aculect-ai-companion-learning-pill.is-seo {
+	background: #f0fdf4;
+	color: #15803d;
+}
+
+.aculect-ai-companion-learning-pill.is-workflow {
+	background: #fdf4ff;
+	color: #a21caf;
 }
 
 .aculect-ai-companion-learning-pill.is-pending {

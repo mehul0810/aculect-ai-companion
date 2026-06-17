@@ -98,7 +98,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
 		self::assertArrayNotHasKey( 'workflow_guides.get', $by_id );
 		self::assertArrayNotHasKey( 'memory.list', $by_id );
-		self::assertArrayHasKey( 'memory.save', $by_id );
+		self::assertArrayNotHasKey( 'memory.save', $by_id );
+		self::assertArrayNotHasKey( 'memory.bootstrap', $by_id );
 	}
 
 	public function test_requested_expansion_abilities_are_registered(): void {
@@ -133,6 +134,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_find.internal_links',
 				'memory.list',
 				'memory.save',
+				'memory.bootstrap',
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
@@ -166,7 +168,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.save' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.bootstrap' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_bootstrap' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
@@ -225,6 +230,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_search.items',
 				'memory.list',
 				'memory.save',
+				'memory.bootstrap',
 				'<script>',
 				array(),
 			)
@@ -234,7 +240,6 @@ final class AbilitiesRegistryTest extends TestCase {
 			array(
 				'content.list_items',
 				'content.create_item',
-				'memory.save',
 			),
 			$this->registry->enabled_ids()
 		);

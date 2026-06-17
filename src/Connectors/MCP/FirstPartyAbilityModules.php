@@ -1778,7 +1778,7 @@ final class FirstPartyAbilityModules {
 		return array(
 			'type'        => 'string',
 			'enum'        => array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ),
-			'description' => 'Writable WordPress status. Use future with date to schedule. Invalid statuses are rejected instead of being converted to draft.',
+			'description' => 'Writable WordPress status. Use future only with a date that resolves to a future time in the WordPress site timezone. Invalid statuses are rejected instead of being converted to draft.',
 		);
 	}
 

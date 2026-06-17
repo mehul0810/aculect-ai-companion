@@ -240,17 +240,12 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		}
 
 		if ( $this->is_dry_run( $args ) ) {
+			$preview_args['dry_run'] = true;
+			$result                  = ( new ContentAbilities() )->update_item( $preview_args );
+			$response                = $this->content_result_response( 'content_workflow_update_post', $result, $validated, $args );
+
 			return $this->with_workflow_session(
-				$this->workflow_preview(
-					'content_workflow.update_post',
-					$preview_args,
-					array(
-						'type' => 'content',
-						'id'   => $post_id,
-					),
-					$this->workflow_changes( $payload ),
-					$validated
-				),
+				$response,
 				$args,
 				'validated',
 				'content_workflow_update_post'
@@ -604,13 +599,14 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		$warnings = (array) ( $validated['block_validation']['warnings'] ?? array() );
 
 		if ( isset( $result['error'] ) ) {
+			$details                     = array_diff_key( $result, array_flip( array( 'error', 'message' ) ) );
+			$details['block_validation'] = $validated['block_validation'] ?? array();
+			$details['warnings']         = $warnings;
+
 			return $this->workflow_error(
 				(string) $result['error'],
 				(string) ( $result['message'] ?? 'Content workflow failed.' ),
-				array(
-					'block_validation' => $validated['block_validation'] ?? array(),
-					'warnings'         => $warnings,
-				)
+				$details
 			);
 		}
 
@@ -618,6 +614,11 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 			$result['workflow']         = $workflow;
 			$result['block_validation'] = $validated['block_validation'] ?? array();
 			$result['warnings']         = array_values( array_unique( array_merge( (array) ( $result['warnings'] ?? array() ), $warnings ) ) );
+			if ( isset( $validated['section_updates'] ) ) {
+				$result['section_updates']    = (array) $validated['section_updates'];
+				$result['available_sections'] = (array) ( $validated['available_sections'] ?? array() );
+			}
+
 			return $result;
 		}
 
@@ -816,47 +817,6 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		global $wpdb;
 
 		return isset( $wpdb ) && is_object( $wpdb ) && method_exists( $wpdb, 'get_results' );
-	}
-
-	/**
-	 * Build a dry-run workflow preview without requiring WordPress writes.
-	 *
-	 * @param string                    $action    Internal action ID.
-	 * @param array<string, mixed>      $args      Preview args.
-	 * @param array<string, mixed>      $target    Target summary.
-	 * @param list<array<string,mixed>> $changes Changes.
-	 * @param array<string, mixed>      $validated Validation result.
-	 * @return array<string, mixed>
-	 */
-	private function workflow_preview( string $action, array $args, array $target, array $changes, array $validated ): array {
-		$preview                     = $this->preview_response( $action, $args, $target, $changes, (array) ( $validated['block_validation']['warnings'] ?? array() ) );
-		$preview['workflow']         = ( new AbilitiesRegistry() )->tool_name( $action );
-		$preview['block_validation'] = $validated['block_validation'] ?? array();
-		$preview['next_actions']     = array( 'Repeat the same workflow call without dry_run after reviewing the preview and confirmation requirements.' );
-		if ( isset( $validated['section_updates'] ) ) {
-			$preview['section_updates']    = (array) $validated['section_updates'];
-			$preview['available_sections'] = (array) ( $validated['available_sections'] ?? array() );
-		}
-
-		return $preview;
-	}
-
-	/**
-	 * Build preview changes from workflow fields.
-	 *
-	 * @param array<string, mixed> $payload Proposed payload.
-	 * @return list<array<string, mixed>>
-	 */
-	private function workflow_changes( array $payload ): array {
-		$changes = array();
-		foreach ( array_keys( $payload ) as $field ) {
-			if ( 'dry_run' === $field ) {
-				continue;
-			}
-			$changes[] = $this->change( (string) $field, null, $payload[ $field ] );
-		}
-
-		return array_values( array_filter( $changes ) );
 	}
 
 	/**

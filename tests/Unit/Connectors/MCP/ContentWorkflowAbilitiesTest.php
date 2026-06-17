@@ -150,7 +150,7 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 					),
 				),
 				'status'      => 'future',
-				'date'        => '2026-06-01T09:30:00+00:00',
+				'date'        => '2999-06-01T09:30:00+00:00',
 				'dry_run'     => true,
 			)
 		);
@@ -168,6 +168,23 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 			self::assertStringContainsString( 'Opening section.', $changes_by_field['content']['to'] );
 			self::assertStringContainsString( 'Existing implementation guidance stays intact.', $changes_by_field['content']['to'] );
 			self::assertStringNotContainsString( 'Old opening section.', $changes_by_field['content']['to'] );
+	}
+
+	public function test_update_post_dry_run_rejects_past_schedule_date(): void {
+		$result = $this->abilities->update_post(
+			array(
+				'id'      => 123,
+				'status'  => 'future',
+				'date'    => '2000-06-01T09:30:00+00:00',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'invalid_schedule_date', $result['error'] );
+		self::assertSame( 'Scheduled posts require date to be in the future relative to the WordPress site timezone.', $result['message'] );
+		self::assertSame( '2000-06-01 09:30:00', $result['resolved_date_gmt'] );
+		self::assertArrayHasKey( 'site_timezone', $result );
 	}
 
 	public function test_update_post_section_map_rejects_unknown_section_ids(): void {

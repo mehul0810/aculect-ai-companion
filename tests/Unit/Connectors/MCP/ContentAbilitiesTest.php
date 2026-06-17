@@ -86,6 +86,59 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( '', $this->writableStatus( 'scheduled' ) );
 	}
 
+	public function test_create_item_rejects_future_status_without_date_before_preview(): void {
+		$result = ( new ContentAbilities() )->create_item(
+			array(
+				'title'   => 'Scheduled draft',
+				'content' => '<!-- wp:paragraph --><p>Safe block content.</p><!-- /wp:paragraph -->',
+				'status'  => 'future',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'invalid_schedule_date', $result['error'] );
+		self::assertSame( 'Scheduling requires a future date. Pass date with status future.', $result['message'] );
+		self::assertArrayHasKey( 'site_timezone', $result );
+		self::assertArrayHasKey( 'site_current_time', $result );
+	}
+
+	public function test_update_item_rejects_future_status_with_past_date_before_preview(): void {
+		update_option( 'timezone_string', 'Asia/Kolkata' );
+
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'      => 123,
+				'status'  => 'future',
+				'date'    => '2000-06-01T09:30:00+05:30',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'invalid_schedule_date', $result['error'] );
+		self::assertSame( 'Scheduled posts require date to be in the future relative to the WordPress site timezone.', $result['message'] );
+		self::assertSame( 'Asia/Kolkata', $result['site_timezone'] );
+		self::assertSame( '2000-06-01 04:00:00', $result['resolved_date_gmt'] );
+	}
+
+	public function test_update_item_accepts_future_status_with_future_offset_date(): void {
+		update_option( 'timezone_string', 'Asia/Kolkata' );
+
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'      => 123,
+				'status'  => 'future',
+				'date'    => '2999-06-01T09:30:00+05:30',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertTrue( $result['dry_run'] );
+		self::assertContains( 'status', array_column( $result['changes'], 'field' ) );
+		self::assertContains( 'date', array_column( $result['changes'], 'field' ) );
+		self::assertContains( 'date_gmt', array_column( $result['changes'], 'field' ) );
+	}
+
 	public function test_create_item_rejects_custom_html_block_content_before_write(): void {
 		$result = ( new ContentAbilities() )->create_item(
 			array(

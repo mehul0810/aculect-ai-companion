@@ -25,6 +25,7 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertArrayHasKey( 'chatgpt', $providers );
 		self::assertArrayHasKey( 'codex', $providers );
+		self::assertArrayHasKey( 'cursor', $providers );
 		self::assertArrayHasKey( 'gemini', $providers );
 		self::assertArrayHasKey( 'mcp', $providers );
 		self::assertSame( 'https://developers.openai.com/codex/mcp', $providers['codex']['primaryActionUrl'] );
@@ -36,9 +37,18 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertStringContainsString( 'Select Streamable HTTP, not STDIO.', implode( ' ', $providers['codex']['setupSections'][0]['steps'] ) );
 		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertSame( 'Cursor', $providers['cursor']['label'] );
+		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( '"httpUrl":', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( 'cursor://anysphere.cursor-mcp/oauth/callback', implode( ' ', $providers['cursor']['setupSections'][1]['steps'] ) );
 		self::assertSame( 'Gemini', $providers['gemini']['label'] );
+		self::assertSame( 'https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md', $providers['gemini']['primaryActionUrl'] );
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( 'gemini mcp list', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( 'Keep the JSON key named httpUrl', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
+		self::assertSame( 'https://docs.cloud.google.com/gemini/docs/codeassist/use-agentic-chat-pair-programmer', $providers['gemini']['setupSections'][1]['actionUrl'] );
 		self::assertSame( 'MCP Client', $providers['mcp']['label'] );
 		self::assertSame( 'Open MCP Docs', $providers['mcp']['primaryActionLabel'] );
 		self::assertSame(
@@ -61,6 +71,10 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame(
 			'codex',
 			$registry->detect_provider_id( 'Codex MCP Client', array( 'http://127.0.0.1:1455/callback' ) )
+		);
+		self::assertSame(
+			'cursor',
+			$registry->detect_provider_id( 'Cursor Agent', array( 'cursor://anysphere.cursor-mcp/oauth/callback' ) )
 		);
 		self::assertSame(
 			'gemini',

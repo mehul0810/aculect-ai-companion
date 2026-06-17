@@ -510,6 +510,7 @@ function providerBadgeLabel( provider ) {
 		chatgpt: 'C',
 		claude: 'A',
 		codex: 'Cx',
+		cursor: 'Cu',
 		gemini: 'G',
 	};
 
@@ -551,6 +552,7 @@ function connectionProviderLabel( session ) {
 		chatgpt: 'ChatGPT',
 		claude: 'Claude',
 		codex: 'Codex',
+		cursor: 'Cursor',
 		gemini: 'Gemini',
 	};
 

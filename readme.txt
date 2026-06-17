@@ -8,11 +8,11 @@ Stable tag: 0.6.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Use ChatGPT, Claude, Codex, and other MCP AI assistants to manage WordPress content, media, comments, and site workflows.
+Use ChatGPT, Claude, Codex, Cursor, Gemini, and other MCP AI assistants to manage WordPress content, media, comments, and site workflows.
 
 == Description ==
 
-Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI assistants such as ChatGPT, Claude, Codex, and OpenAI-compatible tools work with your WordPress content, media, comments, and site information through permission-aware workflows.
+Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI assistants such as ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible tools work with your WordPress content, media, comments, and site information through permission-aware workflows.
 
 Instead of switching between WordPress admin screens, you can ask your AI assistant in plain English to draft a post, update a page, review comments, upload media, inspect safe site details, or prepare long-form content using WordPress blocks.
 
@@ -24,7 +24,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 
 = Why use Aculect AI Companion? =
 
-* Connect WordPress to ChatGPT, Claude, Codex, and OpenAI-compatible MCP clients
+* Connect WordPress to ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible MCP clients
 * Create, update, and organize WordPress content through controlled AI workflows
 * Work with posts, pages, custom post types, categories, tags, comments, and media
 * Use block-aware content workflows instead of raw custom HTML
@@ -62,6 +62,10 @@ Aculect AI Companion includes setup guidance for popular AI assistants and MCP c
 * Claude app, Claude Desktop, Claude Cowork, and Claude mobile
 * Claude Code
 * Claude API integrations that support remote connectors
+* Codex custom MCP and config.toml setups
+* Cursor Agent through global or project mcp.json
+* Gemini CLI and Gemini Code Assist agent mode
+* Standards-compatible remote MCP clients
 
 Your AI tool must be able to reach your WordPress site over HTTPS to complete OAuth approval and send MCP requests.
 
@@ -131,6 +135,7 @@ The external service that receives this data is the AI assistant selected and co
 
 * ChatGPT by OpenAI: https://chatgpt.com/, terms at https://openai.com/policies/terms-of-use/, and privacy policy at https://openai.com/policies/row-privacy-policy/
 * Claude by Anthropic: https://claude.ai/, terms at https://www.anthropic.com/legal/consumer-terms, and privacy policy at https://www.anthropic.com/legal/privacy
+* Cursor by Anysphere: https://cursor.com/, terms at https://cursor.com/terms-of-service, and privacy policy at https://cursor.com/privacy
 * Gemini by Google: https://gemini.google.com/, terms at https://policies.google.com/terms, and privacy policy at https://policies.google.com/privacy
 
 Administrators should review the terms and privacy policy for the AI assistant they connect. Aculect AI Companion controls the WordPress-side approval and permissions checks; it does not control how a connected external assistant processes data after the administrator authorizes access.
@@ -154,7 +159,7 @@ No. Aculect AI Companion does not send site data on activation or admin page loa
 
 = What is Aculect AI Companion used for? =
 
-Aculect AI Companion is used to connect WordPress with AI assistants through MCP. Site owners can use it to draft and update content, manage comments, upload media, review safe site information, and run controlled WordPress workflows from tools such as ChatGPT, Claude, Codex, and OpenAI-compatible MCP clients.
+Aculect AI Companion is used to connect WordPress with AI assistants through MCP. Site owners can use it to draft and update content, manage comments, upload media, review safe site information, and run controlled WordPress workflows from tools such as ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible MCP clients.
 
 = Does Aculect AI Companion give AI assistants direct database access? =
 
@@ -162,7 +167,7 @@ No. Aculect AI Companion exposes structured MCP tools through WordPress. Connect
 
 = Can ChatGPT or Claude create WordPress posts with Aculect AI Companion? =
 
-Yes. After an administrator connects and approves the assistant, ChatGPT, Claude, Codex, or another supported MCP client can create WordPress drafts or update content when the required abilities and WordPress permissions are available.
+Yes. After an administrator connects and approves the assistant, ChatGPT, Claude, Codex, Cursor, Gemini, or another supported MCP client can create WordPress drafts or update content when the required abilities and WordPress permissions are available.
 
 = Can Aculect AI Companion help with long-form WordPress content? =
 
@@ -211,7 +216,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 == Screenshots ==
 
 1. Overview tab showing the 0.6.0 AI Companion experience.
-2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, and OpenAI.
+2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
@@ -248,7 +253,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.6.0 =
 
-* Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Gemini, generic MCP clients, and OpenAI-compatible integrations.
+* Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Cursor, Gemini, generic MCP clients, and OpenAI-compatible integrations.
 * Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.
 * Added canonical MCP `search` and `fetch` tools for citation-friendly WordPress content retrieval.
 * Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.
@@ -263,7 +268,7 @@ Composer dependencies for production releases are installed with:
 * Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.
 * Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.
 * Added a `plugin_incident_report` tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails.
-* Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.
+* Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Cursor, Gemini, and generic client compatibility.
 * Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.
 * Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.
 * Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.

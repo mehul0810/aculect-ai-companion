@@ -188,6 +188,7 @@ final class ClientRegistrationControllerTest extends TestCase {
 	public function test_provider_attribution_identifies_common_ai_clients(): void {
 		self::assertSame( 'chatgpt', Helpers::provider_from_client( 'ChatGPT Connector', array( 'https://chatgpt.com/oauth/callback' ) ) );
 		self::assertSame( 'codex', Helpers::provider_from_client( 'Codex MCP Client', array( 'http://127.0.0.1:1455/callback' ) ) );
+		self::assertSame( 'cursor', Helpers::provider_from_client( 'Cursor Agent', array( 'cursor://anysphere.cursor-mcp/oauth/callback' ) ) );
 		self::assertSame( 'claude', Helpers::provider_from_client( 'Claude Desktop', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Gemini CLI MCP Client', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Google Code Assist Agent', array( 'http://localhost/callback' ) ) );

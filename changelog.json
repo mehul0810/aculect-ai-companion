@@ -2,7 +2,7 @@
   "0.6.0": {
     "date": "2026-06-16",
     "New": [
-      "Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Gemini, generic MCP clients, and OpenAI-compatible integrations.",
+      "Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Cursor, Gemini, generic MCP clients, and OpenAI-compatible integrations.",
       "Added canonical MCP search and fetch tools for citation-friendly WordPress content retrieval.",
       "Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
       "Added a site audit workflow for safe site-management readiness checks.",
@@ -11,7 +11,7 @@
       "Added a plugin_incident_report tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails."
     ],
     "Improved": [
-      "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Gemini, and generic client compatibility.",
+      "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Cursor, Gemini, and generic client compatibility.",
       "Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.",
       "Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.",
       "Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.",

@@ -50,6 +50,10 @@ Aculect AI Companion currently includes setup guidance for:
 - Claude app, Claude Desktop, Claude Cowork, and Claude mobile.
 - Claude Code.
 - Claude API integrations that support remote connectors.
+- Codex custom MCP and config.toml setups.
+- Cursor Agent through global or project mcp.json.
+- Gemini CLI and Gemini Code Assist agent mode.
+- Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 

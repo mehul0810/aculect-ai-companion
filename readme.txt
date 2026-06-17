@@ -267,6 +267,7 @@ Composer dependencies for production releases are installed with:
 * Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.
 * Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.
 * Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.
+* Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published.
 
 = 0.5.3 =
 
@@ -373,7 +374,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, WordPress Abilities diagnostics, stricter MCP schemas, and safer plugin incident reporting for MCP workflows.
+Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, WordPress Abilities diagnostics, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
 
 = 0.5.3 =
 

@@ -21,7 +21,8 @@
       "Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.",
       "Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
       "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.",
-      "Added layout-aware validation warnings when visual page requests produce paragraph-only block markup."
+      "Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.",
+      "Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published."
     ]
   },
   "0.5.3": {

@@ -251,8 +251,12 @@ Composer dependencies for production releases are installed with:
 * Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.
 * Added canonical MCP `search` and `fetch` tools for citation-friendly WordPress content retrieval.
 * Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.
+* Added `workflow_route_request` so assistants can classify ambiguous content, SEO, site, internal-link, and capability-discovery requests before choosing tools.
+* Added bounded workflow session tools so long-running content and site workflows can preserve compact progress without relying on ChatGPT, Claude, or Codex saved memory.
+* Added MCP `resources/list` and `resources/read` support for compact capability, site, content, brand, workflow guide, and approved memory context.
 * Added a site audit workflow for safe site-management readiness checks.
 * Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.
+* Added MCP activity learning inspection so repeated disabled-tool, scope, block-validation, and unknown-tool failures can become admin-reviewed learning suggestions.
 * Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.
 * Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.
 * Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.
@@ -369,7 +373,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow guides, site audit, WordPress Abilities diagnostics, stricter MCP schemas, and safer plugin incident reporting for MCP workflows.
+Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, WordPress Abilities diagnostics, stricter MCP schemas, and safer plugin incident reporting for MCP workflows.
 
 = 0.5.3 =
 

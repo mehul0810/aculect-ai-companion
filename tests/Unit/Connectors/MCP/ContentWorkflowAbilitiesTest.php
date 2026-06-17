@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\MCP\ContentWorkflowAbilities;
+use Aculect\AICompanion\Connectors\MCP\WorkflowSessionStore;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -23,6 +24,7 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_transients']      = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
 			7 => (object) array(
@@ -70,6 +72,28 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		self::assertSame( 'content_workflow_create_draft', $result['required_operations']['create_draft']['tool'] );
 		self::assertArrayHasKey( 'intelligence_context', $result );
 		self::assertSame( 'unavailable', $result['intelligence_context']['status'] );
+	}
+
+	public function test_prepare_post_advances_workflow_session_when_session_id_is_passed(): void {
+		$session = ( new WorkflowSessionStore() )->start(
+			array(
+				'workflow'     => 'content_long_form_draft',
+				'brief'        => 'Create a workflow-aware article.',
+				'content_mode' => 'article',
+			)
+		);
+
+		$result = $this->abilities->prepare_post(
+			array(
+				'brief'               => 'Create a workflow-aware article.',
+				'workflow_session_id' => $session['workflow_session']['id'],
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertArrayHasKey( 'workflow_session', $result );
+		self::assertSame( 'prepared', $result['workflow_session']['state'] );
+		self::assertSame( $session['workflow_session']['id'], $result['workflow_session']['id'] );
 	}
 
 	public function test_prepare_post_returns_layout_plan_for_visual_page_content(): void {

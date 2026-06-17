@@ -32,10 +32,12 @@ Open `AI Companion > Connect` in WordPress and follow the setup flow:
 ## Features
 
 - Create, edit, and publish posts and pages.
+- Route multi-step MCP requests through guided content, SEO, site audit, and troubleshooting workflows.
 - Manage categories, tags, and content groups.
 - Moderate and reply to comments.
 - Upload and list media.
 - View site settings, active plugins, and themes.
+- Read compact MCP resources for capability, site, content, brand, workflow, and memory context.
 - Connect and disconnect AI assistants.
 
 ## Supported AI Tools
@@ -114,6 +116,10 @@ Production ZIP files include built assets and Composer dependencies. Development
 ### MCP Ability Architecture
 
 First-party MCP tools are registered as internal ability modules. Each module owns its metadata, JSON input schema, required OAuth scope, read-only flag, and execution callback. `AbilitiesRegistry` maps internal dotted IDs to client-safe public tool names and keeps legacy aliases working.
+
+`workflow_route_request` is the preferred first call for ambiguous or multi-step work. It classifies the user request, returns the next tool with arguments, points to a workflow guide, and reports operation blockers. `workflow_session_start`, `workflow_session_get`, and `workflow_session_update` provide compact server-side workflow state so clients do not need saved chat memory to resume long content or site-management work.
+
+Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, content, brand, workflow guide, and approved memory context.
 
 This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
 

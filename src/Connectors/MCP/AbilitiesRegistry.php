@@ -23,6 +23,9 @@ final class AbilitiesRegistry {
 		'site_workflow.audit',
 	);
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS  = array(
+		'workflow.route_request',
+		'workflow_session.get',
+		'mcp_learning.inspect_activity',
 		'search',
 		'fetch',
 		'workflow_guides.list',
@@ -35,6 +38,8 @@ final class AbilitiesRegistry {
 		'content_batch.status',
 	);
 	private const ALWAYS_ON_WRITE_INTELLIGENCE_IDS = array(
+		'workflow_session.start',
+		'workflow_session.update',
 		'memory.save',
 		'memory.bootstrap',
 	);

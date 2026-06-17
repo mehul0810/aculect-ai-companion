@@ -161,6 +161,10 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '2025-06-18', $result['protocolVersion'] );
 		self::assertSame( 'Aculect AI Companion MCP', $result['serverInfo']['name'] );
 		self::assertIsString( $result['instructions'] );
+		self::assertStringContainsString( 'workflow_route_request', $result['instructions'] );
+		self::assertStringContainsString( 'workflow_session_start', $result['instructions'] );
+		self::assertStringContainsString( 'resources/list', $result['instructions'] );
+		self::assertStringContainsString( 'resources/read', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_capabilities_get_directory', $result['instructions'] );
 		self::assertStringContainsString( 'workflow_guides_list', $result['instructions'] );
 		self::assertStringContainsString( 'workflow_guides_get', $result['instructions'] );
@@ -181,8 +185,12 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );
 		self::assertStringContainsString( 'plugin_incident_report', $result['instructions'] );
+		self::assertStringContainsString( 'mcp_learning_inspect_activity', $result['instructions'] );
 		self::assertStringContainsString( 'Never use raw Custom HTML blocks', $result['instructions'] );
 		self::assertArrayHasKey( 'tools', $result['capabilities'] );
+		self::assertTrue( $result['capabilities']['tools']['listChanged'] );
+		self::assertArrayHasKey( 'resources', $result['capabilities'] );
+		self::assertTrue( $result['capabilities']['resources']['listChanged'] );
 	}
 
 	public function test_intelligence_tools_advertise_output_schemas(): void {
@@ -261,6 +269,13 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_guides_get'] );
 		self::assertArrayHasKey( 'required_operations', $tools_by_name['workflow_guides_get']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'missing_required_operations', $tools_by_name['workflow_guides_get']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_route_request'] );
+		self::assertArrayHasKey( 'next_tool', $tools_by_name['workflow_route_request']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'workflow_session_plan', $tools_by_name['workflow_route_request']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_session_start'] );
+		self::assertArrayHasKey( 'workflow_session', $tools_by_name['workflow_session_start']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['mcp_learning_inspect_activity'] );
+		self::assertArrayHasKey( 'insights', $tools_by_name['mcp_learning_inspect_activity']['outputSchema']['properties'] );
 	}
 
 	public function test_chatgpt_codex_claude_and_gemini_tools_prioritize_operational_tools_before_intelligence_tools(): void {
@@ -270,6 +285,10 @@ final class McpControllerTest extends TestCase {
 		$critical_tools = array(
 			'search',
 			'fetch',
+			'workflow_route_request',
+			'workflow_session_start',
+			'workflow_session_get',
+			'workflow_session_update',
 			'workflow_guides_list',
 			'workflow_guides_get',
 			'content_workflow_prepare_post',
@@ -285,6 +304,7 @@ final class McpControllerTest extends TestCase {
 			'memory_list',
 			'memory_save',
 			'memory_bootstrap',
+			'mcp_learning_inspect_activity',
 			'site_list_post_types',
 			'content_list_items',
 			'content_get_item',
@@ -345,12 +365,17 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'content_search_items', $site['operations']['intelligence_index']['search_items']['tool'] );
 		self::assertSame( 'search', $site['operations']['intelligence_index']['canonical_search']['tool'] );
 		self::assertSame( 'fetch', $site['operations']['intelligence_index']['canonical_fetch']['tool'] );
+		self::assertSame( 'workflow_route_request', $site['operations']['workflows']['route_request']['tool'] );
 		self::assertSame( 'workflow_guides_list', $site['operations']['workflow_guides']['list']['tool'] );
 		self::assertSame( 'workflow_guides_get', $site['operations']['workflow_guides']['get']['tool'] );
+		self::assertSame( 'workflow_session_start', $site['operations']['workflow_guides']['session_start']['tool'] );
+		self::assertSame( 'workflow_session_get', $site['operations']['workflow_guides']['session_get']['tool'] );
+		self::assertSame( 'workflow_session_update', $site['operations']['workflow_guides']['session_update']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
 		self::assertSame( 'memory_save', $site['operations']['intelligence_index']['memory_save']['tool'] );
 		self::assertSame( 'memory_bootstrap', $site['operations']['intelligence_index']['memory_bootstrap']['tool'] );
+		self::assertSame( 'mcp_learning_inspect_activity', $site['operations']['intelligence_index']['activity_learning']['tool'] );
 		self::assertSame( 'media_upload_item', $site['operations']['media']['upload']['tool'] );
 		self::assertSame( 'taxonomy_list_terms', $site['operations']['content_groups']['list_terms']['tool'] );
 		self::assertSame( 'wp_abilities_run', $site['operations']['actions']['run']['tool'] );
@@ -391,6 +416,24 @@ final class McpControllerTest extends TestCase {
 		$guide_get_schema = $this->schemaForTool( 'workflow_guides_get' );
 		self::assertSame( 'object', $guide_get_schema['type'] );
 		self::assertSame( array( 'id' ), $guide_get_schema['required'] );
+
+		$route_schema = $this->schemaForTool( 'workflow_route_request' );
+		self::assertSame( 'object', $route_schema['type'] );
+		self::assertFalse( $route_schema['additionalProperties'] );
+		self::assertArrayHasKey( 'request', $route_schema['properties'] );
+		self::assertArrayNotHasKey( 'required', $route_schema );
+
+		$session_start_schema = $this->schemaForTool( 'workflow_session_start' );
+		self::assertSame( 'object', $session_start_schema['type'] );
+		self::assertArrayHasKey( 'workflow', $session_start_schema['properties'] );
+		self::assertArrayHasKey( 'idempotency_key', $session_start_schema['properties'] );
+
+		$session_get_schema = $this->schemaForTool( 'workflow_session_get' );
+		self::assertArrayHasKey( 'workflow_session_id', $session_get_schema['properties'] );
+
+		$learning_schema = $this->schemaForTool( 'mcp_learning_inspect_activity' );
+		self::assertSame( 'object', $learning_schema['type'] );
+		self::assertSame( array( 'error', 'success', 'all' ), $learning_schema['properties']['status']['enum'] );
 
 		$media_schema = $this->schemaForTool( 'media_upload_item' );
 		self::assertSame( 'object', $media_schema['type'] );
@@ -595,6 +638,10 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'memory_save', $names );
 		self::assertContains( 'memory_bootstrap', $names );
 		self::assertContains( 'workflow_guides_list', $names );
+		self::assertContains( 'workflow_route_request', $names );
+		self::assertContains( 'workflow_session_start', $names );
+		self::assertContains( 'workflow_session_get', $names );
+		self::assertContains( 'workflow_session_update', $names );
 		self::assertContains( 'search', $names );
 		self::assertContains( 'fetch', $names );
 		self::assertContains( 'content_search_items', $names );
@@ -602,6 +649,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_find_related', $names );
 		self::assertContains( 'content_find_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
+		self::assertContains( 'mcp_learning_inspect_activity', $names );
 		self::assertContains( 'content_workflow_create_draft', $names );
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
@@ -611,6 +659,10 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.save', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.bootstrap', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_guides.list', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow.route_request', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.start', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.get', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.update', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'search', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'fetch', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.items', $registry ) ) );
@@ -618,6 +670,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'mcp_learning.inspect_activity', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );

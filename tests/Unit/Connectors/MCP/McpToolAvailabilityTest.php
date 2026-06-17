@@ -172,6 +172,9 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayHasKey( 'intelligence_index', $operations );
 		self::assertFalse( $operations['content']['create']['available'] );
 		self::assertSame( 'global_disabled', $operations['content']['create']['blocked_by'] );
+		self::assertTrue( $operations['workflows']['route_request']['available'] );
+		self::assertTrue( $operations['workflows']['route_request']['always_on'] );
+		self::assertSame( 'workflow_route_request', $operations['workflows']['route_request']['tool'] );
 		self::assertTrue( $operations['workflows']['create_draft']['available'] );
 		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
 		self::assertTrue( $operations['workflows']['create_draft']['derived'] );
@@ -248,6 +251,11 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['workflow_guides']['list']['available'] );
 		self::assertTrue( $operations['workflow_guides']['get']['available'] );
 		self::assertTrue( $operations['workflow_guides']['list']['always_on'] );
+		self::assertTrue( $operations['workflow_guides']['session_start']['available'] );
+		self::assertTrue( $operations['workflow_guides']['session_start']['always_on'] );
+		self::assertSame( 'always_on_write_intelligence', $operations['workflow_guides']['session_start']['availability_model'] );
+		self::assertTrue( $operations['workflow_guides']['session_get']['available'] );
+		self::assertTrue( $operations['workflow_guides']['session_update']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_save']['available'] );
@@ -256,6 +264,8 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['intelligence_index']['memory_bootstrap']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_bootstrap']['always_on'] );
 		self::assertSame( 'always_on_write_intelligence', $operations['intelligence_index']['memory_bootstrap']['availability_model'] );
+		self::assertTrue( $operations['intelligence_index']['activity_learning']['available'] );
+		self::assertTrue( $operations['intelligence_index']['activity_learning']['always_on'] );
 	}
 
 	public function test_read_only_intelligence_retrieval_is_available_by_default(): void {

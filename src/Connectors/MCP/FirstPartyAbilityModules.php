@@ -45,6 +45,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->canonical_fetch( $args )
 			),
 			$this->module(
+				'workflow.route_request',
+				'Route MCP Workflow Request',
+				'Use this first for ambiguous or multi-step WordPress MCP work. It classifies the request, selects the best workflow guide, lists blocked operations, and returns the next tool with arguments.',
+				'Workflow Router',
+				'content:read',
+				true,
+				$this->workflow_route_schema(),
+				static fn ( array $args ): array => ( new WorkflowRouter() )->route( $args )
+			),
+			$this->module(
+				'workflow_session.start',
+				'Start MCP Workflow Session',
+				'Start a bounded Aculect workflow session so ChatGPT, Claude, Codex, or another MCP client can resume multi-tool content, SEO, or site-management work without relying on chat memory.',
+				'Workflow Sessions',
+				'content:draft',
+				false,
+				$this->workflow_session_start_schema(),
+				static fn ( array $args ): array => ( new WorkflowSessionStore() )->start( $args )
+			),
+			$this->module(
+				'workflow_session.get',
+				'Get MCP Workflow Session',
+				'Read bounded Aculect workflow progress for a previous multi-tool MCP workflow.',
+				'Workflow Sessions',
+				'content:read',
+				true,
+				$this->workflow_session_get_schema(),
+				static fn ( array $args ): array => ( new WorkflowSessionStore() )->get( $args )
+			),
+			$this->module(
+				'workflow_session.update',
+				'Update MCP Workflow Session',
+				'Advance bounded Aculect workflow progress after a planning, validation, draft, update, SEO, or review step.',
+				'Workflow Sessions',
+				'content:draft',
+				false,
+				$this->workflow_session_update_schema(),
+				static fn ( array $args ): array => ( new WorkflowSessionStore() )->update( $args )
+			),
+			$this->module(
 				'workflow_guides.list',
 				'List MCP Workflow Guides',
 				'List compact, policy-aware workflow guides so assistants can choose the right multi-tool path without loading large instructions upfront.',
@@ -203,6 +243,16 @@ final class FirstPartyAbilityModules {
 				true,
 				$this->batch_status_schema(),
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->batch_status( $args )
+			),
+			$this->module(
+				'mcp_learning.inspect_activity',
+				'Inspect MCP Learning Signals',
+				'Review recent sanitized MCP activity failures and return bounded learning suggestions that can be submitted for admin review when assistants repeatedly hit disabled tools, missing scopes, block validation issues, or wrong workflow paths.',
+				'Aculect Memory',
+				'content:read',
+				true,
+				$this->mcp_learning_inspect_activity_schema(),
+				static fn ( array $args ): array => ( new ActivityLearningInsights() )->inspect( $args )
 			),
 			$this->module(
 				'site.list_post_types',
@@ -1001,6 +1051,165 @@ final class FirstPartyAbilityModules {
 	}
 
 	/**
+	 * Build the workflow router schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_route_schema(): array {
+		return $this->object_schema(
+			array(
+				'request'                  => array(
+					'type'        => 'string',
+					'description' => 'User request to classify and route.',
+				),
+				'brief'                    => array(
+					'type'        => 'string',
+					'description' => 'Alias for request when the client already has a content brief.',
+				),
+				'user_goal'                => array(
+					'type'        => 'string',
+					'description' => 'Alias for request when the client has a goal statement.',
+				),
+				'prompt'                   => array(
+					'type'        => 'string',
+					'description' => 'Alias for request for clients that pass prompt-shaped arguments.',
+				),
+				'intent'                   => array(
+					'type'        => 'string',
+					'enum'        => array( 'capability_discovery', 'site_audit', 'seo_update', 'internal_links', 'content_update', 'content_create' ),
+					'description' => 'Optional explicit intent override.',
+				),
+				'post_type'                => array(
+					'type'        => 'string',
+					'description' => 'Target WordPress post type when known.',
+				),
+				'content_mode'             => $this->content_mode_schema(),
+				'layout_intent'            => array(
+					'type'        => 'string',
+					'description' => 'Layout direction such as hero, columns, cards, grid, comparison, or CTA sections.',
+				),
+				'visual_reference_summary' => array(
+					'type'        => 'string',
+					'description' => 'Concise summary of any image/screenshot/design reference the assistant inspected.',
+				),
+				'existing_post_id'         => array(
+					'type'        => 'integer',
+					'description' => 'Existing post ID when the request is an update.',
+				),
+				'post_id'                  => array(
+					'type'        => 'integer',
+					'description' => 'Alias for existing_post_id.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow session start schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_session_start_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow'     => array(
+					'type'        => 'string',
+					'description' => 'Workflow or workflow guide ID.',
+				),
+				'workflow_id'  => array(
+					'type'        => 'string',
+					'description' => 'Alias for workflow.',
+				),
+				'state'        => $this->workflow_session_state_schema(),
+				'brief'        => array( 'type' => 'string' ),
+				'request'      => array( 'type' => 'string' ),
+				'provider'     => array( 'type' => 'string' ),
+				'intent'       => array( 'type' => 'string' ),
+				'content_mode' => $this->content_mode_schema(),
+				'post_type'    => array( 'type' => 'string' ),
+				'target_type'  => array( 'type' => 'string' ),
+				'target_id'    => array( 'type' => 'integer' ),
+				'post_id'      => array( 'type' => 'integer' ),
+				'title'        => array( 'type' => 'string' ),
+				'operation'    => array( 'type' => 'string' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow session get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_session_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_session_id' => array(
+					'type'        => 'string',
+					'description' => 'Workflow session ID returned by workflow_session_start or a workflow response.',
+				),
+				'id'                  => array(
+					'type'        => 'string',
+					'description' => 'Alias for workflow_session_id.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow session update schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_session_update_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_session_id' => array(
+					'type'        => 'string',
+					'description' => 'Workflow session ID returned by workflow_session_start or a workflow response.',
+				),
+				'id'                  => array(
+					'type'        => 'string',
+					'description' => 'Alias for workflow_session_id.',
+				),
+				'state'               => $this->workflow_session_state_schema(),
+				'message'             => array(
+					'type'        => 'string',
+					'description' => 'Short progress note. Do not include secrets or long content bodies.',
+				),
+				'tool'                => array(
+					'type'        => 'string',
+					'description' => 'Tool that just completed.',
+				),
+				'post_id'             => array( 'type' => 'integer' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the activity-learning inspection schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function mcp_learning_inspect_activity_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'error', 'success', 'all' ),
+					'description' => 'Activity status to inspect. Defaults to error.',
+				),
+				'range'    => array(
+					'type'        => 'string',
+					'enum'        => array( '24h', '7d', '30d' ),
+					'description' => 'Activity time range when supported by the activity store.',
+				),
+				'per_page' => $this->per_page_schema( 50, 'Activity rows to inspect. Defaults to 25.' ),
+			)
+		);
+	}
+
+	/**
 	 * Build the workflow guide lookup schema.
 	 *
 	 * @return array<string, mixed>
@@ -1068,6 +1277,7 @@ final class FirstPartyAbilityModules {
 					'type'        => 'integer',
 					'description' => 'Existing post ID when planning an update workflow.',
 				),
+				'workflow_session_id'      => $this->workflow_session_id_schema(),
 			),
 			array( 'brief' )
 		);
@@ -1084,10 +1294,11 @@ final class FirstPartyAbilityModules {
 				$this->workflow_content_fields(),
 				$this->rankmath_fields(),
 				array(
-					'post_type' => array(
+					'post_type'           => array(
 						'type'        => 'string',
 						'description' => 'Target WordPress post type. Defaults to post.',
 					),
+					'workflow_session_id' => $this->workflow_session_id_schema(),
 				)
 			),
 			array( 'title', 'content' )
@@ -1103,16 +1314,16 @@ final class FirstPartyAbilityModules {
 		return $this->object_schema(
 			array_merge(
 				array(
-					'id'          => array(
+					'id'                  => array(
 						'type'        => 'integer',
 						'description' => 'Existing WordPress content item ID.',
 					),
-					'update_mode' => array(
+					'update_mode'         => array(
 						'type'        => 'string',
 						'enum'        => array( 'replace', 'sections' ),
 						'description' => 'Use replace for a full block document or sections when section_map contains the updated serialized section content.',
 					),
-					'section_map' => array(
+					'section_map'         => array(
 						'type'                 => 'object',
 						'description'          => 'Map stable section IDs to updated serialized block section objects. The workflow combines sections into a full block document before validation.',
 						'additionalProperties' => array(
@@ -1144,7 +1355,8 @@ final class FirstPartyAbilityModules {
 							'additionalProperties' => false,
 						),
 					),
-					'status'      => $this->content_status_schema(),
+					'status'              => $this->content_status_schema(),
+					'workflow_session_id' => $this->workflow_session_id_schema(),
 				),
 				$this->workflow_content_fields(),
 				$this->rankmath_fields()
@@ -1162,10 +1374,11 @@ final class FirstPartyAbilityModules {
 		return $this->object_schema(
 			array_merge(
 				array(
-					'id' => array(
+					'id'                  => array(
 						'type'        => 'integer',
 						'description' => 'Existing WordPress content item ID.',
 					),
+					'workflow_session_id' => $this->workflow_session_id_schema(),
 				),
 				$this->rankmath_fields()
 			),
@@ -1484,6 +1697,31 @@ final class FirstPartyAbilityModules {
 			'type'        => 'string',
 			'enum'        => self::CONTENT_MODES,
 			'description' => 'Content shape. Use article for prose-heavy blog posts, page or landing_page for FSE-style pages, visual_layout when an image/screenshot/layout direction should drive block choice, and service_page/product_page/case_study for those structured page types.',
+		);
+	}
+
+	/**
+	 * Build a workflow session ID field schema.
+	 *
+	 * @return array<string, string>
+	 */
+	private function workflow_session_id_schema(): array {
+		return array(
+			'type'        => 'string',
+			'description' => 'Optional workflow session ID from workflow_session_start. Pass it through workflow calls so progress is preserved outside client chat memory.',
+		);
+	}
+
+	/**
+	 * Build the workflow session state schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_session_state_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'routed', 'started', 'prepared', 'validated', 'draft_created', 'updated', 'seo_applied', 'needs_review', 'failed', 'complete' ),
+			'description' => 'Compact workflow state.',
 		);
 	}
 

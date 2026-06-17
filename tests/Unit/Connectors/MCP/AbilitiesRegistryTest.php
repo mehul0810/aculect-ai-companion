@@ -107,6 +107,11 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		foreach (
 			array(
+				'workflow.route_request',
+				'workflow_session.start',
+				'workflow_session.get',
+				'workflow_session.update',
+				'mcp_learning.inspect_activity',
 				'search',
 				'fetch',
 				'wp_abilities.discover',
@@ -163,6 +168,16 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_start' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_session_get' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_update' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'mcp_learning_inspect_activity' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_start' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_session_get' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_update' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'mcp_learning_inspect_activity' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides_list' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides.get' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
@@ -227,6 +242,11 @@ final class AbilitiesRegistryTest extends TestCase {
 				'search',
 				'fetch',
 				'workflow_guides.list',
+				'workflow.route_request',
+				'workflow_session.start',
+				'workflow_session.get',
+				'workflow_session.update',
+				'mcp_learning.inspect_activity',
 				'content_search.items',
 				'memory.list',
 				'memory.save',

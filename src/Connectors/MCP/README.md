@@ -16,6 +16,38 @@ When adding or changing tools:
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
 
+## Workflow Routing And Sessions
+
+`workflow_route_request` is the first-party entry point for ambiguous or
+multi-step work. It classifies the user request, chooses a workflow guide when
+one applies, returns the recommended next tool with arguments, and includes
+operation availability so the assistant can explain blockers before retrying a
+tool.
+
+`workflow_session_start`, `workflow_session_get`, and
+`workflow_session_update` store bounded transient workflow progress. Use these
+for long-form content, SEO, site audit, and troubleshooting flows that may span
+multiple MCP calls. Session data must remain compact: keep brief, intent,
+content mode, target metadata, state, and short event messages; never store full
+article bodies, secrets, OAuth tokens, or raw request payloads.
+
+Workflow and session tools are first-party Aculect surfaces. They do not appear
+in the admin ability list and are not controlled by global or role ability
+toggles. They still require authenticated MCP access, OAuth scope checks, and
+the normal execution-time WordPress capability checks in the underlying write
+tools.
+
+## MCP Resources
+
+The MCP endpoint supports `resources/list` and `resources/read` for compact
+context that some clients can load more reliably than large tool calls. Current
+resources cover capability directory, site summary, content model, brand
+profile, workflow guide summaries, and approved Aculect memory.
+
+Keep resource payloads bounded, JSON encoded, and free of secrets. Resources are
+context surfaces, not write paths; changes to WordPress data must still go
+through tools.
+
 ## Aculect Intelligence
 
 Aculect Intelligence tools are always-on read-only MCP context tools. They are

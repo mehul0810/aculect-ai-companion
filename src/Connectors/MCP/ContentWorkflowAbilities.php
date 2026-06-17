@@ -83,7 +83,12 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		$existing_post_id   = absint( $args['existing_post_id'] ?? 0 );
 
 		if ( '' === $brief ) {
-			return $this->workflow_error( 'invalid_brief', 'Provide a brief for the content workflow.' );
+			return $this->with_workflow_session(
+				$this->workflow_error( 'invalid_brief', 'Provide a brief for the content workflow.' ),
+				$args,
+				'prepared',
+				'content_workflow_prepare_post'
+			);
 		}
 
 		$post_type    = '' === $post_type ? 'post' : $post_type;
@@ -101,60 +106,65 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 			$preferred_patterns
 		);
 
-		return array(
-			'status'               => 'ready',
-			'workflow'             => 'content_workflow_prepare_post',
-			'content_mode'         => $content_mode,
-			'post_type'            => $post_type,
-			'brief'                => $brief,
-			'audience'             => $audience,
-			'seo_intent'           => $seo_intent,
-			'layout_intent'        => $layout_intent,
-			'visual_reference'     => $visual_reference,
-			'section_requirements' => $section_requests,
-			'desired_word_count'   => $desired_word_count,
-			'existing_post_id'     => $existing_post_id,
-			'outline'              => $outline,
-			'block_plan'           => $block_plan,
-			'recommendations'      => array(
-				'taxonomies' => 'Use available taxonomy tools to select existing terms before writing.',
-				'media'      => $this->is_layout_mode( $content_mode )
-					? 'For visual/page layouts, pair existing image attachment IDs with core/image, core/cover, core/media-text, or gallery blocks as the layout requires; upload only when media upload is available.'
-					: 'Use an existing image attachment ID for featured_media; upload only when the media upload operation is available.',
-				'seo'        => 'Prepare Rank Math meta_title, meta_description, and focus_keywords when SEO metadata is requested.',
-			),
-			'required_operations'  => array(
-				'create_draft'        => $operations['workflows']['create_draft'] ?? array(),
-				'update_post'         => $operations['workflows']['update_post'] ?? array(),
-				'update_rankmath_seo' => $operations['workflows']['update_rankmath_seo'] ?? array(),
-				'search_chunks'       => $operations['intelligence_index']['search_chunks'] ?? array(),
-				'internal_links'      => $operations['intelligence_index']['internal_links'] ?? array(),
-				'validate_blocks'     => array(
-					'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.content.validate_blocks' ),
-					'available' => true,
-					'read_only' => true,
+		return $this->with_workflow_session(
+			array(
+				'status'               => 'ready',
+				'workflow'             => 'content_workflow_prepare_post',
+				'content_mode'         => $content_mode,
+				'post_type'            => $post_type,
+				'brief'                => $brief,
+				'audience'             => $audience,
+				'seo_intent'           => $seo_intent,
+				'layout_intent'        => $layout_intent,
+				'visual_reference'     => $visual_reference,
+				'section_requirements' => $section_requests,
+				'desired_word_count'   => $desired_word_count,
+				'existing_post_id'     => $existing_post_id,
+				'outline'              => $outline,
+				'block_plan'           => $block_plan,
+				'recommendations'      => array(
+					'taxonomies' => 'Use available taxonomy tools to select existing terms before writing.',
+					'media'      => $this->is_layout_mode( $content_mode )
+						? 'For visual/page layouts, pair existing image attachment IDs with core/image, core/cover, core/media-text, or gallery blocks as the layout requires; upload only when media upload is available.'
+						: 'Use an existing image attachment ID for featured_media; upload only when the media upload operation is available.',
+					'seo'        => 'Prepare Rank Math meta_title, meta_description, and focus_keywords when SEO metadata is requested.',
 				),
-				'block_discovery'     => array(
-					'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.blocks.list_available' ),
-					'available' => true,
-					'read_only' => true,
+				'required_operations'  => array(
+					'create_draft'        => $operations['workflows']['create_draft'] ?? array(),
+					'update_post'         => $operations['workflows']['update_post'] ?? array(),
+					'update_rankmath_seo' => $operations['workflows']['update_rankmath_seo'] ?? array(),
+					'search_chunks'       => $operations['intelligence_index']['search_chunks'] ?? array(),
+					'internal_links'      => $operations['intelligence_index']['internal_links'] ?? array(),
+					'validate_blocks'     => array(
+						'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.content.validate_blocks' ),
+						'available' => true,
+						'read_only' => true,
+					),
+					'block_discovery'     => array(
+						'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.blocks.list_available' ),
+						'available' => true,
+						'read_only' => true,
+					),
+					'pattern_discovery'   => array(
+						'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.patterns.list_available' ),
+						'available' => true,
+						'read_only' => true,
+					),
 				),
-				'pattern_discovery'   => array(
-					'tool'      => ( new AbilitiesRegistry() )->tool_name( 'intelligence.patterns.list_available' ),
-					'available' => true,
-					'read_only' => true,
+				'intelligence_context' => $context,
+				'operations'           => $operations,
+				'next_actions'         => array(
+					'Use intelligence_context.memories, related_items, relevant_chunks, and internal_links while drafting.',
+					$this->is_layout_mode( $content_mode )
+						? 'Generate sectioned, layout-aware serialized WordPress block markup using the outline section IDs and layout_plan; prefer registered patterns, core/group, core/columns, core/cover, core/media-text, and editable media/text blocks when they match the visual direction.'
+						: 'Generate sectioned serialized WordPress block markup using the outline section IDs.',
+					'Validate the full block document before any write.',
+					'Call content_workflow_create_draft for new long-form content or content_workflow_update_post for an existing item.',
 				),
 			),
-			'intelligence_context' => $context,
-			'operations'           => $operations,
-			'next_actions'         => array(
-				'Use intelligence_context.memories, related_items, relevant_chunks, and internal_links while drafting.',
-				$this->is_layout_mode( $content_mode )
-					? 'Generate sectioned, layout-aware serialized WordPress block markup using the outline section IDs and layout_plan; prefer registered patterns, core/group, core/columns, core/cover, core/media-text, and editable media/text blocks when they match the visual direction.'
-					: 'Generate sectioned serialized WordPress block markup using the outline section IDs.',
-				'Validate the full block document before any write.',
-				'Call content_workflow_create_draft for new long-form content or content_workflow_update_post for an existing item.',
-			),
+			$args,
+			'prepared',
+			'content_workflow_prepare_post'
 		);
 	}
 
@@ -167,7 +177,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	public function create_draft( array $args ): array {
 		$validated = $this->validated_block_document( $args );
 		if ( isset( $validated['error'] ) ) {
-			return $validated;
+			return $this->with_workflow_session( $validated, $args, 'validated', 'content_workflow_create_draft' );
 		}
 
 		$payload              = $this->content_payload( $args );
@@ -175,8 +185,16 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		$payload['post_type'] = sanitize_key( (string) ( $args['post_type'] ?? 'post' ) );
 		$payload['status']    = 'draft';
 
-		$result = ( new ContentAbilities() )->create_item( $payload );
-		return $this->content_result_response( 'content_workflow_create_draft', $result, $validated, $args );
+		$result   = ( new ContentAbilities() )->create_item( $payload );
+		$response = $this->content_result_response( 'content_workflow_create_draft', $result, $validated, $args );
+		$state    = true === ( $response['dry_run'] ?? false ) ? 'validated' : 'draft_created';
+
+		return $this->with_workflow_session(
+			$response,
+			$args,
+			$state,
+			'content_workflow_create_draft'
+		);
 	}
 
 	/**
@@ -188,7 +206,12 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	public function update_post( array $args ): array {
 		$post_id = absint( $args['id'] ?? 0 );
 		if ( 0 >= $post_id ) {
-			return $this->workflow_error( 'invalid_post_id', 'Provide an existing post ID.' );
+			return $this->with_workflow_session(
+				$this->workflow_error( 'invalid_post_id', 'Provide an existing post ID.' ),
+				$args,
+				'updated',
+				'content_workflow_update_post'
+			);
 		}
 
 		$payload            = $this->content_payload( $args );
@@ -200,7 +223,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		if ( $has_document ) {
 			$validated = $this->validated_block_document( $args, $post_id );
 			if ( isset( $validated['error'] ) ) {
-				return $validated;
+				return $this->with_workflow_session( $validated, $args, 'validated', 'content_workflow_update_post' );
 			}
 
 			$payload['content']      = $validated['content'];
@@ -208,26 +231,38 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		}
 
 		if ( array() === $payload ) {
-			return $this->workflow_error( 'invalid_update_fields', 'Provide title, content, excerpt, slug, taxonomy, featured media, date, author, or SEO fields to update.' );
+			return $this->with_workflow_session(
+				$this->workflow_error( 'invalid_update_fields', 'Provide title, content, excerpt, slug, taxonomy, featured media, date, author, or SEO fields to update.' ),
+				$args,
+				'updated',
+				'content_workflow_update_post'
+			);
 		}
 
 		if ( $this->is_dry_run( $args ) ) {
-			return $this->workflow_preview(
-				'content_workflow.update_post',
-				$preview_args,
-				array(
-					'type' => 'content',
-					'id'   => $post_id,
+			return $this->with_workflow_session(
+				$this->workflow_preview(
+					'content_workflow.update_post',
+					$preview_args,
+					array(
+						'type' => 'content',
+						'id'   => $post_id,
+					),
+					$this->workflow_changes( $payload ),
+					$validated
 				),
-				$this->workflow_changes( $payload ),
-				$validated
+				$args,
+				'validated',
+				'content_workflow_update_post'
 			);
 		}
 
 		$payload['id'] = $post_id;
 		$result        = ( new ContentAbilities() )->update_item( $payload );
 
-		return $this->content_result_response( 'content_workflow_update_post', $result, $validated, $args );
+		$response = $this->content_result_response( 'content_workflow_update_post', $result, $validated, $args );
+
+		return $this->with_workflow_session( $response, $args, 'updated', 'content_workflow_update_post' );
 	}
 
 	/**
@@ -240,23 +275,33 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		$args['plugin'] = 'rank_math';
 		$result         = ( new SeoAbilities() )->update_seo( $args );
 		if ( isset( $result['error'] ) ) {
-			return $this->workflow_error( (string) $result['error'], (string) ( $result['message'] ?? 'Rank Math SEO metadata could not be updated.' ), array( 'seo' => $result ) );
+			return $this->with_workflow_session(
+				$this->workflow_error( (string) $result['error'], (string) ( $result['message'] ?? 'Rank Math SEO metadata could not be updated.' ), array( 'seo' => $result ) ),
+				$args,
+				'seo_applied',
+				'seo_workflow_update_rankmath'
+			);
 		}
 
 		if ( true === ( $result['dry_run'] ?? false ) ) {
 			$result['workflow'] = 'seo_workflow_update_rankmath';
-			return $result;
+			return $this->with_workflow_session( $result, $args, 'validated', 'seo_workflow_update_rankmath' );
 		}
 
-		return array(
-			'status'       => 'success',
-			'workflow'     => 'seo_workflow_update_rankmath',
-			'post_id'      => (int) ( $result['post_id'] ?? 0 ),
-			'plugin'       => 'rank_math',
-			'fields'       => (array) ( $result['fields'] ?? array() ),
-			'changes'      => array(),
-			'warnings'     => array(),
-			'next_actions' => array( 'Review the Rank Math fields in the WordPress editor.' ),
+		return $this->with_workflow_session(
+			array(
+				'status'       => 'success',
+				'workflow'     => 'seo_workflow_update_rankmath',
+				'post_id'      => (int) ( $result['post_id'] ?? 0 ),
+				'plugin'       => 'rank_math',
+				'fields'       => (array) ( $result['fields'] ?? array() ),
+				'changes'      => array(),
+				'warnings'     => array(),
+				'next_actions' => array( 'Review the Rank Math fields in the WordPress editor.' ),
+			),
+			$args,
+			'seo_applied',
+			'seo_workflow_update_rankmath'
 		);
 	}
 
@@ -597,6 +642,31 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 			'warnings'         => array_values( array_unique( $warnings ) ),
 			'next_actions'     => array( 'Open the draft in WordPress and review the block editor output before publishing.' ),
 		);
+	}
+
+	/**
+	 * Attach and advance server-side workflow session state when requested.
+	 *
+	 * @param array<string, mixed> $response Workflow response.
+	 * @param array<string, mixed> $args     Original workflow arguments.
+	 * @param string               $state    Desired state on success.
+	 * @param string               $tool     Public tool name.
+	 * @return array<string, mixed>
+	 */
+	private function with_workflow_session( array $response, array $args, string $state, string $tool ): array {
+		$session_id = is_scalar( $args['workflow_session_id'] ?? null ) ? (string) $args['workflow_session_id'] : '';
+		if ( '' === $session_id ) {
+			return $response;
+		}
+
+		$session_result = ( new WorkflowSessionStore() )->advance_from_tool_result( $session_id, $state, $tool, $response );
+		if ( array() !== $session_result && ! isset( $session_result['error'] ) ) {
+			$response['workflow_session'] = $session_result['workflow_session'] ?? array();
+		} elseif ( array() !== $session_result ) {
+			$response['workflow_session'] = $session_result;
+		}
+
+		return $response;
 	}
 
 	/**

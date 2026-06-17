@@ -241,6 +241,12 @@ final class McpController {
 				$cursor = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
 				return $this->rpc_result( $id, $this->list_tools( $cursor ) );
 
+			case 'resources/list':
+				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
+
+			case 'resources/read':
+				return $this->rpc_result( $id, ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) ) );
+
 			case 'tools/call':
 				$registry             = new AbilitiesRegistry();
 				$intelligence         = new IntelligenceRegistry();
@@ -621,7 +627,12 @@ final class McpController {
 			),
 			'instructions'    => $this->mcp_instructions(),
 			'capabilities'    => array(
-				'tools' => new \stdClass(),
+				'tools'     => array(
+					'listChanged' => true,
+				),
+				'resources' => array(
+					'listChanged' => true,
+				),
 			),
 		);
 	}
@@ -634,6 +645,8 @@ final class McpController {
 			' ',
 			array(
 				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
+				'For ambiguous or multi-step work, call workflow_route_request first; when the workflow spans multiple tools, call workflow_session_start and pass workflow_session_id through workflow calls.',
+				'Clients that support MCP resources can call resources/list and resources/read for compact Aculect context such as capability directory, site summary, content model, workflow guides, brand profile, and approved memory.',
 				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
 				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
@@ -642,6 +655,7 @@ final class McpController {
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
 				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. If memory_list is empty or missing obvious site guidance, call memory_bootstrap or memory_save with no key/value to prepare initial memory for admin review. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
 				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
+				'When repeated MCP errors or poor tool choices happen, call mcp_learning_inspect_activity and submit a bounded learning suggestion with intelligence_feedback_submit when the owner should review durable guidance.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
 				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
@@ -923,6 +937,18 @@ final class McpController {
 				'risk_level'            => array( 'type' => 'string' ),
 				'target'                => array( 'type' => 'object' ),
 				'workflow'              => array( 'type' => 'string' ),
+				'workflow_session'      => array( 'type' => 'object' ),
+				'workflow_session_plan' => array( 'type' => 'object' ),
+				'workflow_guide_id'     => array( 'type' => 'string' ),
+				'workflow_guide'        => array( 'type' => 'object' ),
+				'intent'                => array( 'type' => 'string' ),
+				'content_mode'          => array( 'type' => 'string' ),
+				'confidence'            => array( 'type' => 'string' ),
+				'next_tool'             => array( 'type' => 'string' ),
+				'next_tool_arguments'   => array( 'type' => 'object' ),
+				'recommended_sequence'  => array( 'type' => 'array' ),
+				'required_operations'   => array( 'type' => 'array' ),
+				'blocked_operations'    => array( 'type' => 'array' ),
 				'post_id'               => array( 'type' => 'integer' ),
 				'post_type'             => array( 'type' => 'string' ),
 				'intelligence_context'  => array( 'type' => 'object' ),
@@ -930,6 +956,9 @@ final class McpController {
 				'permalink'             => array( 'type' => 'string' ),
 				'fields'                => array( 'type' => 'object' ),
 				'items'                 => array( 'type' => 'array' ),
+				'total'                 => array( 'type' => 'integer' ),
+				'filters'               => array( 'type' => 'object' ),
+				'insights'              => array( 'type' => 'array' ),
 				'job'                   => array( 'type' => 'object' ),
 				'index'                 => array( 'type' => 'object' ),
 				'summary'               => array( 'type' => 'object' ),

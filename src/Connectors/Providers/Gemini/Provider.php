@@ -42,7 +42,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 	 * Return the Gemini MCP documentation URL.
 	 */
 	public function primary_action_url(): string {
-		return 'https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html';
+		return 'https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md';
 	}
 
 	/**
@@ -62,12 +62,13 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 		return array(
 			array(
 				'title'       => 'Gemini CLI',
-				'description' => 'Use this for terminal-based Gemini CLI sessions. Your connection URL must be reachable by Gemini CLI, and remote HTTP connections should use the streamable HTTP endpoint.',
+				'description' => 'Use this for terminal-based Gemini CLI sessions. Your connection URL must be reachable by Gemini CLI, and remote HTTP connections should use the httpUrl field for Streamable HTTP.',
 				'steps'       => array(
 					'Copy the Gemini settings JSON below.',
 					'Add it to ~/.gemini/settings.json for your user, or to .gemini/settings.json for a project-scoped connection.',
+					'Keep the JSON key named httpUrl so Gemini treats Aculect AI Companion as a Streamable HTTP MCP server.',
 					'Run gemini mcp list, or use /mcp list in Gemini CLI, to verify that Aculect AI Companion is connected.',
-					'When Gemini asks to authorize the MCP server, approve the WordPress consent screen.',
+					'When Gemini asks to authorize the MCP server, run /mcp auth aculect-ai-companion if needed and approve the WordPress consent screen.',
 					'Ask Gemini to list available Aculect tools before running write actions.',
 				),
 				'actionLabel' => $this->primary_action_label(),
@@ -89,13 +90,14 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 					'Ask Gemini to inspect safe site context first, then approve any tool calls that can change WordPress.',
 				),
 				'actionLabel' => 'Open Code Assist Agent Mode Docs',
-				'actionUrl'   => 'https://developers.google.com/gemini-code-assist/docs/use-agentic-chat-pair-programmer',
+				'actionUrl'   => 'https://docs.cloud.google.com/gemini/docs/codeassist/use-agentic-chat-pair-programmer',
 			),
 			array(
 				'title'       => 'Compatibility notes',
 				'description' => 'Gemini discovers MCP tools from the server metadata and can filter tools client-side with includeTools or excludeTools when a site exposes many abilities.',
 				'steps'       => array(
 					'Prefer the workflow and intelligence tools for content work so Gemini gets the same guided path as other assistants.',
+					'Let Gemini use OAuth discovery and Dynamic Client Registration from the MCP endpoint instead of hard-coding WordPress credentials.',
 					'Keep trust disabled unless the Gemini client is running in a controlled environment.',
 					'After plugin updates or ability policy changes, rerun gemini mcp list or reconnect the MCP server so Gemini refreshes tool metadata.',
 				),

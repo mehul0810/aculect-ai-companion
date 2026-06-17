@@ -151,6 +151,10 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringContainsString( 'codex mcp login aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][2]['value'] );
 		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertArrayHasKey( 'cursor', $providers );
+		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
 		self::assertArrayHasKey( 'gemini', $providers );
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );

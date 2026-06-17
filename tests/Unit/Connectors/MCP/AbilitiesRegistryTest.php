@@ -80,6 +80,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
+		self::assertNotContains( 'Site Editor Intelligence', $groups );
+		self::assertNotContains( 'Admin Menu Intelligence', $groups );
 		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
@@ -130,6 +132,17 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.update_post',
 				'seo_workflow.update_rankmath',
 				'site_workflow.audit',
+				'site_editor.get_context',
+				'site_editor.refresh_context',
+				'site_editor.list_templates',
+				'site_editor.get_template',
+				'site_editor.list_template_parts',
+				'site_editor.get_template_part',
+				'admin_menu.get_context',
+				'admin_menu.refresh_context',
+				'admin_menu.list_pages',
+				'admin_menu.get_navigation_target',
+				'admin_menu.list_settings',
 				'workflow_guides.list',
 				'workflow_guides.get',
 				'content_index.refresh_batch',
@@ -180,6 +193,12 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'mcp_learning_inspect_activity' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides_list' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides.get' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.list_templates' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'site_editor.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );

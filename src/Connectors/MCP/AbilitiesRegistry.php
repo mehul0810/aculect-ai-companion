@@ -25,6 +25,15 @@ final class AbilitiesRegistry {
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS  = array(
 		'workflow.route_request',
 		'workflow_session.get',
+		'site_editor.get_context',
+		'site_editor.list_templates',
+		'site_editor.get_template',
+		'site_editor.list_template_parts',
+		'site_editor.get_template_part',
+		'admin_menu.get_context',
+		'admin_menu.list_pages',
+		'admin_menu.get_navigation_target',
+		'admin_menu.list_settings',
 		'mcp_learning.inspect_activity',
 		'search',
 		'fetch',
@@ -40,6 +49,8 @@ final class AbilitiesRegistry {
 	private const ALWAYS_ON_WRITE_INTELLIGENCE_IDS = array(
 		'workflow_session.start',
 		'workflow_session.update',
+		'site_editor.refresh_context',
+		'admin_menu.refresh_context',
 		'memory.save',
 		'memory.bootstrap',
 	);

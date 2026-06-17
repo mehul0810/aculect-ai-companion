@@ -28,6 +28,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 * Create, update, and organize WordPress content through controlled AI workflows
 * Work with posts, pages, custom post types, categories, tags, comments, and media
 * Use block-aware content workflows instead of raw custom HTML
+* Inspect Site Editor and admin menu surfaces before planning theme or settings work
 * Review AI activity with sanitized audit logs
 * Control access globally, by connection, by role, and by WordPress user permissions
 * Use diagnostics to verify OAuth, MCP, endpoint, and environment readiness
@@ -256,6 +257,7 @@ Composer dependencies for production releases are installed with:
 * Added MCP `resources/list` and `resources/read` support for compact capability, site, content, brand, workflow guide, and approved memory context.
 * Added a site audit workflow for safe site-management readiness checks.
 * Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.
+* Added Site Editor and Admin Menu intelligence so assistants can inspect Appearance > Editor surfaces, admin navigation, and registered settings metadata without file-level changes or raw option access.
 * Added MCP activity learning inspection so repeated disabled-tool, scope, block-validation, and unknown-tool failures can become admin-reviewed learning suggestions.
 * Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.
 * Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.
@@ -268,6 +270,7 @@ Composer dependencies for production releases are installed with:
 * Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.
 * Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.
 * Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published.
+* Fixed duplicate active connection rows by revoking older refreshable sessions when the same assistant provider reconnects for the same WordPress user and resource.
 
 = 0.5.3 =
 
@@ -374,7 +377,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, WordPress Abilities diagnostics, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
+Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
 
 = 0.5.3 =
 

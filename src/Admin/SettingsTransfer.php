@@ -11,9 +11,11 @@ namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\AdminMenuAbilities;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
+use Aculect\AICompanion\Connectors\MCP\SiteEditorAbilities;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
@@ -119,6 +121,8 @@ final class SettingsTransfer {
 		AccessLockdown::delete();
 		UserAccessControl::delete();
 		ContentIndexer::delete_options();
+		SiteEditorAbilities::delete();
+		AdminMenuAbilities::delete();
 	}
 
 	/**

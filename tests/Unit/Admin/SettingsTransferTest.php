@@ -175,6 +175,8 @@ final class SettingsTransferTest extends TestCase {
 		AccessLockdown::set_paused( true );
 		UserAccessControl::set_paused( 7, true );
 		update_option( 'aculect_ai_companion_oauth_private_key', 'preserve-private-key', false );
+		update_option( 'aculect_ai_companion_site_editor_snapshot', array( 'fingerprint' => 'site-editor' ), false );
+		update_option( 'aculect_ai_companion_admin_menu_snapshot', array( 'fingerprint' => 'admin-menu' ), false );
 
 		( new SettingsTransfer() )->reset();
 
@@ -186,6 +188,8 @@ final class SettingsTransferTest extends TestCase {
 		self::assertFalse( RoleConnectionEntryPoint::is_enabled() );
 		self::assertFalse( LogSettings::is_enabled() );
 		self::assertNull( get_option( 'aculect_ai_companion_brand_profile', null ) );
+		self::assertNull( get_option( 'aculect_ai_companion_site_editor_snapshot', null ) );
+		self::assertNull( get_option( 'aculect_ai_companion_admin_menu_snapshot', null ) );
 		self::assertFalse( AccessLockdown::is_paused() );
 		self::assertFalse( UserAccessControl::is_paused( 7 ) );
 		self::assertSame( 'preserve-private-key', get_option( 'aculect_ai_companion_oauth_private_key' ) );

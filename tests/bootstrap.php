@@ -69,6 +69,10 @@ $GLOBALS['aculect_ai_companion_test_posts']       = array();
 $GLOBALS['aculect_ai_companion_test_post_types']  = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
+$GLOBALS['aculect_ai_companion_test_block_templates'] = array();
+$GLOBALS['aculect_ai_companion_test_global_settings'] = array();
+$GLOBALS['aculect_ai_companion_test_global_styles'] = array();
+$GLOBALS['aculect_ai_companion_test_registered_settings'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
 if ( ! function_exists( 'get_option' ) ) {
@@ -242,6 +246,7 @@ if ( ! class_exists( 'WP_Post' ) ) {
 		public int $post_author = 0;
 		public string $post_date = '';
 		public string $post_date_gmt = '';
+		public string $post_modified_gmt = '';
 
 		/**
 		 * @param array<string, mixed> $data Post fields.
@@ -617,6 +622,142 @@ if ( ! function_exists( 'admin_url' ) ) {
 	 */
 	function admin_url( string $path = '' ): string {
 		return 'https://example.com/wp-admin/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'wp_is_block_theme' ) ) {
+	/**
+	 * Return active test theme type.
+	 */
+	function wp_is_block_theme(): bool {
+		return (bool) ( $GLOBALS['aculect_ai_companion_test_is_block_theme'] ?? true );
+	}
+}
+
+if ( ! function_exists( 'wp_get_global_settings' ) ) {
+	/**
+	 * Return test Site Editor global settings.
+	 *
+	 * @return array<string, mixed>
+	 */
+	function wp_get_global_settings(): array {
+		return $GLOBALS['aculect_ai_companion_test_global_settings'];
+	}
+}
+
+if ( ! function_exists( 'wp_get_global_styles' ) ) {
+	/**
+	 * Return test Site Editor global styles.
+	 *
+	 * @return array<string, mixed>
+	 */
+	function wp_get_global_styles(): array {
+		return $GLOBALS['aculect_ai_companion_test_global_styles'];
+	}
+}
+
+if ( ! function_exists( 'get_block_templates' ) ) {
+	/**
+	 * Return test Site Editor templates.
+	 *
+	 * @param array<string, mixed> $query Template query.
+	 * @param string               $template_type Template post type.
+	 * @return list<object>
+	 */
+	function get_block_templates( array $query = array(), string $template_type = 'wp_template' ): array {
+		unset( $query );
+
+		$templates = $GLOBALS['aculect_ai_companion_test_block_templates'][ $template_type ] ?? array();
+		if ( array() !== $templates ) {
+			return $templates;
+		}
+
+		return array(
+			(object) array(
+				'id'             => 'twentytwentysix//index',
+				'slug'           => 'index',
+				'theme'          => 'twentytwentysix',
+				'type'           => $template_type,
+				'source'         => 'theme',
+				'origin'         => 'theme',
+				'status'         => 'publish',
+				'title'          => 'Index',
+				'description'    => 'Default template.',
+				'wp_id'          => 0,
+				'has_theme_file' => true,
+				'is_custom'      => false,
+				'content'        => '<!-- wp:group --><div class="wp-block-group"></div><!-- /wp:group -->',
+			),
+		);
+	}
+}
+
+if ( ! function_exists( 'get_block_template' ) ) {
+	/**
+	 * Return one test Site Editor template.
+	 *
+	 * @param string $id Template ID.
+	 * @param string $template_type Template post type.
+	 */
+	function get_block_template( string $id, string $template_type = 'wp_template' ): ?object {
+		foreach ( get_block_templates( array(), $template_type ) as $template ) {
+			if ( $id === (string) ( $template->id ?? '' ) ) {
+				return $template;
+			}
+		}
+
+		return null;
+	}
+}
+
+if ( ! function_exists( 'post_type_exists' ) ) {
+	/**
+	 * Return whether a test post type exists.
+	 *
+	 * @param string $post_type Post type.
+	 */
+	function post_type_exists( string $post_type ): bool {
+		return 'wp_navigation' === $post_type || array_key_exists( $post_type, $GLOBALS['aculect_ai_companion_test_post_types'] );
+	}
+}
+
+if ( ! function_exists( 'get_posts' ) ) {
+	/**
+	 * Return test posts for simple queries.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return list<WP_Post>
+	 */
+	function get_posts( array $args = array() ): array {
+		$post_type = (string) ( $args['post_type'] ?? '' );
+		$posts     = array();
+		foreach ( $GLOBALS['aculect_ai_companion_test_posts'] as $post ) {
+			$post = $post instanceof WP_Post ? $post : new WP_Post( is_array( $post ) ? $post : array() );
+			if ( '' === $post_type || $post_type === $post->post_type ) {
+				$posts[] = $post;
+			}
+		}
+
+		return $posts;
+	}
+}
+
+if ( ! function_exists( 'get_registered_settings' ) ) {
+	/**
+	 * Return test registered settings metadata.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	function get_registered_settings(): array {
+		return $GLOBALS['aculect_ai_companion_test_registered_settings'] ?: array(
+			'blogname' => array(
+				'group'       => 'general',
+				'type'        => 'string',
+				'description' => 'Site title.',
+				'show_in_rest' => true,
+				'default'     => '',
+			),
+		);
 	}
 }
 

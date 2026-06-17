@@ -40,7 +40,7 @@ final class WordPressAbilitiesRegistrar {
 			self::CATEGORY,
 			array(
 				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Read-only site, content, brand, block, pattern, search, and memory intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				'description' => __( 'Read-only site, admin menu, Site Editor, content, brand, block, pattern, search, and memory intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
 			)
 		);
 	}
@@ -141,11 +141,7 @@ final class WordPressAbilitiesRegistrar {
 			'input_schema'        => $module->input_schema(),
 			'output_schema'       => $this->output_schema_for_module( $module ),
 			'execute_callback'    => fn( mixed $input = array() ): array => $module->execute( is_array( $input ) ? $input : array() ),
-			'permission_callback' => static function ( mixed $input = null ): bool {
-				unset( $input );
-
-				return current_user_can( 'read' );
-			},
+			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
 				'show_in_rest' => true,
 				'annotations'  => array(
@@ -159,6 +155,30 @@ final class WordPressAbilitiesRegistrar {
 				),
 			),
 		);
+	}
+
+	/**
+	 * Return the WordPress Abilities permission callback for a module.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @return callable
+	 */
+	private function permission_callback_for_module( AbilityModuleInterface $module ): callable {
+		$id = $module->id();
+
+		return static function ( mixed $input = null ) use ( $id ): bool {
+				unset( $input );
+
+			if ( str_starts_with( $id, 'site_editor.' ) ) {
+				return current_user_can( 'edit_theme_options' );
+			}
+
+			if ( str_starts_with( $id, 'admin_menu.' ) ) {
+				return current_user_can( 'manage_options' );
+			}
+
+			return current_user_can( 'read' );
+		};
 	}
 
 	/**

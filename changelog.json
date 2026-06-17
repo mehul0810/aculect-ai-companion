@@ -7,6 +7,7 @@
       "Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
       "Added a site audit workflow for safe site-management readiness checks.",
       "Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.",
+      "Added Site Editor and Admin Menu intelligence so assistants can inspect Appearance > Editor surfaces, admin navigation, and registered settings metadata without file-level changes or raw option access.",
       "Added a plugin_incident_report tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails."
     ],
     "Improved": [
@@ -22,7 +23,8 @@
       "Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
       "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.",
       "Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.",
-      "Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published."
+      "Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published.",
+      "Fixed duplicate active connection rows by revoking older refreshable sessions when the same assistant provider reconnects for the same WordPress user and resource."
     ]
   },
   "0.5.3": {

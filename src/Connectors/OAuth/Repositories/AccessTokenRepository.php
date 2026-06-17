@@ -103,6 +103,13 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			),
 			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
+
+		$this->revoke_superseded_sessions_for_token(
+			(string) $accessTokenEntity->getClient()->getIdentifier(),
+			$accessTokenEntity->getUserIdentifier(),
+			$resource,
+			$this->hash_identifier( $accessTokenEntity->getIdentifier() )
+		);
 	}
 
 	/**
@@ -335,6 +342,30 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
+	 * Revoke older duplicate sessions for the same assistant/user/resource.
+	 *
+	 * Known assistant providers are treated as one logical connection per
+	 * provider, WordPress user, and resource URL. Generic MCP clients are only
+	 * deduplicated when the exact client ID matches, so unrelated custom clients
+	 * remain independent.
+	 *
+	 * @param string|null $now   Current UTC datetime for tests.
+	 * @param int         $limit Maximum access-token rows to revoke.
+	 * @return int Number of superseded access-token rows revoked.
+	 */
+	public function revoke_superseded_active_sessions( ?string $now = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
+		$now   = null !== $now && '' !== $now ? $now : gmdate( 'Y-m-d H:i:s' );
+		$limit = $this->normalized_batch_limit( $limit );
+
+		$revoked = $this->revoke_superseded_access_tokens( $now, $limit );
+		if ( $revoked > 0 ) {
+			$this->revoke_refresh_tokens_for_revoked_access_tokens( $limit );
+		}
+
+		return $revoked;
+	}
+
+	/**
 	 * Return active session counts grouped by WordPress user ID.
 	 *
 	 * @return array<int, int>
@@ -505,6 +536,196 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			),
 			array( '%d' ),
 			array( '%d', '%d' )
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Revoke older active sessions when a newer token is issued.
+	 *
+	 * @param string      $client_id  OAuth client identifier for the new token.
+	 * @param string|null $user_id    WordPress user identifier for the new token.
+	 * @param string      $resource   OAuth resource URL.
+	 * @param string      $token_hash Stored hash for the new access token.
+	 */
+	private function revoke_superseded_sessions_for_token( string $client_id, ?string $user_id, string $resource, string $token_hash ): void {
+		if ( '' === $client_id || '' === $resource || '' === $token_hash ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$tables  = Installer::table_names();
+		$user_id = absint( $user_id ?? 0 );
+		$now     = gmdate( 'Y-m-d H:i:s' );
+		$wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE id IN (
+					SELECT id FROM (
+						SELECT access_tokens.id
+						FROM %i access_tokens
+						INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+						LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+						LEFT JOIN %i current_client ON current_client.client_id = %s
+						WHERE access_tokens.revoked = 0
+						AND refresh_tokens.revoked = 0
+						AND refresh_tokens.expires_at >= %s
+						AND access_tokens.token_hash <> %s
+						AND COALESCE(access_tokens.user_id, 0) = %d
+						AND access_tokens.resource = %s
+						AND (
+							(
+								current_client.provider IS NOT NULL
+								AND current_client.provider <> %s
+								AND current_client.provider <> %s
+								AND clients.provider = current_client.provider
+							)
+							OR (
+								(
+									current_client.provider IS NULL
+									OR current_client.provider = %s
+									OR current_client.provider = %s
+								)
+								AND access_tokens.client_id = %s
+							)
+						)
+					) superseded_tokens
+				)',
+				$tables['access_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['clients'],
+				$tables['clients'],
+				$client_id,
+				$now,
+				$token_hash,
+				$user_id,
+				$resource,
+				'',
+				'mcp',
+				'',
+				'mcp',
+				$client_id
+			)
+		);
+
+		$this->revoke_refresh_tokens_for_revoked_access_tokens( self::DEFAULT_PRUNE_BATCH_SIZE );
+	}
+
+	/**
+	 * Revoke older active access tokens that have a newer matching session.
+	 *
+	 * @param string $now   Current UTC datetime.
+	 * @param int    $limit Maximum rows to revoke.
+	 */
+	private function revoke_superseded_access_tokens( string $now, int $limit ): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE id IN (
+					SELECT id FROM (
+						SELECT older.id
+						FROM %i older
+						INNER JOIN %i older_refresh ON older_refresh.access_token_hash = older.token_hash
+						INNER JOIN %i newer ON newer.revoked = 0
+							AND newer.token_hash <> older.token_hash
+							AND newer.resource = older.resource
+							AND COALESCE(newer.user_id, 0) = COALESCE(older.user_id, 0)
+						INNER JOIN %i newer_refresh ON newer_refresh.access_token_hash = newer.token_hash
+						LEFT JOIN %i older_client ON older_client.client_id = older.client_id
+						LEFT JOIN %i newer_client ON newer_client.client_id = newer.client_id
+						WHERE older.revoked = 0
+						AND older_refresh.revoked = 0
+						AND older_refresh.expires_at >= %s
+						AND newer_refresh.revoked = 0
+						AND newer_refresh.expires_at >= %s
+						AND (
+							newer_refresh.expires_at > older_refresh.expires_at
+							OR (
+								newer_refresh.expires_at = older_refresh.expires_at
+								AND newer.created_at > older.created_at
+							)
+							OR (
+								newer_refresh.expires_at = older_refresh.expires_at
+								AND newer.created_at = older.created_at
+								AND newer.id > older.id
+							)
+						)
+						AND (
+							(
+								older_client.provider IS NOT NULL
+								AND older_client.provider <> %s
+								AND older_client.provider <> %s
+								AND newer_client.provider = older_client.provider
+							)
+							OR (
+								(
+									older_client.provider IS NULL
+									OR older_client.provider = %s
+									OR older_client.provider = %s
+								)
+								AND newer.client_id = older.client_id
+							)
+						)
+						LIMIT %d
+					) superseded_tokens
+				)',
+				$tables['access_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['clients'],
+				$tables['clients'],
+				$now,
+				$now,
+				'',
+				'mcp',
+				'',
+				'mcp',
+				$limit
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Revoke refresh tokens linked to revoked access-token rows.
+	 *
+	 * @param int $limit Maximum refresh-token rows to revoke.
+	 */
+	private function revoke_refresh_tokens_for_revoked_access_tokens( int $limit ): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$limit  = $this->normalized_batch_limit( $limit );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE access_token_hash IN (
+					SELECT token_hash FROM (
+						SELECT access_tokens.token_hash
+						FROM %i access_tokens
+						INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+						WHERE access_tokens.revoked = 1
+						AND refresh_tokens.revoked = 0
+						LIMIT %d
+					) revoked_access_tokens
+				)',
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$limit
+			)
 		);
 
 		return false === $result ? 0 : (int) $result;

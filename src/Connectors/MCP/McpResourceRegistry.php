@@ -26,6 +26,8 @@ final class McpResourceRegistry {
 			'resources' => array(
 				$this->resource( 'aculect://capabilities/directory', 'Aculect Capability Directory', 'Current WordPress MCP abilities, workflows, intelligence surfaces, and blockers.' ),
 				$this->resource( 'aculect://site/summary', 'Aculect Site Summary', 'Stable site, theme, locale, and connector context.' ),
+				$this->resource( 'aculect://site-editor/context', 'Aculect Site Editor Context', 'Theme-aware Appearance > Editor context, templates, template parts, global settings, styles, blocks, and patterns.' ),
+				$this->resource( 'aculect://admin/menu', 'Aculect Admin Menu Context', 'Visible WordPress admin navigation, settings surfaces, and safe task routing metadata.' ),
 				$this->resource( 'aculect://content/model', 'Aculect Content Model', 'Content types, taxonomy, block, pattern, and authoring constraints.' ),
 				$this->resource( 'aculect://brand/profile', 'Aculect Brand Profile', 'Saved and detected brand guidance for content and design decisions.' ),
 				$this->resource( 'aculect://workflow/guides', 'Aculect Workflow Guides', 'Compact policy-aware workflow guide summaries.' ),
@@ -49,6 +51,8 @@ final class McpResourceRegistry {
 		$data = match ( $uri ) {
 			'aculect://capabilities/directory' => ( new IntelligenceContext() )->capabilities( array( 'detail' => 'summary' ) ),
 			'aculect://site/summary' => ( new IntelligenceContext() )->site(),
+			'aculect://site-editor/context' => ( new SiteEditorAbilities() )->get_context(),
+			'aculect://admin/menu' => ( new AdminMenuAbilities() )->get_context(),
 			'aculect://content/model' => ( new IntelligenceContext() )->content(),
 			'aculect://brand/profile' => ( new IntelligenceContext() )->brand(),
 			'aculect://workflow/guides' => ( new WorkflowGuideRegistry() )->list_guides( array( 'detail' => 'summary' ) ),

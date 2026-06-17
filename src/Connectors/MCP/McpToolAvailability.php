@@ -213,6 +213,31 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'site_editor'        => $this->operation_group(
+				array(
+					'get_context'         => 'site_editor.get_context',
+					'refresh_context'     => 'site_editor.refresh_context',
+					'list_templates'      => 'site_editor.list_templates',
+					'get_template'        => 'site_editor.get_template',
+					'list_template_parts' => 'site_editor.list_template_parts',
+					'get_template_part'   => 'site_editor.get_template_part',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
+			'admin_menu'         => $this->operation_group(
+				array(
+					'get_context'           => 'admin_menu.get_context',
+					'refresh_context'       => 'admin_menu.refresh_context',
+					'list_pages'            => 'admin_menu.list_pages',
+					'get_navigation_target' => 'admin_menu.get_navigation_target',
+					'list_settings'         => 'admin_menu.list_settings',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'workflow_guides'    => $this->operation_group(
 				array(
 					'list'           => 'workflow_guides.list',

@@ -155,6 +155,116 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new SiteWorkflowAbilities() )->audit( $args )
 			),
 			$this->module(
+				'site_editor.get_context',
+				'Read Site Editor Intelligence',
+				'Use this before planning Appearance > Editor work. It reads the active theme, Site Editor availability, merged global settings/styles, templates, template parts, navigation, blocks, and patterns without editing theme files.',
+				'Site Editor Intelligence',
+				'content:read',
+				true,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->get_context( $args )
+			),
+			$this->module(
+				'site_editor.refresh_context',
+				'Refresh Site Editor Intelligence',
+				'Refresh the plugin-owned Site Editor intelligence snapshot after theme, template, template part, global style, navigation, block, or pattern changes. This never writes theme files.',
+				'Site Editor Intelligence',
+				'content:draft',
+				false,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->refresh_context( $args )
+			),
+			$this->module(
+				'site_editor.list_templates',
+				'List Site Editor Templates',
+				'List block templates available through Appearance > Editor for the active theme, including source, origin, customization state, and admin-safe metadata.',
+				'Site Editor Intelligence',
+				'content:read',
+				true,
+				$this->template_collection_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->list_templates( $args )
+			),
+			$this->module(
+				'site_editor.get_template',
+				'Read Site Editor Template',
+				'Read one block template by ID or slug, including bounded serialized block markup for admin-level planning. This does not read or write files directly.',
+				'Site Editor Intelligence',
+				'content:read',
+				true,
+				$this->template_get_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->get_template( $args )
+			),
+			$this->module(
+				'site_editor.list_template_parts',
+				'List Site Editor Template Parts',
+				'List block template parts available through Appearance > Editor, including header, footer, sidebar, and other theme-defined areas.',
+				'Site Editor Intelligence',
+				'content:read',
+				true,
+				$this->template_collection_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->list_template_parts( $args )
+			),
+			$this->module(
+				'site_editor.get_template_part',
+				'Read Site Editor Template Part',
+				'Read one block template part by ID or slug, including bounded serialized block markup for admin-level planning. This does not read or write files directly.',
+				'Site Editor Intelligence',
+				'content:read',
+				true,
+				$this->template_get_schema(),
+				static fn ( array $args ): array => ( new SiteEditorAbilities() )->get_template_part( $args )
+			),
+			$this->module(
+				'admin_menu.get_context',
+				'Read Admin Menu Intelligence',
+				'Use this before planning WordPress core, plugin, or theme admin settings work. It returns visible admin menus, navigation targets, and registered settings metadata without exposing option values.',
+				'Admin Menu Intelligence',
+				'content:read',
+				true,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new AdminMenuAbilities() )->get_context( $args )
+			),
+			$this->module(
+				'admin_menu.refresh_context',
+				'Refresh Admin Menu Intelligence',
+				'Refresh the plugin-owned admin menu intelligence snapshot after plugin/theme changes that add, remove, or move admin screens. This does not update settings or options.',
+				'Admin Menu Intelligence',
+				'content:draft',
+				false,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new AdminMenuAbilities() )->refresh_context( $args )
+			),
+			$this->module(
+				'admin_menu.list_pages',
+				'List Admin Menu Pages',
+				'List visible WordPress admin menu pages and subpages for the connected administrator, including URLs, capability requirements, and high-level sections.',
+				'Admin Menu Intelligence',
+				'content:read',
+				true,
+				$this->admin_menu_list_schema(),
+				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_pages( $args )
+			),
+			$this->module(
+				'admin_menu.get_navigation_target',
+				'Find Admin Navigation Target',
+				'Find the most relevant WordPress admin page for a settings, plugin, theme, Site Editor, content, media, user, tool, or maintenance task.',
+				'Admin Menu Intelligence',
+				'content:read',
+				true,
+				$this->admin_navigation_schema(),
+				static fn ( array $args ): array => ( new AdminMenuAbilities() )->get_navigation_target( $args )
+			),
+			$this->module(
+				'admin_menu.list_settings',
+				'List Registered Admin Settings',
+				'List registered WordPress setting metadata by group or search term without exposing raw option values or secrets.',
+				'Admin Menu Intelligence',
+				'content:read',
+				true,
+				$this->admin_settings_schema(),
+				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_settings( $args )
+			),
+			$this->module(
 				'content_index.refresh_batch',
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',
@@ -1076,7 +1186,7 @@ final class FirstPartyAbilityModules {
 				),
 				'intent'                   => array(
 					'type'        => 'string',
-					'enum'        => array( 'capability_discovery', 'site_audit', 'seo_update', 'internal_links', 'content_update', 'content_create' ),
+					'enum'        => array( 'capability_discovery', 'site_audit', 'site_editor', 'admin_menu', 'seo_update', 'internal_links', 'content_update', 'content_create' ),
 					'description' => 'Optional explicit intent override.',
 				),
 				'post_type'                => array(
@@ -1697,6 +1807,114 @@ final class FirstPartyAbilityModules {
 			'type'        => 'string',
 			'enum'        => self::CONTENT_MODES,
 			'description' => 'Content shape. Use article for prose-heavy blog posts, page or landing_page for FSE-style pages, visual_layout when an image/screenshot/layout direction should drive block choice, and service_page/product_page/case_study for those structured page types.',
+		);
+	}
+
+	/**
+	 * Build a compact/full context-only schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function context_only_schema(): array {
+		return $this->object_schema(
+			array(
+				'context' => $this->context_schema( 'Use compact for first-pass discovery or full to include a larger bounded preview. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build Site Editor template collection schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function template_collection_schema(): array {
+		return $this->object_schema(
+			array(
+				'context' => $this->context_schema( 'Use compact for inventory or full for more metadata. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build Site Editor template get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function template_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'id'   => array(
+					'type'        => 'string',
+					'description' => 'Template ID such as theme//slug when known.',
+				),
+				'slug' => array(
+					'type'        => 'string',
+					'description' => 'Template slug when ID is not known.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build Admin Menu page listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_menu_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'search'  => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for menu title, page title, slug, or parent slug.',
+				),
+				'section' => array(
+					'type'        => 'string',
+					'enum'        => array( 'dashboard', 'content', 'media', 'comments', 'appearance', 'plugins', 'users', 'tools', 'settings', 'plugin' ),
+					'description' => 'Optional high-level admin section filter.',
+				),
+				'context' => $this->context_schema( 'Use compact for navigation or full for a larger bounded preview. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build Admin Menu navigation target schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_navigation_schema(): array {
+		return $this->object_schema(
+			array(
+				'query' => array(
+					'type'        => 'string',
+					'description' => 'Natural-language admin task or destination, such as edit header, permalink settings, plugin settings, or privacy settings.',
+				),
+				'task'  => array(
+					'type'        => 'string',
+					'description' => 'Alias for query.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build registered settings listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_settings_schema(): array {
+		return $this->object_schema(
+			array(
+				'group'  => array(
+					'type'        => 'string',
+					'description' => 'Optional registered settings group.',
+				),
+				'search' => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for registered setting name, group, or description.',
+				),
+			)
 		);
 	}
 

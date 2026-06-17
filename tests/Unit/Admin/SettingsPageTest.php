@@ -531,6 +531,17 @@ final class FakeSettingsPageWpdb {
 	}
 
 	/**
+	 * Record a write query.
+	 *
+	 * @param string $query SQL query.
+	 */
+	public function query( string $query ): int|false {
+		$this->queries[] = $query;
+
+		return 1;
+	}
+
+	/**
 	 * Return one aggregate row.
 	 *
 	 * @param string $query  SQL query.

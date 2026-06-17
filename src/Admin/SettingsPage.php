@@ -193,12 +193,13 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function settings_payload( ?string $requested_tab = null ): array {
-		$payload_tab          = null === $requested_tab
+		$payload_tab      = null === $requested_tab
 			? $this->current_payload_tab()
 			: $this->normalize_payload_tab( $requested_tab );
-		$access_tokens        = new AccessTokenRepository();
-		$ability_registry     = new AbilitiesRegistry();
-		$sample_data          = new LocalSampleData();
+		$access_tokens    = new AccessTokenRepository();
+		$ability_registry = new AbilitiesRegistry();
+		$sample_data      = new LocalSampleData();
+		$access_tokens->revoke_superseded_active_sessions();
 		$real_session_count   = $access_tokens->active_token_count();
 		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
 

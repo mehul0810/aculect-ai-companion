@@ -41,8 +41,9 @@ tools.
 
 The MCP endpoint supports `resources/list` and `resources/read` for compact
 context that some clients can load more reliably than large tool calls. Current
-resources cover capability directory, site summary, content model, brand
-profile, workflow guide summaries, and approved Aculect memory.
+resources cover capability directory, site summary, Site Editor context, admin
+menu context, content model, brand profile, workflow guide summaries, and
+approved Aculect memory.
 
 Keep resource payloads bounded, JSON encoded, and free of secrets. Resources are
 context surfaces, not write paths; changes to WordPress data must still go
@@ -55,9 +56,11 @@ not user-managed abilities, do not appear in the admin Abilities list, and are
 not controlled by global or role-based ability toggles. They still require an
 authenticated connection, the `content:read` OAuth scope, and active AI access.
 
-The intelligence layer is divided into four context domains:
+The intelligence layer is divided into these context domains:
 
 - Site Intelligence: site identity, WordPress runtime, active theme, and connector context.
+- Site Editor Intelligence: active theme, Appearance > Editor availability, global settings/styles, templates, template parts, navigation, blocks, and patterns without theme-file writes.
+- Admin Menu Intelligence: visible admin menu pages, navigation targets, and registered setting metadata without raw option values.
 - Content Intelligence: content types, taxonomies, registered block and pattern summaries, and generation constraints.
 - Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
 - Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.

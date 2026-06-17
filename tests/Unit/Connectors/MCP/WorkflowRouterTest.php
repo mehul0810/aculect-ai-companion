@@ -64,4 +64,32 @@ final class WorkflowRouterTest extends TestCase {
 		self::assertSame( 'read_only', $result['risk_level'] );
 		self::assertSame( array(), $result['blocked_operations'] );
 	}
+
+	public function test_routes_site_editor_requests_to_site_editor_intelligence(): void {
+		$result = ( new WorkflowRouter() )->route(
+			array(
+				'request' => 'Review Appearance > Editor and tell me which header template part can be changed.',
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertSame( 'site_editor', $result['intent'] );
+		self::assertSame( 'site_editor_intelligence_review', $result['workflow_guide_id'] );
+		self::assertSame( 'site_editor_get_context', $result['next_tool'] );
+		self::assertContains( 'site_editor_list_template_parts', $result['recommended_sequence'] );
+	}
+
+	public function test_routes_admin_settings_requests_to_admin_menu_intelligence(): void {
+		$result = ( new WorkflowRouter() )->route(
+			array(
+				'request' => 'Find the admin page for this plugin setting before changing it.',
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertSame( 'admin_menu', $result['intent'] );
+		self::assertSame( 'admin_menu_settings_review', $result['workflow_guide_id'] );
+		self::assertSame( 'admin_menu_get_context', $result['next_tool'] );
+		self::assertContains( 'admin_menu_get_navigation_target', $result['recommended_sequence'] );
+	}
 }

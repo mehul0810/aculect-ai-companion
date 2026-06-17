@@ -21,6 +21,7 @@ final class McpResourceRegistryTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
 			1 => (object) array(
@@ -38,6 +39,8 @@ final class McpResourceRegistryTest extends TestCase {
 
 		self::assertContains( 'aculect://capabilities/directory', $uris );
 		self::assertContains( 'aculect://site/summary', $uris );
+		self::assertContains( 'aculect://site-editor/context', $uris );
+		self::assertContains( 'aculect://admin/menu', $uris );
 		self::assertContains( 'aculect://workflow/guides', $uris );
 		self::assertContains( 'aculect://memory/approved', $uris );
 	}
@@ -58,5 +61,20 @@ final class McpResourceRegistryTest extends TestCase {
 		$result = ( new McpResourceRegistry() )->read_resource( array( 'uri' => 'aculect://unknown' ) );
 
 		self::assertSame( 'resource_not_found', $result['error'] );
+	}
+
+	public function test_reads_admin_intelligence_resources_as_json_text(): void {
+		$registry = new McpResourceRegistry();
+
+		$site_editor = $registry->read_resource( array( 'uri' => 'aculect://site-editor/context' ) );
+		$admin_menu  = $registry->read_resource( array( 'uri' => 'aculect://admin/menu' ) );
+
+		$site_editor_payload = json_decode( (string) ( $site_editor['contents'][0]['text'] ?? '' ), true );
+		$admin_menu_payload  = json_decode( (string) ( $admin_menu['contents'][0]['text'] ?? '' ), true );
+
+		self::assertIsArray( $site_editor_payload );
+		self::assertSame( 'site_editor', $site_editor_payload['type'] );
+		self::assertIsArray( $admin_menu_payload );
+		self::assertSame( 'admin_menu', $admin_menu_payload['type'] );
 	}
 }

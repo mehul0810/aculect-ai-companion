@@ -158,6 +158,22 @@ final class WorkflowRouter {
 				'risk_level' => 'read_only',
 				'confidence' => 'high',
 			),
+			'site_editor' => array(
+				'guide_id'   => 'site_editor_intelligence_review',
+				'next_tool'  => $registry->tool_name( 'site_editor.get_context' ),
+				'sequence'   => array( 'site_editor_get_context', 'workflow_guides_get', 'site_editor_list_templates', 'site_editor_list_template_parts' ),
+				'operations' => array( 'site_editor.get_context', 'site_editor.list_templates', 'site_editor.list_template_parts' ),
+				'risk_level' => 'read_only',
+				'confidence' => 'high',
+			),
+			'admin_menu' => array(
+				'guide_id'   => 'admin_menu_settings_review',
+				'next_tool'  => $registry->tool_name( 'admin_menu.get_context' ),
+				'sequence'   => array( 'admin_menu_get_context', 'workflow_guides_get', 'admin_menu_get_navigation_target', 'admin_menu_list_settings' ),
+				'operations' => array( 'admin_menu.get_context', 'admin_menu.get_navigation_target', 'admin_menu.list_settings' ),
+				'risk_level' => 'read_only',
+				'confidence' => 'high',
+			),
 			'seo_update' => array(
 				'guide_id'   => 'seo_rankmath_metadata_update',
 				'next_tool'  => $registry->tool_name( 'intelligence.content.get_context' ),
@@ -218,6 +234,16 @@ final class WorkflowRouter {
 			return array();
 		}
 
+		if ( 'site_editor_get_context' === $tool || 'admin_menu_get_context' === $tool ) {
+			return array();
+		}
+
+		if ( 'admin_menu_get_navigation_target' === $tool ) {
+			return array(
+				'query' => $request,
+			);
+		}
+
 		if ( 'content_find_internal_links' === $tool ) {
 			return array(
 				'query' => $request,
@@ -252,6 +278,12 @@ final class WorkflowRouter {
 		}
 		if ( $this->contains_any( $text, array( 'audit', 'health', 'readiness', 'maintenance', 'site management', 'diagnostic' ) ) ) {
 			return 'site_audit';
+		}
+		if ( $this->contains_any( $text, array( 'appearance editor', 'appearance > editor', 'site editor', 'global styles', 'template part', 'template parts', 'header template', 'footer template', 'theme style', 'theme styles' ) ) ) {
+			return 'site_editor';
+		}
+		if ( $this->contains_any( $text, array( 'admin menu', 'admin page', 'settings page', 'plugin setting', 'plugin settings', 'theme setting', 'theme settings', 'wordpress setting', 'wordpress settings', 'navigate admin' ) ) ) {
+			return 'admin_menu';
 		}
 		if ( $this->contains_any( $text, array( 'rank math', 'meta title', 'meta description', 'focus keyword', 'seo title', 'seo metadata' ) ) ) {
 			return 'seo_update';

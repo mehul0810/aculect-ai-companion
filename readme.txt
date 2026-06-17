@@ -271,6 +271,8 @@ Composer dependencies for production releases are installed with:
 * Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Cursor, Gemini, and generic client compatibility.
 * Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.
 * Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.
+* Improved the Connections tab with effective ability counts, policy-aware ability details, and clearer access-level copy for trusted AI sessions.
+* Improved trusted write handling so admin-trusted connections skip the custom MCP confirmation-token retry after OAuth scope, role policy, pause-state, and WordPress capability checks pass.
 * Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.
 * Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.
 * Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.
@@ -382,7 +384,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
+Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, trusted connection access controls, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
 
 = 0.5.3 =
 

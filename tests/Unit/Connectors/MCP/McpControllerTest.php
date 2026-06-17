@@ -17,6 +17,7 @@ use Aculect\AICompanion\Connectors\MCP\IntelligenceContext;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use ReflectionMethod;
 use ReflectionProperty;
 
@@ -241,6 +242,8 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 			self::assertArrayHasKey( 'post_id', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 			self::assertArrayHasKey( 'next_actions', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+			self::assertArrayHasKey( 'confirmation_policy', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+			self::assertArrayHasKey( 'write_permission_enabled', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 		}
 
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['site_workflow_audit'] );
@@ -705,6 +708,20 @@ final class McpControllerTest extends TestCase {
 				)
 			)
 		);
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'content.update_item',
+					$registry,
+					array(
+						'write_permission_enabled' => false,
+						'access_level'             => ConnectionAccessLevel::FULL_WRITE,
+					),
+				)
+			)
+		);
 		self::assertFalse(
 			$this->invokePrivate(
 				$controller,
@@ -745,7 +762,36 @@ final class McpControllerTest extends TestCase {
 		);
 
 		self::assertFalse( $result['confirmation_required'] );
+		self::assertSame( 'trusted_connection_direct_write', $result['confirmation_policy'] );
 		self::assertTrue( $result['write_permission_enabled'] );
+		self::assertArrayNotHasKey( 'confirmation_token', $result );
+		self::assertArrayNotHasKey( 'confirmation_expires_in', $result );
+		self::assertArrayNotHasKey( 'confirmation_instructions', $result );
+	}
+
+	public function test_trusted_write_result_removes_confirmation_metadata(): void {
+		$result = $this->invokePrivate(
+			new McpController(),
+			'trusted_write_result_payload',
+			array(
+				array(
+					'status'                    => 'updated',
+					'confirmation_required'     => true,
+					'confirmation_token'        => 'token',
+					'confirmation_expires_in'   => 300,
+					'confirmation_instructions' => 'Repeat with token.',
+				),
+				array(
+					'access_level' => ConnectionAccessLevel::EXECUTE,
+				),
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertFalse( $result['confirmation_required'] );
+		self::assertSame( 'trusted_connection_direct_write', $result['confirmation_policy'] );
+		self::assertTrue( $result['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::EXECUTE, $result['access_level'] );
 		self::assertArrayNotHasKey( 'confirmation_token', $result );
 		self::assertArrayNotHasKey( 'confirmation_expires_in', $result );
 		self::assertArrayNotHasKey( 'confirmation_instructions', $result );

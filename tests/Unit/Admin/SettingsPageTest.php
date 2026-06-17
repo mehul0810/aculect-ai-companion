@@ -224,6 +224,43 @@ final class SettingsPageTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 
+	public function test_connections_payload_includes_effective_ability_details(): void {
+		$_GET['tab'] = 'connections';
+		$GLOBALS['aculect_ai_companion_test_users'][7] = (object) array(
+			'ID'           => 7,
+			'roles'        => array( 'administrator' ),
+			'display_name' => 'Admin User',
+			'user_login'   => 'admin',
+		);
+		$this->wpdb->active_session_rows                = array(
+			array(
+				'id'                       => '5',
+				'client_id'                => 'client-1',
+				'user_id'                  => '7',
+				'scopes'                   => '["content:read"]',
+				'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+				'access_token_expires_at'  => '2026-06-01 01:00:00',
+				'connection_expires_at'    => '2026-07-01 00:00:00',
+				'created_at'               => '2026-06-01 00:00:00',
+				'last_used_at'             => '',
+				'write_permission_enabled' => '0',
+				'access_level'             => 'selective_read',
+				'client_name'              => 'ChatGPT',
+				'provider'                 => 'chatgpt',
+			),
+		);
+
+		$payload = $this->settings_payload();
+		$session = $payload['sessions'][0];
+		$ids     = array_column( $session['effective_abilities'], 'id' );
+
+		self::assertContains( 'content.get_item', $ids );
+		self::assertNotContains( 'content.update_item', $ids );
+		self::assertTrue( $session['effective_ability_summary']['scope_aware'] );
+		self::assertSame( count( $session['effective_abilities'] ), $session['effective_ability_summary']['available_count'] );
+		self::assertArrayHasKey( 'effective_write_ability_count', $session );
+	}
+
 	public function test_activity_payload_loads_activity_rows_only_for_activity_tab(): void {
 		$_GET['tab']             = 'activity';
 		$_GET['activity_status'] = 'success';
@@ -482,6 +519,20 @@ final class FakeSettingsPageWpdb {
 	public bool $return_empty_results = false;
 
 	/**
+	 * Active OAuth session rows returned by get_results().
+	 *
+	 * @var array<int, array<string, mixed>>
+	 */
+	public array $active_session_rows = array();
+
+	/**
+	 * Revoked OAuth session rows returned by get_results().
+	 *
+	 * @var array<int, array<string, mixed>>
+	 */
+	public array $revoked_session_rows = array();
+
+	/**
 	 * @var string[]
 	 */
 	public array $queries = array();
@@ -633,6 +684,16 @@ final class FakeSettingsPageWpdb {
 					'context'        => '{}',
 				),
 			);
+		}
+
+		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_access_tokens' ) ) {
+			if ( $this->return_empty_results ) {
+				return array();
+			}
+
+			return str_contains( $query, 'WHERE access_tokens.revoked = 1' )
+				? $this->revoked_session_rows
+				: $this->active_session_rows;
 		}
 
 		return array();

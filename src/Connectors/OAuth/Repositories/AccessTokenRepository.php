@@ -183,6 +183,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		$this->touch( $token_id, (string) ( $row['last_used_at'] ?? '' ) );
 		$scopes = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
 
+		$access_level = $this->access_level_from_row( $row );
+
 		return array(
 			'token_id'                 => $token_id,
 			'user_id'                  => (int) ( $row['user_id'] ?? 0 ),
@@ -192,8 +194,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			'scopes'                   => is_array( $scopes ) ? array_values( array_map( 'strval', $scopes ) ) : array(),
 			'resource'                 => (string) ( $row['resource'] ?? '' ),
 			'expires_at'               => (string) ( $row['expires_at'] ?? '' ),
-			'access_level'             => $this->access_level_from_row( $row ),
-			'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
+			'access_level'             => $access_level,
+			'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
 		);
 	}
 
@@ -213,6 +215,58 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 */
 	public function list_revoked_sessions(): array {
 		return $this->list_sessions_by_revoked_state( true );
+	}
+
+	/**
+	 * Return sanitized admin metadata for one connector session.
+	 *
+	 * Token hashes and OAuth material are intentionally excluded; this is used for
+	 * activity/audit entries around admin-managed session changes.
+	 *
+	 * @param int $session_id Access-token table primary key.
+	 * @return array<string, mixed>
+	 */
+	public function session_summary( int $session_id ): array {
+		$session_id = absint( $session_id );
+		if ( $session_id <= 0 ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id,
+					access_tokens.write_permission_enabled, access_tokens.access_level,
+					access_tokens.revoked, clients.client_name, clients.provider
+				FROM %i access_tokens
+				LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE access_tokens.id = %d
+				LIMIT 1',
+				$tables['access_tokens'],
+				$tables['clients'],
+				$session_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) ) {
+			return array();
+		}
+
+		$access_level = $this->access_level_from_row( $row );
+
+		return array(
+			'id'                       => (int) ( $row['id'] ?? 0 ),
+			'client_id'                => (string) ( $row['client_id'] ?? '' ),
+			'client_name'              => (string) ( $row['client_name'] ?? '' ),
+			'provider'                 => (string) ( $row['provider'] ?? 'mcp' ),
+			'user_id'                  => (int) ( $row['user_id'] ?? 0 ),
+			'access_level'             => $access_level,
+			'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
+			'revoked'                  => '1' === (string) ( $row['revoked'] ?? '0' ),
+		);
 	}
 
 	/**
@@ -288,6 +342,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					}
 				}
 
+				$access_level = $this->access_level_from_row( $row );
+
 				return array(
 					'id'                       => (int) $row['id'],
 					'client_id'                => (string) ( $row['client_id'] ?? '' ),
@@ -302,8 +358,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'created_at'               => (string) ( $row['created_at'] ?? '' ),
 					'last_used_at'             => (string) ( $row['last_used_at'] ?? '' ),
 					'expires_at'               => (string) ( $row['connection_expires_at'] ?? $row['expires_at'] ?? '' ),
-					'access_level'             => $this->access_level_from_row( $row ),
-					'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
+					'access_level'             => $access_level,
+					'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
 				);
 			},
 			$rows

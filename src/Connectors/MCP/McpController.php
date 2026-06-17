@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
 use Aculect\AICompanion\Diagnostics\Logger;
 use WP_REST_Request;
@@ -373,6 +374,7 @@ final class McpController {
 				$replay                     = $is_write_tool && ! $is_dry_run
 					? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
 					: null;
+				$trusted_write_executed     = false;
 				$needs_confirmation_gate    = $is_write_tool
 					&& ! $is_dry_run
 					&& null === $replay
@@ -401,12 +403,34 @@ final class McpController {
 					$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
 					$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
 					if ( $is_write_tool && ! isset( $result['error'] ) ) {
+						$trusted_write_executed = $write_permission_unblocked;
+						if ( $trusted_write_executed ) {
+							$result = $this->trusted_write_result_payload( $result, $auth );
+						}
 						$safety->remember_write_result( $tool, $args, $auth, $result );
 					}
 					$args = $exec_args;
 				}
 
-				$this->record_tool_activity( $tool, $args, $result, $auth );
+				$activity_auth = $auth;
+				if ( $trusted_write_executed ) {
+					$activity_auth['write_permission_used'] = true;
+					( new Logger() )->info(
+						'mcp.trusted_write',
+						'MCP write tool executed through a trusted connection.',
+						array_merge(
+							$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), '', $tool ),
+							array(
+								'access_level'             => (string) ( $auth['access_level'] ?? '' ),
+								'write_permission_enabled' => true,
+							)
+						),
+						$request,
+						200
+					);
+				}
+
+				$this->record_tool_activity( $tool, $args, $result, $activity_auth );
 
 				return $this->rpc_result(
 					$id,
@@ -932,54 +956,57 @@ final class McpController {
 	private function operational_output_schema(): array {
 		return $this->object_output_schema(
 			array(
-				'status'                => array( 'type' => 'string' ),
-				'error'                 => array( 'type' => 'string' ),
-				'message'               => array( 'type' => 'string' ),
-				'action'                => array( 'type' => 'string' ),
-				'risk_level'            => array( 'type' => 'string' ),
-				'target'                => array( 'type' => 'object' ),
-				'workflow'              => array( 'type' => 'string' ),
-				'workflow_session'      => array( 'type' => 'object' ),
-				'workflow_session_plan' => array( 'type' => 'object' ),
-				'workflow_guide_id'     => array( 'type' => 'string' ),
-				'workflow_guide'        => array( 'type' => 'object' ),
-				'intent'                => array( 'type' => 'string' ),
-				'content_mode'          => array( 'type' => 'string' ),
-				'confidence'            => array( 'type' => 'string' ),
-				'next_tool'             => array( 'type' => 'string' ),
-				'next_tool_arguments'   => array( 'type' => 'object' ),
-				'recommended_sequence'  => array( 'type' => 'array' ),
-				'required_operations'   => array( 'type' => 'array' ),
-				'blocked_operations'    => array( 'type' => 'array' ),
-				'post_id'               => array( 'type' => 'integer' ),
-				'post_type'             => array( 'type' => 'string' ),
-				'intelligence_context'  => array( 'type' => 'object' ),
-				'edit_url'              => array( 'type' => 'string' ),
-				'permalink'             => array( 'type' => 'string' ),
-				'fields'                => array( 'type' => 'object' ),
-				'items'                 => array( 'type' => 'array' ),
-				'total'                 => array( 'type' => 'integer' ),
-				'filters'               => array( 'type' => 'object' ),
-				'insights'              => array( 'type' => 'array' ),
-				'job'                   => array( 'type' => 'object' ),
-				'index'                 => array( 'type' => 'object' ),
-				'summary'               => array( 'type' => 'object' ),
-				'findings'              => array( 'type' => 'array' ),
-				'operation_entries'     => array( 'type' => 'object' ),
-				'changes'               => array( 'type' => 'array' ),
-				'skipped'               => array( 'type' => 'array' ),
-				'warnings'              => array( 'type' => 'array' ),
-				'next_actions'          => array( 'type' => 'array' ),
-				'review_status'         => array( 'type' => 'object' ),
-				'block_validation'      => array( 'type' => 'object' ),
-				'seo'                   => array( 'type' => 'object' ),
-				'dry_run'               => array( 'type' => 'boolean' ),
-				'confirmation_required' => array( 'type' => 'boolean' ),
-				'confirmation_token'    => array( 'type' => 'string' ),
-				'repository'            => array( 'type' => 'string' ),
-				'issue_url'             => array( 'type' => 'string' ),
-				'can_create_direct'     => array( 'type' => 'boolean' ),
-				'replayed'              => array(
+				'status'                   => array( 'type' => 'string' ),
+				'error'                    => array( 'type' => 'string' ),
+				'message'                  => array( 'type' => 'string' ),
+				'action'                   => array( 'type' => 'string' ),
+				'risk_level'               => array( 'type' => 'string' ),
+				'target'                   => array( 'type' => 'object' ),
+				'workflow'                 => array( 'type' => 'string' ),
+				'workflow_session'         => array( 'type' => 'object' ),
+				'workflow_session_plan'    => array( 'type' => 'object' ),
+				'workflow_guide_id'        => array( 'type' => 'string' ),
+				'workflow_guide'           => array( 'type' => 'object' ),
+				'intent'                   => array( 'type' => 'string' ),
+				'content_mode'             => array( 'type' => 'string' ),
+				'confidence'               => array( 'type' => 'string' ),
+				'next_tool'                => array( 'type' => 'string' ),
+				'next_tool_arguments'      => array( 'type' => 'object' ),
+				'recommended_sequence'     => array( 'type' => 'array' ),
+				'required_operations'      => array( 'type' => 'array' ),
+				'blocked_operations'       => array( 'type' => 'array' ),
+				'post_id'                  => array( 'type' => 'integer' ),
+				'post_type'                => array( 'type' => 'string' ),
+				'intelligence_context'     => array( 'type' => 'object' ),
+				'edit_url'                 => array( 'type' => 'string' ),
+				'permalink'                => array( 'type' => 'string' ),
+				'fields'                   => array( 'type' => 'object' ),
+				'items'                    => array( 'type' => 'array' ),
+				'total'                    => array( 'type' => 'integer' ),
+				'filters'                  => array( 'type' => 'object' ),
+				'insights'                 => array( 'type' => 'array' ),
+				'job'                      => array( 'type' => 'object' ),
+				'index'                    => array( 'type' => 'object' ),
+				'summary'                  => array( 'type' => 'object' ),
+				'findings'                 => array( 'type' => 'array' ),
+				'operation_entries'        => array( 'type' => 'object' ),
+				'changes'                  => array( 'type' => 'array' ),
+				'skipped'                  => array( 'type' => 'array' ),
+				'warnings'                 => array( 'type' => 'array' ),
+				'next_actions'             => array( 'type' => 'array' ),
+				'review_status'            => array( 'type' => 'object' ),
+				'block_validation'         => array( 'type' => 'object' ),
+				'seo'                      => array( 'type' => 'object' ),
+				'dry_run'                  => array( 'type' => 'boolean' ),
+				'confirmation_required'    => array( 'type' => 'boolean' ),
+				'confirmation_policy'      => array( 'type' => 'string' ),
+				'confirmation_token'       => array( 'type' => 'string' ),
+				'write_permission_enabled' => array( 'type' => 'boolean' ),
+				'access_level'             => array( 'type' => 'string' ),
+				'repository'               => array( 'type' => 'string' ),
+				'issue_url'                => array( 'type' => 'string' ),
+				'can_create_direct'        => array( 'type' => 'boolean' ),
+				'replayed'                 => array(
 					'type'        => 'boolean',
 					'description' => 'True when this result was replayed from a previous successful call with the same idempotency_key or confirmation_token; the write did not execute again.',
 				),
@@ -1119,9 +1146,10 @@ final class McpController {
 	 * @param array<string, mixed> $auth     OAuth context.
 	 */
 	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth ): bool {
-		$enabled = $auth['write_permission_enabled'] ?? false;
+		$enabled = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
+			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
 
-		return ! $registry->is_read_only( $tool ) && in_array( $enabled, array( true, 1, '1' ), true );
+		return ! $registry->is_read_only( $tool ) && $enabled;
 	}
 
 	/**
@@ -1132,7 +1160,29 @@ final class McpController {
 	 */
 	private function write_permission_preview_payload( array $result ): array {
 		$result['confirmation_required']    = false;
+		$result['confirmation_policy']      = 'trusted_connection_direct_write';
 		$result['write_permission_enabled'] = true;
+		unset(
+			$result['confirmation_token'],
+			$result['confirmation_expires_in'],
+			$result['confirmation_instructions']
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Mark a successful write as executed by an admin-trusted connection.
+	 *
+	 * @param array<string, mixed> $result Tool result.
+	 * @param array<string, mixed> $auth   OAuth token context.
+	 * @return array<string, mixed>
+	 */
+	private function trusted_write_result_payload( array $result, array $auth ): array {
+		$result['confirmation_required']    = false;
+		$result['confirmation_policy']      = 'trusted_connection_direct_write';
+		$result['write_permission_enabled'] = true;
+		$result['access_level']             = ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) );
 		unset(
 			$result['confirmation_token'],
 			$result['confirmation_expires_in'],

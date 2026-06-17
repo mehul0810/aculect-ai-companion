@@ -134,32 +134,42 @@ const CONNECTION_ACCESS_LEVELS = [
 	{
 		value: 'read',
 		label: 'Read',
-		description: 'Can read any content of your website.',
+		description:
+			'Read-only trust level. Write tools still require the normal ability, scope, role, and confirmation checks.',
 		tone: 'is-read',
+		directWrite: false,
 	},
 	{
 		value: 'selective_read',
 		label: 'Selective Read',
-		description: 'Can read non-sensitive content of your website.',
+		description:
+			'Default trust level. This connection can use only its effective read tools and cannot skip write confirmation.',
 		tone: 'is-selective-read',
+		directWrite: false,
 	},
 	{
 		value: 'selective_write',
 		label: 'Selective Write',
-		description: 'Can write some content of your website.',
+		description:
+			'Trusted write level. Already-authorized write tools can run without an additional confirmation prompt.',
 		tone: 'is-selective-write',
+		directWrite: true,
 	},
 	{
 		value: 'full_write',
 		label: 'Full Write',
-		description: 'Can write any content on your website.',
+		description:
+			'Trusted write level for already-authorized write tools. It does not grant new abilities, scopes, or WordPress permissions.',
 		tone: 'is-full-write',
+		directWrite: true,
 	},
 	{
 		value: 'execute',
 		label: 'Execute',
-		description: 'Can execute any commands or code on your website.',
+		description:
+			'Highest trust label. In the current MCP guard it only skips confirmation for write tools that are already allowed.',
 		tone: 'is-execute',
+		directWrite: true,
 	},
 ];
 const DEFAULT_CONNECTION_ACCESS_LEVEL = 'selective_read';
@@ -2483,20 +2493,11 @@ function connectionSessionStatus( session, isAccessPaused ) {
 }
 
 function connectionAbilityLabels( session, abilities, enabledAbilityIds ) {
-	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
-	const enabledIds = new Set( enabledAbilityIds );
-	const labels = abilities
-		.filter(
-			( ability ) =>
-				enabledIds.has( ability.id ) && scopes.includes( ability.scope )
-		)
-		.map( ( ability ) => ability.title || ability.id );
-
-	if ( labels.length > 0 ) {
-		return Array.from( new Set( labels ) );
-	}
-
-	return scopes.map( connectionScopeLabel );
+	return connectionEffectiveAbilities(
+		session,
+		abilities,
+		enabledAbilityIds
+	).map( ( ability ) => ability.title || ability.id );
 }
 
 function isCurrentUserSession( session, currentUserId ) {
@@ -2578,7 +2579,27 @@ function connectionUserRolesLabel( session ) {
 	return roles.length > 0 ? roles.join( ', ' ) : 'Role unknown';
 }
 
-function connectionAssignedAbilities( session, abilities, enabledAbilityIds ) {
+function connectionEffectiveAbilities( session, abilities, enabledAbilityIds ) {
+	let effectiveAbilities = [];
+	if ( Array.isArray( session.effective_abilities ) ) {
+		effectiveAbilities = session.effective_abilities;
+	} else if ( Array.isArray( session.effectiveAbilities ) ) {
+		effectiveAbilities = session.effectiveAbilities;
+	}
+
+	if ( effectiveAbilities.length > 0 ) {
+		return effectiveAbilities.map( ( ability ) => ( {
+			id: ability.id || ability.toolName || ability.title,
+			title: ability.title || ability.id || ability.toolName,
+			description: ability.description || '',
+			scope: Array.isArray( ability.scopes )
+				? ability.scopes.join( ', ' )
+				: ability.scope || ability.toolName || ability.id || '',
+			toolName: ability.toolName || '',
+			readOnly: ability.readOnly,
+		} ) );
+	}
+
 	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
 	const enabledIds = new Set(
 		Array.isArray( enabledAbilityIds ) ? enabledAbilityIds : []
@@ -2616,54 +2637,147 @@ function connectionAssignedAbilities( session, abilities, enabledAbilityIds ) {
 	} ) );
 }
 
-function ConnectionAssignedAbilitiesControl( {
+function connectionEffectiveAbilitySummary( session, effectiveAbilities ) {
+	const rawSummary =
+		session.effective_ability_summary ||
+		session.effectiveAbilitySummary ||
+		{};
+	const numberValue = ( snakeKey, camelKey, fallback = 0 ) => {
+		const value = rawSummary[ snakeKey ] ?? rawSummary[ camelKey ];
+		const parsed = Number( value );
+		return Number.isFinite( parsed ) ? parsed : fallback;
+	};
+	const booleanValue = ( snakeKey, camelKey ) =>
+		rawSummary[ snakeKey ] === true || rawSummary[ camelKey ] === true;
+	const fallbackWriteCount = effectiveAbilities.filter(
+		( ability ) => ability.readOnly === false
+	).length;
+	const directWriteCount = Number(
+		session.effective_write_ability_count ??
+			session.effectiveWriteAbilityCount ??
+			fallbackWriteCount
+	);
+
+	return {
+		availableCount: numberValue(
+			'available_count',
+			'availableCount',
+			effectiveAbilities.length
+		),
+		writeCount: numberValue(
+			'write_count',
+			'writeCount',
+			Number.isFinite( directWriteCount )
+				? directWriteCount
+				: fallbackWriteCount
+		),
+		blockedByGlobalCount: numberValue(
+			'blocked_by_global_count',
+			'blockedByGlobalCount'
+		),
+		blockedByRoleCount: numberValue(
+			'blocked_by_role_count',
+			'blockedByRoleCount'
+		),
+		defaultReadOnlyPolicy: booleanValue(
+			'default_read_only_policy',
+			'defaultReadOnlyPolicy'
+		),
+		explicitRolePolicy: booleanValue(
+			'explicit_role_policy',
+			'explicitRolePolicy'
+		),
+		scopeAware: booleanValue( 'scope_aware', 'scopeAware' ),
+		missingUser: booleanValue( 'missing_user', 'missingUser' ),
+		missingRole: booleanValue( 'missing_role', 'missingRole' ),
+	};
+}
+
+function connectionPolicyNotes( summary ) {
+	const notes = [];
+
+	if ( summary.missingUser ) {
+		notes.push( 'Connected user missing' );
+	} else if ( summary.missingRole ) {
+		notes.push( 'Role missing' );
+	} else if ( summary.explicitRolePolicy ) {
+		notes.push( 'Role policy applied' );
+	} else if ( summary.defaultReadOnlyPolicy ) {
+		notes.push( 'Default read-only role policy' );
+	}
+
+	if ( summary.scopeAware ) {
+		notes.push( 'OAuth scopes applied' );
+	}
+
+	if ( summary.blockedByRoleCount > 0 ) {
+		notes.push( `${ summary.blockedByRoleCount } blocked by role` );
+	}
+
+	if ( summary.blockedByGlobalCount > 0 ) {
+		notes.push( `${ summary.blockedByGlobalCount } globally disabled` );
+	}
+
+	return notes;
+}
+
+function ConnectionEffectiveAbilitiesControl( {
 	session,
 	abilities,
 	enabledAbilityIds,
 	onOpen,
 } ) {
-	const assignedAbilities = connectionAssignedAbilities(
+	const effectiveAbilities = connectionEffectiveAbilities(
 		session,
 		abilities,
 		enabledAbilityIds
 	);
+	const summary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
 
-	if ( assignedAbilities.length === 0 ) {
+	if ( effectiveAbilities.length === 0 ) {
 		return <span className="aculect-ai-companion-muted">No abilities</span>;
 	}
 
 	return (
-		<div className="aculect-ai-companion-connection-assigned-abilities">
+		<div className="aculect-ai-companion-connection-effective-abilities">
 			<Button
 				type="button"
 				variant="link"
 				onClick={ () => onOpen( session ) }
 			>
-				View Assigned Abilities
+				View Effective Abilities
 			</Button>
 			<span>
-				{ assignedAbilities.length } assigned
-				{ assignedAbilities.length === 1 ? '' : ' abilities' }
+				{ summary.availableCount } available; { summary.writeCount }{ ' ' }
+				write-capable
 			</span>
 		</div>
 	);
 }
 
-function ConnectionAssignedAbilitiesModal( {
+function ConnectionEffectiveAbilitiesModal( {
 	session,
 	abilities,
 	enabledAbilityIds,
 	onClose,
 } ) {
-	const assignedAbilities = connectionAssignedAbilities(
+	const effectiveAbilities = connectionEffectiveAbilities(
 		session,
 		abilities,
 		enabledAbilityIds
 	);
+	const summary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
+	const notes = connectionPolicyNotes( summary );
 
 	return (
 		<Modal
-			title="Assigned abilities"
+			title="Effective abilities"
 			className="aculect-ai-companion-connection-abilities-modal"
 			onRequestClose={ onClose }
 		>
@@ -2674,9 +2788,21 @@ function ConnectionAssignedAbilitiesModal( {
 					<span>{ connectionProviderLabel( session ) }</span>
 				</div>
 			</div>
-			{ assignedAbilities.length > 0 ? (
+			<p className="aculect-ai-companion-connection-abilities-modal__copy">
+				Effective abilities are the tools this connection can use after
+				global ability settings, role policy, OAuth scopes, and
+				WordPress permissions are applied.
+			</p>
+			{ notes.length > 0 && (
+				<ul className="aculect-ai-companion-connection-policy-notes">
+					{ notes.map( ( note ) => (
+						<li key={ note }>{ note }</li>
+					) ) }
+				</ul>
+			) }
+			{ effectiveAbilities.length > 0 ? (
 				<ul className="aculect-ai-companion-connection-abilities-modal__list">
-					{ assignedAbilities.map( ( ability ) => (
+					{ effectiveAbilities.map( ( ability ) => (
 						<li key={ ability.id }>
 							<div>
 								<strong>{ ability.title }</strong>
@@ -2684,14 +2810,18 @@ function ConnectionAssignedAbilitiesModal( {
 									<p>{ ability.description }</p>
 								) }
 							</div>
-							<code>{ ability.scope || ability.id }</code>
+							<code>
+								{ ability.toolName ||
+									ability.scope ||
+									ability.id }
+							</code>
 						</li>
 					) ) }
 				</ul>
 			) : (
-				<EmptyState title="No assigned abilities">
-					This connection does not currently have any granted
-					abilities.
+				<EmptyState title="No effective abilities">
+					This connection does not currently have any tools available
+					after ability, role, scope, and permission checks.
 				</EmptyState>
 			) }
 		</Modal>
@@ -2730,6 +2860,11 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 					Unavailable
 				</span>
 			) }
+			<span className="aculect-ai-companion-connection-access__meta">
+				{ accessLevel.directWrite
+					? 'Skips write confirmation'
+					: 'Confirmation required for writes' }
+			</span>
 		</div>
 	);
 }
@@ -2740,10 +2875,24 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 	);
 	const selectedAccessLevelDefinition =
 		connectionAccessLevelDefinition( selectedAccessLevel );
+	const effectiveAbilities = connectionEffectiveAbilities( session, [], [] );
+	const effectiveSummary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
+	const hasEffectiveSummary = Boolean(
+		session.effective_ability_summary || session.effectiveAbilitySummary
+	);
+	const trustedWriteSelected =
+		selectedAccessLevelDefinition?.directWrite === true;
+	const trustedWriteNoOp =
+		hasEffectiveSummary &&
+		trustedWriteSelected &&
+		effectiveSummary.writeCount === 0;
 
 	return (
 		<Modal
-			title="Change access"
+			title="Change connection trust"
 			className="aculect-ai-companion-connection-access-modal"
 			onRequestClose={ onClose }
 		>
@@ -2758,8 +2907,9 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				</div>
 			</div>
 			<p className="aculect-ai-companion-connection-access-modal__copy">
-				Access levels stay limited by granted abilities, OAuth scopes,
-				WordPress role permissions, and enabled plugin controls.
+				Connection trust controls whether already-authorized write tools
+				need confirmation. It does not grant abilities, OAuth scopes,
+				WordPress role permissions, or enabled plugin controls.
 			</p>
 			<ActionForm
 				data={ data }
@@ -2778,7 +2928,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				/>
 				<SelectControl
 					className="aculect-ai-companion-connection-access-field"
-					label="Access"
+					label="Connection trust"
 					value={ selectedAccessLevel }
 					__next40pxDefaultSize
 					options={ CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
@@ -2790,6 +2940,12 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				<p className="aculect-ai-companion-connection-access-modal__description">
 					{ selectedAccessLevelDefinition.description }
 				</p>
+				{ trustedWriteNoOp && (
+					<p className="aculect-ai-companion-connection-access-modal__warning">
+						This connection currently has no effective write tools.
+						Trusted write levels will not grant new abilities.
+					</p>
+				) }
 			</ActionForm>
 		</Modal>
 	);
@@ -2885,7 +3041,7 @@ function ConnectionsDataViews( {
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
-	const [ assignedAbilitiesSession, setAssignedAbilitiesSession ] =
+	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
 		useState( null );
 	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
 	const defaultView = {
@@ -2993,7 +3149,7 @@ function ConnectionsDataViews( {
 			},
 			{
 				id: 'abilities',
-				label: 'Granted Abilities',
+				label: 'Effective Abilities',
 				type: 'array',
 				enableSorting: false,
 				enableGlobalSearch: true,
@@ -3004,17 +3160,17 @@ function ConnectionsDataViews( {
 						enabledAbilityIds
 					),
 				render: ( { item: session } ) => (
-					<ConnectionAssignedAbilitiesControl
+					<ConnectionEffectiveAbilitiesControl
 						session={ session }
 						abilities={ abilities }
 						enabledAbilityIds={ enabledAbilityIds }
-						onOpen={ setAssignedAbilitiesSession }
+						onOpen={ setEffectiveAbilitiesSession }
 					/>
 				),
 			},
 			{
 				id: 'access',
-				label: 'Access',
+				label: 'Connection Trust',
 				elements: CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
 					value: level.value,
 					label: level.label,
@@ -3120,7 +3276,7 @@ function ConnectionsDataViews( {
 			isAccessPaused,
 			providerOptions,
 			setAccessLevelSession,
-			setAssignedAbilitiesSession,
+			setEffectiveAbilitiesSession,
 		]
 	);
 	const { data: visibleSessions, paginationInfo } = useMemo(
@@ -3175,12 +3331,12 @@ function ConnectionsDataViews( {
 					}
 				/>
 			</div>
-			{ assignedAbilitiesSession && (
-				<ConnectionAssignedAbilitiesModal
-					session={ assignedAbilitiesSession }
+			{ effectiveAbilitiesSession && (
+				<ConnectionEffectiveAbilitiesModal
+					session={ effectiveAbilitiesSession }
 					abilities={ abilities }
 					enabledAbilityIds={ enabledAbilityIds }
-					onClose={ () => setAssignedAbilitiesSession( null ) }
+					onClose={ () => setEffectiveAbilitiesSession( null ) }
 				/>
 			) }
 			{ accessLevelSession && (

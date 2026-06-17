@@ -129,8 +129,12 @@ is required.
 
 High-risk actions such as publishing, trashing, spam changes, and running
 generic WordPress abilities require a short-lived `confirmation_token` before
-execution. Tokens are bound to the connected user, OAuth client, provider, tool,
-and exact argument payload, and are consumed after one successful use.
+execution only when the connection is not trusted for direct writes. Connections
+set to a write-capable access level in the admin Connections tab skip the token
+prompt after OAuth scopes, role policy, global pause state, and WordPress
+capability checks pass. Tokens are bound to the connected user, OAuth client,
+provider, tool, and exact argument payload, and are consumed after one
+successful use.
 
 Comment workflows support review filters for moderation status, post, author,
 author email, author user ID, search, and date ranges. Replies are created with

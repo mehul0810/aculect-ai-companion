@@ -69,6 +69,34 @@ final class ActivityLoggerTest extends TestCase {
 		self::assertArrayNotHasKey( 'content', $context['metadata'] );
 	}
 
+	public function test_context_marks_trusted_write_without_payload_values(): void {
+		$context = $this->invokePrivate(
+			new ActivityLogger(),
+			'context',
+			array(
+				'content.update_item',
+				array(
+					'title'   => 'Private title',
+					'content' => '<p>Private body.</p>',
+				),
+				array(
+					'id'     => 42,
+					'status' => 'updated',
+				),
+				'update',
+				array(
+					'write_permission_used' => true,
+					'access_level'          => 'full_write',
+				),
+			)
+		);
+
+		self::assertTrue( $context['write_permission']['used'] );
+		self::assertSame( 'full_write', $context['write_permission']['access_level'] );
+		self::assertArrayNotHasKey( 'title', $context['metadata'] );
+		self::assertArrayNotHasKey( 'content', $context['metadata'] );
+	}
+
 	public function test_target_prefers_result_identifier_for_content_updates(): void {
 		$target = $this->invokePrivate(
 			new ActivityLogger(),

@@ -1290,14 +1290,14 @@ td:last-child
 	height: 18px;
 }
 
-.aculect-ai-companion-connection-assigned-abilities {
+.aculect-ai-companion-connection-effective-abilities {
 	display: grid;
 	gap: 3px;
 	justify-items: start;
 	min-width: 0;
 }
 
-.aculect-ai-companion-connection-assigned-abilities
+.aculect-ai-companion-connection-effective-abilities
 .components-button.is-link {
 	height: auto;
 	min-height: 0;
@@ -1323,15 +1323,15 @@ td:last-child
 	text-decoration: underline;
 }
 
-.aculect-ai-companion-connection-assigned-abilities
+.aculect-ai-companion-connection-effective-abilities
 .components-button.is-link:hover,
-.aculect-ai-companion-connection-assigned-abilities
+.aculect-ai-companion-connection-effective-abilities
 .components-button.is-link:focus {
 	color: #1d4ed8;
 	text-decoration: underline;
 }
 
-.aculect-ai-companion-connection-assigned-abilities span {
+.aculect-ai-companion-connection-effective-abilities span {
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	font-weight: 700;
@@ -1440,6 +1440,33 @@ td:last-child
 	max-width: 220px;
 }
 
+.aculect-ai-companion-connection-abilities-modal__copy {
+	margin: 0 0 12px;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+.aculect-ai-companion-connection-policy-notes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 14px;
+	padding: 0;
+	list-style: none;
+}
+
+.aculect-ai-companion-connection-policy-notes li {
+	padding: 3px 8px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 999px;
+	background: var(--aculect-ai-companion-soft);
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.3;
+}
+
 .aculect-ai-companion-connection-access-modal__copy {
 	margin: 0 0 16px;
 	color: var(--aculect-ai-companion-muted);
@@ -1455,6 +1482,18 @@ td:last-child
 	background: #eff6ff;
 	color: var(--aculect-ai-companion-ink);
 	font-size: 13px;
+	line-height: 1.45;
+}
+
+.aculect-ai-companion-connection-access-modal__warning {
+	margin: 0;
+	padding: 12px;
+	border: 1px solid #fed7aa;
+	border-radius: 8px;
+	background: #fff7ed;
+	color: #9a3412;
+	font-size: 13px;
+	font-weight: 700;
 	line-height: 1.45;
 }
 
@@ -1500,6 +1539,13 @@ td:last-child
 	gap: 7px;
 	align-items: center;
 	min-width: 0;
+}
+
+.aculect-ai-companion-connection-access__meta {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.35;
 }
 
 .aculect-ai-companion-connection-access__pill {

@@ -46,7 +46,7 @@ final class ActivityLogger {
 				'status'      => $status,
 				'error_code'  => 'error' === $status ? (string) ( $result['error'] ?? 'tool_error' ) : '',
 				'message'     => 'error' === $status ? (string) ( $result['message'] ?? 'AI action failed.' ) : 'AI action completed.',
-				'context'     => $this->context( $action, $args, $result, $risk ),
+				'context'     => $this->context( $action, $args, $result, $risk, $auth ),
 			)
 		);
 
@@ -64,15 +64,25 @@ final class ActivityLogger {
 	 * @param array<string, mixed> $args   Tool arguments.
 	 * @param array<string, mixed> $result Tool result.
 	 * @param string               $risk   Tool risk level.
+	 * @param array<string, mixed> $auth   OAuth authentication context.
 	 * @return array<string, mixed>
 	 */
-	private function context( string $action, array $args, array $result, string $risk ): array {
-		return array(
+	private function context( string $action, array $args, array $result, string $risk, array $auth = array() ): array {
+		$context = array(
 			'argument_keys' => $this->argument_keys( $args ),
 			'risk_level'    => $risk,
 			'metadata'      => $this->safe_argument_metadata( $action, $args ),
 			'result'        => $this->result_metadata( $result ),
 		);
+
+		if ( true === ( $auth['write_permission_used'] ?? false ) ) {
+			$context['write_permission'] = array(
+				'used'         => true,
+				'access_level' => sanitize_key( (string) ( $auth['access_level'] ?? '' ) ),
+			);
+		}
+
+		return $context;
 	}
 
 	/**

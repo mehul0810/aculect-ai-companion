@@ -101,7 +101,7 @@ final class OAuthRepositoryTest extends TestCase {
 				'connection_expires_at'    => '2026-07-01 00:00:00',
 				'created_at'               => '2026-06-01 00:00:00',
 				'last_used_at'             => '',
-				'write_permission_enabled' => '1',
+				'write_permission_enabled' => '0',
 				'access_level'             => ConnectionAccessLevel::FULL_WRITE,
 				'client_name'              => 'ChatGPT',
 				'provider'                 => 'chatgpt',
@@ -151,6 +151,83 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( ConnectionAccessLevel::SELECTIVE_WRITE, $context['access_level'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
 		self::assertStringContainsString( 'access_tokens.token_hash = %s', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_access_token_context_uses_access_level_when_legacy_write_flag_is_stale(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->row       = array(
+			'id'                       => '9',
+			'token_hash'               => hash( 'sha256', 'raw-access-token' ),
+			'client_id'                => 'client-1',
+			'user_id'                  => '7',
+			'scopes'                   => '["content:read","content:draft"]',
+			'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+			'revoked'                  => '0',
+			'expires_at'               => '2099-01-01 00:00:00',
+			'last_used_at'             => '2026-06-01 00:00:00',
+			'write_permission_enabled' => '0',
+			'access_level'             => ConnectionAccessLevel::FULL_WRITE,
+			'client_name'              => 'ChatGPT',
+			'provider'                 => 'chatgpt',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$context = ( new AccessTokenRepository() )->context_from_token_id( 'raw-access-token' );
+
+		self::assertSame( ConnectionAccessLevel::FULL_WRITE, $context['access_level'] );
+		self::assertTrue( $context['write_permission_enabled'] );
+	}
+
+	public function test_session_summary_returns_sanitized_admin_metadata(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->row       = array(
+			'id'                       => '9',
+			'token_hash'               => hash( 'sha256', 'raw-access-token' ),
+			'client_id'                => 'client-1',
+			'user_id'                  => '7',
+			'write_permission_enabled' => '1',
+			'access_level'             => ConnectionAccessLevel::DEFAULT,
+			'revoked'                  => '0',
+			'client_name'              => 'Claude',
+			'provider'                 => 'claude',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$summary = ( new AccessTokenRepository() )->session_summary( 9 );
+
+		self::assertSame( 9, $summary['id'] );
+		self::assertSame( 'client-1', $summary['client_id'] );
+		self::assertSame( 7, $summary['user_id'] );
+		self::assertSame( 'Claude', $summary['client_name'] );
+		self::assertSame( 'claude', $summary['provider'] );
+		self::assertSame( ConnectionAccessLevel::SELECTIVE_WRITE, $summary['access_level'] );
+		self::assertTrue( $summary['write_permission_enabled'] );
+		self::assertFalse( $summary['revoked'] );
+		self::assertArrayNotHasKey( 'token_hash', $summary );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( 9, $wpdb->prepared[0]['args'][2] );
+		self::assertStringContainsString( 'WHERE access_tokens.id = %d', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_session_summary_uses_access_level_when_legacy_write_flag_is_stale(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->row       = array(
+			'id'                       => '9',
+			'client_id'                => 'client-1',
+			'user_id'                  => '7',
+			'write_permission_enabled' => '0',
+			'access_level'             => ConnectionAccessLevel::EXECUTE,
+			'revoked'                  => '0',
+			'client_name'              => 'ChatGPT',
+			'provider'                 => 'chatgpt',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$summary = ( new AccessTokenRepository() )->session_summary( 9 );
+
+		self::assertSame( ConnectionAccessLevel::EXECUTE, $summary['access_level'] );
+		self::assertTrue( $summary['write_permission_enabled'] );
 	}
 
 	public function test_set_write_permission_updates_refreshable_active_connection(): void {

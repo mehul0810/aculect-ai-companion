@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Admin;
 
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Activity\ActivityRepository;
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
@@ -205,7 +208,7 @@ final class SettingsPage {
 
 		$payload = array_merge(
 			$this->base_payload( $payload_tab, $active_session_count ),
-			$this->connection_payload( $payload_tab, $access_tokens ),
+			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
 			array(
@@ -257,9 +260,10 @@ final class SettingsPage {
 	 *
 	 * @param string                $payload_tab   Normalized payload tab.
 	 * @param AccessTokenRepository $access_tokens Access token repository.
+	 * @param AbilitiesRegistry     $registry      Ability registry.
 	 * @return array<string, mixed>
 	 */
-	private function connection_payload( string $payload_tab, AccessTokenRepository $access_tokens ): array {
+	private function connection_payload( string $payload_tab, AccessTokenRepository $access_tokens, AbilitiesRegistry $registry ): array {
 		if ( 'connections' !== $payload_tab ) {
 			return array(
 				'sessions'        => array(),
@@ -268,8 +272,65 @@ final class SettingsPage {
 		}
 
 		return array(
-			'sessions'        => $access_tokens->list_active_sessions(),
-			'revokedSessions' => $access_tokens->list_revoked_sessions(),
+			'sessions'        => $this->connection_sessions_with_effective_abilities( $access_tokens->list_active_sessions(), $registry ),
+			'revokedSessions' => $this->connection_sessions_with_effective_abilities( $access_tokens->list_revoked_sessions(), $registry ),
+		);
+	}
+
+	/**
+	 * Add effective MCP ability details to admin connection rows.
+	 *
+	 * @param array<int, array<string, mixed>> $sessions Connection sessions.
+	 * @param AbilitiesRegistry                $registry Ability registry.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function connection_sessions_with_effective_abilities( array $sessions, AbilitiesRegistry $registry ): array {
+		if ( array() === $sessions ) {
+			return $sessions;
+		}
+
+		$availability = new McpToolAvailability();
+
+		return array_map(
+			function ( array $session ) use ( $availability, $registry ): array {
+				$user_id = absint( $session['user_id'] ?? 0 );
+				$scopes  = array_values( array_map( 'strval', (array) ( $session['scopes'] ?? array() ) ) );
+				$modules = $availability->ability_modules_for_user( $user_id, $registry, $scopes );
+				$policy  = $availability->ability_policy_for_user( $user_id, $registry, $scopes );
+				$writes  = array_filter(
+					$modules,
+					static fn( AbilityModuleInterface $module ): bool => ! $module->is_read_only()
+				);
+
+				$session['effective_abilities']           = array_values(
+					array_map(
+						fn( AbilityModuleInterface $module ): array => array(
+							'id'          => $module->id(),
+							'toolName'    => $registry->tool_name( $module->id() ),
+							'title'       => $module->title(),
+							'description' => $module->description(),
+							'scopes'      => $module->required_scopes(),
+							'readOnly'    => $module->is_read_only(),
+						),
+						$modules
+					)
+				);
+				$session['effective_write_ability_count'] = count( $writes );
+				$session['effective_ability_summary']     = array(
+					'available_count'          => count( $modules ),
+					'write_count'              => count( $writes ),
+					'blocked_by_global_count'  => count( (array) ( $policy['blocked_by_global_ids'] ?? array() ) ),
+					'blocked_by_role_count'    => count( (array) ( $policy['blocked_by_role_ids'] ?? array() ) ),
+					'default_read_only_policy' => true === ( $policy['default_read_only_policy'] ?? false ),
+					'explicit_role_policy'     => true === ( $policy['explicit_role_policy'] ?? false ),
+					'scope_aware'              => true === ( $policy['scope_aware'] ?? false ),
+					'missing_user'             => true === ( $policy['missing_user'] ?? false ),
+					'missing_role'             => true === ( $policy['missing_role'] ?? false ),
+				);
+
+				return $session;
+			},
+			$sessions
 		);
 	}
 
@@ -947,7 +1008,12 @@ final class SettingsPage {
 			: ConnectionAccessLevel::DEFAULT;
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_access_level( $session_id, $access_level );
+		$access_tokens = new AccessTokenRepository();
+		$before        = $session_id > 0 ? $access_tokens->session_summary( $session_id ) : array();
+		$updated       = $session_id > 0 && $access_tokens->set_access_level( $session_id, $access_level );
+		if ( $updated ) {
+			$this->record_session_access_change( $session_id, $before, $access_level );
+		}
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -973,8 +1039,14 @@ final class SettingsPage {
 			&& '1' === sanitize_text_field( wp_unslash( (string) $_POST['write_permission_enabled'] ) );
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_write_permission( $session_id, $enabled );
-		$status  = $updated ? ( $enabled ? 'enabled' : 'disabled' ) : 'not_updated';
+		$access_tokens = new AccessTokenRepository();
+		$before        = $session_id > 0 ? $access_tokens->session_summary( $session_id ) : array();
+		$access_level  = ConnectionAccessLevel::from_write_permission( $enabled );
+		$updated       = $session_id > 0 && $access_tokens->set_write_permission( $session_id, $enabled );
+		if ( $updated ) {
+			$this->record_session_access_change( $session_id, $before, $access_level );
+		}
+		$status = $updated ? ( $enabled ? 'enabled' : 'disabled' ) : 'not_updated';
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -987,6 +1059,35 @@ final class SettingsPage {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Record a sanitized activity entry for admin-managed connection trust changes.
+	 *
+	 * @param int                  $session_id       Access-token table primary key.
+	 * @param array<string, mixed> $previous_session Session metadata before the update.
+	 * @param string               $new_access_level New access level.
+	 */
+	private function record_session_access_change( int $session_id, array $previous_session, string $new_access_level ): void {
+		$old_access_level = ConnectionAccessLevel::normalize( (string) ( $previous_session['access_level'] ?? '' ) );
+		$new_access_level = ConnectionAccessLevel::normalize( $new_access_level );
+
+		( new ActivityLogger() )->record_user_access_event(
+			'connection_access.update',
+			(int) ( $previous_session['user_id'] ?? 0 ),
+			get_current_user_id(),
+			__( 'Connection trust updated for assistant session.', 'aculect-ai-companion' ),
+			array(
+				'session_id'       => $session_id,
+				'client_id'        => (string) ( $previous_session['client_id'] ?? '' ),
+				'client_name'      => (string) ( $previous_session['client_name'] ?? '' ),
+				'provider'         => (string) ( $previous_session['provider'] ?? 'mcp' ),
+				'old_access_level' => $old_access_level,
+				'new_access_level' => $new_access_level,
+				'old_direct_write' => ConnectionAccessLevel::allows_direct_write( $old_access_level ) ? 1 : 0,
+				'new_direct_write' => ConnectionAccessLevel::allows_direct_write( $new_access_level ) ? 1 : 0,
+			)
+		);
 	}
 
 	/**

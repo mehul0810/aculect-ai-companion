@@ -822,8 +822,7 @@
 }
 
 .aculect-ai-companion-connectors,
-.aculect-ai-companion-provider-list,
-.aculect-ai-companion-setup-method-list {
+.aculect-ai-companion-provider-list {
 	display: grid;
 	gap: 14px;
 	min-width: 0;
@@ -1582,88 +1581,6 @@
 	color: var(--aculect-ai-companion-muted);
 }
 
-.aculect-ai-companion-advanced-configuration {
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-surface);
-}
-
-.aculect-ai-companion-advanced-configuration__summary {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 14px;
-	padding: 18px 20px;
-	cursor: pointer;
-	list-style: none;
-}
-
-.aculect-ai-companion-advanced-configuration__summary::-webkit-details-marker {
-	display: none;
-}
-
-.aculect-ai-companion-advanced-configuration__title,
-.aculect-ai-companion-advanced-configuration__description {
-	display: block;
-}
-
-.aculect-ai-companion-advanced-configuration__title {
-	font-size: 16px;
-	line-height: 1.3;
-}
-
-.aculect-ai-companion-advanced-configuration__description {
-	margin-top: 4px;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 13px;
-	font-style: normal;
-	line-height: 1.45;
-}
-
-.aculect-ai-companion-advanced-configuration[open]
-.aculect-ai-companion-advanced-configuration__summary {
-	border-bottom: 1px solid var(--aculect-ai-companion-border);
-}
-
-.aculect-ai-companion-advanced-configuration__body {
-	display: grid;
-	gap: 20px;
-	padding: 20px;
-}
-
-.aculect-ai-companion-advanced-endpoints {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 12px;
-}
-
-.aculect-ai-companion-advanced-provider-guides {
-	display: grid;
-	gap: 18px;
-}
-
-.aculect-ai-companion-advanced-provider-guide {
-	display: grid;
-	gap: 12px;
-}
-
-.aculect-ai-companion-advanced-provider-guide__heading {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	gap: 12px;
-	align-items: center;
-}
-
-.aculect-ai-companion-advanced-provider-guide h3,
-.aculect-ai-companion-advanced-provider-guide p {
-	margin: 0;
-}
-
-.aculect-ai-companion-advanced-provider-guide p {
-	color: var(--aculect-ai-companion-muted);
-	line-height: 1.5;
-}
-
 .aculect-ai-companion-lockdown {
 	display: flex;
 	align-items: center;
@@ -2306,94 +2223,12 @@ td:last-child
 	padding: 0 20px 18px 72px;
 }
 
-.aculect-ai-companion-setup-method {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-	gap: 16px;
-	min-width: 0;
-	padding: 0;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
-}
-
-.aculect-ai-companion-setup-method.has-copy-fields {
-	grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
-}
-
-.aculect-ai-companion-setup-method__content,
-.aculect-ai-companion-setup-method__fields {
-	min-width: 0;
-}
-
-.aculect-ai-companion-setup-method__title {
-	margin: 0 0 8px;
-	font-size: 14px;
-	font-weight: 700;
-	line-height: 1.35;
-}
-
-.aculect-ai-companion-setup-method__description {
-	margin: 0 0 14px;
-	color: var(--aculect-ai-companion-muted);
-	font-size: 13px;
-	line-height: 1.55;
-}
-
-.aculect-ai-companion-setup-method__fields {
-	padding: 14px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-soft);
-}
-
 .aculect-ai-companion-section-heading {
 	margin: 0 0 12px;
 	font-size: 12px;
 	font-weight: 800;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
-}
-
-.aculect-ai-companion-steps {
-	display: grid;
-	gap: 14px;
-	margin: 0;
-	padding: 0;
-	color: var(--aculect-ai-companion-ink);
-	font-size: 13px;
-	line-height: 1.55;
-	list-style: none;
-	counter-reset: aculect-connect-steps;
-}
-
-.aculect-ai-companion-steps li {
-	position: relative;
-	min-height: 24px;
-	padding-left: 36px;
-	counter-increment: aculect-connect-steps;
-}
-
-.aculect-ai-companion-steps li::before {
-	position: absolute;
-	top: 0;
-	left: 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 22px;
-	border-radius: 999px;
-	background: var(--aculect-ai-companion-primary);
-	color: #fff;
-	content: counter(aculect-connect-steps);
-	font-size: 12px;
-	font-weight: 800;
-	line-height: 1;
-}
-
-.aculect-ai-companion-steps--primary {
-	margin-bottom: 22px;
 }
 
 .aculect-ai-companion-connect-info-message {
@@ -2425,7 +2260,6 @@ td:last-child
 	line-height: 1.45;
 }
 
-.aculect-ai-companion-provider-actions,
 .aculect-ai-companion-danger-zone {
 	margin-top: 18px;
 }
@@ -4372,7 +4206,6 @@ td:first-child
 	.aculect-ai-companion-overview-hero,
 	.aculect-ai-companion-setting-summary,
 	.aculect-ai-companion-setup-wizard,
-	.aculect-ai-companion-setup-method.has-copy-fields,
 	.aculect-ai-companion-session-row,
 	.aculect-ai-companion-tab-loading__grid {
 		grid-template-columns: 1fr;
@@ -4439,8 +4272,7 @@ td:first-child
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
-	.aculect-ai-companion-connect-readiness__grid,
-	.aculect-ai-companion-advanced-endpoints {
+	.aculect-ai-companion-connect-readiness__grid {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
@@ -4594,8 +4426,7 @@ td:first-child
 	}
 
 	.aculect-ai-companion-connect-readiness__grid,
-	.aculect-ai-companion-wizard-progress,
-	.aculect-ai-companion-advanced-endpoints {
+	.aculect-ai-companion-wizard-progress {
 		grid-template-columns: 1fr;
 	}
 

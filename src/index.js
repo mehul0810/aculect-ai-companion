@@ -40,7 +40,6 @@ import {
 	category,
 	chartBar,
 	check,
-	chevronDown,
 	cog,
 	comment,
 	copy,
@@ -2159,73 +2158,6 @@ function ConnectionHealthChecks( { health, filter } ) {
 					) ) }
 				</tbody>
 			</table>
-		</div>
-	);
-}
-
-function SetupSection( { provider, section, sectionIndex, onCopy } ) {
-	const steps = Array.isArray( section.steps ) ? section.steps : [];
-	const copyFields = Array.isArray( section.copyFields )
-		? section.copyFields
-		: [];
-
-	return (
-		<div
-			className={ `aculect-ai-companion-setup-method ${
-				copyFields.length > 0 ? 'has-copy-fields' : ''
-			}` }
-		>
-			<div className="aculect-ai-companion-setup-method__content">
-				<h4 className="aculect-ai-companion-setup-method__title">
-					{ section.title || 'Setup' }
-				</h4>
-				{ section.description && (
-					<p className="aculect-ai-companion-setup-method__description">
-						{ section.description }
-					</p>
-				) }
-				{ steps.length > 0 && (
-					<ol className="aculect-ai-companion-steps">
-						{ steps.map( ( step, index ) => (
-							<li
-								key={ `${ provider.id }-${ sectionIndex }-${ index }` }
-							>
-								{ step }
-							</li>
-						) ) }
-					</ol>
-				) }
-				{ section.actionUrl && (
-					<div className="aculect-ai-companion-provider-actions">
-						<Button
-							href={ section.actionUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-							variant="secondary"
-						>
-							{ section.actionLabel || 'Open Docs' }
-						</Button>
-					</div>
-				) }
-			</div>
-			{ copyFields.length > 0 && (
-				<div className="aculect-ai-companion-setup-method__fields">
-					<h5 className="aculect-ai-companion-section-heading">
-						Copy
-					</h5>
-					{ copyFields.map( ( field ) => (
-						<CopyField
-							key={ `${ provider.id }-${ sectionIndex }-${ field.label }` }
-							label={ field.label }
-							value={ field.value }
-							secret={ Boolean( field.secret ) }
-							onCopy={ ( value ) =>
-								onCopy( value, `${ field.label } copied.` )
-							}
-						/>
-					) ) }
-				</div>
-			) }
 		</div>
 	);
 }
@@ -4388,94 +4320,6 @@ function ConnectCapabilitySummary( { permissionsUrl, onManagePermissions } ) {
 				</ConnectCapabilityCard>
 			</div>
 		</section>
-	);
-}
-
-function AdvancedConfigurationPanel( { endpoints, providers, onCopy } ) {
-	const endpointRows = [
-		[ 'MCP endpoint URL', endpoints?.mcp ],
-		[ 'OAuth authorization endpoint', endpoints?.authorization ],
-		[ 'OAuth token endpoint', endpoints?.token ],
-		[ 'Dynamic client registration endpoint', endpoints?.registration ],
-		[ 'OAuth authorization metadata', endpoints?.authorizationMetadata ],
-		[ 'OAuth protected resource metadata', endpoints?.resourceMetadata ],
-		[ 'Server name', endpoints?.serverName ],
-	].filter( ( [ , value ] ) => value );
-
-	return (
-		<details className="aculect-ai-companion-advanced-configuration">
-			<summary className="aculect-ai-companion-advanced-configuration__summary">
-				<span>
-					<strong className="aculect-ai-companion-advanced-configuration__title">
-						Advanced configuration
-					</strong>
-					<em className="aculect-ai-companion-advanced-configuration__description">
-						For developers and custom MCP clients.
-					</em>
-				</span>
-				<Icon icon={ chevronDown } size={ 18 } aria-hidden="true" />
-			</summary>
-			<div className="aculect-ai-companion-advanced-configuration__body">
-				<div className="aculect-ai-companion-advanced-endpoints">
-					{ endpointRows.map( ( [ label, value ] ) => (
-						<CopyField
-							key={ label }
-							label={ label }
-							value={ value }
-							onCopy={ ( copyValue ) =>
-								onCopy( copyValue, `${ label } copied.` )
-							}
-						/>
-					) ) }
-				</div>
-				<div className="aculect-ai-companion-advanced-provider-guides">
-					{ providers.map( ( provider ) => {
-						const setupSections = Array.isArray(
-							provider.setupSections
-						)
-							? provider.setupSections
-							: [];
-
-						return (
-							<section
-								key={ provider.id }
-								className="aculect-ai-companion-advanced-provider-guide"
-							>
-								<div className="aculect-ai-companion-advanced-provider-guide__heading">
-									<ConnectProviderBadge
-										provider={ provider }
-									/>
-									<div>
-										<h3>{ provider.label }</h3>
-										<p>{ provider.description }</p>
-									</div>
-								</div>
-								{ setupSections.length > 0 ? (
-									<div className="aculect-ai-companion-setup-method-list">
-										{ setupSections.map(
-											( section, index ) => (
-												<SetupSection
-													key={ `${ provider.id }-${ index }` }
-													provider={ provider }
-													section={ section }
-													sectionIndex={ index }
-													onCopy={ onCopy }
-												/>
-											)
-										) }
-									</div>
-								) : (
-									<p className="aculect-ai-companion-provider-card__description">
-										Advanced setup steps are not available
-										for this provider yet.
-									</p>
-								) }
-							</section>
-						);
-					} ) }
-				</div>
-			</div>
-		</details>
 	);
 }
 
@@ -6811,11 +6655,6 @@ function SettingsApp() {
 									onManagePermissions={ ( event ) =>
 										maybeSelectTab( event, 'abilities' )
 									}
-								/>
-								<AdvancedConfigurationPanel
-									endpoints={ data.connectorEndpoints || {} }
-									providers={ providers }
-									onCopy={ copyValue }
 								/>
 							</div>
 						);

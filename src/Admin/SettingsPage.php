@@ -246,7 +246,6 @@ final class SettingsPage {
 			'accessPaused'        => AccessLockdown::is_paused(),
 			'currentUserId'       => get_current_user_id(),
 			'mcpUrl'              => Helpers::mcp_resource(),
-			'connectorEndpoints'  => $this->connector_endpoints(),
 			'connectionReadiness' => $this->connection_readiness( $active_session_count ),
 			'connectionRequests'  => $this->connection_requests(),
 			'providers'           => $this->providers(),
@@ -1184,23 +1183,6 @@ final class SettingsPage {
 	 */
 	private function providers(): array {
 		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
-	}
-
-	/**
-	 * Return endpoint details for the collapsed advanced connector setup.
-	 *
-	 * @return array<string, string>
-	 */
-	private function connector_endpoints(): array {
-		return array(
-			'serverName'            => 'aculect_ai_companion',
-			'mcp'                   => Helpers::mcp_resource(),
-			'authorization'         => Helpers::authorization_endpoint(),
-			'token'                 => Helpers::token_endpoint(),
-			'registration'          => Helpers::registration_endpoint(),
-			'authorizationMetadata' => Helpers::authorization_metadata_url(),
-			'resourceMetadata'      => Helpers::protected_resource_metadata_url(),
-		);
 	}
 
 	/**

@@ -128,18 +128,6 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'nonce-wp_rest', $payload['settingsRestNonce'] );
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
-		self::assertSame(
-			'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
-			$payload['connectorEndpoints']['mcp']
-		);
-		self::assertSame(
-			'https://example.com/oauth/authorize',
-			$payload['connectorEndpoints']['authorization']
-		);
-		self::assertSame(
-			'https://example.com/wp-json/aculect-ai-companion/v1/oauth/token',
-			$payload['connectorEndpoints']['token']
-		);
 		self::assertSame( 'ready', $payload['connectionReadiness']['status'] );
 		self::assertSame( 'Ready to connect', $payload['connectionReadiness']['title'] );
 		self::assertCount( 5, $payload['connectionReadiness']['items'] );

@@ -1567,24 +1567,9 @@ td:last-child
 	color: #3730a3;
 }
 
-.aculect-ai-companion-connection-access__pill.is-selective-read {
-	background: #eff6ff;
-	color: #1d4ed8;
-}
-
-.aculect-ai-companion-connection-access__pill.is-selective-write {
+.aculect-ai-companion-connection-access__pill.is-write {
 	background: #edfaef;
 	color: var(--aculect-ai-companion-green);
-}
-
-.aculect-ai-companion-connection-access__pill.is-full-write {
-	background: #fff7ed;
-	color: #c2410c;
-}
-
-.aculect-ai-companion-connection-access__pill.is-execute {
-	background: #fef2f2;
-	color: #b91c1c;
 }
 
 .aculect-ai-companion-connection-action-menu {

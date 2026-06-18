@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Activity;
 
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 
 /**
  * Records connected AI actions with sanitized metadata only.
@@ -78,7 +79,7 @@ final class ActivityLogger {
 		if ( true === ( $auth['write_permission_used'] ?? false ) ) {
 			$context['write_permission'] = array(
 				'used'         => true,
-				'access_level' => sanitize_key( (string) ( $auth['access_level'] ?? '' ) ),
+				'access_level' => ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) ),
 			);
 		}
 

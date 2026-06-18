@@ -217,7 +217,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 1. Overview tab showing the 0.6.0 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI.
-3. Connections tab for reviewing connected AI assistants, access levels, pause controls, and disconnect actions.
+3. Connections tab for reviewing connected AI assistants, read/write access, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
@@ -273,7 +273,7 @@ Composer dependencies for production releases are installed with:
 * Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.
 * Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.
 * Improved content index search with an optional word-count threshold for thin-page discovery.
-* Improved the Connections tab with effective ability counts, policy-aware ability details, and clearer access-level copy for trusted AI sessions.
+* Improved the Connections tab with effective ability counts, policy-aware ability details, and clearer read/write access copy for trusted AI sessions.
 * Improved trusted write handling so admin-trusted connections skip the custom MCP confirmation-token retry after OAuth scope, role policy, pause-state, and WordPress capability checks pass.
 * Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.
 * Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers.

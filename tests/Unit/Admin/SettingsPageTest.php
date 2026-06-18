@@ -244,7 +244,7 @@ final class SettingsPageTest extends TestCase {
 				'created_at'               => '2026-06-01 00:00:00',
 				'last_used_at'             => '',
 				'write_permission_enabled' => '0',
-				'access_level'             => 'selective_read',
+				'access_level'             => 'read',
 				'client_name'              => 'ChatGPT',
 				'provider'                 => 'chatgpt',
 			),

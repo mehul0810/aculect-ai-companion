@@ -57,7 +57,7 @@ final class McpToolManifestTest extends TestCase {
 				'scopes'                   => array( 'content:read', 'content:draft' ),
 				'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
 				'status'                   => 'active',
-				'access_level'             => 'selective_write',
+				'access_level'             => 'write',
 				'write_permission_enabled' => true,
 			)
 		);

@@ -121,6 +121,18 @@ final class SettingsPageTest extends TestCase {
 			$payload['brandMarkUrl']
 		);
 		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/cursor.svg',
+			$payload['connectorLogoUrls']['cursor']
+		);
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/gemini.svg',
+			$payload['connectorLogoUrls']['gemini']
+		);
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/mcp-client.svg',
+			$payload['connectorLogoUrls']['mcp']
+		);
+		self::assertSame(
 			'https://wordpress.org/plugins/aculect-ai-companion/',
 			$payload['pluginMetadata']['documentationUrl']
 		);

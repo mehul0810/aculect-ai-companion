@@ -241,6 +241,7 @@ final class SettingsPage {
 			'brandMarkUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-mark.svg'
 			),
+			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
 			'accessPaused'       => AccessLockdown::is_paused(),
@@ -1182,6 +1183,21 @@ final class SettingsPage {
 	 */
 	private function providers(): array {
 		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
+	}
+
+	/**
+	 * Return local connector logo URLs for admin UI badges.
+	 *
+	 * @return array<string, string>
+	 */
+	private function connector_logo_urls(): array {
+		$base_url = ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/connectors/';
+
+		return array(
+			'cursor' => esc_url_raw( $base_url . 'cursor.svg' ),
+			'gemini' => esc_url_raw( $base_url . 'gemini.svg' ),
+			'mcp'    => esc_url_raw( $base_url . 'mcp-client.svg' ),
+		);
 	}
 
 	/**

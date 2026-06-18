@@ -77,6 +77,7 @@ const SETTINGS_TABS = [
 	{ name: 'logs', title: 'Logs', hidden: true },
 ];
 const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
 const DATA_VIEW_TABLE_LAYOUTS = { table: true };
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
@@ -496,7 +497,35 @@ function providerOverviewText( provider ) {
 	return `Connect ${ provider.label } to manage your WordPress site.`;
 }
 
+function connectorLogoUrl( provider, connectorLogoUrls = EMPTY_OBJECT ) {
+	const providerId =
+		typeof provider === 'string' ? provider : provider?.id || '';
+	const providerIconUrl =
+		typeof provider === 'object' && provider?.iconUrl
+			? provider.iconUrl
+			: '';
+
+	return providerIconUrl || connectorLogoUrls[ providerId ] || '';
+}
+
+function ConnectorBadgeMark( { logoUrl, logoPath, fallback } ) {
+	if ( logoUrl ) {
+		return <img src={ logoUrl } alt="" aria-hidden="true" />;
+	}
+
+	if ( logoPath ) {
+		return (
+			<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+				<path d={ logoPath } />
+			</svg>
+		);
+	}
+
+	return fallback;
+}
+
 function ConnectProviderBadge( { provider } ) {
+	const logoUrl = connectorLogoUrl( provider );
 	const logoPath = CONNECTOR_LOGO_PATHS[ provider.id ] || '';
 
 	return (
@@ -504,13 +533,11 @@ function ConnectProviderBadge( { provider } ) {
 			className={ `aculect-ai-companion-provider-badge is-${ provider.id }` }
 			aria-hidden="true"
 		>
-			{ logoPath ? (
-				<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-					<path d={ logoPath } />
-				</svg>
-			) : (
-				providerBadgeLabel( provider )
-			) }
+			<ConnectorBadgeMark
+				logoUrl={ logoUrl }
+				logoPath={ logoPath }
+				fallback={ providerBadgeLabel( provider ) }
+			/>
 		</span>
 	);
 }
@@ -534,8 +561,13 @@ function connectionProviderLabel( session ) {
 	return labels[ provider ] || session.provider || 'AI';
 }
 
-function ConnectionProviderLogo( { session, decorative = true } ) {
+function ConnectionProviderLogo( {
+	session,
+	decorative = true,
+	connectorLogoUrls = EMPTY_OBJECT,
+} ) {
 	const provider = connectionProviderKey( session );
+	const logoUrl = connectorLogoUrl( provider, connectorLogoUrls );
 	const logoPath = CONNECTOR_LOGO_PATHS[ provider ] || '';
 	const label = connectionProviderLabel( session );
 	const accessibleLabel = session.client_name
@@ -549,13 +581,11 @@ function ConnectionProviderLogo( { session, decorative = true } ) {
 				? { 'aria-hidden': 'true' }
 				: { role: 'img', 'aria-label': accessibleLabel } ) }
 		>
-			{ logoPath ? (
-				<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-					<path d={ logoPath } />
-				</svg>
-			) : (
-				label.slice( 0, 2 ).toUpperCase()
-			) }
+			<ConnectorBadgeMark
+				logoUrl={ logoUrl }
+				logoPath={ logoPath }
+				fallback={ label.slice( 0, 2 ).toUpperCase() }
+			/>
 		</span>
 	);
 }
@@ -2605,6 +2635,7 @@ function ConnectionEffectiveAbilitiesModal( {
 	session,
 	abilities,
 	enabledAbilityIds,
+	connectorLogoUrls = EMPTY_OBJECT,
 	onClose,
 } ) {
 	const effectiveAbilities = connectionEffectiveAbilities(
@@ -2625,7 +2656,10 @@ function ConnectionEffectiveAbilitiesModal( {
 			onRequestClose={ onClose }
 		>
 			<div className="aculect-ai-companion-connection-abilities-modal__intro">
-				<ConnectionProviderLogo session={ session } />
+				<ConnectionProviderLogo
+					session={ session }
+					connectorLogoUrls={ connectorLogoUrls }
+				/>
 				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
 					<span>{ connectionProviderLabel( session ) }</span>
@@ -2712,7 +2746,12 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 	);
 }
 
-function ConnectionAccessLevelModal( { session, data, onClose } ) {
+function ConnectionAccessLevelModal( {
+	session,
+	data,
+	connectorLogoUrls = EMPTY_OBJECT,
+	onClose,
+} ) {
 	const [ selectedAccessLevel, setSelectedAccessLevel ] = useState(
 		connectionAccessLevelKey( session )
 	);
@@ -2743,6 +2782,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				<ConnectionProviderLogo
 					session={ session }
 					decorative={ false }
+					connectorLogoUrls={ connectorLogoUrls }
 				/>
 				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
@@ -2884,6 +2924,10 @@ function ConnectionsDataViews( {
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
 	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
 		useState( null );
 	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
@@ -2964,6 +3008,7 @@ function ConnectionsDataViews( {
 							<ConnectionProviderLogo
 								session={ session }
 								decorative={ false }
+								connectorLogoUrls={ connectorLogoUrls }
 							/>
 						</Tooltip>
 					</div>
@@ -3117,6 +3162,7 @@ function ConnectionsDataViews( {
 			data,
 			enabledAbilityIds,
 			isAccessPaused,
+			connectorLogoUrls,
 			providerOptions,
 			setAccessLevelSession,
 			setEffectiveAbilitiesSession,
@@ -3179,6 +3225,7 @@ function ConnectionsDataViews( {
 					session={ effectiveAbilitiesSession }
 					abilities={ abilities }
 					enabledAbilityIds={ enabledAbilityIds }
+					connectorLogoUrls={ connectorLogoUrls }
 					onClose={ () => setEffectiveAbilitiesSession( null ) }
 				/>
 			) }
@@ -3186,6 +3233,7 @@ function ConnectionsDataViews( {
 				<ConnectionAccessLevelModal
 					session={ accessLevelSession }
 					data={ data }
+					connectorLogoUrls={ connectorLogoUrls }
 					onClose={ () => setAccessLevelSession( null ) }
 				/>
 			) }
@@ -5707,9 +5755,22 @@ function SettingsApp() {
 		pluginMetadata.documentationUrl || pluginMetadata.wordpressOrgUrl
 	);
 	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
-	const providers = Array.isArray( data.providers )
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
+	const rawProviders = Array.isArray( data.providers )
 		? data.providers
 		: EMPTY_ARRAY;
+	const providers = useMemo(
+		() =>
+			rawProviders.map( ( provider ) => ( {
+				...provider,
+				iconUrl:
+					provider.iconUrl || connectorLogoUrls[ provider.id ] || '',
+			} ) ),
+		[ connectorLogoUrls, rawProviders ]
+	);
 	const sessions = Array.isArray( data.sessions )
 		? data.sessions
 		: EMPTY_ARRAY;

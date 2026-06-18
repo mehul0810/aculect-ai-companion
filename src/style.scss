@@ -1647,7 +1647,8 @@ td:last-child
 	font-size: 11px;
 }
 
-.aculect-ai-companion-connection-provider-logo svg {
+.aculect-ai-companion-connection-provider-logo svg,
+.aculect-ai-companion-connection-provider-logo img {
 	width: 18px;
 	height: 18px;
 }
@@ -2048,11 +2049,19 @@ td:last-child
 	line-height: 1;
 }
 
-.aculect-ai-companion-provider-badge svg {
+.aculect-ai-companion-provider-badge svg,
+.aculect-ai-companion-provider-badge img {
 	display: block;
 	width: 21px;
 	height: 21px;
+}
+
+.aculect-ai-companion-provider-badge svg {
 	fill: currentcolor;
+}
+
+.aculect-ai-companion-provider-badge img {
+	object-fit: contain;
 }
 
 .aculect-ai-companion-provider-badge.is-chatgpt {
@@ -2078,6 +2087,11 @@ td:last-child
 .aculect-ai-companion-provider-badge.is-gemini {
 	background: #eef5ff;
 	color: #1a73e8;
+}
+
+.aculect-ai-companion-provider-badge.is-mcp {
+	background: #f8fafc;
+	color: #111827;
 }
 
 .aculect-ai-companion-provider-card__title {

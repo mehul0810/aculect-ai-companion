@@ -23,10 +23,14 @@ final class Installer {
 
 	/**
 	 * Create or update all intelligence index tables.
+	 *
+	 * @param bool $verify_tables Whether to verify table existence even when the stored version is current.
 	 */
-	public static function install(): void {
-		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		if ( version_compare( $installed, self::DB_VERSION, '<' ) || ! self::all_tables_exist() ) {
+	public static function install( bool $verify_tables = false ): void {
+		$installed    = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$schema_stale = version_compare( $installed, self::DB_VERSION, '<' );
+
+		if ( $schema_stale || ( $verify_tables && ! self::all_tables_exist() ) ) {
 			self::create_tables();
 			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 		}
@@ -36,7 +40,7 @@ final class Installer {
 	 * Activation entry point.
 	 */
 	public static function activate(): void {
-		self::install();
+		self::install( true );
 	}
 
 	/**

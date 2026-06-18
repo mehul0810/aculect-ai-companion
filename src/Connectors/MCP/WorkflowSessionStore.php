@@ -70,7 +70,7 @@ final class WorkflowSessionStore {
 	 */
 	public function get( array $args ): array {
 		$id      = $this->id( $args['workflow_session_id'] ?? $args['id'] ?? '' );
-		$session = '' === $id ? array() : $this->read( $id );
+		$session = '' === $id ? array() : $this->read_for_current_user( $id );
 
 		if ( array() === $session ) {
 			return array(
@@ -95,7 +95,7 @@ final class WorkflowSessionStore {
 	 */
 	public function update( array $args ): array {
 		$id      = $this->id( $args['workflow_session_id'] ?? $args['id'] ?? '' );
-		$session = '' === $id ? array() : $this->read( $id );
+		$session = '' === $id ? array() : $this->read_for_current_user( $id );
 
 		if ( array() === $session ) {
 			return array(
@@ -170,6 +170,34 @@ final class WorkflowSessionStore {
 		$stored = get_transient( $this->transient_key( $id ) );
 
 		return is_array( $stored ) ? $stored : array();
+	}
+
+	/**
+	 * Read a session only when it belongs to the current user.
+	 *
+	 * @param string $id Session ID.
+	 * @return array<string, mixed>
+	 */
+	private function read_for_current_user( string $id ): array {
+		$session = $this->read( $id );
+		if ( array() === $session || ! $this->can_access_session( $session ) ) {
+			return array();
+		}
+
+		return $session;
+	}
+
+	/**
+	 * Return whether the current user owns a stored session.
+	 *
+	 * @param array<string, mixed> $session Session state.
+	 */
+	private function can_access_session( array $session ): bool {
+		$owner_id = absint( $session['user_id'] ?? 0 );
+		$current  = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$current  = absint( $current );
+
+		return $owner_id > 0 && $current > 0 && $owner_id === $current;
 	}
 
 	/**

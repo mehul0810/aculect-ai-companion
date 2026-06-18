@@ -76,4 +76,35 @@ final class WorkflowSessionStoreTest extends TestCase {
 		self::assertSame( 'failed', $updated['workflow_session']['state'] );
 		self::assertStringContainsString( 'failed', $updated['workflow_session']['events'][1]['message'] );
 	}
+
+	public function test_session_state_cannot_be_read_or_mutated_by_another_user(): void {
+		$store   = new WorkflowSessionStore();
+		$started = $store->start(
+			array(
+				'workflow' => 'content_long_form_draft',
+				'state'    => 'started',
+			)
+		);
+
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 9;
+
+		$read = $store->get( array( 'workflow_session_id' => $started['workflow_session']['id'] ) );
+		self::assertSame( 'error', $read['status'] );
+		self::assertSame( 'workflow_session_not_found', $read['error'] );
+
+		$updated = $store->update(
+			array(
+				'workflow_session_id' => $started['workflow_session']['id'],
+				'state'               => 'prepared',
+			)
+		);
+		self::assertSame( 'error', $updated['status'] );
+		self::assertSame( 'workflow_session_not_found', $updated['error'] );
+
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$owner_read = $store->get( array( 'workflow_session_id' => $started['workflow_session']['id'] ) );
+
+		self::assertSame( 'started', $owner_read['workflow_session']['state'] );
+		self::assertCount( 1, $owner_read['workflow_session']['events'] );
+	}
 }

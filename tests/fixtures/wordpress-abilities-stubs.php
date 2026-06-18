@@ -126,6 +126,13 @@ if ( ! function_exists( 'wp_get_abilities' ) ) {
 						}
 
 						/**
+						 * Return permission callback.
+						 */
+						public function get_permission_callback(): mixed {
+							return $this->args['permission_callback'] ?? null;
+						}
+
+						/**
 						 * Return ability meta.
 						 *
 						 * @return array<string, mixed>

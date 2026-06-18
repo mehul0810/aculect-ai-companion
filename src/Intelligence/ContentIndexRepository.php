@@ -260,33 +260,47 @@ final class ContentIndexRepository {
 		$offset   = ( $page - 1 ) * $per_page;
 		$where    = $this->content_where_clause( $args );
 		$table    = Installer::content_index_table();
+		$count    = $this->bool_arg( $args['include_total'] ?? true, true );
+		$limit    = $count ? $per_page : $per_page + 1;
 
 		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
 				"SELECT * FROM %i {$where['sql']} ORDER BY stale ASC, modified_gmt DESC, object_id DESC LIMIT %d OFFSET %d",
-				...array_merge( array( $table ), $where['values'], array( $per_page, $offset ) )
+				...array_merge( array( $table ), $where['values'], array( $limit, $offset ) )
 			),
 			ARRAY_A
 		);
 
-		$total = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
-				"SELECT COUNT(*) FROM %i {$where['sql']}",
-				...array_merge( array( $table ), $where['values'] )
-			)
-		);
+		$rows     = is_array( $rows ) ? $rows : array();
+		$has_more = ! $count && count( $rows ) > $per_page;
+		$rows     = $has_more ? array_slice( $rows, 0, $per_page ) : $rows;
 
-		return array(
-			'items'    => is_array( $rows ) ? array_map( array( $this, 'public_content_row' ), $rows ) : array(),
-			'total'    => $total,
+		$result = array(
+			'items'    => array_map( array( $this, 'public_content_row' ), $rows ),
 			'page'     => $page,
 			'per_page' => $per_page,
 			'context'  => $this->context( $args ),
-			'index'    => $this->summary(),
 		);
+
+		if ( $count ) {
+			$result['total'] = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
+					"SELECT COUNT(*) FROM %i {$where['sql']}",
+					...array_merge( array( $table ), $where['values'] )
+				)
+			);
+		} else {
+			$result['has_more'] = $has_more;
+		}
+
+		if ( $this->bool_arg( $args['include_index_summary'] ?? true, true ) ) {
+			$result['index'] = $this->summary();
+		}
+
+		return $result;
 	}
 
 	/**
@@ -304,36 +318,49 @@ final class ContentIndexRepository {
 		$where     = $this->chunk_where_clause( $args );
 		$chunk_tbl = Installer::content_chunks_table();
 		$index_tbl = Installer::content_index_table();
+		$count     = $this->bool_arg( $args['include_total'] ?? true, true );
+		$limit     = $count ? $per_page : $per_page + 1;
 
 		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
 				"SELECT chunks.*, idx.title, idx.post_type, idx.post_status, idx.permalink, idx.stale FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']} ORDER BY idx.stale ASC, chunks.word_count DESC, chunks.id DESC LIMIT %d OFFSET %d",
-				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'], array( $per_page, $offset ) )
+				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'], array( $limit, $offset ) )
 			),
 			ARRAY_A
 		);
 
-		$total = (int) $wpdb->get_var(
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Query has two identifier placeholders plus a variable number of safe filter placeholders.
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
-				"SELECT COUNT(*) FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']}",
-				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'] )
-			)
-		);
+		$rows     = is_array( $rows ) ? $rows : array();
+		$has_more = ! $count && count( $rows ) > $per_page;
+		$rows     = $has_more ? array_slice( $rows, 0, $per_page ) : $rows;
+		$context  = $this->context( $args );
 
-		$context = $this->context( $args );
-
-		return array(
-			'items'    => is_array( $rows ) ? array_map( fn ( array $row ): array => $this->public_chunk_row( $row, $context ), $rows ) : array(),
-			'total'    => $total,
+		$result = array(
+			'items'    => array_map( fn ( array $row ): array => $this->public_chunk_row( $row, $context ), $rows ),
 			'page'     => $page,
 			'per_page' => $per_page,
 			'context'  => $context,
-			'index'    => $this->summary(),
 		);
+
+		if ( $count ) {
+			$result['total'] = (int) $wpdb->get_var(
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Query has two identifier placeholders plus a variable number of safe filter placeholders.
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
+					"SELECT COUNT(*) FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']}",
+					...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'] )
+				)
+			);
+		} else {
+			$result['has_more'] = $has_more;
+		}
+
+		if ( $this->bool_arg( $args['include_index_summary'] ?? true, true ) ) {
+			$result['index'] = $this->summary();
+		}
+
+		return $result;
 	}
 
 	/**
@@ -1132,6 +1159,34 @@ final class ContentIndexRepository {
 	 */
 	private function use_fulltext_search(): bool {
 		return (bool) apply_filters( 'aculect_ai_companion_content_index_use_fulltext', true );
+	}
+
+	/**
+	 * Return a normalized boolean argument.
+	 *
+	 * @param mixed $value   Raw argument value.
+	 * @param bool  $default Default when the value is not a recognizable scalar.
+	 */
+	private function bool_arg( mixed $value, bool $default ): bool {
+		if ( is_bool( $value ) ) {
+			return $value;
+		}
+
+		if ( is_int( $value ) ) {
+			return 1 === $value;
+		}
+
+		if ( is_string( $value ) ) {
+			$value = strtolower( trim( $value ) );
+			if ( in_array( $value, array( '1', 'true', 'yes', 'on' ), true ) ) {
+				return true;
+			}
+			if ( in_array( $value, array( '0', 'false', 'no', 'off' ), true ) ) {
+				return false;
+			}
+		}
+
+		return $default;
 	}
 
 	/**

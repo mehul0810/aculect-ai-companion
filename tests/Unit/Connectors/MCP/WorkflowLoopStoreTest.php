@@ -158,6 +158,32 @@ final class WorkflowLoopStoreTest extends TestCase {
 		self::assertSame( array(), $after_cancel['items_to_process'] );
 	}
 
+	public function test_loop_state_cannot_be_read_or_mutated_by_another_user(): void {
+		$store  = new WorkflowLoopStore();
+		$create = $store->create(
+			array(
+				'source' => 'provided_items',
+				'items'  => $this->items( 10, 20 ),
+			)
+		);
+
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 9;
+
+		$read = $store->get( array( 'workflow_loop_id' => $create['workflow_loop']['id'] ) );
+		self::assertSame( 'error', $read['status'] );
+		self::assertSame( 'workflow_loop_not_found', $read['error'] );
+
+		$run = $store->run_next( array( 'workflow_loop_id' => $create['workflow_loop']['id'] ) );
+		self::assertSame( 'error', $run['status'] );
+		self::assertSame( 'workflow_loop_not_found', $run['error'] );
+
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$owner_read = $store->get( array( 'workflow_loop_id' => $create['workflow_loop']['id'] ) );
+
+		self::assertSame( 'created', $owner_read['workflow_loop']['state'] );
+		self::assertSame( 2, $owner_read['summary']['pending'] );
+	}
+
 	public function test_missing_loop_returns_error(): void {
 		$result = ( new WorkflowLoopStore() )->get( array( 'workflow_loop_id' => 'missing' ) );
 
@@ -190,6 +216,7 @@ final class WorkflowLoopStoreTest extends TestCase {
 		self::assertSame( 2, $result['summary']['total'] );
 		self::assertSame( array( 11, 13 ), array_column( $result['items'], 'id' ) );
 		self::assertTrue( $result['items'][1]['stale'] );
+		self::assertSame( 0, $GLOBALS['wpdb']->get_var_calls );
 	}
 
 	/**
@@ -243,6 +270,8 @@ final class WorkflowLoopContentIndexWpdb {
 
 	public string $prefix = 'wp_';
 
+	public int $get_var_calls = 0;
+
 	/**
 	 * @var list<array<string, mixed>>
 	 */
@@ -277,6 +306,8 @@ final class WorkflowLoopContentIndexWpdb {
 	}
 
 	public function get_var( string $query ): int {
+		++$this->get_var_calls;
+
 		if ( str_contains( $query, 'COUNT(*)' ) ) {
 			return count( $this->filtered_rows() );
 		}

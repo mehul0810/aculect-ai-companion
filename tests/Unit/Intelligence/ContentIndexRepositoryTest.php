@@ -248,4 +248,21 @@ final class ContentIndexRepositoryTest extends TestCase {
 		self::assertContains( 0, $first_args );
 		self::assertContains( 300, $first_args );
 	}
+
+	public function test_content_search_can_skip_total_and_index_summary_queries(): void {
+		$result = ( new ContentIndexRepository() )->search_items(
+			array(
+				'per_page'              => 10,
+				'include_total'         => false,
+				'include_index_summary' => false,
+			)
+		);
+
+		self::assertArrayNotHasKey( 'total', $result );
+		self::assertArrayNotHasKey( 'index', $result );
+		self::assertArrayHasKey( 'has_more', $result );
+		self::assertCount( 1, $this->wpdb->prepared );
+		self::assertStringNotContainsString( 'COUNT(*)', $this->wpdb->prepared[0]['query'] );
+		self::assertContains( 11, $this->wpdb->prepared[0]['args'] );
+	}
 }

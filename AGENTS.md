@@ -61,6 +61,8 @@
 
 ## Assets and JS Tooling
 - Use `@wordpress/scripts` for build/lint/format.
+- Use the Node and npm versions declared by `.nvmrc` and `package.json#engines` for JS lint/build/test work; do not trust the shell default runtime if it is older.
+- If the local shell is on an older Node/npm pair, switch to the repo-required runtime or report the validation gap instead of recording false JS failures.
 - Use WordPress Design System components (`@wordpress/components`) for admin UI.
 - Keep bundle size small, avoid unused dependencies, and split code by feature if needed.
 

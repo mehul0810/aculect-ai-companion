@@ -225,4 +225,27 @@ final class ContentIndexRepositoryTest extends TestCase {
 		self::assertSame( array(), $list['items'] );
 		self::assertSame( 0, $list['total'] );
 	}
+
+	public function test_content_search_filters_by_word_count_post_type_status_and_stale_state(): void {
+		( new ContentIndexRepository() )->search_items(
+			array(
+				'post_type'      => 'page',
+				'status'         => 'publish',
+				'stale'          => false,
+				'max_word_count' => 300,
+			)
+		);
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertStringContainsString( 'post_type = %s', $first_query );
+		self::assertStringContainsString( 'post_status = %s', $first_query );
+		self::assertStringContainsString( 'stale = %d', $first_query );
+		self::assertStringContainsString( 'word_count <= %d', $first_query );
+		self::assertContains( 'page', $first_args );
+		self::assertContains( 'publish', $first_args );
+		self::assertContains( 0, $first_args );
+		self::assertContains( 300, $first_args );
+	}
 }

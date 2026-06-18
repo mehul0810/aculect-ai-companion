@@ -37,6 +37,24 @@ toggles. They still require authenticated MCP access, OAuth scope checks, and
 the normal execution-time WordPress capability checks in the underlying write
 tools.
 
+## Workflow Loops
+
+`workflow_loop_create`, `workflow_loop_get`, `workflow_loop_run_next`,
+`workflow_loop_run_batch`, `workflow_loop_pause`, and `workflow_loop_cancel`
+store bounded item-aware progress for collection workflows. Use them when a
+user asks for "do all" behavior after discovery, such as finding thin pages and
+applying the same guidance item by item.
+
+Loops store compact item metadata, per-item status, recent events, filters, and
+the user's reusable guidance. They do not generate or write content themselves.
+Run calls return the next `content_workflow_prepare_post` arguments so the
+assistant still uses the normal content workflow, block validation, dry-run,
+OAuth scope, role policy, capability checks, trusted-write policy, and activity
+logging before any WordPress data changes.
+
+Keep loop responses bounded. Do not store full article bodies, raw HTML, OAuth
+tokens, private option values, or unbounded prior chat context in loop state.
+
 ## MCP Resources
 
 The MCP endpoint supports `resources/list` and `resources/read` for compact

@@ -128,6 +128,26 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'nonce-wp_rest', $payload['settingsRestNonce'] );
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
+		self::assertSame(
+			'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+			$payload['connectorEndpoints']['mcp']
+		);
+		self::assertSame(
+			'https://example.com/oauth/authorize',
+			$payload['connectorEndpoints']['authorization']
+		);
+		self::assertSame(
+			'https://example.com/wp-json/aculect-ai-companion/v1/oauth/token',
+			$payload['connectorEndpoints']['token']
+		);
+		self::assertSame( 'ready', $payload['connectionReadiness']['status'] );
+		self::assertSame( 'Ready to connect', $payload['connectionReadiness']['title'] );
+		self::assertCount( 5, $payload['connectionReadiness']['items'] );
+		self::assertSame( '2', $payload['connectionReadiness']['items'][3]['value'] );
+		self::assertSame( 'interactive_oauth', $payload['connectionRequests']['approvalMode'] );
+		self::assertFalse( $payload['connectionRequests']['approvalModeEnabled'] );
+		self::assertSame( 0, $payload['connectionRequests']['pendingCount'] );
+		self::assertSame( array(), $payload['connectionRequests']['items'] );
 		self::assertSame( array(), $payload['sessions'] );
 		self::assertSame( array(), $payload['revokedSessions'] );
 		self::assertFalse( $payload['roleAbilities']['enabled'] );
@@ -141,9 +161,12 @@ final class SettingsPageTest extends TestCase {
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertIsArray( $providers['claude'] );
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
+		self::assertArrayHasKey( 'wizard', $providers['claude'] );
+		self::assertSame( 'Open Claude', $providers['claude']['wizard']['steps'][0]['title'] );
 		self::assertArrayHasKey( 'codex', $providers );
 		self::assertSame( 'https://developers.openai.com/codex/mcp', $providers['codex']['primaryActionUrl'] );
 		self::assertStringContainsString( 'Streamable HTTP', $providers['codex']['setupSections'][0]['description'] );
+		self::assertSame( 'aculect_ai_companion', $providers['codex']['wizard']['steps'][1]['copyFields'][0]['value'] );
 		self::assertSame( 'MCP Server Name', $providers['codex']['setupSections'][0]['copyFields'][0]['label'] );
 		self::assertSame( 'aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 'MCP URL', $providers['codex']['setupSections'][0]['copyFields'][1]['label'] );
@@ -153,9 +176,11 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertArrayHasKey( 'cursor', $providers );
 		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertSame( 'Add MCP server', $providers['cursor']['wizard']['steps'][1]['title'] );
 		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
 		self::assertArrayHasKey( 'gemini', $providers );
+		self::assertStringContainsString( 'settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );

@@ -6,11 +6,12 @@ namespace Aculect\AICompanion\Connectors\Providers\ChatGPT;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
  * Provides ChatGPT-specific connector setup guidance.
  */
-final class Provider implements ProviderInterface, ProviderMatcherInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
 	/**
 	 * Return the provider slug.
@@ -80,6 +81,99 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 				),
 				'actionLabel' => 'Open OpenAI API Docs',
 				'actionUrl'   => 'https://developers.openai.com/api/docs/guides/tools-connectors-mcp',
+			),
+		);
+	}
+
+	/**
+	 * Return ChatGPT setup wizard metadata for the primary Connect flow.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<string, mixed>
+	 */
+	public function setup_wizard( string $mcp_url ): array {
+		return array(
+			'estimatedTime' => '1 min',
+			'badge'         => 'Most popular',
+			'steps'         => array(
+				array(
+					'id'                 => 'open',
+					'title'              => 'Open ChatGPT',
+					'subtitle'           => 'Open ChatGPT and enable Developer Mode if required.',
+					'description'        => 'You will need Developer Mode to add custom connectors.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Open ChatGPT',
+							'description' => 'Go to chatgpt.com in a new tab and sign in to your account.',
+						),
+						array(
+							'title'       => 'Enable Developer Mode',
+							'description' => 'Open your profile menu and turn on Developer Mode when your plan requires it.',
+						),
+					),
+					'helpTitle'          => 'Where is Developer Mode?',
+					'helpText'           => 'It is in the profile menu at the bottom of the left sidebar.',
+					'primaryActionLabel' => 'Open ChatGPT',
+					'primaryActionUrl'   => 'https://chatgpt.com/',
+					'secondaryLabel'     => 'View documentation',
+					'secondaryUrl'       => $this->primary_action_url(),
+				),
+				array(
+					'id'           => 'add',
+					'title'        => 'Add Connector',
+					'subtitle'     => 'Add Aculect AI Companion as a new connector.',
+					'description'  => 'Use the connection URL below to add Aculect AI Companion.',
+					'instructions' => array(
+						array(
+							'title'       => 'Open Connectors',
+							'description' => 'In ChatGPT, open Settings, go to Connectors, and click Add custom connector.',
+						),
+						array(
+							'title'       => 'Paste the connection URL',
+							'description' => 'Paste the Aculect connection URL below when ChatGPT asks for the connector URL.',
+						),
+						array(
+							'title'       => 'Continue to authorization',
+							'description' => 'Keep this WordPress window open. You will return here after adding the connector.',
+						),
+					),
+					'copyFields'   => array(
+						array(
+							'label'       => 'Your Aculect connection URL',
+							'description' => 'Copy this URL and paste it into ChatGPT when prompted.',
+							'value'       => $mcp_url,
+						),
+					),
+				),
+				array(
+					'id'                 => 'approve',
+					'title'              => 'Review and approve',
+					'subtitle'           => 'Authorize the connection securely in WordPress.',
+					'description'        => 'ChatGPT will redirect you to WordPress to review and approve the connection request.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Review connection request',
+							'description' => 'Confirm the assistant, site, requested actions, and approving WordPress user.',
+						),
+						array(
+							'title'       => 'Approve connection',
+							'description' => 'WordPress issues the connection after you approve the consent screen.',
+						),
+					),
+					'primaryActionLabel' => 'Continue to WordPress authorization',
+				),
+				array(
+					'id'           => 'complete',
+					'title'        => 'Complete',
+					'subtitle'     => 'Your AI assistant is connected and ready to use.',
+					'description'  => 'Return to ChatGPT and ask it to work with your WordPress site.',
+					'instructions' => array(
+						array(
+							'title'       => 'Connection active',
+							'description' => 'Active sessions appear in the Connections tab where you can review or revoke access.',
+						),
+					),
+				),
 			),
 		);
 	}

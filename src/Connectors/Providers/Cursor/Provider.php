@@ -11,11 +11,12 @@ namespace Aculect\AICompanion\Connectors\Providers\Cursor;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
  * Provides Cursor-specific MCP setup guidance.
  */
-final class Provider implements ProviderInterface, ProviderMatcherInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
 	/**
 	 * Return the provider slug.
@@ -91,6 +92,90 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
+			),
+		);
+	}
+
+	/**
+	 * Return Cursor setup wizard metadata for the primary Connect flow.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<string, mixed>
+	 */
+	public function setup_wizard( string $mcp_url ): array {
+		return array(
+			'estimatedTime' => '2 min',
+			'steps'         => array(
+				array(
+					'id'                 => 'open',
+					'title'              => 'Open Cursor MCP settings',
+					'subtitle'           => 'Open Cursor and go to Tools & MCP.',
+					'description'        => 'Cursor connects to Aculect AI Companion as a remote MCP server.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Open Cursor settings',
+							'description' => 'Open Cursor Settings > Tools & MCP, or edit your global or project mcp.json file.',
+						),
+						array(
+							'title'       => 'Choose remote MCP',
+							'description' => 'Use a remote URL connection so OAuth discovery and WordPress consent stay in control.',
+						),
+					),
+					'primaryActionLabel' => $this->primary_action_label(),
+					'primaryActionUrl'   => $this->primary_action_url(),
+				),
+				array(
+					'id'           => 'add',
+					'title'        => 'Add MCP server',
+					'subtitle'     => 'Add Aculect AI Companion to Cursor mcp.json.',
+					'description'  => 'Copy the configuration below into Cursor, then enable the server.',
+					'instructions' => array(
+						array(
+							'title'       => 'Copy Cursor configuration',
+							'description' => 'Add the JSON below to ~/.cursor/mcp.json or a project .cursor/mcp.json file.',
+						),
+						array(
+							'title'       => 'Enable the server',
+							'description' => 'Save the file or add the server in Cursor, then enable Aculect AI Companion.',
+						),
+					),
+					'copyFields'   => array(
+						array(
+							'label'       => 'Cursor mcp.json',
+							'description' => 'Use this remote URL configuration for Cursor Agent.',
+							'value'       => $this->config_json_snippet( $mcp_url ),
+						),
+					),
+				),
+				array(
+					'id'                 => 'approve',
+					'title'              => 'Authorize in WordPress',
+					'subtitle'           => 'Authorize the connection securely in WordPress.',
+					'description'        => 'Cursor will start the OAuth approval flow and open the WordPress consent screen.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Review connection request',
+							'description' => 'Confirm the Cursor connection, site, requested actions, and approving WordPress user.',
+						),
+						array(
+							'title'       => 'Approve connection',
+							'description' => 'WordPress issues the connection after you approve the consent screen.',
+						),
+					),
+					'primaryActionLabel' => 'Continue to WordPress authorization',
+				),
+				array(
+					'id'           => 'complete',
+					'title'        => 'Complete',
+					'subtitle'     => 'Your Cursor MCP server is connected and ready to use.',
+					'description'  => 'Open Cursor MCP Logs or Available Tools to confirm the WordPress tools are visible.',
+					'instructions' => array(
+						array(
+							'title'       => 'Connection active',
+							'description' => 'Active sessions appear in the Connections tab where you can review or revoke access.',
+						),
+					),
+				),
 			),
 		);
 	}

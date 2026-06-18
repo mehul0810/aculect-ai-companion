@@ -59,7 +59,7 @@ final class ProviderRegistry {
 	public function setup_definitions( string $mcp_url ): array {
 		return array_map(
 			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
-				return array(
+				$definition = array(
 					'id'                 => $provider->id(),
 					'label'              => $provider->label(),
 					'description'        => $provider->description(),
@@ -67,6 +67,12 @@ final class ProviderRegistry {
 					'primaryActionLabel' => $provider->primary_action_label(),
 					'setupSections'      => $provider->setup_sections( $mcp_url ),
 				);
+
+				if ( $provider instanceof ProviderWizardInterface ) {
+					$definition['wizard'] = $provider->setup_wizard( $mcp_url );
+				}
+
+				return $definition;
 			},
 			$this->providers()
 		);

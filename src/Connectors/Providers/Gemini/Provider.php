@@ -11,11 +11,12 @@ namespace Aculect\AICompanion\Connectors\Providers\Gemini;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
  * Provides Gemini CLI and Gemini Code Assist MCP setup guidance.
  */
-final class Provider implements ProviderInterface, ProviderMatcherInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
 	/**
 	 * Return the provider slug.
@@ -103,6 +104,90 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
+			),
+		);
+	}
+
+	/**
+	 * Return Gemini setup wizard metadata for the primary Connect flow.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<string, mixed>
+	 */
+	public function setup_wizard( string $mcp_url ): array {
+		return array(
+			'estimatedTime' => '2 min',
+			'steps'         => array(
+				array(
+					'id'                 => 'open',
+					'title'              => 'Open Gemini MCP settings',
+					'subtitle'           => 'Open Gemini CLI or Gemini Code Assist settings.',
+					'description'        => 'Gemini connects to Aculect AI Companion as a Streamable HTTP MCP server.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Open Gemini settings',
+							'description' => 'Open your Gemini CLI, IDE account, or workspace settings JSON.',
+						),
+						array(
+							'title'       => 'Prepare agent mode',
+							'description' => 'For Gemini Code Assist, switch chat into Agent mode before using MCP tools.',
+						),
+					),
+					'primaryActionLabel' => $this->primary_action_label(),
+					'primaryActionUrl'   => $this->primary_action_url(),
+				),
+				array(
+					'id'           => 'add',
+					'title'        => 'Add MCP server',
+					'subtitle'     => 'Add Aculect AI Companion to Gemini settings.',
+					'description'  => 'Copy the settings below. Keep the key named httpUrl for Streamable HTTP.',
+					'instructions' => array(
+						array(
+							'title'       => 'Copy Gemini settings',
+							'description' => 'Add the JSON below to ~/.gemini/settings.json or a project .gemini/settings.json file.',
+						),
+						array(
+							'title'       => 'Verify MCP tools',
+							'description' => 'Run gemini mcp list, or use /mcp list in Gemini CLI, to confirm the server is available.',
+						),
+					),
+					'copyFields'   => array(
+						array(
+							'label'       => 'Gemini MCP settings.json',
+							'description' => 'Use this httpUrl configuration for Gemini CLI or Code Assist.',
+							'value'       => $this->settings_json_snippet( $mcp_url ),
+						),
+					),
+				),
+				array(
+					'id'                 => 'approve',
+					'title'              => 'Authorize in WordPress',
+					'subtitle'           => 'Authorize the connection securely in WordPress.',
+					'description'        => 'When Gemini asks to authorize the MCP server, approve the WordPress consent screen.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Start authorization',
+							'description' => 'Run /mcp auth aculect-ai-companion if Gemini does not prompt automatically.',
+						),
+						array(
+							'title'       => 'Approve connection',
+							'description' => 'WordPress issues the connection after you approve the consent screen.',
+						),
+					),
+					'primaryActionLabel' => 'Continue to WordPress authorization',
+				),
+				array(
+					'id'           => 'complete',
+					'title'        => 'Complete',
+					'subtitle'     => 'Your Gemini MCP server is connected and ready to use.',
+					'description'  => 'Ask Gemini to list available Aculect tools before running write actions.',
+					'instructions' => array(
+						array(
+							'title'       => 'Connection active',
+							'description' => 'Active sessions appear in the Connections tab where you can review or revoke access.',
+						),
+					),
+				),
 			),
 		);
 	}

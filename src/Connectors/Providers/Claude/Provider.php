@@ -6,11 +6,12 @@ namespace Aculect\AICompanion\Connectors\Providers\Claude;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
  * Provides Claude-specific connector setup guidance.
  */
-final class Provider implements ProviderInterface, ProviderMatcherInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
 	/**
 	 * Return the provider slug.
@@ -96,6 +97,90 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 				),
 				'actionLabel' => 'Open Claude API Docs',
 				'actionUrl'   => 'https://docs.anthropic.com/en/docs/agents-and-tools/mcp-connector',
+			),
+		);
+	}
+
+	/**
+	 * Return Claude setup wizard metadata for the primary Connect flow.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<string, mixed>
+	 */
+	public function setup_wizard( string $mcp_url ): array {
+		return array(
+			'estimatedTime' => '1 min',
+			'steps'         => array(
+				array(
+					'id'                 => 'open',
+					'title'              => 'Open Claude',
+					'subtitle'           => 'Open Claude connector settings.',
+					'description'        => 'Claude can connect to Aculect AI Companion through a custom connector.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Open Claude',
+							'description' => 'Go to claude.ai and sign in to your account.',
+						),
+						array(
+							'title'       => 'Open connector settings',
+							'description' => 'Open connector settings. Team and Enterprise owners can use Organization settings.',
+						),
+					),
+					'primaryActionLabel' => 'Open Claude',
+					'primaryActionUrl'   => $this->primary_action_url(),
+				),
+				array(
+					'id'           => 'add',
+					'title'        => 'Add Connector',
+					'subtitle'     => 'Add Aculect AI Companion as a custom connector.',
+					'description'  => 'Use the connection URL below when Claude asks for the connector URL.',
+					'instructions' => array(
+						array(
+							'title'       => 'Add custom connector',
+							'description' => 'Choose Add custom connector, or Custom > Web for organization-managed connectors.',
+						),
+						array(
+							'title'       => 'Paste the connection URL',
+							'description' => 'Paste the Aculect connection URL and finish adding the connector.',
+						),
+					),
+					'copyFields'   => array(
+						array(
+							'label'       => 'Your Aculect connection URL',
+							'description' => 'Copy this URL and paste it into Claude when prompted.',
+							'value'       => $mcp_url,
+						),
+					),
+				),
+				array(
+					'id'                 => 'approve',
+					'title'              => 'Review and approve',
+					'subtitle'           => 'Authorize the connection securely in WordPress.',
+					'description'        => 'Claude will redirect you to WordPress to review and approve the connection request.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Review connection request',
+							'description' => 'Confirm the assistant, site, requested actions, and approving WordPress user.',
+						),
+						array(
+							'title'       => 'Approve connection',
+							'description' => 'WordPress issues the connection after you approve the consent screen.',
+						),
+					),
+					'primaryActionLabel' => 'Continue to WordPress authorization',
+				),
+				array(
+					'id'           => 'complete',
+					'title'        => 'Complete',
+					'subtitle'     => 'Your AI assistant is connected and ready to use.',
+					'description'  => 'Return to Claude and enable the connector for the conversation.',
+					'instructions' => array(
+						array(
+							'title'       => 'Connection active',
+							'description' => 'Active sessions appear in the Connections tab where you can review or revoke access.',
+						),
+					),
+				),
 			),
 		);
 	}

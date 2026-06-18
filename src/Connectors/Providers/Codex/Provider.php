@@ -6,11 +6,12 @@ namespace Aculect\AICompanion\Connectors\Providers\Codex;
 
 use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
  * Provides Codex-specific MCP setup guidance.
  */
-final class Provider implements ProviderInterface, ProviderMatcherInterface {
+final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
 	/**
 	 * Return the provider slug.
@@ -116,6 +117,98 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface {
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
+			),
+		);
+	}
+
+	/**
+	 * Return Codex setup wizard metadata for the primary Connect flow.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 * @return array<string, mixed>
+	 */
+	public function setup_wizard( string $mcp_url ): array {
+		return array(
+			'estimatedTime' => '2 min',
+			'steps'         => array(
+				array(
+					'id'                 => 'open',
+					'title'              => 'Open Codex MCP settings',
+					'subtitle'           => 'Open Codex and choose the custom MCP setup path.',
+					'description'        => 'Codex connects to Aculect AI Companion as a Streamable HTTP MCP server.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Open MCP settings',
+							'description' => 'Open Codex MCP settings and choose Connect to a custom MCP.',
+						),
+						array(
+							'title'       => 'Choose Streamable HTTP',
+							'description' => 'Use Streamable HTTP for Aculect AI Companion, not STDIO.',
+						),
+					),
+					'primaryActionLabel' => $this->primary_action_label(),
+					'primaryActionUrl'   => $this->primary_action_url(),
+				),
+				array(
+					'id'           => 'add',
+					'title'        => 'Add MCP server',
+					'subtitle'     => 'Add Aculect AI Companion as a custom MCP server.',
+					'description'  => 'Use the fields below in Codex. Leave manual bearer tokens and headers empty.',
+					'instructions' => array(
+						array(
+							'title'       => 'Enter server details',
+							'description' => 'Use the server name and MCP URL below in the Codex MCP server form.',
+						),
+						array(
+							'title'       => 'Start OAuth login',
+							'description' => 'Save the server, then let Codex start OAuth. If needed, run the login command below.',
+						),
+					),
+					'copyFields'   => array(
+						array(
+							'label' => 'MCP Server Name',
+							'value' => 'aculect_ai_companion',
+						),
+						array(
+							'label'       => 'MCP URL',
+							'description' => 'Paste this URL into the Codex Streamable HTTP URL field.',
+							'value'       => $mcp_url,
+						),
+						array(
+							'label' => 'OAuth Login Command',
+							'value' => 'codex mcp login aculect_ai_companion',
+						),
+					),
+				),
+				array(
+					'id'                 => 'approve',
+					'title'              => 'Authorize in WordPress',
+					'subtitle'           => 'Authorize the connection securely in WordPress.',
+					'description'        => 'Codex will open the WordPress consent screen when OAuth starts.',
+					'instructions'       => array(
+						array(
+							'title'       => 'Review connection request',
+							'description' => 'Confirm the Codex connection, site, requested actions, and approving WordPress user.',
+						),
+						array(
+							'title'       => 'Approve connection',
+							'description' => 'WordPress issues the connection after you approve the consent screen.',
+						),
+					),
+					'primaryActionLabel' => 'Continue to WordPress authorization',
+				),
+				array(
+					'id'           => 'complete',
+					'title'        => 'Complete',
+					'subtitle'     => 'Your Codex MCP server is connected and ready to use.',
+					'description'  => 'Start a new Codex session and ask Codex to list tools or read safe site information.',
+					'instructions' => array(
+						array(
+							'title'       => 'Connection active',
+							'description' => 'Active sessions appear in the Connections tab where you can review or revoke access.',
+						),
+					),
+				),
 			),
 		);
 	}

@@ -163,7 +163,11 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	 * @return mixed
 	 */
 	function apply_filters( string $hook_name, mixed $value, mixed ...$args ): mixed {
-		unset( $hook_name, $args );
+		$test_callbacks = $GLOBALS['aculect_ai_companion_test_filter_callbacks'] ?? array();
+		$callback       = is_array( $test_callbacks ) ? ( $test_callbacks[ $hook_name ] ?? null ) : null;
+		if ( is_callable( $callback ) ) {
+			return $callback( $value, ...$args );
+		}
 
 		return $value;
 	}
@@ -625,6 +629,29 @@ if ( ! function_exists( 'admin_url' ) ) {
 	 */
 	function admin_url( string $path = '' ): string {
 		return 'https://example.com/wp-admin/' . ltrim( $path, '/' );
+	}
+}
+
+if ( ! function_exists( 'nocache_headers' ) ) {
+	/**
+	 * No-op test replacement for WordPress cache headers.
+	 */
+	function nocache_headers(): void {}
+}
+
+if ( ! function_exists( 'wp_nonce_field' ) ) {
+	/**
+	 * Render a deterministic nonce field for tests.
+	 *
+	 * @param string $action Nonce action.
+	 * @param string $name   Nonce field name.
+	 */
+	function wp_nonce_field( string $action = '-1', string $name = '_wpnonce' ): void {
+		printf(
+			'<input type="hidden" name="%s" value="%s">',
+			esc_attr( $name ),
+			esc_attr( wp_create_nonce( $action ) )
+		);
 	}
 }
 

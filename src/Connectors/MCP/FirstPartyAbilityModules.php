@@ -195,6 +195,26 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ContentWorkflowAbilities() )->update_post( $args )
 			),
 			$this->module(
+				'content_media.search_cc0_images',
+				'Search CC0 Image Candidates',
+				'Search Openverse for CC0 image candidates that can be reviewed before import into the WordPress media library.',
+				'Content Media Workflows',
+				'content:read',
+				true,
+				$this->content_media_search_schema(),
+				static fn ( array $args ): array => ( new ContentMediaWorkflowAbilities() )->search_cc0_images( $args )
+			),
+			$this->module(
+				'content_media.apply_image',
+				'Apply Image to Content',
+				'Resolve an image from an existing attachment, URL, generated image URL, base64/data URL, or CC0 search result, then set it as featured media or insert a safe core media block into an existing post.',
+				'Content Media Workflows',
+				'content:draft',
+				false,
+				$this->content_media_apply_image_schema(),
+				static fn ( array $args ): array => ( new ContentMediaWorkflowAbilities() )->apply_image( $args )
+			),
+			$this->module(
 				'seo_workflow.update_rankmath',
 				'Update Rank Math SEO Workflow',
 				'Use this when a user specifically wants to update Rank Math SEO title, meta description, or focus keywords for a WordPress content item.',
@@ -949,6 +969,16 @@ final class FirstPartyAbilityModules {
 					array( 'url' )
 				),
 				static fn ( array $args ): array => ( new MediaAbilities() )->upload_media( $args )
+			),
+			$this->module(
+				'media.upload_image_data',
+				'Upload Image Data',
+				'Upload a base64 image payload or image data URL to the WordPress media library with MIME and size checks.',
+				'Media',
+				'content:draft',
+				false,
+				$this->media_image_data_upload_schema(),
+				static fn ( array $args ): array => ( new MediaAbilities() )->upload_image_data( $args )
 			),
 			$this->module(
 				'wp_abilities.discover',
@@ -1764,6 +1794,151 @@ final class FirstPartyAbilityModules {
 	}
 
 	/**
+	 * Build the CC0 image search schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function content_media_search_schema(): array {
+		return $this->object_schema(
+			array(
+				'query'    => array(
+					'type'        => 'string',
+					'description' => 'Image search topic. Openverse results are restricted to CC0.',
+				),
+				'topic'    => array(
+					'type'        => 'string',
+					'description' => 'Alias for query.',
+				),
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 10, 'Image candidates to return. Defaults to 5 and is capped at 10.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the content media apply workflow schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function content_media_apply_image_schema(): array {
+		return $this->object_schema(
+			array(
+				'post_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Existing WordPress post, page, or custom content item ID.',
+				),
+				'id'                 => array(
+					'type'        => 'integer',
+					'description' => 'Alias for post_id.',
+				),
+				'source_type'        => array(
+					'type'        => 'string',
+					'enum'        => array( 'attachment_id', 'url', 'generated_url', 'image_data', 'data_url', 'search_cc0' ),
+					'description' => 'Image source. Use generated_url for externally generated AI images, image_data/data_url for direct encoded image payloads, and search_cc0 to import from Openverse CC0 results.',
+				),
+				'target'             => array(
+					'type'        => 'string',
+					'enum'        => array( 'featured_image', 'insert_block' ),
+					'description' => 'Whether to set the image as featured media or insert a media block into post content.',
+				),
+				'attachment_id'      => array(
+					'type'        => 'integer',
+					'description' => 'Existing image attachment ID when source_type is attachment_id.',
+				),
+				'media_id'           => array(
+					'type'        => 'integer',
+					'description' => 'Alias for attachment_id.',
+				),
+				'image_id'           => array(
+					'type'        => 'integer',
+					'description' => 'Alias for attachment_id.',
+				),
+				'url'                => array(
+					'type'        => 'string',
+					'format'      => 'uri',
+					'description' => 'Public HTTP or HTTPS image URL for url or generated_url sources.',
+				),
+				'image_url'          => array(
+					'type'        => 'string',
+					'format'      => 'uri',
+					'description' => 'Alias for url.',
+				),
+				'data_url'           => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Base64 image data URL for image_data/data_url sources.',
+				),
+				'data_base64'        => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Raw base64 image data for image_data sources. Prefer data_url when the client can provide it.',
+				),
+				'image_base64'       => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Alias for data_base64.',
+				),
+				'mime_type'          => array(
+					'type'        => 'string',
+					'description' => 'Image MIME type required when raw base64 data is provided.',
+				),
+				'filename'           => array(
+					'type'        => 'string',
+					'description' => 'Preferred filename for encoded image uploads.',
+				),
+				'query'              => array(
+					'type'        => 'string',
+					'description' => 'Search topic when source_type is search_cc0.',
+				),
+				'topic'              => array(
+					'type'        => 'string',
+					'description' => 'Alias for query.',
+				),
+				'selected_result_id' => array(
+					'type'        => 'string',
+					'description' => 'Openverse result ID to import after reviewing search candidates.',
+				),
+				'candidate_id'       => array(
+					'type'        => 'string',
+					'description' => 'Alias for selected_result_id.',
+				),
+				'selected_index'     => array(
+					'type'        => 'integer',
+					'minimum'     => 0,
+					'maximum'     => 9,
+					'description' => 'Zero-based candidate index to import. Defaults to 0.',
+				),
+				'block_type'         => array(
+					'type'        => 'string',
+					'enum'        => array( 'image', 'gallery', 'cover', 'media_text' ),
+					'description' => 'Core media block to insert when target is insert_block.',
+				),
+				'placement'          => array(
+					'type'        => 'string',
+					'enum'        => array( 'append', 'prepend', 'after_first_paragraph', 'after_heading' ),
+					'description' => 'Where to insert the media block in existing content.',
+				),
+				'section_id'         => array(
+					'type'        => 'string',
+					'description' => 'Heading anchor or normalized heading text required when placement is after_heading.',
+				),
+				'after_heading'      => array(
+					'type'        => 'string',
+					'description' => 'Alias for section_id.',
+				),
+				'block_text'         => array(
+					'type'        => 'string',
+					'description' => 'Optional paragraph text inside media_text blocks.',
+				),
+				'title'              => array( 'type' => 'string' ),
+				'alt_text'           => array( 'type' => 'string' ),
+				'caption'            => array( 'type' => 'string' ),
+				'description'        => array( 'type' => 'string' ),
+			)
+		);
+	}
+
+	/**
 	 * Build the Rank Math workflow schema.
 	 *
 	 * @return array<string, mixed>
@@ -2045,6 +2220,46 @@ final class FirstPartyAbilityModules {
 				),
 			),
 			array( 'job_key' )
+		);
+	}
+
+	/**
+	 * Build direct image data upload schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function media_image_data_upload_schema(): array {
+		return $this->object_schema(
+			array(
+				'data_url'     => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Base64 image data URL.',
+				),
+				'data_base64'  => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Raw base64 image data. Requires mime_type.',
+				),
+				'image_base64' => array(
+					'type'        => 'string',
+					'maxLength'   => 15000000,
+					'description' => 'Alias for data_base64.',
+				),
+				'mime_type'    => array(
+					'type'        => 'string',
+					'description' => 'Image MIME type required when raw base64 data is provided.',
+				),
+				'filename'     => array(
+					'type'        => 'string',
+					'description' => 'Preferred image filename.',
+				),
+				'title'        => array( 'type' => 'string' ),
+				'alt_text'     => array( 'type' => 'string' ),
+				'caption'      => array( 'type' => 'string' ),
+				'description'  => array( 'type' => 'string' ),
+				'post_id'      => array( 'type' => 'integer' ),
+			)
 		);
 	}
 

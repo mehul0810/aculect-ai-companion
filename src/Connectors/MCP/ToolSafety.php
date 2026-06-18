@@ -121,6 +121,7 @@ final class ToolSafety {
 				default => 'update',
 			},
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
+			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
@@ -142,6 +143,7 @@ final class ToolSafety {
 			'media.rename_file',
 			'media.update_item',
 			'media.upload_item',
+			'media.upload_image_data',
 			'taxonomy.create_term',
 			'taxonomy.set_term_image',
 			'taxonomy.update_term' => 'update',

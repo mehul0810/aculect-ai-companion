@@ -19,6 +19,7 @@ final class AbilitiesRegistry {
 		'content_workflow.prepare_post',
 		'content_workflow.create_draft',
 		'content_workflow.update_post',
+		'content_media.apply_image',
 		'seo_workflow.update_rankmath',
 		'site_workflow.audit',
 	);
@@ -326,6 +327,7 @@ final class AbilitiesRegistry {
 			'content_workflow.prepare_post' => array( 'site.list_post_types' ),
 			'content_workflow.create_draft' => array( 'content.create_item' ),
 			'content_workflow.update_post' => array( 'content.update_item' ),
+			'content_media.apply_image' => array( 'content.update_item', 'media.upload_item' ),
 			'seo_workflow.update_rankmath' => array( 'content.update_seo' ),
 			'site_workflow.audit' => array( 'site.get_info', 'site.get_health' ),
 			default => array(),

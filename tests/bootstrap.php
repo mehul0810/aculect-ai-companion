@@ -66,6 +66,7 @@ $GLOBALS['aculect_ai_companion_test_roles']       = array(
 );
 $GLOBALS['aculect_ai_companion_test_users']       = array();
 $GLOBALS['aculect_ai_companion_test_posts']       = array();
+$GLOBALS['aculect_ai_companion_test_post_meta']   = array();
 $GLOBALS['aculect_ai_companion_test_post_types']  = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
@@ -244,6 +245,8 @@ if ( ! class_exists( 'WP_Post' ) ) {
 		public string $post_excerpt = '';
 		public string $post_name = '';
 		public int $post_author = 0;
+		public int $post_parent = 0;
+		public string $post_mime_type = '';
 		public string $post_date = '';
 		public string $post_date_gmt = '';
 		public string $post_modified_gmt = '';
@@ -768,6 +771,183 @@ if ( ! function_exists( 'get_permalink' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_edit_post_link' ) ) {
+	/**
+	 * Return a deterministic test edit link.
+	 *
+	 * @param int    $post_id Post ID.
+	 * @param string $context Link context.
+	 */
+	function get_edit_post_link( int $post_id, string $context = 'display' ): string {
+		unset( $context );
+
+		return admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+	}
+}
+
+if ( ! function_exists( 'post_type_supports' ) ) {
+	/**
+	 * Return whether a test post type supports a feature.
+	 *
+	 * @param string $post_type Post type.
+	 * @param string $feature Feature name.
+	 */
+	function post_type_supports( string $post_type, string $feature ): bool {
+		$supports = $GLOBALS['aculect_ai_companion_test_post_type_supports'][ $post_type ] ?? array( 'thumbnail' );
+
+		return in_array( $feature, is_array( $supports ) ? $supports : array(), true );
+	}
+}
+
+if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
+	/**
+	 * Return a test featured image ID.
+	 *
+	 * @param WP_Post|int $post Post object or ID.
+	 */
+	function get_post_thumbnail_id( WP_Post|int $post ): int {
+		$post_id = $post instanceof WP_Post ? $post->ID : (int) $post;
+
+		return (int) ( $GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] ?? 0 );
+	}
+}
+
+if ( ! function_exists( 'set_post_thumbnail' ) ) {
+	/**
+	 * Store a test featured image ID.
+	 *
+	 * @param int $post_id Post ID.
+	 * @param int $thumbnail_id Attachment ID.
+	 */
+	function set_post_thumbnail( int $post_id, int $thumbnail_id ): bool {
+		$GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] = $thumbnail_id;
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'delete_post_thumbnail' ) ) {
+	/**
+	 * Delete a test featured image ID.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	function delete_post_thumbnail( int $post_id ): bool {
+		unset( $GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] );
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_update_post' ) ) {
+	/**
+	 * Update a test post object.
+	 *
+	 * @param array<string,mixed> $postarr Post update payload.
+	 * @param bool                $wp_error Whether to return WP_Error on failure.
+	 * @return int|WP_Error
+	 */
+	function wp_update_post( array $postarr = array(), bool $wp_error = false ): int|WP_Error {
+		unset( $wp_error );
+
+		$post_id = absint( $postarr['ID'] ?? 0 );
+		$post    = get_post( $post_id );
+		if ( ! $post instanceof WP_Post ) {
+			return new WP_Error( 'not_found', 'Post not found.' );
+		}
+
+		$map = array(
+			'post_title'    => 'post_title',
+			'post_content'  => 'post_content',
+			'post_excerpt'  => 'post_excerpt',
+			'post_name'     => 'post_name',
+			'post_status'   => 'post_status',
+			'post_author'   => 'post_author',
+			'post_parent'   => 'post_parent',
+			'post_date'     => 'post_date',
+			'post_date_gmt' => 'post_date_gmt',
+		);
+
+		foreach ( $map as $payload_key => $property ) {
+			if ( array_key_exists( $payload_key, $postarr ) ) {
+				$post->{$property} = is_int( $post->{$property} ) ? absint( $postarr[ $payload_key ] ) : (string) $postarr[ $payload_key ];
+			}
+		}
+
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = $post;
+
+		return $post_id;
+	}
+}
+
+if ( ! function_exists( 'get_post_meta' ) ) {
+	/**
+	 * Return test post meta.
+	 *
+	 * @param int    $post_id Post ID.
+	 * @param string $key Meta key.
+	 * @param bool   $single Whether to return one value.
+	 * @return mixed
+	 */
+	function get_post_meta( int $post_id, string $key = '', bool $single = false ): mixed {
+		$meta = $GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ] ?? array();
+		if ( '' === $key ) {
+			return $meta;
+		}
+
+		$value = $meta[ $key ] ?? '';
+		if ( ! $single ) {
+			return is_array( $value ) ? $value : array( $value );
+		}
+
+		return is_array( $value ) ? reset( $value ) : $value;
+	}
+}
+
+if ( ! function_exists( 'update_post_meta' ) ) {
+	/**
+	 * Store test post meta.
+	 *
+	 * @param int    $post_id Post ID.
+	 * @param string $key Meta key.
+	 * @param mixed  $value Meta value.
+	 */
+	function update_post_meta( int $post_id, string $key, mixed $value ): bool {
+		$GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ][ $key ] = $value;
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_url' ) ) {
+	/**
+	 * Return a deterministic attachment URL.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 */
+	function wp_get_attachment_url( int $attachment_id ): string {
+		$url = $GLOBALS['aculect_ai_companion_test_post_meta'][ $attachment_id ]['_source_url'] ?? '';
+		if ( is_string( $url ) && '' !== $url ) {
+			return $url;
+		}
+
+		return 'https://example.com/uploads/image-' . $attachment_id . '.jpg';
+	}
+}
+
+if ( ! function_exists( 'wp_attachment_is_image' ) ) {
+	/**
+	 * Return whether an attachment is image-like.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 */
+	function wp_attachment_is_image( int $attachment_id ): bool {
+		$post = get_post( $attachment_id );
+
+		return $post instanceof WP_Post && 'attachment' === $post->post_type && str_starts_with( $post->post_mime_type, 'image/' );
+	}
+}
+
 if ( ! function_exists( 'wp_trim_words' ) ) {
 	/**
 	 * Trim text to a bounded number of words.
@@ -1096,6 +1276,42 @@ if ( ! function_exists( 'esc_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'esc_attr' ) ) {
+	/**
+	 * Escape an attribute value for tests.
+	 *
+	 * @param string $text Raw text.
+	 */
+	function esc_attr( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'esc_html' ) ) {
+	/**
+	 * Escape HTML text for tests.
+	 *
+	 * @param string $text Raw text.
+	 */
+	function esc_html( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'sanitize_title' ) ) {
+	/**
+	 * Sanitize a title-like value for tests.
+	 *
+	 * @param string $title Raw title.
+	 */
+	function sanitize_title( string $title ): string {
+		$title = strtolower( wp_strip_all_tags( $title ) );
+		$title = preg_replace( '/[^a-z0-9]+/', '-', $title ) ?? '';
+
+		return trim( $title, '-' );
+	}
+}
+
 if ( ! function_exists( 'wp_parse_url' ) ) {
 	/**
 	 * Parse a URL.
@@ -1120,6 +1336,82 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 	 */
 	function wp_json_encode( mixed $data, int $options = 0, int $depth = 512 ): string|false {
 		return json_encode( $data, $options, $depth );
+	}
+}
+
+if ( ! function_exists( 'wp_safe_remote_get' ) ) {
+	/**
+	 * Return deterministic test HTTP GET responses.
+	 *
+	 * @param string              $url  Request URL.
+	 * @param array<string,mixed> $args Request args.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	function wp_safe_remote_get( string $url, array $args = array() ): array|WP_Error {
+		$callback = $GLOBALS['aculect_ai_companion_test_http_get'] ?? null;
+		if ( is_callable( $callback ) ) {
+			$result = $callback( $url, $args );
+			if ( $result instanceof WP_Error || is_array( $result ) ) {
+				return $result;
+			}
+		}
+
+		return new WP_Error( 'http_not_mocked', 'No test HTTP response was registered.' );
+	}
+}
+
+if ( ! function_exists( 'wp_safe_remote_head' ) ) {
+	/**
+	 * Return deterministic test HTTP HEAD responses.
+	 *
+	 * @param string              $url  Request URL.
+	 * @param array<string,mixed> $args Request args.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	function wp_safe_remote_head( string $url, array $args = array() ): array|WP_Error {
+		$callback = $GLOBALS['aculect_ai_companion_test_http_head'] ?? null;
+		if ( is_callable( $callback ) ) {
+			$result = $callback( $url, $args );
+			if ( $result instanceof WP_Error || is_array( $result ) ) {
+				return $result;
+			}
+		}
+
+		return new WP_Error( 'http_not_mocked', 'No test HTTP response was registered.' );
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) {
+	/**
+	 * Return a test HTTP status code.
+	 *
+	 * @param array<string,mixed> $response HTTP response.
+	 */
+	function wp_remote_retrieve_response_code( array $response ): int {
+		return (int) ( $response['response']['code'] ?? 0 );
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_body' ) ) {
+	/**
+	 * Return a test HTTP body.
+	 *
+	 * @param array<string,mixed> $response HTTP response.
+	 */
+	function wp_remote_retrieve_body( array $response ): string {
+		return (string) ( $response['body'] ?? '' );
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_headers' ) ) {
+	/**
+	 * Return test HTTP headers.
+	 *
+	 * @param array<string,mixed> $response HTTP response.
+	 * @return array<string,mixed>
+	 */
+	function wp_remote_retrieve_headers( array $response ): array {
+		return is_array( $response['headers'] ?? null ) ? $response['headers'] : array();
 	}
 }
 
@@ -1427,5 +1719,16 @@ if ( ! class_exists( 'WP_Error' ) ) {
 		public function get_error_data(): array {
 			return $this->data;
 		}
+	}
+}
+
+if ( ! function_exists( 'is_wp_error' ) ) {
+	/**
+	 * Return whether a value is a WordPress error.
+	 *
+	 * @param mixed $thing Candidate value.
+	 */
+	function is_wp_error( mixed $thing ): bool {
+		return $thing instanceof WP_Error;
 	}
 }

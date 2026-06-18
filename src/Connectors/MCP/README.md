@@ -55,6 +55,21 @@ logging before any WordPress data changes.
 Keep loop responses bounded. Do not store full article bodies, raw HTML, OAuth
 tokens, private option values, or unbounded prior chat context in loop state.
 
+## Content Media Workflows
+
+`content_media_search_cc0_images` searches Openverse for bounded CC0 image
+candidates. It is a review/discovery tool; the import path still validates the
+selected media URL with the normal upload guard before WordPress sideloading.
+
+`content_media_apply_image` resolves one image source and applies it to an
+existing content item. Supported sources are existing attachment IDs, public
+image URLs, externally generated image URLs, base64/data URL image payloads, and
+Openverse CC0 search results. Supported targets are featured image assignment
+and insertion of core image, gallery, cover, or media/text blocks. The workflow
+uses existing media upload, featured-media validation, block validation,
+dry-run, OAuth scope, trusted-write policy, capability checks, and activity
+logging; it must not bypass the lower-level content or media safeguards.
+
 ## MCP Resources
 
 The MCP endpoint supports `resources/list` and `resources/read` for compact

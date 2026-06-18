@@ -325,10 +325,6 @@ final class MediaAbilities extends AbstractAbilityService {
 			);
 		}
 
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		require_once ABSPATH . 'wp-admin/includes/media.php';
-		require_once ABSPATH . 'wp-admin/includes/image.php';
-
 		$download = $guard->download( $url );
 		if ( isset( $download['code'] ) ) {
 			return $this->error( $download['code'], $download['message'] );
@@ -345,6 +341,147 @@ final class MediaAbilities extends AbstractAbilityService {
 			wp_delete_file( $tmp );
 			return $this->error( $download_error['code'], $download_error['message'] );
 		}
+
+		return $this->sideload_validated_file( $tmp, $filename, $data );
+	}
+
+	/**
+	 * Upload media from base64 or data URL image data.
+	 *
+	 * @param array<string, mixed> $data Upload fields.
+	 * @return array<string, mixed>
+	 */
+	public function upload_image_data( array $data ): array {
+		if ( ! current_user_can( 'upload_files' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to upload media.' );
+		}
+
+		$decoded = $this->decoded_image_data( $data );
+		if ( isset( $decoded['error'] ) ) {
+			return $decoded;
+		}
+
+		$filename = $this->image_data_filename( $data, (string) $decoded['mime_type'] );
+		$guard    = new MediaUploadGuard();
+		if ( strlen( (string) $decoded['bytes'] ) > $guard->max_bytes() ) {
+			return $this->error( 'file_too_large', sprintf( 'The media file must be %d bytes or smaller.', $guard->max_bytes() ) );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'media.upload_image_data',
+				$data,
+				array(
+					'type' => 'attachment',
+					'id'   => null,
+				),
+				array_merge(
+					array(
+						$this->change( 'filename', null, sanitize_file_name( $filename ) ),
+						$this->change( 'mime_type', null, (string) $decoded['mime_type'] ),
+						$this->change( 'bytes', null, strlen( (string) $decoded['bytes'] ) ),
+					),
+					$this->media_payload_changes( 'data:image', $filename, $data )
+				),
+				array( 'Dry run validated the encoded image payload size only; the file was not added to the media library.' )
+			);
+		}
+
+		$tmp = wp_tempnam( $filename );
+		if ( ! is_string( $tmp ) || '' === $tmp ) {
+			return $this->error( 'upload_tmp_failed', 'A temporary file could not be created for the image data.' );
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- WordPress media sideload requires a local temporary file.
+		if ( false === file_put_contents( $tmp, (string) $decoded['bytes'] ) ) {
+			wp_delete_file( $tmp );
+			return $this->error( 'upload_tmp_failed', 'Image data could not be written to a temporary file.' );
+		}
+
+		$download_error = $guard->validate_downloaded_file( $tmp, $filename );
+		if ( null !== $download_error ) {
+			wp_delete_file( $tmp );
+			return $this->error( $download_error['code'], $download_error['message'] );
+		}
+
+		return $this->sideload_validated_file( $tmp, $filename, $data );
+	}
+
+	/**
+	 * Decode image data from base64 or a data URL.
+	 *
+	 * @param array<string, mixed> $data Upload fields.
+	 * @return array{bytes: string, mime_type: string}|array<string, mixed>
+	 */
+	private function decoded_image_data( array $data ): array {
+		$data_url = trim( (string) ( $data['data_url'] ?? '' ) );
+		if ( '' !== $data_url ) {
+			if ( ! preg_match( '#^data:(image/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$#i', $data_url, $matches ) ) {
+				return $this->error( 'invalid_image_data', 'Data URL must be a base64-encoded image data URL.' );
+			}
+
+			$mime_type = strtolower( sanitize_text_field( (string) $matches[1] ) );
+			$base64    = (string) preg_replace( '/\s+/', '', (string) $matches[2] );
+		} else {
+			$mime_type = strtolower( sanitize_text_field( (string) ( $data['mime_type'] ?? '' ) ) );
+			$base64    = (string) preg_replace( '/\s+/', '', (string) ( $data['data_base64'] ?? $data['image_base64'] ?? '' ) );
+		}
+
+		if ( '' === $base64 || '' === $mime_type || ! str_starts_with( $mime_type, 'image/' ) ) {
+			return $this->error( 'invalid_image_data', 'Provide image data as data_url or data_base64 with an image MIME type.' );
+		}
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decoding explicit assistant-supplied image payload.
+		$bytes = base64_decode( $base64, true );
+		if ( false === $bytes || '' === $bytes ) {
+			return $this->error( 'invalid_image_data', 'Image data is not valid base64.' );
+		}
+
+		return array(
+			'bytes'     => $bytes,
+			'mime_type' => $mime_type,
+		);
+	}
+
+	/**
+	 * Resolve a safe filename for direct image data uploads.
+	 *
+	 * @param array<string, mixed> $data Upload fields.
+	 * @param string               $mime_type MIME type.
+	 */
+	private function image_data_filename( array $data, string $mime_type ): string {
+		$filename = sanitize_file_name( (string) ( $data['filename'] ?? '' ) );
+		if ( '' === $filename ) {
+			$filename = 'aculect-ai-companion-generated-image';
+		}
+
+		if ( '' !== pathinfo( $filename, PATHINFO_EXTENSION ) ) {
+			return $filename;
+		}
+
+		$extension = match ( strtolower( $mime_type ) ) {
+			'image/jpeg', 'image/jpg' => 'jpg',
+			'image/png' => 'png',
+			'image/gif' => 'gif',
+			'image/webp' => 'webp',
+			default => '',
+		};
+
+		return '' === $extension ? $filename : $filename . '.' . $extension;
+	}
+
+	/**
+	 * Add a validated local temp file to the media library.
+	 *
+	 * @param string               $tmp      Temporary file path.
+	 * @param string               $filename Proposed filename.
+	 * @param array<string, mixed> $data     Upload fields.
+	 * @return array<string, mixed>
+	 */
+	private function sideload_validated_file( string $tmp, string $filename, array $data ): array {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
 
 		$file = array(
 			'name'     => sanitize_file_name( $filename ),

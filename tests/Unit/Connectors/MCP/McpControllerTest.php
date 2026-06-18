@@ -791,7 +791,7 @@ final class McpControllerTest extends TestCase {
 		self::assertFalse( $result['confirmation_required'] );
 		self::assertSame( 'trusted_connection_direct_write', $result['confirmation_policy'] );
 		self::assertTrue( $result['write_permission_enabled'] );
-		self::assertSame( ConnectionAccessLevel::EXECUTE, $result['access_level'] );
+		self::assertSame( ConnectionAccessLevel::WRITE, $result['access_level'] );
 		self::assertArrayNotHasKey( 'confirmation_token', $result );
 		self::assertArrayNotHasKey( 'confirmation_expires_in', $result );
 		self::assertArrayNotHasKey( 'confirmation_instructions', $result );

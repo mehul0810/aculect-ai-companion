@@ -166,7 +166,7 @@ final class LocalSampleData {
 				array( 'Administrator' ),
 				array( 'content:read', 'content:draft' ),
 				true,
-				ConnectionAccessLevel::SELECTIVE_WRITE,
+				ConnectionAccessLevel::WRITE,
 				'2026-06-03 09:25:00',
 				'2026-07-03 09:25:00'
 			),
@@ -179,7 +179,7 @@ final class LocalSampleData {
 				array( 'Editor' ),
 				array( 'content:read' ),
 				false,
-				ConnectionAccessLevel::SELECTIVE_READ,
+				ConnectionAccessLevel::READ,
 				'2026-06-03 08:40:00',
 				'2026-07-03 08:40:00'
 			),
@@ -192,7 +192,7 @@ final class LocalSampleData {
 				array( 'Administrator', 'Editor' ),
 				array( 'content:read', 'content:draft' ),
 				true,
-				ConnectionAccessLevel::FULL_WRITE,
+				ConnectionAccessLevel::WRITE,
 				'2026-06-02 18:12:00',
 				'2026-07-02 18:12:00'
 			),

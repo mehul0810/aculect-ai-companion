@@ -92,7 +92,7 @@ final class ActivityLoggerTest extends TestCase {
 		);
 
 		self::assertTrue( $context['write_permission']['used'] );
-		self::assertSame( 'full_write', $context['write_permission']['access_level'] );
+		self::assertSame( 'write', $context['write_permission']['access_level'] );
 		self::assertArrayNotHasKey( 'title', $context['metadata'] );
 		self::assertArrayNotHasKey( 'content', $context['metadata'] );
 	}

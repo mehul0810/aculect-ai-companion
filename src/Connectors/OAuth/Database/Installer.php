@@ -182,7 +182,7 @@ final class Installer {
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             last_used_at datetime DEFAULT NULL,
             write_permission_enabled tinyint(1) NOT NULL DEFAULT 0,
-            access_level varchar(32) NOT NULL DEFAULT 'selective_read',
+            access_level varchar(32) NOT NULL DEFAULT 'read',
             PRIMARY KEY  (id),
             UNIQUE KEY token_hash (token_hash),
             KEY client_id (client_id),

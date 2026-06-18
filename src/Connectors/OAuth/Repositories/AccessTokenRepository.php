@@ -886,9 +886,14 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * @param array<string, mixed> $row Access-token row.
 	 */
 	private function access_level_from_row( array $row ): string {
-		$access_level = ConnectionAccessLevel::normalize( (string) ( $row['access_level'] ?? '' ) );
-		if ( ConnectionAccessLevel::DEFAULT === $access_level && '1' === (string) ( $row['write_permission_enabled'] ?? '0' ) ) {
-			return ConnectionAccessLevel::SELECTIVE_WRITE;
+		$raw_access_level = sanitize_key( (string) ( $row['access_level'] ?? '' ) );
+		$access_level     = ConnectionAccessLevel::normalize( $raw_access_level );
+		if (
+			ConnectionAccessLevel::READ === $access_level
+			&& ConnectionAccessLevel::READ !== $raw_access_level
+			&& '1' === (string) ( $row['write_permission_enabled'] ?? '0' )
+		) {
+			return ConnectionAccessLevel::WRITE;
 		}
 
 		return $access_level;

@@ -135,44 +135,26 @@ const CONNECTION_ACCESS_LEVELS = [
 		value: 'read',
 		label: 'Read',
 		description:
-			'Read-only trust level. Write tools still require the normal ability, scope, role, and confirmation checks.',
+			'Write tools require confirmation after the normal ability, scope, role, and WordPress capability checks pass.',
 		tone: 'is-read',
 		directWrite: false,
 	},
 	{
-		value: 'selective_read',
-		label: 'Selective Read',
-		description:
-			'Default trust level. This connection can use only its effective read tools and cannot skip write confirmation.',
-		tone: 'is-selective-read',
-		directWrite: false,
-	},
-	{
-		value: 'selective_write',
-		label: 'Selective Write',
+		value: 'write',
+		label: 'Write',
 		description:
 			'Trusted write level. Already-authorized write tools can run without an additional confirmation prompt.',
-		tone: 'is-selective-write',
-		directWrite: true,
-	},
-	{
-		value: 'full_write',
-		label: 'Full Write',
-		description:
-			'Trusted write level for already-authorized write tools. It does not grant new abilities, scopes, or WordPress permissions.',
-		tone: 'is-full-write',
-		directWrite: true,
-	},
-	{
-		value: 'execute',
-		label: 'Execute',
-		description:
-			'Highest trust label. In the current MCP guard it only skips confirmation for write tools that are already allowed.',
-		tone: 'is-execute',
+		tone: 'is-write',
 		directWrite: true,
 	},
 ];
-const DEFAULT_CONNECTION_ACCESS_LEVEL = 'selective_read';
+const DEFAULT_CONNECTION_ACCESS_LEVEL = 'read';
+const LEGACY_WRITE_CONNECTION_ACCESS_LEVELS = [
+	'selective_write',
+	'full_write',
+	'execute',
+];
+const LEGACY_READ_CONNECTION_ACCESS_LEVELS = [ 'selective_read' ];
 const ADMIN_NOTICE_SELECTOR = [
 	'#wpbody-content > .notice',
 	'#wpbody-content > .updated',
@@ -2393,6 +2375,18 @@ function connectionAccessLevelKey( session ) {
 		session.access_level || session.accessLevel || ''
 	).trim();
 	if (
+		value === 'write' ||
+		LEGACY_WRITE_CONNECTION_ACCESS_LEVELS.includes( value )
+	) {
+		return 'write';
+	}
+	if (
+		value === 'read' ||
+		LEGACY_READ_CONNECTION_ACCESS_LEVELS.includes( value )
+	) {
+		return 'read';
+	}
+	if (
 		value &&
 		CONNECTION_ACCESS_LEVELS.some( ( level ) => level.value === value )
 	) {
@@ -2400,7 +2394,7 @@ function connectionAccessLevelKey( session ) {
 	}
 
 	return session.writePermissionEnabled
-		? 'selective_write'
+		? 'write'
 		: DEFAULT_CONNECTION_ACCESS_LEVEL;
 }
 
@@ -2892,7 +2886,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 
 	return (
 		<Modal
-			title="Change connection trust"
+			title="Change connection access"
 			className="aculect-ai-companion-connection-access-modal"
 			onRequestClose={ onClose }
 		>
@@ -2907,9 +2901,9 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				</div>
 			</div>
 			<p className="aculect-ai-companion-connection-access-modal__copy">
-				Connection trust controls whether already-authorized write tools
-				need confirmation. It does not grant abilities, OAuth scopes,
-				WordPress role permissions, or enabled plugin controls.
+				Connection access controls whether already-authorized write
+				tools need confirmation. Role-based abilities decide which tools
+				are available.
 			</p>
 			<ActionForm
 				data={ data }
@@ -2928,7 +2922,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				/>
 				<SelectControl
 					className="aculect-ai-companion-connection-access-field"
-					label="Connection trust"
+					label="Connection access"
 					value={ selectedAccessLevel }
 					__next40pxDefaultSize
 					options={ CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
@@ -2943,7 +2937,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				{ trustedWriteNoOp && (
 					<p className="aculect-ai-companion-connection-access-modal__warning">
 						This connection currently has no effective write tools.
-						Trusted write levels will not grant new abilities.
+						Write access will not grant new abilities.
 					</p>
 				) }
 			</ActionForm>
@@ -3170,7 +3164,7 @@ function ConnectionsDataViews( {
 			},
 			{
 				id: 'access',
-				label: 'Connection Trust',
+				label: 'Access',
 				elements: CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
 					value: level.value,
 					label: level.label,

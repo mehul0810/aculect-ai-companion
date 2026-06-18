@@ -228,32 +228,31 @@ final class SettingsPage {
 	 */
 	private function base_payload( string $payload_tab, int $active_session_count ): array {
 		return array(
-			'version'             => ACULECT_AI_COMPANION_VERSION,
-			'pluginMetadata'      => $this->plugin_metadata(),
-			'payloadTab'          => $payload_tab,
-			'hydratedTabs'        => $this->hydrated_tabs( $payload_tab ),
-			'adminPageUrl'        => esc_url_raw( $this->settings_url() ),
-			'settingsPayloadUrl'  => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
-			'settingsRestNonce'   => wp_create_nonce( 'wp_rest' ),
-			'brandIconUrl'        => esc_url_raw(
+			'version'            => ACULECT_AI_COMPANION_VERSION,
+			'pluginMetadata'     => $this->plugin_metadata(),
+			'payloadTab'         => $payload_tab,
+			'hydratedTabs'       => $this->hydrated_tabs( $payload_tab ),
+			'adminPageUrl'       => esc_url_raw( $this->settings_url() ),
+			'settingsPayloadUrl' => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
+			'settingsRestNonce'  => wp_create_nonce( 'wp_rest' ),
+			'brandIconUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
 			),
-			'brandMarkUrl'        => esc_url_raw(
+			'brandMarkUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-mark.svg'
 			),
-			'isConnected'         => $active_session_count > 0,
-			'activeSessionCount'  => $active_session_count,
-			'accessPaused'        => AccessLockdown::is_paused(),
-			'currentUserId'       => get_current_user_id(),
-			'mcpUrl'              => Helpers::mcp_resource(),
-			'connectionReadiness' => $this->connection_readiness( $active_session_count ),
-			'connectionRequests'  => $this->connection_requests(),
-			'providers'           => $this->providers(),
-			'status'              => $this->status(),
-			'diagnostics'         => $this->diagnostics( 'logs' === $payload_tab ),
-			'roleConnections'     => $this->role_connections_payload(),
-			'roleAbilities'       => $this->role_abilities_payload(),
-			'connectionHealth'    => ( new ConnectionHealth() )->last_result(),
+			'isConnected'        => $active_session_count > 0,
+			'activeSessionCount' => $active_session_count,
+			'accessPaused'       => AccessLockdown::is_paused(),
+			'currentUserId'      => get_current_user_id(),
+			'mcpUrl'             => Helpers::mcp_resource(),
+			'connectionRequests' => $this->connection_requests(),
+			'providers'          => $this->providers(),
+			'status'             => $this->status(),
+			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
+			'roleConnections'    => $this->role_connections_payload(),
+			'roleAbilities'      => $this->role_abilities_payload(),
+			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
 		);
 	}
 
@@ -1183,67 +1182,6 @@ final class SettingsPage {
 	 */
 	private function providers(): array {
 		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
-	}
-
-	/**
-	 * Return compact setup-readiness status for the Connect tab.
-	 *
-	 * @param int $active_session_count Active OAuth session count.
-	 * @return array<string, mixed>
-	 */
-	private function connection_readiness( int $active_session_count ): array {
-		$mcp_url       = Helpers::mcp_resource();
-		$scheme        = (string) wp_parse_url( $mcp_url, PHP_URL_SCHEME );
-		$https_active  = 'https' === strtolower( $scheme );
-		$pending_count = 0;
-
-		return array(
-			'status'       => $https_active ? 'ready' : 'setup_required',
-			'title'        => $https_active ? __( 'Ready to connect', 'aculect-ai-companion' ) : __( 'Setup required', 'aculect-ai-companion' ),
-			'description'  => $https_active
-				? __( 'Your site is secure and ready for AI assistants.', 'aculect-ai-companion' )
-				: __( 'HTTPS is required before AI assistants can connect securely from outside WordPress.', 'aculect-ai-companion' ),
-			'pendingCount' => $pending_count,
-			'items'        => array(
-				array(
-					'id'          => 'https',
-					'label'       => __( 'HTTPS active', 'aculect-ai-companion' ),
-					'status'      => $https_active ? 'pass' : 'fail',
-					'value'       => $https_active ? __( 'Active', 'aculect-ai-companion' ) : __( 'Required', 'aculect-ai-companion' ),
-					'description' => $https_active
-						? __( 'The connection URL uses HTTPS.', 'aculect-ai-companion' )
-						: __( 'Use HTTPS for production assistant connections.', 'aculect-ai-companion' ),
-				),
-				array(
-					'id'          => 'oauth',
-					'label'       => __( 'OAuth enabled', 'aculect-ai-companion' ),
-					'status'      => 'pass',
-					'value'       => __( 'Enabled', 'aculect-ai-companion' ),
-					'description' => __( 'Assistants authorize through WordPress OAuth consent.', 'aculect-ai-companion' ),
-				),
-				array(
-					'id'          => 'mcp',
-					'label'       => __( 'MCP endpoint available', 'aculect-ai-companion' ),
-					'status'      => 'pass',
-					'value'       => __( 'Available', 'aculect-ai-companion' ),
-					'description' => __( 'The Aculect MCP endpoint is configured for this site.', 'aculect-ai-companion' ),
-				),
-				array(
-					'id'          => 'sessions',
-					'label'       => __( 'Active sessions', 'aculect-ai-companion' ),
-					'status'      => $active_session_count > 0 ? 'pass' : 'neutral',
-					'value'       => (string) $active_session_count,
-					'description' => __( 'Approved assistant sessions currently active.', 'aculect-ai-companion' ),
-				),
-				array(
-					'id'          => 'pending_requests',
-					'label'       => __( 'Pending requests', 'aculect-ai-companion' ),
-					'status'      => 'neutral',
-					'value'       => (string) $pending_count,
-					'description' => __( 'Admin-review pending approvals are not enabled in this release.', 'aculect-ai-companion' ),
-				),
-			),
-		);
 	}
 
 	/**

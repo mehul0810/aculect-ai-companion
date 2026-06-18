@@ -128,10 +128,6 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'nonce-wp_rest', $payload['settingsRestNonce'] );
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
-		self::assertSame( 'ready', $payload['connectionReadiness']['status'] );
-		self::assertSame( 'Ready to connect', $payload['connectionReadiness']['title'] );
-		self::assertCount( 5, $payload['connectionReadiness']['items'] );
-		self::assertSame( '2', $payload['connectionReadiness']['items'][3]['value'] );
 		self::assertSame( 'interactive_oauth', $payload['connectionRequests']['approvalMode'] );
 		self::assertFalse( $payload['connectionRequests']['approvalModeEnabled'] );
 		self::assertSame( 0, $payload['connectionRequests']['pendingCount'] );

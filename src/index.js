@@ -3833,66 +3833,6 @@ function DiagnosticsDashboard( {
 	);
 }
 
-function ConnectionReadinessCard( { readiness } ) {
-	const items = Array.isArray( readiness?.items ) ? readiness.items : [];
-	const status = readiness?.status || 'ready';
-	const title = readiness?.title || 'Ready to connect';
-	const description =
-		readiness?.description ||
-		'Your site is secure and ready for AI assistants.';
-
-	return (
-		<section
-			className={ `aculect-ai-companion-connect-readiness is-${ status }` }
-		>
-			<div className="aculect-ai-companion-connect-readiness__heading">
-				<span
-					className="aculect-ai-companion-connect-readiness__icon"
-					aria-hidden="true"
-				>
-					<Icon
-						icon={ status === 'setup_required' ? lock : check }
-						size={ 18 }
-					/>
-				</span>
-				<div>
-					<h2>{ title }</h2>
-					<p>{ description }</p>
-				</div>
-			</div>
-			<div className="aculect-ai-companion-connect-readiness__grid">
-				{ items.map( ( item ) => (
-					<div
-						key={ item.id || item.label }
-						className={ `aculect-ai-companion-connect-readiness__item is-${
-							item.status || 'neutral'
-						}` }
-					>
-						<span
-							className="aculect-ai-companion-connect-readiness__status"
-							aria-hidden="true"
-						>
-							<Icon
-								icon={ item.status === 'fail' ? info : check }
-								size={ 16 }
-							/>
-						</span>
-						<div>
-							<strong className="aculect-ai-companion-connect-readiness__label">
-								{ item.label }
-							</strong>
-							<em className="aculect-ai-companion-connect-readiness__value">
-								{ item.value }
-							</em>
-							{ item.description && <p>{ item.description }</p> }
-						</div>
-					</div>
-				) ) }
-			</div>
-		</section>
-	);
-}
-
 function AssistantSelector( {
 	providers,
 	selectedProviderId,
@@ -6609,9 +6549,6 @@ function SettingsApp() {
 										</p>
 									</div>
 								</div>
-								<ConnectionReadinessCard
-									readiness={ data.connectionReadiness }
-								/>
 								<SetupWizard
 									providers={ providers }
 									selectedProvider={ selectedConnectProvider }

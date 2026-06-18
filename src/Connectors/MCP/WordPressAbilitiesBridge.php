@@ -120,7 +120,16 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'not_executable', 'This WordPress ability cannot be executed.' );
 		}
 
-		$input  = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
+		$input      = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
+		$permission = $this->permission_result( $ability, $input );
+		if ( $permission instanceof WP_Error ) {
+			return $this->error( (string) $permission->get_error_code(), $permission->get_error_message() );
+		}
+
+		if ( true !== $permission ) {
+			return $this->error( 'forbidden', 'You do not have permission to execute this WordPress ability.' );
+		}
+
 		$result = $ability->execute( $input );
 
 		return array(
@@ -247,6 +256,77 @@ final class WordPressAbilitiesBridge {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Execute the registered WordPress Ability permission callback when available.
+	 *
+	 * @param object               $ability Ability object.
+	 * @param array<string, mixed> $input   Ability input.
+	 * @return bool|WP_Error
+	 */
+	private function permission_result( object $ability, array $input ): bool|WP_Error {
+		foreach ( array( 'check_permission', 'has_permission', 'can_execute' ) as $method ) {
+			if ( method_exists( $ability, $method ) ) {
+				return $this->normalize_permission_result(
+					$this->call_permission_callback(
+						static fn ( array $permission_input ): mixed => $ability->{$method}( $permission_input ),
+						$input
+					)
+				);
+			}
+		}
+
+		if ( method_exists( $ability, 'get_permission_callback' ) ) {
+			$callback = $ability->get_permission_callback();
+			if ( is_callable( $callback ) ) {
+				return $this->normalize_permission_result( $this->call_permission_callback( $callback, $input ) );
+			}
+		}
+
+		$meta = $this->ability_meta( $ability );
+		if ( isset( $meta['permission_callback'] ) && is_callable( $meta['permission_callback'] ) ) {
+			return $this->normalize_permission_result( $this->call_permission_callback( $meta['permission_callback'], $input ) );
+		}
+
+		return new WP_Error(
+			'permission_callback_unavailable',
+			'This WordPress ability cannot be executed because its permission callback is unavailable.'
+		);
+	}
+
+	/**
+	 * Call a permission callback and convert thrown failures into a safe error.
+	 *
+	 * @param callable             $callback Permission callback.
+	 * @param array<string, mixed> $input    Ability input.
+	 * @return mixed
+	 */
+	private function call_permission_callback( callable $callback, array $input ): mixed {
+		try {
+			return call_user_func( $callback, $input );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return new WP_Error(
+				'permission_callback_failed',
+				'The WordPress ability permission callback could not be evaluated.'
+			);
+		}
+	}
+
+	/**
+	 * Normalize a WordPress Ability permission result.
+	 *
+	 * @param mixed $result Permission callback result.
+	 * @return bool|WP_Error
+	 */
+	private function normalize_permission_result( mixed $result ): bool|WP_Error {
+		if ( $result instanceof WP_Error ) {
+			return $result;
+		}
+
+		return true === $result;
 	}
 
 	/**

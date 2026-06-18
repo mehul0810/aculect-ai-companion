@@ -246,12 +246,14 @@ final class WorkflowLoopStore {
 		$result         = ( new IntelligenceIndexAbilities() )->search_items(
 			array_filter(
 				array(
-					'query'          => $this->text( $args['query'] ?? '', 200 ),
-					'post_type'      => $this->key( $args['post_type'] ?? 'page', 60 ),
-					'status'         => $this->key( $args['status'] ?? 'publish', 20 ),
-					'max_word_count' => $max_word_count,
-					'per_page'       => $limit,
-					'context'        => 'compact',
+					'query'                 => $this->text( $args['query'] ?? '', 200 ),
+					'post_type'             => $this->key( $args['post_type'] ?? 'page', 60 ),
+					'status'                => $this->key( $args['status'] ?? 'publish', 20 ),
+					'max_word_count'        => $max_word_count,
+					'per_page'              => $limit,
+					'context'               => 'compact',
+					'include_total'         => false,
+					'include_index_summary' => false,
 				),
 				static fn ( mixed $value ): bool => '' !== $value
 			)
@@ -638,8 +640,16 @@ final class WorkflowLoopStore {
 	 */
 	private function read_from_args( array $args ): array {
 		$id = $this->id( $args['workflow_loop_id'] ?? $args['loop_id'] ?? $args['id'] ?? '' );
+		if ( '' === $id ) {
+			return array();
+		}
 
-		return '' === $id ? array() : $this->read( $id );
+		$loop = $this->read( $id );
+		if ( array() === $loop || ! $this->can_access_loop( $loop ) ) {
+			return array();
+		}
+
+		return $loop;
 	}
 
 	/**
@@ -661,6 +671,19 @@ final class WorkflowLoopStore {
 	 */
 	private function write( array $loop ): void {
 		set_transient( $this->transient_key( (string) $loop['id'] ), $loop, self::TTL );
+	}
+
+	/**
+	 * Return whether the current user owns a stored loop.
+	 *
+	 * @param array<string, mixed> $loop Loop state.
+	 */
+	private function can_access_loop( array $loop ): bool {
+		$owner_id = absint( $loop['user_id'] ?? 0 );
+		$current  = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$current  = absint( $current );
+
+		return $owner_id > 0 && $current > 0 && $owner_id === $current;
 	}
 
 	/**

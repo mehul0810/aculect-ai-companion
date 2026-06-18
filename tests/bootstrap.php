@@ -742,6 +742,52 @@ if ( ! function_exists( 'get_posts' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_the_title' ) ) {
+	/**
+	 * Return a test post title.
+	 *
+	 * @param WP_Post|int $post Post object or ID.
+	 */
+	function get_the_title( WP_Post|int $post ): string {
+		$post = is_int( $post ) ? get_post( $post ) : $post;
+
+		return $post instanceof WP_Post ? $post->post_title : '';
+	}
+}
+
+if ( ! function_exists( 'get_permalink' ) ) {
+	/**
+	 * Return a deterministic test permalink.
+	 *
+	 * @param WP_Post|int $post Post object or ID.
+	 */
+	function get_permalink( WP_Post|int $post ): string {
+		$post_id = $post instanceof WP_Post ? $post->ID : (int) $post;
+
+		return 'https://example.com/?p=' . $post_id;
+	}
+}
+
+if ( ! function_exists( 'wp_trim_words' ) ) {
+	/**
+	 * Trim text to a bounded number of words.
+	 *
+	 * @param string $text      Text.
+	 * @param int    $num_words Word limit.
+	 * @param string $more      Suffix.
+	 */
+	function wp_trim_words( string $text, int $num_words = 55, string $more = '...' ): string {
+		$words = preg_split( '/\s+/', trim( wp_strip_all_tags( $text ) ) );
+		$words = false === $words ? array() : array_values( array_filter( $words ) );
+
+		if ( count( $words ) <= $num_words ) {
+			return implode( ' ', $words );
+		}
+
+		return implode( ' ', array_slice( $words, 0, max( 1, $num_words ) ) ) . $more;
+	}
+}
+
 if ( ! function_exists( 'get_registered_settings' ) ) {
 	/**
 	 * Return test registered settings metadata.

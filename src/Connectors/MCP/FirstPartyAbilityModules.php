@@ -85,6 +85,66 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new WorkflowSessionStore() )->update( $args )
 			),
 			$this->module(
+				'workflow_loop.create',
+				'Create MCP Workflow Loop',
+				'Create a bounded item-aware workflow loop from thin-page candidates or explicit content items so assistants can store guidance once and resume item-by-item.',
+				'Workflow Loops',
+				'content:draft',
+				false,
+				$this->workflow_loop_create_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->create( $args )
+			),
+			$this->module(
+				'workflow_loop.get',
+				'Get MCP Workflow Loop',
+				'Read compact workflow loop progress, item statuses, recent events, current item, and next actions.',
+				'Workflow Loops',
+				'content:read',
+				true,
+				$this->workflow_loop_get_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->get( $args )
+			),
+			$this->module(
+				'workflow_loop.run_next',
+				'Run Next Workflow Loop Item',
+				'Mark optional prior item completion and return the next bounded item with the workflow tool arguments the assistant should use.',
+				'Workflow Loops',
+				'content:draft',
+				false,
+				$this->workflow_loop_run_next_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->run_next( $args )
+			),
+			$this->module(
+				'workflow_loop.run_batch',
+				'Run Workflow Loop Batch',
+				'Mark optional completed item results and return a bounded batch of pending loop items without repeating already completed items.',
+				'Workflow Loops',
+				'content:draft',
+				false,
+				$this->workflow_loop_run_batch_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->run_batch( $args )
+			),
+			$this->module(
+				'workflow_loop.pause',
+				'Pause MCP Workflow Loop',
+				'Pause a workflow loop without discarding stored item progress.',
+				'Workflow Loops',
+				'content:draft',
+				false,
+				$this->workflow_loop_pause_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->pause( $args )
+			),
+			$this->module(
+				'workflow_loop.cancel',
+				'Cancel MCP Workflow Loop',
+				'Cancel a workflow loop and prevent future run calls from starting pending items.',
+				'Workflow Loops',
+				'content:draft',
+				false,
+				$this->workflow_loop_pause_schema(),
+				static fn ( array $args ): array => ( new WorkflowLoopStore() )->cancel( $args )
+			),
+			$this->module(
 				'workflow_guides.list',
 				'List MCP Workflow Guides',
 				'List compact, policy-aware workflow guides so assistants can choose the right multi-tool path without loading large instructions upfront.',
@@ -1297,6 +1357,234 @@ final class FirstPartyAbilityModules {
 	}
 
 	/**
+	 * Build the workflow loop create schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_create_schema(): array {
+		return $this->object_schema(
+			array(
+				'source'              => array(
+					'type'        => 'string',
+					'enum'        => array( 'thin_pages', 'provided_items' ),
+					'description' => 'Collection source. Defaults to thin_pages.',
+				),
+				'workflow'            => array(
+					'type'        => 'string',
+					'description' => 'Workflow or workflow guide ID. Defaults to thin_page_cleanup.',
+				),
+				'workflow_id'         => array(
+					'type'        => 'string',
+					'description' => 'Alias for workflow.',
+				),
+				'workflow_session_id' => $this->workflow_session_id_schema(),
+				'objective'           => array(
+					'type'        => 'string',
+					'description' => 'Short loop objective.',
+				),
+				'brief'               => array(
+					'type'        => 'string',
+					'description' => 'Alias for objective.',
+				),
+				'guidance'            => array(
+					'type'        => 'string',
+					'maxLength'   => 1200,
+					'description' => 'User guidance to apply to every loop item.',
+				),
+				'query'               => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for thin-page discovery.',
+				),
+				'post_type'           => array(
+					'type'        => 'string',
+					'description' => 'Post type for thin-page discovery. Defaults to page.',
+				),
+				'status'              => array(
+					'type'        => 'string',
+					'description' => 'Post status for thin-page discovery. Defaults to publish.',
+				),
+				'max_word_count'      => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 5000,
+					'description' => 'Maximum indexed word count for thin-page candidates. Defaults to 300.',
+				),
+				'limit'               => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 50,
+					'description' => 'Maximum items to store in the loop.',
+				),
+				'batch_size'          => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 10,
+					'description' => 'Default batch size for workflow_loop_run_batch.',
+				),
+				'items'               => array(
+					'type'        => 'array',
+					'description' => 'Explicit content items when source=provided_items.',
+					'maxItems'    => 50,
+					'items'       => $this->workflow_loop_item_schema(),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow loop get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_loop_id' => $this->workflow_loop_id_schema(),
+				'loop_id'          => $this->workflow_loop_id_schema(),
+				'id'               => $this->workflow_loop_id_schema(),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow loop run-next schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_run_next_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_loop_id'  => $this->workflow_loop_id_schema(),
+				'loop_id'           => $this->workflow_loop_id_schema(),
+				'id'                => $this->workflow_loop_id_schema(),
+				'completed_item_id' => array(
+					'type'        => 'integer',
+					'description' => 'Optional item ID that the assistant just completed.',
+				),
+				'completed_status'  => $this->workflow_loop_completion_status_schema(),
+				'completed_message' => array(
+					'type'        => 'string',
+					'description' => 'Short completion note. Do not include long content bodies.',
+				),
+				'resume'            => array(
+					'type'        => 'boolean',
+					'description' => 'Set true to resume a paused loop before selecting the next item.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow loop batch schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_run_batch_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_loop_id' => $this->workflow_loop_id_schema(),
+				'loop_id'          => $this->workflow_loop_id_schema(),
+				'id'               => $this->workflow_loop_id_schema(),
+				'limit'            => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 10,
+					'description' => 'Maximum pending items to start in this call.',
+				),
+				'completed_items'  => array(
+					'type'        => 'array',
+					'description' => 'Optional completed item results to store before starting more items.',
+					'maxItems'    => 10,
+					'items'       => array(
+						'type'                 => 'object',
+						'properties'           => array(
+							'id'      => array( 'type' => 'integer' ),
+							'item_id' => array( 'type' => 'integer' ),
+							'status'  => $this->workflow_loop_completion_status_schema(),
+							'message' => array( 'type' => 'string' ),
+						),
+						'additionalProperties' => false,
+					),
+				),
+				'resume'           => array(
+					'type'        => 'boolean',
+					'description' => 'Set true to resume a paused loop before selecting the next batch.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the workflow loop pause/cancel schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_pause_schema(): array {
+		return $this->object_schema(
+			array(
+				'workflow_loop_id' => $this->workflow_loop_id_schema(),
+				'loop_id'          => $this->workflow_loop_id_schema(),
+				'id'               => $this->workflow_loop_id_schema(),
+				'message'          => array(
+					'type'        => 'string',
+					'description' => 'Short reason for the pause or cancellation.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build an explicit loop item input schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_item_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'id'          => array( 'type' => 'integer' ),
+				'post_id'     => array( 'type' => 'integer' ),
+				'type'        => array( 'type' => 'string' ),
+				'post_type'   => array( 'type' => 'string' ),
+				'status'      => array( 'type' => 'string' ),
+				'post_status' => array( 'type' => 'string' ),
+				'title'       => array( 'type' => 'string' ),
+				'post_title'  => array( 'type' => 'string' ),
+				'permalink'   => array( 'type' => 'string' ),
+				'url'         => array( 'type' => 'string' ),
+				'word_count'  => array( 'type' => 'integer' ),
+				'stale'       => array( 'type' => 'boolean' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build workflow loop ID schema.
+	 *
+	 * @return array<string, string>
+	 */
+	private function workflow_loop_id_schema(): array {
+		return array(
+			'type'        => 'string',
+			'description' => 'Workflow loop ID returned by workflow_loop_create.',
+		);
+	}
+
+	/**
+	 * Build workflow loop completion status schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_loop_completion_status_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'succeeded', 'failed', 'skipped', 'blocked', 'cancelled' ),
+			'description' => 'Final status for an item that has already been processed outside the loop store.',
+		);
+	}
+
+	/**
 	 * Build the activity-learning inspection schema.
 	 *
 	 * @return array<string, mixed>
@@ -1542,19 +1830,25 @@ final class FirstPartyAbilityModules {
 	private function index_search_items_schema(): array {
 		return $this->object_schema(
 			array(
-				'query'     => array(
+				'query'          => array(
 					'type'        => 'string',
 					'description' => 'Search text for title, summary, terms, and indexed content.',
 				),
-				'post_type' => array( 'type' => 'string' ),
-				'status'    => array( 'type' => 'string' ),
-				'stale'     => array(
+				'post_type'      => array( 'type' => 'string' ),
+				'status'         => array( 'type' => 'string' ),
+				'stale'          => array(
 					'type'        => 'boolean',
 					'description' => 'Filter to stale or fresh index rows.',
 				),
-				'page'      => $this->page_schema(),
-				'per_page'  => $this->per_page_schema( 50, 'Search results per page. Defaults to 10.' ),
-				'context'   => $this->context_schema( 'Use compact for normal retrieval. Full is reserved for future expanded item fields.' ),
+				'max_word_count' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 5000,
+					'description' => 'Optional upper word-count threshold for thin-page discovery.',
+				),
+				'page'           => $this->page_schema(),
+				'per_page'       => $this->per_page_schema( 50, 'Search results per page. Defaults to 10.' ),
+				'context'        => $this->context_schema( 'Use compact for normal retrieval. Full is reserved for future expanded item fields.' ),
 			)
 		);
 	}

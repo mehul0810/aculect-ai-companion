@@ -938,6 +938,12 @@ final class ContentIndexRepository {
 			$values[]  = empty( $args['stale'] ) ? 0 : 1;
 		}
 
+		$max_word_count = absint( $args['max_word_count'] ?? 0 );
+		if ( $max_word_count > 0 ) {
+			$clauses[] = 'word_count <= %d';
+			$values[]  = $max_word_count;
+		}
+
 		return array(
 			'sql'    => array() === $clauses ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
 			'values' => $values,

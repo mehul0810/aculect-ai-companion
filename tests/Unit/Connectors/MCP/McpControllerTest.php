@@ -164,6 +164,8 @@ final class McpControllerTest extends TestCase {
 		self::assertIsString( $result['instructions'] );
 		self::assertStringContainsString( 'workflow_route_request', $result['instructions'] );
 		self::assertStringContainsString( 'workflow_session_start', $result['instructions'] );
+		self::assertStringContainsString( 'workflow_loop_run_next', $result['instructions'] );
+		self::assertStringContainsString( 'workflow_loop_run_batch', $result['instructions'] );
 		self::assertStringContainsString( 'resources/list', $result['instructions'] );
 		self::assertStringContainsString( 'resources/read', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_capabilities_get_directory', $result['instructions'] );
@@ -260,6 +262,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'visible_total', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'max_word_count', $tools_by_name['content_search_items']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['memory_bootstrap'] );
@@ -277,6 +280,18 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'workflow_session_plan', $tools_by_name['workflow_route_request']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_session_start'] );
 		self::assertArrayHasKey( 'workflow_session', $tools_by_name['workflow_session_start']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_create'] );
+		self::assertArrayHasKey( 'workflow_loop', $tools_by_name['workflow_loop_create']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['workflow_loop_create']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'max_word_count', $tools_by_name['workflow_loop_create']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_run_next'] );
+		self::assertArrayHasKey( 'active_item', $tools_by_name['workflow_loop_run_next']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'resume', $tools_by_name['workflow_loop_run_next']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_run_batch'] );
+		self::assertArrayHasKey( 'items_to_process', $tools_by_name['workflow_loop_run_batch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'completed_items', $tools_by_name['workflow_loop_run_batch']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_pause'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_cancel'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['mcp_learning_inspect_activity'] );
 		self::assertArrayHasKey( 'insights', $tools_by_name['mcp_learning_inspect_activity']['outputSchema']['properties'] );
 	}
@@ -292,6 +307,12 @@ final class McpControllerTest extends TestCase {
 			'workflow_session_start',
 			'workflow_session_get',
 			'workflow_session_update',
+			'workflow_loop_create',
+			'workflow_loop_get',
+			'workflow_loop_run_next',
+			'workflow_loop_run_batch',
+			'workflow_loop_pause',
+			'workflow_loop_cancel',
 			'workflow_guides_list',
 			'workflow_guides_get',
 			'content_workflow_prepare_post',

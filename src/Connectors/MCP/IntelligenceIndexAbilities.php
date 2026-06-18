@@ -109,7 +109,8 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$result          = $this->repo()->search_items( $args );
 		$result['items'] = $this->filled_readable_items( $args, $result );
 
-		if ( array() === $result['items'] && '' !== trim( (string) ( $args['query'] ?? '' ) ) ) {
+		$should_degrade = '' !== trim( (string) ( $args['query'] ?? '' ) ) || absint( $args['max_word_count'] ?? 0 ) > 0;
+		if ( array() === $result['items'] && $should_degrade ) {
 			$live = $this->degraded_live_items( $args );
 			if ( array() !== $live ) {
 				$result['items']           = $live;
@@ -149,6 +150,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$per_page  = max( 1, min( 50, absint( $args['per_page'] ?? 10 ) ) );
 		$post_type = sanitize_key( (string) ( $args['post_type'] ?? '' ) );
 		$status    = sanitize_key( (string) ( $args['status'] ?? '' ) );
+		$max_words = absint( $args['max_word_count'] ?? 0 );
 
 		$posts = get_posts(
 			array(
@@ -168,8 +170,19 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			if ( ! $post instanceof \WP_Post || ! $this->can_read_post( (int) $post->ID ) ) {
 				continue;
 			}
+			if ( '' !== $post_type && $post_type !== (string) $post->post_type ) {
+				continue;
+			}
+			if ( '' !== $status && $status !== (string) $post->post_status ) {
+				continue;
+			}
 
-			$text    = wp_strip_all_tags( (string) $post->post_content );
+			$text  = wp_strip_all_tags( (string) $post->post_content );
+			$words = str_word_count( $text );
+			if ( $max_words > 0 && $words > $max_words ) {
+				continue;
+			}
+
 			$items[] = array(
 				'id'           => (int) $post->ID,
 				'type'         => (string) $post->post_type,
@@ -179,7 +192,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				'permalink'    => (string) get_permalink( $post ),
 				'excerpt'      => wp_strip_all_tags( (string) $post->post_excerpt ),
 				'summary'      => wp_trim_words( $text, 45 ),
-				'word_count'   => str_word_count( $text ),
+				'word_count'   => $words,
 				'content_hash' => '',
 				'indexed_at'   => '',
 				'modified_gmt' => (string) $post->post_modified_gmt,

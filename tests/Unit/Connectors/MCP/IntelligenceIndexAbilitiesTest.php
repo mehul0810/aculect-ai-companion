@@ -139,6 +139,52 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'error', $result['status'] );
 		self::assertSame( 'forbidden', $result['error'] );
 	}
+
+	public function test_search_items_degraded_fallback_respects_thin_page_filters(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'] = array(
+			11 => new \WP_Post(
+				array(
+					'ID'           => 11,
+					'post_type'    => 'page',
+					'post_status'  => 'publish',
+					'post_title'   => 'Short Page',
+					'post_content' => str_repeat( 'short ', 120 ),
+				)
+			),
+			12 => new \WP_Post(
+				array(
+					'ID'           => 12,
+					'post_type'    => 'page',
+					'post_status'  => 'publish',
+					'post_title'   => 'Long Page',
+					'post_content' => str_repeat( 'long ', 650 ),
+				)
+			),
+			13 => new \WP_Post(
+				array(
+					'ID'           => 13,
+					'post_type'    => 'post',
+					'post_status'  => 'publish',
+					'post_title'   => 'Short Post',
+					'post_content' => str_repeat( 'post ', 90 ),
+				)
+			),
+		);
+
+		$result = ( new IntelligenceIndexAbilities() )->search_items(
+			array(
+				'post_type'      => 'page',
+				'status'         => 'publish',
+				'max_word_count' => 300,
+				'per_page'       => 10,
+			)
+		);
+
+		self::assertTrue( $result['degraded'] );
+		self::assertSame( 'index_empty', $result['degraded_reason'] );
+		self::assertSame( array( 11 ), array_column( $result['items'], 'id' ) );
+		self::assertSame( 120, $result['items'][0]['word_count'] );
+	}
 }
 
 /**

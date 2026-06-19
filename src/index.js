@@ -3914,13 +3914,6 @@ function AssistantSelector( {
 								<em>{ providerOverviewText( provider ) }</em>
 							</span>
 							{ wizard.badge && <small>{ wizard.badge }</small> }
-							{ isSelected && (
-								<Icon
-									icon={ check }
-									size={ 18 }
-									className="aculect-ai-companion-assistant-card__check"
-								/>
-							) }
 						</button>
 					);
 				} ) }

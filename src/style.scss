@@ -1214,10 +1214,6 @@
 	white-space: nowrap;
 }
 
-.aculect-ai-companion-assistant-card__check {
-	color: var(--aculect-ai-companion-primary);
-}
-
 .aculect-ai-companion-setup-wizard__main {
 	display: grid;
 	gap: 18px;
@@ -4328,8 +4324,7 @@ td:first-child
 		grid-template-columns: auto minmax(0, 1fr);
 	}
 
-	.aculect-ai-companion-assistant-card small,
-	.aculect-ai-companion-assistant-card__check {
+	.aculect-ai-companion-assistant-card small {
 		grid-column: 2;
 		justify-self: start;
 	}

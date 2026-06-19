@@ -63,6 +63,8 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame( 'Google', $providers['gemini']['brandName'] );
 		self::assertSame( 'https://gemini.google.com/', $providers['gemini']['brandUrl'] );
 		self::assertSame( 'https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md', $providers['gemini']['primaryActionUrl'] );
+		self::assertStringContainsString( 'Gemini API Deep Research Agent', $providers['gemini']['description'] );
+		self::assertStringContainsString( 'Gemini web does not currently provide', $providers['gemini']['wizard']['steps'][0]['description'] );
 		self::assertSame( 'Gemini CLI add command', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
 		self::assertStringContainsString( 'gemini mcp add --transport http aculect-ai-companion https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertSame( 'Gemini MCP settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][1]['label'] );
@@ -70,6 +72,10 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertStringContainsString( 'gemini mcp list', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
 		self::assertStringContainsString( 'Keep the JSON key named httpUrl', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
 		self::assertSame( 'https://docs.cloud.google.com/gemini/docs/codeassist/use-agentic-chat-pair-programmer', $providers['gemini']['setupSections'][1]['actionUrl'] );
+		self::assertSame( 'Gemini web and API options', $providers['gemini']['setupSections'][2]['title'] );
+		self::assertStringContainsString( 'gemini.google.com', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
+		self::assertStringContainsString( 'Deep Research Agent can connect to remote MCP servers', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
+		self::assertSame( 'https://ai.google.dev/gemini-api/docs/interactions/deep-research', $providers['gemini']['setupSections'][2]['actionUrl'] );
 		self::assertSame( 'MCP Client', $providers['mcp']['label'] );
 		self::assertSame( '', $providers['mcp']['brandName'] );
 		self::assertSame( '', $providers['mcp']['brandUrl'] );

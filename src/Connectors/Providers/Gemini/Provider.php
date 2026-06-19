@@ -14,7 +14,7 @@ use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
- * Provides Gemini CLI and Gemini Code Assist MCP setup guidance.
+ * Provides Gemini MCP setup guidance for supported Gemini surfaces.
  */
 final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
@@ -36,7 +36,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	 * Return the provider description.
 	 */
 	public function description(): string {
-		return 'Use Gemini CLI or Gemini Code Assist agent mode to manage WordPress through Aculect AI Companion.';
+		return 'Use Gemini CLI, Gemini Code Assist agent mode, or Gemini API Deep Research Agent to connect to Aculect AI Companion through MCP.';
 	}
 
 	/**
@@ -99,12 +99,25 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'actionUrl'   => 'https://docs.cloud.google.com/gemini/docs/codeassist/use-agentic-chat-pair-programmer',
 			),
 			array(
+				'title'       => 'Gemini web and API options',
+				'description' => 'Gemini web does not currently expose a documented custom MCP server setup. Use a supported Gemini MCP surface when you need Aculect AI Companion tools.',
+				'steps'       => array(
+					'Gemini web at gemini.google.com does not currently provide a documented custom MCP connector or MCP server settings screen.',
+					'For interactive assistant use, connect through Gemini CLI or Gemini Code Assist agent mode with the connection URL above.',
+					'For API-driven research workflows, the Gemini Deep Research Agent can connect to remote MCP servers through the Interactions API mcp_server tool type.',
+					'Do not treat WebMCP or browser automation as native Gemini web MCP support; those paths do not make Gemini web perform Aculect OAuth discovery, Dynamic Client Registration, or MCP tool calls as a Gemini MCP client.',
+				),
+				'actionLabel' => 'Open Deep Research MCP Docs',
+				'actionUrl'   => 'https://ai.google.dev/gemini-api/docs/interactions/deep-research',
+			),
+			array(
 				'title'       => 'Compatibility notes',
 				'description' => 'Gemini discovers MCP tools from the server metadata and can filter tools client-side with includeTools or excludeTools when a site exposes many abilities.',
 				'steps'       => array(
 					'Prefer the workflow and intelligence tools for content work so Gemini gets the same guided path as other assistants.',
 					'Let Gemini use OAuth discovery and Dynamic Client Registration from the MCP endpoint instead of hard-coding WordPress credentials or Authorization headers.',
 					'Keep trust disabled unless the Gemini client is running in a controlled environment.',
+					'If a user asks for Gemini web, explain that Aculect does not have a Gemini web connection path until Google exposes a custom MCP connector surface there.',
 					'After plugin updates or ability policy changes, rerun gemini mcp list or reconnect the MCP server so Gemini refreshes tool metadata.',
 				),
 				'actionLabel' => $this->primary_action_label(),
@@ -126,16 +139,16 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				array(
 					'id'                 => 'open',
 					'title'              => 'Open Gemini MCP settings',
-					'subtitle'           => 'Open Gemini CLI or Gemini Code Assist settings.',
-					'description'        => 'Gemini connects to Aculect AI Companion as a Streamable HTTP MCP server when the server uses httpUrl.',
+					'subtitle'           => 'Choose a supported Gemini MCP surface.',
+					'description'        => 'Gemini web does not currently provide a documented custom MCP connector. Use Gemini CLI, Gemini Code Assist agent mode, or the Gemini API Deep Research Agent for MCP.',
 					'instructions'       => array(
 						array(
-							'title'       => 'Open Gemini settings',
-							'description' => 'Open your Gemini CLI, IDE account, or workspace settings JSON.',
+							'title'       => 'Choose a Gemini MCP surface',
+							'description' => 'Use Gemini CLI for terminal workflows, Gemini Code Assist agent mode for IDE workflows, or the Gemini API Deep Research Agent for API-driven research workflows.',
 						),
 						array(
-							'title'       => 'Prepare agent mode',
-							'description' => 'For Gemini Code Assist, switch chat into Agent mode before using MCP tools.',
+							'title'       => 'Avoid Gemini web for MCP',
+							'description' => 'The public Gemini web app does not currently expose a documented custom MCP server setup.',
 						),
 					),
 					'primaryActionLabel' => $this->primary_action_label(),

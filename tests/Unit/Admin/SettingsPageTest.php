@@ -176,8 +176,11 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
 		self::assertArrayHasKey( 'gemini', $providers );
-		self::assertStringContainsString( 'settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
-		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringContainsString( 'CLI add command', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
+		self::assertStringContainsString( 'settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][1]['label'] );
+		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][1]['value'] );
+		self::assertStringContainsString( 'Gemini web does not currently provide', $providers['gemini']['wizard']['steps'][0]['description'] );
+		self::assertStringContainsString( 'gemini.google.com', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(

@@ -94,7 +94,6 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	public function setup_wizard( string $mcp_url ): array {
 		return array(
 			'estimatedTime' => '1 min',
-			'badge'         => 'Most popular',
 			'steps'         => array(
 				array(
 					'id'                 => 'open',

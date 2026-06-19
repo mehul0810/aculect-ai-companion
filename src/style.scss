@@ -1327,6 +1327,12 @@
 	min-width: 0;
 }
 
+.aculect-ai-companion-wizard-step-panel__header {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
 .aculect-ai-companion-wizard-step-panel__heading {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);

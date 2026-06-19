@@ -4040,14 +4040,16 @@ function WizardStepPanel( {
 
 	return (
 		<div className="aculect-ai-companion-wizard-step-panel">
-			<div className="aculect-ai-companion-wizard-step-panel__heading">
-				<ConnectProviderBadge provider={ provider } />
-				<div>
-					<span className="aculect-ai-companion-eyebrow">
-						Step { stepIndex + 1 } of { stepCount }
-					</span>
-					<h3>{ step.title }</h3>
-					<p>{ step.subtitle || step.description }</p>
+			<div className="aculect-ai-companion-wizard-step-panel__header">
+				<span className="aculect-ai-companion-eyebrow">
+					Step { stepIndex + 1 } of { stepCount }
+				</span>
+				<div className="aculect-ai-companion-wizard-step-panel__heading">
+					<ConnectProviderBadge provider={ provider } />
+					<div>
+						<h3>{ step.title }</h3>
+						<p>{ step.subtitle || step.description }</p>
+					</div>
 				</div>
 			</div>
 			{ step.description && step.subtitle && (

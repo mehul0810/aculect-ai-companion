@@ -265,4 +265,49 @@ final class ContentIndexRepositoryTest extends TestCase {
 		self::assertStringNotContainsString( 'COUNT(*)', $this->wpdb->prepared[0]['query'] );
 		self::assertContains( 11, $this->wpdb->prepared[0]['args'] );
 	}
+
+	public function test_internal_link_audit_filters_by_state_post_type_status_and_thresholds(): void {
+		( new ContentIndexRepository() )->internal_link_audit(
+			array(
+				'state'             => 'underlinked',
+				'post_type'         => 'page',
+				'status'            => 'publish',
+				'min_inbound_links' => 3,
+			)
+		);
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertStringContainsString( 'FROM %i idx LEFT JOIN %i inbound', $first_query );
+		self::assertStringContainsString( 'LEFT JOIN %i outbound', $first_query );
+		self::assertStringContainsString( 'idx.post_type = %s', $first_query );
+		self::assertStringContainsString( 'idx.post_status = %s', $first_query );
+		self::assertStringContainsString( 'HAVING inbound_internal_links > 0 AND inbound_internal_links < %d', $first_query );
+		self::assertStringNotContainsString( 'idx.id', $first_query );
+		self::assertContains( 'page', $first_args );
+		self::assertContains( 'publish', $first_args );
+		self::assertContains( 3, $first_args );
+	}
+
+	public function test_internal_link_audit_defaults_to_needs_review_thresholds(): void {
+		$result = ( new ContentIndexRepository() )->internal_link_audit( array() );
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertSame( 'needs_review', $result['filters']['state'] );
+		self::assertSame(
+			array(
+				'min_inbound_links'  => 2,
+				'thin_word_count'    => 300,
+				'max_outbound_links' => 25,
+			),
+			$result['thresholds']
+		);
+		self::assertStringContainsString( 'HAVING inbound_internal_links = 0 OR (inbound_internal_links > 0 AND inbound_internal_links < %d) OR idx.word_count <= %d OR idx.stale = 1 OR outbound_internal_links > %d', $first_query );
+		self::assertContains( 2, $first_args );
+		self::assertContains( 300, $first_args );
+		self::assertContains( 25, $first_args );
+	}
 }

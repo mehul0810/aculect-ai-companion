@@ -262,6 +262,10 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'visible_total', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_audit_internal_links'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'index', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'max_word_count', $tools_by_name['content_search_items']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
@@ -325,6 +329,7 @@ final class McpControllerTest extends TestCase {
 			'content_search_chunks',
 			'content_find_related',
 			'content_find_internal_links',
+			'content_audit_internal_links',
 			'memory_list',
 			'memory_save',
 			'memory_bootstrap',
@@ -396,6 +401,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'workflow_session_get', $site['operations']['workflow_guides']['session_get']['tool'] );
 		self::assertSame( 'workflow_session_update', $site['operations']['workflow_guides']['session_update']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
+		self::assertSame( 'content_audit_internal_links', $site['operations']['intelligence_index']['internal_link_audit']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
 		self::assertSame( 'memory_save', $site['operations']['intelligence_index']['memory_save']['tool'] );
 		self::assertSame( 'memory_bootstrap', $site['operations']['intelligence_index']['memory_bootstrap']['tool'] );
@@ -672,6 +678,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_search_chunks', $names );
 		self::assertContains( 'content_find_related', $names );
 		self::assertContains( 'content_find_internal_links', $names );
+		self::assertContains( 'content_audit_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
 		self::assertContains( 'mcp_learning_inspect_activity', $names );
 		self::assertContains( 'content_workflow_create_draft', $names );
@@ -693,6 +700,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.chunks', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_audit.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'mcp_learning.inspect_activity', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
@@ -860,8 +868,8 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function list_tools_manifest( ?McpController $controller = null ): array {
 		$controller ??= new McpController();
-		$tools       = array();
-		$cursor      = '';
+		$tools        = array();
+		$cursor       = '';
 
 		do {
 			$page   = '' === $cursor

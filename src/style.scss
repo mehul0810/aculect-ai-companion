@@ -1185,17 +1185,16 @@
 }
 
 .aculect-ai-companion-assistant-card__button {
-	display: grid;
-	grid-column: 1 / -1;
-	grid-template-columns: 40px minmax(0, 1fr);
-	gap: 12px;
-	align-items: center;
-	min-width: 0;
+	position: absolute;
+	z-index: 1;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
 	padding: 0;
 	border: 0;
+	border-radius: inherit;
 	background: transparent;
-	color: inherit;
-	text-align: left;
 	cursor: pointer;
 }
 
@@ -1216,13 +1215,15 @@
 
 .aculect-ai-companion-assistant-card__byline {
 	display: block;
-	grid-column: 2;
+	margin-top: 3px;
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
 	line-height: 1.35;
 }
 
 .aculect-ai-companion-assistant-card__byline a {
+	position: relative;
+	z-index: 2;
 	color: var(--aculect-ai-companion-primary);
 	font-weight: 600;
 	text-decoration: none;
@@ -4341,11 +4342,6 @@ td:first-child
 
 	.aculect-ai-companion-assistant-card {
 		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.aculect-ai-companion-assistant-card__byline {
-		grid-column: 2;
-		justify-self: start;
 	}
 
 	.aculect-ai-companion-wizard-actions {

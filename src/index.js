@@ -3917,17 +3917,19 @@ function AssistantSelector( {
 							<button
 								type="button"
 								className="aculect-ai-companion-assistant-card__button"
+								aria-label={ `Select ${ provider.label }` }
 								aria-pressed={ isSelected }
 								onClick={ () =>
 									onSelectProvider( provider.id )
 								}
-							>
-								<ConnectProviderBadge provider={ provider } />
-								<span className="aculect-ai-companion-assistant-card__identity">
-									<strong>{ provider.label }</strong>
-								</span>
-							</button>
-							<AssistantAttribution attribution={ attribution } />
+							/>
+							<ConnectProviderBadge provider={ provider } />
+							<span className="aculect-ai-companion-assistant-card__identity">
+								<strong>{ provider.label }</strong>
+								<AssistantAttribution
+									attribution={ attribution }
+								/>
+							</span>
 						</div>
 					);
 				} ) }

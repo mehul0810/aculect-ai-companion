@@ -395,6 +395,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->find_internal_links( $args )
 			),
 			$this->module(
+				'content_audit.internal_links',
+				'Audit Internal Link Health',
+				'List orphan, underlinked, thin, stale, or link-heavy indexed content using the local link graph without reading full post bodies or applying changes.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->internal_link_audit_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->audit_internal_links( $args )
+			),
+			$this->module(
 				'memory.list',
 				'List Aculect Memory',
 				'List durable Aculect Intelligence memory items. These are local WordPress memories and do not depend on ChatGPT or Claude saved memory.',
@@ -2109,6 +2119,45 @@ final class FirstPartyAbilityModules {
 					'maximum'     => 20,
 					'description' => 'Maximum link opportunities to return. Defaults to 10.',
 				),
+			)
+		);
+	}
+
+	/**
+	 * Build the internal-link audit schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_audit_schema(): array {
+		return $this->object_schema(
+			array(
+				'state'              => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ),
+					'description' => 'Audit state to list. Defaults to needs_review.',
+				),
+				'post_type'          => array( 'type' => 'string' ),
+				'status'             => array( 'type' => 'string' ),
+				'min_inbound_links'  => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Minimum inbound internal links before a non-orphan item stops being flagged as underlinked. Defaults to 2.',
+				),
+				'thin_word_count'    => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 5000,
+					'description' => 'Word-count threshold for thin content. Defaults to 300.',
+				),
+				'max_outbound_links' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 500,
+					'description' => 'Outbound internal-link count above which an item is flagged link-heavy. Defaults to 25.',
+				),
+				'page'               => $this->page_schema(),
+				'per_page'           => $this->per_page_schema( 50, 'Audit rows per page. Defaults to 10.' ),
 			)
 		);
 	}

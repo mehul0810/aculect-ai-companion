@@ -816,6 +816,7 @@ final class McpController {
 				'content_search.chunks',
 				'content_find.related',
 				'content_find.internal_links',
+				'content_audit.internal_links',
 				'memory.list',
 				'taxonomy.list_taxonomies',
 				'taxonomy.list_terms',

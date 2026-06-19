@@ -384,6 +384,76 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return a bounded internal-link audit over the content index and link graph.
+	 *
+	 * @param array<string, mixed> $args Audit arguments.
+	 * @return array<string, mixed>
+	 */
+	public function internal_link_audit( array $args ): array {
+		global $wpdb;
+
+		$page       = max( 1, absint( $args['page'] ?? 1 ) );
+		$per_page   = $this->limit( $args['per_page'] ?? self::DEFAULT_LIMIT );
+		$offset     = ( $page - 1 ) * $per_page;
+		$thresholds = array(
+			'min_inbound_links'  => max( 1, min( 100, absint( $args['min_inbound_links'] ?? 2 ) ) ),
+			'thin_word_count'    => max( 1, min( 5000, absint( $args['thin_word_count'] ?? 300 ) ) ),
+			'max_outbound_links' => max( 1, min( 500, absint( $args['max_outbound_links'] ?? 25 ) ) ),
+		);
+		$state      = $this->audit_state( $args['state'] ?? 'needs_review' );
+		$where      = $this->audit_where_clause( $args );
+		$having     = $this->audit_having_clause( $state, $thresholds );
+		$index_tbl  = Installer::content_index_table();
+		$link_tbl   = Installer::link_graph_table();
+		$select     = 'idx.*, COUNT(DISTINCT inbound.source_id) AS inbound_internal_links, COUNT(DISTINCT outbound.id) AS outbound_internal_links';
+		$joins      = 'LEFT JOIN %i inbound ON inbound.target_id = idx.object_id LEFT JOIN %i outbound ON outbound.source_id = idx.object_id AND outbound.target_id IS NOT NULL AND outbound.target_id > 0';
+		$group      = 'GROUP BY idx.object_id, idx.object_type, idx.post_type, idx.post_status, idx.title, idx.slug, idx.permalink, idx.excerpt, idx.summary, idx.word_count, idx.content_hash, idx.indexed_at, idx.modified_gmt, idx.stale, idx.search_text, idx.metadata';
+
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE and HAVING clauses are built from fixed fragments and placeholder values.
+				"SELECT {$select} FROM %i idx {$joins} {$where['sql']} {$group} {$having['sql']} ORDER BY idx.stale DESC, inbound_internal_links ASC, idx.word_count ASC, outbound_internal_links DESC, idx.modified_gmt DESC, idx.object_id DESC LIMIT %d OFFSET %d",
+				...array_merge( array( $index_tbl, $link_tbl, $link_tbl ), $where['values'], $having['values'], array( $per_page, $offset ) )
+			),
+			ARRAY_A
+		);
+
+		$total = (int) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE and HAVING clauses are built from fixed fragments and placeholder values.
+				"SELECT COUNT(*) FROM (SELECT idx.object_id, COUNT(DISTINCT inbound.source_id) AS inbound_internal_links, COUNT(DISTINCT outbound.id) AS outbound_internal_links, idx.word_count, idx.stale FROM %i idx {$joins} {$where['sql']} GROUP BY idx.object_id, idx.word_count, idx.stale {$having['sql']}) audit_rows",
+				...array_merge( array( $index_tbl, $link_tbl, $link_tbl ), $where['values'], $having['values'] )
+			)
+		);
+
+		$items = array_map(
+			fn ( array $row ): array => $this->public_link_audit_row( $row, $thresholds ),
+			array_filter( is_array( $rows ) ? $rows : array(), 'is_array' )
+		);
+
+		return array(
+			'items'        => $items,
+			'total'        => $total,
+			'page'         => $page,
+			'per_page'     => $per_page,
+			'context'      => 'compact',
+			'filters'      => array(
+				'state'     => $state,
+				'post_type' => $this->key( $args['post_type'] ?? '', 60 ),
+				'status'    => $this->key( $args['status'] ?? '', 20 ),
+			),
+			'thresholds'   => $thresholds,
+			'index'        => $this->summary(),
+			'next_actions' => array(
+				'Refresh stale rows with content_index_refresh_batch before relying on audit results for large edits.',
+				'Use content_find_internal_links for candidate anchors after choosing a source item from the audit.',
+			),
+		);
+	}
+
+	/**
 	 * Return high-level index summary.
 	 *
 	 * @return array<string, mixed>
@@ -822,6 +892,52 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return a public internal-link audit row.
+	 *
+	 * @param array<string, mixed> $row        Database row.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @return array<string, mixed>
+	 */
+	private function public_link_audit_row( array $row, array $thresholds ): array {
+		$content  = $this->public_content_row( $row );
+		$inbound  = (int) ( $row['inbound_internal_links'] ?? 0 );
+		$outbound = (int) ( $row['outbound_internal_links'] ?? 0 );
+		$words    = (int) ( $content['word_count'] ?? 0 );
+		$stale    = ! empty( $content['stale'] );
+		$flags    = array();
+
+		if ( 0 === $inbound ) {
+			$flags[] = 'orphan';
+		} elseif ( $inbound < $thresholds['min_inbound_links'] ) {
+			$flags[] = 'underlinked';
+		}
+
+		if ( $words <= $thresholds['thin_word_count'] ) {
+			$flags[] = 'thin';
+		}
+
+		if ( $stale ) {
+			$flags[] = 'stale_index';
+		}
+
+		if ( $outbound > $thresholds['max_outbound_links'] ) {
+			$flags[] = 'link_heavy';
+		}
+
+		return array_merge(
+			$content,
+			array(
+				'post_id'                 => (int) ( $content['id'] ?? 0 ),
+				'inbound_internal_links'  => $inbound,
+				'outbound_internal_links' => $outbound,
+				'flags'                   => $flags,
+				'needs_review'            => array() !== $flags,
+				'suggested_next_action'   => $this->link_audit_next_action( $flags ),
+			)
+		);
+	}
+
+	/**
 	 * Return a public chunk row.
 	 *
 	 * @param array<string, mixed> $row     Database row.
@@ -975,6 +1091,120 @@ final class ContentIndexRepository {
 			'sql'    => array() === $clauses ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
 			'values' => $values,
 		);
+	}
+
+	/**
+	 * Build internal-link audit WHERE filters.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array{sql: string, values: list<mixed>}
+	 */
+	private function audit_where_clause( array $args ): array {
+		$clauses = array();
+		$values  = array();
+
+		$post_type = $this->key( $args['post_type'] ?? '', 60 );
+		if ( '' !== $post_type ) {
+			$clauses[] = 'idx.post_type = %s';
+			$values[]  = $post_type;
+		}
+
+		$status = $this->key( $args['status'] ?? '', 20 );
+		if ( '' !== $status ) {
+			$clauses[] = 'idx.post_status = %s';
+			$values[]  = $status;
+		}
+
+		return array(
+			'sql'    => array() === $clauses ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
+			'values' => $values,
+		);
+	}
+
+	/**
+	 * Build internal-link audit HAVING filters from a state.
+	 *
+	 * @param string             $state      Audit state.
+	 * @param array<string, int> $thresholds Audit thresholds.
+	 * @return array{sql: string, values: list<mixed>}
+	 */
+	private function audit_having_clause( string $state, array $thresholds ): array {
+		$values = array();
+
+		switch ( $state ) {
+			case 'orphan':
+				$sql = 'HAVING inbound_internal_links = 0';
+				break;
+			case 'underlinked':
+				$sql      = 'HAVING inbound_internal_links > 0 AND inbound_internal_links < %d';
+				$values[] = $thresholds['min_inbound_links'];
+				break;
+			case 'thin':
+				$sql      = 'HAVING idx.word_count <= %d';
+				$values[] = $thresholds['thin_word_count'];
+				break;
+			case 'stale':
+				$sql = 'HAVING idx.stale = 1';
+				break;
+			case 'link_heavy':
+				$sql      = 'HAVING outbound_internal_links > %d';
+				$values[] = $thresholds['max_outbound_links'];
+				break;
+			case 'needs_review':
+				$sql      = 'HAVING inbound_internal_links = 0 OR (inbound_internal_links > 0 AND inbound_internal_links < %d) OR idx.word_count <= %d OR idx.stale = 1 OR outbound_internal_links > %d';
+				$values[] = $thresholds['min_inbound_links'];
+				$values[] = $thresholds['thin_word_count'];
+				$values[] = $thresholds['max_outbound_links'];
+				break;
+			default:
+				$sql = '';
+				break;
+		}
+
+		return array(
+			'sql'    => $sql,
+			'values' => $values,
+		);
+	}
+
+	/**
+	 * Normalize audit state.
+	 *
+	 * @param mixed $state Raw state.
+	 */
+	private function audit_state( mixed $state ): string {
+		$state = $this->key( $state, 30 );
+
+		return in_array( $state, array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ), true ) ? $state : 'needs_review';
+	}
+
+	/**
+	 * Return a compact recommended next action for one audit row.
+	 *
+	 * @param array<int, string> $flags Audit flags.
+	 */
+	private function link_audit_next_action( array $flags ): string {
+		if ( in_array( 'stale_index', $flags, true ) ) {
+			return 'Refresh this item in the content intelligence index before making internal-link decisions.';
+		}
+
+		if ( in_array( 'orphan', $flags, true ) ) {
+			return 'Find relevant source pages and add one or more contextual links to this item.';
+		}
+
+		if ( in_array( 'underlinked', $flags, true ) ) {
+			return 'Add more contextual internal links from related content to this item.';
+		}
+
+		if ( in_array( 'thin', $flags, true ) ) {
+			return 'Review this thin item before adding link suggestions so the target page has enough substance.';
+		}
+
+		if ( in_array( 'link_heavy', $flags, true ) ) {
+			return 'Review outbound links and prune or rebalance links before adding more.';
+		}
+
+		return 'No immediate internal-link action is flagged by the current thresholds.';
 	}
 
 	/**

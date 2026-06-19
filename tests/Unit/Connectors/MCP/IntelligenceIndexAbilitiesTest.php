@@ -12,6 +12,8 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceIndexAbilities;
 use PHPUnit\Framework\TestCase;
 
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Files.OneObjectStructurePerFile.MultipleFound -- Focused MCP unit tests replace wpdb and keep the test double local to the test file.
+
 /**
  * Verifies provider-facing intelligence index responses stay aligned with public tool names.
  */
@@ -185,6 +187,54 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( array( 11 ), array_column( $result['items'], 'id' ) );
 		self::assertSame( 120, $result['items'][0]['word_count'] );
 	}
+
+	public function test_audit_internal_links_returns_read_only_health_signals(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11] = new \WP_Post(
+			array(
+				'ID'          => 11,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Orphan Landing Page',
+			)
+		);
+		$this->wpdb->rows['content-11']                 = array(
+			'object_id'               => 11,
+			'object_type'             => 'post',
+			'post_type'               => 'page',
+			'post_status'             => 'publish',
+			'title'                   => 'Orphan Landing Page',
+			'slug'                    => 'orphan-landing-page',
+			'permalink'               => 'https://example.com/orphan-landing-page/',
+			'excerpt'                 => '',
+			'summary'                 => 'Short indexed summary.',
+			'word_count'              => 180,
+			'content_hash'            => str_repeat( 'a', 64 ),
+			'indexed_at'              => '2026-06-19 09:00:00',
+			'modified_gmt'            => '2026-06-19 08:00:00',
+			'stale'                   => 1,
+			'search_text'             => '',
+			'metadata'                => '{}',
+			'inbound_internal_links'  => 0,
+			'outbound_internal_links' => 4,
+		);
+
+		$result = ( new IntelligenceIndexAbilities() )->audit_internal_links(
+			array(
+				'state'           => 'needs_review',
+				'thin_word_count' => 300,
+			)
+		);
+
+		self::assertSame( 1, $result['visible_total'] );
+		self::assertFalse( $result['filtered_by_access'] );
+		self::assertFalse( $result['total_is_estimated'] );
+		self::assertSame( 11, $result['items'][0]['post_id'] );
+		self::assertSame( array( 'orphan', 'thin', 'stale_index' ), $result['items'][0]['flags'] );
+		self::assertTrue( $result['items'][0]['needs_review'] );
+		self::assertTrue( '' !== $result['usage']['read_only'] );
+		self::assertSame( 'needs_review', $result['summary']['state'] );
+		self::assertSame( 300, $result['summary']['thresholds']['thin_word_count'] );
+	}
 }
 
 /**
@@ -195,21 +245,36 @@ final class IntelligenceIndexMemoryWpdb {
 	public string $prefix = 'wp_';
 
 	/**
+	 * Stored table rows.
+	 *
 	 * @var array<string, array<string, mixed>>
 	 */
 	public array $rows = array();
 
 	/**
+	 * Last prepared query arguments.
+	 *
 	 * @var array<int, mixed>
 	 */
 	private array $last_args = array();
 
+	/**
+	 * Record prepared query arguments.
+	 *
+	 * @param string $query Query with placeholders.
+	 * @param mixed  ...$args Prepared values.
+	 */
 	public function prepare( string $query, mixed ...$args ): string {
 		$this->last_args = $args;
 
 		return $query;
 	}
 
+	/**
+	 * Return scalar query results from stored rows.
+	 *
+	 * @param string $query Prepared query.
+	 */
 	public function get_var( string $query ): ?int {
 		if ( str_contains( $query, 'COUNT(*)' ) ) {
 			return count( $this->rows );
@@ -221,6 +286,10 @@ final class IntelligenceIndexMemoryWpdb {
 	}
 
 	/**
+	 * Return stored query rows.
+	 *
+	 * @param string $query  Prepared query.
+	 * @param string $output Output type.
 	 * @return list<array<string, mixed>>
 	 */
 	public function get_results( string $query, string $output ): array {
@@ -230,19 +299,25 @@ final class IntelligenceIndexMemoryWpdb {
 	}
 
 	/**
-	 * @param array<string, mixed> $data Row data.
+	 * Insert one stored row.
+	 *
+	 * @param string               $table   Table name.
+	 * @param array<string, mixed> $data    Row data.
 	 * @param array<int, string>   $formats Insert formats.
 	 */
 	public function insert( string $table, array $data, array $formats ): int {
 		unset( $table, $formats );
 
-		$data['id']                                  = count( $this->rows ) + 1;
+		$data['id']                                 = count( $this->rows ) + 1;
 		$this->rows[ (string) $data['memory_key'] ] = $data;
 
 		return 1;
 	}
 
 	/**
+	 * Update one stored row.
+	 *
+	 * @param string               $table         Table name.
 	 * @param array<string, mixed> $data          Row data.
 	 * @param array<string, mixed> $where         Where clause data.
 	 * @param array<int, string>   $formats       Update formats.
@@ -260,6 +335,10 @@ final class IntelligenceIndexMemoryWpdb {
 	}
 
 	/**
+	 * Return one stored row.
+	 *
+	 * @param string $query  Prepared query.
+	 * @param string $output Output type.
 	 * @return array<string, mixed>|null
 	 */
 	public function get_row( string $query, string $output ): ?array {
@@ -268,6 +347,9 @@ final class IntelligenceIndexMemoryWpdb {
 		return $this->rows[ $this->last_memory_key() ] ?? null;
 	}
 
+	/**
+	 * Return the last memory key argument.
+	 */
 	private function last_memory_key(): string {
 		return (string) ( $this->last_args[1] ?? '' );
 	}

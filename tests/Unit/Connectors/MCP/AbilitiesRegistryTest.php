@@ -95,6 +95,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
 		self::assertArrayNotHasKey( 'fetch', $by_id );
 		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
@@ -150,6 +151,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_search.chunks',
 				'content_find.related',
 				'content_find.internal_links',
+				'content_audit.internal_links',
 				'memory.list',
 				'memory.save',
 				'memory.bootstrap',
@@ -177,8 +179,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_audit_internal_links' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_audit.internal_links' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );

@@ -343,6 +343,44 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Audit indexed content for internal-link health signals.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array<string, mixed>
+	 */
+	public function audit_internal_links( array $args ): array {
+		$result = $this->repo()->internal_link_audit( $args );
+		$items  = $this->filter_readable_items( (array) ( $result['items'] ?? array() ) );
+
+		$result['items']         = $items;
+		$result['visible_total'] = count( $items );
+		if ( $this->can_view_global_index_summary() ) {
+			$result['filtered_by_access'] = false;
+			$result['total_is_estimated'] = false;
+		} else {
+			$result['total']              = count( $items );
+			$result['filtered_by_access'] = true;
+			$result['total_is_estimated'] = true;
+		}
+
+		$filters           = (array) ( $result['filters'] ?? array() );
+		$result['index']   = $this->index_summary_for_items( $items );
+		$result['summary'] = array(
+			'returned_items' => count( $items ),
+			'state'          => (string) ( $filters['state'] ?? 'needs_review' ),
+			'thresholds'     => (array) ( $result['thresholds'] ?? array() ),
+		);
+		$result['usage']   = array(
+			'read_only'       => 'This audit reports indexed link-health signals only; it does not store suggestions or apply content changes.',
+			'freshness'       => 'Rows marked stale_index should be refreshed with content_index_refresh_batch before relying on counts.',
+			'next_tool'       => 'Use content_find_internal_links for candidate anchors after selecting a source item.',
+			'large_site_note' => 'Use page, per_page, post_type, status, and state filters instead of requesting the whole graph.',
+		);
+
+		return $result;
+	}
+
+	/**
 	 * List durable Aculect memory items.
 	 *
 	 * @param array<string, mixed> $args Query args.

@@ -231,6 +231,7 @@ final class McpToolAvailabilityTest extends TestCase {
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.internal_links',
+				'content_audit.internal_links',
 				'memory.list',
 				'memory.save',
 				'memory.bootstrap',
@@ -241,9 +242,9 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_items']['wordpress_ability']['mirrored'] );
-		self::assertContains(
-			$operations['intelligence_index']['search_items']['wordpress_ability']['status'],
-			array( 'abilities_api_unavailable', 'missing_registration', 'available' )
+			self::assertContains(
+				$operations['intelligence_index']['search_items']['wordpress_ability']['status'],
+				array( 'abilities_api_unavailable', 'missing_registration', 'available' )
 			);
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
 		self::assertTrue( $operations['intelligence_index']['canonical_search']['available'] );
@@ -257,6 +258,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['workflow_guides']['session_get']['available'] );
 		self::assertTrue( $operations['workflow_guides']['session_update']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
+		self::assertTrue( $operations['intelligence_index']['internal_link_audit']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_save']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_save']['always_on'] );
@@ -285,11 +287,13 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['workflow_guides']['get']['available'] );
 		self::assertTrue( $operations['intelligence_index']['find_related']['available'] );
 		self::assertTrue( $operations['intelligence_index']['internal_links']['available'] );
+		self::assertTrue( $operations['intelligence_index']['internal_link_audit']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_list']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_save']['available'] );
 		self::assertTrue( $operations['intelligence_index']['memory_bootstrap']['available'] );
 		self::assertTrue( $operations['intelligence_index']['batch_status']['available'] );
 		self::assertTrue( $operations['intelligence_index']['search_items']['always_on'] );
+		self::assertTrue( $operations['intelligence_index']['internal_link_audit']['always_on'] );
 		self::assertTrue( $operations['intelligence_index']['canonical_search']['always_on'] );
 		self::assertTrue( $operations['intelligence_index']['memory_save']['always_on'] );
 		self::assertTrue( $operations['site_editor']['get_context']['available'] );
@@ -304,6 +308,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'search', $operations['intelligence_index']['canonical_search']['tool'] );
 		self::assertSame( 'fetch', $operations['intelligence_index']['canonical_fetch']['tool'] );
 		self::assertSame( 'always_on_read_intelligence', $operations['intelligence_index']['search_items']['availability_model'] );
+		self::assertSame( 'always_on_read_intelligence', $operations['intelligence_index']['internal_link_audit']['availability_model'] );
 		self::assertSame( 'always_on_write_intelligence', $operations['intelligence_index']['memory_save']['availability_model'] );
 		self::assertArrayHasKey( 'search', $modules );
 		self::assertArrayHasKey( 'fetch', $modules );
@@ -315,6 +320,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayHasKey( 'admin_menu.get_context', $modules );
 		self::assertArrayHasKey( 'admin_menu.list_settings', $modules );
 		self::assertArrayHasKey( 'content_search.items', $modules );
+		self::assertArrayHasKey( 'content_audit.internal_links', $modules );
 		self::assertArrayHasKey( 'memory.list', $modules );
 		self::assertArrayHasKey( 'memory.save', $modules );
 		self::assertArrayHasKey( 'memory.bootstrap', $modules );
@@ -330,6 +336,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array() );
 
 		self::assertFalse( $operations['intelligence_index']['search_items']['available'] );
+		self::assertFalse( $operations['intelligence_index']['internal_link_audit']['available'] );
 		self::assertFalse( $operations['intelligence_index']['canonical_search']['available'] );
 		self::assertFalse( $operations['intelligence_index']['canonical_fetch']['available'] );
 		self::assertFalse( $operations['intelligence_index']['memory_save']['available'] );
@@ -339,15 +346,18 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['admin_menu']['get_context']['available'] );
 		self::assertFalse( $operations['admin_menu']['list_settings']['available'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
+		self::assertSame( 'oauth_scope', $operations['intelligence_index']['internal_link_audit']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['canonical_search']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['memory_save']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['memory_bootstrap']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['site_editor']['get_context']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['admin_menu']['get_context']['blocked_by'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
+		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['internal_link_audit']['missing_scopes'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['canonical_fetch']['missing_scopes'] );
 		self::assertSame( array( 'content:draft' ), $operations['intelligence_index']['memory_save']['missing_scopes'] );
 		self::assertArrayNotHasKey( 'search', $modules );
+		self::assertArrayNotHasKey( 'content_audit.internal_links', $modules );
 		self::assertArrayNotHasKey( 'fetch', $modules );
 		self::assertFalse( $operations['workflow_guides']['list']['available'] );
 		self::assertFalse( $operations['workflow_guides']['get']['available'] );

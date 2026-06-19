@@ -25,11 +25,11 @@ final class ProviderRegistry {
 	 */
 	public function providers(): array {
 		$providers = array(
-			new ClaudeProvider(),
 			new ChatGPTProvider(),
 			new CodexProvider(),
-			new CursorProvider(),
+			new ClaudeProvider(),
 			new GeminiProvider(),
+			new CursorProvider(),
 			new GenericProvider(),
 		);
 

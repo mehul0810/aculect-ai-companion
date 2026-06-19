@@ -23,6 +23,10 @@ final class ProviderRegistryTest extends TestCase {
 		$definitions = $registry->setup_definitions( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp' );
 		$providers   = array_column( $definitions, null, 'id' );
 
+		self::assertSame(
+			array( 'chatgpt', 'codex', 'claude', 'gemini', 'cursor', 'mcp' ),
+			array_column( $definitions, 'id' )
+		);
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertArrayHasKey( 'chatgpt', $providers );
 		self::assertArrayHasKey( 'codex', $providers );

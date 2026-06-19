@@ -57,21 +57,21 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	public function setup_sections( string $mcp_url ): array {
 		return array(
 			array(
-				'title'       => 'Claude app, Claude Desktop, Cowork, and mobile',
-				'description' => 'Use Claude custom connectors when you want the normal Claude app experience. Your connection URL must be publicly reachable over HTTPS because Claude connects from outside your WordPress site.',
+				'title'       => 'Claude custom connector',
+				'description' => 'Use Claude custom connectors for Claude, Claude Desktop, Cowork, and mobile. Your connection URL must be publicly reachable over HTTPS because Claude reaches remote MCP servers from Anthropic cloud infrastructure.',
 				'steps'       => array(
-					'Open Claude connector settings. Team and Enterprise owners can use Organization settings > Connectors.',
-					'Choose Add custom connector, or Custom > Web when adding it for an organization.',
-					'Paste your connection URL from above.',
-					'Finish adding the connector, then click Connect and approve the connection on the WordPress screen that appears.',
-					'Enable the connector for the conversation from the + menu > Connectors.',
+					'For Free, Pro, or Max, open Customize > Connectors, click +, and choose Add custom connector.',
+					'For Team or Enterprise, an owner adds the connector from Organization settings > Connectors > Add > Custom > Web. Members then connect it from Customize > Connectors.',
+					'Paste your connection URL as the remote MCP server URL. Leave advanced OAuth client fields empty unless you are troubleshooting a static OAuth registration.',
+					'Finish adding the connector, click Connect, and approve the Aculect AI Companion consent screen in WordPress.',
+					'Enable the connector for each conversation from the + menu > Connectors.',
 				),
 				'actionLabel' => 'Open Claude Connectors',
 				'actionUrl'   => $this->primary_action_url(),
 			),
 			array(
 				'title'       => 'Claude Code',
-				'description' => 'Use this for terminal-based development workflows.',
+				'description' => 'Use this for terminal-based development workflows. Claude Code recommends the HTTP transport for remote MCP servers.',
 				'steps'       => array(
 					'Copy the Claude Code command below.',
 					'Run it in a terminal where Claude Code is available.',
@@ -91,9 +91,9 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'title'       => 'Claude API developers',
 				'description' => 'Use this only when you are building your own Claude integration.',
 				'steps'       => array(
-					'Use your connection URL from above as the remote server URL in your application.',
-					'Follow Claude developer documentation for the authorization details your application must handle.',
-					'Keep destructive site actions behind explicit user approval in your application.',
+					'Add Aculect AI Companion to the Claude API mcp_servers array with type url, name, and the connection URL above.',
+					'If your app calls protected Aculect tools directly, complete OAuth first and pass the access token as authorization_token.',
+					'Keep destructive WordPress actions behind explicit user approval in your application.',
 				),
 				'actionLabel' => 'Open Claude API Docs',
 				'actionUrl'   => 'https://docs.anthropic.com/en/docs/agents-and-tools/mcp-connector',
@@ -115,7 +115,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'                 => 'open',
 					'title'              => 'Open Claude',
 					'subtitle'           => 'Open Claude connector settings.',
-					'description'        => 'Claude can connect to Aculect AI Companion through a custom connector.',
+					'description'        => 'Claude can connect to Aculect AI Companion through a custom remote MCP connector.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Open Claude',
@@ -123,7 +123,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 						),
 						array(
 							'title'       => 'Open connector settings',
-							'description' => 'Open connector settings. Team and Enterprise owners can use Organization settings.',
+							'description' => 'For individual plans, open Customize > Connectors. Team and Enterprise owners can use Organization settings > Connectors.',
 						),
 					),
 					'primaryActionLabel' => 'Open Claude',
@@ -137,11 +137,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'instructions' => array(
 						array(
 							'title'       => 'Add custom connector',
-							'description' => 'Choose Add custom connector, or Custom > Web for organization-managed connectors.',
+							'description' => 'For Free, Pro, or Max, click + and choose Add custom connector. For organizations, choose Add > Custom > Web.',
 						),
 						array(
 							'title'       => 'Paste the connection URL',
-							'description' => 'Paste the Aculect connection URL and finish adding the connector.',
+							'description' => 'Paste the Aculect connection URL as the remote MCP server URL and finish adding the connector.',
 						),
 					),
 					'copyFields'   => array(
@@ -173,7 +173,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'           => 'complete',
 					'title'        => 'Complete',
 					'subtitle'     => 'Your AI assistant is connected and ready to use.',
-					'description'  => 'Return to Claude and enable the connector for the conversation.',
+					'description'  => 'Return to Claude and enable Aculect AI Companion for the conversation from the + menu > Connectors.',
 					'instructions' => array(
 						array(
 							'title'       => 'Connection active',

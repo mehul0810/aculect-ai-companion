@@ -63,11 +63,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 		return array(
 			array(
 				'title'       => 'Gemini CLI',
-				'description' => 'Use this for terminal-based Gemini CLI sessions. Your connection URL must be reachable by Gemini CLI, and remote HTTP connections should use the httpUrl field for Streamable HTTP.',
+				'description' => 'Use this for terminal-based Gemini CLI sessions. Gemini reads MCP servers from settings.json, and Streamable HTTP servers use the httpUrl field.',
 				'steps'       => array(
-					'Copy the Gemini settings JSON below.',
-					'Add it to ~/.gemini/settings.json for your user, or to .gemini/settings.json for a project-scoped connection.',
-					'Keep the JSON key named httpUrl so Gemini treats Aculect AI Companion as a Streamable HTTP MCP server.',
+					'Run the Gemini CLI add command below, or copy the settings JSON into ~/.gemini/settings.json for your user or .gemini/settings.json for a project.',
+					'Keep the JSON key named httpUrl so Gemini treats Aculect AI Companion as a Streamable HTTP MCP server. The url key is for SSE servers.',
+					'Keep trust set to false unless you are in a controlled environment and want Gemini to skip MCP tool confirmations.',
 					'Run gemini mcp list, or use /mcp list in Gemini CLI, to verify that Aculect AI Companion is connected.',
 					'When Gemini asks to authorize the MCP server, run /mcp auth aculect-ai-companion if needed and approve the WordPress consent screen.',
 					'Ask Gemini to list available Aculect tools before running write actions.',
@@ -76,6 +76,10 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'actionUrl'   => $this->primary_action_url(),
 				'copyFields'  => array(
 					array(
+						'label' => 'Gemini CLI add command',
+						'value' => $this->mcp_add_command( $mcp_url ),
+					),
+					array(
 						'label' => 'Gemini MCP settings.json',
 						'value' => $this->settings_json_snippet( $mcp_url ),
 					),
@@ -83,10 +87,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 			),
 			array(
 				'title'       => 'Gemini Code Assist agent mode',
-				'description' => 'Use this for VS Code or IntelliJ agent-mode workflows where Gemini Code Assist can call configured MCP server tools.',
+				'description' => 'Use this for Gemini Code Assist agent-mode workflows where Gemini can call configured MCP server tools.',
 				'steps'       => array(
-					'Open your Gemini settings JSON for the IDE account or workspace.',
-					'Add Aculect AI Companion under mcpServers using the same httpUrl value from the Gemini CLI snippet.',
+					'For VS Code, add Aculect AI Companion under mcpServers in ~/.gemini/settings.json. The command palette cannot install MCP servers for agent mode.',
+					'For IntelliJ, add the MCP server to the IDE configuration mcp.json file if you use agent mode there.',
+					'Use the same httpUrl value from the Gemini CLI snippet, then reload the IDE window if needed.',
 					'Switch Gemini Code Assist chat into Agent mode.',
 					'Ask Gemini to inspect safe site context first, then approve any tool calls that can change WordPress.',
 				),
@@ -98,7 +103,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'description' => 'Gemini discovers MCP tools from the server metadata and can filter tools client-side with includeTools or excludeTools when a site exposes many abilities.',
 				'steps'       => array(
 					'Prefer the workflow and intelligence tools for content work so Gemini gets the same guided path as other assistants.',
-					'Let Gemini use OAuth discovery and Dynamic Client Registration from the MCP endpoint instead of hard-coding WordPress credentials.',
+					'Let Gemini use OAuth discovery and Dynamic Client Registration from the MCP endpoint instead of hard-coding WordPress credentials or Authorization headers.',
 					'Keep trust disabled unless the Gemini client is running in a controlled environment.',
 					'After plugin updates or ability policy changes, rerun gemini mcp list or reconnect the MCP server so Gemini refreshes tool metadata.',
 				),
@@ -122,7 +127,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'                 => 'open',
 					'title'              => 'Open Gemini MCP settings',
 					'subtitle'           => 'Open Gemini CLI or Gemini Code Assist settings.',
-					'description'        => 'Gemini connects to Aculect AI Companion as a Streamable HTTP MCP server.',
+					'description'        => 'Gemini connects to Aculect AI Companion as a Streamable HTTP MCP server when the server uses httpUrl.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Open Gemini settings',
@@ -140,8 +145,12 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'           => 'add',
 					'title'        => 'Add MCP server',
 					'subtitle'     => 'Add Aculect AI Companion to Gemini settings.',
-					'description'  => 'Copy the settings below. Keep the key named httpUrl for Streamable HTTP.',
+					'description'  => 'Run the CLI command or copy the settings below. Keep the key named httpUrl for Streamable HTTP.',
 					'instructions' => array(
+						array(
+							'title'       => 'Use the CLI command',
+							'description' => 'Run the command below if you want Gemini CLI to write the MCP server entry for you.',
+						),
 						array(
 							'title'       => 'Copy Gemini settings',
 							'description' => 'Add the JSON below to ~/.gemini/settings.json or a project .gemini/settings.json file.',
@@ -153,6 +162,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					),
 					'copyFields'   => array(
 						array(
+							'label'       => 'Gemini CLI add command',
+							'description' => 'Run this from a terminal where Gemini CLI is installed.',
+							'value'       => $this->mcp_add_command( $mcp_url ),
+						),
+						array(
 							'label'       => 'Gemini MCP settings.json',
 							'description' => 'Use this httpUrl configuration for Gemini CLI or Code Assist.',
 							'value'       => $this->settings_json_snippet( $mcp_url ),
@@ -163,7 +177,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'                 => 'approve',
 					'title'              => 'Authorize in WordPress',
 					'subtitle'           => 'Authorize the connection securely in WordPress.',
-					'description'        => 'When Gemini asks to authorize the MCP server, approve the WordPress consent screen.',
+					'description'        => 'When Gemini detects that the MCP server requires OAuth, approve the WordPress consent screen.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Start authorization',
@@ -212,6 +226,18 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 		);
 
 		return is_string( $json ) ? $json : '';
+	}
+
+	/**
+	 * Build the Gemini CLI command for adding the MCP server.
+	 *
+	 * @param string $mcp_url Canonical MCP endpoint URL.
+	 */
+	private function mcp_add_command( string $mcp_url ): string {
+		return sprintf(
+			'gemini mcp add --transport http aculect-ai-companion %s',
+			$mcp_url
+		);
 	}
 
 	/**

@@ -57,17 +57,16 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	public function setup_sections( string $mcp_url ): array {
 		return array(
 			array(
-				'title'       => 'Codex custom MCP',
-				'description' => 'Use Streamable HTTP when adding Aculect AI Companion from the Codex custom MCP screen. Your connection URL must be reachable over HTTPS from the Codex client.',
+				'title'       => 'Codex MCP configuration',
+				'description' => 'Codex CLI and the IDE extension share MCP servers from config.toml. Use a Streamable HTTP url entry for Aculect AI Companion.',
 				'steps'       => array(
-					'Open Codex MCP settings and choose Connect to a custom MCP.',
-					'Enter the MCP server name below.',
-					'Select Streamable HTTP, not STDIO.',
-					'Paste the MCP URL below into the URL field.',
-					'Leave Bearer token env var, headers, and headers from environment variables empty; Aculect uses OAuth discovery from the MCP endpoint.',
-					'Save the server, then let Codex start the OAuth login. If it does not start automatically, run the login command below.',
+					'Open ~/.codex/config.toml, or a trusted project .codex/config.toml when you want the server scoped to that project.',
+					'In the Codex IDE extension, open MCP settings and choose Open config.toml from the gear menu.',
+					'Add the MCP server table and URL below. The url key tells Codex to use Streamable HTTP.',
+					'Leave bearer_token_env_var, http_headers, and env_http_headers unset; Aculect advertises OAuth from the MCP endpoint.',
+					'Run the OAuth login command below if Codex does not prompt for authorization automatically.',
 					'Approve the Aculect AI Companion consent screen in WordPress.',
-					'Start a new Codex session and ask Codex to list tools or read safe site information before running write actions.',
+					'Use /mcp in Codex, or ask Codex to list tools, before running write actions.',
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
@@ -88,7 +87,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 			),
 			array(
 				'title'       => 'Codex config.toml',
-				'description' => 'Use this manual option for Codex CLI or IDE sessions where you manage MCP servers from config.toml instead of the custom MCP screen.',
+				'description' => 'Use this snippet when you manage Codex MCP servers by editing config.toml directly.',
 				'steps'       => array(
 					'Copy the Codex MCP configuration below.',
 					'Add it to your user-level ~/.codex/config.toml, or to a trusted project .codex/config.toml when you want the connection scoped to that project.',
@@ -111,7 +110,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'steps'       => array(
 					'Keep the endpoint-only setup flow: Codex discovers OAuth from the MCP server and WordPress handles consent.',
 					'Codex can read the server instructions returned during MCP initialization, so the workflow and intelligence guidance is supplied by Aculect after connection.',
-					'If Codex cannot open the OAuth callback, check the Codex MCP OAuth callback settings, then retry codex mcp login aculect_ai_companion.',
+					'If Codex cannot open the OAuth callback, configure mcp_oauth_callback_port or mcp_oauth_callback_url in config.toml, then retry codex mcp login aculect_ai_companion.',
 					'If the available tools look stale after an update, reconnect the MCP server or start a fresh Codex session.',
 					'Use Aculect diagnostic logging when troubleshooting so Codex attempts are visible without storing secrets.',
 				),
@@ -133,17 +132,17 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 			'steps'         => array(
 				array(
 					'id'                 => 'open',
-					'title'              => 'Open Codex MCP settings',
-					'subtitle'           => 'Open Codex and choose the custom MCP setup path.',
-					'description'        => 'Codex connects to Aculect AI Companion as a Streamable HTTP MCP server.',
+					'title'              => 'Open Codex MCP configuration',
+					'subtitle'           => 'Open the Codex config.toml used by the CLI or IDE extension.',
+					'description'        => 'Codex connects to Aculect AI Companion as a Streamable HTTP MCP server when the server table contains a url.',
 					'instructions'       => array(
 						array(
-							'title'       => 'Open MCP settings',
-							'description' => 'Open Codex MCP settings and choose Connect to a custom MCP.',
+							'title'       => 'Open config.toml',
+							'description' => 'Open ~/.codex/config.toml or a trusted project .codex/config.toml. In the IDE extension, use MCP settings > Open config.toml.',
 						),
 						array(
-							'title'       => 'Choose Streamable HTTP',
-							'description' => 'Use Streamable HTTP for Aculect AI Companion, not STDIO.',
+							'title'       => 'Use the shared config',
+							'description' => 'The Codex CLI and IDE extension use the same MCP configuration, so one server entry works in both clients.',
 						),
 					),
 					'primaryActionLabel' => $this->primary_action_label(),
@@ -152,12 +151,12 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				array(
 					'id'           => 'add',
 					'title'        => 'Add MCP server',
-					'subtitle'     => 'Add Aculect AI Companion as a custom MCP server.',
-					'description'  => 'Use the fields below in Codex. Leave manual bearer tokens and headers empty.',
+					'subtitle'     => 'Add Aculect AI Companion to Codex config.toml.',
+					'description'  => 'Use the fields below in Codex. Leave manual bearer tokens and headers unset.',
 					'instructions' => array(
 						array(
-							'title'       => 'Enter server details',
-							'description' => 'Use the server name and MCP URL below in the Codex MCP server form.',
+							'title'       => 'Add the server table',
+							'description' => 'Paste the Codex config.toml snippet or add the server name and URL below to your MCP configuration.',
 						),
 						array(
 							'title'       => 'Start OAuth login',

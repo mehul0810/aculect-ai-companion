@@ -46,7 +46,7 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame( 'MCP URL', $providers['codex']['wizard']['steps'][1]['copyFields'][1]['label'] );
 		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['codex']['wizard']['steps'][1]['copyFields'][1]['value'] );
 		self::assertStringContainsString( 'codex mcp login aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][2]['value'] );
-		self::assertStringContainsString( 'Select Streamable HTTP, not STDIO.', implode( ' ', $providers['codex']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( 'The url key tells Codex to use Streamable HTTP.', implode( ' ', $providers['codex']['setupSections'][0]['steps'] ) );
 		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertSame( 'Anthropic', $providers['claude']['brandName'] );
@@ -63,8 +63,10 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame( 'Google', $providers['gemini']['brandName'] );
 		self::assertSame( 'https://gemini.google.com/', $providers['gemini']['brandUrl'] );
 		self::assertSame( 'https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md', $providers['gemini']['primaryActionUrl'] );
-		self::assertSame( 'Gemini MCP settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
-		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'Gemini CLI add command', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
+		self::assertStringContainsString( 'gemini mcp add --transport http aculect-ai-companion https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['gemini']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'Gemini MCP settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][1]['label'] );
+		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][1]['value'] );
 		self::assertStringContainsString( 'gemini mcp list', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
 		self::assertStringContainsString( 'Keep the JSON key named httpUrl', implode( ' ', $providers['gemini']['setupSections'][0]['steps'] ) );
 		self::assertSame( 'https://docs.cloud.google.com/gemini/docs/codeassist/use-agentic-chat-pair-programmer', $providers['gemini']['setupSections'][1]['actionUrl'] );

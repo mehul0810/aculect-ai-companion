@@ -30,7 +30,7 @@ final class Provider implements ProviderInterface, ProviderWizardInterface {
 	 * Return the provider description.
 	 */
 	public function description(): string {
-		return 'Use any MCP client that supports streamable HTTP servers, OAuth discovery, and Dynamic Client Registration.';
+		return 'Use any MCP client that supports Streamable HTTP servers, OAuth discovery, and Dynamic Client Registration.';
 	}
 
 	/**
@@ -57,11 +57,11 @@ final class Provider implements ProviderInterface, ProviderWizardInterface {
 		return array(
 			array(
 				'title'       => 'Generic MCP client',
-				'description' => 'Use this when your AI client supports remote MCP servers and OAuth discovery but does not have provider-specific setup guidance yet.',
+				'description' => 'Use this when your AI client supports remote Streamable HTTP MCP servers and OAuth discovery but does not have provider-specific setup guidance yet.',
 				'steps'       => array(
-					'Add a remote or streamable HTTP MCP server in your AI client.',
-					'Paste your Aculect AI Companion connection URL as the server URL.',
-					'Let the client discover OAuth metadata and Dynamic Client Registration from the MCP endpoint.',
+					'Add a remote Streamable HTTP MCP server in your AI client.',
+					'Paste your Aculect AI Companion connection URL as the MCP endpoint URL.',
+					'Let the client discover protected resource metadata, authorization server metadata, and Dynamic Client Registration from the MCP endpoint.',
 					'Approve the WordPress consent screen when the client asks to connect.',
 					'Start with read-only site or capability discovery before running write actions.',
 				),
@@ -91,11 +91,11 @@ final class Provider implements ProviderInterface, ProviderWizardInterface {
 					'id'                 => 'open',
 					'title'              => 'Open your MCP client',
 					'subtitle'           => 'Open the MCP settings in your AI assistant.',
-					'description'        => 'Use this path for clients that support remote MCP servers and OAuth discovery.',
+					'description'        => 'Use this path for clients that support remote Streamable HTTP MCP servers and OAuth discovery.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Open MCP settings',
-							'description' => 'Find the area where your client adds remote or Streamable HTTP MCP servers.',
+							'description' => 'Find the area where your client adds remote Streamable HTTP MCP servers.',
 						),
 					),
 					'primaryActionLabel' => $this->primary_action_label(),
@@ -105,15 +105,15 @@ final class Provider implements ProviderInterface, ProviderWizardInterface {
 					'id'           => 'add',
 					'title'        => 'Add MCP server',
 					'subtitle'     => 'Add Aculect AI Companion as a remote MCP server.',
-					'description'  => 'Use the connection URL below as the server URL.',
+					'description'  => 'Use the connection URL below as the MCP endpoint URL.',
 					'instructions' => array(
 						array(
 							'title'       => 'Paste the connection URL',
-							'description' => 'Paste this URL into your client as the remote or Streamable HTTP MCP server URL.',
+							'description' => 'Paste this URL into your client as the remote Streamable HTTP MCP server URL.',
 						),
 						array(
 							'title'       => 'Use OAuth discovery',
-							'description' => 'Let the client discover OAuth metadata and Dynamic Client Registration from the MCP endpoint.',
+							'description' => 'Let the client discover OAuth metadata and Dynamic Client Registration from the MCP endpoint instead of hard-coding WordPress credentials.',
 						),
 					),
 					'copyFields'   => array(

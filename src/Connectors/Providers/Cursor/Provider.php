@@ -66,10 +66,10 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'description' => 'Use Cursor Agent with Aculect AI Companion as a remote MCP server. Configure it globally in ~/.cursor/mcp.json or per project in .cursor/mcp.json.',
 				'steps'       => array(
 					'Open Cursor Settings > Tools & MCP, or edit your global ~/.cursor/mcp.json or project .cursor/mcp.json file.',
-					'Copy the Cursor MCP configuration below.',
-					'Save the file or add the server in Cursor, then enable the Aculect AI Companion server.',
+					'Copy the Cursor MCP configuration below. Cursor remote servers use the url key for HTTP or SSE endpoints.',
+					'Save the file or add the server in Cursor, then enable the Aculect AI Companion server from MCP settings if it is not already enabled.',
 					'Let Cursor start the OAuth approval flow and approve the Aculect AI Companion consent screen in WordPress.',
-					'Open Cursor MCP Logs or Available Tools to confirm the WordPress tools are visible before running write actions.',
+					'Open Available Tools or MCP Logs to confirm the WordPress tools are visible before running write actions.',
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
@@ -85,8 +85,8 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'description' => 'Cursor supports local STDIO and remote MCP servers. Use the remote URL configuration for Aculect so OAuth discovery, Dynamic Client Registration, and WordPress consent stay in control.',
 				'steps'       => array(
 					'Use the url key in Cursor mcp.json for the Aculect MCP endpoint; do not change it to httpUrl.',
-					'Leave manual headers, bearer tokens, and static OAuth client credentials empty unless you are troubleshooting a specific Cursor environment.',
-					'If a static OAuth redirect has to be registered manually, use cursor://anysphere.cursor-mcp/oauth/callback.',
+					'Leave manual headers, bearer tokens, and static OAuth client credentials empty because Aculect supports OAuth discovery and Dynamic Client Registration.',
+					'Only use Cursor static OAuth fields when an MCP provider requires a fixed client registration. The fixed Cursor redirect URI is cursor://anysphere.cursor-mcp/oauth/callback.',
 					'After plugin updates or ability policy changes, toggle the Cursor MCP server off and on so Cursor refreshes tool metadata.',
 					'Do not use WordPress application passwords or raw REST credentials for Cursor MCP access.',
 				),
@@ -110,7 +110,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'                 => 'open',
 					'title'              => 'Open Cursor MCP settings',
 					'subtitle'           => 'Open Cursor and go to Tools & MCP.',
-					'description'        => 'Cursor connects to Aculect AI Companion as a remote MCP server.',
+					'description'        => 'Cursor connects to Aculect AI Companion as a remote MCP server using the url key in mcp.json.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Open Cursor settings',
@@ -118,7 +118,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 						),
 						array(
 							'title'       => 'Choose remote MCP',
-							'description' => 'Use a remote URL connection so OAuth discovery and WordPress consent stay in control.',
+							'description' => 'Use a remote URL connection so OAuth discovery, Dynamic Client Registration, and WordPress consent stay in control.',
 						),
 					),
 					'primaryActionLabel' => $this->primary_action_label(),
@@ -132,11 +132,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'instructions' => array(
 						array(
 							'title'       => 'Copy Cursor configuration',
-							'description' => 'Add the JSON below to ~/.cursor/mcp.json or a project .cursor/mcp.json file.',
+							'description' => 'Add the JSON below to ~/.cursor/mcp.json or a project .cursor/mcp.json file. Keep the remote endpoint under url.',
 						),
 						array(
 							'title'       => 'Enable the server',
-							'description' => 'Save the file or add the server in Cursor, then enable Aculect AI Companion.',
+							'description' => 'Save the file or add the server in Cursor, then enable Aculect AI Companion from MCP settings if needed.',
 						),
 					),
 					'copyFields'   => array(
@@ -168,7 +168,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'           => 'complete',
 					'title'        => 'Complete',
 					'subtitle'     => 'Your Cursor MCP server is connected and ready to use.',
-					'description'  => 'Open Cursor MCP Logs or Available Tools to confirm the WordPress tools are visible.',
+					'description'  => 'Open Available Tools or MCP Logs to confirm the WordPress tools are visible.',
 					'instructions' => array(
 						array(
 							'title'       => 'Connection active',

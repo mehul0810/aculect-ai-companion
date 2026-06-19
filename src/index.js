@@ -493,8 +493,20 @@ function providerBadgeLabel( provider ) {
 	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
 }
 
-function providerOverviewText( provider ) {
-	return `Connect ${ provider.label } to manage your WordPress site.`;
+function providerAttribution( provider ) {
+	if ( provider.id === 'mcp' ) {
+		return {
+			description:
+				'Connect this WordPress site to any MCP-compatible client.',
+		};
+	}
+
+	return {
+		brandName: provider.brandName || provider.label,
+		brandUrl: safeExternalUrl(
+			provider.brandUrl || provider.primaryActionUrl || ''
+		),
+	};
 }
 
 function connectorLogoUrl( provider, connectorLogoUrls = EMPTY_OBJECT ) {
@@ -3893,32 +3905,65 @@ function AssistantSelector( {
 			<div className="aculect-ai-companion-assistant-selector__list">
 				{ providers.map( ( provider ) => {
 					const isSelected = provider.id === selectedProviderId;
-					const wizard =
-						provider.wizard && typeof provider.wizard === 'object'
-							? provider.wizard
-							: {};
+					const attribution = providerAttribution( provider );
 
 					return (
-						<button
+						<div
 							key={ provider.id }
-							type="button"
 							className={ `aculect-ai-companion-assistant-card ${
 								isSelected ? 'is-selected' : ''
 							}` }
-							aria-pressed={ isSelected }
-							onClick={ () => onSelectProvider( provider.id ) }
 						>
-							<ConnectProviderBadge provider={ provider } />
-							<span>
-								<strong>{ provider.label }</strong>
-								<em>{ providerOverviewText( provider ) }</em>
-							</span>
-							{ wizard.badge && <small>{ wizard.badge }</small> }
-						</button>
+							<button
+								type="button"
+								className="aculect-ai-companion-assistant-card__button"
+								aria-pressed={ isSelected }
+								onClick={ () =>
+									onSelectProvider( provider.id )
+								}
+							>
+								<ConnectProviderBadge provider={ provider } />
+								<span className="aculect-ai-companion-assistant-card__identity">
+									<strong>{ provider.label }</strong>
+								</span>
+							</button>
+							<AssistantAttribution attribution={ attribution } />
+						</div>
 					);
 				} ) }
 			</div>
 		</div>
+	);
+}
+
+function AssistantAttribution( { attribution } ) {
+	if ( attribution.description ) {
+		return (
+			<span className="aculect-ai-companion-assistant-card__byline">
+				{ attribution.description }
+			</span>
+		);
+	}
+
+	if ( attribution.brandUrl ) {
+		return (
+			<span className="aculect-ai-companion-assistant-card__byline">
+				by{ ' ' }
+				<a
+					href={ attribution.brandUrl }
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{ attribution.brandName }
+				</a>
+			</span>
+		);
+	}
+
+	return (
+		<span className="aculect-ai-companion-assistant-card__byline">
+			by { attribution.brandName }
+		</span>
 	);
 }
 

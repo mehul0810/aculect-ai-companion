@@ -59,10 +59,14 @@ final class ProviderRegistry {
 	public function setup_definitions( string $mcp_url ): array {
 		return array_map(
 			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
+				$brand = self::brand_for_provider( $provider );
+
 				$definition = array(
 					'id'                 => $provider->id(),
 					'label'              => $provider->label(),
 					'description'        => $provider->description(),
+					'brandName'          => $brand['name'],
+					'brandUrl'           => $brand['url'],
 					'primaryActionUrl'   => $provider->primary_action_url(),
 					'primaryActionLabel' => $provider->primary_action_label(),
 					'setupSections'      => $provider->setup_sections( $mcp_url ),
@@ -76,6 +80,48 @@ final class ProviderRegistry {
 			},
 			$this->providers()
 		);
+	}
+
+	/**
+	 * Return brand attribution metadata for the provider selector.
+	 *
+	 * @param ProviderInterface $provider Provider instance.
+	 * @return array{name: string, url: string}
+	 */
+	private static function brand_for_provider( ProviderInterface $provider ): array {
+		switch ( $provider->id() ) {
+			case 'chatgpt':
+			case 'codex':
+				return array(
+					'name' => 'OpenAI',
+					'url'  => 'https://openai.com/',
+				);
+			case 'claude':
+				return array(
+					'name' => 'Anthropic',
+					'url'  => 'https://www.anthropic.com/',
+				);
+			case 'gemini':
+				return array(
+					'name' => 'Google',
+					'url'  => 'https://gemini.google.com/',
+				);
+			case 'cursor':
+				return array(
+					'name' => 'Cursor',
+					'url'  => 'https://cursor.com/',
+				);
+			case self::FALLBACK_PROVIDER_ID:
+				return array(
+					'name' => '',
+					'url'  => '',
+				);
+			default:
+				return array(
+					'name' => $provider->label(),
+					'url'  => $provider->primary_action_url(),
+				);
+		}
 	}
 
 	/**

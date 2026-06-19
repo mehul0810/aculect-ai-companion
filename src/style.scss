@@ -1158,9 +1158,9 @@
 .aculect-ai-companion-assistant-card {
 	position: relative;
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	gap: 12px;
-	align-items: center;
+	grid-template-columns: 40px minmax(0, 1fr);
+	gap: 4px 12px;
+	align-items: start;
 	width: 100%;
 	min-height: 72px;
 	padding: 12px;
@@ -1169,11 +1169,10 @@
 	background: #fff;
 	color: var(--aculect-ai-companion-ink);
 	text-align: left;
-	cursor: pointer;
 }
 
 .aculect-ai-companion-assistant-card:hover,
-.aculect-ai-companion-assistant-card:focus {
+.aculect-ai-companion-assistant-card:focus-within {
 	border-color: #93c5fd;
 	box-shadow: 0 0 0 1px #93c5fd;
 	outline: none;
@@ -1185,33 +1184,53 @@
 	box-shadow: 0 0 0 1px var(--aculect-ai-companion-primary);
 }
 
-.aculect-ai-companion-assistant-card strong,
-.aculect-ai-companion-assistant-card em {
+.aculect-ai-companion-assistant-card__button {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: 40px minmax(0, 1fr);
+	gap: 12px;
+	align-items: center;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.aculect-ai-companion-assistant-card__button:focus {
+	outline: none;
+}
+
+.aculect-ai-companion-assistant-card__identity {
 	display: block;
+	min-width: 0;
 }
 
 .aculect-ai-companion-assistant-card strong {
+	display: block;
 	font-size: 14px;
 	line-height: 1.35;
 }
 
-.aculect-ai-companion-assistant-card em {
-	margin-top: 3px;
+.aculect-ai-companion-assistant-card__byline {
+	display: block;
+	grid-column: 2;
 	color: var(--aculect-ai-companion-muted);
 	font-size: 12px;
-	font-style: normal;
 	line-height: 1.35;
 }
 
-.aculect-ai-companion-assistant-card small {
-	padding: 3px 7px;
-	border-radius: 999px;
-	background: #dbeafe;
-	color: #1d4ed8;
-	font-size: 11px;
-	font-weight: 700;
-	line-height: 1.2;
-	white-space: nowrap;
+.aculect-ai-companion-assistant-card__byline a {
+	color: var(--aculect-ai-companion-primary);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.aculect-ai-companion-assistant-card__byline a:focus,
+.aculect-ai-companion-assistant-card__byline a:hover {
+	text-decoration: underline;
 }
 
 .aculect-ai-companion-setup-wizard__main {
@@ -4324,7 +4343,7 @@ td:first-child
 		grid-template-columns: auto minmax(0, 1fr);
 	}
 
-	.aculect-ai-companion-assistant-card small {
+	.aculect-ai-companion-assistant-card__byline {
 		grid-column: 2;
 		justify-self: start;
 	}

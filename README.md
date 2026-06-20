@@ -107,6 +107,9 @@ Admins can enable or disable these abilities from `AI Companion > Abilities` aft
 
 ## Project Docs
 
+- [Product direction](PRODUCT.md)
+- [Roadmap](ROADMAP.md)
+- [Release operations](RELEASE.md)
 - [Contributing guidelines](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

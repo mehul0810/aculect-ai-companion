@@ -71,7 +71,7 @@
 - Prefer asynchronous operations for long-running external calls.
 
 ## Maintenance Workflow
-- Use `PRODUCT.md`, `ROADMAP.md`, and `RELEASE.md` for repo-local product direction, milestone discipline, release-train ordering, and owner-authorization rules.
+- Use `PRODUCT.md`, `DESIGN.md`, `ROADMAP.md`, and `RELEASE.md` for repo-local product direction, design contract, milestone discipline, release-train ordering, and owner-authorization rules.
 - Run: `composer test` and JS lint/build before releases.
 - Keep README and route/tool schema docs updated with behavior changes.
 - Maintain backward compatibility for public tool names and response shapes where practical.

@@ -77,6 +77,49 @@ final class WorkflowGuideRegistryTest extends TestCase {
 		self::assertStringContainsString( 'available tools', $result['next_actions'][0] );
 	}
 
+	public function test_site_management_and_troubleshooting_guides_are_compact_and_policy_aware(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$result = ( new WorkflowGuideRegistry() )->list_guides(
+			array(
+				'category' => 'site',
+				'detail'   => 'summary',
+			)
+		);
+		$guides = array_column( $result['items'], null, 'id' );
+
+		self::assertArrayHasKey( 'site_management_planning', $guides );
+		self::assertArrayHasKey( 'connector_troubleshooting', $guides );
+		self::assertSame( 'medium', $guides['site_management_planning']['estimated_response_size'] );
+		self::assertSame( 'workflow_guides_list', $guides['connector_troubleshooting']['required_operations'][0]['tool'] );
+		self::assertTrue( $guides['connector_troubleshooting']['required_operations'][0]['available'] );
+		self::assertLessThan( 12000, strlen( wp_json_encode( $result, JSON_UNESCAPED_SLASHES ) ) );
+	}
+
+	public function test_connector_troubleshooting_guide_distinguishes_blockers_without_unsafe_actions(): void {
+		McpToolAvailability::set_current_granted_scopes( array( 'content:read' ) );
+
+		$result = ( new WorkflowGuideRegistry() )->get_guide( array( 'id' => 'connector_troubleshooting' ) );
+		$steps  = implode( ' ', $result['steps'] );
+
+		self::assertSame( 'connector_troubleshooting', $result['id'] );
+		self::assertTrue( $result['available'] );
+		self::assertStringContainsString( 'missing scopes', $steps );
+		self::assertStringContainsString( 'policy blocks separately from environment failures', $steps );
+		self::assertStringContainsString( 'cached tool list remains stale', $steps );
+		self::assertStringNotContainsString( 'modify files', $steps );
+		self::assertStringNotContainsString( 'raw SQL', $steps );
+		self::assertStringNotContainsString( 'arbitrary PHP', $steps );
+
+		$optional = array_column( $result['optional_operations'], null, 'ref' );
+		self::assertArrayHasKey( 'actions.discover', $optional );
+		self::assertSame( 'wp_abilities_discover', $optional['actions.discover']['tool'] );
+		self::assertTrue( $optional['actions.discover']['available'] );
+		self::assertFalse( $optional['site_editor.refresh_context']['available'] );
+		self::assertSame( 'oauth_scope', $optional['site_editor.refresh_context']['blocked_by'] );
+		self::assertSame( array( 'content:draft' ), $optional['site_editor.refresh_context']['missing_scopes'] );
+	}
+
 	public function test_get_guide_reports_unknown_ids(): void {
 		$result = ( new WorkflowGuideRegistry() )->get_guide( array( 'id' => 'missing' ) );
 

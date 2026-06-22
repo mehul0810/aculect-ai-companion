@@ -1276,7 +1276,7 @@ final class FirstPartyAbilityModules {
 				),
 				'intent'                   => array(
 					'type'        => 'string',
-					'enum'        => array( 'capability_discovery', 'site_audit', 'site_editor', 'admin_menu', 'seo_update', 'internal_links', 'content_update', 'content_create' ),
+					'enum'        => array( 'capability_discovery', 'site_audit', 'site_management', 'connector_troubleshooting', 'site_editor', 'admin_menu', 'seo_update', 'internal_links', 'content_update', 'content_create' ),
 					'description' => 'Optional explicit intent override.',
 				),
 				'post_type'                => array(

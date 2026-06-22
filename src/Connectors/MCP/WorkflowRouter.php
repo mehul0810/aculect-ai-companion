@@ -158,6 +158,22 @@ final class WorkflowRouter {
 				'risk_level' => 'read_only',
 				'confidence' => 'high',
 			),
+			'site_management' => array(
+				'guide_id'   => 'site_management_planning',
+				'next_tool'  => $registry->tool_name( 'intelligence.site.get_context' ),
+				'sequence'   => array( 'intelligence_site_get_context', 'workflow_guides_get', 'site_workflow_audit', 'admin_menu_get_context' ),
+				'operations' => array( 'workflows.site_audit', 'admin_menu.get_context' ),
+				'risk_level' => 'planning',
+				'confidence' => 'high',
+			),
+			'connector_troubleshooting' => array(
+				'guide_id'   => 'connector_troubleshooting',
+				'next_tool'  => $registry->tool_name( 'intelligence.site.get_context' ),
+				'sequence'   => array( 'intelligence_site_get_context', 'workflow_guides_get', 'wp_abilities_discover', 'wp_abilities_get_info' ),
+				'operations' => array( 'workflow_guides.get', 'actions.discover', 'actions.inspect' ),
+				'risk_level' => 'read_only',
+				'confidence' => 'high',
+			),
 			'site_editor' => array(
 				'guide_id'   => 'site_editor_intelligence_review',
 				'next_tool'  => $registry->tool_name( 'site_editor.get_context' ),
@@ -275,6 +291,12 @@ final class WorkflowRouter {
 		$text = strtolower( $request );
 		if ( $this->contains_any( $text, array( 'what can you do', 'available abilities', 'available tools', 'possibilities', 'help directory', 'detect available' ) ) ) {
 			return 'capability_discovery';
+		}
+		if ( $this->contains_any( $text, array( 'oauth', 'authorization', 'authorize', 'connector setup', 'metadata refresh', 'stale metadata', 'stale client cache', 'tool discovery', 'tools missing', 'blocked tool', 'cannot discover tools', 'reconnect connector' ) ) ) {
+			return 'connector_troubleshooting';
+		}
+		if ( $this->contains_any( $text, array( 'maintenance plan', 'site management plan', 'manage this site', 'safe operational follow-up' ) ) ) {
+			return 'site_management';
 		}
 		if ( $this->contains_any( $text, array( 'audit', 'health', 'readiness', 'maintenance', 'site management', 'diagnostic' ) ) ) {
 			return 'site_audit';

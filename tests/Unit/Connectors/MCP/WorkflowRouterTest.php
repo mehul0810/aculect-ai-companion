@@ -92,4 +92,33 @@ final class WorkflowRouterTest extends TestCase {
 		self::assertSame( 'admin_menu_get_context', $result['next_tool'] );
 		self::assertContains( 'admin_menu_get_navigation_target', $result['recommended_sequence'] );
 	}
+
+	public function test_routes_connector_authorization_failures_to_troubleshooting_guide(): void {
+		$result = ( new WorkflowRouter() )->route(
+			array(
+				'request' => 'The connector OAuth authorization failed and tool discovery is blocked after metadata refresh.',
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertSame( 'connector_troubleshooting', $result['intent'] );
+		self::assertSame( 'connector_troubleshooting', $result['workflow_guide_id'] );
+		self::assertSame( 'intelligence_site_get_context', $result['next_tool'] );
+		self::assertContains( 'wp_abilities_discover', $result['recommended_sequence'] );
+		self::assertSame( 'workflow_guides_get', $result['required_operations'][0]['tool'] );
+	}
+
+	public function test_routes_site_management_planning_to_audit_first(): void {
+		$result = ( new WorkflowRouter() )->route(
+			array(
+				'request' => 'Create a site management plan with safe operational follow-up for maintenance.',
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertSame( 'site_management', $result['intent'] );
+		self::assertSame( 'site_management_planning', $result['workflow_guide_id'] );
+		self::assertSame( 'planning', $result['risk_level'] );
+		self::assertContains( 'site_workflow_audit', $result['recommended_sequence'] );
+	}
 }

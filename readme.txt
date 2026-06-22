@@ -2,7 +2,7 @@
 Contributors: mehul0810
 Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 8.2
 Stable tag: 0.6.0
 License: GPL-2.0-or-later

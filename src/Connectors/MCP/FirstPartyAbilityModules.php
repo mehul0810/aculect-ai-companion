@@ -1568,10 +1568,17 @@ final class FirstPartyAbilityModules {
 					'items'       => array(
 						'type'                 => 'object',
 						'properties'           => array(
-							'id'      => array( 'type' => 'integer' ),
-							'item_id' => array( 'type' => 'integer' ),
-							'status'  => $this->workflow_loop_completion_status_schema(),
-							'message' => array( 'type' => 'string' ),
+							'id'          => array( 'type' => 'integer' ),
+							'item_id'     => array( 'type' => 'integer' ),
+							'status'      => $this->workflow_loop_completion_status_schema(),
+							'message'     => array( 'type' => 'string' ),
+							'changed'     => array( 'type' => 'boolean' ),
+							'preview_url' => array( 'type' => 'string' ),
+							'warnings'    => array(
+								'type'     => 'array',
+								'maxItems' => 5,
+								'items'    => array( 'type' => 'string' ),
+							),
 						),
 						'additionalProperties' => false,
 					),

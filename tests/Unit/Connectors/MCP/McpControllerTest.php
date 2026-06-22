@@ -289,11 +289,48 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'resume', $tools_by_name['workflow_loop_run_next']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_run_batch'] );
 		self::assertArrayHasKey( 'items_to_process', $tools_by_name['workflow_loop_run_batch']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'audit_summary', $tools_by_name['workflow_loop_run_batch']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'completed_items', $tools_by_name['workflow_loop_run_batch']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'changed', $tools_by_name['workflow_loop_run_batch']['inputSchema']['properties']['completed_items']['items']['properties'] );
+		self::assertArrayHasKey( 'preview_url', $tools_by_name['workflow_loop_run_batch']['inputSchema']['properties']['completed_items']['items']['properties'] );
+		self::assertArrayHasKey( 'warnings', $tools_by_name['workflow_loop_run_batch']['inputSchema']['properties']['completed_items']['items']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_pause'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['workflow_loop_cancel'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['mcp_learning_inspect_activity'] );
 		self::assertArrayHasKey( 'insights', $tools_by_name['mcp_learning_inspect_activity']['outputSchema']['properties'] );
+	}
+
+	/**
+	 * Provider-facing clients share the same workflow loop batch audit contract.
+	 *
+	 * @dataProvider workflow_loop_batch_provider_clients
+	 *
+	 * @param string $provider Provider slug.
+	 */
+	public function test_chatgpt_openai_claude_and_codex_share_workflow_loop_batch_audit_contract( string $provider ): void {
+		$result        = $this->list_tools_manifest();
+		$tools_by_name = array_column( $result['tools'], null, 'name' );
+		$tool          = $tools_by_name['workflow_loop_run_batch'];
+
+		self::assertContains( $provider, array( 'chatgpt_openai', 'claude', 'codex' ) );
+		self::assertArrayHasKey( 'audit_summary', $tool['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'items_to_process', $tool['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'completed_items', $tool['inputSchema']['properties'] );
+		self::assertSame( 10, $tool['inputSchema']['properties']['completed_items']['maxItems'] );
+		self::assertSame( 5, $tool['inputSchema']['properties']['completed_items']['items']['properties']['warnings']['maxItems'] );
+	}
+
+	/**
+	 * Supported workflow-loop batch clients.
+	 *
+	 * @return array<string, array{string}>
+	 */
+	public static function workflow_loop_batch_provider_clients(): array {
+		return array(
+			'chatgpt_openai' => array( 'chatgpt_openai' ),
+			'claude'         => array( 'claude' ),
+			'codex'          => array( 'codex' ),
+		);
 	}
 
 	public function test_chatgpt_codex_claude_and_gemini_tools_prioritize_operational_tools_before_intelligence_tools(): void {
@@ -860,8 +897,8 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function list_tools_manifest( ?McpController $controller = null ): array {
 		$controller ??= new McpController();
-		$tools       = array();
-		$cursor      = '';
+		$tools        = array();
+		$cursor       = '';
 
 		do {
 			$page   = '' === $cursor

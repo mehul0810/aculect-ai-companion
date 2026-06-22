@@ -19,6 +19,7 @@ final class WorkflowLoopStore {
 	private const MAX_ITEMS              = 50;
 	private const MAX_BATCH_SIZE         = 10;
 	private const MAX_GUIDANCE_LENGTH    = 1200;
+	private const MAX_AUDIT_ITEMS        = 10;
 	private const DEFAULT_WORD_THRESHOLD = 300;
 
 	private const ITEM_STATUSES = array(
@@ -151,7 +152,8 @@ final class WorkflowLoopStore {
 				$loop,
 				absint( $completed['id'] ?? $completed['item_id'] ?? 0 ),
 				(string) ( $completed['status'] ?? '' ),
-				(string) ( $completed['message'] ?? '' )
+				(string) ( $completed['message'] ?? '' ),
+				$completed
 			);
 		}
 		$loop = $this->maybe_resume( $loop, $args );
@@ -317,9 +319,10 @@ final class WorkflowLoopStore {
 	 * @param int                  $item_id Item ID.
 	 * @param string               $status  New item status.
 	 * @param string               $message Completion message.
+	 * @param array<string, mixed> $result  Completion result metadata.
 	 * @return array<string, mixed>
 	 */
-	private function apply_completed_item( array $loop, int $item_id, string $status, string $message ): array {
+	private function apply_completed_item( array $loop, int $item_id, string $status, string $message, array $result = array() ): array {
 		if ( $item_id <= 0 ) {
 			return $loop;
 		}
@@ -334,11 +337,20 @@ final class WorkflowLoopStore {
 				continue;
 			}
 
+			$audit = $this->item_audit_result(
+				array(
+					'status'  => $status,
+					'message' => $message,
+					'result'  => $result,
+				)
+			);
+
 			$loop = $this->mark_item_status(
 				$loop,
 				(int) $index,
 				$status,
-				'' === $message ? sprintf( 'Loop item marked %s.', $status ) : $message
+				'' === $audit['message'] ? sprintf( 'Loop item marked %s.', $status ) : $audit['message'],
+				$audit
 			);
 
 			return $this->complete_if_finished( $loop );
@@ -356,19 +368,23 @@ final class WorkflowLoopStore {
 	 * @param int                  $index   Item index.
 	 * @param string               $status  New status.
 	 * @param string               $message Event message.
+	 * @param array<string, mixed> $audit   Redacted audit metadata.
 	 * @return array<string, mixed>
 	 */
-	private function mark_item_status( array $loop, int $index, string $status, string $message ): array {
+	private function mark_item_status( array $loop, int $index, string $status, string $message, array $audit = array() ): array {
 		$status = $this->item_status( $status );
 		if ( '' === $status || ! isset( $loop['items'][ $index ] ) ) {
 			return $loop;
 		}
 
-		$item                    = (array) $loop['items'][ $index ];
-		$item['status']          = $status;
-		$item['status_note']     = $this->text( $message, 240 );
-		$item['status_since']    = gmdate( 'Y-m-d\TH:i:s\Z' );
-		$item['attempts']        = 'running' === $status ? absint( $item['attempts'] ?? 0 ) + 1 : absint( $item['attempts'] ?? 0 );
+		$item                 = (array) $loop['items'][ $index ];
+		$item['status']       = $status;
+		$item['status_note']  = $this->text( $message, 240 );
+		$item['status_since'] = gmdate( 'Y-m-d\TH:i:s\Z' );
+		$item['attempts']     = 'running' === $status ? absint( $item['attempts'] ?? 0 ) + 1 : absint( $item['attempts'] ?? 0 );
+		if ( array() !== $audit ) {
+			$item['audit_result'] = $audit;
+		}
 		$loop['items'][ $index ] = $item;
 		$loop['current_item_id'] = (int) ( $item['id'] ?? 0 );
 		$loop['state']           = in_array( $status, array( 'failed', 'blocked' ), true ) ? 'blocked' : 'running';
@@ -516,6 +532,7 @@ final class WorkflowLoopStore {
 				),
 				'items'         => array_map( array( $this, 'public_item' ), (array) ( $loop['items'] ?? array() ) ),
 				'summary'       => $this->summary( $loop ),
+				'audit_summary' => $this->audit_summary( $loop ),
 				'next_actions'  => $this->next_actions( $loop ),
 			),
 			$extra
@@ -580,6 +597,120 @@ final class WorkflowLoopStore {
 		$summary['total'] = count( (array) ( $loop['items'] ?? array() ) );
 
 		return $summary;
+	}
+
+	/**
+	 * Return compact audit output safe for assistant-facing batch results.
+	 *
+	 * @param array<string, mixed> $loop Loop state.
+	 * @return array<string, mixed>
+	 */
+	private function audit_summary( array $loop ): array {
+		$summary        = $this->summary( $loop );
+		$changed        = array();
+		$failed         = array();
+		$warnings       = array();
+		$recovery_hints = array();
+
+		foreach ( (array) ( $loop['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$status = (string) ( $item['status'] ?? '' );
+			$audit  = is_array( $item['audit_result'] ?? null ) ? (array) $item['audit_result'] : array();
+			if ( 'succeeded' === $status && ! empty( $audit['changed'] ) && count( $changed ) < self::MAX_AUDIT_ITEMS ) {
+				$changed[] = $this->audit_item( $item, $audit );
+			}
+
+			if ( in_array( $status, array( 'failed', 'blocked' ), true ) && count( $failed ) < self::MAX_AUDIT_ITEMS ) {
+				$failed[] = $this->audit_item( $item, $audit );
+			}
+
+			foreach ( (array) ( $audit['warnings'] ?? array() ) as $warning ) {
+				if ( count( $warnings ) >= self::MAX_AUDIT_ITEMS ) {
+					break;
+				}
+				$warning = $this->redacted_text( $warning, 160 );
+				if ( '' !== $warning && ! in_array( $warning, $warnings, true ) ) {
+					$warnings[] = $warning;
+				}
+			}
+		}
+
+		if ( (int) ( $summary['failed'] ?? 0 ) > 0 || (int) ( $summary['blocked'] ?? 0 ) > 0 ) {
+			$recovery_hints[] = 'Review failed or blocked items before starting another batch.';
+			$recovery_hints[] = 'Use WordPress revisions, autosaves, previews, or draft status checks for reversible content review when those states exist.';
+		}
+
+		if ( (int) ( $summary['running'] ?? 0 ) > 0 ) {
+			$recovery_hints[] = 'Finish active items and report compact completion results on the next workflow_loop_run_batch call.';
+		}
+
+		if ( (int) ( $summary['pending'] ?? 0 ) > 0 ) {
+			$recovery_hints[] = 'Continue with workflow_loop_run_batch using a bounded limit.';
+		}
+
+		return array(
+			'totals'          => $summary,
+			'changed_targets' => $changed,
+			'failed_targets'  => $failed,
+			'warnings'        => $warnings,
+			'recovery_hints'  => array_slice( array_values( array_unique( $recovery_hints ) ), 0, 5 ),
+			'next_actions'    => $this->next_actions( $loop ),
+		);
+	}
+
+	/**
+	 * Return one bounded audit item.
+	 *
+	 * @param array<string, mixed> $item  Item state.
+	 * @param array<string, mixed> $audit Item audit result.
+	 * @return array<string, mixed>
+	 */
+	private function audit_item( array $item, array $audit ): array {
+		return array_filter(
+			array(
+				'id'          => (int) ( $item['id'] ?? 0 ),
+				'type'        => (string) ( $item['type'] ?? '' ),
+				'title'       => $this->redacted_text( $item['title'] ?? '', 120 ),
+				'status'      => (string) ( $item['status'] ?? '' ),
+				'changed'     => ! empty( $audit['changed'] ),
+				'message'     => $this->redacted_text( $audit['message'] ?? $item['status_note'] ?? '', 160 ),
+				'preview_url' => $this->url( $audit['preview_url'] ?? '' ),
+			),
+			static fn ( mixed $value ): bool => '' !== $value && array() !== $value
+		);
+	}
+
+	/**
+	 * Normalize item completion data into a compact redacted audit result.
+	 *
+	 * @param array<string, mixed> $args Completion details.
+	 * @return array<string, mixed>
+	 */
+	private function item_audit_result( array $args ): array {
+		$result   = is_array( $args['result'] ?? null ) ? (array) $args['result'] : array();
+		$status   = $this->item_status( $args['status'] ?? '' );
+		$warnings = array();
+
+		foreach ( (array) ( $result['warnings'] ?? array() ) as $warning ) {
+			if ( count( $warnings ) >= 5 ) {
+				break;
+			}
+			$warning = $this->redacted_text( $warning, 160 );
+			if ( '' !== $warning ) {
+				$warnings[] = $warning;
+			}
+		}
+
+		return array(
+			'status'      => $status,
+			'changed'     => ! empty( $result['changed'] ) || ! empty( $result['changed_target'] ) || ! empty( $result['post_updated'] ),
+			'message'     => $this->redacted_text( $args['message'] ?? $result['message'] ?? '', 160 ),
+			'preview_url' => $this->url( $result['preview_url'] ?? $result['preview'] ?? '' ),
+			'warnings'    => $warnings,
+		);
 	}
 
 	/**
@@ -843,6 +974,21 @@ final class WorkflowLoopStore {
 	 */
 	private function text( mixed $value, int $limit ): string {
 		return substr( sanitize_text_field( is_scalar( $value ) ? (string) $value : '' ), 0, $limit );
+	}
+
+	/**
+	 * Return bounded text with credential-shaped fragments removed.
+	 *
+	 * @param mixed $value Raw value.
+	 * @param int   $limit Max length.
+	 */
+	private function redacted_text( mixed $value, int $limit ): string {
+		$text = $this->text( $value, $limit );
+		$text = preg_replace( '/\b(token|secret|password|credential|authorization|api[_-]?key)\s*[:=]\s*[^,\s]+/i', '$1=[redacted]', $text ) ?? $text;
+		$text = preg_replace( '/Bearer\s+[A-Za-z0-9._~+\/=-]+/i', 'Bearer [redacted]', $text ) ?? $text;
+		$text = preg_replace( '/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/', '[redacted-email]', $text ) ?? $text;
+
+		return substr( $text, 0, $limit );
 	}
 
 	/**

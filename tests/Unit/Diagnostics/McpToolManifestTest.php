@@ -14,6 +14,7 @@ use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 require_once dirname( __DIR__, 2 ) . '/fixtures/wordpress-abilities-stubs.php';
 
@@ -86,7 +87,63 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
 		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
 		self::assertArrayHasKey( 'gemini_cli', $export['metadata']['refresh_guidance'] );
+		self::assertArrayHasKey( 'support_safety', $export );
+		self::assertTrue( $export['support_safety']['support_safe_by_default'] );
+		self::assertFalse( $export['support_safety']['secret_values_included'] );
+		self::assertFalse( $export['support_safety']['raw_request_bodies_included'] );
+		self::assertFalse( $export['support_safety']['full_content_bodies_included'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
+	}
+
+	public function test_final_export_safety_pass_redacts_sensitive_future_payload_fields(): void {
+		$manifest = new McpToolManifest();
+		$redacted = 0;
+		$payload  = array(
+			'access_token'       => 'access-secret',
+			'refresh_token'      => 'refresh-secret',
+			'authorization_code' => 'auth-code-secret',
+			'encryption_key'     => 'key-secret',
+			'_wpnonce'           => 'nonce-secret',
+			'request_body'       => '{"client_secret":"hidden"}',
+			'post_content'       => '<!-- wp:paragraph --><p>Private draft.</p><!-- /wp:paragraph -->',
+			'nested'             => array(
+				'client_secret'   => 'client-secret',
+				'body'            => 'raw request body',
+				'securitySchemes' => array(
+					array(
+						'type'   => 'oauth2',
+						'scopes' => array( 'content:read' ),
+					),
+				),
+			),
+		);
+		$args     = array( $payload, '', 0, &$redacted );
+
+		$result = $this->invokePrivate(
+			$manifest,
+			'sanitize_export_value',
+			$args
+		);
+		$json   = wp_json_encode( $result );
+
+		self::assertIsArray( $result );
+		self::assertSame( '[redacted]', $result['access_token'] );
+		self::assertSame( '[redacted]', $result['refresh_token'] );
+		self::assertSame( '[redacted]', $result['authorization_code'] );
+		self::assertSame( '[redacted]', $result['encryption_key'] );
+		self::assertSame( '[redacted]', $result['_wpnonce'] );
+		self::assertSame( '[redacted]', $result['request_body'] );
+		self::assertSame( '[redacted]', $result['post_content'] );
+		self::assertSame( '[redacted]', $result['nested']['client_secret'] );
+		self::assertSame( '[redacted]', $result['nested']['body'] );
+		self::assertSame( 'oauth2', $result['nested']['securitySchemes'][0]['type'] );
+		self::assertGreaterThanOrEqual( 9, $redacted );
+		self::assertIsString( $json );
+		self::assertStringNotContainsString( 'access-secret', $json );
+		self::assertStringNotContainsString( 'refresh-secret', $json );
+		self::assertStringNotContainsString( 'auth-code-secret', $json );
+		self::assertStringNotContainsString( 'client-secret', $json );
+		self::assertStringNotContainsString( 'Private draft', $json );
 	}
 
 	public function test_export_reports_registered_first_party_wordpress_abilities(): void {
@@ -181,5 +238,19 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( 2, $summary['read_only_tool_count'] );
 		self::assertSame( 1, $summary['write_tool_count'] );
 		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $summary['metadata_fingerprint'] );
+	}
+
+	/**
+	 * Invoke a private method for focused regression coverage.
+	 *
+	 * @param object       $object    Object instance.
+	 * @param string       $method    Method name.
+	 * @param array<mixed> $arguments Method arguments.
+	 * @return mixed
+	 */
+	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {
+		$reflection = new ReflectionMethod( $object, $method );
+
+		return $reflection->invokeArgs( $object, $arguments );
 	}
 }

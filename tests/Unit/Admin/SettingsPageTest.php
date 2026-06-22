@@ -15,6 +15,7 @@ use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use RuntimeException;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -53,8 +54,11 @@ final class SettingsPageTest extends TestCase {
 			'actions' => array(),
 			'filters' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_users']            = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 5;
+
+		$GLOBALS['aculect_ai_companion_test_users']                 = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']       = 5;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']           = array();
+		$GLOBALS['aculect_ai_companion_test_checked_admin_referer'] = array();
 		$_GET = array(
 			'page' => 'aculect-ai-companion',
 		);
@@ -67,6 +71,10 @@ final class SettingsPageTest extends TestCase {
 		} else {
 			unset( $GLOBALS['wpdb'] );
 		}
+		unset(
+			$GLOBALS['aculect_ai_companion_test_denied_caps'],
+			$GLOBALS['aculect_ai_companion_test_checked_admin_referer']
+		);
 
 		parent::tearDown();
 	}
@@ -390,6 +398,32 @@ final class SettingsPageTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
 	}
 
+	public function test_export_actions_require_admin_capability_before_nonce_check(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+
+		$this->expectException( RuntimeException::class );
+		$this->expectExceptionMessage( 'Insufficient permissions.' );
+
+		$this->invokePrivate(
+			new SettingsPage(),
+			'guard_action',
+			array( 'aculect_ai_companion_export_mcp_tool_manifest' )
+		);
+	}
+
+	public function test_export_action_verifies_expected_nonce_for_admins(): void {
+		$this->invokePrivate(
+			new SettingsPage(),
+			'guard_action',
+			array( 'aculect_ai_companion_export_mcp_tool_manifest' )
+		);
+
+		self::assertSame(
+			array( 'aculect_ai_companion_export_mcp_tool_manifest' ),
+			$GLOBALS['aculect_ai_companion_test_checked_admin_referer']
+		);
+	}
+
 	public function test_production_payload_does_not_apply_local_samples(): void {
 		$this->wpdb->return_empty_results = true;
 		$_GET['tab']                      = 'connections';
@@ -523,7 +557,7 @@ final class SettingsPageTest extends TestCase {
 	 *
 	 * @param object      $object    Object instance.
 	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param array<mixed> $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

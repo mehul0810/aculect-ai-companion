@@ -1069,6 +1069,32 @@ if ( ! function_exists( 'wp_create_nonce' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_die' ) ) {
+	/**
+	 * Throw on wp_die() in tests so callers can assert denied admin paths.
+	 *
+	 * @param string $message Die message.
+	 *
+	 * @throws RuntimeException Always thrown in the lightweight test runtime.
+	 */
+	function wp_die( string $message = '' ): void {
+		throw new RuntimeException( esc_html( $message ) );
+	}
+}
+
+if ( ! function_exists( 'check_admin_referer' ) ) {
+	/**
+	 * Record nonce checks in tests.
+	 *
+	 * @param string $action Nonce action.
+	 */
+	function check_admin_referer( string $action = '-1' ): bool {
+		$GLOBALS['aculect_ai_companion_test_checked_admin_referer'][] = $action;
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'get_file_data' ) ) {
 	/**
 	 * Parse simple plugin headers for tests.

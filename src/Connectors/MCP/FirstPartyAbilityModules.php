@@ -865,6 +865,50 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new SiteAbilities() )->list_themes()
 			),
 			$this->module(
+				'site.list_cron_events',
+				'List Scheduled Events',
+				'List scheduled WordPress cron events with bounded output and redacted event arguments.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'per_page' => array(
+							'type'        => 'integer',
+							'description' => 'Maximum scheduled events to return. Values are bounded from 1 to 100.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new SiteAbilities() )->list_cron_events( $args )
+			),
+			$this->module(
+				'site.get_rewrite_rules',
+				'View Rewrite Rules',
+				'Read a bounded permalink and rewrite-rule summary for diagnostics.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'per_page' => array(
+							'type'        => 'integer',
+							'description' => 'Maximum rewrite rules to return. Values are bounded from 1 to 100.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new SiteAbilities() )->get_rewrite_rules( $args )
+			),
+			$this->module(
+				'site.get_cache_status',
+				'View Cache Status',
+				'Read safe cache drop-in and object-cache capability status.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new SiteAbilities() )->get_cache_status()
+			),
+			$this->module(
 				'comments.list_items',
 				'List Comments for Review',
 				'List WordPress comments with pagination and moderation-safe fields.',

@@ -810,6 +810,8 @@ final class McpController {
 			$module->id(),
 			array(
 				'site.list_post_types',
+				'site.list_cron_events',
+				'site.get_rewrite_rules',
 				'workflow_guides.list',
 				'content.list_items',
 				'content_search.items',

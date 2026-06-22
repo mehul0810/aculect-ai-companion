@@ -120,6 +120,82 @@ final class WorkflowGuideRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $optional['site_editor.refresh_context']['missing_scopes'] );
 	}
 
+	public function test_content_and_seo_guides_include_safe_fallback_sections(): void {
+		$registry = new WorkflowGuideRegistry();
+
+		$draft = $registry->get_guide( array( 'id' => 'content_long_form_draft' ) );
+		$steps = implode( ' ', $draft['steps'] );
+		self::assertStringContainsString( 'content_workflow_prepare_post', $steps );
+		self::assertStringContainsString( 'content_find_internal_links', $steps );
+		self::assertStringContainsString( 'content_workflow_create_draft', $steps );
+		self::assertStringContainsString( 'seo_workflow_update_rankmath', $steps );
+		self::assertStringContainsString( 'Keep generated prose outside WordPress until validation passes', $steps );
+		self::assertStringContainsString( 'read-only outline, internal-link plan, and SEO field draft', $steps );
+
+		$update = $registry->get_guide( array( 'id' => 'content_existing_post_update' ) );
+		$steps  = implode( ' ', $update['steps'] );
+		self::assertStringContainsString( 'content_workflow_prepare_post', $steps );
+		self::assertStringContainsString( 'content_find_internal_links', $steps );
+		self::assertStringContainsString( 'content_workflow_update_post', $steps );
+		self::assertStringContainsString( 'Keep rewritten prose outside WordPress until validation passes', $steps );
+		self::assertStringContainsString( 'read-only update brief, section map, and internal-link recommendations', $steps );
+
+		$seo   = $registry->get_guide( array( 'id' => 'seo_rankmath_metadata_update' ) );
+		$steps = implode( ' ', $seo['steps'] );
+		self::assertStringContainsString( 'seo_workflow_update_rankmath', $steps );
+		self::assertStringContainsString( 'meta_title, meta_description, and focus_keywords', $steps );
+		self::assertStringContainsString( 'manual-review fallback with missing_required_operations', $steps );
+	}
+
+	/**
+	 * Ensure provider-specific clients share the same content and SEO guide sections.
+	 *
+	 * @dataProvider supported_assistant_provider
+	 *
+	 * @param string $provider Provider slug.
+	 */
+	public function test_supported_providers_receive_the_same_content_seo_guide_contract( string $provider ): void {
+		$guides = array();
+		foreach ( array( 'content_long_form_draft', 'content_existing_post_update', 'seo_rankmath_metadata_update' ) as $id ) {
+			$guides[ $id ] = ( new WorkflowGuideRegistry() )->get_guide(
+				array(
+					'id'       => $id,
+					'provider' => $provider,
+				)
+			);
+		}
+
+		self::assertSame( 'content_long_form_draft', $guides['content_long_form_draft']['id'] );
+		self::assertSame( 'workflows.prepare_post', $guides['content_long_form_draft']['required_operations'][0]['ref'] );
+		self::assertSame( 'workflows.create_draft', $guides['content_long_form_draft']['required_operations'][1]['ref'] );
+		self::assertStringContainsString( 'desired word count', implode( ' ', $guides['content_long_form_draft']['steps'] ) );
+		self::assertStringContainsString( 'content_find_internal_links', implode( ' ', $guides['content_long_form_draft']['steps'] ) );
+
+		self::assertSame( 'content_existing_post_update', $guides['content_existing_post_update']['id'] );
+		self::assertSame( 'workflows.prepare_post', $guides['content_existing_post_update']['required_operations'][0]['ref'] );
+		self::assertSame( 'workflows.update_post', $guides['content_existing_post_update']['required_operations'][1]['ref'] );
+		self::assertStringContainsString( 'content_find_internal_links', implode( ' ', $guides['content_existing_post_update']['steps'] ) );
+
+		self::assertSame( 'seo_rankmath_metadata_update', $guides['seo_rankmath_metadata_update']['id'] );
+		self::assertSame( 'workflows.update_rankmath_seo', $guides['seo_rankmath_metadata_update']['required_operations'][0]['ref'] );
+		self::assertStringContainsString( 'seo_workflow_update_rankmath', implode( ' ', $guides['seo_rankmath_metadata_update']['steps'] ) );
+	}
+
+	/**
+	 * Supported assistant providers share the server-side MCP workflow guides.
+	 *
+	 * @return list<array{0: string}>
+	 */
+	public static function supported_assistant_provider(): array {
+		return array(
+			array( 'chatgpt' ),
+			array( 'claude' ),
+			array( 'codex' ),
+			array( 'gemini' ),
+			array( 'mcp' ),
+		);
+	}
+
 	public function test_get_guide_reports_unknown_ids(): void {
 		$result = ( new WorkflowGuideRegistry() )->get_guide( array( 'id' => 'missing' ) );
 

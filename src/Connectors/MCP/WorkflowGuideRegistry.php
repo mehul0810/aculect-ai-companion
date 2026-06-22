@@ -98,9 +98,11 @@ final class WorkflowGuideRegistry {
 				'steps'                   => array(
 					'Call intelligence_content_get_context, then workflow_guides_get when a compact procedure is needed.',
 					'Call content_workflow_prepare_post with the brief, audience, SEO intent, target post type, and desired word count.',
-					'Generate serialized WordPress block markup using registered semantic blocks; never use core/html.',
+					'Call content_find_internal_links when available and weave selected internal links into the draft plan before generating prose.',
+					'Keep generated prose outside WordPress until validation passes; generate serialized WordPress block markup using registered semantic blocks and never use core/html.',
 					'Validate block content before writing, then call content_workflow_create_draft with draft status.',
-					'Apply Rank Math fields through the workflow when available, and return the post ID, edit URL, warnings, and next actions.',
+					'Apply Rank Math fields through seo_workflow_update_rankmath when available, and return the post ID, edit URL, warnings, and next actions.',
+					'If content_workflow_prepare_post or content_workflow_create_draft is unavailable, stop before writing and return the missing_required_operations with a read-only outline, internal-link plan, and SEO field draft for manual review.',
 				),
 			),
 			array(
@@ -115,8 +117,10 @@ final class WorkflowGuideRegistry {
 				'steps'                   => array(
 					'Read content intelligence and fetch the existing item or indexed sections before drafting changes.',
 					'Call content_workflow_prepare_post with existing_post_id and the update brief.',
-					'Use section_map for targeted long-form edits when stable heading sections exist; otherwise replace the full block document.',
+					'Call content_find_internal_links when available and add only relevant internal links that fit the existing article context.',
+					'Keep rewritten prose outside WordPress until validation passes; use section_map for targeted long-form edits when stable heading sections exist, otherwise replace the full block document.',
 					'Run dry_run for risky replacements, review warnings, then repeat with confirmation when required.',
+					'If content_workflow_prepare_post or content_workflow_update_post is unavailable, stop before writing and return the missing_required_operations with a read-only update brief, section map, and internal-link recommendations.',
 				),
 			),
 			array(
@@ -213,6 +217,7 @@ final class WorkflowGuideRegistry {
 					'Confirm the target post ID and current SEO intent.',
 					'Call seo_workflow_update_rankmath with meta_title, meta_description, and focus_keywords.',
 					'Return normalized applied fields and warnings; do not rewrite content unless explicitly requested.',
+					'If seo_workflow_update_rankmath is unavailable, keep the SEO title, meta description, and focus keywords outside WordPress and return them as a manual-review fallback with missing_required_operations.',
 				),
 			),
 		);

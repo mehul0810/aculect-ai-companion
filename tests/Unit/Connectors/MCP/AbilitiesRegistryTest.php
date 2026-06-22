@@ -162,6 +162,9 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.get_health',
 				'site.list_plugins',
 				'site.list_themes',
+				'site.list_cron_events',
+				'site.get_rewrite_rules',
+				'site.get_cache_status',
 			) as $ability_id
 		) {
 			self::assertArrayHasKey( $ability_id, $definitions );
@@ -221,6 +224,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_cron_events' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_rewrite_rules' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_cache_status' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );

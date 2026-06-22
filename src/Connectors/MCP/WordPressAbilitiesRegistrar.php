@@ -266,6 +266,8 @@ final class WordPressAbilitiesRegistrar {
 			array(
 				'intelligence.blocks.list_available',
 				'intelligence.patterns.list_available',
+				'site.list_cron_events',
+				'site.get_rewrite_rules',
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',

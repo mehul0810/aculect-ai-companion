@@ -114,7 +114,28 @@ if ( ! function_exists( 'is_multisite' ) ) {
 	 * Return multisite state for tests.
 	 */
 	function is_multisite(): bool {
-		return false;
+		return (bool) ( $GLOBALS['aculect_ai_companion_test_is_multisite'] ?? false );
+	}
+}
+
+if ( ! function_exists( 'wp_using_ext_object_cache' ) ) {
+	/**
+	 * Return external object-cache state for tests.
+	 */
+	function wp_using_ext_object_cache(): bool {
+		return (bool) ( $GLOBALS['aculect_ai_companion_test_using_ext_object_cache'] ?? false );
+	}
+}
+
+if ( ! function_exists( 'wp_cache_supports' ) ) {
+	/**
+	 * Return object-cache feature support for tests.
+	 *
+	 * @param string $feature Cache feature.
+	 */
+	function wp_cache_supports( string $feature ): bool {
+		$supports = $GLOBALS['aculect_ai_companion_test_cache_supports'] ?? array();
+		return is_array( $supports ) && in_array( $feature, $supports, true );
 	}
 }
 

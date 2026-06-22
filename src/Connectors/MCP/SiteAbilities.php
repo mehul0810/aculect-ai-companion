@@ -187,6 +187,134 @@ final class SiteAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * List scheduled cron events without exposing event arguments.
+	 *
+	 * @param array<string, mixed> $args Ability input.
+	 * @return array<string, mixed>
+	 */
+	public function list_cron_events( array $args = array() ): array {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to list scheduled events.' );
+		}
+
+		$per_page   = $this->bounded_int( $args['per_page'] ?? 50, 1, 100 );
+		$cron_array = function_exists( '_get_cron_array' ) ? _get_cron_array() : array();
+		$items      = array();
+		$total      = 0;
+
+		foreach ( $cron_array as $timestamp => $hooks ) {
+			if ( ! is_array( $hooks ) ) {
+				continue;
+			}
+
+			foreach ( $hooks as $hook => $events ) {
+				if ( ! is_array( $events ) ) {
+					continue;
+				}
+
+				foreach ( $events as $signature => $event ) {
+					++$total;
+
+					if ( count( $items ) >= $per_page ) {
+						continue;
+					}
+
+					$schedule = is_array( $event ) ? (string) ( $event['schedule'] ?? '' ) : '';
+					$args     = is_array( $event ) && isset( $event['args'] ) && is_array( $event['args'] ) ? $event['args'] : array();
+
+					$items[] = array(
+						'hook'           => (string) $hook,
+						'timestamp'      => (int) $timestamp,
+						'next_run_gmt'   => gmdate( 'c', (int) $timestamp ),
+						'schedule'       => $schedule,
+						'recurring'      => '' !== $schedule,
+						'argument_count' => count( $args ),
+						'signature'      => (string) $signature,
+					);
+				}
+			}
+		}
+
+		usort(
+			$items,
+			static fn( array $a, array $b ): int => 0 !== ( (int) $a['timestamp'] <=> (int) $b['timestamp'] ) ? ( (int) $a['timestamp'] <=> (int) $b['timestamp'] ) : strcmp( (string) $a['hook'], (string) $b['hook'] )
+		);
+
+		return array(
+			'items'     => $items,
+			'total'     => $total,
+			'per_page'  => $per_page,
+			'truncated' => $total > count( $items ),
+		);
+	}
+
+	/**
+	 * Return a bounded permalink and rewrite-rule summary.
+	 *
+	 * @param array<string, mixed> $args Ability input.
+	 * @return array<string, mixed>
+	 */
+	public function get_rewrite_rules( array $args = array() ): array {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to view rewrite rules.' );
+		}
+
+		global $wp_rewrite;
+
+		$per_page = $this->bounded_int( $args['per_page'] ?? 50, 1, 100 );
+		$rules    = is_object( $wp_rewrite ) && method_exists( $wp_rewrite, 'wp_rewrite_rules' ) ? $wp_rewrite->wp_rewrite_rules() : get_option( 'rewrite_rules', array() );
+		$rules    = is_array( $rules ) ? $rules : array();
+		$items    = array();
+
+		foreach ( $rules as $regex => $query ) {
+			if ( count( $items ) >= $per_page ) {
+				break;
+			}
+
+			$items[] = array(
+				'match' => (string) $regex,
+				'query' => (string) $query,
+			);
+		}
+
+		$structure = (string) get_option( 'permalink_structure', '' );
+
+		return array(
+			'permalink_structure' => $structure,
+			'pretty_permalinks'   => '' !== $structure,
+			'items'               => $items,
+			'total'               => count( $rules ),
+			'per_page'            => $per_page,
+			'truncated'           => count( $rules ) > count( $items ),
+		);
+	}
+
+	/**
+	 * Return safe cache capabilities and drop-in status.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function get_cache_status(): array {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to view cache status.' );
+		}
+
+		$dropins = array(
+			'advanced_cache' => defined( 'WP_CONTENT_DIR' ) && file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ),
+			'object_cache'   => defined( 'WP_CONTENT_DIR' ) && file_exists( WP_CONTENT_DIR . '/object-cache.php' ),
+		);
+
+		return array(
+			'using_ext_object_cache' => function_exists( 'wp_using_ext_object_cache' ) ? wp_using_ext_object_cache() : false,
+			'object_cache_supports'  => $this->object_cache_supports(),
+			'page_cache_possible'    => $dropins['advanced_cache'] || ( defined( 'WP_CACHE' ) && WP_CACHE ),
+			'wp_cache_constant'      => defined( 'WP_CACHE' ) && WP_CACHE,
+			'dropins'                => $dropins,
+			'multisite'              => is_multisite(),
+		);
+	}
+
+	/**
 	 * Return cached WordPress update counts without forcing remote checks.
 	 *
 	 * @return array{core: int, plugins: int, themes: int, total: int}
@@ -247,6 +375,34 @@ final class SiteAbilities extends AbstractAbilityService {
 
 		$updates = get_theme_updates();
 		return count( $updates );
+	}
+
+	/**
+	 * Return cache features when the object cache exposes support flags.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function object_cache_supports(): array {
+		$features = array( 'add_multiple', 'set_multiple', 'get_multiple', 'delete_multiple', 'flush_runtime', 'flush_group' );
+		$supports = array();
+
+		foreach ( $features as $feature ) {
+			$supports[ $feature ] = function_exists( 'wp_cache_supports' ) && wp_cache_supports( $feature );
+		}
+
+		return $supports;
+	}
+
+	/**
+	 * Bound an integer input value.
+	 *
+	 * @param mixed $value Input value.
+	 * @param int   $min   Minimum allowed value.
+	 * @param int   $max   Maximum allowed value.
+	 */
+	private function bounded_int( mixed $value, int $min, int $max ): int {
+		$value = is_numeric( $value ) ? (int) $value : $min;
+		return max( $min, min( $max, $value ) );
 	}
 
 	/**

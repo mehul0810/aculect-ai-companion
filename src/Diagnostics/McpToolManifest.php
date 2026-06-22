@@ -15,6 +15,9 @@ use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
 final class McpToolManifest {
 
 	private const CLAUDE_SAFE_TOOL_NAME_PATTERN = '/^[a-zA-Z0-9_-]{1,64}$/';
+	private const EXPORT_MAX_DEPTH              = 12;
+	private const EXPORT_MAX_ITEMS              = 300;
+	private const EXPORT_MAX_STRING_LENGTH      = 8000;
 
 	/**
 	 * Return the exact tools/list result payload for the current WordPress user.
@@ -47,7 +50,7 @@ final class McpToolManifest {
 		$operations_manifest  = ( new McpToolAvailability() )->operations_manifest_for_current_user();
 		$wp_abilities_context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
 
-		return array(
+		$export = array(
 			'generated_at'        => $generated_at,
 			'connection_url'      => Helpers::mcp_resource(),
 			'metadata'            => $this->metadata_context( $payload, $initialize, $generated_at ),
@@ -62,6 +65,25 @@ final class McpToolManifest {
 			'json_rpc_method'     => 'tools/list',
 			'json_rpc_result_key' => 'result',
 		);
+
+		$redacted = 0;
+		$export   = $this->sanitize_export_value( $export, '', 0, $redacted );
+
+		if ( is_array( $export ) ) {
+			$export['support_safety'] = array(
+				'support_safe_by_default'      => true,
+				'secret_values_included'       => false,
+				'raw_request_bodies_included'  => false,
+				'full_content_bodies_included' => false,
+				'redacted_field_count'         => $redacted,
+				'string_value_limit'           => self::EXPORT_MAX_STRING_LENGTH,
+				'list_item_limit'              => self::EXPORT_MAX_ITEMS,
+			);
+
+			return $export;
+		}
+
+		return array();
 	}
 
 	/**
@@ -272,9 +294,13 @@ final class McpToolManifest {
 		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$user    = function_exists( 'get_user_by' ) ? get_user_by( 'id', $user_id ) : false;
 
+		$roles = is_object( $user ) && property_exists( $user, 'roles' )
+			? array_values( array_map( 'strval', (array) $user->roles ) )
+			: array();
+
 		return array(
 			'id'    => $user_id,
-			'roles' => is_object( $user ) ? array_values( array_map( 'strval', (array) $user->roles ) ) : array(),
+			'roles' => $roles,
 		);
 	}
 
@@ -301,6 +327,141 @@ final class McpToolManifest {
 			'access_level'             => sanitize_key( (string) ( $session['access_level'] ?? '' ) ),
 			'write_permission_enabled' => true === ( $session['write_permission_enabled'] ?? false ),
 		);
+	}
+
+	/**
+	 * Remove secret-bearing fields from the final support export.
+	 *
+	 * This is a defense-in-depth pass after the intentionally allowlisted
+	 * session context. It protects future payload additions without stripping
+	 * normal MCP schema metadata such as securitySchemes.
+	 *
+	 * @param mixed  $value          Export value.
+	 * @param string $key            Current array key.
+	 * @param int    $depth          Current recursion depth.
+	 * @param int    $redacted_count Number of redacted fields.
+	 * @return mixed
+	 */
+	private function sanitize_export_value( mixed $value, string $key, int $depth, int &$redacted_count ): mixed {
+		if ( $this->is_sensitive_export_key( $key ) ) {
+			++$redacted_count;
+			return '[redacted]';
+		}
+
+		if ( $depth >= self::EXPORT_MAX_DEPTH ) {
+			return '[max-depth]';
+		}
+
+		if ( is_array( $value ) ) {
+			$output = array();
+			$count  = 0;
+
+			foreach ( $value as $item_key => $item ) {
+				if ( $count >= self::EXPORT_MAX_ITEMS ) {
+					$output['truncated'] = true;
+					break;
+				}
+
+				$item_key_string     = is_int( $item_key ) ? '' : (string) $item_key;
+				$output[ $item_key ] = $this->sanitize_export_value( $item, $item_key_string, $depth + 1, $redacted_count );
+				++$count;
+			}
+
+			return $output;
+		}
+
+		if ( is_scalar( $value ) && $this->is_body_payload_key( $key ) ) {
+			++$redacted_count;
+			return '[redacted]';
+		}
+
+		if ( is_string( $value ) && strlen( $value ) > self::EXPORT_MAX_STRING_LENGTH ) {
+			return substr( $value, 0, self::EXPORT_MAX_STRING_LENGTH ) . '...';
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Determine whether a field name should never appear with its raw value.
+	 *
+	 * @param string $key Export key.
+	 */
+	private function is_sensitive_export_key( string $key ): bool {
+		$key = strtolower( str_replace( array( '-', ' ' ), '_', $key ) );
+
+		if ( '' === $key ) {
+			return false;
+		}
+
+		$exact = array(
+			'_wpnonce',
+			'access_token',
+			'auth_code',
+			'auth_header',
+			'authorization',
+			'authorization_code',
+			'bearer_token',
+			'client_secret',
+			'client_secret_hash',
+			'code_challenge',
+			'code_verifier',
+			'cookie',
+			'encryption_key',
+			'full_body',
+			'full_content',
+			'id_token',
+			'nonce',
+			'oauth_code',
+			'oauth_token',
+			'password',
+			'private_key',
+			'raw',
+			'raw_body',
+			'refresh_token',
+			'request_body',
+			'salt',
+			'secret',
+			'set_cookie',
+			'state',
+			'token',
+		);
+
+		if ( in_array( $key, $exact, true ) ) {
+			return true;
+		}
+
+		$fragments = array(
+			'access_token',
+			'refresh_token',
+			'client_secret',
+			'authorization_code',
+			'encryption_key',
+			'private_key',
+			'request_body',
+			'raw_body',
+			'content_body',
+			'post_content',
+		);
+
+		foreach ( $fragments as $fragment ) {
+			if ( str_contains( $key, $fragment ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Determine whether a scalar value is a request/content body payload.
+	 *
+	 * @param string $key Export key.
+	 */
+	private function is_body_payload_key( string $key ): bool {
+		$key = strtolower( str_replace( array( '-', ' ' ), '_', $key ) );
+
+		return in_array( $key, array( 'body', 'content', 'payload', 'request' ), true );
 	}
 
 	/**

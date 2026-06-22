@@ -119,6 +119,161 @@ final class WorkflowLoopStoreTest extends TestCase {
 		self::assertNotContains( 10, array_column( $resumed['items_to_process'], 'id' ) );
 	}
 
+	public function test_run_batch_returns_redacted_audit_summary_after_completion(): void {
+		$store  = new WorkflowLoopStore();
+		$create = $store->create(
+			array(
+				'source'     => 'provided_items',
+				'batch_size' => 2,
+				'items'      => $this->items( 10, 20 ),
+			)
+		);
+
+		$store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'limit'            => 2,
+			)
+		);
+
+		$completed = $store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'completed_items'  => array(
+					array(
+						'id'          => 10,
+						'status'      => 'succeeded',
+						'changed'     => true,
+						'preview_url' => 'https://example.com/?p=10&preview=true',
+						'message'     => 'Updated draft. token=abc123 user admin@example.com',
+					),
+					array(
+						'id'       => 20,
+						'status'   => 'succeeded',
+						'changed'  => false,
+						'message'  => 'Reviewed only. Bearer sk-live-secret',
+						'warnings' => array( 'credential=abc123 was ignored' ),
+					),
+				),
+			)
+		);
+
+		self::assertSame( 'complete', $completed['workflow_loop']['state'] );
+		self::assertArrayHasKey( 'audit_summary', $completed );
+		self::assertArrayHasKey( 'totals', $completed['audit_summary'] );
+		self::assertArrayHasKey( 'changed_targets', $completed['audit_summary'] );
+		self::assertArrayHasKey( 'failed_targets', $completed['audit_summary'] );
+		self::assertArrayHasKey( 'warnings', $completed['audit_summary'] );
+		self::assertArrayHasKey( 'recovery_hints', $completed['audit_summary'] );
+		self::assertArrayHasKey( 'next_actions', $completed['audit_summary'] );
+		self::assertSame( 2, $completed['audit_summary']['totals']['succeeded'] );
+		self::assertCount( 1, $completed['audit_summary']['changed_targets'] );
+		self::assertSame( 10, $completed['audit_summary']['changed_targets'][0]['id'] );
+		self::assertSame( 'https://example.com/?p=10&preview=true', $completed['audit_summary']['changed_targets'][0]['preview_url'] );
+		self::assertStringContainsString( 'token=[redacted]', $completed['audit_summary']['changed_targets'][0]['message'] );
+		self::assertStringContainsString( '[redacted-email]', $completed['audit_summary']['changed_targets'][0]['message'] );
+		self::assertStringContainsString( 'credential=[redacted]', $completed['audit_summary']['warnings'][0] );
+		self::assertStringNotContainsString( 'abc123', wp_json_encode( $completed['audit_summary'] ) );
+		self::assertStringNotContainsString( 'sk-live-secret', wp_json_encode( $completed['audit_summary'] ) );
+		self::assertStringNotContainsString( 'abc123', wp_json_encode( $completed['items'] ) );
+		self::assertStringNotContainsString( 'sk-live-secret', wp_json_encode( $completed['items'] ) );
+
+		$read = $store->get( array( 'workflow_loop_id' => $create['workflow_loop']['id'] ) );
+		self::assertArrayHasKey( 'audit_summary', $read );
+		self::assertSame( $completed['audit_summary']['totals'], $read['audit_summary']['totals'] );
+	}
+
+	public function test_run_batch_returns_failed_targets_and_recovery_hints_for_blocked_items(): void {
+		$store  = new WorkflowLoopStore();
+		$create = $store->create(
+			array(
+				'source' => 'provided_items',
+				'items'  => $this->items( 10 ),
+			)
+		);
+
+		$store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+			)
+		);
+
+		$blocked = $store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'completed_items'  => array(
+					array(
+						'id'      => 10,
+						'status'  => 'blocked',
+						'message' => 'Needs owner approval before publish.',
+					),
+				),
+			)
+		);
+
+		self::assertSame( 'blocked', $blocked['workflow_loop']['state'] );
+		self::assertCount( 1, $blocked['audit_summary']['failed_targets'] );
+		self::assertSame( 10, $blocked['audit_summary']['failed_targets'][0]['id'] );
+		self::assertContains( 'Review failed or blocked items before starting another batch.', $blocked['audit_summary']['recovery_hints'] );
+		self::assertContains( 'Use WordPress revisions, autosaves, previews, or draft status checks for reversible content review when those states exist.', $blocked['audit_summary']['recovery_hints'] );
+	}
+
+	public function test_audit_summary_bounds_targets_and_warnings(): void {
+		$store  = new WorkflowLoopStore();
+		$create = $store->create(
+			array(
+				'source'     => 'provided_items',
+				'batch_size' => 10,
+				'items'      => $this->items( 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ),
+			)
+		);
+
+		$store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'limit'            => 10,
+			)
+		);
+
+		$first_ten = array_map(
+			static fn ( int $id ): array => array(
+				'id'       => $id,
+				'status'   => 'succeeded',
+				'changed'  => true,
+				'warnings' => array( 'warning for item ' . $id ),
+			),
+			range( 1, 10 )
+		);
+		$second    = $store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'completed_items'  => $first_ten,
+				'limit'            => 10,
+			)
+		);
+
+		$last_two = array_map(
+			static fn ( int $id ): array => array(
+				'id'       => $id,
+				'status'   => 'succeeded',
+				'changed'  => true,
+				'warnings' => array( 'warning for item ' . $id ),
+			),
+			range( 11, 12 )
+		);
+		$done     = $store->run_batch(
+			array(
+				'workflow_loop_id' => $create['workflow_loop']['id'],
+				'completed_items'  => $last_two,
+			)
+		);
+
+		self::assertSame( array( 11, 12 ), array_column( $second['items_to_process'], 'id' ) );
+		self::assertSame( 12, $done['audit_summary']['totals']['succeeded'] );
+		self::assertCount( 10, $done['audit_summary']['changed_targets'] );
+		self::assertCount( 10, $done['audit_summary']['warnings'] );
+	}
+
 	public function test_pause_resume_and_cancel_honor_loop_state(): void {
 		$store  = new WorkflowLoopStore();
 		$create = $store->create(

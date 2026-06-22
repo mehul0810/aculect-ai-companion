@@ -991,6 +991,7 @@ final class McpController {
 				'items'                    => array( 'type' => 'array' ),
 				'items_to_process'         => array( 'type' => 'array' ),
 				'active_item'              => array( 'type' => 'object' ),
+				'audit_summary'            => array( 'type' => 'object' ),
 				'total'                    => array( 'type' => 'integer' ),
 				'filters'                  => array( 'type' => 'object' ),
 				'insights'                 => array( 'type' => 'array' ),

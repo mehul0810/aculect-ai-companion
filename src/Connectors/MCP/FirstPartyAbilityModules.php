@@ -445,6 +445,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ActivityLearningInsights() )->inspect( $args )
 			),
 			$this->module(
+				'admin_self_management.inspect',
+				'Inspect Aculect Admin Policy',
+				'Admin-only inspection of Aculect MCP policy, WordPress Abilities policy, tool availability, and pending learning suggestions. Returns counts, IDs, blockers, warnings, and next actions without exposing secrets or arbitrary option values.',
+				'Aculect Admin',
+				'content:draft',
+				true,
+				$this->empty_schema(),
+				static fn ( array $args ): array => ( new AdminSelfManagementAbilities() )->inspect( $args )
+			),
+			$this->module(
+				'admin_self_management.update_enabled_abilities',
+				'Update Aculect Enabled Abilities',
+				'Admin-only policy update for configurable Aculect MCP ability IDs. Always run dry_run first, then repeat with explicit confirmation_text before persisting changes.',
+				'Aculect Admin',
+				'content:draft',
+				false,
+				$this->admin_enabled_abilities_schema(),
+				static fn ( array $args ): array => ( new AdminSelfManagementAbilities() )->update_enabled_abilities( $args )
+			),
+			$this->module(
+				'admin_self_management.update_wp_abilities',
+				'Update Public WordPress Abilities Policy',
+				'Admin-only policy update for public WordPress Abilities API registrations allowed through Aculect MCP. This never enables external public abilities by default.',
+				'Aculect Admin',
+				'content:draft',
+				false,
+				$this->admin_wp_abilities_schema(),
+				static fn ( array $args ): array => ( new AdminSelfManagementAbilities() )->update_wordpress_abilities( $args )
+			),
+			$this->module(
+				'admin_self_management.review_learning',
+				'Review Aculect Learning Suggestions',
+				'Admin-only listing and approval/rejection of pending learning suggestions submitted by connected assistants. Approved suggestions sync into durable Aculect memory.',
+				'Aculect Admin',
+				'content:draft',
+				false,
+				$this->admin_review_learning_schema(),
+				static fn ( array $args ): array => ( new AdminSelfManagementAbilities() )->review_learning( $args )
+			),
+			$this->module(
 				'site.list_post_types',
 				'List Content Types',
 				'List readable WordPress content types, including custom ones.',
@@ -1633,6 +1673,72 @@ final class FirstPartyAbilityModules {
 					'description' => 'Activity time range when supported by the activity store.',
 				),
 				'per_page' => $this->per_page_schema( 50, 'Activity rows to inspect. Defaults to 25.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the admin enabled-abilities update schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_enabled_abilities_schema(): array {
+		return $this->object_schema(
+			array(
+				'enabled_ids'       => $this->string_list_schema( 'Configurable Aculect internal ability IDs or public tool names to keep enabled.', 100 ),
+				'confirmation_text' => array(
+					'type'        => 'string',
+					'description' => 'Required when dry_run is false: I understand this changes Aculect AI Companion admin policy.',
+				),
+			),
+			array( 'enabled_ids' )
+		);
+	}
+
+	/**
+	 * Build the public WordPress Abilities policy update schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_wp_abilities_schema(): array {
+		return $this->object_schema(
+			array(
+				'allowed_ids'       => $this->string_list_schema( 'Public WordPress Abilities API IDs to allow through Aculect MCP policy.', 100 ),
+				'confirmation_text' => array(
+					'type'        => 'string',
+					'description' => 'Required when dry_run is false: I understand this changes Aculect AI Companion admin policy.',
+				),
+			),
+			array( 'allowed_ids' )
+		);
+	}
+
+	/**
+	 * Build the learning review schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function admin_review_learning_schema(): array {
+		return $this->object_schema(
+			array(
+				'action'            => array(
+					'type'        => 'string',
+					'enum'        => array( 'list', 'approve', 'reject' ),
+					'description' => 'List pending suggestions, approve one suggestion, or reject one suggestion.',
+				),
+				'id'                => array(
+					'type'        => 'string',
+					'description' => 'Learning suggestion ID required for approve or reject.',
+				),
+				'review_note'       => array(
+					'type'        => 'string',
+					'maxLength'   => 800,
+					'description' => 'Optional admin review note.',
+				),
+				'confirmation_text' => array(
+					'type'        => 'string',
+					'description' => 'Required when dry_run is false: I understand this changes Aculect AI Companion admin policy.',
+				),
 			)
 		);
 	}

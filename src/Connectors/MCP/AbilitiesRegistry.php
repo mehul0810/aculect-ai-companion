@@ -13,9 +13,9 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class AbilitiesRegistry {
 
-	public const OPTION_ENABLED_ABILITIES          = 'aculect_ai_companion_enabled_abilities';
-	private const TOOL_NAME_PATTERN                = '/^[a-zA-Z0-9_-]{1,64}$/';
-	private const DERIVED_WORKFLOW_IDS             = array(
+	public const OPTION_ENABLED_ABILITIES             = 'aculect_ai_companion_enabled_abilities';
+	private const TOOL_NAME_PATTERN                   = '/^[a-zA-Z0-9_-]{1,64}$/';
+	private const DERIVED_WORKFLOW_IDS                = array(
 		'content_workflow.prepare_post',
 		'content_workflow.create_draft',
 		'content_workflow.update_post',
@@ -23,7 +23,7 @@ final class AbilitiesRegistry {
 		'seo_workflow.update_rankmath',
 		'site_workflow.audit',
 	);
-	private const ALWAYS_ON_READ_INTELLIGENCE_IDS  = array(
+	private const ALWAYS_ON_READ_INTELLIGENCE_IDS     = array(
 		'workflow.route_request',
 		'workflow_session.get',
 		'site_editor.get_context',
@@ -47,13 +47,19 @@ final class AbilitiesRegistry {
 		'memory.list',
 		'content_batch.status',
 	);
-	private const ALWAYS_ON_WRITE_INTELLIGENCE_IDS = array(
+	private const ALWAYS_ON_WRITE_INTELLIGENCE_IDS    = array(
 		'workflow_session.start',
 		'workflow_session.update',
 		'site_editor.refresh_context',
 		'admin_menu.refresh_context',
 		'memory.save',
 		'memory.bootstrap',
+		'admin_self_management.update_enabled_abilities',
+		'admin_self_management.update_wp_abilities',
+		'admin_self_management.review_learning',
+	);
+	private const ALWAYS_ON_ADMIN_SELF_MANAGEMENT_IDS = array(
+		'admin_self_management.inspect',
 	);
 
 	/**
@@ -118,7 +124,7 @@ final class AbilitiesRegistry {
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function configurable_definitions(): array {
-		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS, self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) ) );
+		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS, self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS, self::ALWAYS_ON_ADMIN_SELF_MANAGEMENT_IDS ) ) );
 	}
 
 	/**
@@ -177,6 +183,24 @@ final class AbilitiesRegistry {
 	 */
 	public function always_on_write_intelligence_modules(): array {
 		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) );
+	}
+
+	/**
+	 * Return always-on admin self-management modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function always_on_admin_self_management_modules(): array {
+		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_ADMIN_SELF_MANAGEMENT_IDS ) );
+	}
+
+	/**
+	 * Check whether an ability is always-on admin self-management.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_always_on_admin_self_management( string $id ): bool {
+		return in_array( $this->internal_id( $id ), self::ALWAYS_ON_ADMIN_SELF_MANAGEMENT_IDS, true );
 	}
 
 	/**

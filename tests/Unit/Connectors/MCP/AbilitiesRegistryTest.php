@@ -153,6 +153,10 @@ final class AbilitiesRegistryTest extends TestCase {
 				'memory.list',
 				'memory.save',
 				'memory.bootstrap',
+				'admin_self_management.inspect',
+				'admin_self_management.update_enabled_abilities',
+				'admin_self_management.update_wp_abilities',
+				'admin_self_management.review_learning',
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
@@ -206,6 +210,12 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.bootstrap' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_bootstrap' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'admin_self_management.inspect' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'admin_self_management_update_enabled_abilities' ) );
+		self::assertTrue( $this->registry->is_always_on_admin_self_management( 'admin_self_management.inspect' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_self_management_update_enabled_abilities' ) );
+		self::assertFalse( $this->registry->is_configurable( 'admin_self_management.inspect' ) );
+		self::assertFalse( $this->registry->is_configurable( 'admin_self_management.update_wp_abilities' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );

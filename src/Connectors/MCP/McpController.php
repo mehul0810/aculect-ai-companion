@@ -1222,7 +1222,7 @@ final class McpController {
 			return 'unknown_tool';
 		}
 
-		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
+		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool ) && ! $registry->is_always_on_admin_self_management( $tool );
 		$role_policy       = new RoleAbilitiesPolicy();
 
 		if ( $is_policy_managed && ! $registry->is_enabled( $tool ) ) {
@@ -1235,7 +1235,7 @@ final class McpController {
 
 		if ( ! $registry->is_derived_workflow( $tool ) ) {
 			foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
+				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id ) && ! $registry->is_always_on_admin_self_management( $dependency_id );
 
 				if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
 					return 'tool_disabled';

@@ -14,12 +14,12 @@
 }
 
 .aculect-ai-companion-oauth-card {
-	width: min(720px, calc(100vw - 32px));
-	padding: 40px;
+	width: min(760px, calc(100vw - 32px));
+	padding: 28px;
 	border: 1px solid #dcdcde;
-	border-radius: 18px;
+	border-radius: 8px;
 	background: #fff;
-	box-shadow: 0 24px 70px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .aculect-ai-companion-oauth-brand {
@@ -36,20 +36,20 @@
 }
 
 .aculect-ai-companion-oauth-title {
-	margin: 0 0 12px;
-	font-size: clamp(30px, 5vw, 48px);
-	line-height: 1.05;
+	margin: 0 0 10px;
+	font-size: 28px;
+	line-height: 1.2;
 }
 
 .aculect-ai-companion-oauth-copy {
-	margin: 0 0 28px;
+	margin: 0 0 22px;
 	color: #50575e;
-	font-size: 17px;
-	line-height: 1.6;
+	font-size: 15px;
+	line-height: 1.5;
 }
 
 .aculect-ai-companion-oauth-details {
-	margin: 0 0 32px;
+	margin: 0;
 	border: 1px solid #dcdcde;
 	border-radius: 12px;
 	overflow: hidden;
@@ -84,10 +84,101 @@
 	background: #f0f0f1;
 }
 
+.aculect-ai-companion-oauth-eyebrow {
+	margin-bottom: 6px;
+	color: #50575e;
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-oauth-panels {
+	display: grid;
+	gap: 16px;
+}
+
+.aculect-ai-companion-oauth-panel {
+	padding: 18px;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	background: #fff;
+}
+
+.aculect-ai-companion-oauth-panel h2 {
+	margin: 0 0 12px;
+	font-size: 17px;
+	line-height: 1.35;
+}
+
+.aculect-ai-companion-oauth-panel p {
+	margin: 0 0 12px;
+	color: #50575e;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-oauth-scope {
+	padding: 10px 12px;
+	border-left: 4px solid #2271b1;
+	background: #f6f7f7;
+	color: #1d2327;
+	font-weight: 600;
+}
+
+.aculect-ai-companion-oauth-capabilities,
+.aculect-ai-companion-oauth-security-list {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.aculect-ai-companion-oauth-capabilities li,
+.aculect-ai-companion-oauth-security-list li {
+	display: grid;
+	grid-template-columns: minmax(150px, 0.36fr) 1fr;
+	gap: 14px;
+	align-items: start;
+	padding: 12px;
+	border: 1px solid #e0e0e0;
+	border-radius: 6px;
+	background: #fbfbfc;
+}
+
+.aculect-ai-companion-oauth-capabilities strong,
+.aculect-ai-companion-oauth-security-list strong {
+	color: #1d2327;
+	line-height: 1.4;
+}
+
+.aculect-ai-companion-oauth-capabilities span,
+.aculect-ai-companion-oauth-security-list span {
+	min-width: 0;
+	color: #50575e;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-oauth-status {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 999px;
+	background: #f0f6fc;
+	color: #0a4b78;
+	font-weight: 700;
+}
+
+.aculect-ai-companion-oauth-notice {
+	margin: 12px 0 0;
+	padding-top: 12px;
+	border-top: 1px solid #dcdcde;
+	font-size: 13px;
+}
+
 .aculect-ai-companion-oauth-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: 12px;
+	margin-top: 18px;
 }
 
 .aculect-ai-companion-oauth-button {
@@ -113,12 +204,26 @@
 @media (max-width: 640px) {
 
 	.aculect-ai-companion-oauth-card {
-		padding: 28px 22px;
+		padding: 22px 18px;
 	}
 
 	.aculect-ai-companion-oauth-detail {
 		grid-template-columns: 1fr;
 		gap: 6px;
+	}
+
+	.aculect-ai-companion-oauth-title {
+		font-size: 24px;
+	}
+
+	.aculect-ai-companion-oauth-panel {
+		padding: 14px;
+	}
+
+	.aculect-ai-companion-oauth-capabilities li,
+	.aculect-ai-companion-oauth-security-list li {
+		grid-template-columns: 1fr;
+		gap: 4px;
 	}
 
 	.aculect-ai-companion-oauth-actions {

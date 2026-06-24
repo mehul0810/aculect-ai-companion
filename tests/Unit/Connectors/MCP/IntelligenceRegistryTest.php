@@ -73,6 +73,8 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertFalse( $incident_reporter->is_read_only() );
 		self::assertSame( 'plugin.incident.report', $this->registry->internal_id( 'plugin_incident_report' ) );
 		self::assertSame( 'plugin.incident.report', $this->registry->internal_id( 'plugin_issue_report' ) );
+		self::assertSame( 'plugin.incident.report', $this->registry->internal_id( 'plugin.issue.report' ) );
+		self::assertSame( 'plugin.incident.report', $this->registry->internal_id( 'aculect-ai-companion/plugin-incident-report' ) );
 		self::assertTrue( $this->registry->module( 'plugin.incident.list' )->is_read_only() );
 	}
 

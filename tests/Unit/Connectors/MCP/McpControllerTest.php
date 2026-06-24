@@ -62,6 +62,8 @@ final class McpControllerTest extends TestCase {
 
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
+		self::assertArrayHasKey( 'plugin_incident_report', $tools_by_name );
+		self::assertArrayHasKey( 'plugin_incident_list', $tools_by_name );
 		self::assertFalse( $tools_by_name['plugin_incident_report']['annotations']['readOnlyHint'] );
 		self::assertTrue( $tools_by_name['plugin_incident_report']['annotations']['openWorldHint'] );
 		self::assertTrue( $tools_by_name['plugin_incident_list']['annotations']['readOnlyHint'] );

@@ -151,20 +151,21 @@ final class IntelligenceRegistry {
 	 */
 	public function normalize_alias( string $id ): string {
 		$aliases = array(
-			'brand.get_profile'       => 'intelligence.brand.get_context',
-			'brand_get_profile'       => 'intelligence.brand.get_context',
-			'blocks.list_available'   => 'intelligence.blocks.list_available',
-			'blocks_list_available'   => 'intelligence.blocks.list_available',
-			'blocks.get_info'         => 'intelligence.blocks.get_info',
-			'blocks_get_info'         => 'intelligence.blocks.get_info',
-			'patterns.list_available' => 'intelligence.patterns.list_available',
-			'patterns_list_available' => 'intelligence.patterns.list_available',
-			'patterns.get_info'       => 'intelligence.patterns.get_info',
-			'patterns_get_info'       => 'intelligence.patterns.get_info',
-			'content.validate_blocks' => 'intelligence.content.validate_blocks',
-			'content_validate_blocks' => 'intelligence.content.validate_blocks',
-			'plugin.issue.report'     => 'plugin.incident.report',
-			'plugin_issue_report'     => 'plugin.incident.report',
+			'brand.get_profile'                           => 'intelligence.brand.get_context',
+			'brand_get_profile'                           => 'intelligence.brand.get_context',
+			'blocks.list_available'                       => 'intelligence.blocks.list_available',
+			'blocks_list_available'                       => 'intelligence.blocks.list_available',
+			'blocks.get_info'                             => 'intelligence.blocks.get_info',
+			'blocks_get_info'                             => 'intelligence.blocks.get_info',
+			'patterns.list_available'                     => 'intelligence.patterns.list_available',
+			'patterns_list_available'                     => 'intelligence.patterns.list_available',
+			'patterns.get_info'                           => 'intelligence.patterns.get_info',
+			'patterns_get_info'                           => 'intelligence.patterns.get_info',
+			'content.validate_blocks'                     => 'intelligence.content.validate_blocks',
+			'content_validate_blocks'                     => 'intelligence.content.validate_blocks',
+			'plugin.issue.report'                         => 'plugin.incident.report',
+			'plugin_issue_report'                         => 'plugin.incident.report',
+			'aculect-ai-companion/plugin-incident-report' => 'plugin.incident.report',
 		);
 
 		return $aliases[ $id ] ?? $id;

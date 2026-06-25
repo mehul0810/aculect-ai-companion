@@ -15,7 +15,7 @@
 
 .aculect-ai-companion-oauth-card {
 	box-sizing: border-box;
-	width: min(960px, calc(100vw - 32px));
+	width: min(640px, calc(100vw - 32px));
 	padding: 24px;
 	border: 1px solid #e5e7eb;
 	border-radius: 8px;
@@ -95,9 +95,7 @@
 
 .aculect-ai-companion-oauth-panels {
 	display: grid;
-	grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
 	gap: 16px;
-	align-items: start;
 }
 
 .aculect-ai-companion-oauth-panel {
@@ -105,10 +103,6 @@
 	border: 1px solid #e5e7eb;
 	border-radius: 8px;
 	background: #fff;
-}
-
-.aculect-ai-companion-oauth-panel:first-child {
-	grid-row: span 2;
 }
 
 .aculect-ai-companion-oauth-panel h2 {
@@ -124,51 +118,6 @@
 	line-height: 1.45;
 }
 
-.aculect-ai-companion-oauth-scope {
-	padding: 9px 11px;
-	border: 1px solid #bfdbfe;
-	border-left: 4px solid #2563eb;
-	border-radius: 8px;
-	background: #eff6ff;
-	color: #0f172a;
-	font-weight: 600;
-}
-
-.aculect-ai-companion-oauth-capabilities,
-.aculect-ai-companion-oauth-security-list {
-	display: grid;
-	gap: 10px;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.aculect-ai-companion-oauth-capabilities li,
-.aculect-ai-companion-oauth-security-list li {
-	display: grid;
-	grid-template-columns: minmax(136px, 0.4fr) 1fr;
-	gap: 12px;
-	align-items: start;
-	padding: 10px;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
-	background: #f8fafc;
-}
-
-.aculect-ai-companion-oauth-capabilities strong,
-.aculect-ai-companion-oauth-security-list strong {
-	color: #0f172a;
-	line-height: 1.4;
-}
-
-.aculect-ai-companion-oauth-capabilities span,
-.aculect-ai-companion-oauth-security-list span {
-	min-width: 0;
-	color: #64748b;
-	font-size: 13px;
-	line-height: 1.45;
-}
-
 .aculect-ai-companion-oauth-status {
 	display: inline-block;
 	padding: 3px 8px;
@@ -176,6 +125,7 @@
 	background: #eff6ff;
 	color: #1d4ed8;
 	font-weight: 700;
+	white-space: nowrap;
 }
 
 .aculect-ai-companion-oauth-notice {
@@ -212,17 +162,6 @@
 	color: #2563eb;
 }
 
-@media (max-width: 860px) {
-
-	.aculect-ai-companion-oauth-panels {
-		grid-template-columns: 1fr;
-	}
-
-	.aculect-ai-companion-oauth-panel:first-child {
-		grid-row: auto;
-	}
-}
-
 @media (max-width: 640px) {
 
 	.aculect-ai-companion-oauth-card {
@@ -240,12 +179,6 @@
 
 	.aculect-ai-companion-oauth-panel {
 		padding: 14px;
-	}
-
-	.aculect-ai-companion-oauth-capabilities li,
-	.aculect-ai-companion-oauth-security-list li {
-		grid-template-columns: 1fr;
-		gap: 4px;
 	}
 
 	.aculect-ai-companion-oauth-actions {

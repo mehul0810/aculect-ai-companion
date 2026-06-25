@@ -165,10 +165,14 @@ final class AuthorizationControllerTest extends TestCase {
 			$html
 		);
 		self::assertStringContainsString( 'Connection details', $html );
-		self::assertStringContainsString( 'What ChatGPT will be able to do', $html );
-		self::assertStringContainsString( 'Security and privacy', $html );
+		self::assertStringContainsString(
+			'Aculect AI Companion authorizes this connection through WordPress and respects this user\'s permissions.',
+			$html
+		);
 		self::assertStringContainsString( 'Approve connection', $html );
 		self::assertStringContainsString( 'Deny', $html );
+		self::assertStringNotContainsString( 'What ChatGPT will be able to do', $html );
+		self::assertStringNotContainsString( 'Security and privacy', $html );
 		self::assertStringNotContainsString( 'Approve AI assistant access', $html );
 	}
 

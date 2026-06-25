@@ -341,13 +341,13 @@ final class AuthorizationController {
 				<section class="aculect-ai-companion-oauth-panel">
 					<?php /* translators: %s: AI assistant name, for example ChatGPT. */ ?>
 					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), $assistant ) ); ?></h2>
-					<p><?php echo esc_html__( 'After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings.', 'aculect-ai-companion' ); ?></p>
+					<p><?php echo esc_html__( 'After connection, the assistant can use approved Aculect AI Companion abilities based on the WordPress user and site settings.', 'aculect-ai-companion' ); ?></p>
 					<p class="aculect-ai-companion-oauth-scope"><?php echo esc_html( $actions ); ?></p>
 					<ul class="aculect-ai-companion-oauth-capabilities">
 						<li><strong><?php echo esc_html__( 'Manage content', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Create and update posts, pages, and custom content.', 'aculect-ai-companion' ); ?></span></li>
 						<li><strong><?php echo esc_html__( 'Manage media', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Upload, organize, and manage media files.', 'aculect-ai-companion' ); ?></span></li>
 						<li><strong><?php echo esc_html__( 'Moderate comments', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Review, reply to, and manage comments.', 'aculect-ai-companion' ); ?></span></li>
-						<li><strong><?php echo esc_html__( 'Use custom tools', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Use site-specific tools exposed by Aculect.', 'aculect-ai-companion' ); ?></span></li>
+						<li><strong><?php echo esc_html__( 'Use custom tools', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Use site-specific tools exposed by Aculect AI Companion.', 'aculect-ai-companion' ); ?></span></li>
 					</ul>
 				</section>
 				<section class="aculect-ai-companion-oauth-panel">
@@ -355,9 +355,9 @@ final class AuthorizationController {
 					<ul class="aculect-ai-companion-oauth-security-list">
 						<li><strong><?php echo esc_html__( 'Secure OAuth authentication', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'The connection is authorized through WordPress.', 'aculect-ai-companion' ); ?></span></li>
 						<li><strong><?php echo esc_html__( 'No passwords shared', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Your WordPress credentials are never shared with the AI assistant.', 'aculect-ai-companion' ); ?></span></li>
-						<li><strong><?php echo esc_html__( 'Respects WordPress permissions', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Access is limited by user role, capabilities, and Aculect settings.', 'aculect-ai-companion' ); ?></span></li>
+						<li><strong><?php echo esc_html__( 'Respects WordPress permissions', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Access is limited by user role, capabilities, and Aculect AI Companion settings.', 'aculect-ai-companion' ); ?></span></li>
 						<li><strong><?php echo esc_html__( 'Access can be revoked anytime', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'You can remove the connection from the Connections tab.', 'aculect-ai-companion' ); ?></span></li>
-						<li><strong><?php echo esc_html__( 'All actions are logged', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Aculect records activity for visibility and auditability.', 'aculect-ai-companion' ); ?></span></li>
+						<li><strong><?php echo esc_html__( 'All actions are logged', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'Aculect AI Companion records activity for visibility and auditability.', 'aculect-ai-companion' ); ?></span></li>
 					</ul>
 					<p class="aculect-ai-companion-oauth-notice"><?php echo esc_html__( 'You can manage or revoke this connection at any time from the Connections page.', 'aculect-ai-companion' ); ?></p>
 				</section>

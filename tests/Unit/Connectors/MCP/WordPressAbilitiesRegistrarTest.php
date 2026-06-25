@@ -82,6 +82,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 				'aculect-ai-companion/content-find-related',
 				'aculect-ai-companion/content-find-internal-links',
 				'aculect-ai-companion/memory-list',
+				'aculect-ai-companion/plugin-incident-list',
+				'aculect-ai-companion/plugin-incident-report',
 			) as $expected_name
 		) {
 			self::assertContains( $expected_name, $names );
@@ -99,12 +101,19 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 			self::assertSame( 'object', $ability['args']['output_schema']['type'] );
 			self::assertIsArray( $ability['args']['output_schema']['properties'] );
 			self::assertTrue( $ability['args']['meta']['show_in_rest'] );
-			self::assertTrue( $ability['args']['meta']['annotations']['readonly'] );
 			self::assertFalse( $ability['args']['meta']['annotations']['destructive'] );
-			self::assertTrue( $ability['args']['meta']['annotations']['idempotent'] );
 			self::assertIsString( $ability['args']['meta']['mcp']['tool'] );
 			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $ability['args']['meta']['mcp']['tool'] );
 		}
+
+		$abilities_by_name = array_column( $abilities, 'args', 'name' );
+		self::assertFalse( $abilities_by_name['aculect-ai-companion/plugin-incident-report']['meta']['annotations']['readonly'] );
+		self::assertFalse( $abilities_by_name['aculect-ai-companion/plugin-incident-report']['meta']['annotations']['idempotent'] );
+		self::assertSame( 'plugin_incident_report', $abilities_by_name['aculect-ai-companion/plugin-incident-report']['meta']['mcp']['tool'] );
+		self::assertArrayHasKey( 'report_id', $abilities_by_name['aculect-ai-companion/plugin-incident-report']['output_schema']['properties'] );
+
+		self::assertTrue( $abilities_by_name['aculect-ai-companion/plugin-incident-list']['meta']['annotations']['readonly'] );
+		self::assertTrue( $abilities_by_name['aculect-ai-companion/plugin-incident-list']['meta']['annotations']['idempotent'] );
 	}
 
 	public function test_permission_callback_requires_basic_read_capability(): void {
@@ -142,6 +151,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		$policy = new WordPressAbilitiesPolicy();
 
 		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
+		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
 	}
 
@@ -161,6 +171,11 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertTrue( $metadata['allowed'] );
 		self::assertTrue( $metadata['schema_valid'] );
 		self::assertSame( 'available', $metadata['status'] );
+
+		$context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
+
+		self::assertNotContains( 'aculect-ai-companion/plugin-incident-report', $context['missing_first_party_names'] );
+		self::assertSame( 0, $context['policy_blocked_public_count'] );
 
 		$atomic = ( new WordPressAbilitiesDiagnostics() )->operation_metadata( 'content.get_item', new AbilitiesRegistry() );
 

@@ -164,6 +164,11 @@ final class WordPressAbilitiesBridge {
 			return null;
 		}
 
+		$first_party_name = ( new WordPressAbilitiesRegistrar() )->ability_name_for_id( $name );
+		if ( '' !== $first_party_name ) {
+			$name = $first_party_name;
+		}
+
 		foreach ( $this->abilities() as $ability ) {
 			if ( hash_equals( $this->ability_name( $ability ), $name ) ) {
 				return $ability;

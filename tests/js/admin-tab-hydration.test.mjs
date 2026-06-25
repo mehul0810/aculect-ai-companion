@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
 	hydratedTabsFromData,
 	mergeSettingsPayload,
@@ -7,6 +8,11 @@ import {
 	settingsPayloadFetchUrl,
 	tabNameIsHydrated,
 } from '../../src/admin-tab-hydration.mjs';
+
+const ADMIN_APP_SOURCE = readFileSync(
+	new URL( '../../src/index.js', import.meta.url ),
+	'utf8'
+);
 
 test( 'normalizes legacy tab aliases', () => {
 	assert.equal( normalizeTabName( 'about' ), 'overview' );
@@ -129,6 +135,29 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 			},
 			activity: { total: 2, items: [ { id: 2 } ] },
 		}
+	);
+} );
+
+test( 'learning review surfaces render behind explicit active-state checks', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const \[ activeSurface, setActiveSurface \] = useState\( 'suggestions' \)/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/activeSurface === 'suggestions' && \(\s*<section className="aculect-ai-companion-learning-section">/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/activeSurface === 'memory' && \(\s*<section className="aculect-ai-companion-memory-section">/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/activeSurface === 'incidents' && \(\s*<section className="aculect-ai-companion-incident-section">/s
+	);
+	assert.doesNotMatch(
+		ADMIN_APP_SOURCE,
+		/Review MCP suggestions before they influence Aculect\s*Intelligence, and inspect incident reports/
 	);
 } );
 

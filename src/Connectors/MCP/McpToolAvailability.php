@@ -218,6 +218,7 @@ final class McpToolAvailability {
 				array(
 					'list'             => 'redirects.list',
 					'validate'         => 'redirects.validate',
+					'create'           => 'redirects.create',
 					'list_recent_404s' => 'not_found.list_recent',
 				),
 				$policy,

@@ -18,6 +18,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	private const MATCH_TYPES            = array( 'exact', 'start', 'contains', 'end' );
 	private const REDIRECT_CODES         = array( 301, 302, 307, 410, 451 );
 	private const MAINTENANCE_CODES      = array( 410, 451 );
+	private const MAX_CREATE_ITEMS       = 25;
 
 	/**
 	 * List bounded Rank Math redirects.
@@ -101,6 +102,72 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 			return $availability;
 		}
 
+		return $this->validated_redirect_proposal( $args );
+	}
+
+	/**
+	 * Create one or more Rank Math redirects through Rank Math's object API.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function create_redirect( array $args ): array {
+		$availability = $this->redirects_availability();
+		if ( isset( $availability['error'] ) ) {
+			return $availability;
+		}
+
+		if ( ! class_exists( '\RankMath\Redirections\Redirection' ) ) {
+			return $this->error( 'module_unavailable', 'Rank Math Redirection object support is not available on this site.' );
+		}
+
+		$items   = $this->redirect_create_items( $args );
+		$dry_run = $this->is_dry_run( $args );
+		if ( array() === $items ) {
+			return $this->error( 'invalid_items', 'Provide a redirect proposal or a non-empty items array.' );
+		}
+
+		$results = array();
+		foreach ( $items as $index => $item ) {
+			$results[] = $this->create_redirect_item( $item, $index, $dry_run );
+		}
+
+		$created = count(
+			array_filter(
+				$results,
+				static fn ( array $result ): bool => 'created' === ( $result['status'] ?? '' )
+			)
+		);
+		$errors  = count(
+			array_filter(
+				$results,
+				static fn ( array $result ): bool => 'error' === ( $result['status'] ?? '' )
+			)
+		);
+		$valid   = count( $results ) - $errors;
+
+		return array(
+			'status'  => $dry_run ? ( $errors > 0 ? 'preview_partial' : 'preview' ) : ( $errors > 0 ? ( $created > 0 ? 'partial' : 'failed' ) : 'completed' ),
+			'source'  => 'rank_math',
+			'module'  => 'redirections',
+			'dry_run' => $dry_run,
+			'total'   => count( $results ),
+			'created' => $created,
+			'valid'   => $valid,
+			'errors'  => $errors,
+			'results' => $results,
+			'id'      => 1 === count( $results ) && isset( $results[0]['id'] ) ? $results[0]['id'] : 0,
+			'next'    => $dry_run && 0 === $errors ? 'Repeat this call without dry_run after reviewing the preview and satisfying MCP write confirmation policy.' : '',
+		);
+	}
+
+	/**
+	 * Validate and normalize a redirect proposal.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	private function validated_redirect_proposal( array $args ): array {
 		$source = $this->normalized_source( (string) ( $args['source'] ?? '' ) );
 		if ( '' === $source ) {
 			return $this->error( 'invalid_source', 'Provide a local redirect source path.' );
@@ -137,6 +204,163 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 			'conflicts'     => $conflicts,
 			'can_create'    => array() === $conflicts,
 			'next_required' => 'Use a create ability only after reviewing this validation result.',
+		);
+	}
+
+	/**
+	 * Build bounded create items from singular or batch arguments.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return list<array<string, mixed>>
+	 */
+	private function redirect_create_items( array $args ): array {
+		if ( isset( $args['items'] ) && is_array( $args['items'] ) ) {
+			return array_values(
+				array_filter(
+					array_slice( $args['items'], 0, self::MAX_CREATE_ITEMS ),
+					'is_array'
+				)
+			);
+		}
+
+		return array(
+			array_intersect_key(
+				$args,
+				array_flip( array( 'source', 'destination', 'redirect_code', 'match_type', 'ignore_case' ) )
+			),
+		);
+	}
+
+	/**
+	 * Validate and create or preview a single redirect item.
+	 *
+	 * @param array<string, mixed> $item    Redirect proposal.
+	 * @param int                  $index   Zero-based item index.
+	 * @param bool                 $dry_run Whether to preview only.
+	 * @return array<string, mixed>
+	 */
+	private function create_redirect_item( array $item, int $index, bool $dry_run ): array {
+		$validation = $this->validated_redirect_proposal( $item );
+		if ( isset( $validation['error'] ) ) {
+			return array(
+				'index'   => $index,
+				'status'  => 'error',
+				'error'   => $validation['error'],
+				'message' => $validation['message'],
+			);
+		}
+
+		if ( false === ( $validation['can_create'] ?? false ) ) {
+			return array(
+				'index'     => $index,
+				'status'    => 'error',
+				'error'     => 'redirect_conflict',
+				'message'   => 'An existing Rank Math redirect already matches this source.',
+				'proposal'  => $validation['proposal'],
+				'conflicts' => $validation['conflicts'],
+			);
+		}
+
+		if ( $dry_run ) {
+			return array(
+				'index'    => $index,
+				'status'   => 'valid',
+				'proposal' => $validation['proposal'],
+			);
+		}
+
+		return $this->save_redirect_item( $validation['proposal'], $index );
+	}
+
+	/**
+	 * Persist one redirect through the Rank Math Redirection object.
+	 *
+	 * @param array<string, mixed> $proposal Validated redirect proposal.
+	 * @param int                  $index    Zero-based item index.
+	 * @return array<string, mixed>
+	 */
+	private function save_redirect_item( array $proposal, int $index ): array {
+		// phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan needs a class-string annotation for the optional Rank Math class.
+		/** @var class-string<object> $redirection_class */
+		$redirection_class = '\RankMath\Redirections\Redirection';
+		try {
+			$redirection = ( new \ReflectionClass( $redirection_class ) )->newInstance(
+				array(
+					'id'          => 0,
+					'sources'     => array(),
+					'url_to'      => '',
+					'header_code' => (string) absint( $proposal['redirect_code'] ?? 301 ),
+					'hits'        => '0',
+					'status'      => 'active',
+					'created'     => '',
+					'updated'     => '',
+				)
+			);
+		} catch ( \ReflectionException ) {
+			return array(
+				'index'   => $index,
+				'status'  => 'error',
+				'error'   => 'module_unavailable',
+				'message' => 'Rank Math Redirection object support is not available on this site.',
+			);
+		}
+
+		if ( ! is_object( $redirection ) ) {
+			return array(
+				'index'   => $index,
+				'status'  => 'error',
+				'error'   => 'module_unavailable',
+				'message' => 'Rank Math Redirection object could not be initialized.',
+			);
+		}
+
+		if ( ! is_callable( array( $redirection, 'add_source' ) )
+			|| ! is_callable( array( $redirection, 'add_destination' ) )
+			|| ! is_callable( array( $redirection, 'save' ) )
+		) {
+			return array(
+				'index'   => $index,
+				'status'  => 'error',
+				'error'   => 'module_unavailable',
+				'message' => 'Rank Math Redirection object does not expose the required create methods.',
+			);
+		}
+
+		$ignore_case = ! empty( $proposal['ignore_case'] ) ? 'case' : '';
+		call_user_func(
+			array( $redirection, 'add_source' ),
+			(string) $proposal['source'],
+			(string) $proposal['match_type'],
+			$ignore_case
+		);
+		call_user_func( array( $redirection, 'add_destination' ), (string) $proposal['destination'] );
+
+		if ( is_callable( array( $redirection, 'is_infinite_loop' ) ) && true === call_user_func( array( $redirection, 'is_infinite_loop' ) ) ) {
+			return array(
+				'index'    => $index,
+				'status'   => 'error',
+				'error'    => 'redirect_loop',
+				'message'  => 'Rank Math detected an infinite redirect loop for this proposal.',
+				'proposal' => $proposal,
+			);
+		}
+
+		$id = absint( call_user_func( array( $redirection, 'save' ) ) );
+		if ( 0 >= $id ) {
+			return array(
+				'index'    => $index,
+				'status'   => 'error',
+				'error'    => 'create_failed',
+				'message'  => 'Rank Math did not create the redirect.',
+				'proposal' => $proposal,
+			);
+		}
+
+		return array(
+			'index'    => $index,
+			'status'   => 'created',
+			'id'       => $id,
+			'proposal' => $proposal,
 		);
 	}
 

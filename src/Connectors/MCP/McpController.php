@@ -509,7 +509,19 @@ final class McpController {
 	 */
 	public function tool_manifest_for_current_user(): array {
 		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id );
+
+		return $this->tool_manifest_for_user( (int) $user_id );
+	}
+
+	/**
+	 * Build the complete, unpaginated tool manifest for one user and scope set.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
+	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
@@ -530,6 +542,13 @@ final class McpController {
 	 * thresholds while keeping most installs single-page.
 	 */
 	private const TOOLS_PAGE_SIZE = 60;
+
+	/**
+	 * Return the current tools/list page size for diagnostics.
+	 */
+	public static function tools_page_size(): int {
+		return self::TOOLS_PAGE_SIZE;
+	}
 
 	/**
 	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.

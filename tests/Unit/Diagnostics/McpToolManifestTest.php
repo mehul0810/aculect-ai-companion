@@ -86,7 +86,44 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( $export['metadata']['fingerprint'], $export['summary']['metadata_fingerprint'] );
 		self::assertArrayHasKey( 'chatgpt_app', $export['metadata']['refresh_guidance'] );
 		self::assertArrayHasKey( 'gemini_cli', $export['metadata']['refresh_guidance'] );
+		self::assertSame( 'cursor', $export['tools_list_pagination']['mode'] );
+		self::assertSame( 'aggregated_all_pages', $export['tools_list_pagination']['export_shape'] );
+		self::assertSame( count( $export['tools_list_payload']['tools'] ), $export['tools_list_pagination']['total_tools'] );
 		self::assertSame( 'tools/list', $export['json_rpc_method'] );
+	}
+
+	public function test_export_uses_active_session_oauth_scopes_for_tool_payload_and_diagnostics(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$export = ( new McpToolManifest() )->export_for_current_user(
+			array(
+				'id'                       => 44,
+				'provider'                 => 'chatgpt',
+				'client_name'              => 'ChatGPT',
+				'user_id'                  => 7,
+				'user_roles'               => array( 'administrator' ),
+				'scopes'                   => array( 'content:read' ),
+				'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+				'status'                   => 'active',
+				'access_level'             => 'read',
+				'write_permission_enabled' => false,
+			)
+		);
+
+		$names = array_column( $export['tools_list_payload']['tools'], 'name' );
+
+		self::assertContains( 'content_get_item', $names );
+		self::assertNotContains( 'content_update_item', $names );
+		self::assertTrue( $export['ability_policy']['scope_aware'] );
+		self::assertSame( array( 'content:read' ), $export['ability_policy']['granted_scopes'] );
+		self::assertFalse( $export['operations_manifest']['content']['update']['available'] );
+		self::assertSame( 'oauth_scope', $export['operations_manifest']['content']['update']['blocked_by'] );
+		self::assertSame( array( 'content:draft' ), $export['operations_manifest']['content']['update']['missing_scopes'] );
+		self::assertSame( count( $names ), $export['summary']['tool_count'] );
+		self::assertSame( count( $names ), $export['tools_list_pagination']['total_tools'] );
 	}
 
 	public function test_export_reports_registered_first_party_wordpress_abilities(): void {

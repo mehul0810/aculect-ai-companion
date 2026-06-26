@@ -1,6 +1,7 @@
 /vendor
 /node_modules
 /build/
+/artifacts/smoke/
 .phpunit.cache/
 .DS_Store
 *.log

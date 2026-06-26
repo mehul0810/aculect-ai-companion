@@ -19,10 +19,14 @@ final class McpToolManifest {
 	/**
 	 * Return the exact tools/list result payload for the current WordPress user.
 	 *
+	 * @param array<string, mixed> $session Optional active connector session context.
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
-	public function tools_list_payload_for_current_user(): array {
-		return ( new McpController() )->tool_manifest_for_current_user();
+	public function tools_list_payload_for_current_user( array $session = array() ): array {
+		$user_id = $this->current_user_id();
+		$scopes  = $this->session_scopes( $session );
+
+		return ( new McpController() )->tool_manifest_for_user( $user_id, $scopes );
 	}
 
 	/**
@@ -42,25 +46,27 @@ final class McpToolManifest {
 	 */
 	public function export_for_current_user( array $session = array() ): array {
 		$generated_at         = gmdate( 'c' );
-		$payload              = $this->tools_list_payload_for_current_user();
+		$payload              = $this->tools_list_payload_for_current_user( $session );
 		$initialize           = $this->initialize_payload();
-		$operations_manifest  = ( new McpToolAvailability() )->operations_manifest_for_current_user();
+		$scopes               = $this->session_scopes( $session );
+		$operations_manifest  = ( new McpToolAvailability() )->operations_manifest_for_user( $this->current_user_id(), null, $scopes );
 		$wp_abilities_context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
 
 		return array(
-			'generated_at'        => $generated_at,
-			'connection_url'      => Helpers::mcp_resource(),
-			'metadata'            => $this->metadata_context( $payload, $initialize, $generated_at ),
-			'user'                => $this->current_user_context(),
-			'session'             => $this->session_context( $session ),
-			'summary'             => $this->summary( $payload, $initialize ),
-			'ability_policy'      => $this->ability_policy_context(),
-			'operations_manifest' => $operations_manifest,
-			'wordpress_abilities' => $wp_abilities_context,
-			'initialize_payload'  => $initialize,
-			'tools_list_payload'  => $payload,
-			'json_rpc_method'     => 'tools/list',
-			'json_rpc_result_key' => 'result',
+			'generated_at'          => $generated_at,
+			'connection_url'        => Helpers::mcp_resource(),
+			'metadata'              => $this->metadata_context( $payload, $initialize, $generated_at ),
+			'user'                  => $this->current_user_context(),
+			'session'               => $this->session_context( $session ),
+			'summary'               => $this->summary( $payload, $initialize ),
+			'ability_policy'        => $this->ability_policy_context( $session ),
+			'operations_manifest'   => $operations_manifest,
+			'wordpress_abilities'   => $wp_abilities_context,
+			'initialize_payload'    => $initialize,
+			'tools_list_payload'    => $payload,
+			'tools_list_pagination' => $this->pagination_context( $payload ),
+			'json_rpc_method'       => 'tools/list',
+			'json_rpc_result_key'   => 'result',
 		);
 	}
 
@@ -90,10 +96,11 @@ final class McpToolManifest {
 	/**
 	 * Return role/global ability policy context for the current WordPress user.
 	 *
+	 * @param array<string, mixed> $session Optional active connector session context.
 	 * @return array<string, mixed>
 	 */
-	public function ability_policy_context(): array {
-		return ( new McpToolAvailability() )->ability_policy_for_current_user();
+	public function ability_policy_context( array $session = array() ): array {
+		return ( new McpToolAvailability() )->ability_policy_for_user( $this->current_user_id(), null, $this->session_scopes( $session ) );
 	}
 
 	/**
@@ -269,12 +276,62 @@ final class McpToolManifest {
 	 * @return array<string, mixed>
 	 */
 	private function current_user_context(): array {
-		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+		$user_id = $this->current_user_id();
 		$user    = function_exists( 'get_user_by' ) ? get_user_by( 'id', $user_id ) : false;
 
 		return array(
 			'id'    => $user_id,
 			'roles' => is_object( $user ) ? array_values( array_map( 'strval', (array) $user->roles ) ) : array(),
+		);
+	}
+
+	/**
+	 * Return the current WordPress user ID.
+	 */
+	private function current_user_id(): int {
+		return function_exists( 'get_current_user_id' ) ? (int) get_current_user_id() : 0;
+	}
+
+	/**
+	 * Return active session scopes for MCP discovery diagnostics.
+	 *
+	 * @param array<string, mixed> $session Active connector session context.
+	 * @return list<string>|null
+	 */
+	private function session_scopes( array $session ): ?array {
+		if ( ! is_array( $session['scopes'] ?? null ) ) {
+			return null;
+		}
+
+		return array_values(
+			array_unique(
+				array_filter(
+					array_map( 'strval', $session['scopes'] ),
+					static fn ( string $scope ): bool => '' !== $scope
+				)
+			)
+		);
+	}
+
+	/**
+	 * Return support-safe pagination details for the aggregated tools/list export.
+	 *
+	 * @param array<string, mixed> $payload MCP tools/list aggregate payload.
+	 * @return array<string, int|bool|string>
+	 */
+	private function pagination_context( array $payload ): array {
+		$tools      = isset( $payload['tools'] ) && is_array( $payload['tools'] ) ? $payload['tools'] : array();
+		$page_size  = McpController::tools_page_size();
+		$tool_count = count( $tools );
+		$page_count = $page_size > 0 ? (int) ceil( $tool_count / $page_size ) : 0;
+
+		return array(
+			'mode'            => 'cursor',
+			'page_size'       => $page_size,
+			'total_tools'     => $tool_count,
+			'estimated_pages' => $page_count,
+			'paginated'       => $tool_count > $page_size,
+			'export_shape'    => 'aggregated_all_pages',
 		);
 	}
 

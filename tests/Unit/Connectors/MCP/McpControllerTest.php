@@ -99,6 +99,32 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_update_item', $tools_by_name );
 	}
 
+	public function test_tools_list_cursor_pages_aggregate_to_scope_aware_manifest(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array_keys( $registry->configurable_definitions() ) );
+
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'scopes' => array( 'content:read', 'content:draft' ),
+			)
+		);
+
+		$first_page = $this->invokePrivate( $controller, 'list_tools' );
+
+		self::assertLessThanOrEqual( McpController::tools_page_size(), count( $first_page['tools'] ) );
+		self::assertArrayHasKey( 'nextCursor', $first_page );
+
+		$manifest_names = array_column( $controller->tool_manifest_for_user( 1, array( 'content:read', 'content:draft' ) )['tools'], 'name' );
+		$paged_names    = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
+
+		self::assertSame( $manifest_names, $paged_names );
+		self::assertGreaterThan( McpController::tools_page_size(), count( $paged_names ) );
+		self::assertSame( count( $paged_names ), count( array_unique( $paged_names ) ) );
+	}
+
 	public function test_openai_chatgpt_codex_and_gemini_tool_descriptors_keep_mcp_security_contract(): void {
 		$result           = $this->list_tools_manifest();
 		$supported_scopes = Helpers::supported_scopes();

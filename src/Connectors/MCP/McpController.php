@@ -529,6 +529,18 @@ final class McpController {
 	}
 
 	/**
+	 * Build one paginated tools/list payload for diagnostics and deterministic smoke tests.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param string            $cursor         Opaque cursor from a previous page.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 */
+	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '' ): array {
+		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes ), $cursor );
+	}
+
+	/**
 	 * Build the exact initialize payload for diagnostics and manifest exports.
 	 *
 	 * @return array<string, mixed>
@@ -562,9 +574,31 @@ final class McpController {
 	private function list_tools( string $cursor = '' ): array {
 		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
-		$modules        = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id, null, null, $granted_scopes );
-		$tools          = array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
 
+		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor );
+	}
+
+	/**
+	 * Build all tool descriptors for one user and scope set.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @return list<array<string, mixed>>
+	 */
+	private function tools_for_user( int $user_id, ?array $granted_scopes = null ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+
+		return array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
+	}
+
+	/**
+	 * Return one deterministic page from a complete tools/list descriptor set.
+	 *
+	 * @param list<array<string, mixed>> $tools  Complete tool descriptors.
+	 * @param string                     $cursor Opaque cursor from a previous page.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 */
+	private function tools_list_page( array $tools, string $cursor = '' ): array {
 		$offset = $this->tools_cursor_offset( $cursor );
 		$page   = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
 		$result = array( 'tools' => $page );

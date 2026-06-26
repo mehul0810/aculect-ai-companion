@@ -214,6 +214,16 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'redirects'          => $this->operation_group(
+				array(
+					'list'             => 'redirects.list',
+					'validate'         => 'redirects.validate',
+					'list_recent_404s' => 'not_found.list_recent',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'site_editor'        => $this->operation_group(
 				array(
 					'get_context'         => 'site_editor.get_context',

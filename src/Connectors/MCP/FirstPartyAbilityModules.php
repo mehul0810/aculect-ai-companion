@@ -590,6 +590,36 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new SeoAbilities() )->update_seo( $args )
 			),
 			$this->module(
+				'redirects.list',
+				'List Redirect Rules',
+				'List bounded Rank Math redirect rules when Rank Math Redirections support is available for the connected user.',
+				'Redirect Workflows',
+				'content:read',
+				true,
+				$this->redirects_list_schema(),
+				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->list_redirects( $args )
+			),
+			$this->module(
+				'redirects.validate',
+				'Validate Redirect Proposal',
+				'Validate a proposed Rank Math redirect source, destination, code, and conflict state before any redirect is created.',
+				'Redirect Workflows',
+				'content:read',
+				true,
+				$this->redirects_validate_schema(),
+				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->validate_redirect( $args )
+			),
+			$this->module(
+				'not_found.list_recent',
+				'List Recent 404 Records',
+				'List bounded and query-redacted Rank Math 404 Monitor records when available for the connected user.',
+				'Redirect Workflows',
+				'content:read',
+				true,
+				$this->not_found_list_schema(),
+				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->list_recent_404s( $args )
+			),
+			$this->module(
 				'taxonomy.list_taxonomies',
 				'List Content Groups',
 				'List available categories, tags, and custom content groups.',
@@ -2251,6 +2281,106 @@ final class FirstPartyAbilityModules {
 					'type'        => 'boolean',
 					'description' => 'Update existing bootstrap keys instead of only creating missing ones.',
 				),
+			)
+		);
+	}
+
+	/**
+	 * Build the redirects list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function redirects_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'any', 'active', 'inactive' ),
+					'description' => 'Redirect status to list. Defaults to any active or inactive non-trashed redirects.',
+				),
+				'search'   => array(
+					'type'        => 'string',
+					'description' => 'Optional source or destination search string.',
+				),
+				'orderby'  => array(
+					'type'        => 'string',
+					'enum'        => array( 'id', 'url_to', 'header_code', 'hits', 'created', 'last_accessed' ),
+					'description' => 'Rank Math redirect field to order by. Defaults to id.',
+				),
+				'order'    => array(
+					'type'        => 'string',
+					'enum'        => array( 'ASC', 'DESC' ),
+					'description' => 'Sort direction. Defaults to DESC.',
+				),
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 50, 'Redirect rows per page. Defaults to 10.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the redirect validation schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function redirects_validate_schema(): array {
+		return $this->object_schema(
+			array(
+				'source'        => array(
+					'type'        => 'string',
+					'description' => 'Local source path or same-site source URL to validate.',
+				),
+				'destination'   => array(
+					'type'        => 'string',
+					'description' => 'Relative path or http/https destination URL. Not required for 410 or 451.',
+				),
+				'redirect_code' => array(
+					'type'        => 'integer',
+					'enum'        => array( 301, 302, 307, 410, 451 ),
+					'description' => 'Supported redirect or maintenance response code. Defaults to 301.',
+				),
+				'match_type'    => array(
+					'type'        => 'string',
+					'enum'        => array( 'exact', 'start', 'contains', 'end' ),
+					'description' => 'Supported source match type. Defaults to exact. Regex is intentionally not exposed in this foundation workflow.',
+				),
+				'ignore_case'   => array(
+					'type'        => 'boolean',
+					'description' => 'Whether source matching should ignore case when creation support is later used.',
+				),
+			),
+			array( 'source' )
+		);
+	}
+
+	/**
+	 * Build the recent 404 list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function not_found_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'search'   => array(
+					'type'        => 'string',
+					'description' => 'Optional URI search string.',
+				),
+				'uri'      => array(
+					'type'        => 'string',
+					'description' => 'Optional exact URI filter.',
+				),
+				'orderby'  => array(
+					'type'        => 'string',
+					'enum'        => array( 'id', 'uri', 'accessed', 'times_accessed' ),
+					'description' => 'Rank Math 404 monitor field to order by. Defaults to accessed.',
+				),
+				'order'    => array(
+					'type'        => 'string',
+					'enum'        => array( 'ASC', 'DESC' ),
+					'description' => 'Sort direction. Defaults to DESC.',
+				),
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 50, '404 rows per page. Defaults to 10.' ),
 			)
 		);
 	}

@@ -610,6 +610,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->validate_redirect( $args )
 			),
 			$this->module(
+				'redirects.create',
+				'Create Redirect Rule',
+				'Create controlled Rank Math redirects through Rank Math Redirection objects after validation and conflict checks.',
+				'Redirect Workflows',
+				'content:draft',
+				false,
+				$this->redirects_create_schema(),
+				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->create_redirect( $args )
+			),
+			$this->module(
 				'not_found.list_recent',
 				'List Recent 404 Records',
 				'List bounded and query-redacted Rank Math 404 Monitor records when available for the connected user.',
@@ -2325,31 +2335,57 @@ final class FirstPartyAbilityModules {
 	 */
 	private function redirects_validate_schema(): array {
 		return $this->object_schema(
-			array(
-				'source'        => array(
-					'type'        => 'string',
-					'description' => 'Local source path or same-site source URL to validate.',
-				),
-				'destination'   => array(
-					'type'        => 'string',
-					'description' => 'Relative path or http/https destination URL. Not required for 410 or 451.',
-				),
-				'redirect_code' => array(
-					'type'        => 'integer',
-					'enum'        => array( 301, 302, 307, 410, 451 ),
-					'description' => 'Supported redirect or maintenance response code. Defaults to 301.',
-				),
-				'match_type'    => array(
-					'type'        => 'string',
-					'enum'        => array( 'exact', 'start', 'contains', 'end' ),
-					'description' => 'Supported source match type. Defaults to exact. Regex is intentionally not exposed in this foundation workflow.',
-				),
-				'ignore_case'   => array(
-					'type'        => 'boolean',
-					'description' => 'Whether source matching should ignore case when creation support is later used.',
-				),
-			),
+			$this->redirect_proposal_fields(),
 			array( 'source' )
+		);
+	}
+
+	/**
+	 * Build the redirect creation schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function redirects_create_schema(): array {
+		$fields          = $this->redirect_proposal_fields();
+		$fields['items'] = array(
+			'type'        => 'array',
+			'description' => 'Optional batch of redirect proposals. Each item uses the same fields as a single redirect proposal. Maximum 25.',
+			'maxItems'    => 25,
+			'items'       => $this->object_schema( $this->redirect_proposal_fields(), array( 'source' ) ),
+		);
+
+		return $this->object_schema( $fields );
+	}
+
+	/**
+	 * Return shared redirect proposal input fields.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function redirect_proposal_fields(): array {
+		return array(
+			'source'        => array(
+				'type'        => 'string',
+				'description' => 'Local source path or same-site source URL to validate.',
+			),
+			'destination'   => array(
+				'type'        => 'string',
+				'description' => 'Relative path or http/https destination URL. Not required for 410 or 451.',
+			),
+			'redirect_code' => array(
+				'type'        => 'integer',
+				'enum'        => array( 301, 302, 307, 410, 451 ),
+				'description' => 'Supported redirect or maintenance response code. Defaults to 301.',
+			),
+			'match_type'    => array(
+				'type'        => 'string',
+				'enum'        => array( 'exact', 'start', 'contains', 'end' ),
+				'description' => 'Supported source match type. Defaults to exact. Regex is intentionally not exposed.',
+			),
+			'ignore_case'   => array(
+				'type'        => 'boolean',
+				'description' => 'Whether source matching should ignore case.',
+			),
 		);
 	}
 

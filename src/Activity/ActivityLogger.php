@@ -155,6 +155,10 @@ final class ActivityLogger {
 				'type' => 'comment',
 				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
 			),
+			'redirects.create' => array(
+				'type' => 'redirect',
+				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
+			),
 			'wp_abilities.run' => array(
 				'type' => 'wp_ability',
 				'id'   => null,

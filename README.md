@@ -108,6 +108,7 @@ Admins can enable or disable these abilities from `AI Companion > Abilities` aft
 ## Project Docs
 
 - [Contributing guidelines](CONTRIBUTING.md)
+- [Release-candidate regression checklist](docs/release-candidate-regression-checklist.md)
 - [Security policy](SECURITY.md)
 
 ## Developer Notes

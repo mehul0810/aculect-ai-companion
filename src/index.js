@@ -130,6 +130,26 @@ const INCIDENT_SEVERITY_LABELS = {
 	high: 'High',
 	blocking: 'Blocking',
 };
+const LEARNING_REVIEW_SURFACES = [
+	{
+		id: 'suggestions',
+		label: 'Learning Suggestions',
+		description:
+			'Review durable intelligence suggestions before they influence future assistant behavior.',
+	},
+	{
+		id: 'memory',
+		label: 'Memory Records',
+		description:
+			'Review durable guidance records separately from new learning suggestions.',
+	},
+	{
+		id: 'incidents',
+		label: 'Incident Reports',
+		description:
+			'Inspect local sanitized workflow reports separately from learning review.',
+	},
+];
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -1622,122 +1642,208 @@ function LearningSuggestionsDashboard( {
 	memoryRecords,
 	incidentReports,
 } ) {
+	const [ activeSurface, setActiveSurface ] = useState( 'suggestions' );
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
 	const memories = memoryRecordsList( memoryRecords );
 	const memorySummary = memoryRecordsSummary( memoryRecords );
 	const incidents = incidentReportsList( incidentReports );
 	const incidentSummary = incidentReportsSummary( incidentReports );
+	const surfaces = LEARNING_REVIEW_SURFACES.map( ( surface ) => {
+		if ( surface.id === 'memory' ) {
+			return {
+				...surface,
+				count: Number( memorySummary.total || 0 ),
+			};
+		}
+		if ( surface.id === 'incidents' ) {
+			return {
+				...surface,
+				count: Number( incidentSummary.total || 0 ),
+			};
+		}
+		return {
+			...surface,
+			count: Number( summary.total || 0 ),
+		};
+	} );
+	const selectedSurface =
+		surfaces.find( ( surface ) => surface.id === activeSurface ) ||
+		surfaces[ 0 ];
+
+	let summaryItems = [
+		{
+			value: Number( summary.pending || 0 ),
+			label: 'Pending',
+		},
+		{
+			value: Number( summary.approved || 0 ),
+			label: 'Approved',
+		},
+		{
+			value: Number( summary.dismissed || 0 ),
+			label: 'Dismissed',
+		},
+	];
+
+	if ( activeSurface === 'memory' ) {
+		summaryItems = [
+			{
+				value: Number( memorySummary.pending || 0 ),
+				label: 'Pending',
+			},
+			{
+				value: Number( memorySummary.approved || 0 ),
+				label: 'Approved',
+			},
+			{
+				value: Number( memorySummary.dismissed || 0 ),
+				label: 'Dismissed',
+			},
+		];
+	}
+
+	if ( activeSurface === 'incidents' ) {
+		summaryItems = [
+			{
+				value: Number( incidentSummary.open || 0 ),
+				label: 'Open',
+			},
+			{
+				value: Number( incidentSummary.resolved || 0 ),
+				label: 'Resolved',
+			},
+			{
+				value: Number( incidentSummary.total || 0 ),
+				label: 'Total',
+			},
+		];
+	}
 
 	return (
 		<div className="aculect-ai-companion-learning-dashboard">
 			<div className="aculect-ai-companion-learning-toolbar">
 				<div>
-					<h2>Learning Review</h2>
-					<p>
-						Review MCP suggestions before they influence Aculect
-						Intelligence, and inspect incident reports submitted by
-						AI tools when plugin workflows fail.
-					</p>
+					<h2>{ selectedSurface.label }</h2>
+					<p>{ selectedSurface.description }</p>
 				</div>
 				<div className="aculect-ai-companion-learning-summary">
-					<span>
-						<strong>{ Number( summary.pending || 0 ) }</strong>
-						Pending
-					</span>
-					<span>
-						<strong>{ Number( summary.approved || 0 ) }</strong>
-						Approved
-					</span>
-					<span>
-						<strong>{ Number( summary.dismissed || 0 ) }</strong>
-						Dismissed
-					</span>
-					<span>
-						<strong>{ Number( memorySummary.total || 0 ) }</strong>
-						Memories
-					</span>
-					<span>
-						<strong>{ Number( incidentSummary.open || 0 ) }</strong>
-						Incidents
-					</span>
+					{ summaryItems.map( ( item ) => (
+						<span key={ item.label }>
+							<strong>{ item.value }</strong>
+							{ item.label }
+						</span>
+					) ) }
 				</div>
 			</div>
-			<section className="aculect-ai-companion-memory-section">
-				<div className="aculect-ai-companion-learning-section-heading">
-					<h3>Memory Records</h3>
-					<p>
-						Admin-reviewed durable guidance used by MCP workflows
-						alongside approved learning suggestions.
-					</p>
-				</div>
-				{ memories.length === 0 ? (
-					<EmptyState title="No memory records">
-						AI clients can call memory_bootstrap or memory_save
-						without a key and value to prepare initial memory for
-						review.
-					</EmptyState>
-				) : (
-					<div className="aculect-ai-companion-learning-list">
-						{ memories.map( ( record ) => (
-							<MemoryRecordCard
-								key={ record.key }
-								data={ data }
-								record={ record }
-							/>
-						) ) }
+			<div
+				className="aculect-ai-companion-learning-surface-nav"
+				role="tablist"
+				aria-label="Learning review surfaces"
+			>
+				{ surfaces.map( ( surface ) => {
+					const isSelected = surface.id === activeSurface;
+					return (
+						<Button
+							key={ surface.id }
+							type="button"
+							variant={ isSelected ? 'primary' : 'secondary' }
+							isPressed={ isSelected }
+							role="tab"
+							aria-selected={ isSelected }
+							onClick={ () => setActiveSurface( surface.id ) }
+						>
+							<span>{ surface.label }</span>
+							<span className="aculect-ai-companion-learning-surface-nav__count">
+								{ surface.count }
+							</span>
+						</Button>
+					);
+				} ) }
+			</div>
+			{ activeSurface === 'memory' && (
+				<section className="aculect-ai-companion-memory-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Memory Records</h3>
+						<p>
+							Admin-reviewed durable guidance used by MCP
+							workflows after explicit review.
+						</p>
 					</div>
-				) }
-			</section>
-			<section className="aculect-ai-companion-incident-section">
-				<div className="aculect-ai-companion-learning-section-heading">
-					<h3>Incident Reports</h3>
-					<p>
-						Local, sanitized reports prepared by MCP clients when a
-						plugin workflow or connector behavior fails.
-					</p>
-				</div>
-				{ incidents.length === 0 ? (
-					<EmptyState title="No incident reports">
-						AI clients can call plugin_incident_report to store a
-						local report and prepare a public GitHub issue draft.
-					</EmptyState>
-				) : (
-					<div className="aculect-ai-companion-learning-list">
-						{ incidents.map( ( report ) => (
-							<IncidentReportCard
-								key={ report.id }
-								report={ report }
-							/>
-						) ) }
+					{ memories.length === 0 ? (
+						<EmptyState title="No memory records">
+							AI clients can call memory_bootstrap or memory_save
+							without a key and value to prepare initial memory
+							for review.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ memories.map( ( record ) => (
+								<MemoryRecordCard
+									key={ record.key }
+									data={ data }
+									record={ record }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
+			) }
+			{ activeSurface === 'incidents' && (
+				<section className="aculect-ai-companion-incident-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Incident Reports</h3>
+						<p>
+							Local, sanitized reports prepared by MCP clients
+							when a plugin workflow or connector behavior fails.
+						</p>
 					</div>
-				) }
-			</section>
-			<section className="aculect-ai-companion-learning-section">
-				<div className="aculect-ai-companion-learning-section-heading">
-					<h3>Learning Suggestions</h3>
-					<p>
-						Review durable intelligence suggestions before they
-						influence future assistant behavior.
-					</p>
-				</div>
-				{ items.length === 0 ? (
-					<EmptyState title="No learning suggestions">
-						MCP clients can queue suggestions when site, content,
-						developer, or brand intelligence needs review.
-					</EmptyState>
-				) : (
-					<div className="aculect-ai-companion-learning-list">
-						{ items.map( ( suggestion ) => (
-							<LearningSuggestionCard
-								key={ suggestion.id }
-								data={ data }
-								suggestion={ suggestion }
-							/>
-						) ) }
+					{ incidents.length === 0 ? (
+						<EmptyState title="No incident reports">
+							AI clients can call plugin_incident_report to store
+							a local report and prepare a public GitHub issue
+							draft.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ incidents.map( ( report ) => (
+								<IncidentReportCard
+									key={ report.id }
+									report={ report }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
+			) }
+			{ activeSurface === 'suggestions' && (
+				<section className="aculect-ai-companion-learning-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Learning Suggestions</h3>
+						<p>
+							Review durable intelligence suggestions before they
+							influence future assistant behavior.
+						</p>
 					</div>
-				) }
-			</section>
+					{ items.length === 0 ? (
+						<EmptyState title="No learning suggestions">
+							MCP clients can queue suggestions when site,
+							content, developer, or brand intelligence needs
+							review.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ items.map( ( suggestion ) => (
+								<LearningSuggestionCard
+									key={ suggestion.id }
+									data={ data }
+									suggestion={ suggestion }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
+			) }
 		</div>
 	);
 }

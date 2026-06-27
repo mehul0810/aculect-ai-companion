@@ -21,8 +21,9 @@ final class ContentAbilitiesTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$GLOBALS['aculect_ai_companion_test_posts']   = array(
+		$GLOBALS['aculect_ai_companion_test_options']     = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+		$GLOBALS['aculect_ai_companion_test_posts']       = array(
 			123 => new \WP_Post(
 				array(
 					'ID'           => 123,
@@ -30,9 +31,11 @@ final class ContentAbilitiesTest extends TestCase {
 					'post_status'  => 'draft',
 					'post_title'   => 'Existing Draft',
 					'post_content' => '<!-- wp:paragraph --><p>Existing content.</p><!-- /wp:paragraph -->',
+					'post_excerpt' => 'Existing excerpt',
 				)
 			),
 		);
+		$GLOBALS['aculect_ai_companion_test_post_meta']   = array();
 
 		$this->registerTestBlocks();
 	}
@@ -202,6 +205,67 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( 'preview', $result['status'] );
 		self::assertSame( 'content.create_item', $result['action'] );
 		self::assertContains( 'content', array_column( $result['changes'], 'field' ) );
+	}
+
+	public function test_update_item_dry_run_diff_includes_unchanged_requested_fields(): void {
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'      => 123,
+				'title'   => 'Existing Draft',
+				'excerpt' => 'Updated excerpt',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+
+		$diff_by_field = array_column( $result['diff']['fields'], null, 'field' );
+		self::assertFalse( $diff_by_field['title']['changed'] );
+		self::assertSame( 'Existing Draft', $diff_by_field['title']['before']['value'] );
+		self::assertSame( 'Existing Draft', $diff_by_field['title']['after']['value'] );
+		self::assertTrue( $diff_by_field['excerpt']['changed'] );
+		self::assertSame( 'Updated excerpt', $diff_by_field['excerpt']['after']['value'] );
+		self::assertNotContains( 'title', array_column( $result['changes'], 'field' ) );
+		self::assertContains( 'excerpt', array_column( $result['changes'], 'field' ) );
+	}
+
+	public function test_update_item_dry_run_diff_summarizes_content_body(): void {
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'      => 123,
+				'content' => '<!-- wp:paragraph --><p>Updated content body for review.</p><!-- /wp:paragraph -->',
+				'dry_run' => true,
+			)
+		);
+
+		$diff_by_field = array_column( $result['diff']['fields'], null, 'field' );
+		self::assertTrue( $diff_by_field['content']['changed'] );
+		self::assertIsArray( $diff_by_field['content']['before']['value'] );
+		self::assertSame( 1, $diff_by_field['content']['before']['value']['block_count'] );
+		self::assertSame( array( 'core/paragraph' ), $diff_by_field['content']['after']['value']['blocks'] );
+		self::assertStringContainsString( 'Updated content body', $diff_by_field['content']['after']['value']['summary'] );
+	}
+
+	public function test_update_item_dry_run_redacts_previous_content_fields_without_read_access(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'read_post' );
+
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'      => 123,
+				'title'   => 'Public proposed title',
+				'dry_run' => true,
+			)
+		);
+
+		$diff_by_field = array_column( $result['diff']['fields'], null, 'field' );
+		self::assertFalse( $diff_by_field['title']['before']['available'] );
+		self::assertSame( 'not_readable', $diff_by_field['title']['before']['reason'] );
+		self::assertArrayNotHasKey( 'value', $diff_by_field['title']['before'] );
+		self::assertNull( $diff_by_field['title']['changed'] );
+
+		$changes_by_field = array_column( $result['changes'], null, 'field' );
+		self::assertNull( $changes_by_field['title']['from'] );
+		self::assertSame( 'Public proposed title', $changes_by_field['title']['to'] );
 	}
 
 	/**

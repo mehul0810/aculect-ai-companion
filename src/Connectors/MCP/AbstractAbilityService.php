@@ -819,15 +819,17 @@ abstract class AbstractAbilityService {
 	/**
 	 * Build a deterministic dry-run response.
 	 *
-	 * @param string               $action   Tool action.
-	 * @param array<string, mixed> $args     Tool arguments.
-	 * @param array<string, mixed> $target   Target object summary.
-	 * @param array<int, mixed>    $changes  Proposed changes.
-	 * @param string[]             $warnings Preview warnings.
+	 * @param string                    $action   Tool action.
+	 * @param array<string, mixed>      $args     Tool arguments.
+	 * @param array<string, mixed>      $target   Target object summary.
+	 * @param array<int, mixed>         $changes  Proposed changes.
+	 * @param string[]                  $warnings Preview warnings.
+	 * @param array<string, mixed>|null $diff     Reusable field-level diff.
 	 * @return array<string, mixed>
 	 */
-	protected function preview_response( string $action, array $args, array $target, array $changes, array $warnings = array() ): array {
-		$safety = new ToolSafety();
+	protected function preview_response( string $action, array $args, array $target, array $changes, array $warnings = array(), ?array $diff = null ): array {
+		$safety  = new ToolSafety();
+		$changes = array_values( array_filter( $changes ) );
 
 		return array(
 			'dry_run'               => true,
@@ -835,7 +837,8 @@ abstract class AbstractAbilityService {
 			'action'                => $action,
 			'risk_level'            => $safety->risk_level( $action, $args ),
 			'target'                => $target,
-			'changes'               => array_values( array_filter( $changes ) ),
+			'changes'               => $changes,
+			'diff'                  => $diff ?? $this->diff_from_changes( $changes ),
 			'warnings'              => array_values( $warnings ),
 			'confirmation_required' => $safety->requires_confirmation( $action, $args ),
 		);
@@ -858,6 +861,134 @@ abstract class AbstractAbilityService {
 			'field' => $field,
 			'from'  => $from,
 			'to'    => $to,
+		);
+	}
+
+	/**
+	 * Build a reusable field-level diff from change entries.
+	 *
+	 * @param array<int, mixed> $changes Proposed changes.
+	 * @return array<string, mixed>
+	 */
+	protected function diff_from_changes( array $changes ): array {
+		$fields = array();
+		foreach ( $changes as $change ) {
+			if ( ! is_array( $change ) || ! isset( $change['field'] ) || ! is_string( $change['field'] ) ) {
+				continue;
+			}
+
+			$fields[] = $this->field_diff( $change['field'], $change['from'] ?? null, $change['to'] ?? null );
+		}
+
+		return $this->diff_payload( $fields );
+	}
+
+	/**
+	 * Build a reusable diff payload.
+	 *
+	 * @param array<int, mixed> $fields Field diff entries.
+	 * @param array<int, mixed> $unsupported Unsupported or intentionally omitted fields.
+	 * @return array<string, mixed>
+	 */
+	protected function diff_payload( array $fields, array $unsupported = array() ): array {
+		return array(
+			'version'     => '1.0',
+			'type'        => 'field',
+			'fields'      => array_values( array_filter( $fields ) ),
+			'unsupported' => array_values( array_filter( $unsupported ) ),
+		);
+	}
+
+	/**
+	 * Build one field-level diff entry.
+	 *
+	 * @param string $field            Public field name.
+	 * @param mixed  $before           Existing value.
+	 * @param mixed  $after            Proposed value.
+	 * @param bool   $before_available Whether the existing value is readable.
+	 * @param string $reason           Reason the existing value is unavailable.
+	 * @return array<string, mixed>
+	 */
+	protected function field_diff( string $field, mixed $before, mixed $after, bool $before_available = true, string $reason = '' ): array {
+		$entry = array(
+			'field'   => $field,
+			'before'  => $this->diff_value( $field, $before, $before_available, $reason ),
+			'after'   => $this->diff_value( $field, $after, true ),
+			'changed' => $before_available ? $before !== $after : null,
+		);
+
+		return $entry;
+	}
+
+	/**
+	 * Normalize one diff value, redacting unavailable previous values.
+	 *
+	 * @param string $field     Public field name.
+	 * @param mixed  $value     Field value.
+	 * @param bool   $available Whether the value can be returned.
+	 * @param string $reason    Reason the value is unavailable.
+	 * @return array<string, mixed>
+	 */
+	private function diff_value( string $field, mixed $value, bool $available, string $reason = '' ): array {
+		if ( ! $available ) {
+			return array(
+				'available' => false,
+				'reason'    => '' !== $reason ? $reason : 'unavailable',
+			);
+		}
+
+		$result = array(
+			'available' => true,
+			'value'     => $this->normalize_diff_value( $field, $value ),
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Keep diff values bounded while preserving exact short field values.
+	 *
+	 * @param string $field Public field name.
+	 * @param mixed  $value Field value.
+	 * @return mixed
+	 */
+	private function normalize_diff_value( string $field, mixed $value ): mixed {
+		if ( 'content' === $field && is_string( $value ) ) {
+			return $this->content_diff_summary( $value );
+		}
+
+		if ( is_string( $value ) && strlen( $value ) > 500 ) {
+			return array(
+				'summary'   => wp_trim_words( wp_strip_all_tags( $value ), 60, '...' ),
+				'length'    => strlen( $value ),
+				'truncated' => true,
+			);
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Return a bounded content summary for dry-run diffs.
+	 *
+	 * @param string $content Serialized block content.
+	 * @return array<string, mixed>
+	 */
+	private function content_diff_summary( string $content ): array {
+		$block_names = array();
+		if ( function_exists( 'parse_blocks' ) ) {
+			foreach ( parse_blocks( $content ) as $block ) {
+				if ( is_array( $block ) && isset( $block['blockName'] ) && '' !== $block['blockName'] ) {
+					$block_names[] = $block['blockName'];
+				}
+			}
+		}
+
+		return array(
+			'summary'     => wp_trim_words( wp_strip_all_tags( $content ), 60, '...' ),
+			'length'      => strlen( $content ),
+			'block_count' => count( $block_names ),
+			'blocks'      => array_slice( $block_names, 0, 20 ),
 		);
 	}
 
@@ -889,6 +1020,43 @@ abstract class AbstractAbilityService {
 		}
 
 		return array_values( array_filter( $changes ) );
+	}
+
+	/**
+	 * Convert a post insert/update payload into reusable field-level diff entries.
+	 *
+	 * @param array<string, mixed> $from                  Current post fields.
+	 * @param array<string, mixed> $payload               Proposed post payload.
+	 * @param bool                 $before_values_readable Whether existing values are readable.
+	 * @return array<string, mixed>
+	 */
+	protected function post_payload_diff( array $from, array $payload, bool $before_values_readable = true ): array {
+		$map    = array(
+			'post_type'     => 'type',
+			'post_title'    => 'title',
+			'post_content'  => 'content',
+			'post_excerpt'  => 'excerpt',
+			'post_name'     => 'slug',
+			'post_status'   => 'status',
+			'post_author'   => 'author',
+			'post_date'     => 'date',
+			'post_date_gmt' => 'date_gmt',
+		);
+		$fields = array();
+
+		foreach ( $map as $payload_key => $field ) {
+			if ( array_key_exists( $payload_key, $payload ) ) {
+				$fields[] = $this->field_diff(
+					$field,
+					$from[ $payload_key ] ?? null,
+					$payload[ $payload_key ],
+					$before_values_readable,
+					'not_readable'
+				);
+			}
+		}
+
+		return $this->diff_payload( $fields );
 	}
 
 	/**

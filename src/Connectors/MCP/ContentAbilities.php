@@ -208,6 +208,13 @@ final class ContentAbilities extends AbstractAbilityService {
 		 */
 
 		if ( $this->is_dry_run( $data ) ) {
+			$additional_changes = array_merge(
+				$this->taxonomy_assignment_changes( $taxonomy_assignments ),
+				null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
+			);
+			$diff               = $this->post_payload_diff( array(), $payload );
+			$additional_diff    = $this->diff_from_changes( $additional_changes );
+
 			return $this->preview_response(
 				'content.create_item',
 				$data,
@@ -217,9 +224,10 @@ final class ContentAbilities extends AbstractAbilityService {
 				),
 				array_merge(
 					$this->post_payload_changes( array(), $payload ),
-					$this->taxonomy_assignment_changes( $taxonomy_assignments ),
-					null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
-				)
+					$additional_changes
+				),
+				array(),
+				$this->diff_payload( array_merge( $diff['fields'], $additional_diff['fields'] ) )
 			);
 		}
 
@@ -314,6 +322,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				}
 
 				if ( $this->is_dry_run( $data ) ) {
+					$can_read_before = current_user_can( 'read_post', $post_id );
 					return $this->preview_response(
 						'content.update_item',
 						$data,
@@ -322,9 +331,14 @@ final class ContentAbilities extends AbstractAbilityService {
 							'id'   => $post_id,
 						),
 						array(
-							$this->change( 'status', $post->post_status, 'trash' ),
+							$this->change( 'status', $can_read_before ? $post->post_status : null, 'trash' ),
 						),
-						array( 'This item will be moved to the WordPress trash and can be restored from the admin.' )
+						array( 'This item will be moved to the WordPress trash and can be restored from the admin.' ),
+						$this->diff_payload(
+							array(
+								$this->field_diff( 'status', $post->post_status, 'trash', $can_read_before, 'not_readable' ),
+							)
+						)
 					);
 				}
 
@@ -386,6 +400,27 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		if ( $this->is_dry_run( $data ) ) {
+			$from               = array(
+				'post_title'    => $post->post_title,
+				'post_content'  => $post->post_content,
+				'post_excerpt'  => $post->post_excerpt,
+				'post_name'     => $post->post_name,
+				'post_status'   => $post->post_status,
+				'post_author'   => (int) $post->post_author,
+				'post_date'     => $post->post_date,
+				'post_date_gmt' => $post->post_date_gmt,
+			);
+			$can_read_before    = current_user_can( 'read_post', $post_id );
+			$changes_from       = $can_read_before ? $from : array();
+			$additional_changes = array_merge(
+				$this->taxonomy_assignment_changes( $taxonomy_assignments, $can_read_before ? $post_id : 0 ),
+				! empty( $featured_media_change )
+					? array( $this->change( 'featured_media', $can_read_before ? get_post_thumbnail_id( $post_id ) : null, $featured_media_change['value'] ) )
+					: array()
+			);
+			$diff               = $this->post_payload_diff( $from, $update, $can_read_before );
+			$additional_diff    = $this->diff_from_changes( $additional_changes );
+
 			return $this->preview_response(
 				'content.update_item',
 				$data,
@@ -394,24 +429,11 @@ final class ContentAbilities extends AbstractAbilityService {
 					'id'   => $post_id,
 				),
 				array_merge(
-					$this->post_payload_changes(
-						array(
-							'post_title'    => $post->post_title,
-							'post_content'  => $post->post_content,
-							'post_excerpt'  => $post->post_excerpt,
-							'post_name'     => $post->post_name,
-							'post_status'   => $post->post_status,
-							'post_author'   => (int) $post->post_author,
-							'post_date'     => $post->post_date,
-							'post_date_gmt' => $post->post_date_gmt,
-						),
-						$update
-					),
-					$this->taxonomy_assignment_changes( $taxonomy_assignments, $post_id ),
-					! empty( $featured_media_change )
-						? array( $this->change( 'featured_media', get_post_thumbnail_id( $post_id ), $featured_media_change['value'] ) )
-						: array()
-				)
+					$this->post_payload_changes( $changes_from, $update ),
+					$additional_changes
+				),
+				array(),
+				$this->diff_payload( array_merge( $diff['fields'], $additional_diff['fields'] ) )
 			);
 		}
 

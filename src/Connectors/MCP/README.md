@@ -157,8 +157,34 @@ the connected user can edit both the attachment and the target parent post.
 
 Write-capable tools accept `dry_run: true` to validate the request and return a
 deterministic preview without changing WordPress data. Previews include the
-target object, proposed changes, warnings, risk level, and whether confirmation
-is required.
+target object, proposed changes, warnings, risk level, whether confirmation is
+required, and a reusable `diff` object for field-level review.
+
+Dry-run `diff` responses use this shape:
+
+```json
+{
+  "version": "1.0",
+  "type": "field",
+  "fields": [
+    {
+      "field": "title",
+      "before": { "available": true, "value": "Old title" },
+      "after": { "available": true, "value": "New title" },
+      "changed": true
+    }
+  ],
+  "unsupported": []
+}
+```
+
+`fields[].field` is the public tool field name, not a storage key. `before`
+values must be omitted with `{ "available": false, "reason": "not_readable" }`
+when the connected user can validate a write but cannot safely read the
+previous value. Long body fields are summarized in `diff` instead of returning
+unbounded serialized content. Keep the legacy `changes` array for compatibility,
+but prefer `diff` for new clients and future navigation, menu, and redirect
+write previews.
 
 High-risk actions such as publishing, trashing, spam changes, and running
 generic WordPress abilities require a short-lived `confirmation_token` before

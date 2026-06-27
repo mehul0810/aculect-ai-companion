@@ -35,6 +35,7 @@ final class SeoAbilities extends AbstractAbilityService {
 		if ( array() === $payload ) {
 			return $this->error( 'invalid_seo_fields', 'Provide meta_title, meta_description, or focus_keywords.' );
 		}
+		$field_payload = $this->seo_field_payload( $data, $adapter );
 
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
@@ -44,7 +45,9 @@ final class SeoAbilities extends AbstractAbilityService {
 					'type' => $post->post_type,
 					'id'   => $post_id,
 				),
-				$this->seo_payload_changes( $post_id, $payload )
+				$this->seo_payload_changes( $post_id, $payload, current_user_can( 'read_post', $post_id ) ),
+				array(),
+				$this->seo_payload_diff( $post_id, $field_payload, $adapter, current_user_can( 'read_post', $post_id ) )
 			);
 		}
 
@@ -161,32 +164,86 @@ final class SeoAbilities extends AbstractAbilityService {
 				continue;
 			}
 
-			$value = $data[ $field ];
-			if ( 'focus_keywords' === $field && is_array( $value ) ) {
-				$value = implode( ', ', array_map( 'sanitize_text_field', array_map( 'strval', $value ) ) );
-			}
-
-			$payload[ $fields[ $field ] ] = sanitize_text_field( (string) $value );
+			$payload[ $fields[ $field ] ] = $this->normalized_seo_value( $field, $data[ $field ] );
 		}
 
 		return $payload;
 	}
 
 	/**
+	 * Build sanitized SEO payload keyed by public field names.
+	 *
+	 * @param array<string, mixed> $data    SEO fields.
+	 * @param array<string, mixed> $adapter Adapter definition.
+	 * @return array<string, string>
+	 */
+	private function seo_field_payload( array $data, array $adapter ): array {
+		$fields  = isset( $adapter['fields'] ) && is_array( $adapter['fields'] ) ? $adapter['fields'] : array();
+		$payload = array();
+
+		foreach ( array( 'meta_title', 'meta_description', 'focus_keywords' ) as $field ) {
+			if ( ! array_key_exists( $field, $data ) || empty( $fields[ $field ] ) || ! is_string( $fields[ $field ] ) ) {
+				continue;
+			}
+
+			$payload[ $field ] = $this->normalized_seo_value( $field, $data[ $field ] );
+		}
+
+		return $payload;
+	}
+
+	/**
+	 * Normalize a submitted SEO value.
+	 *
+	 * @param string $field SEO field.
+	 * @param mixed  $value Raw submitted value.
+	 */
+	private function normalized_seo_value( string $field, mixed $value ): string {
+		if ( 'focus_keywords' === $field && is_array( $value ) ) {
+			$value = implode( ', ', array_map( 'sanitize_text_field', array_map( 'strval', $value ) ) );
+		}
+
+		return sanitize_text_field( (string) $value );
+	}
+
+	/**
 	 * Build dry-run changes for SEO metadata.
 	 *
-	 * @param int                   $post_id Post ID.
-	 * @param array<string, string> $payload Proposed meta payload.
+	 * @param int                   $post_id                Post ID.
+	 * @param array<string, string> $payload                Proposed meta payload.
+	 * @param bool                  $before_values_readable Whether existing values are readable.
 	 * @return list<array<string, mixed>>
 	 */
-	private function seo_payload_changes( int $post_id, array $payload ): array {
+	private function seo_payload_changes( int $post_id, array $payload, bool $before_values_readable = true ): array {
 		$changes = array();
 
 		foreach ( $payload as $meta_key => $value ) {
-			$changes[] = $this->change( $meta_key, get_post_meta( $post_id, $meta_key, true ), $value );
+			$changes[] = $this->change( $meta_key, $before_values_readable ? get_post_meta( $post_id, $meta_key, true ) : null, $value );
 		}
 
 		return array_values( array_filter( $changes ) );
+	}
+
+	/**
+	 * Build reusable dry-run diff for public SEO fields.
+	 *
+	 * @param int                   $post_id Post ID.
+	 * @param array<string, string> $payload Proposed public SEO field payload.
+	 * @param array<string, mixed>  $adapter Adapter definition.
+	 * @param bool                  $before_values_readable Whether existing values are readable.
+	 * @return array<string, mixed>
+	 */
+	private function seo_payload_diff( int $post_id, array $payload, array $adapter, bool $before_values_readable ): array {
+		$fields = isset( $adapter['fields'] ) && is_array( $adapter['fields'] ) ? $adapter['fields'] : array();
+		$diff   = array();
+
+		foreach ( $payload as $field => $value ) {
+			$meta_key = $fields[ $field ] ?? '';
+			$before   = is_string( $meta_key ) && '' !== $meta_key ? get_post_meta( $post_id, $meta_key, true ) : null;
+			$diff[]   = $this->field_diff( $field, $before, $value, $before_values_readable, 'not_readable' );
+		}
+
+		return $this->diff_payload( $diff );
 	}
 
 	/**

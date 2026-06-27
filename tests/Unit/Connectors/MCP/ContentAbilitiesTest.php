@@ -40,6 +40,12 @@ final class ContentAbilitiesTest extends TestCase {
 		$this->registerTestBlocks();
 	}
 
+	protected function tearDown(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+
+		parent::tearDown();
+	}
+
 	public function test_post_date_payload_accepts_site_local_iso_date(): void {
 		$payload = $this->postDatePayload( '2026-06-01T09:30:00' );
 

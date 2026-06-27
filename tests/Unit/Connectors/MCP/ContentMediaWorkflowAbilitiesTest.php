@@ -23,6 +23,7 @@ final class ContentMediaWorkflowAbilitiesTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
 		$GLOBALS['aculect_ai_companion_test_post_meta']       = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
@@ -150,6 +151,7 @@ final class ContentMediaWorkflowAbilitiesTest extends TestCase {
 			array(
 				'post_id'     => 123,
 				'source_type' => 'image_data',
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Unit test fixture for data URL parsing.
 				'data_url'    => 'data:image/png;base64,' . base64_encode( 'png-bytes' ),
 				'target'      => 'insert_block',
 				'block_type'  => 'gallery',

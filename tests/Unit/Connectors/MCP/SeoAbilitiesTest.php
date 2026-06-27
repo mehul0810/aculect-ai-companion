@@ -43,6 +43,12 @@ final class SeoAbilitiesTest extends TestCase {
 		);
 	}
 
+	protected function tearDown(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+
+		parent::tearDown();
+	}
+
 	public function test_update_seo_dry_run_includes_changed_and_unchanged_public_diff_fields(): void {
 		$result = ( new SeoAbilities() )->update_seo(
 			array(

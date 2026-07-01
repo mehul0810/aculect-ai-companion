@@ -129,6 +129,33 @@ if ( ! function_exists( 'is_multisite' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_current_blog_id' ) ) {
+	/**
+	 * Return the current test site ID.
+	 */
+	function get_current_blog_id(): int {
+		return (int) ( $GLOBALS['aculect_ai_companion_test_blog_id'] ?? 1 );
+	}
+}
+
+if ( ! function_exists( 'get_stylesheet' ) ) {
+	/**
+	 * Return the active test stylesheet.
+	 */
+	function get_stylesheet(): string {
+		return (string) ( $GLOBALS['aculect_ai_companion_test_stylesheet'] ?? 'test-theme' );
+	}
+}
+
+if ( ! function_exists( 'get_template' ) ) {
+	/**
+	 * Return the active test template.
+	 */
+	function get_template(): string {
+		return (string) ( $GLOBALS['aculect_ai_companion_test_template'] ?? get_stylesheet() );
+	}
+}
+
 if ( ! function_exists( 'wp_timezone' ) ) {
 	/**
 	 * Return the test site timezone.
@@ -1619,6 +1646,57 @@ if ( ! class_exists( 'WP_Block_Patterns_Registry' ) ) {
 		 */
 		public function unregister_all(): void {
 			$GLOBALS['aculect_ai_companion_test_patterns'] = array();
+		}
+	}
+}
+
+if ( ! class_exists( 'WP_Block_Pattern_Categories_Registry' ) ) {
+	/**
+	 * Minimal block pattern categories registry test double.
+	 */
+	class WP_Block_Pattern_Categories_Registry {
+
+		private static ?self $instance = null;
+
+		/**
+		 * Return the singleton registry.
+		 */
+		public static function get_instance(): self {
+			if ( null === self::$instance ) {
+				self::$instance = new self();
+			}
+
+			return self::$instance;
+		}
+
+		/**
+		 * Register a test pattern category.
+		 *
+		 * @param string              $name     Category name.
+		 * @param array<string,mixed> $category Category metadata.
+		 */
+		public function register( string $name, array $category ): bool {
+			$category['name'] = $category['name'] ?? $name;
+
+			$GLOBALS['aculect_ai_companion_test_pattern_categories'][ $name ] = $category;
+
+			return true;
+		}
+
+		/**
+		 * Return all registered test pattern categories.
+		 *
+		 * @return array<string, array<string, mixed>>
+		 */
+		public function get_all_registered(): array {
+			return $GLOBALS['aculect_ai_companion_test_pattern_categories'] ?? array();
+		}
+
+		/**
+		 * Reset registered test pattern categories.
+		 */
+		public function unregister_all(): void {
+			$GLOBALS['aculect_ai_companion_test_pattern_categories'] = array();
 		}
 	}
 }

@@ -13,7 +13,10 @@ use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use PHPUnit\Framework\TestCase;
+
+require_once dirname( __DIR__, 3 ) . '/fixtures/wordpress-abilities-stubs.php';
 
 /**
  * Verifies the intelligence operation map and MCP discovery share policy.
@@ -25,6 +28,8 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities']    = array();
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
 			7  => (object) array(
 				'ID'           => 7,
@@ -37,6 +42,12 @@ final class McpToolAvailabilityTest extends TestCase {
 				'roles'        => array(),
 				'display_name' => 'No Role',
 				'user_login'   => 'norole',
+			),
+			21 => (object) array(
+				'ID'           => 21,
+				'roles'        => array( 'administrator' ),
+				'display_name' => 'Ada Admin',
+				'user_login'   => 'ada',
 			),
 		);
 	}
@@ -158,7 +169,26 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'missing_role', $operations['content']['update']['blocked_by'] );
 	}
 
-	public function test_workflow_operations_are_available_when_atomic_operations_are_disabled(): void {
+	public function test_admin_inherits_user_enabled_workflows_when_dependencies_are_allowed(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.create_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read', 'content:draft' ) );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertArrayHasKey( 'workflows', $operations );
+		self::assertTrue( $operations['workflows']['create_draft']['available'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
+		self::assertTrue( $operations['workflows']['create_draft']['derived'] );
+		self::assertSame( array( 'content.create_item' ), $operations['workflows']['create_draft']['dependency_ids'] );
+		self::assertSame( 'derived_from_allowed_dependencies', $operations['workflows']['create_draft']['availability_model'] );
+		self::assertContains( 'content_workflow_create_draft', $tool_names );
+	}
+
+	public function test_workflow_operations_are_blocked_when_atomic_operations_are_globally_disabled(): void {
 		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
 
 		$registry = new AbilitiesRegistry();
@@ -168,40 +198,14 @@ final class McpToolAvailabilityTest extends TestCase {
 		$tools      = ( new McpController() )->tool_manifest_for_current_user();
 		$tool_names = array_column( $tools['tools'], 'name' );
 
-		self::assertArrayHasKey( 'workflows', $operations );
-		self::assertArrayHasKey( 'intelligence_index', $operations );
 		self::assertFalse( $operations['content']['create']['available'] );
 		self::assertSame( 'global_disabled', $operations['content']['create']['blocked_by'] );
-		self::assertTrue( $operations['workflows']['route_request']['available'] );
-		self::assertTrue( $operations['workflows']['route_request']['always_on'] );
-		self::assertSame( 'workflow_route_request', $operations['workflows']['route_request']['tool'] );
-		self::assertTrue( $operations['workflows']['create_draft']['available'] );
-		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
-		self::assertTrue( $operations['workflows']['create_draft']['derived'] );
-		self::assertSame( array( 'content.create_item' ), $operations['workflows']['create_draft']['dependency_ids'] );
-		self::assertSame( 'always_on_workflow', $operations['workflows']['create_draft']['availability_model'] );
-		self::assertContains( 'content_workflow_create_draft', $tool_names );
+		self::assertFalse( $operations['workflows']['create_draft']['available'] );
+		self::assertSame( 'global_disabled:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertNotContains( 'content_workflow_create_draft', $tool_names );
 	}
 
-	public function test_workflow_operations_are_derived_from_allowed_dependencies(): void {
-		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
-
-		$registry = new AbilitiesRegistry();
-		$registry->save_enabled_ids( array( 'content.create_item' ) );
-
-		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
-		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry );
-
-		self::assertTrue( $operations['workflows']['create_draft']['available'] );
-		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
-		self::assertSame( 'content_workflow_create_draft', $operations['workflows']['create_draft']['tool'] );
-		self::assertTrue( $operations['workflows']['create_draft']['derived'] );
-		self::assertSame( 'always_on_workflow', $operations['workflows']['create_draft']['availability_model'] );
-		self::assertSame( array( 'content_create_item' ), $operations['workflows']['create_draft']['dependency_tools'] );
-		self::assertArrayHasKey( 'content_workflow.create_draft', $modules );
-	}
-
-	public function test_derived_workflow_operations_respect_oauth_scopes_not_role_dependency_blocks(): void {
+	public function test_non_admin_workflows_keep_existing_role_policy_behavior(): void {
 		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
 
 		$registry = new AbilitiesRegistry();
@@ -211,8 +215,9 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertFalse( $operations['content']['create']['available'] );
 		self::assertSame( 'role_default_read_only', $operations['content']['create']['blocked_by'] );
-		self::assertTrue( $operations['workflows']['create_draft']['available'] );
-		self::assertArrayNotHasKey( 'blocked_by', $operations['workflows']['create_draft'] );
+		self::assertFalse( $operations['workflows']['create_draft']['available'] );
+		self::assertSame( 'role_default_read_only:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertArrayNotHasKey( 'content_workflow.create_draft', ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry ) );
 
 		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array( 'content:read' ) );
@@ -220,6 +225,56 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['workflows']['create_draft']['available'] );
 		self::assertSame( 'oauth_scope', $operations['workflows']['create_draft']['blocked_by'] );
 		self::assertSame( array( 'content:draft' ), $operations['workflows']['create_draft']['missing_scopes'] );
+	}
+
+	public function test_workflow_operations_respect_explicit_non_admin_role_enablement(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
+
+		$registry = new AbilitiesRegistry();
+		$policy   = new RoleAbilitiesPolicy();
+
+		$registry->save_enabled_ids( array( 'content.create_item' ) );
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+		$policy->save_role_policy( 'editor', array( 'content.create_item' ), $registry );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry, array( 'content:read', 'content:draft' ) );
+		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array( 'content:read', 'content:draft' ) );
+
+		self::assertTrue( $operations['content']['create']['available'] );
+		self::assertTrue( $operations['workflows']['create_draft']['available'] );
+		self::assertArrayHasKey( 'content_workflow.create_draft', $modules );
+	}
+
+	public function test_workflow_operations_respect_static_capability_dependency_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'site.get_info', 'site.get_health' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$modules    = ( new McpToolAvailability() )->tool_modules_for_user( 21, $registry, null, array( 'content:read' ) );
+
+		self::assertTrue( $operations['site_information']['get_info']['available'] );
+		self::assertFalse( $operations['site_information']['get_health']['available'] );
+		self::assertSame( 'capability', $operations['site_information']['get_health']['blocked_by'] );
+		self::assertFalse( $operations['workflows']['site_audit']['available'] );
+		self::assertSame( 'capability:site.get_health', $operations['workflows']['site_audit']['blocked_by'] );
+		self::assertArrayNotHasKey( 'site_workflow.audit', $modules );
+	}
+
+	public function test_wordpress_ability_diagnostics_report_capability_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, null, array( 'content:read' ) );
+
+		self::assertFalse( $operations['admin_menu']['get_context']['available'] );
+		self::assertSame( 'capability', $operations['admin_menu']['get_context']['blocked_by'] );
+		self::assertSame( 'capability_blocked', $operations['admin_menu']['get_context']['wordpress_ability']['status'] );
+		self::assertFalse( $operations['admin_menu']['get_context']['wordpress_ability']['capable'] );
 	}
 
 	public function test_intelligence_index_operations_are_reported_with_read_and_write_policy(): void {

@@ -1278,6 +1278,7 @@ final class McpController {
 
 		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
 		$role_policy       = new RoleAbilitiesPolicy();
+		$availability      = new McpToolAvailability();
 
 		if ( $is_policy_managed && ! $registry->is_enabled( $tool ) ) {
 			return 'tool_disabled';
@@ -1287,17 +1288,23 @@ final class McpController {
 			return 'tool_forbidden_for_role';
 		}
 
-		if ( ! $registry->is_derived_workflow( $tool ) ) {
-			foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-				$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
+		if ( ! $availability->capabilities_available( $tool ) ) {
+			return 'tool_forbidden_by_capability';
+		}
 
-				if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
-					return 'tool_disabled';
-				}
+		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
+			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
 
-				if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
-					return 'tool_forbidden_for_role';
-				}
+			if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
+				return 'tool_disabled';
+			}
+
+			if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
+				return 'tool_forbidden_for_role';
+			}
+
+			if ( ! $availability->capabilities_available( $dependency_id ) ) {
+				return 'tool_forbidden_by_capability';
 			}
 		}
 

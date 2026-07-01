@@ -71,6 +71,7 @@ final class McpToolAvailability {
 			$modules,
 			fn ( AbilityModuleInterface $module ): bool => $this->module_allowed( $module->id(), $global_enabled, $role_allowed, $registry )
 				&& $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry, $scopes )
+				&& $this->capabilities_available( $module->id() )
 				&& $this->scopes_available( $module->required_scopes(), $scopes )
 		);
 	}
@@ -96,6 +97,7 @@ final class McpToolAvailability {
 				$all_ids,
 				fn ( string $ability_id ): bool => $this->module_allowed( $ability_id, $global_enabled, $role_allowed, $registry )
 					&& $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry, $scopes )
+					&& $this->capabilities_available( $ability_id )
 					&& $this->scopes_available( $registry->required_scopes( $ability_id ), $scopes )
 			)
 		);
@@ -388,11 +390,14 @@ final class McpToolAvailability {
 		$blocked_by           = '';
 		$blocked_dependencies = array();
 		$missing_scopes       = array();
+		$wp_metadata          = $wp_abilities->operation_metadata( $ability_id, $registry );
 
 		if ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
 		} elseif ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $role_allowed, true ) ) {
 			$blocked_by = $this->role_block_reason( $policy, $module );
+		} elseif ( ! $this->capabilities_available( $ability_id ) || 'capability_blocked' === ( $wp_metadata['status'] ?? '' ) ) {
+			$blocked_by = 'capability';
 		} elseif ( $scope_aware && ! $this->scopes_available( $required_scopes, $granted_scopes ) ) {
 			$blocked_by     = 'oauth_scope';
 			$missing_scopes = $this->missing_scopes( $required_scopes, $granted_scopes );
@@ -400,11 +405,14 @@ final class McpToolAvailability {
 			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
 				$dependency = $registry->module( $dependency_id );
 
-				if ( ! $is_derived_workflow && ! in_array( $dependency_id, $global_enabled, true ) ) {
+				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
 					$blocked_by             = 'global_disabled';
 					$blocked_dependencies[] = $dependency_id;
-				} elseif ( ! $is_derived_workflow && ! in_array( $dependency_id, $role_allowed, true ) ) {
+				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
 					$blocked_by             = $this->role_block_reason( $policy, $dependency );
+					$blocked_dependencies[] = $dependency_id;
+				} elseif ( ! $this->capabilities_available( $dependency_id ) ) {
+					$blocked_by             = 'capability';
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( $scope_aware ) {
 					$dependency_scopes = null === $dependency ? $registry->required_scopes( $dependency_id ) : $dependency->required_scopes();
@@ -424,14 +432,14 @@ final class McpToolAvailability {
 			'available'         => $available,
 			'required_scopes'   => array_values( $required_scopes ),
 			'read_only'         => $is_read_only,
-			'wordpress_ability' => $wp_abilities->operation_metadata( $ability_id, $registry ),
+			'wordpress_ability' => $wp_metadata,
 		);
 
 		if ( $is_derived_workflow ) {
 			$entry['derived']            = true;
 			$entry['dependency_ids']     = $registry->dependency_ids( $ability_id );
 			$entry['dependency_tools']   = array_values( array_map( array( $registry, 'tool_name' ), $entry['dependency_ids'] ) );
-			$entry['availability_model'] = 'always_on_workflow';
+			$entry['availability_model'] = 'derived_from_allowed_dependencies';
 		}
 
 		if ( $is_always_on ) {
@@ -452,11 +460,7 @@ final class McpToolAvailability {
 	}
 
 	/**
-	 * Check workflow dependency scopes.
-	 *
-	 * First-party workflows are callable even when their atomic operations are
-	 * hidden by global or role policy. The workflow service still enforces OAuth
-	 * scopes, confirmations, and WordPress capabilities before writes occur.
+	 * Check workflow dependency policy, scopes, and known static capabilities.
 	 *
 	 * @param string            $ability_id     Ability ID.
 	 * @param string[]          $global_enabled Globally enabled IDs.
@@ -466,9 +470,12 @@ final class McpToolAvailability {
 	 * @phpstan-param list<string>|null $granted_scopes
 	 */
 	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry, ?array $granted_scopes = null ): bool {
-		$ignore_policy = $registry->is_derived_workflow( $ability_id );
 		foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
-			if ( ! $ignore_policy && ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) ) {
+			if ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) {
+				return false;
+			}
+
+			if ( ! $this->capabilities_available( $dependency_id ) ) {
 				return false;
 			}
 
@@ -478,6 +485,54 @@ final class McpToolAvailability {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Check known static WordPress capability gates for operation discovery.
+	 *
+	 * Object-scoped checks such as edit_post/read_post still run at execution
+	 * time because diagnostics do not have the target object ID.
+	 *
+	 * @param string $ability_id Ability ID.
+	 */
+	public function capabilities_available( string $ability_id ): bool {
+		if ( ! function_exists( 'current_user_can' ) ) {
+			return true;
+		}
+
+		foreach ( $this->required_capabilities( $ability_id ) as $capability ) {
+			if ( ! current_user_can( $capability ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Return static WordPress capabilities required before an operation can run.
+	 *
+	 * @param string $ability_id Ability ID.
+	 * @return list<string>
+	 */
+	private function required_capabilities( string $ability_id ): array {
+		return match ( $ability_id ) {
+			'site.get_health' => array( 'manage_options' ),
+			'site.list_plugins' => array( 'activate_plugins' ),
+			'site.list_themes' => array( 'switch_themes' ),
+			'site_editor.get_context',
+			'site_editor.refresh_context',
+			'site_editor.list_templates',
+			'site_editor.get_template',
+			'site_editor.list_template_parts',
+			'site_editor.get_template_part' => array( 'edit_theme_options' ),
+			'admin_menu.get_context',
+			'admin_menu.refresh_context',
+			'admin_menu.list_pages',
+			'admin_menu.get_navigation_target',
+			'admin_menu.list_settings' => array( 'manage_options' ),
+			default => array(),
+		};
 	}
 
 	/**

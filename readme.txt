@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.6.0
+Stable tag: 0.6.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -227,14 +227,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.6.0 AI Companion experience.
+1. Overview tab showing the 0.6.1 AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, read/write access, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.6.0 release notes.
+8. Changelog tab with the current 0.6.1 release notes.
 
 == Development ==
 

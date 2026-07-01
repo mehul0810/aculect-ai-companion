@@ -24,12 +24,12 @@ final class ReleaseMetadataTest extends TestCase {
 		$lockfile = $this->json_file( $root . '/package-lock.json' );
 		$log      = $this->json_file( $root . '/changelog.json' );
 
-		self::assertSame( '0.6.0', $this->header( $plugin, 'Version' ) );
-		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.6.0' );", $plugin );
-		self::assertSame( '0.6.0', $this->header( $readme, 'Stable tag' ) );
-		self::assertSame( '0.6.0', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.6.0', (string) ( $lockfile['version'] ?? '' ) );
-		self::assertSame( '0.6.0', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertSame( '0.6.1', $this->header( $plugin, 'Version' ) );
+		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.6.1' );", $plugin );
+		self::assertSame( '0.6.1', $this->header( $readme, 'Stable tag' ) );
+		self::assertSame( '0.6.1', (string) ( $package['version'] ?? '' ) );
+		self::assertSame( '0.6.1', (string) ( $lockfile['version'] ?? '' ) );
+		self::assertSame( '0.6.1', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 		self::assertArrayHasKey( '0.6.0', $log );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );

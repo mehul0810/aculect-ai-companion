@@ -37,3 +37,18 @@ When `ACULECT_SMOKE_MCP_BEARER_TOKEN` is provided, the smoke also calls the MCP 
 Connect approval and OAuth consent/revoke are still manual seeded-flow checks. When their optional proof URL variables are provided, `summary.json` records them as `manual-proof-recorded`; otherwise it keeps the specific flow in `deferred`. Use scrubbed screenshots or release-brief artifact links only, never URLs that expose tokens, private site data, customer data, or private MCP connection details.
 
 If `ACULECT_SMOKE_MCP_BEARER_TOKEN` is omitted, the UI smoke still runs and `summary.json` records authenticated MCP discovery as skipped.
+
+## MCP Live-Client Discovery Smoke
+
+Run the focused live-client discovery smoke after connecting an external MCP client and minting a safe test access token:
+
+```bash
+ACULECT_MCP_SMOKE_BASE_URL="https://example.test" \
+ACULECT_MCP_SMOKE_BEARER_TOKEN="redacted-test-token" \
+ACULECT_MCP_SMOKE_RECONNECT_PROOF_URL="artifacts/smoke/mcp-live-client/manual/client-reconnect.png" \
+npm run smoke:mcp-live-client
+```
+
+The smoke calls `initialize` twice, follows every `tools/list` page twice, and records only counts, pagination status, and SHA-256 fingerprints. When `ACULECT_MCP_SMOKE_RECONNECT_PROOF_URL` is provided, it repeats `initialize` and full `tools/list` collection after the external client reconnect/cache-refresh proof step. Use `ACULECT_MCP_SMOKE_RECONNECT_WAIT_MS` when the tester needs a pause before that post-refresh check.
+
+The summary never writes bearer tokens or raw tool payloads. If reconnect proof is omitted, the baseline deterministic discovery check still runs and `summary.json` marks the external reconnect/cache-refresh proof as deferred.

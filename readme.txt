@@ -2,7 +2,7 @@
 Contributors: mehul0810
 Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 8.2
 Stable tag: 0.6.0
 License: GPL-2.0-or-later
@@ -79,6 +79,7 @@ Long-form content workflows:
 * Create a draft from validated serialized WordPress block content
 * Update an existing post with block-safe content workflows
 * Update Rank Math SEO title, description, and focus keywords when Rank Math is active
+* Inspect recent Rank Math 404 Monitor entries and prepare safe Rank Math redirects when those modules are active
 
 Content:
 
@@ -88,6 +89,13 @@ Content:
 * Create a post, page, or custom content item with optional featured image, author, and taxonomy assignments
 * Update title, content, excerpt, slug, status, featured image, author, or taxonomy assignments for an existing item
 * Update SEO title, SEO description, and focus keywords for supported SEO plugins
+
+Redirects and 404 workflows:
+
+* List bounded Rank Math redirection rules when Rank Math Redirections is active
+* Validate proposed Rank Math redirects before saving them
+* Create one or more Rank Math redirects with per-item results and dry-run support
+* Review recent Rank Math 404 Monitor entries with query strings redacted
 
 Content groups:
 
@@ -177,6 +185,10 @@ Yes. Aculect AI Companion includes guided content workflows for planning long-fo
 
 Yes. Aculect AI Companion can update supported Rank Math SEO fields, including SEO title, meta description, and focus keywords, when Rank Math is active and the connected user has permission to edit the content.
 
+= Does Aculect AI Companion support Rank Math redirects? =
+
+Yes. When Rank Math and the relevant Rank Math modules are active, Aculect AI Companion can list redirects, validate proposed redirects, create redirects with dry-run support, and inspect recent 404 Monitor entries for users with the required permissions.
+
 = Can I disconnect access? =
 
 Yes. Open AI Companion > Connections and disconnect one AI assistant or all active AI assistants.
@@ -250,6 +262,15 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.6.1 =
+
+* Fixed the Learning tab so Learning Suggestions, Memory Records, and Incident Reports are separated into clear review surfaces without a large blank layout gap.
+* Added Rank Math redirect and recent 404 workflow abilities for listing redirects, validating redirect proposals, creating redirects with dry-run support, and reviewing recent 404 Monitor entries.
+* Improved MCP connection discovery and ability hydration reliability with deterministic registry fingerprints, cache refresh handling, and connector diagnostics.
+* Added a release-candidate visual and workflow regression gate with browser smoke coverage for critical admin tabs and Learning surface separation.
+* Added optional authenticated MCP `tools/list` release smoke coverage with bounded, public-safe summary artifacts.
+* Added field-level diff output to dry-run write responses so reviewers can inspect intended changes before applying supported writes.
 
 = 0.6.0 =
 
@@ -383,6 +404,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.6.1 =
+
+Fixes the Learning tab review layout, adds Rank Math redirect and recent 404 workflows, improves MCP discovery reliability, and adds release-readiness smoke coverage and dry-run field diffs.
 
 = 0.6.0 =
 

@@ -18,6 +18,12 @@ Optional environment:
   ACULECT_SMOKE_ADMIN_PATH    Defaults to /wp-admin/options-general.php?page=aculect-ai-companion
   ACULECT_SMOKE_ARTIFACT_DIR  Defaults to artifacts/smoke/release-ui
   ACULECT_SMOKE_HEADLESS      Defaults to true. Set to false to watch the browser.
+  ACULECT_SMOKE_CONNECT_PROOF_URL
+                                Optional public-safe artifact URL for manual Connect approval proof.
+  ACULECT_SMOKE_OAUTH_CONSENT_PROOF_URL
+                                Optional public-safe artifact URL for manual OAuth consent proof.
+  ACULECT_SMOKE_OAUTH_REVOKE_PROOF_URL
+                                Optional public-safe artifact URL for manual OAuth revoke proof.
   ACULECT_SMOKE_MCP_BEARER_TOKEN
                                 Optional OAuth access token for authenticated MCP tools/list smoke.
   ACULECT_SMOKE_MCP_PATH       Defaults to /wp-json/aculect-ai-companion/v1/mcp
@@ -88,6 +94,11 @@ function requiredConfig() {
 			'artifacts/smoke/release-ui'
 		),
 		headless: boolEnv( 'ACULECT_SMOKE_HEADLESS', true ),
+		manualProof: {
+			connectApproval: envValue( 'ACULECT_SMOKE_CONNECT_PROOF_URL' ),
+			oauthConsent: envValue( 'ACULECT_SMOKE_OAUTH_CONSENT_PROOF_URL' ),
+			oauthRevoke: envValue( 'ACULECT_SMOKE_OAUTH_REVOKE_PROOF_URL' ),
+		},
 		mcpBearerToken: envValue( 'ACULECT_SMOKE_MCP_BEARER_TOKEN' ),
 		mcpPath: envValue(
 			'ACULECT_SMOKE_MCP_PATH',
@@ -116,6 +127,43 @@ function requiredConfig() {
 	}
 
 	return config;
+}
+
+function manualProofSummary( config ) {
+	const flows = [
+		{
+			key: 'connectApproval',
+			label: 'Connect approval flow',
+			url: config.manualProof.connectApproval,
+		},
+		{
+			key: 'oauthConsent',
+			label: 'OAuth consent flow',
+			url: config.manualProof.oauthConsent,
+		},
+		{
+			key: 'oauthRevoke',
+			label: 'OAuth revoke flow',
+			url: config.manualProof.oauthRevoke,
+		},
+	];
+
+	return flows.reduce(
+		( summary, flow ) => {
+			const status = flow.url ? 'manual-proof-recorded' : 'deferred';
+			summary.flows[ flow.key ] = {
+				status,
+				proofUrl: flow.url || null,
+			};
+
+			if ( status === 'deferred' ) {
+				summary.deferred.push( flow.label );
+			}
+
+			return summary;
+		},
+		{ flows: {}, deferred: [] }
+	);
 }
 
 function siteUrl( baseUrl, requestPath ) {
@@ -498,10 +546,8 @@ async function main() {
 			context.request,
 			config
 		);
-		const deferred = [
-			'Connect approval flow',
-			'OAuth consent and revoke flow',
-		];
+		const manualProof = manualProofSummary( config );
+		const deferred = [ ...manualProof.deferred ];
 		if ( mcpToolsList.status !== 'passed' ) {
 			deferred.push( 'Authenticated MCP tools/list discovery' );
 		}
@@ -513,6 +559,7 @@ async function main() {
 			viewports: VIEWPORTS,
 			tabs: TABS.map( ( tab ) => tab.name ),
 			screenshots,
+			manualProof: manualProof.flows,
 			mcpToolsList,
 			deferred,
 		};

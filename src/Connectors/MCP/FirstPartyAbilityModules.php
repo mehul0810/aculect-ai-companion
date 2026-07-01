@@ -496,6 +496,31 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ContentAbilities() )->get_item( (int) ( $args['id'] ?? 0 ) )
 			),
 			$this->module(
+				'content.get_seo',
+				'Read SEO Metadata',
+				'Read saved SEO title, meta description, and focus keywords for supported active SEO plugins.',
+				'Content',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'id'     => array( 'type' => 'integer' ),
+						'plugin' => array(
+							'type'        => 'string',
+							'enum'        => array( 'auto', 'yoast', 'rank_math' ),
+							'description' => 'Supported SEO metadata source. Defaults to auto-detect.',
+						),
+						'source' => array(
+							'type'        => 'string',
+							'enum'        => array( 'auto', 'yoast', 'rank_math' ),
+							'description' => 'Alias for plugin when clients prefer source terminology.',
+						),
+					),
+					array( 'id' )
+				),
+				static fn ( array $args ): array => ( new SeoAbilities() )->get_seo( $args )
+			),
+			$this->module(
 				'content.create_item',
 				'Create a Post or Page',
 				'Create a post, page, or custom content item.',

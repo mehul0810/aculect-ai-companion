@@ -153,6 +153,12 @@ updating attachment title, alt text, caption, description, slug, and attachment
 parent. Updating `post_id` changes the attachment parent relationship only after
 the connected user can edit both the attachment and the target parent post.
 
+`content_get_seo` reads saved SEO title, meta description, and focus keywords
+for a connected user's readable content item through supported active SEO
+plugin adapters. It does not expose arbitrary post meta, and unsupported,
+inactive, inaccessible, missing, and adapter-failure states return distinct
+public-safe errors.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a

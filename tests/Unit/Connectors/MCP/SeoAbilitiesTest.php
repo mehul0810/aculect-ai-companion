@@ -27,10 +27,11 @@ final class SeoAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_posts']       = array(
 			123 => new \WP_Post(
 				array(
-					'ID'          => 123,
-					'post_type'   => 'post',
-					'post_status' => 'draft',
-					'post_title'  => 'Existing Draft',
+					'ID'                => 123,
+					'post_type'         => 'post',
+					'post_status'       => 'draft',
+					'post_title'        => 'Existing Draft',
+					'post_modified_gmt' => '2026-06-27 10:15:00',
 				)
 			),
 		);
@@ -108,5 +109,80 @@ final class SeoAbilitiesTest extends TestCase {
 
 		self::assertSame( 'invalid_seo_fields', $result['error'] );
 		self::assertArrayNotHasKey( 'diff', $result );
+	}
+
+	public function test_get_seo_reads_rank_math_metadata_for_accessible_content(): void {
+		$result = ( new SeoAbilities() )->get_seo(
+			array(
+				'id'     => 123,
+				'plugin' => 'rank_math',
+			)
+		);
+
+		self::assertSame( 123, $result['post_id'] );
+		self::assertSame( 'rank_math', $result['plugin'] );
+		self::assertSame( 'rank_math', $result['source'] );
+		self::assertSame( 'rank_math', $result['detected_plugin'] );
+		self::assertSame( 'active', $result['source_status'] );
+		self::assertSame( '2026-06-27 10:15:00', $result['content_modified_gmt'] );
+		self::assertSame( 'Existing SEO title', $result['fields']['seo_title'] );
+		self::assertSame( 'Existing SEO title', $result['fields']['meta_title'] );
+		self::assertSame( 'Existing description', $result['fields']['meta_description'] );
+		self::assertSame( array( 'old keyword' ), $result['fields']['focus_keywords'] );
+	}
+
+	public function test_get_seo_returns_missing_metadata_for_empty_supported_fields(): void {
+		$GLOBALS['aculect_ai_companion_test_post_meta'][123] = array();
+
+		$result = ( new SeoAbilities() )->get_seo(
+			array(
+				'id'     => 123,
+				'plugin' => 'rank_math',
+			)
+		);
+
+		self::assertSame( 'missing_seo_metadata', $result['error'] );
+		self::assertSame( 'rank_math', $result['source'] );
+		self::assertSame( 'active', $result['source_status'] );
+		self::assertSame( '', $result['fields']['seo_title'] );
+		self::assertSame( '', $result['fields']['meta_description'] );
+		self::assertSame( array(), $result['fields']['focus_keywords'] );
+	}
+
+	public function test_get_seo_returns_plugin_unavailable_when_requested_source_is_inactive(): void {
+		$GLOBALS['aculect_ai_companion_test_options']['active_plugins'] = array();
+
+		$result = ( new SeoAbilities() )->get_seo(
+			array(
+				'id'     => 123,
+				'plugin' => 'rank_math',
+			)
+		);
+
+		self::assertSame( 'plugin_unavailable', $result['error'] );
+	}
+
+	public function test_get_seo_denies_inaccessible_content(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'read_post' );
+
+		$result = ( new SeoAbilities() )->get_seo(
+			array(
+				'id'     => 123,
+				'plugin' => 'rank_math',
+			)
+		);
+
+		self::assertSame( 'inaccessible_content', $result['error'] );
+	}
+
+	public function test_get_seo_rejects_unsupported_plugin_selector(): void {
+		$result = ( new SeoAbilities() )->get_seo(
+			array(
+				'id'     => 123,
+				'plugin' => 'unknown_seo',
+			)
+		);
+
+		self::assertSame( 'unsupported_seo_plugin', $result['error'] );
 	}
 }

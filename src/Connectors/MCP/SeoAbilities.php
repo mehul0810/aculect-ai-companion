@@ -10,6 +10,56 @@ namespace Aculect\AICompanion\Connectors\MCP;
 final class SeoAbilities extends AbstractAbilityService {
 
 	/**
+	 * Read SEO metadata for supported SEO plugins.
+	 *
+	 * @param array<string, mixed> $data Read arguments.
+	 * @return array<string, mixed>
+	 */
+	public function get_seo( array $data ): array {
+		$post_id = absint( $data['id'] ?? $data['post_id'] ?? 0 );
+		$post    = get_post( $post_id );
+		if ( ! $post instanceof \WP_Post ) {
+			return $this->error( 'not_found', 'Content item not found.' );
+		}
+
+		if ( ! current_user_can( 'read_post', $post_id ) ) {
+			return $this->error( 'inaccessible_content', 'You do not have permission to read SEO metadata for this content item.' );
+		}
+
+		$requested = sanitize_key( (string) ( $data['plugin'] ?? $data['source'] ?? 'auto' ) );
+		$adapter   = $this->read_adapter( $requested );
+		if ( isset( $adapter['error'] ) ) {
+			$error = $adapter['error'];
+			return is_array( $error ) ? $error : $this->error( 'adapter_failure', 'SEO metadata could not be read from the selected adapter.' );
+		}
+
+		try {
+			$fields = $this->read_public_seo_fields( $post_id, $adapter );
+		} catch ( \Throwable ) {
+			return $this->error( 'adapter_failure', 'SEO metadata could not be read from the selected adapter.' );
+		}
+
+		$response = array(
+			'post_id'              => $post_id,
+			'plugin'               => $adapter['id'],
+			'source'               => $adapter['id'],
+			'detected_plugin'      => $adapter['id'],
+			'source_status'        => 'active',
+			'content_modified_gmt' => '' !== $post->post_modified_gmt ? $post->post_modified_gmt : null,
+			'fields'               => $fields,
+		);
+
+		if ( ! $this->has_public_seo_metadata( $fields ) ) {
+			return array_merge(
+				$this->error( 'missing_seo_metadata', 'No supported SEO metadata is stored for this content item.' ),
+				$response
+			);
+		}
+
+		return $response;
+	}
+
+	/**
 	 * Update SEO metadata for supported SEO plugins.
 	 *
 	 * @param array<string, mixed> $data SEO fields.
@@ -82,6 +132,33 @@ final class SeoAbilities extends AbstractAbilityService {
 		}
 
 		return array();
+	}
+
+	/**
+	 * Return the selected read adapter or a public-safe error.
+	 *
+	 * @param string $requested Requested adapter ID.
+	 * @return array<string, mixed>
+	 */
+	private function read_adapter( string $requested ): array {
+		$requested = '' === $requested ? 'auto' : $requested;
+		$adapters  = $this->adapters();
+
+		if ( 'auto' !== $requested && ! in_array( $requested, array_column( $adapters, 'id' ), true ) ) {
+			return array( 'error' => $this->error( 'unsupported_seo_plugin', 'The requested SEO metadata source is not supported.' ) );
+		}
+
+		foreach ( $adapters as $adapter ) {
+			if ( 'auto' !== $requested && $requested !== $adapter['id'] ) {
+				continue;
+			}
+
+			if ( $this->is_adapter_active( $adapter ) ) {
+				return $adapter;
+			}
+		}
+
+		return array( 'error' => $this->error( 'plugin_unavailable', 'The requested SEO metadata source is not active on this site.' ) );
 	}
 
 	/**
@@ -264,5 +341,58 @@ final class SeoAbilities extends AbstractAbilityService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Return normalized read-only public SEO fields for a supported adapter.
+	 *
+	 * @param int                  $post_id Post ID.
+	 * @param array<string, mixed> $adapter Adapter definition.
+	 * @return array<string, mixed>
+	 */
+	private function read_public_seo_fields( int $post_id, array $adapter ): array {
+		$fields       = $this->public_seo_fields( $post_id, $adapter );
+		$meta_title   = (string) ( $fields['meta_title'] ?? '' );
+		$keywords_raw = (string) ( $fields['focus_keywords'] ?? '' );
+
+		return array(
+			'seo_title'        => $meta_title,
+			'meta_title'       => $meta_title,
+			'meta_description' => (string) ( $fields['meta_description'] ?? '' ),
+			'focus_keywords'   => $this->focus_keywords_list( $keywords_raw ),
+		);
+	}
+
+	/**
+	 * Normalize stored focus keywords into a list.
+	 *
+	 * @param string $value Stored keyword string.
+	 * @return list<string>
+	 */
+	private function focus_keywords_list( string $value ): array {
+		if ( '' === trim( $value ) ) {
+			return array();
+		}
+
+		return array_values(
+			array_filter(
+				array_map(
+					static fn ( string $keyword ): string => trim( $keyword ),
+					explode( ',', $value )
+				),
+				static fn ( string $keyword ): bool => '' !== $keyword
+			)
+		);
+	}
+
+	/**
+	 * Determine whether at least one public SEO field is stored.
+	 *
+	 * @param array<string, mixed> $fields Public SEO fields.
+	 */
+	private function has_public_seo_metadata( array $fields ): bool {
+		return '' !== (string) ( $fields['seo_title'] ?? '' )
+			|| '' !== (string) ( $fields['meta_description'] ?? '' )
+			|| array() !== (array) ( $fields['focus_keywords'] ?? array() );
 	}
 }

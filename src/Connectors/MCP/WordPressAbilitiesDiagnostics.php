@@ -121,13 +121,15 @@ final class WordPressAbilitiesDiagnostics {
 		$public       = $this->is_public( $ability );
 		$allowed      = ( new WordPressAbilitiesPolicy() )->is_allowed( $name );
 		$schema_valid = $this->schema_valid( $ability );
+		$capable      = $this->permission_allowed( $ability );
 
 		return $base + array(
 			'registered'   => true,
 			'public'       => $public,
 			'allowed'      => $allowed,
+			'capable'      => $capable,
 			'schema_valid' => $schema_valid,
-			'status'       => $this->status( $public, $allowed, $schema_valid ),
+			'status'       => $this->status( $public, $allowed, $schema_valid, $capable ),
 		);
 	}
 
@@ -230,6 +232,26 @@ final class WordPressAbilitiesDiagnostics {
 	}
 
 	/**
+	 * Check whether the current user passes the mirrored ability permission callback.
+	 *
+	 * @param object $ability Ability object.
+	 */
+	private function permission_allowed( object $ability ): bool {
+		if ( ! method_exists( $ability, 'get_permission_callback' ) ) {
+			return true;
+		}
+
+		$callback = $ability->get_permission_callback();
+		if ( ! is_callable( $callback ) ) {
+			return true;
+		}
+
+		$result = call_user_func( $callback, array() );
+
+		return true === $result;
+	}
+
+	/**
 	 * Check an ability schema is an object schema.
 	 *
 	 * @param array<string, mixed> $schema Schema.
@@ -246,8 +268,9 @@ final class WordPressAbilitiesDiagnostics {
 	 * @param bool $public       Whether the ability is public.
 	 * @param bool $allowed      Whether Aculect policy allows it.
 	 * @param bool $schema_valid Whether schemas are valid.
+	 * @param bool $capable      Whether the current user passes the permission callback.
 	 */
-	private function status( bool $public, bool $allowed, bool $schema_valid ): string {
+	private function status( bool $public, bool $allowed, bool $schema_valid, bool $capable ): string {
 		if ( ! $public ) {
 			return 'not_public';
 		}
@@ -258,6 +281,10 @@ final class WordPressAbilitiesDiagnostics {
 
 		if ( ! $schema_valid ) {
 			return 'schema_invalid';
+		}
+
+		if ( ! $capable ) {
+			return 'capability_blocked';
 		}
 
 		return 'available';

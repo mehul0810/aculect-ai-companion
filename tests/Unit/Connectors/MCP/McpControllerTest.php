@@ -713,7 +713,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_audit_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
 		self::assertContains( 'mcp_learning_inspect_activity', $names );
-		self::assertContains( 'content_workflow_create_draft', $names );
+		self::assertNotContains( 'content_workflow_create_draft', $names );
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
 		self::assertNotContains( 'blocks_list_available', $names );
@@ -735,14 +735,18 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_audit.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'mcp_learning.inspect_activity', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
+		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
 		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );
 	}
 
-	public function test_derived_workflow_tool_calls_are_allowed_when_dependencies_are_disabled(): void {
+	public function test_derived_workflow_tool_calls_require_enabled_dependencies(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item' ) );
+
+		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry, 1 ) ) );
+
+		$registry->save_enabled_ids( array( 'content.create_item' ) );
 
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry, 1 ) ) );
 	}

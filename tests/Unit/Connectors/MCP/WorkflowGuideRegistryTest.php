@@ -34,7 +34,9 @@ final class WorkflowGuideRegistryTest extends TestCase {
 		McpToolAvailability::set_current_granted_scopes( null );
 	}
 
-	public function test_list_guides_is_bounded_and_reports_always_on_workflow_operations(): void {
+	public function test_list_guides_is_bounded_and_reports_admin_inherited_workflow_operations(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
 		$result = ( new WorkflowGuideRegistry() )->list_guides( array( 'detail' => 'summary' ) );
 
 		self::assertTrue( $result['bounded'] );

@@ -107,6 +107,28 @@ if ( ! function_exists( 'update_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_site_option' ) ) {
+	/**
+	 * Return a test network option value.
+	 *
+	 * @param string $option  Option name.
+	 * @param mixed  $default Default value.
+	 * @return mixed
+	 */
+	function get_site_option( string $option, mixed $default = false ): mixed {
+		return array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_site_options'] ?? array() ) ? $GLOBALS['aculect_ai_companion_test_site_options'][ $option ] : $default;
+	}
+}
+
+if ( ! function_exists( 'is_multisite' ) ) {
+	/**
+	 * Return whether the test site is multisite.
+	 */
+	function is_multisite(): bool {
+		return (bool) ( $GLOBALS['aculect_ai_companion_test_is_multisite'] ?? false );
+	}
+}
+
 if ( ! function_exists( 'wp_timezone' ) ) {
 	/**
 	 * Return the test site timezone.

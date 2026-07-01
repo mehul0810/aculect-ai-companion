@@ -527,6 +527,12 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'string', $seo_schema['properties']['focus_keywords']['items']['type'] );
 		self::assertSame( 10, $seo_schema['properties']['focus_keywords']['maxItems'] );
 
+		$seo_read_schema = $this->schemaForTool( 'content_get_seo' );
+		self::assertSame( array( 'id' ), $seo_read_schema['required'] );
+		self::assertArrayHasKey( 'plugin', $seo_read_schema['properties'] );
+		self::assertArrayHasKey( 'source', $seo_read_schema['properties'] );
+		self::assertSame( array( 'auto', 'yoast', 'rank_math' ), $seo_read_schema['properties']['plugin']['enum'] );
+
 		$comments_schema = $this->schemaForTool( 'comments_update_item' );
 		self::assertSame( array( 'id' ), $comments_schema['required'] );
 		self::assertArrayHasKey( 'status', $comments_schema['properties'] );

@@ -3180,9 +3180,11 @@ td:first-child
 
 .aculect-ai-companion-learning-summary {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 8px;
+	justify-self: end;
 	min-width: 0;
+	width: min(100%, 320px);
 }
 
 .aculect-ai-companion-learning-summary span {
@@ -4163,7 +4165,6 @@ td:first-child
 	.aculect-ai-companion-diagnostics-layout,
 	.aculect-ai-companion-feature-grid,
 	.aculect-ai-companion-learning-toolbar,
-	.aculect-ai-companion-learning-summary,
 	.aculect-ai-companion-overview-hero,
 	.aculect-ai-companion-setting-summary,
 	.aculect-ai-companion-setup-wizard,
@@ -4261,6 +4262,11 @@ td:first-child
 	.aculect-ai-companion-role-abilities__summary-row {
 		display: grid;
 	}
+
+	.aculect-ai-companion-learning-summary {
+		justify-self: stretch;
+		width: 100%;
+	}
 }
 
 @media (max-width: 600px) {
@@ -4304,10 +4310,6 @@ td:first-child
 
 	.aculect-ai-companion-header-divider {
 		display: none;
-	}
-
-	.aculect-ai-companion-learning-summary {
-		grid-template-columns: 1fr;
 	}
 
 	.aculect-ai-companion-learning-surface-nav {

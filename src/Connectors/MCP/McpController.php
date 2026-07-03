@@ -679,6 +679,7 @@ final class McpController {
 				array(
 					'content.create_item',
 					'content.update_item',
+					'content.update_block',
 					'content_media.search_cc0_images',
 					'content_media.apply_image',
 					'comments.create_item',

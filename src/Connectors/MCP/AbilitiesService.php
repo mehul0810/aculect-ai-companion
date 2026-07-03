@@ -89,6 +89,16 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * Update one supported block inside an existing content item.
+	 *
+	 * @param array<string, mixed> $data Content block update fields.
+	 * @return array<string, mixed>
+	 */
+	public function update_block( array $data ): array {
+		return ( new ContentAbilities() )->update_block( $data );
+	}
+
+	/**
 	 * Update supported SEO plugin metadata for a content item.
 	 *
 	 * @param array<string, mixed> $data SEO fields.

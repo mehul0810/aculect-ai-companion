@@ -337,6 +337,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertStringContainsString( 'never use the Custom HTML block', $schema['properties']['content']['description'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_item' ) );
 		self::assertFalse( $this->registry->is_read_only( 'content_update_item' ) );
+
+		$block_schema = $this->registry->input_schema( 'content.update_block' );
+		self::assertArrayHasKey( 'dry_run', $block_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $block_schema['properties'] );
+		self::assertSame( array( 'id', 'locator' ), $block_schema['required'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_block' ) );
+		self::assertFalse( $this->registry->is_read_only( 'content_update_block' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {

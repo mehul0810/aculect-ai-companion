@@ -265,7 +265,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'url', $tools_by_name['fetch']['outputSchema']['properties'] );
 		self::assertFalse( $tools_by_name['fetch']['outputSchema']['additionalProperties'] );
 
-		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
+		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_block', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
 			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
 			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 			self::assertArrayHasKey( 'post_id', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
@@ -556,6 +556,11 @@ final class McpControllerTest extends TestCase {
 		$update_schema = $this->schemaForTool( 'content_update_item' );
 		self::assertArrayHasKey( 'featured_media', $update_schema['properties'] );
 		self::assertArrayHasKey( 'clear_featured_media', $update_schema['properties'] );
+
+		$block_update_schema = $this->schemaForTool( 'content_update_block' );
+		self::assertSame( array( 'id', 'locator' ), $block_update_schema['required'] );
+		self::assertArrayHasKey( 'path', $block_update_schema['properties']['locator']['properties'] );
+		self::assertArrayHasKey( 'text', $block_update_schema['properties'] );
 
 		$seo_schema = $this->schemaForTool( 'content_update_seo' );
 		self::assertSame( array( 'id' ), $seo_schema['required'] );

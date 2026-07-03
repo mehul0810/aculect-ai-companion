@@ -404,6 +404,62 @@ if ( ! class_exists( 'WP_Taxonomy' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WP_Term' ) ) {
+	/**
+	 * Minimal term object used by unit tests.
+	 */
+	class WP_Term {
+		public int $term_id = 0;
+		public string $name = '';
+		public string $slug = '';
+		public string $taxonomy = '';
+		public string $description = '';
+		public int $parent = 0;
+		public int $count = 0;
+
+		/**
+		 * @param array<string, mixed> $data Term fields.
+		 */
+		public function __construct( array $data = array() ) {
+			foreach ( $data as $key => $value ) {
+				if ( property_exists( $this, (string) $key ) ) {
+					$this->{$key} = is_int( $this->{$key} ) ? absint( $value ) : (string) $value;
+				}
+			}
+		}
+	}
+}
+
+if ( ! function_exists( 'wp_get_object_terms' ) ) {
+	/**
+	 * Return assigned object terms for tests.
+	 *
+	 * @param int|string          $object_id  Object ID.
+	 * @param string|array<mixed> $taxonomies Taxonomy names.
+	 * @param array<string,mixed> $args       Query args.
+	 * @return list<WP_Term>
+	 */
+	function wp_get_object_terms( int|string $object_id, string|array $taxonomies, array $args = array() ): array {
+		unset( $args );
+
+		$object_id = absint( $object_id );
+		$allowed   = array_map( 'strval', (array) $taxonomies );
+		$assigned  = $GLOBALS['aculect_ai_companion_test_object_terms'][ $object_id ] ?? array();
+		$terms     = array();
+
+		foreach ( is_array( $assigned ) ? $assigned : array() as $term ) {
+			$term = $term instanceof WP_Term ? $term : new WP_Term( is_array( $term ) ? $term : array() );
+			if ( in_array( $term->taxonomy, $allowed, true ) ) {
+				$terms[] = $term;
+			}
+		}
+
+		usort( $terms, static fn( WP_Term $a, WP_Term $b ): int => $a->term_id <=> $b->term_id );
+
+		return $terms;
+	}
+}
+
 if ( ! function_exists( 'get_post_types' ) ) {
 	/**
 	 * @param array<string, mixed> $args Query args.
@@ -1757,18 +1813,107 @@ if ( ! function_exists( 'parse_blocks' ) ) {
 	 * @return list<array<string, mixed>>
 	 */
 	function parse_blocks( string $content ): array {
-		preg_match_all( '/<!--\s+wp:([A-Za-z0-9_\/.-]+)(?:\s+[^>]*)?-->/i', $content, $matches );
+		$offset = 0;
 
+		return aculect_ai_companion_test_parse_blocks_fragment( $content, $offset );
+	}
+}
+
+if ( ! function_exists( 'aculect_ai_companion_test_parse_blocks_fragment' ) ) {
+	/**
+	 * Parse a block fragment recursively for unit tests.
+	 *
+	 * @param string $content Serialized block content.
+	 * @param int    $offset  Current parser offset.
+	 * @return list<array<string, mixed>>
+	 */
+	function aculect_ai_companion_test_parse_blocks_fragment( string $content, int &$offset = 0 ): array {
 		$blocks = array();
-		foreach ( $matches[1] ?? array() as $name ) {
-			$name     = str_contains( (string) $name, '/' ) ? (string) $name : 'core/' . (string) $name;
+		$length = strlen( $content );
+
+		while ( $offset < $length && preg_match( '/<!--\s+(\/?)wp:([A-Za-z0-9_\/.-]+)(?:\s+({.*?}))?\s*(\/?)-->/s', $content, $matches, PREG_OFFSET_CAPTURE, $offset ) ) {
+			$is_closer = '/' === $matches[1][0];
+			if ( $is_closer ) {
+				$offset = $matches[0][1] + strlen( $matches[0][0] );
+				break;
+			}
+
+			$name        = str_contains( (string) $matches[2][0], '/' ) ? (string) $matches[2][0] : 'core/' . (string) $matches[2][0];
+			$attrs       = array();
+			$attrs_json  = $matches[3][0] ?? '';
+			$self_closed = '/' === ( $matches[4][0] ?? '' );
+			if ( '' !== $attrs_json ) {
+				$decoded = json_decode( $attrs_json, true );
+				$attrs   = is_array( $decoded ) ? $decoded : array();
+			}
+
+			$open_end = $matches[0][1] + strlen( $matches[0][0] );
+			$offset   = $open_end;
+			if ( $self_closed ) {
+				$blocks[] = array(
+					'blockName'    => $name,
+					'attrs'        => $attrs,
+					'innerBlocks'  => array(),
+					'innerHTML'    => '',
+					'innerContent' => array(),
+				);
+				continue;
+			}
+
+			$close_pattern = '/<!--\s+\/wp:' . preg_quote( (string) $matches[2][0], '/' ) . '\s+-->/s';
+			if ( 1 !== preg_match( $close_pattern, $content, $close_match, PREG_OFFSET_CAPTURE, $offset ) ) {
+				break;
+			}
+
+			$inner_start  = $offset;
+			$inner_length = $close_match[0][1] - $inner_start;
+			$inner_html   = substr( $content, $inner_start, $inner_length );
+			$inner_offset = 0;
+			$inner_blocks = aculect_ai_companion_test_parse_blocks_fragment( $inner_html, $inner_offset );
+			$offset       = $close_match[0][1] + strlen( $close_match[0][0] );
+
 			$blocks[] = array(
-				'blockName'   => $name,
-				'innerBlocks' => array(),
+				'blockName'    => $name,
+				'attrs'        => $attrs,
+				'innerBlocks'  => $inner_blocks,
+				'innerHTML'    => $inner_html,
+				'innerContent' => array( $inner_html ),
 			);
 		}
 
 		return $blocks;
+	}
+}
+
+if ( ! function_exists( 'serialize_blocks' ) ) {
+	/**
+	 * Serialize parsed test blocks.
+	 *
+	 * @param list<array<string, mixed>> $blocks Parsed blocks.
+	 */
+	function serialize_blocks( array $blocks ): string {
+		return implode( '', array_map( 'serialize_block', $blocks ) );
+	}
+}
+
+if ( ! function_exists( 'serialize_block' ) ) {
+	/**
+	 * Serialize one parsed test block.
+	 *
+	 * @param array<string, mixed> $block Parsed block.
+	 */
+	function serialize_block( array $block ): string {
+		$name       = (string) ( $block['blockName'] ?? '' );
+		$short_name = str_starts_with( $name, 'core/' ) ? substr( $name, 5 ) : $name;
+		$attrs      = isset( $block['attrs'] ) && is_array( $block['attrs'] ) && array() !== $block['attrs']
+			? ' ' . wp_json_encode( $block['attrs'] )
+			: '';
+		$inner      = (string) ( $block['innerHTML'] ?? '' );
+		if ( isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) && array() !== $block['innerBlocks'] ) {
+			$inner = serialize_blocks( $block['innerBlocks'] );
+		}
+
+		return sprintf( '<!-- wp:%1$s%2$s -->%3$s<!-- /wp:%1$s -->', $short_name, $attrs, $inner );
 	}
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames

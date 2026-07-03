@@ -291,6 +291,8 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_audit_internal_links'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'health_summary', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'action_queue', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_policy'] );
 		self::assertArrayHasKey( 'policy', $tools_by_name['content_internal_link_policy']['outputSchema']['properties'] );

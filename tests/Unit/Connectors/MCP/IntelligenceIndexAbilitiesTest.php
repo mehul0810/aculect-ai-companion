@@ -29,11 +29,11 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new IntelligenceIndexMemoryWpdb();
 
-		$GLOBALS['wpdb']                                  = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_posts']       = array();
-		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+		$GLOBALS['wpdb']                                      = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_posts']           = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
 		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
-		$GLOBALS['aculect_ai_companion_test_options']     = array(
+		$GLOBALS['aculect_ai_companion_test_options']         = array(
 			'blogname' => 'Aculect Demo',
 		);
 	}
@@ -237,6 +237,155 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 300, $result['summary']['thresholds']['thin_word_count'] );
 		self::assertSame( 3, $result['policy']['limits']['max_new_links_per_source'] );
 		self::assertFalse( $result['policy']['mutation_policy']['content_mutation'] );
+		self::assertArrayHasKey( 'health_summary', $result );
+		self::assertSame( 'internal-link-health-v1', $result['health_summary']['methodology']['version'] );
+		self::assertSame( 'site_index', $result['health_summary']['scope'] );
+		self::assertSame( 1, $result['health_summary']['counts']['orphan_content'] );
+		self::assertSame( 1, $result['health_summary']['counts']['stale_index_rows'] );
+		self::assertSame( 'refresh_stale_index', $result['action_queue']['items'][0]['action'] );
+		self::assertTrue( $result['action_queue']['read_only'] );
+		self::assertStringContainsString( 'not an SEO ranking guarantee', $result['health_summary']['methodology']['claim'] );
+	}
+
+	public function test_audit_internal_links_prioritizes_broken_targets_before_add_link_actions(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11]            = new \WP_Post(
+			array(
+				'ID'          => 11,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Source Page',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_posts'][22]            = new \WP_Post(
+			array(
+				'ID'          => 22,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Orphan Page',
+			)
+		);
+		$this->wpdb->rows['content-22']                            = $this->indexedContentRow( 22, 'Orphan Page', 'Detailed evergreen guide.' );
+		$this->wpdb->rows['content-22']['inbound_internal_links']  = 0;
+		$this->wpdb->rows['content-22']['outbound_internal_links'] = 2;
+		$this->wpdb->rows['link-missing']                          = array(
+			'link_id'                    => 901,
+			'source_id'                  => 11,
+			'target_id'                  => 0,
+			'target_url'                 => 'https://example.com/missing/',
+			'anchor_text'                => 'Missing target',
+			'rel'                        => '',
+			'link_context'               => 'Missing target context.',
+			'link_created_at'            => '2026-07-03 05:00:00',
+			'source_post_type'           => 'page',
+			'source_post_status'         => 'publish',
+			'source_title'               => 'Source Page',
+			'source_slug'                => 'source-page',
+			'source_permalink'           => 'https://example.com/source-page/',
+			'source_indexed_at'          => '2026-07-03 04:00:00',
+			'source_modified_gmt'        => '2026-07-03 03:00:00',
+			'source_stale'               => 0,
+			'indexed_target_post_type'   => '',
+			'indexed_target_post_status' => '',
+			'indexed_target_title'       => '',
+			'indexed_target_slug'        => '',
+			'indexed_target_permalink'   => '',
+			'indexed_target_stale'       => 0,
+		);
+
+		$result = ( new IntelligenceIndexAbilities() )->audit_internal_links(
+			array(
+				'state'       => 'needs_review',
+				'queue_limit' => 5,
+			)
+		);
+
+		self::assertSame( 'fix_broken_link', $result['action_queue']['items'][0]['action'] );
+		self::assertSame( 'add_inbound_links', $result['action_queue']['items'][1]['action'] );
+		self::assertGreaterThan( $result['action_queue']['items'][1]['priority_score'], $result['action_queue']['items'][0]['priority_score'] );
+		self::assertSame( 1, $result['health_summary']['counts']['broken_internal_links'] );
+	}
+
+	public function test_audit_internal_links_reports_empty_index_health(): void {
+		$result = ( new IntelligenceIndexAbilities() )->audit_internal_links( array( 'queue_limit' => 10 ) );
+
+		self::assertSame( 0, $result['health_summary']['score'] );
+		self::assertSame( 'empty_index', $result['health_summary']['status'] );
+		self::assertSame( 0, $result['health_summary']['counts']['total_indexed_items'] );
+		self::assertSame( array(), $result['action_queue']['items'] );
+	}
+
+	public function test_audit_internal_links_bounds_large_site_action_queue(): void {
+		for ( $i = 1; $i <= 70; ++$i ) {
+			$post_id = 1000 + $i;
+			$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new \WP_Post(
+				array(
+					'ID'          => $post_id,
+					'post_type'   => 'page',
+					'post_status' => 'publish',
+					'post_title'  => 'Orphan Page ' . $i,
+				)
+			);
+			$this->wpdb->rows[ 'content-' . $post_id ]              = array_merge(
+				$this->indexedContentRow( $post_id, 'Orphan Page ' . $i, 'Indexed page summary.' ),
+				array(
+					'inbound_internal_links'  => 0,
+					'outbound_internal_links' => 1,
+				)
+			);
+		}
+
+		$result = ( new IntelligenceIndexAbilities() )->audit_internal_links(
+			array(
+				'queue_limit' => 5,
+			)
+		);
+
+		self::assertCount( 5, $result['action_queue']['items'] );
+		self::assertTrue( $result['action_queue']['has_more'] );
+		self::assertSame( 15, $result['action_queue']['bounds']['candidate_scan_limit'] );
+		self::assertSame( 5, $result['health_summary']['counts']['action_queue_return_limit'] );
+	}
+
+	public function test_audit_internal_links_uses_visible_scope_when_global_summary_is_denied(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+		$GLOBALS['aculect_ai_companion_test_posts'][11]       = new \WP_Post(
+			array(
+				'ID'          => 11,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Visible Orphan',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_posts'][12]       = new \WP_Post(
+			array(
+				'ID'          => 12,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Denied Orphan',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array( 12 );
+		$this->wpdb->rows['content-11']                       = array_merge(
+			$this->indexedContentRow( 11, 'Visible Orphan', 'Visible indexed summary.' ),
+			array(
+				'inbound_internal_links'  => 0,
+				'outbound_internal_links' => 1,
+			)
+		);
+		$this->wpdb->rows['content-12']                       = array_merge(
+			$this->indexedContentRow( 12, 'Denied Orphan', 'Denied indexed summary.' ),
+			array(
+				'inbound_internal_links'  => 0,
+				'outbound_internal_links' => 1,
+			)
+		);
+
+		$result = ( new IntelligenceIndexAbilities() )->audit_internal_links( array() );
+
+		self::assertTrue( $result['health_summary']['counts']['filtered_by_access'] );
+		self::assertSame( 'visible_content', $result['health_summary']['scope'] );
+		self::assertSame( 1, $result['health_summary']['counts']['total_indexed_items'] );
+		self::assertSame( array( 11 ), array_column( $result['action_queue']['items'], 'post_id' ) );
 	}
 
 	public function test_internal_link_policy_context_exposes_active_limits_without_mutation(): void {
@@ -261,7 +410,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 	}
 
 	public function test_find_internal_links_returns_quality_scoring_and_warnings(): void {
-		$GLOBALS['aculect_ai_companion_test_posts'][101] = new \WP_Post(
+		$GLOBALS['aculect_ai_companion_test_posts'][101]                                = new \WP_Post(
 			array(
 				'ID'          => 101,
 				'post_type'   => 'page',
@@ -269,7 +418,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 				'post_title'  => 'Source Guide',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_posts'][202] = new \WP_Post(
+		$GLOBALS['aculect_ai_companion_test_posts'][202]                                = new \WP_Post(
 			array(
 				'ID'          => 202,
 				'post_type'   => 'page',
@@ -279,44 +428,44 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		);
 		$GLOBALS['aculect_ai_companion_test_post_meta'][101]['rank_math_focus_keyword'] = 'link strategy';
 		$GLOBALS['aculect_ai_companion_test_post_meta'][202]['rank_math_focus_keyword'] = 'link strategy';
-		$this->wpdb->rows['content-101'] = $this->indexedContentRow(
+		$this->wpdb->rows['content-101']    = $this->indexedContentRow(
 			101,
 			'Source Guide',
 			'Source guide about link strategy.',
 			array( 'content' )
 		);
-		$this->wpdb->rows['content-202'] = $this->indexedContentRow(
+		$this->wpdb->rows['content-202']    = $this->indexedContentRow(
 			202,
 			'Internal Link Strategy',
 			'Practical internal link strategy for content teams.',
 			array( 'content' )
 		);
-		$this->wpdb->rows['content-303'] = $this->indexedContentRow(
+		$this->wpdb->rows['content-303']    = $this->indexedContentRow(
 			303,
 			'Already Linked Target',
 			'Internal link strategy already linked from the source.',
 			array( 'content' )
 		);
 		$this->wpdb->linked_target_ids[101] = array( 303 );
-		$this->wpdb->link_stats            = array(
+		$this->wpdb->link_stats             = array(
 			101 => array(
-				'object_id'                => 101,
-				'inbound_internal_links'   => 2,
-				'outbound_internal_links'  => 26,
+				'object_id'               => 101,
+				'inbound_internal_links'  => 2,
+				'outbound_internal_links' => 26,
 			),
 			202 => array(
-				'object_id'                => 202,
-				'inbound_internal_links'   => 1,
-				'outbound_internal_links'  => 2,
+				'object_id'               => 202,
+				'inbound_internal_links'  => 1,
+				'outbound_internal_links' => 2,
 			),
 		);
-		$this->wpdb->anchor_usage          = array(
+		$this->wpdb->anchor_usage           = array(
 			array(
-				'anchor_text'     => 'Internal Link Strategy',
-				'total'           => 3,
-				'source_total'    => 2,
-				'target_total'    => 3,
-				'source_matches'  => 0,
+				'anchor_text'    => 'Internal Link Strategy',
+				'total'          => 3,
+				'source_total'   => 2,
+				'target_total'   => 3,
+				'source_matches' => 0,
 			),
 		);
 
@@ -383,9 +532,9 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 				'post_title'  => 'Allowed Candidate',
 			)
 		);
-		$this->wpdb->rows['content-101'] = $this->indexedContentRow( 101, 'Source Guide', 'Source guide about policy limits.' );
-		$this->wpdb->rows['content-202'] = $this->indexedContentRow( 202, 'Excluded Candidate', 'Policy limits should exclude this candidate.' );
-		$this->wpdb->rows['content-303'] = $this->indexedContentRow( 303, 'Allowed Candidate', 'Policy limits allow this candidate.' );
+		$this->wpdb->rows['content-101']                 = $this->indexedContentRow( 101, 'Source Guide', 'Source guide about policy limits.' );
+		$this->wpdb->rows['content-202']                 = $this->indexedContentRow( 202, 'Excluded Candidate', 'Policy limits should exclude this candidate.' );
+		$this->wpdb->rows['content-303']                 = $this->indexedContentRow( 303, 'Allowed Candidate', 'Policy limits allow this candidate.' );
 
 		$result = ( new IntelligenceIndexAbilities() )->find_internal_links(
 			array(
@@ -402,7 +551,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 	}
 
 	public function test_audit_internal_links_reports_broken_targets_with_source_access_filtering(): void {
-		$GLOBALS['aculect_ai_companion_test_posts'][11] = new \WP_Post(
+		$GLOBALS['aculect_ai_companion_test_posts'][11]       = new \WP_Post(
 			array(
 				'ID'          => 11,
 				'post_type'   => 'page',
@@ -410,7 +559,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 				'post_title'  => 'Readable Source',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_posts'][12] = new \WP_Post(
+		$GLOBALS['aculect_ai_companion_test_posts'][12]       = new \WP_Post(
 			array(
 				'ID'          => 12,
 				'post_type'   => 'page',
@@ -419,7 +568,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 			)
 		);
 		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array( 12 );
-		$this->wpdb->rows['link-readable']                   = array(
+		$this->wpdb->rows['link-readable']                    = array(
 			'link_id'                    => 101,
 			'source_id'                  => 11,
 			'target_id'                  => 0,
@@ -443,7 +592,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 			'indexed_target_permalink'   => '',
 			'indexed_target_stale'       => 0,
 		);
-		$this->wpdb->rows['link-denied']                     = array_merge(
+		$this->wpdb->rows['link-denied']                      = array_merge(
 			$this->wpdb->rows['link-readable'],
 			array(
 				'link_id'          => 102,
@@ -473,10 +622,10 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 	/**
 	 * Build an indexed content row for MCP tests.
 	 *
-	 * @param int          $id    Post ID.
-	 * @param string       $title Title.
-	 * @param string       $summary Summary.
-	 * @param list<string> $terms Term slugs.
+	 * @param int           $id    Post ID.
+	 * @param string        $title Title.
+	 * @param string        $summary Summary.
+	 * @param array<string> $terms Term slugs.
 	 * @return array<string, mixed>
 	 */
 	private function indexedContentRow( int $id, string $title, string $summary, array $terms = array() ): array {
@@ -572,8 +721,21 @@ final class IntelligenceIndexMemoryWpdb {
 	 * @param string $query Prepared query.
 	 */
 	public function get_var( string $query ): ?int {
+		if ( str_contains( $query, 'FROM (SELECT idx.object_id' ) ) {
+			return $this->audit_count_for_query( $query );
+		}
+
+		if ( str_contains( $query, 'SELECT COUNT(*) FROM %i links' ) ) {
+			return count(
+				array_filter(
+					$this->rows,
+					static fn ( array $row ): bool => isset( $row['link_id'] )
+				)
+			);
+		}
+
 		if ( str_contains( $query, 'COUNT(*)' ) ) {
-			return count( $this->rows );
+			return count( $this->content_rows() );
 		}
 
 		$key = $this->last_memory_key();
@@ -677,10 +839,91 @@ final class IntelligenceIndexMemoryWpdb {
 	 * @return array<string, mixed>|null
 	 */
 	public function get_row( string $query, string $output ): ?array {
-		unset( $query, $output );
+		unset( $output );
+
+		if ( str_contains( $query, 'COUNT(*) AS total' ) && str_contains( $query, 'latest_indexed_at' ) ) {
+			$rows   = $this->content_rows();
+			$latest = '';
+			$stale  = 0;
+			foreach ( $rows as $row ) {
+				if ( ! empty( $row['stale'] ) ) {
+					++$stale;
+				}
+
+				$indexed_at = (string) ( $row['indexed_at'] ?? '' );
+				if ( '' !== $indexed_at && $indexed_at > $latest ) {
+					$latest = $indexed_at;
+				}
+			}
+
+			return array(
+				'total'             => count( $rows ),
+				'stale'             => $stale,
+				'latest_indexed_at' => $latest,
+			);
+		}
 
 		$key = $this->last_memory_key();
 		return $this->rows[ 'content-' . $key ] ?? $this->rows[ $key ] ?? null;
+	}
+
+	/**
+	 * Return indexed content rows.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function content_rows(): array {
+		return array_values(
+			array_filter(
+				$this->rows,
+				static fn ( array $row ): bool => isset( $row['object_id'] )
+			)
+		);
+	}
+
+	/**
+	 * Return an internal-link audit count that mirrors repository thresholds.
+	 *
+	 * @param string $query Prepared query.
+	 */
+	private function audit_count_for_query( string $query ): int {
+		return count(
+			array_filter(
+				$this->content_rows(),
+				function ( array $row ) use ( $query ): bool {
+					$inbound  = (int) ( $row['inbound_internal_links'] ?? 0 );
+					$outbound = (int) ( $row['outbound_internal_links'] ?? 0 );
+					$words    = (int) ( $row['word_count'] ?? 0 );
+					$stale    = ! empty( $row['stale'] );
+
+					if ( str_contains( $query, 'HAVING inbound_internal_links = 0' ) && ! str_contains( $query, 'OR' ) ) {
+						return 0 === $inbound;
+					}
+
+					if ( str_contains( $query, 'HAVING inbound_internal_links > 0 AND inbound_internal_links < %d' ) ) {
+						return $inbound > 0 && $inbound < 2;
+					}
+
+					if ( str_contains( $query, 'HAVING idx.word_count <= %d' ) && ! str_contains( $query, 'OR' ) ) {
+						return $words <= 300;
+					}
+
+					if ( str_contains( $query, 'HAVING idx.stale = 1' ) ) {
+						return $stale;
+					}
+
+					if ( str_contains( $query, 'HAVING outbound_internal_links > %d' ) && ! str_contains( $query, 'OR' ) ) {
+						return $outbound > 25;
+					}
+
+					if ( str_contains( $query, 'HAVING inbound_internal_links = 0 OR' ) ) {
+						return 0 === $inbound || ( $inbound > 0 && $inbound < 2 ) || $words <= 300 || $stale || $outbound > 25;
+					}
+
+					return true;
+				}
+			)
+		);
 	}
 
 	/**

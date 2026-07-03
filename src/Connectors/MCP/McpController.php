@@ -839,6 +839,23 @@ final class McpController {
 			);
 		}
 
+		if ( 'content_audit.internal_links' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'              => array( 'type' => 'array' ),
+					'total'              => array( 'type' => 'integer' ),
+					'page'               => array( 'type' => 'integer' ),
+					'per_page'           => array( 'type' => 'integer' ),
+					'index'              => array( 'type' => 'object' ),
+					'summary'            => array( 'type' => 'object' ),
+					'health_summary'     => array( 'type' => 'object' ),
+					'action_queue'       => array( 'type' => 'object' ),
+					'filtered_by_access' => array( 'type' => 'boolean' ),
+					'next_actions'       => array( 'type' => 'array' ),
+				)
+			);
+		}
+
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()

@@ -2233,6 +2233,12 @@ final class FirstPartyAbilityModules {
 				),
 				'page'               => $this->page_schema(),
 				'per_page'           => $this->per_page_schema( 50, 'Audit rows per page. Defaults to 10.' ),
+				'queue_limit'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 50,
+					'description' => 'Maximum prioritized action queue items to return. Defaults to per_page or 10.',
+				),
 			)
 		);
 	}

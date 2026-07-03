@@ -66,6 +66,7 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		self::assertNotEmpty( $core_defaults );
 		self::assertArrayHasKey( 'workflow.route_request', $by_id );
+		self::assertArrayHasKey( 'core_schema.discover', $by_id );
 		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
@@ -147,6 +148,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		foreach (
 			array(
 				'workflow.route_request',
+				'core_schema.discover',
 				'workflow_session.start',
 				'workflow_session.get',
 				'workflow_session.update',
@@ -229,11 +231,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'core_schema_discover' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_start' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_session_get' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_update' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'mcp_learning_inspect_activity' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'core_schema.discover' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_start' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_session_get' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_update' ) );

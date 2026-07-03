@@ -55,6 +55,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new WorkflowRouter() )->route( $args )
 			),
 			$this->module(
+				'core_schema.discover',
+				'Discover WordPress Core Schema',
+				'Use this before planning WordPress core management work. It returns bounded read-only REST route, post type, taxonomy, status, revision, autosave, Site Editor, and capability hints without exposing callbacks, nonces, option values, or private internals.',
+				'Core Schema Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new CoreSchemaDiscovery() )->manifest()
+			),
+			$this->module(
 				'workflow_session.start',
 				'Start MCP Workflow Session',
 				'Start a bounded Aculect workflow session so ChatGPT, Claude, Codex, or another MCP client can resume multi-tool content, SEO, or site-management work without relying on chat memory.',

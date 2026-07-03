@@ -732,6 +732,7 @@ final class McpController {
 				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'Before planning WordPress core management, route/schema-dependent content work, or Site Editor compatibility, call core_schema_discover for bounded REST route, post type, taxonomy, status, revision, autosave, and capability discovery.',
 				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
 				'For "do all" style collection work such as thin-page cleanup, create a workflow_loop after discovery, then use workflow_loop_run_next or workflow_loop_run_batch to process bounded items and report completion without resending the full item list.',
@@ -773,6 +774,24 @@ final class McpController {
 
 		if ( 'workflow_guides.get' === $module->id() ) {
 			return $this->workflow_guides_get_output_schema();
+		}
+
+		if ( 'core_schema.discover' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'schema_version' => array( 'type' => 'string' ),
+					'description'    => array( 'type' => 'string' ),
+					'wordpress'      => array( 'type' => 'object' ),
+					'capabilities'   => array( 'type' => 'object' ),
+					'post_types'     => array( 'type' => 'array' ),
+					'taxonomies'     => array( 'type' => 'array' ),
+					'statuses'       => array( 'type' => 'array' ),
+					'rest'           => array( 'type' => 'object' ),
+					'features'       => array( 'type' => 'object' ),
+					'diagnostics'    => array( 'type' => 'array' ),
+				),
+				array( 'schema_version', 'wordpress', 'capabilities', 'post_types', 'taxonomies', 'statuses', 'rest', 'features', 'diagnostics' )
+			);
 		}
 
 		if ( 'intelligence.feedback.submit' === $module->id() ) {

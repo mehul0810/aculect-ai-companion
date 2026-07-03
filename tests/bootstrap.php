@@ -893,6 +893,17 @@ if ( ! function_exists( 'post_type_supports' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_get_sidebars_widgets' ) ) {
+	/**
+	 * Return test sidebar widget assignments.
+	 *
+	 * @return array<string, list<string>>
+	 */
+	function wp_get_sidebars_widgets(): array {
+		return $GLOBALS['aculect_ai_companion_test_sidebars_widgets'] ?? array();
+	}
+}
+
 if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
 	/**
 	 * Return a test featured image ID.

@@ -138,6 +138,60 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 	);
 } );
 
+test( 'keeps internal-link map payloads scoped to the internal links tab', () => {
+	const currentData = {
+		hydratedTabs: [ 'overview', 'links-map' ],
+		internalLinksMap: {
+			total: 1,
+			items: [ { post_id: 42, title: 'Indexed page' } ],
+		},
+	};
+	const payload = {
+		payloadTab: 'activity',
+		hydratedTabs: [ 'overview', 'activity' ],
+		internalLinksMap: {
+			total: 0,
+			items: [],
+		},
+		activity: { total: 2, items: [ { id: 2 } ] },
+	};
+
+	assert.deepEqual(
+		mergeSettingsPayload( currentData, payload, 'activity' ),
+		{
+			hydratedTabs: [ 'overview', 'links-map', 'activity' ],
+			payloadTab: 'activity',
+			internalLinksMap: {
+				total: 1,
+				items: [ { post_id: 42, title: 'Indexed page' } ],
+			},
+			activity: { total: 2, items: [ { id: 2 } ] },
+		}
+	);
+} );
+
+test( 'internal links admin view renders filters, status states, and action links', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/{ name: 'links-map', title: 'Internal Links', icon: category }/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function InternalLinksDashboard\( \{ data, internalLinksMap \} \)/
+	);
+	assert.match( ADMIN_APP_SOURCE, /name="links_state"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="links_post_type"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="links_min_inbound"/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/<InternalLinksTable items=\{ items \} \/>/
+	);
+	assert.match( ADMIN_APP_SOURCE, /item\.editUrl/ );
+	assert.match( ADMIN_APP_SOURCE, /item\.viewUrl/ );
+	assert.match( ADMIN_APP_SOURCE, /item\.suggestionsUrl/ );
+	assert.match( ADMIN_APP_SOURCE, /caption className="screen-reader-text"/ );
+} );
+
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

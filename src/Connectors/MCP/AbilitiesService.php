@@ -39,6 +39,26 @@ final class AbilitiesService {
 	}
 
 	/**
+	 * List bounded revision metadata for a content item.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function list_revisions( array $args ): array {
+		return ( new RevisionsAutosavesAbilities() )->list_revisions( $args );
+	}
+
+	/**
+	 * Inspect current-user autosave availability for a content item.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function inspect_autosaves( array $args ): array {
+		return ( new RevisionsAutosavesAbilities() )->inspect_autosaves( $args );
+	}
+
+	/**
 	 * Create a post, page, or custom post type item.
 	 *
 	 * @param array<string, mixed> $data Content fields.

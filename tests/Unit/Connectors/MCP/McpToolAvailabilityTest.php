@@ -141,6 +141,21 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'content.update_item', $modules );
 	}
 
+	public function test_revision_and_autosave_discovery_are_default_active_read_tools(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.update_item' ) );
+
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array( 'content:read' ) );
+
+		self::assertArrayHasKey( 'content_revisions.list', $modules );
+		self::assertArrayHasKey( 'content_autosaves.inspect', $modules );
+		self::assertTrue( $registry->is_core_default( 'content_revisions_list' ) );
+		self::assertTrue( $registry->is_core_default( 'content_autosaves.inspect' ) );
+		self::assertTrue( $modules['content_revisions.list']->is_read_only() );
+		self::assertSame( array( 'content:read' ), $modules['content_autosaves.inspect']->required_scopes() );
+		self::assertArrayNotHasKey( 'content.update_item', $modules );
+	}
+
 	public function test_operations_manifest_identifies_missing_user_blocks(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );

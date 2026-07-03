@@ -69,6 +69,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
+		self::assertArrayHasKey( 'content_revisions.list', $by_id );
+		self::assertArrayHasKey( 'content_autosaves.inspect', $by_id );
 		self::assertArrayNotHasKey( 'content.update_item', $by_id );
 		self::assertTrue( $by_id['search']['enabled'] );
 		self::assertTrue( $by_id['search']['coreDefault'] );
@@ -128,6 +130,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_internal_link.policy', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'content_revisions.list', $by_id );
+		self::assertArrayNotHasKey( 'content_autosaves.inspect', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
 		self::assertArrayNotHasKey( 'fetch', $by_id );
 		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
@@ -185,6 +189,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
+				'content_revisions.list',
+				'content_autosaves.inspect',
 				'memory.list',
 				'memory.save',
 				'memory.bootstrap',
@@ -214,6 +220,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_audit_internal_links' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_revisions_list' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_autosaves.inspect' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.policy' ) );
@@ -239,6 +247,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_revisions.list' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_autosaves_inspect' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.save' ) );

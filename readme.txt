@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.6.1
+Stable tag: 0.7.0-beta.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -227,14 +227,14 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 
 == Screenshots ==
 
-1. Overview tab showing the 0.6.1 AI Companion experience.
+1. Overview tab showing the 0.7.0 beta AI Companion experience.
 2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI.
 3. Connections tab for reviewing connected AI assistants, read/write access, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.6.1 release notes.
+8. Changelog tab with the current 0.7.0 beta release notes.
 
 == Development ==
 
@@ -262,6 +262,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.7.0-beta.1 =
+
+* Added WordPress core management discovery abilities for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
+* Added internal linking workflows for reviewing suggestions, applying approved links, mapping link opportunities, and surfacing editor suggestions.
+* Improved MCP discovery cursor reliability so paginated tool discovery remains deterministic for supported clients.
+* Added release tooling, templates, regression checklist, and Playground proof support for beta package review.
 
 = 0.6.1 =
 
@@ -404,6 +411,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.0-beta.1 =
+
+Adds WordPress core management discovery, internal linking review/apply/map/editor suggestions, more reliable MCP discovery cursors, and beta release proof tooling.
 
 = 0.6.1 =
 

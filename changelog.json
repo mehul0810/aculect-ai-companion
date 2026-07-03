@@ -1,4 +1,15 @@
 {
+  "0.7.0-beta.1": {
+    "date": "2026-07-03",
+    "New": [
+      "Added WordPress core management discovery abilities for supported site, user, role, capability, revision, autosave, and REST schema surfaces.",
+      "Added internal linking workflows for reviewing suggestions, applying approved links, mapping link opportunities, and surfacing editor suggestions.",
+      "Added beta package review support with release tooling, templates, regression checklist coverage, and Playground proof helpers."
+    ],
+    "Improved": [
+      "Improved MCP discovery cursor reliability so paginated tool discovery remains deterministic for supported clients."
+    ]
+  },
   "0.6.0": {
     "date": "2026-06-16",
     "New": [

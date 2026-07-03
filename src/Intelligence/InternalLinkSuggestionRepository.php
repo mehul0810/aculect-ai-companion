@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Intelligence;
 
+use Aculect\AICompanion\Connectors\MCP\ContentAbilities;
+
 /**
  * Stores bounded review-first internal-link suggestions without full post content.
  */
@@ -125,7 +127,7 @@ final class InternalLinkSuggestionRepository {
 			'capabilities' => array(
 				'approve_reject' => true,
 				'dry_run_apply'  => true,
-				'execute_apply'  => false,
+				'execute_apply'  => true,
 			),
 		);
 	}
@@ -181,7 +183,7 @@ final class InternalLinkSuggestionRepository {
 	}
 
 	/**
-	 * Return a dry-run apply plan. Execution is intentionally unavailable in this slice.
+	 * Return a dry-run apply plan or execute one approved suggestion.
 	 *
 	 * @param string $id      Suggestion ID.
 	 * @param bool   $dry_run Whether this request is a dry run.
@@ -197,55 +199,79 @@ final class InternalLinkSuggestionRepository {
 			return $this->error( 'suggestion_not_approved', 'Only approved internal-link suggestions can be planned for apply.' );
 		}
 
-		if ( ! $dry_run ) {
-			return array(
-				'status'       => 'unavailable',
-				'error'        => 'execute_apply_unavailable',
-				'message'      => 'Executing internal-link suggestions is not enabled in this safe slice. Use dry_run=true for a reviewable plan.',
-				'suggestion'   => $suggestion,
-				'next_actions' => array(
-					'Route execution through content_workflow_update_post only after block-safe insertion support is added.',
-				),
+		$prepared = $this->prepare_apply( $suggestion );
+		if ( isset( $prepared['error'] ) ) {
+			if ( ! $dry_run && in_array( (string) $prepared['error'], array( 'duplicate_internal_link', 'stale_suggestion' ), true ) ) {
+				$this->transition( $id, 'duplicate_internal_link' === (string) $prepared['error'] ? 'skipped' : 'stale', (string) $prepared['message'] );
+			}
+
+			return array_merge(
+				$prepared,
+				array(
+					'dry_run'    => $dry_run,
+					'suggestion' => $suggestion,
+				)
 			);
 		}
 
+		$update = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => (int) $prepared['source_id'],
+				'locator'       => array( 'path' => $prepared['locator_path'] ),
+				'internal_link' => array(
+					'anchor_text' => (string) $prepared['anchor_text'],
+					'url'         => (string) $prepared['target_url'],
+				),
+				'dry_run'       => $dry_run,
+			)
+		);
+
+		if ( isset( $update['error'] ) ) {
+			return array_merge(
+				$update,
+				array(
+					'dry_run'    => $dry_run,
+					'suggestion' => $suggestion,
+				)
+			);
+		}
+
+		if ( ! $dry_run ) {
+			$suggestion = $this->transition( $id, 'applied', 'Applied through content.update_block targeted internal-link update.' );
+		}
+
 		return array(
-			'dry_run'      => true,
-			'status'       => 'preview',
-			'action'       => 'content_internal_link.suggestion_apply',
-			'suggestion'   => $suggestion,
-			'target'       => array(
+			'dry_run'       => $dry_run,
+			'status'        => $dry_run ? 'preview' : 'applied',
+			'action'        => 'content_internal_link.suggestion_apply',
+			'suggestion'    => $suggestion,
+			'target'        => array(
 				'type' => 'post',
 				'id'   => (int) ( $suggestion['source_post']['id'] ?? 0 ),
 			),
-			'changes'      => array(
+			'changes'       => array(
 				array(
 					'field' => 'internal_link',
 					'from'  => 'not_applied',
 					'to'    => array(
 						'target_post_id' => (int) ( $suggestion['target_post']['id'] ?? 0 ),
 						'anchor_text'    => (string) ( $suggestion['anchor_text'] ?? '' ),
-						'status'         => 'planned',
+						'status'         => $dry_run ? 'planned' : 'applied',
 					),
 				),
 			),
-			'diff'         => array(
-				'fields' => array(
-					array(
-						'field'   => 'post_content',
-						'changed' => true,
-						'from'    => 'existing block content',
-						'to'      => 'existing block content with one approved semantic internal link inserted by content_workflow_update_post',
-					),
-				),
+			'block_update'  => $update,
+			'block_locator' => array(
+				'path'       => $prepared['locator_path'],
+				'path_label' => implode( '/', $prepared['locator_path'] ),
+				'block_name' => $prepared['block_name'],
 			),
-			'warnings'     => array(
-				'Preview only. This tool does not mutate content.',
-				'Execution must use content_workflow_update_post after validating semantic blocks and preventing duplicate target links.',
+			'diff'          => $update['diff'] ?? array(),
+			'warnings'      => array(
+				$dry_run ? 'Preview only. This request does not mutate content.' : 'Applied one approved suggestion through the targeted block update path.',
 			),
-			'next_actions' => array(
-				'Inspect source content with search/fetch or content.get_item.',
-				'Prepare a block-safe update through content_workflow_update_post when execute support is implemented.',
+			'next_actions'  => array(
+				$dry_run ? 'Call this tool with dry_run=false to apply this approved suggestion.' : 'Use content_internal_link_suggestions_list to review remaining approved suggestions.',
 			),
 		);
 	}
@@ -299,6 +325,151 @@ final class InternalLinkSuggestionRepository {
 	private function write( array $items ): void {
 		$items = array_slice( array_values( $items ), -self::MAX_ITEMS );
 		update_option( self::OPTION, $items, false );
+	}
+
+	/**
+	 * Prepare one block-safe internal-link apply operation.
+	 *
+	 * @param array<string, mixed> $suggestion Suggestion row.
+	 * @return array<string, mixed>
+	 */
+	private function prepare_apply( array $suggestion ): array {
+		$source_id = (int) ( $suggestion['source_post']['id'] ?? 0 );
+		$target_id = (int) ( $suggestion['target_post']['id'] ?? 0 );
+		$anchor    = (string) ( $suggestion['anchor_text'] ?? '' );
+		$source    = get_post( $source_id );
+		$target    = get_post( $target_id );
+
+		if ( ! $source instanceof \WP_Post || ! $target instanceof \WP_Post || ! in_array( (string) $target->post_status, array( 'publish', 'future', 'draft', 'private' ), true ) ) {
+			return $this->error( 'stale_suggestion', 'Source or target content no longer exists in an applyable state.' );
+		}
+
+		$target_url = esc_url_raw( (string) get_permalink( $target ) );
+		if ( '' === $target_url ) {
+			return $this->error( 'stale_suggestion', 'Target content no longer has a usable permalink.' );
+		}
+
+		if ( $this->content_links_to_target( (string) $source->post_content, $target_url ) ) {
+			return $this->error( 'duplicate_internal_link', 'Source content already links to the target URL.' );
+		}
+
+		$locator = $this->first_anchor_locator( (string) $source->post_content, $anchor );
+		if ( array() === $locator ) {
+			return $this->error( 'stale_suggestion', 'The approved anchor text no longer appears in a supported paragraph or heading block.' );
+		}
+
+		return array(
+			'source_id'    => $source_id,
+			'target_id'    => $target_id,
+			'target_url'   => $target_url,
+			'anchor_text'  => $anchor,
+			'locator_path' => $locator['path'],
+			'block_name'   => $locator['block_name'],
+		);
+	}
+
+	/**
+	 * Find the first paragraph or heading block containing the approved anchor.
+	 *
+	 * @param string $content Serialized source content.
+	 * @param string $anchor  Approved anchor text.
+	 * @return array<string, mixed>
+	 */
+	private function first_anchor_locator( string $content, string $anchor ): array {
+		if ( '' === $anchor || ! function_exists( 'parse_blocks' ) ) {
+			return array();
+		}
+
+		$blocks = parse_blocks( $content );
+
+		return $this->first_anchor_locator_in_blocks( $blocks, $anchor );
+	}
+
+	/**
+	 * Find the first supported block containing the approved anchor.
+	 *
+	 * @param array<mixed> $blocks Parsed blocks.
+	 * @param string       $anchor Approved anchor text.
+	 * @param array        $prefix Locator path prefix.
+	 * @phpstan-param list<int> $prefix
+	 * @return array<string, mixed>
+	 */
+	private function first_anchor_locator_in_blocks( array $blocks, string $anchor, array $prefix = array() ): array {
+		foreach ( array_values( $blocks ) as $index => $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+
+			$path       = array_merge( $prefix, array( $index ) );
+			$block_name = (string) ( $block['blockName'] ?? '' );
+			if ( in_array( $block_name, array( 'core/paragraph', 'core/heading' ), true ) && $this->text_contains_anchor( (string) ( $block['innerHTML'] ?? '' ), $anchor ) ) {
+				return array(
+					'path'       => $path,
+					'block_name' => $block_name,
+				);
+			}
+
+			$inner = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
+			if ( array() !== $inner ) {
+				$found = $this->first_anchor_locator_in_blocks( $inner, $anchor, $path );
+				if ( array() !== $found ) {
+					return $found;
+				}
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Check whether source content already links to the target URL.
+	 *
+	 * @param string $content    Serialized source content.
+	 * @param string $target_url Target URL.
+	 */
+	private function content_links_to_target( string $content, string $target_url ): bool {
+		if ( '' === $target_url ) {
+			return false;
+		}
+
+		return 1 === preg_match( '/<a\b[^>]*href=[\"\']' . preg_quote( $target_url, '/' ) . '[\"\'][^>]*>/i', $content );
+	}
+
+	/**
+	 * Check whether block text still contains the approved anchor.
+	 *
+	 * @param string $html   Block inner HTML.
+	 * @param string $anchor Approved anchor text.
+	 */
+	private function text_contains_anchor( string $html, string $anchor ): bool {
+		return 1 === preg_match( '/' . preg_quote( $anchor, '/' ) . '/iu', wp_strip_all_tags( $html ) );
+	}
+
+	/**
+	 * Persist a status transition and return the updated suggestion.
+	 *
+	 * @param string $id     Suggestion ID.
+	 * @param string $status New status.
+	 * @param string $note   Status note.
+	 * @return array<string, mixed>
+	 */
+	private function transition( string $id, string $status, string $note ): array {
+		$stored = $this->all();
+		foreach ( $stored as $index => $item ) {
+			if ( (string) ( $item['id'] ?? '' ) !== $id ) {
+				continue;
+			}
+
+			$stored[ $index ]['status']       = $this->status( $status, (string) $item['status'] );
+			$stored[ $index ]['review_note']  = $this->text( $note, 500 );
+			$stored[ $index ]['last_checked'] = gmdate( 'Y-m-d\TH:i:s\Z' );
+			$stored[ $index ]['updated_at']   = gmdate( 'Y-m-d\TH:i:s\Z' );
+			$this->write( $stored );
+
+			return $stored[ $index ];
+		}
+
+		return array();
 	}
 
 	/**

@@ -36,6 +36,8 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_options']         = array(
 			'blogname' => 'Aculect Demo',
 		);
+
+		$this->registerTestBlocks();
 	}
 
 	protected function tearDown(): void {
@@ -46,6 +48,22 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		}
 
 		parent::tearDown();
+	}
+
+	private function registerTestBlocks(): void {
+		\WP_Block_Type_Registry::get_instance()->unregister_all();
+		foreach ( array( 'core/paragraph', 'core/heading', 'core/group', 'core/html' ) as $name ) {
+			\WP_Block_Type_Registry::get_instance()->register(
+				$name,
+				array(
+					'title'    => $name,
+					'category' => 'text',
+					'supports' => array(
+						'inserter' => true,
+					),
+				)
+			);
+		}
 	}
 
 	public function test_memory_save_dry_run_uses_registered_internal_action(): void {
@@ -405,7 +423,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'internal_link_policy', $result['type'] );
 		self::assertSame( 4, $result['limits']['max_suggestions_per_source'] );
 		self::assertSame( 2, $result['limits']['max_new_links_per_source'] );
-		self::assertFalse( $result['capabilities']['applies_content_links'] );
+		self::assertTrue( $result['capabilities']['applies_content_links'] );
 		self::assertStringContainsString( 'do not mutate content', $result['guidance']['read_only'] );
 	}
 
@@ -553,10 +571,11 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 	public function test_internal_link_suggestion_workflow_requires_review_before_dry_run_apply(): void {
 		$GLOBALS['aculect_ai_companion_test_posts'][11] = new \WP_Post(
 			array(
-				'ID'          => 11,
-				'post_type'   => 'page',
-				'post_status' => 'publish',
-				'post_title'  => 'Source Page',
+				'ID'           => 11,
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+				'post_title'   => 'Source Page',
+				'post_content' => '<!-- wp:paragraph --><p>Read the Target Post before applying policy limits.</p><!-- /wp:paragraph -->',
 			)
 		);
 		$GLOBALS['aculect_ai_companion_test_posts'][22] = new \WP_Post(
@@ -580,7 +599,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		);
 
 		self::assertSame( 'created', $created['status'] );
-		self::assertFalse( $created['capabilities']['execute_apply'] );
+		self::assertTrue( $created['capabilities']['execute_apply'] );
 		$id = (string) $created['items'][0]['id'];
 
 		$blocked = $abilities->apply_internal_link_suggestion(
@@ -612,10 +631,11 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'preview', $preview['status'] );
 		self::assertTrue( $preview['dry_run'] );
 		self::assertSame( 11, $preview['target']['id'] );
-		self::assertSame( 'post_content', $preview['diff']['fields'][0]['field'] );
+		self::assertSame( 'block.internal_link', $preview['diff']['fields'][0]['field'] );
 
 		$execute = $abilities->apply_internal_link_suggestion( array( 'id' => $id ) );
-		self::assertSame( 'execute_apply_unavailable', $execute['error'] );
+		self::assertSame( 'applied', $execute['suggestion']['status'] );
+		self::assertStringContainsString( '<a href="https://example.com/?p=22">Target Post</a>', $GLOBALS['aculect_ai_companion_test_posts'][11]->post_content );
 	}
 
 	public function test_internal_link_suggestion_create_checks_source_edit_capability(): void {

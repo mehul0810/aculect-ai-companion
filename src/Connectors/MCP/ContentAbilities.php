@@ -504,20 +504,32 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'unsupported_block_attribute_update', 'Registered block attribute writes are deferred for this beta slice; use text replacement for core paragraph and heading blocks.' );
 		}
 
-		if ( ! array_key_exists( 'text', $data ) ) {
-			return $this->error( 'invalid_block_update', 'Provide text for the targeted block update.' );
-		}
-
-		$text = sanitize_text_field( (string) $data['text'] );
 		if ( ! in_array( $block_name, array( 'core/paragraph', 'core/heading' ), true ) ) {
 			return $this->error( 'unsupported_block_type', 'Only core paragraph and heading text replacement is supported in this beta slice.' );
+		}
+
+		$link = $this->internal_link_update_payload( $data['internal_link'] ?? null );
+		$text = '';
+		if ( isset( $link['error'] ) ) {
+			return $link;
+		}
+		if ( array() === $link ) {
+			if ( ! array_key_exists( 'text', $data ) ) {
+				return $this->error( 'invalid_block_update', 'Provide text or one allowlisted internal_link payload for the targeted block update.' );
+			}
+
+			$text = sanitize_text_field( (string) $data['text'] );
 		}
 
 		$before_text = $this->block_text( $target );
 		$updated     = $this->replace_block_at_path(
 			$blocks,
 			$path,
-			function ( array $block ) use ( $block_name, $text ): array {
+			function ( array $block ) use ( $block_name, $link, $text ): array {
+				if ( array() !== $link ) {
+					return $this->block_with_internal_link( $block, $block_name, $link );
+				}
+
 				return $this->block_with_text( $block, $block_name, $text );
 			}
 		);
@@ -526,25 +538,36 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_block_locator', 'No block exists at the requested locator path.' );
 		}
 
-		$content    = $this->serialize_parsed_blocks( $updated );
+		$content = $this->serialize_parsed_blocks( $updated );
+		if ( array() !== $link && ! str_contains( $content, 'href="' . esc_url( (string) $link['url'] ) . '"' ) ) {
+			return $this->error( 'internal_link_anchor_not_found', 'The targeted block does not contain an unlinked occurrence of the requested anchor text.' );
+		}
+
 		$validation = $this->validated_block_content_argument( array( 'content' => $content ) );
 		if ( isset( $validation['error'] ) ) {
 			return $validation;
 		}
 
-		$locator  = array(
+		$locator    = array(
 			'path'       => $path,
 			'path_label' => implode( '/', $path ),
 			'block_name' => $block_name,
 		);
-		$warnings = array( 'Attribute writes are deferred in this beta slice; only paragraph and heading text replacement is enabled.' );
-		$diff     = $this->diff_payload(
+		$after_text = array() !== $link ? $before_text : $text;
+		$warnings   = array() !== $link
+			? array( 'Internal links are inserted only into one targeted paragraph or heading block after duplicate-link validation by the caller.' )
+			: array( 'Attribute writes are deferred in this beta slice; only paragraph and heading text replacement is enabled.' );
+		$diff       = $this->diff_payload(
 			array(
-				$this->field_diff( 'block.text', $before_text, $text ),
+				array() !== $link
+					? $this->field_diff( 'block.internal_link', 'not_applied', (string) $link['url'] )
+					: $this->field_diff( 'block.text', $before_text, $after_text ),
 			)
 		);
-		$changes  = array(
-			$this->change( 'block.text', $before_text, $text ),
+		$changes    = array(
+			array() !== $link
+				? $this->change( 'block.internal_link', 'not_applied', (string) $link['url'] )
+				: $this->change( 'block.text', $before_text, $after_text ),
 		);
 
 		if ( $this->is_dry_run( $data ) ) {
@@ -564,7 +587,7 @@ final class ContentAbilities extends AbstractAbilityService {
 			$response['block_locator']   = $locator;
 			$response['changed_fields']  = array_values( array_column( array_filter( $changes ), 'field' ) );
 			$response['block_before']    = array( 'text' => $before_text );
-			$response['block_after']     = array( 'text' => $text );
+			$response['block_after']     = array( 'text' => $after_text );
 			$response['edit_url']        = get_edit_post_link( $post_id, 'raw' );
 			$response['validated_write'] = false;
 
@@ -841,6 +864,97 @@ final class ContentAbilities extends AbstractAbilityService {
 		$block['innerContent'] = array( $html );
 
 		return $block;
+	}
+
+	/**
+	 * Return a parsed paragraph or heading block with one allowlisted internal link.
+	 *
+	 * @param array<string, mixed> $block      Parsed block.
+	 * @param string               $block_name Block name.
+	 * @param array<string, mixed> $link       Internal-link payload.
+	 * @return array<string, mixed>
+	 */
+	private function block_with_internal_link( array $block, string $block_name, array $link ): array {
+		$html   = (string) ( $block['innerHTML'] ?? '' );
+		$anchor = (string) $link['anchor_text'];
+		$url    = (string) $link['url'];
+		$linked = $this->replace_first_unlinked_anchor( $html, $anchor, $url );
+
+		if ( null === $linked ) {
+			return $block;
+		}
+
+		if ( 'core/heading' === $block_name && ! preg_match( '/<h[1-6][^>]*>.*<\/h[1-6]>/is', $linked ) ) {
+			$level  = absint( $block['attrs']['level'] ?? 2 );
+			$level  = max( 1, min( 6, $level ) );
+			$linked = sprintf( '<h%d>%s</h%d>', $level, $linked, $level );
+		} elseif ( 'core/paragraph' === $block_name && ! preg_match( '/<p\b[^>]*>.*<\/p>/is', $linked ) ) {
+			$linked = sprintf( '<p>%s</p>', $linked );
+		}
+
+		$block['innerHTML']    = wp_kses_post( $linked );
+		$block['innerContent'] = array( $block['innerHTML'] );
+
+		return $block;
+	}
+
+	/**
+	 * Validate a narrow internal-link update payload.
+	 *
+	 * @param mixed $payload Raw payload.
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_update_payload( mixed $payload ): array {
+		if ( null === $payload ) {
+			return array();
+		}
+		if ( ! is_array( $payload ) ) {
+			return $this->error( 'invalid_internal_link', 'Internal link updates must provide an anchor_text and URL.' );
+		}
+
+		$anchor    = sanitize_text_field( (string) ( $payload['anchor_text'] ?? '' ) );
+		$url       = esc_url_raw( (string) ( $payload['url'] ?? '' ) );
+		$site_host = wp_parse_url( home_url( '/' ), PHP_URL_HOST );
+		$link_host = wp_parse_url( $url, PHP_URL_HOST );
+		if ( '' === $anchor || '' === $url || ! is_string( $site_host ) || ! is_string( $link_host ) || strtolower( $site_host ) !== strtolower( $link_host ) ) {
+			return $this->error( 'invalid_internal_link', 'Internal link updates require a non-empty anchor_text and same-site URL.' );
+		}
+
+		return array(
+			'anchor_text' => $anchor,
+			'url'         => $url,
+		);
+	}
+
+	/**
+	 * Replace the first plain-text anchor occurrence that is not already linked.
+	 *
+	 * @param string $html   Block inner HTML.
+	 * @param string $anchor Anchor text.
+	 * @param string $url    Target URL.
+	 */
+	private function replace_first_unlinked_anchor( string $html, string $anchor, string $url ): ?string {
+		$pattern = '/' . preg_quote( $anchor, '/' ) . '/iu';
+		if ( 1 !== preg_match( $pattern, wp_strip_all_tags( $html ) ) ) {
+			return null;
+		}
+
+		$parts = preg_split( '/(<a\b[^>]*>.*?<\/a>)/is', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+		if ( ! is_array( $parts ) ) {
+			return null;
+		}
+
+		foreach ( $parts as $index => $part ) {
+			if ( 1 === $index % 2 || 1 !== preg_match( $pattern, wp_strip_all_tags( $part ) ) ) {
+				continue;
+			}
+
+			$replacement     = sprintf( '<a href="%1$s">%2$s</a>', esc_url( $url ), esc_html( $anchor ) );
+			$parts[ $index ] = preg_replace( $pattern, $replacement, $part, 1 );
+			return implode( '', $parts );
+		}
+
+		return null;
 	}
 
 	/**

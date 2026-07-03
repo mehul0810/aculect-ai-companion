@@ -388,6 +388,56 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertStringNotContainsString( 'Existing content.', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
 	}
 
+	public function test_update_block_inserts_same_site_internal_link_into_targeted_paragraph(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:paragraph --><p>Existing content mentions Target Post once.</p><!-- /wp:paragraph -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Target Post',
+					'url'         => 'https://example.com/?p=456',
+				),
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertStringContainsString( '<a href="https://example.com/?p=456">Target Post</a>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringContainsString( '<!-- wp:paragraph -->', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_rejects_external_internal_link_url(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Existing content',
+					'url'         => 'https://evil.example/path',
+				),
+			)
+		);
+
+		self::assertSame( 'invalid_internal_link', $result['error'] );
+	}
+
+	public function test_update_block_rejects_internal_link_when_anchor_is_missing(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Missing Anchor',
+					'url'         => 'https://example.com/?p=456',
+				),
+			)
+		);
+
+		self::assertSame( 'internal_link_anchor_not_found', $result['error'] );
+		self::assertStringNotContainsString( '<a ', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
 	public function test_update_block_writes_nested_heading_content(): void {
 		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"><!-- wp:heading {"level":3} --><h3>Intro</h3><!-- /wp:heading --></div><!-- /wp:group -->';
 

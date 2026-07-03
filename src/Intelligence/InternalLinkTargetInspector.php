@@ -262,7 +262,12 @@ final class InternalLinkTargetInspector {
 			return array();
 		}
 
-		$matches = call_user_func( array( '\RankMath\Redirections\DB', 'match_redirections_source' ), $source );
+		$callback = array( '\RankMath\Redirections\DB', 'match_redirections_source' );
+		if ( ! is_callable( $callback ) ) {
+			return array();
+		}
+
+		$matches = $callback( $source );
 		if ( ! is_array( $matches ) ) {
 			return array();
 		}

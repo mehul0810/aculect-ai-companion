@@ -13,6 +13,7 @@ use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\InternalLinkPolicy;
+use Aculect\AICompanion\Intelligence\InternalLinkSuggestionRepository;
 use Aculect\AICompanion\Intelligence\InternalLinkTargetInspector;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 
@@ -962,12 +963,122 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			'limits'       => $policy['limits'],
 			'guidance'     => $this->internal_link_policy()->guidance(),
 			'capabilities' => array(
-				'reads_policy'          => true,
-				'filters_suggestions'   => true,
-				'filters_audit_rows'    => true,
-				'applies_content_links' => false,
+				'reads_policy'           => true,
+				'filters_suggestions'    => true,
+				'filters_audit_rows'     => true,
+				'reviewable_suggestions' => true,
+				'dry_run_apply_plan'     => true,
+				'applies_content_links'  => false,
 			),
 		);
+	}
+
+	/**
+	 * Create reviewable internal-link suggestion records.
+	 *
+	 * @param array<string, mixed> $args Suggestion args.
+	 * @return array<string, mixed>
+	 */
+	public function create_internal_link_suggestions( array $args ): array {
+		$source_id = absint( $args['source_id'] ?? $args['post_id'] ?? 0 );
+		if ( $source_id <= 0 || ! $this->can_edit_post( $source_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to create suggestions for that source content item.' );
+		}
+
+		foreach ( $this->suggestion_target_ids( $args ) as $target_id ) {
+			if ( ! $this->can_read_post( $target_id ) ) {
+				return $this->error_response( 'forbidden', 'You do not have permission to read one of the target content items.' );
+			}
+		}
+
+		$result = ( new InternalLinkSuggestionRepository() )->create( $args );
+		if ( ! isset( $result['error'] ) ) {
+			$result['capabilities'] = array(
+				'execute_apply' => false,
+				'dry_run_apply' => true,
+			);
+			$result['usage']        = array(
+				'review_required' => 'Suggestions are review records only. Approve or reject each suggestion before apply planning.',
+				'no_auto_apply'   => 'This tool never mutates post content.',
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * List reviewable internal-link suggestion records.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	public function list_internal_link_suggestions( array $args ): array {
+		$result = ( new InternalLinkSuggestionRepository() )->list( $args );
+		$items  = array_values(
+			array_filter(
+				(array) ( $result['items'] ?? array() ),
+				fn ( mixed $item ): bool => is_array( $item )
+					&& $this->can_read_post( (int) ( $item['source_post']['id'] ?? 0 ) )
+					&& $this->can_read_post( (int) ( $item['target_post']['id'] ?? 0 ) )
+			)
+		);
+
+		$result['items']              = $items;
+		$result['visible_total']      = count( $items );
+		$result['filtered_by_access'] = true;
+		$result['usage']              = array(
+			'review_first'  => 'Approve or reject suggestions before asking for an apply plan.',
+			'execute_apply' => 'Executing approved suggestions is intentionally unavailable in this slice.',
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Approve or reject one internal-link suggestion.
+	 *
+	 * @param array<string, mixed> $args Review args.
+	 * @return array<string, mixed>
+	 */
+	public function review_internal_link_suggestion( array $args ): array {
+		$id         = sanitize_key( (string) ( $args['id'] ?? $args['suggestion_id'] ?? '' ) );
+		$repository = new InternalLinkSuggestionRepository();
+		$suggestion = $repository->find( $id );
+		if ( array() === $suggestion ) {
+			return $this->error_response( 'suggestion_not_found', 'No internal-link suggestion was found for that ID.' );
+		}
+
+		if ( ! $this->can_edit_post( (int) ( $suggestion['source_post']['id'] ?? 0 ) ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to review suggestions for that source content item.' );
+		}
+
+		return $repository->review(
+			$id,
+			(string) ( $args['action'] ?? $args['status'] ?? '' ),
+			(string) ( $args['note'] ?? $args['review_note'] ?? '' )
+		);
+	}
+
+	/**
+	 * Return a dry-run apply plan for an approved internal-link suggestion.
+	 *
+	 * @param array<string, mixed> $args Apply args.
+	 * @return array<string, mixed>
+	 */
+	public function apply_internal_link_suggestion( array $args ): array {
+		$id         = sanitize_key( (string) ( $args['id'] ?? $args['suggestion_id'] ?? '' ) );
+		$repository = new InternalLinkSuggestionRepository();
+		$suggestion = $repository->find( $id );
+		if ( array() === $suggestion ) {
+			return $this->error_response( 'suggestion_not_found', 'No internal-link suggestion was found for that ID.' );
+		}
+
+		$source_id = (int) ( $suggestion['source_post']['id'] ?? 0 );
+		if ( ! $this->can_edit_post( $source_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to plan applying this source content item.' );
+		}
+
+		return $repository->apply_plan( $id, $this->is_dry_run( $args ) );
 	}
 
 	/**
@@ -2285,6 +2396,36 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 */
 	private function can_read_post( int $post_id ): bool {
 		return $post_id > 0 && ( ! function_exists( 'current_user_can' ) || current_user_can( 'read_post', $post_id ) );
+	}
+
+	/**
+	 * Check edit access for a post ID.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function can_edit_post( int $post_id ): bool {
+		return $post_id > 0 && ( ! function_exists( 'current_user_can' ) || current_user_can( 'edit_post', $post_id ) );
+	}
+
+	/**
+	 * Return target IDs from a suggestion create payload.
+	 *
+	 * @param array<string, mixed> $args Tool args.
+	 * @return list<int>
+	 */
+	private function suggestion_target_ids( array $args ): array {
+		$items = isset( $args['items'] ) && is_array( $args['items'] ) ? $args['items'] : array( $args );
+		$ids   = array();
+		foreach ( array_slice( $items, 0, 20 ) as $item ) {
+			if ( is_array( $item ) ) {
+				$id = absint( $item['target_id'] ?? $item['post_id'] ?? 0 );
+				if ( $id > 0 ) {
+					$ids[] = $id;
+				}
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
 	}
 
 	/**

@@ -895,6 +895,43 @@ final class McpController {
 			);
 		}
 
+		if ( 'content_internal_link.suggestions_list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'              => array( 'type' => 'array' ),
+					'total'              => array( 'type' => 'integer' ),
+					'visible_total'      => array( 'type' => 'integer' ),
+					'page'               => array( 'type' => 'integer' ),
+					'per_page'           => array( 'type' => 'integer' ),
+					'status'             => array( 'type' => 'string' ),
+					'filtered_by_access' => array( 'type' => 'boolean' ),
+					'capabilities'       => array( 'type' => 'object' ),
+					'usage'              => array( 'type' => 'object' ),
+				)
+			);
+		}
+
+		if ( 'content_internal_link.suggestions_create' === $module->id() || str_starts_with( $module->id(), 'content_internal_link.suggestion' ) ) {
+			return $this->object_output_schema(
+				array(
+					'status'        => array( 'type' => 'string' ),
+					'error'         => array( 'type' => 'string' ),
+					'message'       => array( 'type' => 'string' ),
+					'items'         => array( 'type' => 'array' ),
+					'suggestion'    => array( 'type' => 'object' ),
+					'duplicates'    => array( 'type' => 'array' ),
+					'total_created' => array( 'type' => 'integer' ),
+					'dry_run'       => array( 'type' => 'boolean' ),
+					'target'        => array( 'type' => 'object' ),
+					'changes'       => array( 'type' => 'array' ),
+					'diff'          => array( 'type' => 'object' ),
+					'warnings'      => array( 'type' => 'array' ),
+					'capabilities'  => array( 'type' => 'object' ),
+					'next_actions'  => array( 'type' => 'array' ),
+				)
+			);
+		}
+
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()

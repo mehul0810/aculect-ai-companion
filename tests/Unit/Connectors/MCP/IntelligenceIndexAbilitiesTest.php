@@ -550,6 +550,103 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 1, $result['quality_summary']['bounds']['return_limit'] );
 	}
 
+	public function test_internal_link_suggestion_workflow_requires_review_before_dry_run_apply(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11] = new \WP_Post(
+			array(
+				'ID'          => 11,
+				'post_type'   => 'page',
+				'post_status' => 'publish',
+				'post_title'  => 'Source Page',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_posts'][22] = new \WP_Post(
+			array(
+				'ID'          => 22,
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_title'  => 'Target Post',
+			)
+		);
+
+		$abilities = new IntelligenceIndexAbilities();
+		$created   = $abilities->create_internal_link_suggestions(
+			array(
+				'source_id'   => 11,
+				'target_id'   => 22,
+				'anchor_text' => 'Target Post',
+				'reason'      => 'Target explains the source topic.',
+				'score'       => 80,
+			)
+		);
+
+		self::assertSame( 'created', $created['status'] );
+		self::assertFalse( $created['capabilities']['execute_apply'] );
+		$id = (string) $created['items'][0]['id'];
+
+		$blocked = $abilities->apply_internal_link_suggestion(
+			array(
+				'id'      => $id,
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'suggestion_not_approved', $blocked['error'] );
+
+		$reviewed = $abilities->review_internal_link_suggestion(
+			array(
+				'id'     => $id,
+				'action' => 'approve',
+				'note'   => 'Relevant.',
+			)
+		);
+
+		self::assertSame( 'approved', $reviewed['suggestion']['status'] );
+
+		$preview = $abilities->apply_internal_link_suggestion(
+			array(
+				'id'      => $id,
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'preview', $preview['status'] );
+		self::assertTrue( $preview['dry_run'] );
+		self::assertSame( 11, $preview['target']['id'] );
+		self::assertSame( 'post_content', $preview['diff']['fields'][0]['field'] );
+
+		$execute = $abilities->apply_internal_link_suggestion( array( 'id' => $id ) );
+		self::assertSame( 'execute_apply_unavailable', $execute['error'] );
+	}
+
+	public function test_internal_link_suggestion_create_checks_source_edit_capability(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11]   = new \WP_Post(
+			array(
+				'ID'         => 11,
+				'post_type'  => 'page',
+				'post_title' => 'Source Page',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_posts'][22]   = new \WP_Post(
+			array(
+				'ID'         => 22,
+				'post_type'  => 'post',
+				'post_title' => 'Target Post',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_post' );
+
+		$result = ( new IntelligenceIndexAbilities() )->create_internal_link_suggestions(
+			array(
+				'source_id'   => 11,
+				'target_id'   => 22,
+				'anchor_text' => 'Target Post',
+				'reason'      => 'Target explains the source topic.',
+			)
+		);
+
+		self::assertSame( 'forbidden', $result['error'] );
+	}
+
 	public function test_audit_internal_links_reports_broken_targets_with_source_access_filtering(): void {
 		$GLOBALS['aculect_ai_companion_test_posts'][11]       = new \WP_Post(
 			array(

@@ -167,6 +167,10 @@ final class ActivityLogger {
 				'type' => 'intelligence_job',
 				'id'   => null,
 			),
+			'content_internal_link.suggestions_create', 'content_internal_link.suggestions_list', 'content_internal_link.suggestion_review', 'content_internal_link.suggestion_apply' => array(
+				'type' => 'internal_link_suggestion',
+				'id'   => null,
+			),
 			'memory.save', 'memory.list' => array(
 				'type' => 'memory',
 				'id'   => null,
@@ -225,7 +229,7 @@ final class ActivityLogger {
 			'action' => $action,
 		);
 
-		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'term_id', 'post_id', 'update_mode', 'job_key', 'source_type', 'target', 'block_type', 'placement', 'provider' ) as $key ) {
+		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'suggestion_id', 'source_id', 'target_id', 'term_id', 'post_id', 'update_mode', 'job_key', 'source_type', 'target', 'block_type', 'placement', 'provider' ) as $key ) {
 			if ( isset( $args[ $key ] ) && is_scalar( $args[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $args[ $key ] ) ? absint( $args[ $key ] ) : sanitize_text_field( (string) $args[ $key ] );
 			}

@@ -700,6 +700,10 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		$path = array();
 		foreach ( $locator['path'] as $part ) {
+			if ( is_int( $part ) && 0 > $part ) {
+				return array();
+			}
+
 			$index = absint( $part );
 			if ( (string) $index !== (string) $part && ! is_int( $part ) ) {
 				return array();

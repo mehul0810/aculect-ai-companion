@@ -320,6 +320,18 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( 'invalid_block_locator', $result['error'] );
 	}
 
+	public function test_update_block_rejects_negative_locator_path_parts(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( -1 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'invalid_block_locator', $result['error'] );
+	}
+
 	public function test_update_block_rejects_unsupported_type(): void {
 		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"></div><!-- /wp:group -->';
 

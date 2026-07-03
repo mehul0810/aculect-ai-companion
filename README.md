@@ -59,7 +59,7 @@ Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 ## Supported Abilities
 
-Admins can enable or disable these abilities from `AI Companion > Abilities` after the first assistant connection is active.
+Admins can enable or disable optional abilities from `AI Companion > Abilities` after the first assistant connection is active. Baseline read/discovery abilities for core MCP guidance remain default-active and are not individually disableable, but WordPress capabilities, OAuth scopes, connection access, and execution-time policy checks still apply.
 
 ### Content
 
@@ -122,6 +122,8 @@ Production ZIP files include built assets and Composer dependencies. Development
 ### MCP Ability Architecture
 
 First-party MCP tools are registered as internal ability modules. Each module owns its metadata, JSON input schema, required OAuth scope, read-only flag, and execution callback. `AbilitiesRegistry` maps internal dotted IDs to client-safe public tool names and keeps legacy aliases working.
+
+Safe baseline read/discovery modules can be classified as `core_default` in `AbilitiesRegistry`. Core-default abilities are always registered for connected assistants and omitted from user-facing enable/disable toggles. This policy is limited to read/discovery surfaces; write and admin operations still require normal global ability policy, role policy, OAuth scopes, confirmation or dry-run controls where applicable, WordPress capability checks, and audit logging.
 
 `workflow_route_request` is the preferred first call for ambiguous or multi-step work. It classifies the user request, returns the next tool with arguments, points to a workflow guide, and reports operation blockers. `workflow_session_start`, `workflow_session_get`, and `workflow_session_update` provide compact server-side workflow state so clients do not need saved chat memory to resume long content or site-management work. `workflow_loop_create`, `workflow_loop_run_next`, and `workflow_loop_run_batch` add bounded item-aware progress for "do all" style collection workflows such as thin-page cleanup.
 

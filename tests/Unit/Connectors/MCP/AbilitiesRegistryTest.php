@@ -60,6 +60,37 @@ final class AbilitiesRegistryTest extends TestCase {
 		}
 	}
 
+	public function test_core_default_definitions_are_default_active_and_not_user_configurable(): void {
+		$core_defaults = $this->registry->core_default_public_definitions();
+		$by_id         = array_column( $core_defaults, null, 'id' );
+
+		self::assertNotEmpty( $core_defaults );
+		self::assertArrayHasKey( 'workflow.route_request', $by_id );
+		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
+		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
+		self::assertArrayHasKey( 'search', $by_id );
+		self::assertArrayNotHasKey( 'content.update_item', $by_id );
+		self::assertTrue( $by_id['search']['enabled'] );
+		self::assertTrue( $by_id['search']['coreDefault'] );
+		self::assertFalse( $by_id['search']['configurable'] );
+		self::assertSame( 'read-only', $by_id['search']['riskLevel'] );
+		self::assertTrue( $this->registry->is_core_default( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_core_default( 'site_editor.get_context' ) );
+		self::assertFalse( $this->registry->is_core_default( 'memory.save' ) );
+
+		$public_by_id = array_column( $this->registry->public_definitions(), null, 'id' );
+		foreach ( array_keys( $by_id ) as $ability_id ) {
+			self::assertArrayNotHasKey( $ability_id, $public_by_id );
+		}
+
+		$this->registry->save_enabled_ids( array( 'content.update_item' ) );
+
+		self::assertSame( array( 'content.update_item' ), $this->registry->enabled_ids() );
+		self::assertContains( 'search', $this->registry->policy_enabled_ids() );
+		self::assertContains( 'content.update_item', $this->registry->policy_enabled_ids() );
+		self::assertTrue( $this->registry->is_enabled( 'search' ) );
+	}
+
 	public function test_public_definitions_surface_practical_permission_groups_and_risk(): void {
 		$definitions = $this->registry->public_definitions();
 		$groups      = array_values(

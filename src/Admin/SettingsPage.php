@@ -349,6 +349,7 @@ final class SettingsPage {
 			$tool_safety                 = new ToolSafety();
 			self::$ability_payload_cache = array(
 				'abilities'                => $ability_registry->public_definitions(),
+				'coreDefaultAbilities'     => $ability_registry->core_default_public_definitions(),
 				'enabledAbilities'         => $ability_registry->enabled_ids(),
 				'wpAbilities'              => $wp_abilities->public_definitions(),
 				'enabledWpAbilities'       => $wp_abilities->allowed_ids(),

@@ -274,6 +274,124 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( 'Public proposed title', $changes_by_field['title']['to'] );
 	}
 
+	public function test_get_item_includes_deterministic_block_locators(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"><!-- wp:heading {"level":3} --><h3>Intro</h3><!-- /wp:heading --><!-- wp:paragraph --><p>Nested copy.</p><!-- /wp:paragraph --></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->get_item( 123 );
+
+		self::assertSame( array( 0 ), $result['block_locators'][0]['path'] );
+		self::assertSame( 'core/group', $result['block_locators'][0]['block_name'] );
+		self::assertSame( array( 0, 0 ), $result['block_locators'][1]['path'] );
+		self::assertSame( 'core/heading', $result['block_locators'][1]['block_name'] );
+		self::assertSame( 'Intro', $result['block_locators'][1]['text'] );
+		self::assertSame( array( 0, 1 ), $result['block_locators'][2]['path'] );
+	}
+
+	public function test_update_block_dry_run_returns_field_level_diff_without_saving(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertSame( 'content.update_block', $result['action'] );
+		self::assertSame( 123, $result['post_id'] );
+		self::assertSame( array( 0 ), $result['block_locator']['path'] );
+		self::assertSame( array( 'block.text' ), $result['changed_fields'] );
+		self::assertSame( 'Existing content.', $result['diff']['fields'][0]['before']['value'] );
+		self::assertSame( 'Updated content.', $result['diff']['fields'][0]['after']['value'] );
+		self::assertStringContainsString( 'Attribute writes are deferred', $result['warnings'][0] );
+		self::assertStringContainsString( 'Existing content.', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_rejects_invalid_locator(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 3 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'invalid_block_locator', $result['error'] );
+	}
+
+	public function test_update_block_rejects_unsupported_type(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'unsupported_block_type', $result['error'] );
+	}
+
+	public function test_update_block_rejects_attribute_writes_for_beta_slice(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'attrs'   => array( 'placeholder' => 'Deferred' ),
+			)
+		);
+
+		self::assertSame( 'unsupported_block_attribute_update', $result['error'] );
+	}
+
+	public function test_update_block_rejects_users_without_edit_post(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_post' );
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'forbidden', $result['error'] );
+	}
+
+	public function test_update_block_writes_serialized_paragraph_content(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertSame( 'content.update_block', $result['action'] );
+		self::assertSame( array( 'block.text' ), $result['changed_fields'] );
+		self::assertStringContainsString( '<p>Updated content.</p>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringNotContainsString( 'Existing content.', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_writes_nested_heading_content(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"><!-- wp:heading {"level":3} --><h3>Intro</h3><!-- /wp:heading --></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0, 0 ) ),
+				'text'    => 'Updated intro',
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertStringContainsString( '<h3>Updated intro</h3>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringNotContainsString( '<h3>Intro</h3>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
 	/**
 	 * Invoke the private date payload helper for focused validation.
 	 *
@@ -301,7 +419,7 @@ final class ContentAbilitiesTest extends TestCase {
 
 	private function registerTestBlocks(): void {
 		\WP_Block_Type_Registry::get_instance()->unregister_all();
-		foreach ( array( 'core/paragraph', 'core/html' ) as $name ) {
+		foreach ( array( 'core/paragraph', 'core/heading', 'core/group', 'core/html' ) as $name ) {
 			\WP_Block_Type_Registry::get_instance()->register(
 				$name,
 				array(

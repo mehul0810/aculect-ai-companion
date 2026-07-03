@@ -40,6 +40,8 @@ final class ToolSafetyTest extends TestCase {
 
 		self::assertSame( 'update', $this->safety->risk_level( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
 		self::assertFalse( $this->safety->requires_confirmation( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
+		self::assertSame( 'update', $this->safety->risk_level( 'content.update_block', array( 'text' => 'Draft edit' ) ) );
+		self::assertFalse( $this->safety->requires_confirmation( 'content.update_block', array( 'text' => 'Draft edit' ) ) );
 
 		self::assertSame( 'update', $this->safety->risk_level( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'comments.bulk_update', array( 'status' => 'hold' ) ) );

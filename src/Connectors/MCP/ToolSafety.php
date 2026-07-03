@@ -120,6 +120,7 @@ final class ToolSafety {
 				'future', 'publish' => 'publish',
 				default => 'update',
 			},
+			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',

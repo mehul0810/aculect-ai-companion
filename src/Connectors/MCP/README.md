@@ -148,6 +148,15 @@ offset such as `2026-06-01T09:00:00+00:00`. Invalid or empty date values return
 a structured validation error instead of being silently converted by WordPress.
 Tool output includes both the stored local `date` and `date_gmt`.
 
+`content_update_block` provides a conservative targeted block-edit path for
+small text changes. Call `content_get_item` first and reuse a returned
+`block_locators[].path` value as the locator. The beta-1 slice supports
+plain-text replacement for registered `core/paragraph` and `core/heading`
+blocks, validates the reserialized block document, supports `dry_run`, and
+returns field-level diff metadata. Registered block attribute writes are
+deferred until a narrower allowlist can be tested against third-party block
+schemas.
+
 Media tools include `media_get_item` and `media_update_item` for reading and
 updating attachment title, alt text, caption, description, slug, and attachment
 parent. Updating `post_id` changes the attachment parent relationship only after

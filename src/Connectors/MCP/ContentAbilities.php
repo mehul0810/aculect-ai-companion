@@ -106,7 +106,10 @@ final class ContentAbilities extends AbstractAbilityService {
 			return array();
 		}
 
-		return $this->map_post( $post );
+		$item                   = $this->map_post( $post );
+		$item['block_locators'] = $this->block_locators( (string) $post->post_content );
+
+		return $item;
 	}
 
 	/**
@@ -459,6 +462,139 @@ final class ContentAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Update one supported parsed block by deterministic path.
+	 *
+	 * @param array<string, mixed> $data Content block update fields.
+	 * @return array<string, mixed>
+	 */
+	public function update_block( array $data ): array {
+		$post_id = absint( $data['id'] ?? 0 );
+		$post    = get_post( $post_id );
+
+		if ( ! $post instanceof \WP_Post ) {
+			return $this->error( 'not_found', 'Content item not found.' );
+		}
+
+		$post_type_object = get_post_type_object( $post->post_type );
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
+		}
+
+		if ( ! function_exists( 'parse_blocks' ) || ! function_exists( 'serialize_blocks' ) ) {
+			return $this->error( 'block_update_unavailable', 'WordPress block parsing and serialization APIs are required for targeted block updates.' );
+		}
+
+		$path = $this->block_locator_path( $data['locator'] ?? null );
+		if ( array() === $path ) {
+			return $this->error( 'invalid_block_locator', 'Provide a deterministic block locator path from a prior content read.' );
+		}
+
+		$blocks = $this->normalize_parsed_blocks( parse_blocks( (string) $post->post_content ) );
+		$target = $this->block_at_path( $blocks, $path );
+		if ( null === $target ) {
+			return $this->error( 'invalid_block_locator', 'No block exists at the requested locator path.' );
+		}
+
+		$block_name = (string) ( $target['blockName'] ?? '' );
+		if ( ! $this->is_registered_block( $block_name ) ) {
+			return $this->error( 'unsupported_block_type', 'Target block type is not registered on this site.' );
+		}
+
+		if ( array_key_exists( 'attrs', $data ) && array() !== (array) $data['attrs'] ) {
+			return $this->error( 'unsupported_block_attribute_update', 'Registered block attribute writes are deferred for this beta slice; use text replacement for core paragraph and heading blocks.' );
+		}
+
+		if ( ! array_key_exists( 'text', $data ) ) {
+			return $this->error( 'invalid_block_update', 'Provide text for the targeted block update.' );
+		}
+
+		$text = sanitize_text_field( (string) $data['text'] );
+		if ( ! in_array( $block_name, array( 'core/paragraph', 'core/heading' ), true ) ) {
+			return $this->error( 'unsupported_block_type', 'Only core paragraph and heading text replacement is supported in this beta slice.' );
+		}
+
+		$before_text = $this->block_text( $target );
+		$updated     = $this->replace_block_at_path(
+			$blocks,
+			$path,
+			function ( array $block ) use ( $block_name, $text ): array {
+				return $this->block_with_text( $block, $block_name, $text );
+			}
+		);
+
+		if ( null === $updated ) {
+			return $this->error( 'invalid_block_locator', 'No block exists at the requested locator path.' );
+		}
+
+		$content    = $this->serialize_parsed_blocks( $updated );
+		$validation = $this->validated_block_content_argument( array( 'content' => $content ) );
+		if ( isset( $validation['error'] ) ) {
+			return $validation;
+		}
+
+		$locator  = array(
+			'path'       => $path,
+			'path_label' => implode( '/', $path ),
+			'block_name' => $block_name,
+		);
+		$warnings = array( 'Attribute writes are deferred in this beta slice; only paragraph and heading text replacement is enabled.' );
+		$diff     = $this->diff_payload(
+			array(
+				$this->field_diff( 'block.text', $before_text, $text ),
+			)
+		);
+		$changes  = array(
+			$this->change( 'block.text', $before_text, $text ),
+		);
+
+		if ( $this->is_dry_run( $data ) ) {
+			$response                    = $this->preview_response(
+				'content.update_block',
+				$data,
+				array(
+					'type'    => $post->post_type,
+					'id'      => $post_id,
+					'locator' => $locator,
+				),
+				$changes,
+				$warnings,
+				$diff
+			);
+			$response['post_id']         = $post_id;
+			$response['block_locator']   = $locator;
+			$response['changed_fields']  = array_values( array_column( array_filter( $changes ), 'field' ) );
+			$response['block_before']    = array( 'text' => $before_text );
+			$response['block_after']     = array( 'text' => $text );
+			$response['edit_url']        = get_edit_post_link( $post_id, 'raw' );
+			$response['validated_write'] = false;
+
+			return $response;
+		}
+
+		$result = wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => $content,
+			),
+			true
+		);
+		if ( is_wp_error( $result ) ) {
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+		}
+
+		return array(
+			'status'         => 'updated',
+			'action'         => 'content.update_block',
+			'post_id'        => $post_id,
+			'block_locator'  => $locator,
+			'changed_fields' => array_values( array_column( array_filter( $changes ), 'field' ) ),
+			'diff'           => $diff,
+			'warnings'       => $warnings,
+			'edit_url'       => get_edit_post_link( $post_id, 'raw' ),
+		);
+	}
+
+	/**
 	 * Validate serialized block content for atomic content writes.
 	 *
 	 * @param array<string, mixed> $data Content fields.
@@ -500,6 +636,220 @@ final class ContentAbilities extends AbstractAbilityService {
 			'content'          => $content,
 			'block_validation' => $validation,
 		);
+	}
+
+	/**
+	 * Build deterministic block locator metadata for read responses.
+	 *
+	 * @param string $content Serialized block content.
+	 * @return list<array<string, mixed>>
+	 */
+	private function block_locators( string $content ): array {
+		if ( '' === trim( $content ) || ! function_exists( 'parse_blocks' ) ) {
+			return array();
+		}
+
+		return $this->flatten_block_locators( $this->normalize_parsed_blocks( parse_blocks( $content ) ) );
+	}
+
+	/**
+	 * Flatten parsed blocks into path locators.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @param array<int>                       $prefix Path prefix.
+	 * @phpstan-param list<int> $prefix
+	 * @return list<array<string, mixed>>
+	 */
+	private function flatten_block_locators( array $blocks, array $prefix = array() ): array {
+		$items = array();
+		foreach ( array_values( $blocks ) as $index => $block ) {
+			if ( empty( $block['blockName'] ) ) {
+				continue;
+			}
+
+			$path    = array_merge( $prefix, array( $index ) );
+			$items[] = array(
+				'path'       => $path,
+				'path_label' => implode( '/', $path ),
+				'block_name' => (string) $block['blockName'],
+				'text'       => $this->block_text( $block ),
+			);
+
+			if ( isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
+				$items = array_merge( $items, $this->flatten_block_locators( $block['innerBlocks'], $path ) );
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Normalize a client locator path.
+	 *
+	 * @param mixed $locator Locator payload.
+	 * @return list<int>
+	 */
+	private function block_locator_path( mixed $locator ): array {
+		if ( is_string( $locator ) ) {
+			$locator = array( 'path' => array_map( 'intval', array_filter( explode( '/', $locator ), static fn( string $part ): bool => '' !== $part ) ) );
+		}
+
+		if ( ! is_array( $locator ) || ! isset( $locator['path'] ) || ! is_array( $locator['path'] ) ) {
+			return array();
+		}
+
+		$path = array();
+		foreach ( $locator['path'] as $part ) {
+			$index = absint( $part );
+			if ( (string) $index !== (string) $part && ! is_int( $part ) ) {
+				return array();
+			}
+			$path[] = $index;
+		}
+
+		return array() === $path || count( $path ) > 12 ? array() : $path;
+	}
+
+	/**
+	 * Return a parsed block by path.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 * @param array<int>                       $path   Locator path.
+	 * @phpstan-param list<int> $path
+	 * @return array<string, mixed>|null
+	 */
+	private function block_at_path( array $blocks, array $path ): ?array {
+		$current = $blocks;
+		$block   = null;
+		foreach ( $path as $index ) {
+			if ( ! isset( $current[ $index ] ) || ! is_array( $current[ $index ] ) ) {
+				return null;
+			}
+
+			$block   = $current[ $index ];
+			$current = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : array();
+		}
+
+		return $block;
+	}
+
+	/**
+	 * Replace a parsed block at path.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks   Parsed blocks.
+	 * @param array<int>                       $path     Locator path.
+	 * @param callable                         $callback Replacement callback.
+	 * @phpstan-param list<int> $path
+	 * @return array<int, array<string, mixed>>|null
+	 */
+	private function replace_block_at_path( array $blocks, array $path, callable $callback ): ?array {
+		$index = array_shift( $path );
+		if ( null === $index || ! isset( $blocks[ $index ] ) ) {
+			return null;
+		}
+
+		if ( array() === $path ) {
+			$blocks[ $index ] = $callback( $blocks[ $index ] );
+			return $blocks;
+		}
+
+		$inner = isset( $blocks[ $index ]['innerBlocks'] ) && is_array( $blocks[ $index ]['innerBlocks'] ) ? $blocks[ $index ]['innerBlocks'] : array();
+		$next  = $this->replace_block_at_path( $inner, $path, $callback );
+		if ( null === $next ) {
+			return null;
+		}
+
+		$blocks[ $index ]['innerBlocks'] = $next;
+		return $blocks;
+	}
+
+	/**
+	 * Normalize WordPress parsed blocks into a recursively indexed list.
+	 *
+	 * @param array<mixed> $blocks Parsed blocks.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function normalize_parsed_blocks( array $blocks ): array {
+		$normalized = array();
+		foreach ( array_values( $blocks ) as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+
+			$block['innerBlocks'] = isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] )
+				? $this->normalize_parsed_blocks( $block['innerBlocks'] )
+				: array();
+			$normalized[]         = $block;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Serialize normalized parsed blocks.
+	 *
+	 * @param array<int, array<string, mixed>> $blocks Parsed blocks.
+	 */
+	private function serialize_parsed_blocks( array $blocks ): string {
+		$serialized = '';
+		foreach ( $blocks as $block ) {
+			/**
+			 * WordPress core defines a precise parsed-block array shape; this tool
+			 * only mutates fields that preserve that shape after parse_blocks().
+			 *
+			 * @var array{blockName: string|null, attrs: array<string, mixed>, innerBlocks: array<int, array<string, mixed>>, innerHTML: string, innerContent: array<int, mixed>} $serializable_block
+			 */
+			$serializable_block = $block;
+			$serialized        .= serialize_block( $serializable_block );
+		}
+
+		return $serialized;
+	}
+
+	/**
+	 * Return plain text from a parsed block.
+	 *
+	 * @param array<string, mixed> $block Parsed block.
+	 */
+	private function block_text( array $block ): string {
+		return trim( wp_strip_all_tags( (string) ( $block['innerHTML'] ?? '' ) ) );
+	}
+
+	/**
+	 * Return a parsed paragraph or heading block with escaped replacement text.
+	 *
+	 * @param array<string, mixed> $block      Parsed block.
+	 * @param string               $block_name Block name.
+	 * @param string               $text       Replacement text.
+	 * @return array<string, mixed>
+	 */
+	private function block_with_text( array $block, string $block_name, string $text ): array {
+		$escaped = esc_html( $text );
+		if ( 'core/heading' === $block_name ) {
+			$level = absint( $block['attrs']['level'] ?? 2 );
+			$level = max( 1, min( 6, $level ) );
+			$html  = sprintf( '<h%d>%s</h%d>', $level, $escaped, $level );
+		} else {
+			$html = sprintf( '<p>%s</p>', $escaped );
+		}
+
+		$block['innerHTML']    = $html;
+		$block['innerContent'] = array( $html );
+
+		return $block;
+	}
+
+	/**
+	 * Check whether a block is registered.
+	 *
+	 * @param string $block_name Block name.
+	 */
+	private function is_registered_block( string $block_name ): bool {
+		if ( '' === $block_name || ! class_exists( '\WP_Block_Type_Registry' ) ) {
+			return false;
+		}
+
+		return null !== \WP_Block_Type_Registry::get_instance()->get_registered( $block_name );
 	}
 
 	/**

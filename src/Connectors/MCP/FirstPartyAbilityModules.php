@@ -722,6 +722,52 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ContentAbilities() )->update_item( $args )
 			),
 			$this->module(
+				'content.update_block',
+				'Update One Content Block',
+				'Update one supported block inside an existing post by deterministic block path from a prior content read. Supports core paragraph and heading text replacement. Attribute writes are intentionally deferred unless a later allowlist is added.',
+				'Content',
+				'content:draft',
+				false,
+				$this->object_schema(
+					array(
+						'id'      => array( 'type' => 'integer' ),
+						'locator' => array(
+							'type'        => 'object',
+							'description' => 'Server-side block locator from content_get_item block_locators. Path is a zero-based nested block index path.',
+							'properties'  => array(
+								'path' => array(
+									'type'        => 'array',
+									'description' => 'Zero-based nested block path, such as [0] or [1,0].',
+									'items'       => array(
+										'type'    => 'integer',
+										'minimum' => 0,
+									),
+									'minItems'    => 1,
+									'maxItems'    => 12,
+								),
+							),
+							'required'    => array( 'path' ),
+						),
+						'text'    => array(
+							'type'        => 'string',
+							'maxLength'   => 20000,
+							'description' => 'Replacement plain text for core/paragraph or core/heading. The tool serializes safe block markup; do not pass HTML.',
+						),
+						'attrs'   => array(
+							'type'                 => 'object',
+							'description'          => 'Reserved for future narrow allowlisted registered block attributes. This beta slice rejects attribute writes to avoid unsafe third-party settings edits.',
+							'additionalProperties' => true,
+						),
+						'dry_run' => array(
+							'type'        => 'boolean',
+							'description' => 'When true, validate and return a field-level diff without saving.',
+						),
+					),
+					array( 'id', 'locator' )
+				),
+				static fn ( array $args ): array => ( new ContentAbilities() )->update_block( $args )
+			),
+			$this->module(
 				'content.update_seo',
 				'Update SEO Metadata',
 				'Update SEO title, description, and focus keywords for supported SEO plugins.',

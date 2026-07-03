@@ -24,10 +24,11 @@ final class InternalLinkSuggestionRepositoryTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_posts']   = array(
 			11 => new \WP_Post(
 				array(
-					'ID'          => 11,
-					'post_type'   => 'page',
-					'post_status' => 'publish',
-					'post_title'  => 'Source Page',
+					'ID'           => 11,
+					'post_type'    => 'page',
+					'post_status'  => 'publish',
+					'post_title'   => 'Source Page',
+					'post_content' => '<!-- wp:paragraph --><p>Read the Target Post for deeper context.</p><!-- /wp:paragraph -->',
 				)
 			),
 			22 => new \WP_Post(
@@ -39,6 +40,8 @@ final class InternalLinkSuggestionRepositoryTest extends TestCase {
 				)
 			),
 		);
+
+		$this->registerTestBlocks();
 	}
 
 	public function test_create_stores_bounded_reviewable_suggestion_without_full_content(): void {
@@ -122,10 +125,70 @@ final class InternalLinkSuggestionRepositoryTest extends TestCase {
 
 		self::assertSame( 'preview', $preview['status'] );
 		self::assertTrue( $preview['dry_run'] );
-		self::assertSame( 'post_content', $preview['diff']['fields'][0]['field'] );
+		self::assertSame( 'block.internal_link', $preview['diff']['fields'][0]['field'] );
 
 		$execute = $repository->apply_plan( $id, false );
-		self::assertSame( 'unavailable', $execute['status'] );
-		self::assertSame( 'execute_apply_unavailable', $execute['error'] );
+		self::assertSame( 'applied', $execute['status'] );
+		self::assertSame( 'applied', $execute['suggestion']['status'] );
+		self::assertStringContainsString( '<a href="https://example.com/?p=22">Target Post</a>', $GLOBALS['aculect_ai_companion_test_posts'][11]->post_content );
+	}
+
+	public function test_apply_skips_duplicate_target_links_without_reapplying(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11]->post_content = '<!-- wp:paragraph --><p>Read the <a href="https://example.com/?p=22">Target Post</a> for deeper context.</p><!-- /wp:paragraph -->';
+
+		$repository = new InternalLinkSuggestionRepository();
+		$result     = $repository->create(
+			array(
+				'source_id'   => 11,
+				'target_id'   => 22,
+				'anchor_text' => 'Target Post',
+				'reason'      => 'Target explains the source topic.',
+			)
+		);
+		$id         = (string) $result['items'][0]['id'];
+
+		$repository->review( $id, 'approve' );
+		$execute = $repository->apply_plan( $id, false );
+
+		self::assertSame( 'duplicate_internal_link', $execute['error'] );
+		self::assertSame( 'skipped', $repository->find( $id )['status'] );
+	}
+
+	public function test_apply_marks_missing_anchor_stale_without_mutating_content(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][11]->post_content = '<!-- wp:paragraph --><p>This source changed after approval.</p><!-- /wp:paragraph -->';
+
+		$repository = new InternalLinkSuggestionRepository();
+		$result     = $repository->create(
+			array(
+				'source_id'   => 11,
+				'target_id'   => 22,
+				'anchor_text' => 'Target Post',
+				'reason'      => 'Target explains the source topic.',
+			)
+		);
+		$id         = (string) $result['items'][0]['id'];
+
+		$repository->review( $id, 'approve' );
+		$execute = $repository->apply_plan( $id, false );
+
+		self::assertSame( 'stale_suggestion', $execute['error'] );
+		self::assertSame( 'stale', $repository->find( $id )['status'] );
+		self::assertStringNotContainsString( '<a ', $GLOBALS['aculect_ai_companion_test_posts'][11]->post_content );
+	}
+
+	private function registerTestBlocks(): void {
+		\WP_Block_Type_Registry::get_instance()->unregister_all();
+		foreach ( array( 'core/paragraph', 'core/heading', 'core/group', 'core/html' ) as $name ) {
+			\WP_Block_Type_Registry::get_instance()->register(
+				$name,
+				array(
+					'title'    => $name,
+					'category' => 'text',
+					'supports' => array(
+						'inserter' => true,
+					),
+				)
+			);
+		}
 	}
 }

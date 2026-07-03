@@ -968,7 +968,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				'filters_audit_rows'     => true,
 				'reviewable_suggestions' => true,
 				'dry_run_apply_plan'     => true,
-				'applies_content_links'  => false,
+				'applies_content_links'  => true,
 			),
 		);
 	}
@@ -994,11 +994,11 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$result = ( new InternalLinkSuggestionRepository() )->create( $args );
 		if ( ! isset( $result['error'] ) ) {
 			$result['capabilities'] = array(
-				'execute_apply' => false,
+				'execute_apply' => true,
 				'dry_run_apply' => true,
 			);
 			$result['usage']        = array(
-				'review_required' => 'Suggestions are review records only. Approve or reject each suggestion before apply planning.',
+				'review_required' => 'Suggestions are review records only. Approve or reject each suggestion before dry-run or execute apply.',
 				'no_auto_apply'   => 'This tool never mutates post content.',
 			);
 		}
@@ -1028,7 +1028,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$result['filtered_by_access'] = true;
 		$result['usage']              = array(
 			'review_first'  => 'Approve or reject suggestions before asking for an apply plan.',
-			'execute_apply' => 'Executing approved suggestions is intentionally unavailable in this slice.',
+			'execute_apply' => 'Approved suggestions can be applied one at a time through the targeted content.update_block path.',
 		);
 
 		return $result;
@@ -1060,7 +1060,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	}
 
 	/**
-	 * Return a dry-run apply plan for an approved internal-link suggestion.
+	 * Apply or dry-run one approved internal-link suggestion.
 	 *
 	 * @param array<string, mixed> $args Apply args.
 	 * @return array<string, mixed>
@@ -1075,7 +1075,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 
 		$source_id = (int) ( $suggestion['source_post']['id'] ?? 0 );
 		if ( ! $this->can_edit_post( $source_id ) ) {
-			return $this->error_response( 'forbidden', 'You do not have permission to plan applying this source content item.' );
+			return $this->error_response( 'forbidden', 'You do not have permission to apply this source content item.' );
 		}
 
 		return $repository->apply_plan( $id, $this->is_dry_run( $args ) );

@@ -506,8 +506,8 @@ final class FirstPartyAbilityModules {
 			),
 			$this->module(
 				'content_internal_link.suggestion_apply',
-				'Plan Internal Link Suggestion Apply',
-				'Return a dry-run apply plan for one approved internal-link suggestion. Execute mode is intentionally unavailable until block-safe insertion support is wired through content_workflow_update_post.',
+				'Apply Internal Link Suggestion',
+				'Dry-run or apply one approved internal-link suggestion through the targeted content.update_block path. Applies only one reviewed suggestion per call and never performs automatic site-wide mutation.',
 				'Content Intelligence Index',
 				'content:draft',
 				false,
@@ -724,14 +724,14 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content.update_block',
 				'Update One Content Block',
-				'Update one supported block inside an existing post by deterministic block path from a prior content read. Supports core paragraph and heading text replacement. Attribute writes are intentionally deferred unless a later allowlist is added.',
+				'Update one supported block inside an existing post by deterministic block path from a prior content read. Supports core paragraph and heading text replacement plus one allowlisted same-site internal-link insertion. Attribute writes are intentionally deferred unless a later allowlist is added.',
 				'Content',
 				'content:draft',
 				false,
 				$this->object_schema(
 					array(
-						'id'      => array( 'type' => 'integer' ),
-						'locator' => array(
+						'id'            => array( 'type' => 'integer' ),
+						'locator'       => array(
 							'type'        => 'object',
 							'description' => 'Server-side block locator from content_get_item block_locators. Path is a zero-based nested block index path.',
 							'properties'  => array(
@@ -748,17 +748,33 @@ final class FirstPartyAbilityModules {
 							),
 							'required'    => array( 'path' ),
 						),
-						'text'    => array(
+						'text'          => array(
 							'type'        => 'string',
 							'maxLength'   => 20000,
 							'description' => 'Replacement plain text for core/paragraph or core/heading. The tool serializes safe block markup; do not pass HTML.',
 						),
-						'attrs'   => array(
+						'internal_link' => array(
+							'type'        => 'object',
+							'description' => 'Allowlisted same-site internal-link insertion for one existing anchor text occurrence in the targeted core paragraph or heading block.',
+							'properties'  => array(
+								'anchor_text' => array(
+									'type'        => 'string',
+									'maxLength'   => 120,
+									'description' => 'Existing visible text in the targeted block to link.',
+								),
+								'url'         => array(
+									'type'        => 'string',
+									'description' => 'Same-site target URL resolved from the target post permalink.',
+								),
+							),
+							'required'    => array( 'anchor_text', 'url' ),
+						),
+						'attrs'         => array(
 							'type'                 => 'object',
 							'description'          => 'Reserved for future narrow allowlisted registered block attributes. This beta slice rejects attribute writes to avoid unsafe third-party settings edits.',
 							'additionalProperties' => true,
 						),
-						'dry_run' => array(
+						'dry_run'       => array(
 							'type'        => 'boolean',
 							'description' => 'When true, validate and return a field-level diff without saving.',
 						),
@@ -2622,6 +2638,10 @@ final class FirstPartyAbilityModules {
 				'suggestion_id' => array(
 					'type'        => 'string',
 					'description' => 'Alias for id.',
+				),
+				'dry_run'       => array(
+					'type'        => 'boolean',
+					'description' => 'When true, validate and return a targeted block diff without saving. Defaults to false for approved suggestions.',
 				),
 			),
 			array( 'id' )

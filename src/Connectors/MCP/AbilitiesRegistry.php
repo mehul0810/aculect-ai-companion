@@ -32,6 +32,8 @@ final class AbilitiesRegistry {
 		'site_editor.get_template',
 		'site_editor.list_template_parts',
 		'site_editor.get_template_part',
+		'site_structure.list_reusable_blocks',
+		'site_structure.list_block_areas',
 		'admin_menu.get_context',
 		'admin_menu.list_pages',
 		'admin_menu.get_navigation_target',

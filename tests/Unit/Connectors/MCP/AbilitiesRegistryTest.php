@@ -68,6 +68,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'workflow.route_request', $by_id );
 		self::assertArrayHasKey( 'core_schema.discover', $by_id );
 		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
+		self::assertArrayHasKey( 'site_structure.list_reusable_blocks', $by_id );
+		self::assertArrayHasKey( 'site_structure.list_block_areas', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
 		self::assertArrayHasKey( 'content_revisions.list', $by_id );
@@ -115,6 +117,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
 		self::assertNotContains( 'Site Editor Intelligence', $groups );
+		self::assertNotContains( 'Site Structure Discovery', $groups );
 		self::assertNotContains( 'Admin Menu Intelligence', $groups );
 		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
@@ -177,6 +180,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site_editor.get_template',
 				'site_editor.list_template_parts',
 				'site_editor.get_template_part',
+				'site_structure.list_reusable_blocks',
+				'site_structure.list_block_areas',
 				'admin_menu.get_context',
 				'admin_menu.refresh_context',
 				'admin_menu.list_pages',
@@ -247,6 +252,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.list_templates' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'site_editor.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure.list_reusable_blocks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure_list_block_areas' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site_structure.list_reusable_blocks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
@@ -259,6 +267,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.bootstrap' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_bootstrap' ) );
+		self::assertArrayHasKey( 'include_preview', $this->registry->input_schema( 'site_structure_list_reusable_blocks' )['properties'] );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );

@@ -305,6 +305,26 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new SiteEditorAbilities() )->get_template_part( $args )
 			),
 			$this->module(
+				'site_structure.list_reusable_blocks',
+				'List Reusable Blocks and Synced Patterns',
+				'List reusable blocks/synced patterns with bounded metadata, status, modified date, local usage hints, and safe edit/view links. Full content bodies are not returned by default.',
+				'Site Structure Discovery',
+				'content:read',
+				true,
+				$this->reusable_blocks_schema(),
+				static fn ( array $args ): array => ( new SiteStructureDiscoveryAbilities() )->list_reusable_blocks( $args )
+			),
+			$this->module(
+				'site_structure.list_block_areas',
+				'List Widget and Block Areas',
+				'List registered sidebars/widget areas and block-theme template-part areas with active state and bounded counts. This never writes widgets, templates, or theme files.',
+				'Site Structure Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn ( array $args ): array => ( new SiteStructureDiscoveryAbilities() )->list_block_areas( $args )
+			),
+			$this->module(
 				'admin_menu.get_context',
 				'Read Admin Menu Intelligence',
 				'Use this before planning WordPress core, plugin, or theme admin settings work. It returns visible admin menus, navigation targets, and registered settings metadata without exposing option values.',
@@ -2683,6 +2703,25 @@ final class FirstPartyAbilityModules {
 				'slug' => array(
 					'type'        => 'string',
 					'description' => 'Template slug when ID is not known.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build reusable block/synced pattern collection schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function reusable_blocks_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'          => $this->status_filter_schema( 'Reusable block statuses to include. Defaults to publish, draft, pending, and private.' ),
+				'page'            => $this->page_schema(),
+				'per_page'        => $this->per_page_schema( 100, 'Items per page. Defaults to 20.' ),
+				'include_preview' => array(
+					'type'        => 'boolean',
+					'description' => 'Include a bounded plain-text preview up to 600 bytes. Full reusable-block content bodies are never returned by this list tool.',
 				),
 			)
 		);

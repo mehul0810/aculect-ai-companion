@@ -10,6 +10,7 @@
     "lint:css": "wp-scripts lint-style",
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
+    "preview:playground": "node scripts/playground-preview.mjs",
     "test:js": "node --test tests/js/*.test.mjs",
     "format": "wp-scripts format"
   },

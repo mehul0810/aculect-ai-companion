@@ -70,11 +70,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
 		self::assertArrayHasKey( 'site_structure.list_reusable_blocks', $by_id );
 		self::assertArrayHasKey( 'site_structure.list_block_areas', $by_id );
+		self::assertArrayHasKey( 'users.current_access', $by_id );
+		self::assertArrayHasKey( 'users.roles_summary', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
 		self::assertArrayHasKey( 'content_revisions.list', $by_id );
 		self::assertArrayHasKey( 'content_autosaves.inspect', $by_id );
 		self::assertArrayNotHasKey( 'content.update_item', $by_id );
+		self::assertArrayNotHasKey( 'users.list_safe', $by_id );
 		self::assertTrue( $by_id['search']['enabled'] );
 		self::assertTrue( $by_id['search']['coreDefault'] );
 		self::assertFalse( $by_id['search']['configurable'] );
@@ -112,12 +115,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
+		self::assertContains( 'User Access', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
 		self::assertNotContains( 'Site Editor Intelligence', $groups );
 		self::assertNotContains( 'Site Structure Discovery', $groups );
+		self::assertNotContains( 'User Access Discovery', $groups );
 		self::assertNotContains( 'Admin Menu Intelligence', $groups );
 		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
@@ -136,6 +141,9 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'content_revisions.list', $by_id );
 		self::assertArrayNotHasKey( 'content_autosaves.inspect', $by_id );
+		self::assertArrayNotHasKey( 'users.current_access', $by_id );
+		self::assertArrayNotHasKey( 'users.roles_summary', $by_id );
+		self::assertArrayHasKey( 'users.list_safe', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
 		self::assertArrayNotHasKey( 'fetch', $by_id );
 		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
@@ -182,6 +190,9 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site_editor.get_template_part',
 				'site_structure.list_reusable_blocks',
 				'site_structure.list_block_areas',
+				'users.current_access',
+				'users.roles_summary',
+				'users.list_safe',
 				'admin_menu.get_context',
 				'admin_menu.refresh_context',
 				'admin_menu.list_pages',
@@ -255,6 +266,11 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure.list_reusable_blocks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure_list_block_areas' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site_structure.list_reusable_blocks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.current_access' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.roles_summary' ) );
+		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'users.list_safe' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'users.current_access' ) );
+		self::assertArrayHasKey( 'per_page', $this->registry->input_schema( 'users_list_safe' )['properties'] );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );

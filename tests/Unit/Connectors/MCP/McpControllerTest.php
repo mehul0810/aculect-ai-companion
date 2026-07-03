@@ -292,6 +292,13 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'post_id', $tools_by_name['content_autosaves_inspect']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'has_autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_current_access'] );
+		self::assertArrayHasKey( 'user_id', $tools_by_name['users_current_access']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'privacy', $tools_by_name['users_current_access']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_roles_summary'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['users_roles_summary']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_list_safe'] );
+		self::assertArrayHasKey( 'per_page', $tools_by_name['users_list_safe']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_search_chunks'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );

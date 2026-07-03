@@ -247,6 +247,16 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'user_access'        => $this->operation_group(
+				array(
+					'current_access' => 'users.current_access',
+					'roles_summary'  => 'users.roles_summary',
+					'list_safe'      => 'users.list_safe',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'admin_menu'         => $this->operation_group(
 				array(
 					'get_context'           => 'admin_menu.get_context',
@@ -546,6 +556,8 @@ final class McpToolAvailability {
 			'site_editor.get_template',
 			'site_editor.list_template_parts',
 			'site_editor.get_template_part' => array( 'edit_theme_options' ),
+			'users.roles_summary' => array( 'promote_users' ),
+			'users.list_safe' => array( 'list_users' ),
 			'admin_menu.get_context',
 			'admin_menu.refresh_context',
 			'admin_menu.list_pages',

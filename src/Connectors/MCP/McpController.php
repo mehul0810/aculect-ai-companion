@@ -794,6 +794,26 @@ final class McpController {
 			);
 		}
 
+		if ( str_starts_with( $module->id(), 'users.' ) ) {
+			return $this->object_output_schema(
+				array(
+					'user_id'             => array( 'type' => 'integer' ),
+					'roles'               => array( 'type' => 'array' ),
+					'capabilities'        => array( 'type' => 'object' ),
+					'blocked_unavailable' => array( 'type' => 'array' ),
+					'items'               => array( 'type' => 'array' ),
+					'total'               => array( 'type' => 'integer' ),
+					'returned'            => array( 'type' => 'integer' ),
+					'page'                => array( 'type' => 'integer' ),
+					'per_page'            => array( 'type' => 'integer' ),
+					'bounded'             => array( 'type' => 'boolean' ),
+					'read_only'           => array( 'type' => 'boolean' ),
+					'required_capability' => array( 'type' => 'string' ),
+					'privacy'             => array( 'type' => 'object' ),
+				)
+			);
+		}
+
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
@@ -920,6 +940,7 @@ final class McpController {
 				'content_find.internal_links',
 				'content_audit.internal_links',
 				'content_revisions.list',
+				'users.list_safe',
 				'memory.list',
 				'taxonomy.list_taxonomies',
 				'taxonomy.list_terms',

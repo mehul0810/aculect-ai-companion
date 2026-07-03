@@ -70,6 +70,8 @@ $GLOBALS['aculect_ai_companion_test_post_meta']   = array();
 $GLOBALS['aculect_ai_companion_test_url_to_postid'] = array();
 $GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
 $GLOBALS['aculect_ai_companion_test_post_types']  = array();
+$GLOBALS['aculect_ai_companion_test_taxonomies']  = array();
+$GLOBALS['aculect_ai_companion_test_post_statuses'] = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
 $GLOBALS['aculect_ai_companion_test_block_templates'] = array();
@@ -329,6 +331,9 @@ if ( ! class_exists( 'WP_Post_Type' ) ) {
 		public bool $public = true;
 		public bool $show_ui = true;
 		public bool $show_in_rest = true;
+		public bool $hierarchical = false;
+		public string $rest_base = '';
+		public string $rest_namespace = 'wp/v2';
 		public object $cap;
 
 		/**
@@ -341,16 +346,155 @@ if ( ! class_exists( 'WP_Post_Type' ) ) {
 			$this->public       = (bool) ( $args['public'] ?? true );
 			$this->show_ui      = (bool) ( $args['show_ui'] ?? true );
 			$this->show_in_rest = (bool) ( $args['show_in_rest'] ?? true );
+			$this->hierarchical = (bool) ( $args['hierarchical'] ?? false );
+			$this->rest_base    = (string) ( $args['rest_base'] ?? $name );
+			$this->rest_namespace = (string) ( $args['rest_namespace'] ?? 'wp/v2' );
 			$this->cap          = (object) array_merge(
 				array(
+					'read'              => 'read',
 					'edit_posts'        => 'edit_posts',
 					'create_posts'      => 'edit_posts',
 					'publish_posts'     => 'publish_posts',
 					'edit_others_posts' => 'edit_others_posts',
+					'delete_posts'      => 'delete_posts',
 				),
 				(array) ( $args['cap'] ?? array() )
 			);
 		}
+	}
+}
+
+if ( ! class_exists( 'WP_Taxonomy' ) ) {
+	class WP_Taxonomy {
+		public string $name = 'category';
+		public string $label = 'Categories';
+		public bool $public = true;
+		public bool $show_ui = true;
+		public bool $show_in_rest = true;
+		public bool $hierarchical = false;
+		public string $rest_base = '';
+		public string $rest_namespace = 'wp/v2';
+		/** @var list<string> */
+		public array $object_type = array( 'post' );
+		public object $cap;
+
+		/**
+		 * @param string               $name Taxonomy name.
+		 * @param array<string, mixed> $args Taxonomy args.
+		 */
+		public function __construct( string $name = 'category', array $args = array() ) {
+			$this->name           = $name;
+			$this->label          = (string) ( $args['label'] ?? ucfirst( $name ) );
+			$this->public         = (bool) ( $args['public'] ?? true );
+			$this->show_ui        = (bool) ( $args['show_ui'] ?? true );
+			$this->show_in_rest   = (bool) ( $args['show_in_rest'] ?? true );
+			$this->hierarchical   = (bool) ( $args['hierarchical'] ?? false );
+			$this->rest_base      = (string) ( $args['rest_base'] ?? $name );
+			$this->rest_namespace = (string) ( $args['rest_namespace'] ?? 'wp/v2' );
+			$this->object_type    = array_values( array_map( 'strval', (array) ( $args['object_type'] ?? array( 'post' ) ) ) );
+			$this->cap            = (object) array_merge(
+				array(
+					'assign_terms' => 'edit_posts',
+					'edit_terms'   => 'manage_categories',
+					'manage_terms' => 'manage_categories',
+				),
+				(array) ( $args['cap'] ?? array() )
+			);
+		}
+	}
+}
+
+if ( ! function_exists( 'get_post_types' ) ) {
+	/**
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, WP_Post_Type|string>
+	 */
+	function get_post_types( array $args = array(), string $output = 'names' ): array {
+		unset( $args );
+
+		$types = $GLOBALS['aculect_ai_companion_test_post_types'];
+		if ( array() === $types ) {
+			$types = array(
+				'post' => new WP_Post_Type( 'post', array( 'label' => 'Posts', 'rest_base' => 'posts' ) ),
+				'page' => new WP_Post_Type( 'page', array( 'label' => 'Pages', 'hierarchical' => true, 'rest_base' => 'pages' ) ),
+			);
+		}
+
+		$objects = array();
+		foreach ( $types as $name => $type ) {
+			if ( false === $type ) {
+				continue;
+			}
+
+			$objects[ (string) $name ] = $type instanceof WP_Post_Type ? $type : new WP_Post_Type( (string) $name, is_array( $type ) ? $type : array() );
+		}
+
+		return 'objects' === $output ? $objects : array_keys( $objects );
+	}
+}
+
+if ( ! function_exists( 'get_taxonomies' ) ) {
+	/**
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, WP_Taxonomy|string>
+	 */
+	function get_taxonomies( array $args = array(), string $output = 'names' ): array {
+		unset( $args );
+
+		$taxonomies = $GLOBALS['aculect_ai_companion_test_taxonomies'];
+		if ( array() === $taxonomies ) {
+			$taxonomies = array(
+				'category' => new WP_Taxonomy( 'category', array( 'label' => 'Categories', 'hierarchical' => true ) ),
+				'post_tag' => new WP_Taxonomy( 'post_tag', array( 'label' => 'Tags' ) ),
+			);
+		}
+
+		$objects = array();
+		foreach ( $taxonomies as $name => $taxonomy ) {
+			if ( false === $taxonomy ) {
+				continue;
+			}
+
+			$objects[ (string) $name ] = $taxonomy instanceof WP_Taxonomy ? $taxonomy : new WP_Taxonomy( (string) $name, is_array( $taxonomy ) ? $taxonomy : array() );
+		}
+
+		return 'objects' === $output ? $objects : array_keys( $objects );
+	}
+}
+
+if ( ! function_exists( 'get_object_taxonomies' ) ) {
+	/**
+	 * @return array<int|string, mixed>
+	 */
+	function get_object_taxonomies( string $object_type, string $output = 'names' ): array {
+		$matches = array();
+		foreach ( get_taxonomies( array(), 'objects' ) as $name => $taxonomy ) {
+			if ( $taxonomy instanceof WP_Taxonomy && in_array( $object_type, $taxonomy->object_type, true ) ) {
+				$matches[ (string) $name ] = 'objects' === $output ? $taxonomy : (string) $name;
+			}
+		}
+
+		return 'objects' === $output ? $matches : array_values( $matches );
+	}
+}
+
+if ( ! function_exists( 'get_post_stati' ) ) {
+	/**
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, object|string>
+	 */
+	function get_post_stati( array $args = array(), string $output = 'names' ): array {
+		unset( $args );
+
+		$statuses = $GLOBALS['aculect_ai_companion_test_post_statuses'];
+		if ( array() === $statuses ) {
+			$statuses = array(
+				'publish' => (object) array( 'name' => 'publish', 'label' => 'Published', 'public' => true, 'private' => false, 'protected' => false, 'internal' => false, 'show_in_admin_all_list' => true ),
+				'draft'   => (object) array( 'name' => 'draft', 'label' => 'Draft', 'public' => false, 'private' => false, 'protected' => false, 'internal' => false, 'show_in_admin_all_list' => true ),
+			);
+		}
+
+		return 'objects' === $output ? $statuses : array_keys( $statuses );
 	}
 }
 
@@ -1555,6 +1699,19 @@ if ( ! class_exists( 'WP_REST_Server' ) ) {
 		public const EDITABLE   = 'POST, PUT, PATCH';
 		public const DELETABLE  = 'DELETE';
 		public const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+
+		/**
+		 * @return array<string, mixed>
+		 */
+		public function get_routes(): array {
+			return $GLOBALS['aculect_ai_companion_test_rest_routes'] ?? array();
+		}
+	}
+}
+
+if ( ! function_exists( 'rest_get_server' ) ) {
+	function rest_get_server(): WP_REST_Server {
+		return new WP_REST_Server();
 	}
 }
 

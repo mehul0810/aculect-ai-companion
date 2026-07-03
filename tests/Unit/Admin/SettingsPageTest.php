@@ -54,6 +54,7 @@ final class SettingsPageTest extends TestCase {
 			'filters' => array(),
 		);
 		$GLOBALS['aculect_ai_companion_test_users']            = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 5;
 		$_GET = array(
 			'page' => 'aculect-ai-companion',
@@ -151,6 +152,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
 		self::assertSame( 0, $payload['memoryRecords']['summary']['total'] );
+		self::assertSame( 0, $payload['internalLinksMap']['summary']['totalIndexed'] );
+		self::assertSame( array(), $payload['internalLinksMap']['items'] );
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
@@ -234,6 +237,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_logs' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_content_index' ) );
 	}
 
 	public function test_connections_payload_loads_session_lists_only_for_connections_tab(): void {
@@ -370,9 +374,63 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $overview['memoryRecords']['items'] );
 	}
 
+	public function test_internal_links_map_payload_is_bounded_and_adds_admin_action_links(): void {
+		$_GET['tab']               = 'links-map';
+		$_GET['links_state']       = 'orphan';
+		$_GET['links_post_type']   = 'page';
+		$_GET['links_status']      = 'publish';
+		$_GET['links_per_page']    = '200';
+		$_GET['links_min_inbound'] = '3';
+		$_GET['links_thin_words']  = '250';
+
+		$payload = $this->settings_payload();
+		$map     = $payload['internalLinksMap'];
+
+		self::assertSame( 'links-map', $payload['payloadTab'] );
+		self::assertContains( 'links-map', $payload['hydratedTabs'] );
+		self::assertSame( 50, $map['perPage'] );
+		self::assertSame( 'orphan', $map['filters']['state'] );
+		self::assertSame( 'page', $map['filters']['post_type'] );
+		self::assertSame( 'publish', $map['filters']['status'] );
+		self::assertSame( 3, $map['filters']['min_inbound_links'] );
+		self::assertSame( 250, $map['filters']['thin_word_count'] );
+		self::assertSame( 80, $map['total'] );
+		self::assertSame( 12, $map['summary']['totalIndexed'] );
+		self::assertSame( 4, $map['summary']['staleIndexRows'] );
+		self::assertSame( 1, $map['summary']['orphan'] );
+		self::assertSame( 'Internal Link Strategy', $map['items'][0]['title'] );
+		self::assertSame( 'https://example.com/wp-admin/post.php?post=42&action=edit', $map['items'][0]['editUrl'] );
+		self::assertSame( 'https://example.com/internal-link-strategy/', $map['items'][0]['viewUrl'] );
+		self::assertStringContainsString( 'tab=learning', $map['items'][0]['suggestionsUrl'] );
+		self::assertArrayNotHasKey( 'search_text', $map['items'][0] );
+		self::assertArrayNotHasKey( 'post_content', $map['items'][0] );
+		self::assertSame( 'page', $map['clusters'][0]['id'] );
+		self::assertStringContainsString( 'links_per_page=50', $map['nextUrl'] );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'LIMIT %d OFFSET %d' ) );
+	}
+
+	public function test_internal_links_map_sanitizes_filters_and_reports_empty_index_state(): void {
+		$this->wpdb->return_empty_results = true;
+		$_GET['tab']                      = 'links-map';
+		$_GET['links_state']              = 'invalid';
+		$_GET['links_status']             = 'trash';
+		$_GET['links_per_page']           = '0';
+
+		$payload = $this->settings_payload();
+		$map     = $payload['internalLinksMap'];
+
+		self::assertSame( 'needs_review', $map['filters']['state'] );
+		self::assertSame( '', $map['filters']['status'] );
+		self::assertSame( 20, $map['filters']['per_page'] );
+		self::assertSame( 0, $map['summary']['totalIndexed'] );
+		self::assertSame( array(), $map['items'] );
+		self::assertSame( 'No indexed content yet', $map['emptyState']['title'] );
+	}
+
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {
 		$response = ( new SettingsPage() )->rest_settings_payload(
 			new WP_REST_Request(
+				// @phpstan-ignore-next-line Test bootstrap WP_REST_Request accepts parameter arrays.
 				array(
 					'tab' => 'connections',
 				)
@@ -388,6 +446,24 @@ final class SettingsPageTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.revoked = 0' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.expires_at >= %s' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
+	}
+
+	public function test_settings_payload_rest_route_uses_manage_settings_permission(): void {
+		$GLOBALS['aculect_ai_companion_test_rest_routes'] = array();
+
+		$page = new SettingsPage();
+		$page->register_rest_routes();
+		/** @var list<array{namespace:string, route:string, args:array<string, mixed>}> $routes */
+		$routes = $GLOBALS['aculect_ai_companion_test_rest_routes'];
+
+		self::assertNotEmpty( $routes );
+		self::assertSame( 'aculect-ai-companion/v1', $routes[0]['namespace'] );
+		self::assertSame( '/settings-payload', $routes[0]['route'] );
+		self::assertSame( array( $page, 'can_manage_settings' ), $routes[0]['args']['permission_callback'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		self::assertFalse( $page->can_manage_settings() );
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
 	}
 
 	public function test_production_payload_does_not_apply_local_samples(): void {
@@ -598,6 +674,14 @@ final class FakeSettingsPageWpdb {
 			return 3;
 		}
 
+		if ( str_contains( $query, 'wp_aculect_ai_content_index' ) ) {
+			if ( $this->return_empty_results ) {
+				return 0;
+			}
+
+			return str_contains( $query, 'audit_rows' ) ? 80 : 12;
+		}
+
 		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_access_tokens' ) ) {
 			if ( $this->return_empty_results ) {
 				return 0;
@@ -646,6 +730,22 @@ final class FakeSettingsPageWpdb {
 				'content_actions' => '4',
 				'comment_actions' => '2',
 				'media_actions'   => '1',
+			);
+		}
+
+		if ( str_contains( $query, 'wp_aculect_ai_content_index' ) && str_contains( $query, 'latest_indexed_at' ) ) {
+			if ( $this->return_empty_results ) {
+				return array(
+					'total'             => '0',
+					'stale'             => '0',
+					'latest_indexed_at' => '',
+				);
+			}
+
+			return array(
+				'total'             => '12',
+				'stale'             => '4',
+				'latest_indexed_at' => '2026-07-01 10:00:00',
 			);
 		}
 
@@ -706,6 +806,55 @@ final class FakeSettingsPageWpdb {
 					'error_code'     => null,
 					'message'        => 'Registered.',
 					'context'        => '{}',
+				),
+			);
+		}
+
+		if ( str_contains( $query, 'wp_aculect_ai_content_index' ) ) {
+			if ( $this->return_empty_results ) {
+				return array();
+			}
+
+			return array(
+				array(
+					'object_id'               => '42',
+					'object_type'             => 'post',
+					'post_type'               => 'page',
+					'post_status'             => 'publish',
+					'title'                   => 'Internal Link Strategy',
+					'slug'                    => 'internal-link-strategy',
+					'permalink'               => 'https://example.com/internal-link-strategy/',
+					'excerpt'                 => 'Compact excerpt.',
+					'summary'                 => 'Compact summary.',
+					'word_count'              => '480',
+					'content_hash'            => 'abc',
+					'indexed_at'              => '2026-07-01 10:00:00',
+					'modified_gmt'            => '2026-07-01 09:00:00',
+					'stale'                   => '0',
+					'search_text'             => 'full hidden index text',
+					'metadata'                => '{}',
+					'inbound_internal_links'  => '0',
+					'outbound_internal_links' => '4',
+				),
+				array(
+					'object_id'               => '43',
+					'object_type'             => 'post',
+					'post_type'               => 'page',
+					'post_status'             => 'publish',
+					'title'                   => 'Topic Hub',
+					'slug'                    => 'topic-hub',
+					'permalink'               => 'https://example.com/topic-hub/',
+					'excerpt'                 => '',
+					'summary'                 => '',
+					'word_count'              => '180',
+					'content_hash'            => 'def',
+					'indexed_at'              => '2026-07-01 10:00:00',
+					'modified_gmt'            => '2026-07-01 09:30:00',
+					'stale'                   => '1',
+					'search_text'             => 'more hidden index text',
+					'metadata'                => '{}',
+					'inbound_internal_links'  => '1',
+					'outbound_internal_links' => '30',
 				),
 			);
 		}

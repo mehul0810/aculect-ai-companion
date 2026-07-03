@@ -207,6 +207,10 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
+				'content_internal_link.suggestions_create',
+				'content_internal_link.suggestions_list',
+				'content_internal_link.suggestion_review',
+				'content_internal_link.suggestion_apply',
 				'content_revisions.list',
 				'content_autosaves.inspect',
 				'memory.list',
@@ -233,6 +237,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_internal_link_policy' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestions_create' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_internal_link_suggestions_list' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestion_review' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestion_apply' ) );
 		self::assertSame( 'search', $this->registry->tool_name( 'search' ) );
 		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
@@ -244,6 +252,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.policy' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_audit.internal_links' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.suggestions_list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );

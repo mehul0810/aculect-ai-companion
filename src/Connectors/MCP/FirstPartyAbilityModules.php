@@ -475,6 +475,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->audit_internal_links( $args )
 			),
 			$this->module(
+				'content_internal_link.suggestions_create',
+				'Create Internal Link Suggestions',
+				'Create bounded reviewable internal-link suggestion records from approved audit or discovery results. This stores source post, target post, proposed anchor, reason, score, confidence, status, and last checked time without full post content.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestions_create_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->create_internal_link_suggestions( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestions_list',
+				'List Internal Link Suggestions',
+				'List bounded internal-link suggestion records for review by source, target, or status. This does not mutate content.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->internal_link_suggestions_list_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->list_internal_link_suggestions( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestion_review',
+				'Review Internal Link Suggestion',
+				'Approve, reject, skip, or mark one internal-link suggestion stale before any apply planning. This does not edit post content.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestion_review_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->review_internal_link_suggestion( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestion_apply',
+				'Plan Internal Link Suggestion Apply',
+				'Return a dry-run apply plan for one approved internal-link suggestion. Execute mode is intentionally unavailable until block-safe insertion support is wired through content_workflow_update_post.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestion_apply_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->apply_internal_link_suggestion( $args )
+			),
+			$this->module(
 				'memory.list',
 				'List Aculect Memory',
 				'List durable Aculect Intelligence memory items. These are local WordPress memories and do not depend on ChatGPT or Claude saved memory.',
@@ -2375,6 +2415,185 @@ final class FirstPartyAbilityModules {
 					'description' => 'Maximum prioritized action queue items to return. Defaults to per_page or 10.',
 				),
 			)
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion create schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestions_create_schema(): array {
+		$item_schema = $this->object_schema(
+			array(
+				'target_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Target post ID to link to.',
+				),
+				'post_id'              => array(
+					'type'        => 'integer',
+					'description' => 'Alias for target_id when using content_find_internal_links rows.',
+				),
+				'anchor_text'          => array( 'type' => 'string' ),
+				'proposed_anchor_text' => array(
+					'type'        => 'string',
+					'description' => 'Alias for anchor_text.',
+				),
+				'reason'               => array( 'type' => 'string' ),
+				'score'                => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'quality_score'        => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'confidence'           => array(
+					'type' => 'string',
+					'enum' => array( 'low', 'medium', 'high' ),
+				),
+				'warnings'             => $this->string_list_schema( 'Bounded internal-link quality warnings.', 10 ),
+				'quality_signals'      => array( 'type' => 'object' ),
+				'signals'              => array( 'type' => 'object' ),
+				'target_title'         => array( 'type' => 'string' ),
+				'target_permalink'     => array( 'type' => 'string' ),
+				'target_post_type'     => array( 'type' => 'string' ),
+				'target_status'        => array( 'type' => 'string' ),
+			),
+			array( 'target_id', 'anchor_text', 'reason' )
+		);
+
+		return $this->object_schema(
+			array(
+				'source_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Source post ID that may receive the internal link.',
+				),
+				'post_id'              => array(
+					'type'        => 'integer',
+					'description' => 'Alias for source_id.',
+				),
+				'target_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Target post ID for single-record creation.',
+				),
+				'anchor_text'          => array(
+					'type'        => 'string',
+					'description' => 'Proposed anchor text for single-record creation.',
+				),
+				'proposed_anchor_text' => array(
+					'type'        => 'string',
+					'description' => 'Alias for anchor_text.',
+				),
+				'reason'               => array(
+					'type'        => 'string',
+					'description' => 'Reviewable reason for single-record creation.',
+				),
+				'score'                => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'confidence'           => array(
+					'type' => 'string',
+					'enum' => array( 'low', 'medium', 'high' ),
+				),
+				'items'                => array(
+					'type'        => 'array',
+					'description' => 'Suggestion items from content_find_internal_links or an approved audit workflow.',
+					'maxItems'    => 20,
+					'items'       => $item_schema,
+				),
+			),
+			array( 'source_id' )
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestions_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'    => $this->internal_link_suggestion_status_schema(),
+				'source_id' => array( 'type' => 'integer' ),
+				'post_id'   => array(
+					'type'        => 'integer',
+					'description' => 'Alias for source_id.',
+				),
+				'target_id' => array( 'type' => 'integer' ),
+				'page'      => $this->page_schema(),
+				'per_page'  => $this->per_page_schema( 50, 'Suggestion records per page. Defaults to 20.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion review schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_review_schema(): array {
+		return $this->object_schema(
+			array(
+				'id'            => array( 'type' => 'string' ),
+				'suggestion_id' => array(
+					'type'        => 'string',
+					'description' => 'Alias for id.',
+				),
+				'action'        => array(
+					'type'        => 'string',
+					'enum'        => array( 'approve', 'reject', 'skip', 'stale' ),
+					'description' => 'Review action.',
+				),
+				'status'        => $this->internal_link_suggestion_status_schema(),
+				'note'          => array(
+					'type'        => 'string',
+					'description' => 'Short review note. Do not include full post content.',
+				),
+				'review_note'   => array(
+					'type'        => 'string',
+					'description' => 'Alias for note.',
+				),
+			),
+			array( 'id', 'action' )
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion apply-plan schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_apply_schema(): array {
+		$schema = $this->object_schema(
+			array(
+				'id'            => array( 'type' => 'string' ),
+				'suggestion_id' => array(
+					'type'        => 'string',
+					'description' => 'Alias for id.',
+				),
+			),
+			array( 'id' )
+		);
+
+		return $this->schema_with_safety_controls( $schema );
+	}
+
+	/**
+	 * Build the suggestion status schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_status_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'suggested', 'approved', 'rejected', 'applied', 'skipped', 'stale' ),
+			'description' => 'Internal-link suggestion review status.',
 		);
 	}
 

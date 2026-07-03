@@ -51,6 +51,7 @@ final class AbilitiesRegistry {
 		'content_internal_link.policy',
 		'content_find.internal_links',
 		'content_audit.internal_links',
+		'content_internal_link.suggestions_list',
 		'content_revisions.list',
 		'content_autosaves.inspect',
 		'memory.list',
@@ -61,6 +62,9 @@ final class AbilitiesRegistry {
 		'workflow_session.update',
 		'site_editor.refresh_context',
 		'admin_menu.refresh_context',
+		'content_internal_link.suggestions_create',
+		'content_internal_link.suggestion_review',
+		'content_internal_link.suggestion_apply',
 		'memory.save',
 		'memory.bootstrap',
 	);

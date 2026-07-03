@@ -314,6 +314,18 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'policy', $tools_by_name['content_internal_link_policy']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_find_internal_links'] );
 		self::assertArrayHasKey( 'quality_summary', $tools_by_name['content_find_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestions_create'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_internal_link_suggestions_create']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_internal_link_suggestions_create']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestions_list'] );
+		self::assertArrayHasKey( 'visible_total', $tools_by_name['content_internal_link_suggestions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'status', $tools_by_name['content_internal_link_suggestions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestion_review'] );
+		self::assertArrayHasKey( 'suggestion', $tools_by_name['content_internal_link_suggestion_review']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'action', $tools_by_name['content_internal_link_suggestion_review']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestion_apply'] );
+		self::assertArrayHasKey( 'diff', $tools_by_name['content_internal_link_suggestion_apply']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'dry_run', $tools_by_name['content_internal_link_suggestion_apply']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'max_word_count', $tools_by_name['content_search_items']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
@@ -379,6 +391,10 @@ final class McpControllerTest extends TestCase {
 			'content_internal_link_policy',
 			'content_find_internal_links',
 			'content_audit_internal_links',
+			'content_internal_link_suggestions_create',
+			'content_internal_link_suggestions_list',
+			'content_internal_link_suggestion_review',
+			'content_internal_link_suggestion_apply',
 			'memory_list',
 			'memory_save',
 			'memory_bootstrap',

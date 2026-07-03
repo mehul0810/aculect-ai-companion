@@ -283,6 +283,15 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'items', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'total', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'per_page', $tools_by_name['content_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_revisions_list'] );
+		self::assertArrayHasKey( 'post_id', $tools_by_name['content_revisions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'include_preview', $tools_by_name['content_revisions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_revisions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'has_more', $tools_by_name['content_revisions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_autosaves_inspect'] );
+		self::assertArrayHasKey( 'post_id', $tools_by_name['content_autosaves_inspect']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'has_autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_search_chunks'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
@@ -291,6 +300,8 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_audit_internal_links'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'health_summary', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'action_queue', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_policy'] );
 		self::assertArrayHasKey( 'policy', $tools_by_name['content_internal_link_policy']['outputSchema']['properties'] );

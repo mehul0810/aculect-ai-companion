@@ -25,6 +25,7 @@ final class AbilitiesRegistry {
 	);
 	private const ALWAYS_ON_READ_INTELLIGENCE_IDS  = array(
 		'workflow.route_request',
+		'core_schema.discover',
 		'workflow_session.get',
 		'site_editor.get_context',
 		'site_editor.list_templates',
@@ -48,6 +49,8 @@ final class AbilitiesRegistry {
 		'content_internal_link.policy',
 		'content_find.internal_links',
 		'content_audit.internal_links',
+		'content_revisions.list',
+		'content_autosaves.inspect',
 		'memory.list',
 		'content_batch.status',
 	);

@@ -55,6 +55,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new WorkflowRouter() )->route( $args )
 			),
 			$this->module(
+				'core_schema.discover',
+				'Discover WordPress Core Schema',
+				'Use this before planning WordPress core management work. It returns bounded read-only REST route, post type, taxonomy, status, revision, autosave, Site Editor, and capability hints without exposing callbacks, nonces, option values, or private internals.',
+				'Core Schema Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new CoreSchemaDiscovery() )->manifest()
+			),
+			$this->module(
 				'workflow_session.start',
 				'Start MCP Workflow Session',
 				'Start a bounded Aculect workflow session so ChatGPT, Claude, Codex, or another MCP client can resume multi-tool content, SEO, or site-management work without relying on chat memory.',
@@ -524,6 +534,26 @@ final class FirstPartyAbilityModules {
 					array( 'id' )
 				),
 				static fn ( array $args ): array => ( new ContentAbilities() )->get_item( (int) ( $args['id'] ?? 0 ) )
+			),
+			$this->module(
+				'content_revisions.list',
+				'List Content Revisions',
+				'List safe, bounded revision metadata for an editable WordPress post, page, or supported custom post type. This read-only discovery tool does not restore, delete, or return full post bodies by default.',
+				'Content',
+				'content:read',
+				true,
+				$this->revision_discovery_schema( true ),
+				static fn ( array $args ): array => ( new RevisionsAutosavesAbilities() )->list_revisions( $args )
+			),
+			$this->module(
+				'content_autosaves.inspect',
+				'Inspect Content Autosave',
+				'Inspect whether WordPress has a current-user autosave for an editable post, page, or supported custom post type. This read-only discovery tool returns bounded metadata only unless a capped preview is explicitly requested.',
+				'Content',
+				'content:read',
+				true,
+				$this->revision_discovery_schema( false ),
+				static fn ( array $args ): array => ( new RevisionsAutosavesAbilities() )->inspect_autosaves( $args )
 			),
 			$this->module(
 				'content.get_seo',
@@ -1299,6 +1329,43 @@ final class FirstPartyAbilityModules {
 			'enum'        => array( 'compact', 'full' ),
 			'description' => $description,
 		);
+	}
+
+	/**
+	 * Build revision/autosave discovery input schema.
+	 *
+	 * @param bool $include_pagination Whether this ability lists a collection.
+	 * @return array<string, mixed>
+	 */
+	private function revision_discovery_schema( bool $include_pagination ): array {
+		$properties = array(
+			'post_id'         => array(
+				'type'        => 'integer',
+				'description' => 'Parent post, page, or supported custom post type ID.',
+			),
+			'id'              => array(
+				'type'        => 'integer',
+				'description' => 'Alias for post_id.',
+			),
+			'context'         => $this->context_schema( 'Use compact for metadata only or full to add bounded text summaries. Defaults to compact.' ),
+			'include_preview' => array(
+				'type'        => 'boolean',
+				'description' => 'Explicitly request a bounded plain-text content preview. Defaults to false.',
+			),
+			'preview_chars'   => array(
+				'type'        => 'integer',
+				'minimum'     => 1,
+				'maximum'     => 500,
+				'description' => 'Maximum plain-text preview characters when include_preview is true. Defaults to 200.',
+			),
+		);
+
+		if ( $include_pagination ) {
+			$properties['page']     = $this->page_schema();
+			$properties['per_page'] = $this->per_page_schema( 50, 'Revisions per page. Defaults to 20.' );
+		}
+
+		return $this->object_schema( $properties );
 	}
 
 	/**
@@ -2253,6 +2320,12 @@ final class FirstPartyAbilityModules {
 				),
 				'page'               => $this->page_schema(),
 				'per_page'           => $this->per_page_schema( 50, 'Audit rows per page. Defaults to 10.' ),
+				'queue_limit'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 50,
+					'description' => 'Maximum prioritized action queue items to return. Defaults to per_page or 10.',
+				),
 			)
 		);
 	}

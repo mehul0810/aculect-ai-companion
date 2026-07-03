@@ -325,6 +325,36 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new SiteStructureDiscoveryAbilities() )->list_block_areas( $args )
 			),
 			$this->module(
+				'users.current_access',
+				'Read Current User Access Summary',
+				'Read the connected WordPress user ID, sanitized role slugs, curated site-level capability booleans relevant to Aculect operations, and blocked/unavailable reasons. This never returns email, raw caps, sessions, tokens, user meta, or password data.',
+				'User Access Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new UserRoleCapabilitiesDiscovery() )->current_access_summary()
+			),
+			$this->module(
+				'users.roles_summary',
+				'Read Role Capability Summary',
+				'Read a privileged, bounded summary of WordPress roles with translated labels, user counts, and curated capability category booleans. This requires promote_users and never returns raw capability maps.',
+				'User Access Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new UserRoleCapabilitiesDiscovery() )->roles_summary()
+			),
+			$this->module(
+				'users.list_safe',
+				'List Users Safely',
+				'List users only when the connected WordPress user has list_users. Results are capped at 50 per page and include only user ID, display name, and sanitized role slugs; private fields and raw caps are never returned.',
+				'User Access',
+				'content:read',
+				true,
+				$this->safe_users_list_schema(),
+				static fn ( array $args ): array => ( new UserRoleCapabilitiesDiscovery() )->list_safe_users( $args )
+			),
+			$this->module(
 				'admin_menu.get_context',
 				'Read Admin Menu Intelligence',
 				'Use this before planning WordPress core, plugin, or theme admin settings work. It returns visible admin menus, navigation targets, and registered settings metadata without exposing option values.',
@@ -1366,6 +1396,24 @@ final class FirstPartyAbilityModules {
 		}
 
 		return $this->object_schema( $properties );
+	}
+
+	/**
+	 * Build the capped safe user-list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function safe_users_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 50, 'Users per page. Defaults to 20 and is capped at 50.' ),
+				'role'     => array(
+					'type'        => 'string',
+					'description' => 'Optional role slug filter.',
+				),
+			)
+		);
 	}
 
 	/**

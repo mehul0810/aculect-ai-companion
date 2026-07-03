@@ -384,6 +384,166 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return bounded link-count stats for indexed content IDs.
+	 *
+	 * @param array<int> $object_ids Indexed content IDs.
+	 * @return array<int, array{inbound_internal_links: int, outbound_internal_links: int}>
+	 */
+	public function internal_link_stats( array $object_ids ): array {
+		global $wpdb;
+
+		$object_ids = array_values( array_unique( array_filter( array_map( 'absint', array_slice( $object_ids, 0, 50 ) ) ) ) );
+		if ( array() === $object_ids ) {
+			return array();
+		}
+
+		$placeholders = implode( ', ', array_fill( 0, count( $object_ids ), '%d' ) );
+		$index_tbl    = Installer::content_index_table();
+		$link_tbl     = Installer::link_graph_table();
+		$rows         = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- The IN list is bounded and built from integer placeholders.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- IN placeholders are generated above from a bounded list.
+				"SELECT idx.object_id, COUNT(DISTINCT inbound.source_id) AS inbound_internal_links, COUNT(DISTINCT outbound.id) AS outbound_internal_links FROM %i idx LEFT JOIN %i inbound ON inbound.target_id = idx.object_id LEFT JOIN %i outbound ON outbound.source_id = idx.object_id AND outbound.target_id IS NOT NULL AND outbound.target_id > 0 WHERE idx.object_id IN ({$placeholders}) GROUP BY idx.object_id",
+				...array_merge( array( $index_tbl, $link_tbl, $link_tbl ), $object_ids )
+			),
+			ARRAY_A
+		);
+
+		$stats = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+
+			$id = absint( $row['object_id'] ?? 0 );
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$stats[ $id ] = array(
+				'inbound_internal_links'  => (int) ( $row['inbound_internal_links'] ?? 0 ),
+				'outbound_internal_links' => (int) ( $row['outbound_internal_links'] ?? 0 ),
+			);
+		}
+
+		return $stats;
+	}
+
+	/**
+	 * Return bounded usage stats for existing internal-link anchors.
+	 *
+	 * @param array<string> $anchors Anchor texts.
+	 * @param int           $source_id Optional source ID for source-local duplicate checks.
+	 * @return array<string, array{total: int, source_total: int, target_total: int}>
+	 */
+	public function internal_link_anchor_usage( array $anchors, int $source_id = 0 ): array {
+		global $wpdb;
+
+		$anchors = array_values(
+			array_unique(
+				array_filter(
+					array_map(
+						fn ( string $anchor ): string => $this->text( $anchor, 255 ),
+						array_slice( $anchors, 0, 50 )
+					)
+				)
+			)
+		);
+		if ( array() === $anchors ) {
+			return array();
+		}
+
+		$placeholders = implode( ', ', array_fill( 0, count( $anchors ), '%s' ) );
+		$rows         = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- The IN list is bounded and built from string placeholders.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- IN placeholders are generated above from a bounded list.
+				"SELECT anchor_text, COUNT(*) AS total, COUNT(DISTINCT source_id) AS source_total, COUNT(DISTINCT target_id) AS target_total, SUM(CASE WHEN source_id = %d THEN 1 ELSE 0 END) AS source_matches FROM %i WHERE anchor_text IN ({$placeholders}) GROUP BY anchor_text",
+				...array_merge( array( absint( $source_id ), Installer::link_graph_table() ), $anchors )
+			),
+			ARRAY_A
+		);
+
+		$usage = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+
+			$key = $this->normalized_anchor_key( (string) ( $row['anchor_text'] ?? '' ) );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			$usage[ $key ] = array(
+				'total'        => (int) ( $row['total'] ?? 0 ),
+				'source_total' => (int) ( $row['source_matches'] ?? 0 ),
+				'target_total' => (int) ( $row['target_total'] ?? 0 ),
+			);
+		}
+
+		return $usage;
+	}
+
+	/**
+	 * Return a bounded audit over indexed outbound internal links.
+	 *
+	 * @param array<string, mixed> $args Audit arguments.
+	 * @return array<string, mixed>
+	 */
+	public function internal_link_target_audit( array $args ): array {
+		global $wpdb;
+
+		$page      = max( 1, absint( $args['page'] ?? 1 ) );
+		$per_page  = $this->limit( $args['per_page'] ?? self::DEFAULT_LIMIT );
+		$offset    = ( $page - 1 ) * $per_page;
+		$where     = $this->link_target_where_clause( $args );
+		$index_tbl = Installer::content_index_table();
+		$link_tbl  = Installer::link_graph_table();
+
+		$select = 'links.id AS link_id, links.source_id, links.target_id, links.target_url, links.anchor_text, links.rel, links.context AS link_context, links.created_at AS link_created_at, source.post_type AS source_post_type, source.post_status AS source_post_status, source.title AS source_title, source.slug AS source_slug, source.permalink AS source_permalink, source.indexed_at AS source_indexed_at, source.modified_gmt AS source_modified_gmt, source.stale AS source_stale, target.post_type AS indexed_target_post_type, target.post_status AS indexed_target_post_status, target.title AS indexed_target_title, target.slug AS indexed_target_slug, target.permalink AS indexed_target_permalink, target.stale AS indexed_target_stale';
+		$joins  = 'INNER JOIN %i source ON source.object_id = links.source_id LEFT JOIN %i target ON target.object_id = links.target_id';
+
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values.
+				"SELECT {$select} FROM %i links {$joins} {$where['sql']} ORDER BY links.created_at DESC, links.id DESC LIMIT %d OFFSET %d",
+				...array_merge( array( $link_tbl, $index_tbl, $index_tbl ), $where['values'], array( $per_page, $offset ) )
+			),
+			ARRAY_A
+		);
+
+		$total = (int) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values.
+				"SELECT COUNT(*) FROM %i links {$joins} {$where['sql']}",
+				...array_merge( array( $link_tbl, $index_tbl, $index_tbl ), $where['values'] )
+			)
+		);
+
+		return array(
+			'items'      => array_map(
+				array( $this, 'public_link_target_row' ),
+				array_filter( is_array( $rows ) ? $rows : array(), 'is_array' )
+			),
+			'total'      => $total,
+			'page'       => $page,
+			'per_page'   => $per_page,
+			'context'    => 'compact',
+			'filters'    => array(
+				'state'     => 'broken',
+				'post_type' => $this->key( $args['post_type'] ?? '', 60 ),
+				'status'    => $this->key( $args['status'] ?? '', 20 ),
+			),
+			'index'      => $this->summary(),
+			'audit_type' => 'internal_link_targets',
+		);
+	}
+
+	/**
 	 * Return a bounded internal-link audit over the content index and link graph.
 	 *
 	 * @param array<string, mixed> $args Audit arguments.
@@ -938,6 +1098,44 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return a public outbound link target row.
+	 *
+	 * @param array<string, mixed> $row Database row.
+	 * @return array<string, mixed>
+	 */
+	private function public_link_target_row( array $row ): array {
+		return array(
+			'link_id'        => (int) ( $row['link_id'] ?? 0 ),
+			'source_post'    => array(
+				'post_id'      => (int) ( $row['source_id'] ?? 0 ),
+				'title'        => (string) ( $row['source_title'] ?? '' ),
+				'post_type'    => (string) ( $row['source_post_type'] ?? '' ),
+				'post_status'  => (string) ( $row['source_post_status'] ?? '' ),
+				'slug'         => (string) ( $row['source_slug'] ?? '' ),
+				'permalink'    => (string) ( $row['source_permalink'] ?? '' ),
+				'indexed_at'   => (string) ( $row['source_indexed_at'] ?? '' ),
+				'modified_gmt' => (string) ( $row['source_modified_gmt'] ?? '' ),
+				'stale'        => ! empty( $row['source_stale'] ),
+			),
+			'target_id'      => (int) ( $row['target_id'] ?? 0 ),
+			'target_url'     => (string) ( $row['target_url'] ?? '' ),
+			'anchor_text'    => (string) ( $row['anchor_text'] ?? '' ),
+			'rel'            => (string) ( $row['rel'] ?? '' ),
+			'context'        => $this->snippet( (string) ( $row['link_context'] ?? '' ), 140 ),
+			'indexed_target' => array(
+				'post_id'     => (int) ( $row['target_id'] ?? 0 ),
+				'title'       => (string) ( $row['indexed_target_title'] ?? '' ),
+				'post_type'   => (string) ( $row['indexed_target_post_type'] ?? '' ),
+				'post_status' => (string) ( $row['indexed_target_post_status'] ?? '' ),
+				'slug'        => (string) ( $row['indexed_target_slug'] ?? '' ),
+				'permalink'   => (string) ( $row['indexed_target_permalink'] ?? '' ),
+				'stale'       => ! empty( $row['indexed_target_stale'] ),
+			),
+			'created_at'     => (string) ( $row['link_created_at'] ?? '' ),
+		);
+	}
+
+	/**
 	 * Return a public chunk row.
 	 *
 	 * @param array<string, mixed> $row     Database row.
@@ -1122,6 +1320,34 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Build outbound link target audit WHERE filters.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array{sql: string, values: list<mixed>}
+	 */
+	private function link_target_where_clause( array $args ): array {
+		$clauses = array( 'links.target_url <> %s' );
+		$values  = array( '' );
+
+		$post_type = $this->key( $args['post_type'] ?? '', 60 );
+		if ( '' !== $post_type ) {
+			$clauses[] = 'source.post_type = %s';
+			$values[]  = $post_type;
+		}
+
+		$status = $this->key( $args['status'] ?? '', 20 );
+		if ( '' !== $status ) {
+			$clauses[] = 'source.post_status = %s';
+			$values[]  = $status;
+		}
+
+		return array(
+			'sql'    => 'WHERE ' . implode( ' AND ', $clauses ),
+			'values' => $values,
+		);
+	}
+
+	/**
 	 * Build internal-link audit HAVING filters from a state.
 	 *
 	 * @param string             $state      Audit state.
@@ -1175,7 +1401,7 @@ final class ContentIndexRepository {
 	private function audit_state( mixed $state ): string {
 		$state = $this->key( $state, 30 );
 
-		return in_array( $state, array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ), true ) ? $state : 'needs_review';
+		return in_array( $state, array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy', 'broken', 'missing_target', 'unreadable_target', 'unpublished_target', 'stale_permalink', 'redirected' ), true ) ? $state : 'needs_review';
 	}
 
 	/**
@@ -1382,6 +1608,15 @@ final class ContentIndexRepository {
 		$text = sanitize_text_field( is_scalar( $value ) ? (string) $value : '' );
 
 		return substr( $text, 0, $limit );
+	}
+
+	/**
+	 * Normalize anchor text for usage-map keys.
+	 *
+	 * @param string $anchor Anchor text.
+	 */
+	private function normalized_anchor_key( string $anchor ): string {
+		return trim( strtolower( preg_replace( '/\s+/', ' ', $anchor ) ?? '' ) );
 	}
 
 	/**

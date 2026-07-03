@@ -67,6 +67,8 @@ $GLOBALS['aculect_ai_companion_test_roles']       = array(
 $GLOBALS['aculect_ai_companion_test_users']       = array();
 $GLOBALS['aculect_ai_companion_test_posts']       = array();
 $GLOBALS['aculect_ai_companion_test_post_meta']   = array();
+$GLOBALS['aculect_ai_companion_test_url_to_postid'] = array();
+$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
 $GLOBALS['aculect_ai_companion_test_post_types']  = array();
 $GLOBALS['aculect_ai_companion_test_blocks']      = array();
 $GLOBALS['aculect_ai_companion_test_patterns']    = array();
@@ -396,9 +398,14 @@ if ( ! function_exists( 'current_user_can' ) ) {
 	 * @param mixed  ...$args    Capability args.
 	 */
 	function current_user_can( string $capability, mixed ...$args ): bool {
-		unset( $args );
-
 		$denied = $GLOBALS['aculect_ai_companion_test_denied_caps'] ?? array();
+		if ( 'read_post' === $capability && isset( $args[0] ) ) {
+			$denied_post_ids = $GLOBALS['aculect_ai_companion_test_denied_post_ids'] ?? array();
+			if ( in_array( absint( $args[0] ), is_array( $denied_post_ids ) ? $denied_post_ids : array(), true ) ) {
+				return false;
+			}
+		}
+
 		return ! in_array( $capability, is_array( $denied ) ? $denied : array(), true );
 	}
 }
@@ -844,6 +851,17 @@ if ( ! function_exists( 'get_permalink' ) ) {
 		$post_id = $post instanceof WP_Post ? $post->ID : (int) $post;
 
 		return 'https://example.com/?p=' . $post_id;
+	}
+}
+
+if ( ! function_exists( 'url_to_postid' ) ) {
+	/**
+	 * Resolve a test URL to a post ID.
+	 *
+	 * @param string $url URL.
+	 */
+	function url_to_postid( string $url ): int {
+		return absint( $GLOBALS['aculect_ai_companion_test_url_to_postid'][ $url ] ?? 0 );
 	}
 }
 

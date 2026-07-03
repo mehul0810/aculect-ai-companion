@@ -202,6 +202,7 @@ final class WordPressAbilitiesRegistrar {
 					'total_is_estimated' => array( 'type' => 'boolean' ),
 					'degraded'           => array( 'type' => 'boolean' ),
 					'degraded_reason'    => array( 'type' => 'string' ),
+					'quality_summary'    => array( 'type' => 'object' ),
 					'error'              => array( 'type' => 'string' ),
 					'message'            => array( 'type' => 'string' ),
 				)
@@ -269,6 +270,7 @@ final class WordPressAbilitiesRegistrar {
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
+				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
 				'memory.list',

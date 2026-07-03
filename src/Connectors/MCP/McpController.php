@@ -826,6 +826,19 @@ final class McpController {
 			);
 		}
 
+		if ( 'content_internal_link.policy' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'type'         => array( 'type' => 'string' ),
+					'policy'       => array( 'type' => 'object' ),
+					'limits'       => array( 'type' => 'object' ),
+					'guidance'     => array( 'type' => 'object' ),
+					'capabilities' => array( 'type' => 'object' ),
+				),
+				array( 'type', 'policy', 'limits' )
+			);
+		}
+
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()
@@ -1002,6 +1015,7 @@ final class McpController {
 					'description' => 'True when results came from a live WordPress query because the intelligence index could not answer. Queue content_index_refresh_batch and retry for indexed results.',
 				),
 				'degraded_reason'    => array( 'type' => 'string' ),
+				'quality_summary'    => array( 'type' => 'object' ),
 				'error'              => array( 'type' => 'string' ),
 				'message'            => array( 'type' => 'string' ),
 			)

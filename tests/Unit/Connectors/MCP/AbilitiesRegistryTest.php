@@ -125,6 +125,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $by_id['content.update_item']['changesSite'] );
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
+		self::assertArrayNotHasKey( 'content_internal_link.policy', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
@@ -181,6 +182,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
+				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
 				'memory.list',
@@ -206,6 +208,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_internal_link_policy' ) );
 		self::assertSame( 'search', $this->registry->tool_name( 'search' ) );
 		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
@@ -213,6 +216,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_audit_internal_links' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.policy' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_audit.internal_links' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );

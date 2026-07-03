@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion;
 
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
+use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
@@ -92,6 +93,7 @@ final class Plugin {
 		add_action( 'deleted_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		( new EditorInternalLinkSuggestions() )->register();
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
@@ -149,6 +151,7 @@ final class Plugin {
 		( new TokenController() )->register_routes();
 		( new McpController() )->register_routes();
 		( new SettingsPage() )->register_rest_routes();
+		( new EditorInternalLinkSuggestions() )->register_rest_routes();
 	}
 
 	/**

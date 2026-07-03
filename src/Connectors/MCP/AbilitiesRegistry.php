@@ -46,6 +46,8 @@ final class AbilitiesRegistry {
 		'content_internal_link.policy',
 		'content_find.internal_links',
 		'content_audit.internal_links',
+		'content_revisions.list',
+		'content_autosaves.inspect',
 		'memory.list',
 		'content_batch.status',
 	);

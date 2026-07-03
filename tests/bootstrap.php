@@ -1042,6 +1042,79 @@ if ( ! function_exists( 'wp_attachment_is_image' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_get_post_revisions' ) ) {
+	/**
+	 * Return test post revisions for a parent post.
+	 *
+	 * @param int                  $post_id Parent post ID.
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<int, WP_Post>
+	 */
+	function wp_get_post_revisions( int $post_id, array $args = array() ): array {
+		unset( $args );
+
+		$revisions = array();
+		foreach ( $GLOBALS['aculect_ai_companion_test_post_revisions'][ $post_id ] ?? array() as $revision_id => $revision ) {
+			$revision = $revision instanceof WP_Post ? $revision : new WP_Post( is_array( $revision ) ? $revision : array() );
+			if ( $post_id === (int) $revision->post_parent ) {
+				$revisions[ (int) $revision_id ] = $revision;
+			}
+		}
+
+		return $revisions;
+	}
+}
+
+if ( ! function_exists( 'get_post_revisions' ) ) {
+	/**
+	 * Return test post revisions for compatibility with older code paths.
+	 *
+	 * @param int                  $post_id Parent post ID.
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<int, WP_Post>
+	 */
+	function get_post_revisions( int $post_id, array $args = array() ): array {
+		return wp_get_post_revisions( $post_id, $args );
+	}
+}
+
+if ( ! function_exists( 'wp_is_post_autosave' ) ) {
+	/**
+	 * Return the parent post ID when a revision object is an autosave.
+	 *
+	 * @param WP_Post|int $post Revision object or ID.
+	 * @return int|false
+	 */
+	function wp_is_post_autosave( WP_Post|int $post ): int|false {
+		$revision = $post instanceof WP_Post ? $post : get_post( $post );
+		if ( ! $revision instanceof WP_Post ) {
+			return false;
+		}
+
+		return str_contains( $revision->post_name, 'autosave' ) ? (int) $revision->post_parent : false;
+	}
+}
+
+if ( ! function_exists( 'wp_get_post_autosave' ) ) {
+	/**
+	 * Return a test autosave for a parent post and user.
+	 *
+	 * @param int $post_id Parent post ID.
+	 * @param int $user_id User ID.
+	 * @return WP_Post|false
+	 */
+	function wp_get_post_autosave( int $post_id, int $user_id = 0 ): WP_Post|false {
+		$user_id  = 0 < $user_id ? $user_id : get_current_user_id();
+		$autosave = $GLOBALS['aculect_ai_companion_test_post_autosaves'][ $post_id ][ $user_id ] ?? false;
+
+		if ( $autosave instanceof WP_Post ) {
+			return $autosave;
+		}
+
+		return is_array( $autosave ) ? new WP_Post( $autosave ) : false;
+	}
+}
+
 if ( ! function_exists( 'wp_trim_words' ) ) {
 	/**
 	 * Trim text to a bounded number of words.

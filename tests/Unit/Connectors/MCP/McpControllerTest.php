@@ -116,6 +116,15 @@ final class McpControllerTest extends TestCase {
 
 		self::assertLessThanOrEqual( McpController::tools_page_size(), count( $first_page['tools'] ) );
 		self::assertArrayHasKey( 'nextCursor', $first_page );
+		self::assertArrayHasKey( '_meta', $first_page );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $first_page['_meta']['aculect/toolListFingerprint'] );
+		self::assertSame( ACULECT_AI_COMPANION_VERSION, $first_page['_meta']['aculect/toolListVersion'] );
+		self::assertGreaterThan( McpController::tools_page_size(), $first_page['_meta']['aculect/totalTools'] );
+		self::assertSame( McpController::tools_page_size(), $first_page['_meta']['aculect/pageSize'] );
+		self::assertSame( 0, $first_page['_meta']['aculect/pageOffset'] );
+		self::assertSame( McpController::tools_page_size(), $first_page['_meta']['aculect/pageToolCount'] );
+		self::assertTrue( $first_page['_meta']['aculect/cursorValid'] );
+		self::assertTrue( $first_page['_meta']['aculect/nextCursorVersioned'] );
 
 		$manifest_names = array_column( $controller->tool_manifest_for_user( 1, array( 'content:read', 'content:draft' ) )['tools'], 'name' );
 		$paged_names    = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
@@ -123,6 +132,36 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( $manifest_names, $paged_names );
 		self::assertGreaterThan( McpController::tools_page_size(), count( $paged_names ) );
 		self::assertSame( count( $paged_names ), count( array_unique( $paged_names ) ) );
+	}
+
+	public function test_tools_list_rejects_stale_versioned_cursor_after_policy_change(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array_keys( $registry->configurable_definitions() ) );
+
+		$controller = new McpController();
+		$scopes     = array( 'content:read', 'content:draft' );
+		$first_page = $controller->tools_list_page_for_user( 1, $scopes );
+
+		self::assertArrayHasKey( 'nextCursor', $first_page );
+
+		$registry->save_enabled_ids( array( 'content.get_item' ) );
+		$stale_cursor_page = $controller->tools_list_page_for_user( 1, $scopes, (string) $first_page['nextCursor'] );
+		$fresh_first_page  = $controller->tools_list_page_for_user( 1, $scopes );
+
+		self::assertFalse( $stale_cursor_page['_meta']['aculect/cursorValid'] );
+		self::assertSame( 0, $stale_cursor_page['_meta']['aculect/pageOffset'] );
+		self::assertSame(
+			array_column( $fresh_first_page['tools'], 'name' ),
+			array_column( $stale_cursor_page['tools'], 'name' )
+		);
+		self::assertSame(
+			$fresh_first_page['_meta']['aculect/toolListFingerprint'],
+			$stale_cursor_page['_meta']['aculect/toolListFingerprint']
+		);
+		self::assertNotSame(
+			$first_page['_meta']['aculect/toolListFingerprint'],
+			$stale_cursor_page['_meta']['aculect/toolListFingerprint']
+		);
 	}
 
 	public function test_openai_chatgpt_codex_and_gemini_tool_descriptors_keep_mcp_security_contract(): void {

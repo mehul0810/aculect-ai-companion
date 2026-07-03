@@ -192,9 +192,9 @@ final class WorkflowRouter {
 			),
 			'internal_links' => array(
 				'guide_id'   => '',
-				'next_tool'  => $registry->tool_name( 'content_find.internal_links' ),
-				'sequence'   => array( 'intelligence_content_get_context', 'content_search_items', 'content_find_internal_links' ),
-				'operations' => array( 'intelligence_index.internal_links' ),
+				'next_tool'  => $registry->tool_name( 'content_internal_link.policy' ),
+				'sequence'   => array( 'intelligence_content_get_context', 'content_internal_link_policy', 'content_search_items', 'content_find_internal_links' ),
+				'operations' => array( 'intelligence_index.internal_link_policy', 'intelligence_index.internal_links' ),
 				'risk_level' => 'read_only',
 				'confidence' => 'high',
 			),

@@ -49,7 +49,7 @@ final class ContentIndexRepositoryTest extends TestCase {
 			 *
 			 * @var array<string, array<string, mixed>>
 			 */
-			private array $rows = array();
+				public array $rows = array();
 
 			/**
 			 * Last prepared query arguments.
@@ -309,5 +309,87 @@ final class ContentIndexRepositoryTest extends TestCase {
 		self::assertContains( 2, $first_args );
 		self::assertContains( 300, $first_args );
 		self::assertContains( 25, $first_args );
+	}
+
+	public function test_internal_link_stats_uses_bounded_target_id_lookup(): void {
+		( new ContentIndexRepository() )->internal_link_stats( range( 1, 75 ) );
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertStringContainsString( 'WHERE idx.object_id IN (', $first_query );
+		self::assertStringContainsString( 'COUNT(DISTINCT inbound.source_id)', $first_query );
+		self::assertCount( 53, $first_args );
+		self::assertContains( 50, $first_args );
+		self::assertNotContains( 51, $first_args );
+	}
+
+	public function test_internal_link_anchor_usage_uses_bounded_anchor_lookup(): void {
+		$anchors = array_map(
+			static fn ( int $index ): string => 'Anchor ' . $index,
+			range( 1, 75 )
+		);
+
+		( new ContentIndexRepository() )->internal_link_anchor_usage( $anchors, 123 );
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertStringContainsString( 'anchor_text IN (', $first_query );
+		self::assertStringContainsString( 'GROUP BY anchor_text', $first_query );
+		self::assertCount( 52, $first_args );
+		self::assertSame( 123, $first_args[0] );
+		self::assertContains( 'Anchor 50', $first_args );
+		self::assertNotContains( 'Anchor 51', $first_args );
+	}
+
+	public function test_internal_link_target_audit_returns_bounded_source_and_target_rows(): void {
+		$this->wpdb->rows['link-1'] = array(
+			'link_id'                    => 1,
+			'source_id'                  => 11,
+			'target_id'                  => 22,
+			'target_url'                 => 'https://example.com/old-target/',
+			'anchor_text'                => 'Old target',
+			'rel'                        => '',
+			'link_context'               => str_repeat( 'Context ', 40 ),
+			'link_created_at'            => '2026-07-03 05:00:00',
+			'source_post_type'           => 'page',
+			'source_post_status'         => 'publish',
+			'source_title'               => 'Source Page',
+			'source_slug'                => 'source-page',
+			'source_permalink'           => 'https://example.com/source-page/',
+			'source_indexed_at'          => '2026-07-03 04:00:00',
+			'source_modified_gmt'        => '2026-07-03 03:00:00',
+			'source_stale'               => 0,
+			'indexed_target_post_type'   => 'page',
+			'indexed_target_post_status' => 'publish',
+			'indexed_target_title'       => 'Target Page',
+			'indexed_target_slug'        => 'target-page',
+			'indexed_target_permalink'   => 'https://example.com/target-page/',
+			'indexed_target_stale'       => 1,
+		);
+
+		$result = ( new ContentIndexRepository() )->internal_link_target_audit(
+			array(
+				'post_type' => 'page',
+				'status'    => 'publish',
+				'per_page'  => 5,
+			)
+		);
+
+		$first_query = $this->wpdb->prepared[0]['query'];
+		$first_args  = $this->wpdb->prepared[0]['args'];
+
+		self::assertStringContainsString( 'FROM %i links INNER JOIN %i source', $first_query );
+		self::assertStringContainsString( 'LEFT JOIN %i target', $first_query );
+		self::assertStringContainsString( 'links.target_url <> %s', $first_query );
+		self::assertStringContainsString( 'source.post_type = %s', $first_query );
+		self::assertStringContainsString( 'source.post_status = %s', $first_query );
+		self::assertContains( 'page', $first_args );
+		self::assertContains( 'publish', $first_args );
+		self::assertSame( 'broken', $result['filters']['state'] );
+		self::assertSame( 11, $result['items'][0]['source_post']['post_id'] );
+		self::assertSame( 'https://example.com/old-target/', $result['items'][0]['target_url'] );
+		self::assertLessThanOrEqual( 140, strlen( $result['items'][0]['context'] ) );
 	}
 }

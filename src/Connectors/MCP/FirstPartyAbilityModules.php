@@ -385,6 +385,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->find_related( $args )
 			),
 			$this->module(
+				'content_internal_link.policy',
+				'Get Internal Link Policy',
+				'Read the active internal-linking exclusions, limits, and placement guardrails before proposing or applying links.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new IntelligenceIndexAbilities() )->internal_link_policy_context()
+			),
+			$this->module(
 				'content_find.internal_links',
 				'Find Internal Link Opportunities',
 				'Find internal link candidates and anchor suggestions from the local content index while avoiding links already present in the source item.',
@@ -2198,8 +2208,8 @@ final class FirstPartyAbilityModules {
 			array(
 				'state'              => array(
 					'type'        => 'string',
-					'enum'        => array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ),
-					'description' => 'Audit state to list. Defaults to needs_review.',
+					'enum'        => array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy', 'broken', 'missing_target', 'unreadable_target', 'unpublished_target', 'stale_permalink', 'redirected' ),
+					'description' => 'Audit state to list. Defaults to needs_review. Use broken or a target-state value to audit stale and broken indexed internal-link targets.',
 				),
 				'post_type'          => array( 'type' => 'string' ),
 				'status'             => array( 'type' => 'string' ),

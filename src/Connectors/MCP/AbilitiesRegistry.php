@@ -43,6 +43,7 @@ final class AbilitiesRegistry {
 		'content_search.items',
 		'content_search.chunks',
 		'content_find.related',
+		'content_internal_link.policy',
 		'content_find.internal_links',
 		'content_audit.internal_links',
 		'memory.list',

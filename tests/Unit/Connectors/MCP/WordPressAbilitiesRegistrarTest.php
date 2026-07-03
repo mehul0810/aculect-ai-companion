@@ -80,6 +80,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 				'aculect-ai-companion/content-search-items',
 				'aculect-ai-companion/content-search-chunks',
 				'aculect-ai-companion/content-find-related',
+				'aculect-ai-companion/content-internal-link-policy',
 				'aculect-ai-companion/content-find-internal-links',
 				'aculect-ai-companion/memory-list',
 			) as $expected_name

@@ -127,6 +127,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP {
 	use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 	use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 	use Aculect\AICompanion\Connectors\MCP\RankMathRedirectAbilities;
+	use Aculect\AICompanion\Intelligence\InternalLinkTargetInspector;
 	use PHPUnit\Framework\TestCase;
 	use RankMath\Helper;
 	use RankMath\Monitor\DB as MonitorDB;
@@ -246,6 +247,22 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP {
 			self::assertSame( 'old-page', $result['proposal']['source'] );
 			self::assertSame( 'https://example.com/new-page', $result['proposal']['destination'] );
 			self::assertSame( 12, $result['conflicts'][0]['id'] );
+		}
+
+		public function test_internal_link_target_inspector_reports_rank_math_redirects(): void {
+			RedirectionsDB::$matches['old-page'] = RedirectionsDB::$redirections;
+
+			$result = ( new InternalLinkTargetInspector() )->inspect(
+				array(
+					'target_id'  => 0,
+					'target_url' => 'https://example.com/old-page',
+				)
+			);
+
+			self::assertSame( 'redirected', $result['state'] );
+			self::assertSame( 'old-page', $result['evidence']['redirect_source'] );
+			self::assertSame( 'https://example.com/new-page', $result['evidence']['redirect_destination'] );
+			self::assertSame( 301, $result['evidence']['redirect_code'] );
 		}
 
 		public function test_validate_redirect_rejects_unsafe_destination(): void {

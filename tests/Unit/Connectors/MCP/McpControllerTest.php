@@ -292,6 +292,10 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'items', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_policy'] );
+		self::assertArrayHasKey( 'policy', $tools_by_name['content_internal_link_policy']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_find_internal_links'] );
+		self::assertArrayHasKey( 'quality_summary', $tools_by_name['content_find_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'max_word_count', $tools_by_name['content_search_items']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
@@ -354,6 +358,7 @@ final class McpControllerTest extends TestCase {
 			'content_search_items',
 			'content_search_chunks',
 			'content_find_related',
+			'content_internal_link_policy',
 			'content_find_internal_links',
 			'content_audit_internal_links',
 			'memory_list',
@@ -709,6 +714,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_search_items', $names );
 		self::assertContains( 'content_search_chunks', $names );
 		self::assertContains( 'content_find_related', $names );
+		self::assertContains( 'content_internal_link_policy', $names );
 		self::assertContains( 'content_find_internal_links', $names );
 		self::assertContains( 'content_audit_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
@@ -731,6 +737,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.items', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.chunks', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_internal_link.policy', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_audit.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );

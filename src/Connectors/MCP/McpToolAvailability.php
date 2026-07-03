@@ -62,7 +62,7 @@ final class McpToolAvailability {
 		$registry = $registry ?? new AbilitiesRegistry();
 		$scopes   = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
 
-		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->always_on_read_intelligence_modules() + $registry->always_on_write_intelligence_modules();
+		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->core_default_modules() + $registry->always_on_read_intelligence_modules() + $registry->always_on_write_intelligence_modules();
 		$policy         = $this->ability_policy_for_user( $user_id, $registry, $scopes );
 		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
 		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
@@ -90,7 +90,8 @@ final class McpToolAvailability {
 		$policy         = new RoleAbilitiesPolicy();
 		$all_ids        = array_keys( $registry->definitions() );
 		$configurable   = array_values( array_filter( $all_ids, array( $registry, 'is_configurable' ) ) );
-		$global_enabled = $registry->enabled_ids();
+		$global_enabled = $registry->policy_enabled_ids();
+		$config_enabled = $registry->enabled_ids();
 		$role_allowed   = $policy->allowed_ids_for_user( $user_id, $registry );
 		$exposed        = array_values(
 			array_filter(
@@ -116,26 +117,30 @@ final class McpToolAvailability {
 		$default_read_only_policy = 'default_read_only' === $user_state && ! $explicit_role_policy;
 
 		return array(
-			'user_id'                   => $user_id,
-			'user_roles'                => $roles,
-			'user_policy_state'         => $user_state,
-			'global_enabled_count'      => count( $global_enabled ),
-			'role_allowed_count'        => count( $role_allowed ),
-			'exposed_ability_count'     => count( $exposed ),
-			'all_ability_count'         => count( $all_ids ),
-			'global_enabled_ids'        => array_values( $global_enabled ),
-			'role_allowed_ids'          => array_values( $role_allowed ),
-			'exposed_ability_ids'       => $exposed,
-			'blocked_by_global_ids'     => array_values( array_diff( $configurable, $global_enabled ) ),
-			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $role_allowed ) ),
-			'explicit_role_policy'      => $explicit_role_policy,
-			'default_read_only_policy'  => $default_read_only_policy,
-			'missing_user'              => 'missing_user' === $user_state,
-			'missing_role'              => 'missing_role' === $user_state,
-			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
-			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
-			'scope_aware'               => null !== $scopes,
-			'granted_scopes'            => null === $scopes ? array() : $scopes,
+			'user_id'                    => $user_id,
+			'user_roles'                 => $roles,
+			'user_policy_state'          => $user_state,
+			'global_enabled_count'       => count( $global_enabled ),
+			'configurable_enabled_count' => count( $config_enabled ),
+			'core_default_count'         => count( $registry->core_default_ids() ),
+			'role_allowed_count'         => count( $role_allowed ),
+			'exposed_ability_count'      => count( $exposed ),
+			'all_ability_count'          => count( $all_ids ),
+			'global_enabled_ids'         => array_values( $global_enabled ),
+			'configurable_enabled_ids'   => array_values( $config_enabled ),
+			'core_default_ids'           => $registry->core_default_ids(),
+			'role_allowed_ids'           => array_values( $role_allowed ),
+			'exposed_ability_ids'        => $exposed,
+			'blocked_by_global_ids'      => array_values( array_diff( $configurable, $config_enabled ) ),
+			'blocked_by_role_ids'        => array_values( array_diff( $config_enabled, $role_allowed ) ),
+			'explicit_role_policy'       => $explicit_role_policy,
+			'default_read_only_policy'   => $default_read_only_policy,
+			'missing_user'               => 'missing_user' === $user_state,
+			'missing_role'               => 'missing_role' === $user_state,
+			'operation_tool_names'       => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
+			'global_enabled_tool_names'  => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
+			'scope_aware'                => null !== $scopes,
+			'granted_scopes'             => null === $scopes ? array() : $scopes,
 		);
 	}
 
@@ -170,6 +175,7 @@ final class McpToolAvailability {
 				'user_policy_state'        => $policy['user_policy_state'],
 				'exposed_ability_count'    => $policy['exposed_ability_count'],
 				'all_ability_count'        => $policy['all_ability_count'],
+				'core_default_count'       => $policy['core_default_count'],
 				'explicit_role_policy'     => $policy['explicit_role_policy'],
 				'default_read_only_policy' => $policy['default_read_only_policy'],
 				'scope_aware'              => $policy['scope_aware'],
@@ -386,15 +392,16 @@ final class McpToolAvailability {
 		$is_derived_workflow  = $registry->is_derived_workflow( $ability_id );
 		$is_always_on_read    = $registry->is_always_on_read_intelligence( $ability_id );
 		$is_always_on_write   = $registry->is_always_on_write_intelligence( $ability_id );
+		$is_core_default      = $registry->is_core_default( $ability_id );
 		$is_always_on         = $is_always_on_read || $is_always_on_write;
 		$blocked_by           = '';
 		$blocked_dependencies = array();
 		$missing_scopes       = array();
 		$wp_metadata          = $wp_abilities->operation_metadata( $ability_id, $registry );
 
-		if ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $global_enabled, true ) ) {
+		if ( ! $is_derived_workflow && ! $is_always_on && ! $is_core_default && ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
-		} elseif ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $role_allowed, true ) ) {
+		} elseif ( ! $is_derived_workflow && ! $is_always_on && ! $is_core_default && ! in_array( $ability_id, $role_allowed, true ) ) {
 			$blocked_by = $this->role_block_reason( $policy, $module );
 		} elseif ( ! $this->capabilities_available( $ability_id ) || 'capability_blocked' === ( $wp_metadata['status'] ?? '' ) ) {
 			$blocked_by = 'capability';
@@ -405,10 +412,11 @@ final class McpToolAvailability {
 			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
 				$dependency = $registry->module( $dependency_id );
 
-				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
+				$is_core_default_dependency = $registry->is_core_default( $dependency_id );
+				if ( ! $is_core_default_dependency && ! in_array( $dependency_id, $global_enabled, true ) ) {
 					$blocked_by             = 'global_disabled';
 					$blocked_dependencies[] = $dependency_id;
-				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
+				} elseif ( ! $is_core_default_dependency && ! in_array( $dependency_id, $role_allowed, true ) ) {
 					$blocked_by             = $this->role_block_reason( $policy, $dependency );
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( ! $this->capabilities_available( $dependency_id ) ) {
@@ -432,6 +440,8 @@ final class McpToolAvailability {
 			'available'         => $available,
 			'required_scopes'   => array_values( $required_scopes ),
 			'read_only'         => $is_read_only,
+			'core_default'      => $is_core_default,
+			'configurable'      => $registry->is_configurable( $ability_id ),
 			'wordpress_ability' => $wp_metadata,
 		);
 
@@ -445,6 +455,10 @@ final class McpToolAvailability {
 		if ( $is_always_on ) {
 			$entry['always_on']          = true;
 			$entry['availability_model'] = $is_always_on_write ? 'always_on_write_intelligence' : 'always_on_read_intelligence';
+		}
+
+		if ( $is_core_default ) {
+			$entry['availability_model'] = 'core_default_read';
 		}
 
 		if ( ! $available ) {
@@ -471,7 +485,11 @@ final class McpToolAvailability {
 	 */
 	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry, ?array $granted_scopes = null ): bool {
 		foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
-			if ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) {
+			$is_core_default_dependency = $registry->is_core_default( $dependency_id );
+			if (
+				! $is_core_default_dependency
+				&& ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) )
+			) {
 				return false;
 			}
 
@@ -549,7 +567,7 @@ final class McpToolAvailability {
 	 * @param AbilitiesRegistry $registry       Ability registry.
 	 */
 	private function module_allowed( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry ): bool {
-		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_always_on_read_intelligence( $ability_id ) || $registry->is_always_on_write_intelligence( $ability_id ) ) {
+		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_core_default( $ability_id ) || $registry->is_always_on_write_intelligence( $ability_id ) ) {
 			return true;
 		}
 

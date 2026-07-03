@@ -56,6 +56,7 @@ final class AbilitiesRegistry {
 		'memory.save',
 		'memory.bootstrap',
 	);
+	private const CORE_DEFAULT_READ_IDS            = self::ALWAYS_ON_READ_INTELLIGENCE_IDS;
 
 	/**
 	 * Process-wide cached ability modules.
@@ -86,14 +87,40 @@ final class AbilitiesRegistry {
 		$enabled = $this->enabled_ids();
 		return array_map(
 			function ( array $definition ) use ( $enabled ): array {
-				$read_only                 = (bool) $definition['readOnly'];
-				$definition['enabled']     = in_array( (string) $definition['id'], $enabled, true );
-				$definition['toolName']    = $this->tool_name( (string) $definition['id'] );
-				$definition['changesSite'] = ! $read_only;
-				$definition['riskLevel']   = $read_only ? 'read-only' : 'write';
+				$read_only                  = (bool) $definition['readOnly'];
+				$definition['enabled']      = in_array( (string) $definition['id'], $enabled, true );
+				$definition['toolName']     = $this->tool_name( (string) $definition['id'] );
+				$definition['changesSite']  = ! $read_only;
+				$definition['riskLevel']    = $read_only ? 'read-only' : 'write';
+				$definition['coreDefault']  = false;
+				$definition['configurable'] = true;
 				return $definition;
 			},
 			array_values( $this->configurable_definitions() )
+		);
+	}
+
+	/**
+	 * Return default-active core ability definitions for admin context and diagnostics.
+	 *
+	 * These are safe read/discovery abilities that are intentionally not shown as
+	 * user-disableable policy rows. Availability still depends on OAuth scopes,
+	 * connection state, WordPress capabilities, and execution-time checks.
+	 *
+	 * @return list<array<string, bool|string>>
+	 */
+	public function core_default_public_definitions(): array {
+		return array_map(
+			function ( array $definition ): array {
+				$definition['enabled']      = true;
+				$definition['toolName']     = $this->tool_name( (string) $definition['id'] );
+				$definition['changesSite']  = false;
+				$definition['riskLevel']    = 'read-only';
+				$definition['coreDefault']  = true;
+				$definition['configurable'] = false;
+				return $definition;
+			},
+			array_values( $this->core_default_definitions() )
 		);
 	}
 
@@ -103,9 +130,8 @@ final class AbilitiesRegistry {
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function enabled_definitions(): array {
-		$enabled     = $this->enabled_ids();
-		$definitions = $this->configurable_definitions();
-		return array_intersect_key( $definitions, array_flip( $enabled ) );
+		$enabled = $this->policy_enabled_ids();
+		return array_intersect_key( $this->definitions(), array_flip( $enabled ) );
 	}
 
 	/**
@@ -119,7 +145,16 @@ final class AbilitiesRegistry {
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function configurable_definitions(): array {
-		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS, self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) ) );
+		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::CORE_DEFAULT_READ_IDS, self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) ) );
+	}
+
+	/**
+	 * Return default-active core ability definitions.
+	 *
+	 * @return array<string, array<string, bool|string>>
+	 */
+	public function core_default_definitions(): array {
+		return array_intersect_key( $this->definitions(), array_flip( self::CORE_DEFAULT_READ_IDS ) );
 	}
 
 	/**
@@ -148,7 +183,7 @@ final class AbilitiesRegistry {
 	 * @return array<string, AbilityModuleInterface>
 	 */
 	public function enabled_modules(): array {
-		$enabled = $this->enabled_ids();
+		$enabled = $this->policy_enabled_ids();
 
 		return array_intersect_key( $this->modules(), array_flip( $enabled ) );
 	}
@@ -178,6 +213,15 @@ final class AbilitiesRegistry {
 	 */
 	public function always_on_write_intelligence_modules(): array {
 		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) );
+	}
+
+	/**
+	 * Return default-active core read/discovery modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function core_default_modules(): array {
+		return array_intersect_key( $this->modules(), array_flip( self::CORE_DEFAULT_READ_IDS ) );
 	}
 
 	/**
@@ -241,6 +285,31 @@ final class AbilitiesRegistry {
 	}
 
 	/**
+	 * Return ability IDs enabled by the full exposure policy.
+	 *
+	 * @return list<string>
+	 */
+	public function policy_enabled_ids(): array {
+		return array_values(
+			array_unique(
+				array_merge(
+					array_keys( $this->core_default_definitions() ),
+					$this->enabled_ids()
+				)
+			)
+		);
+	}
+
+	/**
+	 * Return default-active core ability IDs.
+	 *
+	 * @return list<string>
+	 */
+	public function core_default_ids(): array {
+		return array_keys( $this->core_default_definitions() );
+	}
+
+	/**
 	 * Check whether an ability exists.
 	 *
 	 * @param string $id Internal ID, legacy alias, or public tool name.
@@ -255,7 +324,7 @@ final class AbilitiesRegistry {
 	 * @param string $id Internal ID, legacy alias, or public tool name.
 	 */
 	public function is_enabled( string $id ): bool {
-		return in_array( $this->internal_id( $id ), $this->enabled_ids(), true );
+		return in_array( $this->internal_id( $id ), $this->policy_enabled_ids(), true );
 	}
 
 	/**
@@ -297,6 +366,15 @@ final class AbilitiesRegistry {
 	 */
 	public function is_configurable( string $id ): bool {
 		return array_key_exists( $this->internal_id( $id ), $this->configurable_definitions() );
+	}
+
+	/**
+	 * Check whether an ability is part of the default-active core policy.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_core_default( string $id ): bool {
+		return in_array( $this->internal_id( $id ), self::CORE_DEFAULT_READ_IDS, true );
 	}
 
 	/**

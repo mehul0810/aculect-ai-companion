@@ -16,7 +16,7 @@ Aculect AI Companion is a secure MCP connector for WordPress. It lets approved A
 
 Instead of switching between WordPress admin screens, you can ask your AI assistant in plain English to draft a post, update a page, review comments, upload media, inspect safe site details, or prepare long-form content using WordPress blocks.
 
-WordPress remains the source of truth. Aculect AI Companion checks the connected WordPress user's permissions before every action, lets administrators choose which abilities are available, and keeps risky write actions behind configurable controls.
+WordPress remains the source of truth. Aculect AI Companion checks the connected WordPress user's permissions before every action, lets administrators choose which optional abilities are available, keeps safe baseline read/discovery abilities default-active, and keeps risky write actions behind configurable controls.
 
 = What is MCP for WordPress? =
 
@@ -71,7 +71,7 @@ Your AI tool must be able to reach your WordPress site over HTTPS to complete OA
 
 = Supported Abilities =
 
-Admins can enable or disable these abilities from AI Companion > Abilities after the first assistant connection is active.
+Admins can enable or disable optional abilities from AI Companion > Abilities after the first assistant connection is active. Baseline read/discovery abilities for core MCP guidance remain default-active and are not individually disableable, but WordPress capabilities, OAuth scopes, connection access, and execution-time policy checks still apply.
 
 Long-form content workflows:
 
@@ -195,7 +195,7 @@ Yes. Open AI Companion > Connections and disconnect one AI assistant or all acti
 
 = Can I control what my AI assistant can do? =
 
-Yes. After a connection exists, open AI Companion > Abilities and enable or disable individual abilities. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
+Yes. After a connection exists, open AI Companion > Abilities and enable or disable optional abilities. Baseline read/discovery abilities used for core MCP guidance stay default-active so assistants can understand available workflows and blockers. WordPress permissions are still checked every time your AI assistant asks Aculect AI Companion to do something.
 
 = Why do diagnostics recommend ACULECT_AI_COMPANION_ENCRYPTION_KEY? =
 

@@ -4615,6 +4615,9 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
+	const coreDefaultAbilities = Array.isArray( data.coreDefaultAbilities )
+		? data.coreDefaultAbilities
+		: EMPTY_ARRAY;
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
@@ -4987,6 +4990,17 @@ function AbilityDashboard( {
 							WordPress Ability API rows appear only when public
 							abilities are registered on this site.
 						</p>
+						{ coreDefaultAbilities.length > 0 && (
+							<p className="aculect-ai-companion-help-text">
+								{ coreDefaultAbilities.length } default core
+								read/discovery{ ' ' }
+								{ coreDefaultAbilities.length === 1
+									? 'ability is'
+									: 'abilities are' }{ ' ' }
+								always registered and stay outside the toggle
+								table.
+							</p>
+						) }
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>Quick actions</h3>

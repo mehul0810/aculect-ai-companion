@@ -12,6 +12,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Connectors\MCP\McpToolProfiles;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use PHPUnit\Framework\TestCase;
@@ -26,11 +27,12 @@ final class McpToolAvailabilityTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
-		$GLOBALS['aculect_ai_companion_test_wp_abilities']    = array();
-		$GLOBALS['aculect_ai_companion_test_users']           = array(
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 7;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities']     = array();
+		$GLOBALS['aculect_ai_companion_test_users']            = array(
 			7  => (object) array(
 				'ID'           => 7,
 				'roles'        => array( 'editor' ),
@@ -50,6 +52,154 @@ final class McpToolAvailabilityTest extends TestCase {
 				'user_login'   => 'ada',
 			),
 		);
+	}
+
+	public function test_profile_resolution_prefers_connection_override_then_role_and_global_defaults(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
+
+		$profiles = new McpToolProfiles();
+
+		update_option(
+			McpToolProfiles::OPTION_ROLE_DEFAULT_PROFILES,
+			array(
+				'editor' => McpToolProfiles::PROFILE_SITE_MANAGEMENT,
+			),
+			false
+		);
+		update_option( McpToolProfiles::OPTION_GLOBAL_DEFAULT_PROFILE, McpToolProfiles::PROFILE_CONTENT_MANAGEMENT, false );
+
+		$connection = $profiles->resolve_for_user(
+			7,
+			null,
+			array(
+				'connection_profile' => McpToolProfiles::PROFILE_READ_ONLY_AUDIT,
+			)
+		);
+		$role       = $profiles->resolve_for_user( 7 );
+		$global     = $profiles->resolve_for_user( 13 );
+
+		self::assertSame( McpToolProfiles::PROFILE_READ_ONLY_AUDIT, $connection['id'] );
+		self::assertSame( 'connection_override', $connection['source'] );
+		self::assertSame( McpToolProfiles::PROFILE_SITE_MANAGEMENT, $role['id'] );
+		self::assertSame( 'role_default', $role['source'] );
+		self::assertSame( McpToolProfiles::PROFILE_CONTENT_MANAGEMENT, $global['id'] );
+		self::assertSame( 'global_default', $global['source'] );
+	}
+
+	public function test_profile_resolution_uses_safe_fallback_when_configured_sources_are_unknown(): void {
+		$profiles = new McpToolProfiles();
+
+		update_option( McpToolProfiles::OPTION_GLOBAL_DEFAULT_PROFILE, 'unknown-profile', false );
+
+		$resolved = $profiles->resolve_for_user(
+			7,
+			null,
+			array(
+				'connection_profile'   => 'also-unknown',
+				'role_default_profile' => 'not-a-profile',
+			)
+		);
+
+		self::assertSame( McpToolProfiles::PROFILE_READ_ONLY_AUDIT, $resolved['id'] );
+		self::assertSame( 'safe_fallback', $resolved['source'] );
+		self::assertTrue( $resolved['fallback'] );
+	}
+
+	public function test_read_only_audit_profile_exposes_no_write_capable_tools(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array_keys( $registry->configurable_definitions() ) );
+
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user(
+			7,
+			$registry,
+			null,
+			array( 'content:read', 'content:draft' ),
+			array( 'connection_profile' => McpToolProfiles::PROFILE_READ_ONLY_AUDIT )
+		);
+
+		self::assertNotEmpty( $modules );
+		foreach ( $modules as $module ) {
+			self::assertTrue( $module->is_read_only(), $module->id() . ' should be hidden by the read-only audit profile.' );
+		}
+
+		self::assertArrayNotHasKey( 'content.update_item', $modules );
+		self::assertArrayNotHasKey( 'memory.save', $modules );
+	}
+
+	public function test_profile_hidden_tools_are_reported_separately_from_existing_blockers(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item', 'media.delete_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user(
+			7,
+			$registry,
+			array( 'content:read', 'content:draft' ),
+			array( 'connection_profile' => McpToolProfiles::PROFILE_READ_ONLY_AUDIT )
+		);
+
+		self::assertSame( McpToolProfiles::PROFILE_READ_ONLY_AUDIT, $operations['policy']['profile_id'] );
+		self::assertSame( 'connection_override', $operations['policy']['profile_source'] );
+		self::assertTrue( $operations['content']['get_item']['available'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
+		self::assertFalse( $operations['content']['update']['available'] );
+		self::assertSame( 'hidden_by_profile', $operations['content']['update']['blocked_by'] );
+		self::assertContains( 'content.update_item', $operations['policy']['hidden_by_profile_ids'] );
+
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user(
+			7,
+			$registry,
+			array( 'content:read', 'content:draft' ),
+			array( 'connection_profile' => McpToolProfiles::PROFILE_READ_ONLY_AUDIT )
+		);
+
+		self::assertFalse( $operations['media']['trash']['available'] );
+		self::assertSame( 'global_disabled', $operations['media']['trash']['blocked_by'] );
+	}
+
+	public function test_custom_profile_filter_can_only_narrow_known_groups(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_mcp_tool_profiles'] = static function ( array $profiles ): array {
+			$profiles['custom_content_read'] = array(
+				'id'                => 'custom_content_read',
+				'label'             => 'Custom content read',
+				'description'       => 'Read-only content group profile.',
+				'included_groups'   => array( 'Content', 'Not A Real Group' ),
+				'hidden_groups'     => array( 'Media' ),
+				'read_only_default' => true,
+				'risk_level'        => 'read-only',
+				'tool_ids'          => array( 'content.update_item' ),
+			);
+
+			return $profiles;
+		};
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item', 'media.list_items' ) );
+
+		$resolved = ( new McpToolProfiles() )->resolve_for_user(
+			7,
+			$registry,
+			array( 'connection_profile' => 'custom_content_read' )
+		);
+		$modules  = ( new McpToolAvailability() )->tool_modules_for_user(
+			7,
+			$registry,
+			null,
+			array( 'content:read', 'content:draft' ),
+			array( 'connection_profile' => 'custom_content_read' )
+		);
+
+		self::assertSame( array( 'Content' ), $resolved['profile']['included_groups'] );
+		self::assertSame( array( 'Media' ), $resolved['profile']['hidden_groups'] );
+		self::assertArrayHasKey( 'content.get_item', $modules );
+		self::assertArrayNotHasKey( 'content.update_item', $modules );
+		self::assertArrayNotHasKey( 'media.list_items', $modules );
 	}
 
 	public function test_available_operations_are_exposed_in_tools_list(): void {

@@ -259,7 +259,11 @@ final class McpController {
 				}
 
 				$args  = (array) ( $body['params']['arguments'] ?? array() );
-				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
+				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
+				if ( $is_intelligence_tool && $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) ) ) {
+					$error = 'tool_hidden_by_profile';
+				}
+
 				if ( 'unknown_tool' === $error ) {
 					$this->record_tool_activity(
 						$tool,
@@ -321,6 +325,48 @@ final class McpController {
 						200
 					);
 					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress role.' );
+				}
+
+				if ( 'tool_hidden_by_profile' === $error ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_hidden_by_profile',
+							'message' => 'This ability is hidden by the selected MCP tool profile.',
+						),
+						$auth
+					);
+					( new Logger() )->warning(
+						'mcp.tool_hidden_by_profile',
+						'MCP tool call was blocked by the selected tool profile.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_hidden_by_profile', $tool ),
+						$request,
+						200
+					);
+					return $this->tool_error_result( $id, 'This ability is hidden by the selected MCP tool profile.' );
+				}
+
+				if ( 'tool_forbidden_by_capability' === $error ) {
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_forbidden_by_capability',
+							'message' => 'This ability is not available for the connected WordPress capabilities.',
+						),
+						$auth
+					);
+					( new Logger() )->warning(
+						'mcp.tool_forbidden_by_capability',
+						'MCP tool call was blocked by WordPress capabilities.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_forbidden_by_capability', $tool ),
+						$request,
+						200
+					);
+					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress capabilities.' );
 				}
 
 				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
@@ -516,12 +562,13 @@ final class McpController {
 	/**
 	 * Build the complete, unpaginated tool manifest for one user and scope set.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
-	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null ): array {
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null, array $profile_context = array() ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes, $profile_context );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
@@ -531,13 +578,14 @@ final class McpController {
 	/**
 	 * Build one paginated tools/list payload for diagnostics and deterministic smoke tests.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
-	 * @param string            $cursor         Opaque cursor from a previous page.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param string               $cursor          Opaque cursor from a previous page.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
 	 */
-	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '' ): array {
-		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes ), $cursor );
+	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '', array $profile_context = array() ): array {
+		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes, $profile_context ), $cursor );
 	}
 
 	/**
@@ -575,18 +623,19 @@ final class McpController {
 		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
 
-		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor );
+		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor, $this->profile_context_from_auth( $this->request_auth ) );
 	}
 
 	/**
 	 * Build all tool descriptors for one user and scope set.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 * @return list<array<string, mixed>>
 	 */
-	private function tools_for_user( int $user_id, ?array $granted_scopes = null ): array {
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+	private function tools_for_user( int $user_id, ?array $granted_scopes = null, array $profile_context = array() ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes, $profile_context );
 
 		return array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
 	}
@@ -1488,11 +1537,12 @@ final class McpController {
 	/**
 	 * Return a tool-call block reason before dispatch, or an empty string if callable.
 	 *
-	 * @param string            $tool     Internal ability ID.
-	 * @param AbilitiesRegistry $registry Ability registry.
-	 * @param int               $user_id  WordPress user ID.
+	 * @param string               $tool     Internal ability ID.
+	 * @param AbilitiesRegistry    $registry Ability registry.
+	 * @param int                  $user_id  WordPress user ID.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 */
-	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0 ): string {
+	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0, array $profile_context = array() ): string {
 		if ( ! $registry->is_known( $tool ) ) {
 			return 'unknown_tool';
 		}
@@ -1513,6 +1563,11 @@ final class McpController {
 			return 'tool_forbidden_by_capability';
 		}
 
+		$profile_resolution = ( new McpToolProfiles() )->resolve_for_user( $user_id, $registry, $profile_context );
+		if ( ! ( new McpToolProfiles() )->allows_ability( $tool, $profile_resolution['profile'], $registry ) ) {
+			return 'tool_hidden_by_profile';
+		}
+
 		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
 			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_core_default( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
 
@@ -1527,9 +1582,53 @@ final class McpController {
 			if ( ! $availability->capabilities_available( $dependency_id ) ) {
 				return 'tool_forbidden_by_capability';
 			}
+
+			if ( ! ( new McpToolProfiles() )->allows_ability( $dependency_id, $profile_resolution['profile'], $registry ) ) {
+				return 'tool_hidden_by_profile';
+			}
 		}
 
 		return '';
+	}
+
+	/**
+	 * Check whether an intelligence tool is hidden by the selected profile.
+	 *
+	 * @param string               $tool            Internal intelligence ID.
+	 * @param IntelligenceRegistry $intelligence    Intelligence registry.
+	 * @param AbilitiesRegistry    $registry        Ability registry.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<string, mixed> $profile_context Profile selection context.
+	 */
+	private function intelligence_tool_hidden_by_profile( string $tool, IntelligenceRegistry $intelligence, AbilitiesRegistry $registry, int $user_id, array $profile_context ): bool {
+		$profiles = new McpToolProfiles();
+		$profile  = $profiles->resolve_for_user( $user_id, $registry, $profile_context )['profile'];
+		$module   = $intelligence->module( $tool );
+
+		return null !== $module && ! $profiles->allows_ability( $tool, $profile, $registry, $module );
+	}
+
+	/**
+	 * Return profile-selection context from OAuth token metadata.
+	 *
+	 * @param array<string, mixed> $auth OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function profile_context_from_auth( array $auth ): array {
+		$context = array();
+		foreach (
+			array(
+				'connection_profile'     => $auth['profile'] ?? $auth['provider_profile'] ?? '',
+				'role_default_profile'   => $auth['role_default_profile'] ?? '',
+				'global_default_profile' => $auth['global_default_profile'] ?? '',
+			) as $key => $value
+		) {
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				$context[ $key ] = (string) $value;
+			}
+		}
+
+		return $context;
 	}
 
 	/**

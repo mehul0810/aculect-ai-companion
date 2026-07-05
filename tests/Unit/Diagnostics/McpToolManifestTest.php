@@ -175,6 +175,7 @@ final class McpToolManifestTest extends TestCase {
 		self::assertTrue( $export['wordpress_abilities']['schema_valid'] );
 		self::assertSame( 'available', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['status'] );
 		self::assertSame( 'aculect-ai-companion/content-search-items', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['name'] );
+		self::assertSame( 'both', $export['operations_manifest']['intelligence_index']['search_items']['availability_channels']['summary'] );
 	}
 
 	public function test_metadata_fingerprint_changes_when_tools_or_instructions_change(): void {

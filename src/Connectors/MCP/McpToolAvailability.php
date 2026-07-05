@@ -448,13 +448,14 @@ final class McpToolAvailability {
 		$available = in_array( $ability_id, $exposed, true ) && '' === $blocked_by;
 
 		$entry = array(
-			'tool'              => $registry->tool_name( $ability_id ),
-			'available'         => $available,
-			'required_scopes'   => array_values( $required_scopes ),
-			'read_only'         => $is_read_only,
-			'core_default'      => $is_core_default,
-			'configurable'      => $registry->is_configurable( $ability_id ),
-			'wordpress_ability' => $wp_metadata,
+			'tool'                  => $registry->tool_name( $ability_id ),
+			'available'             => $available,
+			'required_scopes'       => array_values( $required_scopes ),
+			'read_only'             => $is_read_only,
+			'core_default'          => $is_core_default,
+			'configurable'          => $registry->is_configurable( $ability_id ),
+			'wordpress_ability'     => $wp_metadata,
+			'availability_channels' => $this->availability_channels( $available, $wp_metadata ),
 		);
 
 		if ( $is_derived_workflow ) {
@@ -483,6 +484,30 @@ final class McpToolAvailability {
 		}
 
 		return $entry;
+	}
+
+	/**
+	 * Summarize whether an operation is reachable through MCP, WordPress Abilities, both, or neither.
+	 *
+	 * @param bool                 $mcp_available MCP tool availability.
+	 * @param array<string, mixed> $wp_metadata   WordPress Abilities diagnostic metadata.
+	 * @return array<string, mixed>
+	 */
+	private function availability_channels( bool $mcp_available, array $wp_metadata ): array {
+		$wp_available = 'available' === (string) ( $wp_metadata['status'] ?? '' );
+		$summary      = match ( true ) {
+			$mcp_available && $wp_available => 'both',
+			$mcp_available => 'mcp_only',
+			$wp_available => 'wordpress_abilities_only',
+			default => 'neither',
+		};
+
+		return array(
+			'mcp'                 => $mcp_available,
+			'wordpress_abilities' => $wp_available,
+			'summary'             => $summary,
+			'wordpress_status'    => sanitize_key( (string) ( $wp_metadata['status'] ?? 'unknown' ) ),
+		);
 	}
 
 	/**

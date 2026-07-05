@@ -161,11 +161,16 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertTrue( $metadata['public'] );
 		self::assertTrue( $metadata['allowed'] );
 		self::assertTrue( $metadata['schema_valid'] );
+		self::assertSame( 'registered', $metadata['registration_status'] );
+		self::assertSame( 'valid', $metadata['schema_status'] );
+		self::assertSame( 'allowed', $metadata['policy_status'] );
+		self::assertSame( 'allowed', $metadata['permission_status'] );
 		self::assertSame( 'available', $metadata['status'] );
 
 		$atomic = ( new WordPressAbilitiesDiagnostics() )->operation_metadata( 'content.get_item', new AbilitiesRegistry() );
 
 		self::assertFalse( $atomic['mirrored'] );
+		self::assertSame( 'not_applicable', $atomic['registration_status'] );
 		self::assertSame( 'not_mirrored', $atomic['status'] );
 	}
 
@@ -193,6 +198,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		$context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
 
 		self::assertTrue( $context['api_available'] );
+		self::assertSame( 'available', $context['runtime_status'] );
+		self::assertSame( 'blocked', $context['policy_status'] );
 		self::assertSame( 1, $context['policy_blocked_public_count'] );
 		self::assertSame( array( 'external-plugin/public-action' ), $context['policy_blocked_public_names'] );
 	}

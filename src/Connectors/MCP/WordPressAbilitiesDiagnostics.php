@@ -41,9 +41,13 @@ final class WordPressAbilitiesDiagnostics {
 
 		if ( null === $module || ! isset( $names[ $module->id() ] ) ) {
 			return array(
-				'mirrored'      => false,
-				'api_available' => $this->api_available(),
-				'status'        => 'not_mirrored',
+				'mirrored'            => false,
+				'api_available'       => $this->api_available(),
+				'registration_status' => 'not_applicable',
+				'schema_status'       => 'not_applicable',
+				'policy_status'       => 'not_applicable',
+				'permission_status'   => 'not_applicable',
+				'status'              => 'not_mirrored',
 			);
 		}
 
@@ -74,11 +78,15 @@ final class WordPressAbilitiesDiagnostics {
 		return array(
 			'api_available'                  => $this->api_available(),
 			'registration_functions_present' => function_exists( 'wp_register_ability' ) && function_exists( 'wp_register_ability_category' ),
+			'runtime_status'                 => $this->api_available() ? 'available' : 'unavailable',
+			'registration_status'            => $this->api_available() && array() === $missing ? 'complete' : ( $this->api_available() ? 'incomplete' : 'runtime_unavailable' ),
 			'expected_first_party_count'     => count( $expected_ids ),
 			'registered_first_party_count'   => count( array_intersect( $expected_ids, $registered_ids ) ),
 			'missing_first_party_names'      => $missing,
+			'schema_status'                  => $this->api_available() && array() === $invalid_schema ? 'valid' : ( $this->api_available() ? 'invalid' : 'runtime_unavailable' ),
 			'schema_valid'                   => array() === $invalid_schema,
 			'invalid_schema_names'           => $invalid_schema,
+			'policy_status'                  => $this->api_available() && array() === $blocked_public ? 'allowed' : ( $this->api_available() ? 'blocked' : 'runtime_unavailable' ),
 			'policy_blocked_public_count'    => count( $blocked_public ),
 			'policy_blocked_public_names'    => array_slice( $blocked_public, 0, 25 ),
 		);
@@ -99,22 +107,30 @@ final class WordPressAbilitiesDiagnostics {
 
 		if ( ! $this->api_available() ) {
 			return $base + array(
-				'registered'   => false,
-				'public'       => false,
-				'allowed'      => false,
-				'schema_valid' => false,
-				'status'       => 'abilities_api_unavailable',
+				'registered'          => false,
+				'public'              => false,
+				'allowed'             => false,
+				'schema_valid'        => false,
+				'registration_status' => 'runtime_unavailable',
+				'schema_status'       => 'runtime_unavailable',
+				'policy_status'       => 'runtime_unavailable',
+				'permission_status'   => 'runtime_unavailable',
+				'status'              => 'abilities_api_unavailable',
 			);
 		}
 
 		$ability = $this->registered_abilities()[ $name ] ?? null;
 		if ( null === $ability ) {
 			return $base + array(
-				'registered'   => false,
-				'public'       => false,
-				'allowed'      => false,
-				'schema_valid' => false,
-				'status'       => 'missing_registration',
+				'registered'          => false,
+				'public'              => false,
+				'allowed'             => false,
+				'schema_valid'        => false,
+				'registration_status' => 'missing',
+				'schema_status'       => 'not_checked',
+				'policy_status'       => 'not_checked',
+				'permission_status'   => 'not_checked',
+				'status'              => 'missing_registration',
 			);
 		}
 
@@ -124,12 +140,16 @@ final class WordPressAbilitiesDiagnostics {
 		$capable      = $this->permission_allowed( $ability );
 
 		return $base + array(
-			'registered'   => true,
-			'public'       => $public,
-			'allowed'      => $allowed,
-			'capable'      => $capable,
-			'schema_valid' => $schema_valid,
-			'status'       => $this->status( $public, $allowed, $schema_valid, $capable ),
+			'registered'          => true,
+			'public'              => $public,
+			'allowed'             => $allowed,
+			'capable'             => $capable,
+			'schema_valid'        => $schema_valid,
+			'registration_status' => 'registered',
+			'schema_status'       => $schema_valid ? 'valid' : 'invalid',
+			'policy_status'       => $allowed ? 'allowed' : 'blocked',
+			'permission_status'   => $capable ? 'allowed' : 'blocked',
+			'status'              => $this->status( $public, $allowed, $schema_valid, $capable ),
 		);
 	}
 

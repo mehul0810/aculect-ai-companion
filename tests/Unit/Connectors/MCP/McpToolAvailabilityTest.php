@@ -81,16 +81,44 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'blocked_by', $operations['content']['get_item'] );
 		self::assertArrayHasKey( 'wordpress_ability', $operations['content']['get_item'] );
 		self::assertFalse( $operations['content']['get_item']['wordpress_ability']['mirrored'] );
+		self::assertSame( 'not_applicable', $operations['content']['get_item']['wordpress_ability']['registration_status'] );
 		self::assertSame( 'not_mirrored', $operations['content']['get_item']['wordpress_ability']['status'] );
+		self::assertSame(
+			array(
+				'mcp'                 => true,
+				'wordpress_abilities' => false,
+				'summary'             => 'mcp_only',
+				'wordpress_status'    => 'not_mirrored',
+			),
+			$operations['content']['get_item']['availability_channels']
+		);
 		self::assertContains( 'content_get_item', $tool_names );
 
 		self::assertFalse( $operations['content']['update']['available'] );
 		self::assertSame( 'role_policy', $operations['content']['update']['blocked_by'] );
+		self::assertSame( 'neither', $operations['content']['update']['availability_channels']['summary'] );
 		self::assertNotContains( 'content_update_item', $tool_names );
 
 		self::assertFalse( $operations['content']['list_items']['available'] );
 		self::assertSame( 'global_disabled', $operations['content']['list_items']['blocked_by'] );
+		self::assertSame( 'neither', $operations['content']['list_items']['availability_channels']['summary'] );
 		self::assertNotContains( 'content_list_items', $tool_names );
+	}
+
+	public function test_operations_manifest_keeps_existing_entry_fields_when_channel_metadata_is_added(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'content.get_item' ) );
+
+		$entry = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry )['content']['get_item'];
+
+		foreach ( array( 'tool', 'available', 'required_scopes', 'read_only', 'core_default', 'configurable', 'wordpress_ability' ) as $legacy_key ) {
+			self::assertArrayHasKey( $legacy_key, $entry );
+		}
+
+		self::assertArrayHasKey( 'availability_channels', $entry );
+		self::assertSame( 'content_get_item', $entry['tool'] );
+		self::assertTrue( $entry['available'] );
+		self::assertArrayNotHasKey( 'blocked_by', $entry );
 	}
 
 	public function test_operations_manifest_distinguishes_default_read_only_role_blocks(): void {
@@ -290,6 +318,29 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'capability', $operations['admin_menu']['get_context']['blocked_by'] );
 		self::assertSame( 'capability_blocked', $operations['admin_menu']['get_context']['wordpress_ability']['status'] );
 		self::assertFalse( $operations['admin_menu']['get_context']['wordpress_ability']['capable'] );
+		self::assertSame( 'registered', $operations['admin_menu']['get_context']['wordpress_ability']['registration_status'] );
+		self::assertSame( 'valid', $operations['admin_menu']['get_context']['wordpress_ability']['schema_status'] );
+		self::assertSame( 'allowed', $operations['admin_menu']['get_context']['wordpress_ability']['policy_status'] );
+		self::assertSame( 'blocked', $operations['admin_menu']['get_context']['wordpress_ability']['permission_status'] );
+		self::assertSame( 'neither', $operations['admin_menu']['get_context']['availability_channels']['summary'] );
+	}
+
+	public function test_registered_wordpress_ability_operations_report_both_availability_channels(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, null, array( 'content:read' ) );
+
+		self::assertTrue( $operations['intelligence_index']['search_items']['available'] );
+		self::assertSame( 'available', $operations['intelligence_index']['search_items']['wordpress_ability']['status'] );
+		self::assertSame(
+			array(
+				'mcp'                 => true,
+				'wordpress_abilities' => true,
+				'summary'             => 'both',
+				'wordpress_status'    => 'available',
+			),
+			$operations['intelligence_index']['search_items']['availability_channels']
+		);
 	}
 
 	public function test_intelligence_index_operations_are_reported_with_read_and_write_policy(): void {
@@ -317,6 +368,10 @@ final class McpToolAvailabilityTest extends TestCase {
 				$operations['intelligence_index']['search_items']['wordpress_ability']['status'],
 				array( 'abilities_api_unavailable', 'missing_registration', 'available' )
 			);
+		self::assertContains(
+			$operations['intelligence_index']['search_items']['availability_channels']['summary'],
+			array( 'both', 'mcp_only' )
+		);
 		self::assertTrue( $operations['intelligence_index']['search_chunks']['available'] );
 		self::assertTrue( $operations['intelligence_index']['canonical_search']['available'] );
 		self::assertTrue( $operations['intelligence_index']['canonical_fetch']['available'] );

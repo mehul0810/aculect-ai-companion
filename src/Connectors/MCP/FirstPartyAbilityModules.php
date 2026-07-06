@@ -986,6 +986,39 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new MediaAbilities() )->get_media( (int) ( $args['id'] ?? 0 ) )
 			),
 			$this->module(
+				'media.audit_usage',
+				'Audit Media Usage',
+				'Return bounded read-only media usage intelligence for unused discovery, missing alt text, attached/unattached images, and likely content usage.',
+				'Media',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'page'               => $this->page_schema(),
+						'per_page'           => $this->per_page_schema( 100, 'Media audit items per page. Defaults to 20.' ),
+						'type'               => array(
+							'type'        => 'string',
+							'description' => 'Attachment family such as image, audio, video, or application.',
+						),
+						'mime_type'          => array( 'type' => 'string' ),
+						'parent_id'          => array(
+							'type'        => 'integer',
+							'description' => 'Filter by attachment parent post ID. Use 0 for unattached media.',
+						),
+						'status_filter'      => array(
+							'type'        => 'string',
+							'enum'        => array( 'all', 'unused', 'missing_alt', 'attached', 'unattached', 'used' ),
+							'description' => 'Return all audited media or only a focused subset.',
+						),
+						'content_scan_limit' => array(
+							'type'        => 'integer',
+							'description' => 'Maximum readable content posts to scan for likely usage. Defaults to 100 and is capped at 250.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new MediaAbilities() )->audit_usage( $args )
+			),
+			$this->module(
 				'media.update_item',
 				'Update Media Item',
 				'Update media title, alt text, caption, description, slug, or attachment parent.',

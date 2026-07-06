@@ -1015,12 +1015,28 @@ if ( ! function_exists( 'get_posts' ) ) {
 	 * @return list<WP_Post>
 	 */
 	function get_posts( array $args = array() ): array {
-		$post_type = (string) ( $args['post_type'] ?? '' );
+		$post_type = $args['post_type'] ?? '';
+		$post_type = is_array( $post_type ) ? array_map( 'strval', $post_type ) : (string) $post_type;
+		$status    = $args['post_status'] ?? '';
+		$statuses  = is_array( $status ) ? array_map( 'strval', $status ) : ( '' === $status ? array() : array( (string) $status ) );
+		$limit     = isset( $args['posts_per_page'] ) ? (int) $args['posts_per_page'] : -1;
+		$parent    = array_key_exists( 'post_parent', $args ) ? absint( $args['post_parent'] ) : null;
 		$posts     = array();
 		foreach ( $GLOBALS['aculect_ai_companion_test_posts'] as $post ) {
 			$post = $post instanceof WP_Post ? $post : new WP_Post( is_array( $post ) ? $post : array() );
-			if ( '' === $post_type || $post_type === $post->post_type ) {
-				$posts[] = $post;
+			if ( 'any' !== $post_type && '' !== $post_type && ( is_array( $post_type ) ? ! in_array( $post->post_type, $post_type, true ) : $post_type !== $post->post_type ) ) {
+				continue;
+			}
+			if ( array() !== $statuses && ! in_array( $post->post_status, $statuses, true ) ) {
+				continue;
+			}
+			if ( null !== $parent && $parent !== (int) $post->post_parent ) {
+				continue;
+			}
+
+			$posts[] = $post;
+			if ( 0 < $limit && count( $posts ) >= $limit ) {
+				break;
 			}
 		}
 
@@ -1250,6 +1266,37 @@ if ( ! function_exists( 'wp_attachment_is_image' ) ) {
 		$post = get_post( $attachment_id );
 
 		return $post instanceof WP_Post && 'attachment' === $post->post_type && str_starts_with( $post->post_mime_type, 'image/' );
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
+	/**
+	 * Return test attachment metadata.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array<string, mixed>|false
+	 */
+	function wp_get_attachment_metadata( int $attachment_id ): array|false {
+		$metadata = $GLOBALS['aculect_ai_companion_test_attachment_metadata'][ $attachment_id ]
+			?? $GLOBALS['aculect_ai_companion_test_post_meta'][ $attachment_id ]['_wp_attachment_metadata']
+			?? false;
+
+		return is_array( $metadata ) ? $metadata : false;
+	}
+}
+
+if ( ! function_exists( 'wp_update_attachment_metadata' ) ) {
+	/**
+	 * Store test attachment metadata.
+	 *
+	 * @param int                  $attachment_id Attachment ID.
+	 * @param array<string, mixed> $metadata Attachment metadata.
+	 */
+	function wp_update_attachment_metadata( int $attachment_id, array $metadata ): bool {
+		$GLOBALS['aculect_ai_companion_test_attachment_metadata'][ $attachment_id ] = $metadata;
+		$GLOBALS['aculect_ai_companion_test_post_meta'][ $attachment_id ]['_wp_attachment_metadata'] = $metadata;
+
+		return true;
 	}
 }
 

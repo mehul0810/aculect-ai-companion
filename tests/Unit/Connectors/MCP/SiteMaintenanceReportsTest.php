@@ -29,6 +29,8 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
 		$GLOBALS['aculect_ai_companion_test_denied_post_ids']     = array();
 		$GLOBALS['aculect_ai_companion_test_attachment_metadata'] = array();
+		$GLOBALS['aculect_ai_companion_test_transients']          = array();
+		$GLOBALS['aculect_ai_companion_test_site_options']        = array();
 		$GLOBALS['aculect_ai_companion_test_home_url']            = 'https://example.com';
 		$GLOBALS['aculect_ai_companion_test_site_url']            = 'https://example.com';
 		$GLOBALS['aculect_ai_companion_test_rest_url']            = 'https://example.com/wp-json/';
@@ -211,6 +213,114 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		self::assertArrayNotHasKey( 'permalink_structure', $findings['permalinks']['evidence'] );
 	}
 
+	public function test_update_readiness_report_summarizes_existing_update_metadata_safely(): void {
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_core']    = (object) array(
+			'last_checked' => time() - HOUR_IN_SECONDS,
+			'updates'      => array(
+				(object) array(
+					'response' => 'upgrade',
+					'current'  => '6.8.2',
+				),
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins'] = (object) array(
+			'last_checked' => time() - ( 2 * HOUR_IN_SECONDS ),
+			'response'     => array(
+				'acme/acme.php' => (object) array(
+					'new_version'  => '2.0.0',
+					'tested'       => '6.7',
+					'requires_php' => '8.5',
+					'package'      => 'https://downloads.example.test/acme.zip',
+				),
+				'other/other.php' => (object) array(
+					'new_version' => '1.2.0',
+				),
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_themes']  = (object) array(
+			'last_checked' => time() - ( 3 * HOUR_IN_SECONDS ),
+			'response'     => array(
+				'test-theme' => array(
+					'new_version' => '1.1.0',
+					'tested'      => '6.8.1',
+					'requires'    => '6.9',
+				),
+			),
+		);
+
+		$before_options      = $GLOBALS['aculect_ai_companion_test_options'];
+		$before_site_options = $GLOBALS['aculect_ai_companion_test_site_options'];
+		$before_transients   = $GLOBALS['aculect_ai_companion_test_transients'];
+
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'update_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'update_readiness', $result['report_type'] );
+		self::assertTrue( $result['read_only'] );
+		self::assertSame( 5, $result['pagination']['returned'] );
+		self::assertSame( 'critical', $result['summary']['overall_severity'] );
+		self::assertSame( 'info', $findings['update_metadata']['severity'] );
+		self::assertSame( 1, $findings['core_updates']['evidence']['available_update_count'] );
+		self::assertSame( 2, $findings['plugin_updates']['evidence']['available_update_count'] );
+		self::assertSame( 1, $findings['theme_updates']['evidence']['available_update_count'] );
+		self::assertSame( 'critical', $findings['compatibility_signals']['severity'] );
+		self::assertSame( 1, $findings['compatibility_signals']['evidence']['wordpress_tested_cautions'] );
+		self::assertSame( 1, $findings['compatibility_signals']['evidence']['unknown_wordpress_tested'] );
+		self::assertSame( 1, $findings['compatibility_signals']['evidence']['php_requirement_blockers'] );
+		self::assertSame( 1, $findings['compatibility_signals']['evidence']['wordpress_requirement_blockers'] );
+		self::assertFalse( $result['filters']['forced_update_checks'] );
+		self::assertFalse( $result['filters']['updates_applied'] );
+		self::assertFalse( $result['filters']['raw_update_payloads_included'] );
+		self::assertFalse( $result['filters']['plugin_theme_source_scanned'] );
+		self::assertFalse( $result['filters']['filesystem_paths_included'] );
+		self::assertFalse( $result['safety']['filesystem_writes'] );
+		self::assertFalse( $result['safety']['option_values_included'] );
+		self::assertArrayNotHasKey( 'package', $findings['compatibility_signals']['evidence'] );
+		self::assertArrayNotHasKey( 'acme/acme.php', $findings['plugin_updates']['evidence'] );
+		self::assertSame( $before_options, $GLOBALS['aculect_ai_companion_test_options'] );
+		self::assertSame( $before_site_options, $GLOBALS['aculect_ai_companion_test_site_options'] );
+		self::assertSame( $before_transients, $GLOBALS['aculect_ai_companion_test_transients'] );
+	}
+
+	public function test_update_readiness_report_flags_missing_and_stale_metadata_without_raw_payloads(): void {
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_core']   = (object) array(
+			'last_checked' => time() - ( 72 * HOUR_IN_SECONDS ),
+			'updates'      => array(),
+		);
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_themes'] = (object) array(
+			'response' => array(),
+		);
+
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'update_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'warning', $result['summary']['overall_severity'] );
+		self::assertSame( 'warning', $findings['update_metadata']['severity'] );
+		self::assertTrue( $findings['update_metadata']['evidence']['core_metadata_available'] );
+		self::assertFalse( $findings['update_metadata']['evidence']['plugin_metadata_available'] );
+		self::assertTrue( $findings['update_metadata']['evidence']['theme_metadata_available'] );
+		self::assertSame( 1, $findings['update_metadata']['evidence']['missing_metadata_groups'] );
+		self::assertSame( 2, $findings['update_metadata']['evidence']['stale_metadata_groups'] );
+		self::assertSame( 'warning', $findings['plugin_updates']['severity'] );
+		self::assertFalse( $findings['plugin_updates']['evidence']['metadata_available'] );
+		self::assertFalse( $findings['plugin_updates']['evidence']['item_identifiers_included'] );
+		self::assertFalse( $findings['plugin_updates']['evidence']['filesystem_paths_included'] );
+		self::assertFalse( $findings['plugin_updates']['evidence']['raw_update_payloads_included'] );
+		self::assertFalse( $findings['compatibility_signals']['evidence']['package_urls_included'] );
+		self::assertFalse( $findings['compatibility_signals']['evidence']['raw_update_payloads_included'] );
+		self::assertArrayNotHasKey( 'response', $findings['update_metadata']['evidence'] );
+	}
+
 	public function test_report_requires_manage_options(): void {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 
@@ -228,7 +338,7 @@ final class SiteMaintenanceReportsTest extends TestCase {
 
 		self::assertArrayHasKey( 'site_maintenance_report', $by_name );
 		self::assertTrue( $by_name['site_maintenance_report']['annotations']['readOnlyHint'] );
-		self::assertSame( array( 'content_review', 'media_inventory', 'site_readiness' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
+		self::assertSame( array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
 		self::assertSame( 20, $by_name['site_maintenance_report']['inputSchema']['properties']['per_page']['maximum'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );

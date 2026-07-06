@@ -6916,9 +6916,6 @@ function SettingsApp() {
 				</nav>
 				{ tabsOverflow.hasOverflow && (
 					<div className="aculect-ai-companion-tabs-controls">
-						<p className="aculect-ai-companion-tabs-hint">
-							Swipe or scroll to reach the remaining tabs.
-						</p>
 						<div className="aculect-ai-companion-tabs-actions">
 							<Button
 								variant="secondary"

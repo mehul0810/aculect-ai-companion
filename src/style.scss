@@ -228,17 +228,9 @@
 .aculect-ai-companion-tabs-controls {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: 12px;
 	padding: 8px 44px 12px;
-}
-
-.aculect-ai-companion-tabs-hint {
-	margin: 0;
-	color: #64748b;
-	font-size: 12px;
-	font-weight: 600;
-	line-height: 1.4;
 }
 
 .aculect-ai-companion-tabs-actions {
@@ -4502,8 +4494,6 @@ td:first-child
 	}
 
 	.aculect-ai-companion-tabs-controls {
-		align-items: flex-start;
-		flex-direction: column;
 		padding-right: 16px;
 		padding-left: 16px;
 	}

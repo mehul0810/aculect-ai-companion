@@ -45,6 +45,27 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 							. '<!-- wp:heading {"anchor":"implementation-notes"} --><h2 id="implementation-notes">Implementation Notes</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Existing implementation guidance stays intact.</p><!-- /wp:paragraph -->',
 					)
 				),
+				124 => new \WP_Post(
+					array(
+						'ID'           => 124,
+						'post_type'    => 'page',
+						'post_status'  => 'draft',
+						'post_title'   => 'Nested CTA Layout',
+						'post_content' => '<!-- wp:heading {"anchor":"overview"} --><h2 id="overview">Overview</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Lead section.</p><!-- /wp:paragraph -->'
+							. '<!-- wp:group {"className":"cta-box"} --><div class="wp-block-group cta-box"><!-- wp:heading {"anchor":"cta-next-steps"} --><h2 id="cta-next-steps">CTA Next Steps</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Old CTA copy.</p><!-- /wp:paragraph --></div><!-- /wp:group -->'
+							. '<!-- wp:heading {"anchor":"faq"} --><h2 id="faq">FAQ</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Questions stay below.</p><!-- /wp:paragraph -->',
+					)
+				),
+				125 => new \WP_Post(
+					array(
+						'ID'           => 125,
+						'post_type'    => 'page',
+						'post_status'  => 'draft',
+						'post_title'   => 'Unanchored Sections',
+						'post_content' => '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Old plain section copy.</p><!-- /wp:paragraph -->'
+							. '<!-- wp:heading {"anchor":"follow-up"} --><h2 id="follow-up">Follow Up</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Follow-up stays put.</p><!-- /wp:paragraph -->',
+					)
+				),
 			);
 
 			$this->abilities = new ContentWorkflowAbilities();
@@ -221,6 +242,59 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		self::assertSame( 'section_not_found', $result['error'] );
 		self::assertSame( array( 'missing-section' ), $result['missing_section_ids'] );
 		self::assertContains( 'implementation-notes', $result['available_section_ids'] );
+	}
+
+	public function test_update_post_dry_run_accepts_nested_heading_section_without_breaking_group_boundaries(): void {
+		$result = $this->abilities->update_post(
+			array(
+				'id'          => 124,
+				'update_mode' => 'sections',
+				'section_map' => array(
+					'cta-next-steps' => array(
+						'content' => '<!-- wp:group {"className":"cta-box"} --><div class="wp-block-group cta-box"><!-- wp:heading {"anchor":"cta-next-steps"} --><h2 id="cta-next-steps">CTA Next Steps</h2><!-- /wp:heading --><!-- wp:paragraph --><p>New CTA copy.</p><!-- /wp:paragraph --></div><!-- /wp:group -->',
+					),
+				),
+				'dry_run'     => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertTrue( $result['block_validation']['valid'] );
+		self::assertSame( array( 'cta-next-steps' ), $result['section_updates'] );
+		$changes_by_field = array_column( $result['changes'], null, 'field' );
+		self::assertArrayHasKey( 'content', $changes_by_field );
+		self::assertStringContainsString( '<!-- wp:group {"className":"cta-box"} -->', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( 'New CTA copy.', $changes_by_field['content']['to'] );
+		self::assertStringNotContainsString( 'Old CTA copy.', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( 'Questions stay below.', $changes_by_field['content']['to'] );
+		self::assertSame( 1, substr_count( $changes_by_field['content']['to'], '<!-- wp:group {"className":"cta-box"} -->' ) );
+		self::assertSame( 1, substr_count( $changes_by_field['content']['to'], '<!-- /wp:group -->' ) );
+	}
+
+	public function test_update_post_dry_run_accepts_unanchored_heading_section_ids_from_heading_text(): void {
+		$result = $this->abilities->update_post(
+			array(
+				'id'          => 125,
+				'update_mode' => 'sections',
+				'section_map' => array(
+					'plain-heading' => array(
+						'content' => '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Updated plain section copy.</p><!-- /wp:paragraph -->',
+					),
+				),
+				'dry_run'     => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertTrue( $result['block_validation']['valid'] );
+		self::assertSame( array( 'plain-heading' ), $result['section_updates'] );
+		self::assertSame( array( 'plain-heading', 'follow-up' ), $result['available_sections'] );
+		$changes_by_field = array_column( $result['changes'], null, 'field' );
+		self::assertArrayHasKey( 'content', $changes_by_field );
+		self::assertStringContainsString( 'Updated plain section copy.', $changes_by_field['content']['to'] );
+		self::assertStringNotContainsString( 'Old plain section copy.', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( 'Follow-up stays put.', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading -->', $changes_by_field['content']['to'] );
 	}
 
 	public function test_desired_word_count_is_clamped_for_long_form_workflows(): void {

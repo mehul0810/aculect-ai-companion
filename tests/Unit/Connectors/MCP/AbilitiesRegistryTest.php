@@ -116,6 +116,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
 		self::assertContains( 'Plugin Lifecycle', $groups );
+		self::assertContains( 'Theme Lifecycle', $groups );
 		self::assertContains( 'User Access', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
@@ -224,6 +225,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.list_plugins',
 				'plugin_lifecycle.list_plugins',
 				'plugin_lifecycle.get_plugin',
+				'theme_lifecycle.list_themes',
+				'theme_lifecycle.get_theme',
 				'site.list_themes',
 			) as $ability_id
 		) {
@@ -304,6 +307,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );

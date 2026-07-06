@@ -80,8 +80,10 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertSame( McpToolProfiles::PROFILE_READ_ONLY_AUDIT, $connection['id'] );
 		self::assertSame( 'connection_override', $connection['source'] );
+		self::assertContains( 'Theme Lifecycle', $connection['profile']['included_groups'] );
 		self::assertSame( McpToolProfiles::PROFILE_SITE_MANAGEMENT, $role['id'] );
 		self::assertSame( 'role_default', $role['source'] );
+		self::assertContains( 'Theme Lifecycle', $role['profile']['included_groups'] );
 		self::assertSame( McpToolProfiles::PROFILE_CONTENT_MANAGEMENT, $global['id'] );
 		self::assertSame( 'global_default', $global['source'] );
 	}
@@ -483,6 +485,33 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'capability', $blocked['plugin_lifecycle']['get_plugin']['blocked_by'] );
 	}
 
+	public function test_theme_lifecycle_operations_report_availability_and_capability_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'theme_lifecycle.list_themes', 'theme_lifecycle.get_theme' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertTrue( $operations['theme_lifecycle']['list_themes']['available'] );
+		self::assertSame( 'theme_lifecycle_list_themes', $operations['theme_lifecycle']['list_themes']['tool'] );
+		self::assertSame( array( 'content:read' ), $operations['theme_lifecycle']['list_themes']['required_scopes'] );
+		self::assertTrue( $operations['theme_lifecycle']['list_themes']['read_only'] );
+		self::assertContains( 'theme_lifecycle_list_themes', $tool_names );
+		self::assertTrue( $operations['theme_lifecycle']['get_theme']['available'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'switch_themes' );
+
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+
+		self::assertFalse( $blocked['theme_lifecycle']['list_themes']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['list_themes']['blocked_by'] );
+		self::assertFalse( $blocked['theme_lifecycle']['get_theme']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['get_theme']['blocked_by'] );
+	}
+
 	public function test_wordpress_ability_diagnostics_report_capability_blocks(): void {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
@@ -719,7 +748,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'site_information', 'plugin_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'plugin_lifecycle', 'theme_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

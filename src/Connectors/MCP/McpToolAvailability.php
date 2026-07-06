@@ -353,6 +353,7 @@ final class McpToolAvailability {
 				array(
 					'list'              => 'media.list_items',
 					'get'               => 'media.get_item',
+					'audit_usage'       => 'media.audit_usage',
 					'upload'            => 'media.upload_item',
 					'upload_image_data' => 'media.upload_image_data',
 					'search_cc0'        => 'content_media.search_cc0_images',

@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-// phpcs:disable Universal.Files.SeparateFunctionsFromOO.Mixed -- Test fixture stubs a small WP runtime surface.
+// phpcs:disable Universal.Files.SeparateFunctionsFromOO.Mixed, Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test fixture stubs a small WP runtime surface.
 
 if ( ! class_exists( 'WP_Theme' ) ) {
 	/**
@@ -17,7 +17,7 @@ if ( ! class_exists( 'WP_Theme' ) ) {
 		/**
 		 * Store theme fields.
 		 *
-		 * @param array<string, string> $data Theme fields.
+		 * @param array<string, mixed> $data Theme fields.
 		 */
 		public function __construct( private array $data = array() ) {}
 
@@ -45,10 +45,46 @@ if ( ! class_exists( 'WP_Theme' ) ) {
 		}
 
 		/**
+		 * Return whether the theme is block based.
+		 */
+		public function is_block_theme(): bool {
+			return (bool) ( $this->data['IsBlockTheme'] ?? false );
+		}
+
+		/**
+		 * Return files keyed by relative path.
+		 *
+		 * @param string|null $type          File extension.
+		 * @param int         $depth         Scan depth.
+		 * @param bool        $search_parent Whether to scan the parent theme.
+		 * @return array<string, string>
+		 */
+		public function get_files( ?string $type = null, int $depth = 0, bool $search_parent = false ): array {
+			unset( $depth, $search_parent );
+
+			$files = $this->data['Files'] ?? array();
+			if ( ! is_array( $files ) ) {
+				return array();
+			}
+
+			if ( null === $type ) {
+				return $files;
+			}
+
+			$needle = '.' . ltrim( $type, '.' );
+
+			return array_filter(
+				$files,
+				static fn ( string $path ): bool => str_ends_with( $path, $needle )
+			);
+		}
+
+		/**
 		 * Return parent theme.
 		 */
-		public function parent(): false {
-			return false;
+		public function parent(): \WP_Theme|false {
+			$parent = $this->data['Parent'] ?? false;
+			return $parent instanceof \WP_Theme ? $parent : false;
 		}
 	}
 }
@@ -67,15 +103,21 @@ if ( ! class_exists( 'WP_Query' ) ) {
 
 		/**
 		 * Total matching posts before pagination.
+		 *
+		 * @var int
 		 */
 		public int $found_posts = 0;
 
 		/**
 		 * Total pages.
+		 *
+		 * @var int
 		 */
 		public int $max_num_pages = 0;
 
 		/**
+		 * Build a paginated test query result.
+		 *
 		 * @param array<string, mixed> $args Query args.
 		 */
 		public function __construct( array $args = array() ) {
@@ -113,8 +155,20 @@ if ( ! class_exists( 'WP_Query' ) ) {
 if ( ! function_exists( 'wp_get_theme' ) ) {
 	/**
 	 * Return the active test theme.
+	 *
+	 * @param string $stylesheet Optional stylesheet lookup.
 	 */
-	function wp_get_theme(): WP_Theme {
+	function wp_get_theme( string $stylesheet = '' ): WP_Theme {
+		$themes = wp_get_themes();
+		if ( '' !== $stylesheet && isset( $themes[ $stylesheet ] ) && $themes[ $stylesheet ] instanceof WP_Theme ) {
+			return $themes[ $stylesheet ];
+		}
+
+		$active = (string) ( $GLOBALS['aculect_ai_companion_test_active_stylesheet'] ?? '' );
+		if ( '' !== $active && isset( $themes[ $active ] ) && $themes[ $active ] instanceof WP_Theme ) {
+			return $themes[ $active ];
+		}
+
 		$data = $GLOBALS['aculect_ai_companion_test_theme'] ?? array(
 			'Name'       => 'Twenty Twenty-Six',
 			'Version'    => '1.0.0',
@@ -133,9 +187,43 @@ if ( ! function_exists( 'wp_get_themes' ) ) {
 	 * @return array<string, WP_Theme>
 	 */
 	function wp_get_themes(): array {
-		return array(
-			'twentytwentysix' => wp_get_theme(),
-		);
+		$raw_themes = $GLOBALS['aculect_ai_companion_test_themes'] ?? null;
+		if ( ! is_array( $raw_themes ) || array() === $raw_themes ) {
+			return array(
+				'twentytwentysix' => wp_get_theme(),
+			);
+		}
+
+		$themes = array();
+		foreach ( $raw_themes as $stylesheet => $data ) {
+			$stylesheet = (string) $stylesheet;
+			if ( $data instanceof WP_Theme ) {
+				$themes[ $stylesheet ] = $data;
+				continue;
+			}
+
+			$theme_data = is_array( $data ) ? $data : array();
+			unset( $theme_data['ParentStylesheet'] );
+			$theme_data['Stylesheet'] = $theme_data['Stylesheet'] ?? $stylesheet;
+			$theme_data['Template']   = $theme_data['Template'] ?? $theme_data['Stylesheet'];
+			$themes[ $stylesheet ]    = new WP_Theme( $theme_data );
+		}
+
+		foreach ( $raw_themes as $stylesheet => $data ) {
+			$theme_data        = is_array( $data ) ? $data : array();
+			$parent_stylesheet = (string) ( $theme_data['ParentStylesheet'] ?? '' );
+			if ( '' === $parent_stylesheet || ! isset( $themes[ $parent_stylesheet ] ) ) {
+				continue;
+			}
+
+			unset( $theme_data['ParentStylesheet'] );
+			$theme_data['Parent']           = $themes[ $parent_stylesheet ];
+			$theme_data['Stylesheet']       = $theme_data['Stylesheet'] ?? (string) $stylesheet;
+			$theme_data['Template']         = $theme_data['Template'] ?? $parent_stylesheet;
+			$themes[ (string) $stylesheet ] = new WP_Theme( $theme_data );
+		}
+
+		return $themes;
 	}
 }
 

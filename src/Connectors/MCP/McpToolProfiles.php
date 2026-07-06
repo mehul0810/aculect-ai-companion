@@ -37,6 +37,7 @@ final class McpToolProfiles {
 				'included_groups'   => array(
 					'Site Information',
 					'Plugin Lifecycle',
+					'Theme Lifecycle',
 					'Content',
 					'Content Groups',
 					'Media',
@@ -101,6 +102,7 @@ final class McpToolProfiles {
 					'Site Information',
 					'Site Workflows',
 					'Plugin Lifecycle',
+					'Theme Lifecycle',
 					'Site Editor Intelligence',
 					'Site Structure Discovery',
 					'Admin Menu Intelligence',

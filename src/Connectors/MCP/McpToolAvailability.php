@@ -239,6 +239,15 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'theme_lifecycle'    => $this->operation_group(
+				array(
+					'list_themes' => 'theme_lifecycle.list_themes',
+					'get_theme'   => 'theme_lifecycle.get_theme',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'content'            => $this->operation_group(
 				array(
 					'discover_core_schema' => 'core_schema.discover',
@@ -637,6 +646,8 @@ final class McpToolAvailability {
 			'site.list_plugins' => array( 'activate_plugins' ),
 			'plugin_lifecycle.list_plugins',
 			'plugin_lifecycle.get_plugin' => array( 'activate_plugins' ),
+			'theme_lifecycle.list_themes',
+			'theme_lifecycle.get_theme',
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',
 			'site_editor.refresh_context',

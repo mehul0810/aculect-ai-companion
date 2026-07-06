@@ -1145,6 +1145,26 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
 			),
 			$this->module(
+				'theme_lifecycle.list_themes',
+				'List Theme Lifecycle Status',
+				'List installed WordPress themes with active state, parent and child relationships, cached update availability, block or classic or hybrid signals, multisite context, and capability blockers. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->list_themes( $args )
+			),
+			$this->module(
+				'theme_lifecycle.get_theme',
+				'Get Theme Lifecycle Status',
+				'Read one installed WordPress theme lifecycle status record with safe update metadata and presentation signals. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->get_theme( $args )
+			),
+			$this->module(
 				'site.list_themes',
 				'List Themes',
 				'List installed WordPress themes and active state for users who can manage themes.',
@@ -1499,6 +1519,51 @@ final class FirstPartyAbilityModules {
 				),
 			),
 			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'child', 'parent', 'update_available', 'block', 'classic', 'hybrid' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum themes to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
 		);
 	}
 

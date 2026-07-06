@@ -131,6 +131,13 @@ update availability, recovery pause state, multisite context, and capability
 blockers. They must not install, update, activate, deactivate, delete,
 uninstall, edit, execute, or expose raw plugin code.
 
+`theme_lifecycle.list_themes` and `theme_lifecycle.get_theme` provide read-only
+installed-theme lifecycle status: active state, parent and child relationships,
+cached update availability, and block or classic or hybrid signals derived from
+safe WordPress core helpers. They must not install, update, switch, delete,
+edit, or expose filesystem paths, and they explicitly do not implement a
+standalone theme-deactivation action because WordPress switches themes instead.
+
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`

@@ -169,14 +169,7 @@ if ( ! function_exists( 'wp_get_theme' ) ) {
 			return $themes[ $active ];
 		}
 
-		$data = $GLOBALS['aculect_ai_companion_test_theme'] ?? array(
-			'Name'       => 'Twenty Twenty-Six',
-			'Version'    => '1.0.0',
-			'Stylesheet' => 'twentytwentysix',
-			'Template'   => 'twentytwentysix',
-		);
-
-		return new WP_Theme( is_array( $data ) ? $data : array() );
+		return aculect_ai_companion_test_default_theme();
 	}
 }
 
@@ -190,7 +183,7 @@ if ( ! function_exists( 'wp_get_themes' ) ) {
 		$raw_themes = $GLOBALS['aculect_ai_companion_test_themes'] ?? null;
 		if ( ! is_array( $raw_themes ) || array() === $raw_themes ) {
 			return array(
-				'twentytwentysix' => wp_get_theme(),
+				'twentytwentysix' => aculect_ai_companion_test_default_theme(),
 			);
 		}
 
@@ -224,6 +217,22 @@ if ( ! function_exists( 'wp_get_themes' ) ) {
 		}
 
 		return $themes;
+	}
+}
+
+if ( ! function_exists( 'aculect_ai_companion_test_default_theme' ) ) {
+	/**
+	 * Return the default test theme without consulting wp_get_themes().
+	 */
+	function aculect_ai_companion_test_default_theme(): WP_Theme {
+		$data = $GLOBALS['aculect_ai_companion_test_theme'] ?? array(
+			'Name'       => 'Twenty Twenty-Six',
+			'Version'    => '1.0.0',
+			'Stylesheet' => 'twentytwentysix',
+			'Template'   => 'twentytwentysix',
+		);
+
+		return new WP_Theme( is_array( $data ) ? $data : array() );
 	}
 }
 

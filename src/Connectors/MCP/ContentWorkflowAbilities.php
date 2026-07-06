@@ -540,7 +540,8 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 				}
 
 				if ( 'core/heading' === $name && null !== $top_level_start ) {
-					$id = $this->section_id_from_heading_block( $token );
+					$heading_block = $this->serialized_heading_block_at( $content, $position );
+					$id            = $this->section_id_from_heading_block( '' !== $heading_block ? $heading_block : $token );
 					if ( '' !== $id && ! isset( $sections[ $top_level_start ] ) ) {
 						$sections[ $top_level_start ] = array(
 							'id'    => $id,
@@ -565,6 +566,27 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		}
 
 		return array_values( $sections );
+	}
+
+	/**
+	 * Extract a full serialized heading block starting at the given opening comment offset.
+	 *
+	 * @param string $content Existing serialized block content.
+	 * @param int    $offset  Offset of the heading opening comment.
+	 */
+	private function serialized_heading_block_at( string $content, int $offset ): string {
+		$fragment = substr( $content, $offset );
+		if ( '' === $fragment ) {
+			return '';
+		}
+
+		$matches = array();
+		$matched = preg_match( '/^<!--\s+wp:heading(?:\s+\{.*?\})?\s+-->.*?<!--\s+\/wp:heading\s+-->/is', $fragment, $matches );
+		if ( 1 !== $matched ) {
+			return '';
+		}
+
+		return (string) $matches[0];
 	}
 
 	/**

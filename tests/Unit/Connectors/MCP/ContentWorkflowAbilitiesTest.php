@@ -56,6 +56,16 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 							. '<!-- wp:heading {"anchor":"faq"} --><h2 id="faq">FAQ</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Questions stay below.</p><!-- /wp:paragraph -->',
 					)
 				),
+				125 => new \WP_Post(
+					array(
+						'ID'           => 125,
+						'post_type'    => 'page',
+						'post_status'  => 'draft',
+						'post_title'   => 'Unanchored Sections',
+						'post_content' => '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Old plain section copy.</p><!-- /wp:paragraph -->'
+							. '<!-- wp:heading {"anchor":"follow-up"} --><h2 id="follow-up">Follow Up</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Follow-up stays put.</p><!-- /wp:paragraph -->',
+					)
+				),
 			);
 
 			$this->abilities = new ContentWorkflowAbilities();
@@ -259,6 +269,32 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		self::assertStringContainsString( 'Questions stay below.', $changes_by_field['content']['to'] );
 		self::assertSame( 1, substr_count( $changes_by_field['content']['to'], '<!-- wp:group {"className":"cta-box"} -->' ) );
 		self::assertSame( 1, substr_count( $changes_by_field['content']['to'], '<!-- /wp:group -->' ) );
+	}
+
+	public function test_update_post_dry_run_accepts_unanchored_heading_section_ids_from_heading_text(): void {
+		$result = $this->abilities->update_post(
+			array(
+				'id'          => 125,
+				'update_mode' => 'sections',
+				'section_map' => array(
+					'plain-heading' => array(
+						'content' => '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Updated plain section copy.</p><!-- /wp:paragraph -->',
+					),
+				),
+				'dry_run'     => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertTrue( $result['block_validation']['valid'] );
+		self::assertSame( array( 'plain-heading' ), $result['section_updates'] );
+		self::assertSame( array( 'plain-heading', 'follow-up' ), $result['available_sections'] );
+		$changes_by_field = array_column( $result['changes'], null, 'field' );
+		self::assertArrayHasKey( 'content', $changes_by_field );
+		self::assertStringContainsString( 'Updated plain section copy.', $changes_by_field['content']['to'] );
+		self::assertStringNotContainsString( 'Old plain section copy.', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( 'Follow-up stays put.', $changes_by_field['content']['to'] );
+		self::assertStringContainsString( '<!-- wp:heading --><h2>Plain Heading</h2><!-- /wp:heading -->', $changes_by_field['content']['to'] );
 	}
 
 	public function test_desired_word_count_is_clamped_for_long_form_workflows(): void {

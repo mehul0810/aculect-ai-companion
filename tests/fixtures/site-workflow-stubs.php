@@ -219,6 +219,22 @@ if ( ! function_exists( '_get_cron_array' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_next_scheduled' ) ) {
+	/**
+	 * Return the next scheduled timestamp for a test cron hook.
+	 *
+	 * @param string       $hook Event hook.
+	 * @param array<mixed> $args Event args.
+	 */
+	function wp_next_scheduled( string $hook, array $args = array() ): int|false {
+		unset( $args );
+
+		$scheduled = $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ?? false;
+
+		return is_numeric( $scheduled ) ? (int) $scheduled : false;
+	}
+}
+
 if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
 	/**
 	 * Return attachment metadata for tests.

@@ -10,13 +10,14 @@ use Aculect\AICompanion\Intelligence\ContentIndexer;
  * Bounded read-only site maintenance reports for assistant diagnostics.
  */
 final class SiteMaintenanceReports extends AbstractAbilityService {
-	private const REPORT_TYPES       = array( 'content_review', 'media_inventory', 'site_readiness' );
+	private const REPORT_TYPES       = array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness' );
 	private const DEFAULT_PER_PAGE   = 10;
 	private const MAX_PER_PAGE       = 20;
 	private const STALE_DRAFT_DAYS   = 30;
 	private const OVERSIZED_BYTES    = 5242880;
 	private const MAX_TITLE_LENGTH   = 120;
 	private const MAX_POST_TYPE_KEYS = 8;
+	private const STALE_UPDATE_HOURS = 48;
 
 	/**
 	 * Return a compact maintenance report.
@@ -36,6 +37,7 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 		return match ( $report_type ) {
 			'media_inventory' => $this->media_inventory_report( $page, $per_page ),
 			'site_readiness'  => $this->site_readiness_report( $page, $per_page ),
+			'update_readiness' => $this->update_readiness_report( $page, $per_page ),
 			default => $this->content_review_report( $page, $per_page ),
 		};
 	}
@@ -228,6 +230,48 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 	}
 
 	/**
+	 * Build a bounded update readiness report from existing WordPress update metadata.
+	 *
+	 * @param int $page     One-based page.
+	 * @param int $per_page Results per page.
+	 * @return array<string, mixed>
+	 */
+	private function update_readiness_report( int $page, int $per_page ): array {
+		$core    = $this->read_update_metadata( 'update_core' );
+		$plugins = $this->read_update_metadata( 'update_plugins' );
+		$themes  = $this->read_update_metadata( 'update_themes' );
+
+		$findings = array(
+			$this->update_metadata_finding( $core, $plugins, $themes ),
+			$this->core_update_finding( $core ),
+			$this->extension_update_finding( 'plugin_updates', 'Plugin Updates', $plugins ),
+			$this->extension_update_finding( 'theme_updates', 'Theme Updates', $themes ),
+			$this->update_compatibility_finding( $plugins, $themes ),
+		);
+
+		$offset             = ( $page - 1 ) * $per_page;
+		$paginated_findings = array_slice( $findings, $offset, $per_page );
+
+		return $this->static_report_payload(
+			'update_readiness',
+			'Update Readiness',
+			'Safe core, plugin, and theme update-readiness signals from existing WordPress update metadata without forcing checks or exposing raw payloads.',
+			$page,
+			$per_page,
+			$findings,
+			$paginated_findings,
+			array(
+				'metadata_sources'             => array( 'update_core', 'update_plugins', 'update_themes' ),
+				'forced_update_checks'         => false,
+				'updates_applied'              => false,
+				'raw_update_payloads_included' => false,
+				'plugin_theme_source_scanned'  => false,
+				'filesystem_paths_included'    => false,
+			)
+		);
+	}
+
+	/**
 	 * Build a permalink readiness finding without exposing the stored structure.
 	 *
 	 * @return array<string, mixed>
@@ -388,6 +432,290 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 			),
 			$ready ? 'Aculect background indexing does not show an unscheduled backlog.' : 'Schedule or run the stale index sweep before relying on fresh assistant search results.'
 		);
+	}
+
+	/**
+	 * Build a finding that summarizes update metadata freshness.
+	 *
+	 * @param array<string, mixed> $core    Core update metadata summary.
+	 * @param array<string, mixed> $plugins Plugin update metadata summary.
+	 * @param array<string, mixed> $themes  Theme update metadata summary.
+	 * @return array<string, mixed>
+	 */
+	private function update_metadata_finding( array $core, array $plugins, array $themes ): array {
+		$missing = array();
+		$stale   = array();
+
+		foreach ( array(
+			'core'    => $core,
+			'plugins' => $plugins,
+			'themes'  => $themes,
+		) as $label => $metadata ) {
+			if ( ! $metadata['available'] ) {
+				$missing[] = $label;
+			} elseif ( $metadata['stale'] ) {
+				$stale[] = $label;
+			}
+		}
+
+		$severity = array() !== $missing ? 'warning' : ( array() !== $stale ? 'warning' : 'info' );
+
+		return $this->finding(
+			'update_metadata',
+			'Update Metadata Freshness',
+			$severity,
+			array(
+				'core_metadata_available'      => $core['available'],
+				'plugin_metadata_available'    => $plugins['available'],
+				'theme_metadata_available'     => $themes['available'],
+				'missing_metadata_groups'      => count( $missing ),
+				'stale_metadata_groups'        => count( $stale ),
+				'stale_after_hours'            => self::STALE_UPDATE_HOURS,
+				'oldest_metadata_age_hours'    => max( $core['age_hours'], $plugins['age_hours'], $themes['age_hours'] ),
+				'forced_update_checks'         => false,
+				'raw_update_payloads_included' => false,
+			),
+			'info' === $severity ? 'Existing WordPress update metadata appears present and recent.' : 'Refresh WordPress update metadata from the admin updates screen before making update decisions.'
+		);
+	}
+
+	/**
+	 * Build a core update count finding.
+	 *
+	 * @param array<string, mixed> $core Core update metadata summary.
+	 * @return array<string, mixed>
+	 */
+	private function core_update_finding( array $core ): array {
+		$count    = $this->core_update_count( $core['value'] );
+		$severity = 0 < $count ? 'warning' : ( $core['available'] ? 'info' : 'warning' );
+
+		return $this->finding(
+			'core_updates',
+			'Core Updates',
+			$severity,
+			array(
+				'available_update_count'       => $count,
+				'metadata_available'           => $core['available'],
+				'metadata_age_hours'           => $core['age_hours'],
+				'metadata_stale'               => $core['stale'],
+				'current_version_included'     => false,
+				'target_versions_included'     => false,
+				'raw_update_payloads_included' => false,
+			),
+			0 < $count ? 'Review the available WordPress core update in the dashboard and confirm compatibility before updating.' : 'No core update is visible in existing update metadata.'
+		);
+	}
+
+	/**
+	 * Build a plugin or theme update count finding.
+	 *
+	 * @param string               $id       Finding ID.
+	 * @param string               $title    Finding title.
+	 * @param array<string, mixed> $metadata Update metadata summary.
+	 * @return array<string, mixed>
+	 */
+	private function extension_update_finding( string $id, string $title, array $metadata ): array {
+		$count    = $this->response_count( $metadata['value'] );
+		$severity = 0 < $count ? 'warning' : ( $metadata['available'] ? 'info' : 'warning' );
+
+		return $this->finding(
+			$id,
+			$title,
+			$severity,
+			array(
+				'available_update_count'       => $count,
+				'metadata_available'           => $metadata['available'],
+				'metadata_age_hours'           => $metadata['age_hours'],
+				'metadata_stale'               => $metadata['stale'],
+				'item_identifiers_included'    => false,
+				'filesystem_paths_included'    => false,
+				'raw_update_payloads_included' => false,
+			),
+			0 < $count ? 'Review available updates, changelogs, backups, and compatibility before updating.' : 'No updates are visible in existing WordPress update metadata.'
+		);
+	}
+
+	/**
+	 * Build a compatibility summary from plugin and theme update metadata.
+	 *
+	 * @param array<string, mixed> $plugins Plugin update metadata summary.
+	 * @param array<string, mixed> $themes  Theme update metadata summary.
+	 * @return array<string, mixed>
+	 */
+	private function update_compatibility_finding( array $plugins, array $themes ): array {
+		$signals = array(
+			'plugin' => $this->compatibility_counts( $plugins['value'] ),
+			'theme'  => $this->compatibility_counts( $themes['value'] ),
+		);
+
+		$unknown     = $signals['plugin']['unknown_wordpress_tested'] + $signals['theme']['unknown_wordpress_tested'];
+		$wp_cautions = $signals['plugin']['wordpress_tested_cautions'] + $signals['theme']['wordpress_tested_cautions'];
+		$blockers    = $signals['plugin']['php_requirement_blockers'] + $signals['theme']['php_requirement_blockers'] + $signals['plugin']['wordpress_requirement_blockers'] + $signals['theme']['wordpress_requirement_blockers'];
+
+		$severity = 0 < $blockers ? 'critical' : ( 0 < $wp_cautions || 0 < $unknown ? 'warning' : 'info' );
+
+		return $this->finding(
+			'compatibility_signals',
+			'Compatibility Signals',
+			$severity,
+			array(
+				'plugin_updates_checked'         => $signals['plugin']['updates_checked'],
+				'theme_updates_checked'          => $signals['theme']['updates_checked'],
+				'wordpress_tested_cautions'      => $wp_cautions,
+				'unknown_wordpress_tested'       => $unknown,
+				'php_requirement_blockers'       => $signals['plugin']['php_requirement_blockers'] + $signals['theme']['php_requirement_blockers'],
+				'wordpress_requirement_blockers' => $signals['plugin']['wordpress_requirement_blockers'] + $signals['theme']['wordpress_requirement_blockers'],
+				'installed_versions_included'    => false,
+				'package_urls_included'          => false,
+				'plugin_theme_source_scanned'    => false,
+				'raw_update_payloads_included'   => false,
+			),
+			'info' === $severity ? 'Existing update metadata does not show obvious compatibility cautions.' : 'Review compatibility details in WordPress before applying updates.'
+		);
+	}
+
+	/**
+	 * Read a WordPress site transient option without triggering transient cleanup or update checks.
+	 *
+	 * @param string $transient Site transient name.
+	 * @return array{available: bool, value: mixed, last_checked: int, age_hours: int, stale: bool}
+	 */
+	private function read_update_metadata( string $transient ): array {
+		$value        = get_site_option( '_site_transient_' . $transient, false );
+		$available    = false !== $value && null !== $value;
+		$last_checked = $this->metadata_int( $value, 'last_checked' );
+		$age_hours    = 0 < $last_checked ? max( 0, (int) floor( ( time() - $last_checked ) / HOUR_IN_SECONDS ) ) : 0;
+		$stale        = ! $available || 0 === $last_checked || self::STALE_UPDATE_HOURS < $age_hours;
+
+		return array(
+			'available'    => $available,
+			'value'        => $value,
+			'last_checked' => $last_checked,
+			'age_hours'    => $age_hours,
+			'stale'        => $stale,
+		);
+	}
+
+	/**
+	 * Count available extension updates from a WordPress update metadata object.
+	 *
+	 * @param mixed $metadata Raw update metadata.
+	 */
+	private function response_count( mixed $metadata ): int {
+		$response = $this->metadata_value( $metadata, 'response' );
+
+		return is_countable( $response ) ? count( $response ) : 0;
+	}
+
+	/**
+	 * Count available core updates from a WordPress core update metadata object.
+	 *
+	 * @param mixed $metadata Raw core update metadata.
+	 */
+	private function core_update_count( mixed $metadata ): int {
+		$updates = $this->metadata_value( $metadata, 'updates' );
+		if ( ! is_iterable( $updates ) ) {
+			return 0;
+		}
+
+		$count = 0;
+		foreach ( $updates as $update ) {
+			$response = (string) $this->metadata_value( $update, 'response' );
+			if ( in_array( $response, array( 'upgrade', 'development' ), true ) ) {
+				++$count;
+			}
+		}
+
+		return $count;
+	}
+
+	/**
+	 * Count safe compatibility signals in plugin/theme update response metadata.
+	 *
+	 * @param mixed $metadata Raw update metadata.
+	 * @return array<string, int>
+	 */
+	private function compatibility_counts( mixed $metadata ): array {
+		$response = $this->metadata_value( $metadata, 'response' );
+		$counts   = array(
+			'updates_checked'                => 0,
+			'wordpress_tested_cautions'      => 0,
+			'unknown_wordpress_tested'       => 0,
+			'php_requirement_blockers'       => 0,
+			'wordpress_requirement_blockers' => 0,
+		);
+
+		if ( ! is_iterable( $response ) ) {
+			return $counts;
+		}
+
+		$wp_version  = get_bloginfo( 'version' );
+		$php_version = PHP_VERSION;
+
+		foreach ( $response as $update ) {
+			++$counts['updates_checked'];
+
+			$tested = $this->metadata_string( $update, 'tested' );
+			if ( '' === $tested ) {
+				++$counts['unknown_wordpress_tested'];
+			} elseif ( '' !== $wp_version && version_compare( $tested, $wp_version, '<' ) ) {
+				++$counts['wordpress_tested_cautions'];
+			}
+
+			$requires_php = $this->metadata_string( $update, 'requires_php' );
+			if ( '' !== $requires_php && version_compare( $php_version, $requires_php, '<' ) ) {
+				++$counts['php_requirement_blockers'];
+			}
+
+			$requires_wp = $this->metadata_string( $update, 'requires' );
+			if ( '' !== $requires_wp && '' !== $wp_version && version_compare( $wp_version, $requires_wp, '<' ) ) {
+				++$counts['wordpress_requirement_blockers'];
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Return an update metadata field from an object or array.
+	 *
+	 * @param mixed  $metadata Raw metadata.
+	 * @param string $key      Field key.
+	 */
+	private function metadata_value( mixed $metadata, string $key ): mixed {
+		if ( is_array( $metadata ) ) {
+			return $metadata[ $key ] ?? null;
+		}
+
+		if ( is_object( $metadata ) ) {
+			return $metadata->{$key} ?? null;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Return an integer metadata field.
+	 *
+	 * @param mixed  $metadata Raw metadata.
+	 * @param string $key      Field key.
+	 */
+	private function metadata_int( mixed $metadata, string $key ): int {
+		$value = $this->metadata_value( $metadata, $key );
+
+		return is_numeric( $value ) ? (int) $value : 0;
+	}
+
+	/**
+	 * Return a string metadata field.
+	 *
+	 * @param mixed  $metadata Raw metadata.
+	 * @param string $key      Field key.
+	 */
+	private function metadata_string( mixed $metadata, string $key ): string {
+		$value = $this->metadata_value( $metadata, $key );
+
+		return is_scalar( $value ) ? (string) $value : '';
 	}
 
 	/**

@@ -405,6 +405,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_settings( $args )
 			),
 			$this->module(
+				'navigation.get_context',
+				'Read Navigation Intelligence',
+				'Use this before planning navigation or menu work. It detects block theme, hybrid, classic-menu, and unsupported navigation context and states clearly that writes are not implemented in this slice.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->get_context( $args )
+			),
+			$this->module(
+				'navigation.list_menus',
+				'List Navigation Menus',
+				'List readable classic menus and wp_navigation entities with clear source markers, bounded counts, and no write capability.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_menus_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_menus( $args )
+			),
+			$this->module(
+				'navigation.list_locations',
+				'List Navigation Locations',
+				'List registered classic menu locations and assignments for classic or hybrid themes. Future location reassignment must remain explicit-only and is not implemented here.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_locations_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_locations( $args )
+			),
+			$this->module(
+				'navigation.list_items',
+				'List Navigation Items',
+				'List readable classic menu items or bounded block-navigation items for one menu, location, or wp_navigation entity. This inventory is read-only and never rewrites serialized navigation markup.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_items_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_items( $args )
+			),
+			$this->module(
 				'content_index.refresh_batch',
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',
@@ -3319,6 +3359,86 @@ final class FirstPartyAbilityModules {
 					'type'        => 'string',
 					'description' => 'Optional search term for registered setting name, group, or description.',
 				),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation menu listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_menus_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type' => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'classic_menu', 'wp_navigation' ),
+					'description' => 'Optional navigation source filter. Defaults to all.',
+				),
+				'search'      => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for menu name, title, slug, or source marker.',
+				),
+				'page'        => $this->page_schema(),
+				'per_page'    => $this->per_page_schema( 100, 'Menus per page. Defaults to 20.' ),
+				'context'     => $this->context_schema( 'Use compact for inventory or full for bounded structure summaries. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation location listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_locations_schema(): array {
+		return $this->object_schema(
+			array(
+				'search'        => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for location slug, label, or assigned menu name.',
+				),
+				'assigned_only' => array(
+					'type'        => 'boolean',
+					'description' => 'Return only assigned classic locations.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Locations per page. Defaults to 20.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation item listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_items_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'classic_menu', 'classic_location', 'wp_navigation' ),
+					'description' => 'Optional explicit source type for the requested target.',
+				),
+				'menu_id'       => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'Classic menu term ID.',
+				),
+				'navigation_id' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'wp_navigation post ID.',
+				),
+				'location'      => array(
+					'type'        => 'string',
+					'description' => 'Registered classic menu location slug.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Navigation items per page. Defaults to 20.' ),
+				'context'       => $this->context_schema( 'Use compact for item inventory or full for bounded block/link attrs and structure notes. Defaults to compact.' ),
 			)
 		);
 	}

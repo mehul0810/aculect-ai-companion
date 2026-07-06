@@ -322,6 +322,17 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'navigation'         => $this->operation_group(
+				array(
+					'get_context'    => 'navigation.get_context',
+					'list_menus'     => 'navigation.list_menus',
+					'list_locations' => 'navigation.list_locations',
+					'list_items'     => 'navigation.list_items',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'workflow_guides'    => $this->operation_group(
 				array(
 					'list'           => 'workflow_guides.list',

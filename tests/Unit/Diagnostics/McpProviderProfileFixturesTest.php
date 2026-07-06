@@ -93,7 +93,7 @@ final class McpProviderProfileFixturesTest extends TestCase {
 			),
 			'site_management'    => array(
 				'scopes'         => array( 'content:read', 'content:draft' ),
-				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
+				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'navigation_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
 			),
 		);
 		$fixtures  = array();

@@ -327,8 +327,11 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		$modules = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array( 'content:read' ) );
 
+		self::assertArrayHasKey( 'navigation.get_context', $modules );
+		self::assertArrayHasKey( 'navigation.list_items', $modules );
 		self::assertArrayHasKey( 'content_revisions.list', $modules );
 		self::assertArrayHasKey( 'content_autosaves.inspect', $modules );
+		self::assertTrue( $registry->is_core_default( 'navigation_get_context' ) );
 		self::assertTrue( $registry->is_core_default( 'content_revisions_list' ) );
 		self::assertTrue( $registry->is_core_default( 'content_autosaves.inspect' ) );
 		self::assertTrue( $modules['content_revisions.list']->is_read_only() );
@@ -644,6 +647,10 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['admin_menu']['get_context']['available'] );
 		self::assertTrue( $operations['admin_menu']['get_context']['always_on'] );
 		self::assertTrue( $operations['admin_menu']['list_settings']['available'] );
+		self::assertTrue( $operations['navigation']['get_context']['available'] );
+		self::assertTrue( $operations['navigation']['list_items']['available'] );
+		self::assertTrue( $operations['navigation']['get_context']['always_on'] );
+		self::assertSame( 'core_default_read', $operations['navigation']['get_context']['availability_model'] );
 		self::assertSame( 'search', $operations['intelligence_index']['canonical_search']['tool'] );
 		self::assertSame( 'fetch', $operations['intelligence_index']['canonical_fetch']['tool'] );
 		self::assertSame( 'core_default_read', $operations['intelligence_index']['search_items']['availability_model'] );
@@ -659,6 +666,8 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayHasKey( 'site_editor.refresh_context', $modules );
 		self::assertArrayHasKey( 'admin_menu.get_context', $modules );
 		self::assertArrayHasKey( 'admin_menu.list_settings', $modules );
+		self::assertArrayHasKey( 'navigation.get_context', $modules );
+		self::assertArrayHasKey( 'navigation.list_items', $modules );
 		self::assertArrayHasKey( 'content_search.items', $modules );
 		self::assertArrayHasKey( 'content_internal_link.policy', $modules );
 		self::assertArrayHasKey( 'content_audit.internal_links', $modules );
@@ -687,6 +696,8 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['site_editor']['refresh_context']['available'] );
 		self::assertFalse( $operations['admin_menu']['get_context']['available'] );
 		self::assertFalse( $operations['admin_menu']['list_settings']['available'] );
+		self::assertFalse( $operations['navigation']['get_context']['available'] );
+		self::assertFalse( $operations['navigation']['list_items']['available'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['internal_link_policy']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['internal_link_audit']['blocked_by'] );
@@ -695,6 +706,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['memory_bootstrap']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['site_editor']['get_context']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['admin_menu']['get_context']['blocked_by'] );
+		self::assertSame( 'oauth_scope', $operations['navigation']['get_context']['blocked_by'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['internal_link_policy']['missing_scopes'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['internal_link_audit']['missing_scopes'] );
@@ -712,6 +724,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'workflow_guides.get', $modules );
 		self::assertArrayNotHasKey( 'site_editor.get_context', $modules );
 		self::assertArrayNotHasKey( 'admin_menu.get_context', $modules );
+		self::assertArrayNotHasKey( 'navigation.get_context', $modules );
 		self::assertArrayNotHasKey( 'content_search.items', $modules );
 		self::assertArrayNotHasKey( 'memory.save', $modules );
 		self::assertArrayNotHasKey( 'memory.bootstrap', $modules );
@@ -748,7 +761,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'site_information', 'plugin_lifecycle', 'theme_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'plugin_lifecycle', 'theme_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'navigation', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

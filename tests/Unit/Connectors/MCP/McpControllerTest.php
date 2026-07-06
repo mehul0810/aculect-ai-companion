@@ -251,6 +251,8 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'admin review', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
+		self::assertStringContainsString( 'navigation_get_context', $result['instructions'] );
+		self::assertStringContainsString( 'navigation_list_items', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );
 		self::assertStringContainsString( 'plugin_incident_report', $result['instructions'] );
 		self::assertStringContainsString( 'mcp_learning_inspect_activity', $result['instructions'] );
@@ -336,6 +338,14 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'privacy', $tools_by_name['users_current_access']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_roles_summary'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['users_roles_summary']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['navigation_list_menus'] );
+		self::assertArrayHasKey( 'source_type', $tools_by_name['navigation_list_menus']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['navigation_list_menus']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['navigation_list_items'] );
+		self::assertArrayHasKey( 'menu_id', $tools_by_name['navigation_list_items']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'navigation_id', $tools_by_name['navigation_list_items']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['navigation_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'summary', $tools_by_name['navigation_get_context']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_list_safe'] );
 		self::assertArrayHasKey( 'per_page', $tools_by_name['users_list_safe']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_search_chunks'] );
@@ -423,6 +433,10 @@ final class McpControllerTest extends TestCase {
 			'content_workflow_update_post',
 			'seo_workflow_update_rankmath',
 			'site_workflow_audit',
+			'navigation_get_context',
+			'navigation_list_menus',
+			'navigation_list_locations',
+			'navigation_list_items',
 			'content_index_refresh_batch',
 			'content_search_items',
 			'content_search_chunks',
@@ -504,6 +518,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'workflow_session_start', $site['operations']['workflow_guides']['session_start']['tool'] );
 		self::assertSame( 'workflow_session_get', $site['operations']['workflow_guides']['session_get']['tool'] );
 		self::assertSame( 'workflow_session_update', $site['operations']['workflow_guides']['session_update']['tool'] );
+		self::assertSame( 'navigation_get_context', $site['operations']['navigation']['get_context']['tool'] );
+		self::assertSame( 'navigation_list_items', $site['operations']['navigation']['list_items']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'content_audit_internal_links', $site['operations']['intelligence_index']['internal_link_audit']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );

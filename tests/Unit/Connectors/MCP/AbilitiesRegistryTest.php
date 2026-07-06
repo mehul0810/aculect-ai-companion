@@ -73,6 +73,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'users.current_access', $by_id );
 		self::assertArrayHasKey( 'users.roles_summary', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
+		self::assertArrayHasKey( 'navigation.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
 		self::assertArrayHasKey( 'content_revisions.list', $by_id );
 		self::assertArrayHasKey( 'content_autosaves.inspect', $by_id );
@@ -200,6 +201,10 @@ final class AbilitiesRegistryTest extends TestCase {
 				'admin_menu.list_pages',
 				'admin_menu.get_navigation_target',
 				'admin_menu.list_settings',
+				'navigation.get_context',
+				'navigation.list_menus',
+				'navigation.list_locations',
+				'navigation.list_items',
 				'workflow_guides.list',
 				'workflow_guides.get',
 				'content_index.refresh_batch',
@@ -286,10 +291,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.roles_summary' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'users.list_safe' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'users.current_access' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'navigation.list_items' ) );
 		self::assertArrayHasKey( 'per_page', $this->registry->input_schema( 'users_list_safe' )['properties'] );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation_list_items' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_revisions.list' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_autosaves_inspect' ) );

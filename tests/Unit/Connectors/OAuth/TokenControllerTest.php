@@ -76,12 +76,62 @@ final class TokenControllerTest extends TestCase {
 		self::assertStringNotContainsString( 'Exception', $description );
 	}
 
+	public function test_token_timeline_event_classifies_exchange_and_refresh_grants(): void {
+		$controller = new TokenController();
+
+		self::assertSame(
+			'token_exchange',
+			$this->invokePrivate(
+				$controller,
+				'token_timeline_event',
+				array( new WP_REST_Request( array( 'grant_type' => 'authorization_code' ) ) )
+			)
+		);
+		self::assertSame(
+			'token_refresh',
+			$this->invokePrivate(
+				$controller,
+				'token_timeline_event',
+				array( new WP_REST_Request( array( 'grant_type' => 'refresh_token' ) ) )
+			)
+		);
+	}
+
+	public function test_token_result_class_is_bounded_for_timeline_metadata(): void {
+		$controller = new TokenController();
+
+		self::assertSame( 'issued', $this->invokePrivate( $controller, 'token_result_class', array( 200 ) ) );
+		self::assertSame( 'oauth_error', $this->invokePrivate( $controller, 'token_result_class', array( 400 ) ) );
+		self::assertSame( 'server_error', $this->invokePrivate( $controller, 'token_result_class', array( 500 ) ) );
+	}
+
+	public function test_timeline_auth_context_uses_client_identifier_without_secret_material(): void {
+		$context = $this->invokePrivate(
+			new TokenController(),
+			'timeline_auth_context',
+			array(
+				new WP_REST_Request(
+					array(
+						'client_id'     => '',
+						'client_secret' => 'do-not-store',
+						'refresh_token' => 'do-not-store',
+					)
+				),
+			)
+		);
+
+		self::assertSame( '', $context['provider'] );
+		self::assertSame( '', $context['client_id'] );
+		self::assertArrayNotHasKey( 'client_secret', $context );
+		self::assertArrayNotHasKey( 'refresh_token', $context );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object            $object    Object instance.
+	 * @param string            $method    Method name.
+	 * @param array<int, mixed> $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

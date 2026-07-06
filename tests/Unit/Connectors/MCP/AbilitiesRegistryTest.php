@@ -219,6 +219,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
+				'site.maintenance_report',
 				'site.list_plugins',
 				'site.list_themes',
 			) as $ability_id

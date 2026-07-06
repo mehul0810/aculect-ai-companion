@@ -1072,6 +1072,16 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new SiteAbilities() )->get_site_health()
 			),
 			$this->module(
+				'site.maintenance_report',
+				'View Site Maintenance Report',
+				'Read a compact, paginated, read-only maintenance report with severity, bounded evidence, and next steps. Reports never run arbitrary PHP, dump raw database data, scan files, write files, or expose option values.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->site_maintenance_report_schema(),
+				static fn ( array $args ): array => ( new SiteMaintenanceReports() )->report( $args )
+			),
+			$this->module(
 				'site.list_plugins',
 				'List Plugins',
 				'List installed WordPress plugins and active state for users who can manage plugins.',
@@ -1363,6 +1373,34 @@ final class FirstPartyAbilityModules {
 			'type'                 => 'object',
 			'properties'           => new \stdClass(),
 			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build the site maintenance report schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function site_maintenance_report_schema(): array {
+		return $this->object_schema(
+			array(
+				'report_type' => array(
+					'type'        => 'string',
+					'enum'        => SiteMaintenanceReports::report_types(),
+					'description' => 'Report to return. Defaults to content_review.',
+				),
+				'page'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page'    => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 20,
+					'description' => 'Maximum findings to return. Defaults to 10 and caps at 20.',
+				),
+			)
 		);
 	}
 

@@ -222,6 +222,7 @@ final class McpToolAvailability {
 					'get_settings' => 'site.get_settings',
 					'get_info'     => 'site.get_info',
 					'get_health'   => 'site.get_health',
+					'report'       => 'site.maintenance_report',
 					'list_plugins' => 'site.list_plugins',
 					'list_themes'  => 'site.list_themes',
 				),
@@ -621,7 +622,8 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return match ( $ability_id ) {
-			'site.get_health' => array( 'manage_options' ),
+			'site.get_health',
+			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',

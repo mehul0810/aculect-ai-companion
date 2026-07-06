@@ -53,6 +53,63 @@ if ( ! class_exists( 'WP_Theme' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WP_Query' ) ) {
+	/**
+	 * Minimal WP_Query test double for paginated maintenance reports.
+	 */
+	class WP_Query {
+		/**
+		 * Queried posts.
+		 *
+		 * @var list<WP_Post>
+		 */
+		public array $posts = array();
+
+		/**
+		 * Total matching posts before pagination.
+		 */
+		public int $found_posts = 0;
+
+		/**
+		 * Total pages.
+		 */
+		public int $max_num_pages = 0;
+
+		/**
+		 * @param array<string, mixed> $args Query args.
+		 */
+		public function __construct( array $args = array() ) {
+			$post_types = array_map( 'strval', (array) ( $args['post_type'] ?? array() ) );
+			$statuses   = array_map( 'strval', (array) ( $args['post_status'] ?? array() ) );
+			$mime_type  = (string) ( $args['post_mime_type'] ?? '' );
+			$per_page   = max( 1, absint( $args['posts_per_page'] ?? 10 ) );
+			$page       = max( 1, absint( $args['paged'] ?? 1 ) );
+			$posts      = array();
+
+			foreach ( $GLOBALS['aculect_ai_companion_test_posts'] as $post ) {
+				$post = $post instanceof WP_Post ? $post : new WP_Post( is_array( $post ) ? $post : array() );
+				if ( array() !== $post_types && ! in_array( $post->post_type, $post_types, true ) ) {
+					continue;
+				}
+
+				if ( array() !== $statuses && ! in_array( $post->post_status, $statuses, true ) ) {
+					continue;
+				}
+
+				if ( '' !== $mime_type && ! str_starts_with( $post->post_mime_type, $mime_type . '/' ) ) {
+					continue;
+				}
+
+				$posts[] = $post;
+			}
+
+			$this->found_posts   = count( $posts );
+			$this->max_num_pages = (int) ceil( $this->found_posts / $per_page );
+			$this->posts         = array_slice( $posts, ( $page - 1 ) * $per_page, $per_page );
+		}
+	}
+}
+
 if ( ! function_exists( 'wp_get_theme' ) ) {
 	/**
 	 * Return the active test theme.
@@ -159,5 +216,19 @@ if ( ! function_exists( '_get_cron_array' ) ) {
 	 */
 	function _get_cron_array(): array {
 		return $GLOBALS['aculect_ai_companion_test_cron_array'] ?? array( time() + HOUR_IN_SECONDS => array( 'example_hook' => array() ) );
+	}
+}
+
+if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
+	/**
+	 * Return attachment metadata for tests.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array<string, mixed>
+	 */
+	function wp_get_attachment_metadata( int $attachment_id ): array {
+		$metadata = $GLOBALS['aculect_ai_companion_test_attachment_metadata'][ $attachment_id ] ?? array();
+
+		return is_array( $metadata ) ? $metadata : array();
 	}
 }

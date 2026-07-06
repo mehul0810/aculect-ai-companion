@@ -1456,7 +1456,9 @@ if ( ! function_exists( 'home_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function home_url( string $path = '' ): string {
-		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+		$home = (string) ( $GLOBALS['aculect_ai_companion_test_home_url'] ?? 'https://example.com' );
+
+		return rtrim( $home, '/' ) . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
 	}
 }
 
@@ -1467,7 +1469,9 @@ if ( ! function_exists( 'site_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function site_url( string $path = '' ): string {
-		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+		$site = (string) ( $GLOBALS['aculect_ai_companion_test_site_url'] ?? 'https://example.com' );
+
+		return rtrim( $site, '/' ) . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
 	}
 }
 
@@ -1478,7 +1482,9 @@ if ( ! function_exists( 'rest_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function rest_url( string $path = '' ): string {
-		return 'https://example.com/wp-json/' . ltrim( $path, '/' );
+		$rest = (string) ( $GLOBALS['aculect_ai_companion_test_rest_url'] ?? 'https://example.com/wp-json/' );
+
+		return rtrim( $rest, '/' ) . '/' . ltrim( $path, '/' );
 	}
 }
 

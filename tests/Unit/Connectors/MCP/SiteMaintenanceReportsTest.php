@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Connectors\MCP\SiteMaintenanceReports;
+use Aculect\AICompanion\Intelligence\ContentIndexer;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__, 3 ) . '/fixtures/site-workflow-stubs.php';
@@ -26,11 +27,33 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
-		$GLOBALS['aculect_ai_companion_test_denied_post_ids']    = array();
+		$GLOBALS['aculect_ai_companion_test_denied_post_ids']     = array();
 		$GLOBALS['aculect_ai_companion_test_attachment_metadata'] = array();
+		$GLOBALS['aculect_ai_companion_test_home_url']            = 'https://example.com';
+		$GLOBALS['aculect_ai_companion_test_site_url']            = 'https://example.com';
+		$GLOBALS['aculect_ai_companion_test_rest_url']            = 'https://example.com/wp-json/';
+		$GLOBALS['aculect_ai_companion_test_using_https']         = true;
+		$GLOBALS['aculect_ai_companion_test_cron_array']          = array( time() + HOUR_IN_SECONDS => array( 'example_hook' => array() ) );
+		$GLOBALS['aculect_ai_companion_test_scheduled_events']    = array();
+		$GLOBALS['aculect_ai_companion_test_options']             = array(
+			'permalink_structure'                    => '/%postname%/',
+			'aculect_ai_companion_pending_index_ids' => array(),
+		);
 		$GLOBALS['aculect_ai_companion_test_post_types']          = array(
-			'post' => new \WP_Post_Type( 'post', array( 'label' => 'Posts', 'show_ui' => true ) ),
-			'page' => new \WP_Post_Type( 'page', array( 'label' => 'Pages', 'show_ui' => true ) ),
+			'post' => new \WP_Post_Type(
+				'post',
+				array(
+					'label'   => 'Posts',
+					'show_ui' => true,
+				)
+			),
+			'page' => new \WP_Post_Type(
+				'page',
+				array(
+					'label'   => 'Pages',
+					'show_ui' => true,
+				)
+			),
 		);
 		$GLOBALS['aculect_ai_companion_test_posts']               = array(
 			101 => array(
@@ -128,6 +151,66 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		self::assertFalse( $result['safety']['filesystem_writes'] );
 	}
 
+	public function test_site_readiness_report_returns_safe_status_signals(): void {
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'][ ContentIndexer::STALE_SWEEP_HOOK ] = time() + HOUR_IN_SECONDS;
+
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'site_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'site_readiness', $result['report_type'] );
+		self::assertSame( 5, $result['pagination']['returned'] );
+		self::assertSame( 'info', $result['summary']['overall_severity'] );
+		self::assertSame( 'info', $findings['permalinks']['severity'] );
+		self::assertTrue( $findings['permalinks']['evidence']['pretty_permalinks'] );
+		self::assertFalse( $findings['permalinks']['evidence']['structure_value_included'] );
+		self::assertTrue( $findings['https_urls']['evidence']['https_consistent'] );
+		self::assertTrue( $findings['https_urls']['evidence']['hosts_match'] );
+		self::assertTrue( $findings['rest_api']['evidence']['rest_url_present'] );
+		self::assertSame( 2, $findings['rest_api']['evidence']['rest_enabled_post_types'] );
+		self::assertSame( 1, $findings['cron']['evidence']['event_bucket_count'] );
+		self::assertTrue( $findings['background_tasks']['evidence']['stale_sweep_scheduled'] );
+		self::assertFalse( $result['filters']['raw_urls_included'] );
+		self::assertFalse( $result['filters']['option_values_included'] );
+		self::assertFalse( $result['safety']['secret_values_included'] );
+	}
+
+	public function test_site_readiness_report_flags_warnings_without_sensitive_values(): void {
+		$GLOBALS['aculect_ai_companion_test_options']['permalink_structure']                    = '';
+		$GLOBALS['aculect_ai_companion_test_options']['aculect_ai_companion_pending_index_ids'] = array( 101, 102 );
+		$GLOBALS['aculect_ai_companion_test_home_url']    = 'http://example.com';
+		$GLOBALS['aculect_ai_companion_test_site_url']    = 'https://admin.example.test';
+		$GLOBALS['aculect_ai_companion_test_rest_url']    = 'http://example.com/wp-json/';
+		$GLOBALS['aculect_ai_companion_test_using_https'] = false;
+		$GLOBALS['aculect_ai_companion_test_cron_array']  = array();
+
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'site_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'critical', $result['summary']['overall_severity'] );
+		self::assertSame( 'warning', $findings['permalinks']['severity'] );
+		self::assertSame( 'critical', $findings['https_urls']['severity'] );
+		self::assertSame( 'warning', $findings['rest_api']['severity'] );
+		self::assertSame( 'warning', $findings['cron']['severity'] );
+		self::assertSame( 'warning', $findings['background_tasks']['severity'] );
+		self::assertFalse( $findings['https_urls']['evidence']['raw_urls_included'] );
+		self::assertFalse( $findings['rest_api']['evidence']['raw_rest_url_included'] );
+		self::assertFalse( $findings['cron']['evidence']['hook_names_included'] );
+		self::assertFalse( $findings['background_tasks']['evidence']['job_payloads_included'] );
+		self::assertArrayNotHasKey( 'home_url', $findings['https_urls']['evidence'] );
+		self::assertArrayNotHasKey( 'site_url', $findings['https_urls']['evidence'] );
+		self::assertArrayNotHasKey( 'permalink_structure', $findings['permalinks']['evidence'] );
+	}
+
 	public function test_report_requires_manage_options(): void {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 
@@ -145,11 +228,11 @@ final class SiteMaintenanceReportsTest extends TestCase {
 
 		self::assertArrayHasKey( 'site_maintenance_report', $by_name );
 		self::assertTrue( $by_name['site_maintenance_report']['annotations']['readOnlyHint'] );
-		self::assertSame( array( 'content_review', 'media_inventory' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
+		self::assertSame( array( 'content_review', 'media_inventory', 'site_readiness' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
 		self::assertSame( 20, $by_name['site_maintenance_report']['inputSchema']['properties']['per_page']['maximum'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
-		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 1, $registry, array( 'content:read' ) );
+		$operations                                       = ( new McpToolAvailability() )->operations_manifest_for_user( 1, $registry, array( 'content:read' ) );
 
 		self::assertFalse( $operations['site_information']['report']['available'] );
 		self::assertSame( 'capability', $operations['site_information']['report']['blocked_by'] );

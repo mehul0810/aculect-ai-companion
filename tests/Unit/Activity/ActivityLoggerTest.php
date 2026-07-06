@@ -209,6 +209,63 @@ final class ActivityLoggerTest extends TestCase {
 		self::assertArrayNotHasKey( 'evidence', $context['metadata'] );
 	}
 
+	public function test_timeline_context_hashes_identifiers_and_excludes_secret_material(): void {
+		$logger  = new ActivityLogger();
+		$context = $this->invokePrivate(
+			$logger,
+			'timeline_context',
+			array(
+				'tool_call_end',
+				array(
+					'status'              => 'error',
+					'method'              => 'tools/call',
+					'tool'                => 'content.update_item',
+					'client_secret'       => 'do-not-store',
+					'authorization'       => 'Bearer do-not-store',
+					'access_token'        => 'do-not-store',
+					'authorization_code'  => 'do-not-store',
+					'refresh_token'       => 'do-not-store',
+					'full_request_body'   => array( 'content' => 'Private body' ),
+					'full_content_body'   => '<p>Private body.</p>',
+					'risk_level'          => 'publish',
+					'duration_ms'         => 42,
+					'target_summary'      => str_repeat( 'Private title ', 30 ),
+					'error_code'          => 'invalid_scope',
+					'blocked_by'          => 'oauth_scope',
+					'confirmation_policy' => 'required_before_write',
+				),
+				array(
+					'provider'    => 'ChatGPT',
+					'client_id'   => 'client-secret-id',
+					'client_name' => 'ChatGPT Connector',
+					'user_id'     => 7,
+				),
+			)
+		);
+
+		self::assertSame( 'tool_call_end', $context['timeline_event'] );
+		self::assertSame( 'chatgpt', $context['provider'] );
+		self::assertSame( 7, $context['user_id'] );
+		self::assertSame( 'error', $context['status'] );
+		self::assertSame( 'content.update_item', $context['tool_name'] );
+		self::assertSame( 'publish', $context['risk_level'] );
+		self::assertSame( 42, $context['duration_ms'] );
+		self::assertSame( 'invalid_scope', $context['error_code'] );
+		self::assertSame( 'oauth_scope', $context['blocked_by'] );
+		self::assertSame( 'required_before_write', $context['confirmation_policy'] );
+		self::assertStringStartsWith( 'sha256:', $context['client_hash'] );
+		self::assertStringStartsWith( 'sha256:', $context['session_hash'] );
+		self::assertNotSame( 'client-secret-id', $context['client_hash'] );
+		self::assertLessThanOrEqual( 160, strlen( $context['target_summary'] ) );
+		self::assertArrayNotHasKey( 'client_secret', $context );
+		self::assertArrayNotHasKey( 'authorization', $context );
+		self::assertArrayNotHasKey( 'access_token', $context );
+		self::assertArrayNotHasKey( 'authorization_code', $context );
+		self::assertArrayNotHasKey( 'refresh_token', $context );
+		self::assertArrayNotHasKey( 'full_request_body', $context );
+		self::assertArrayNotHasKey( 'full_content_body', $context );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

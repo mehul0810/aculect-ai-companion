@@ -15,6 +15,19 @@ final class ActivityLogger {
 	private const OPTION_LAST_PRUNED_AT = 'aculect_ai_companion_activity_last_pruned_at';
 	private const PRUNE_INTERVAL        = 3600;
 	private const DEFAULT_RETENTION     = 90;
+	private const TIMELINE_EVENTS       = array(
+		'initialize',
+		'tools_list',
+		'oauth_consent_approval',
+		'token_exchange',
+		'token_refresh',
+		'tool_call_start',
+		'tool_call_end',
+		'blocked_by',
+		'confirmation_issued',
+		'confirmation_validated',
+		'error',
+	);
 
 	private ActivityRepository $repository;
 
@@ -119,6 +132,40 @@ final class ActivityLogger {
 				'context'     => array(
 					'metadata' => $metadata,
 				),
+			)
+		);
+
+		if ( $inserted ) {
+			$this->maybe_prune();
+		}
+
+		return $inserted;
+	}
+
+	/**
+	 * Record a bounded MCP/OAuth session timeline event.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Support-safe event metadata.
+	 * @param array<string, mixed> $auth     OAuth or connection context.
+	 */
+	public function record_timeline_event( string $event, array $metadata = array(), array $auth = array() ): bool {
+		$event    = $this->timeline_event( $event );
+		$status   = $this->timeline_status( (string) ( $metadata['status'] ?? 'success' ) );
+		$context  = $this->timeline_context( $event, $metadata, $auth );
+		$inserted = $this->repository->insert(
+			array(
+				'provider'    => (string) ( $auth['provider'] ?? $metadata['provider'] ?? 'mcp' ),
+				'client_id'   => $this->hashed_identifier( (string) ( $auth['client_id'] ?? $metadata['client_id'] ?? '' ) ),
+				'client_name' => (string) ( $auth['client_name'] ?? $metadata['client_name'] ?? '' ),
+				'user_id'     => (int) ( $auth['user_id'] ?? $metadata['user_id'] ?? 0 ),
+				'action'      => 'mcp.timeline.' . $event,
+				'target_type' => 'mcp_session',
+				'target_id'   => null,
+				'status'      => in_array( $status, array( 'error', 'blocked' ), true ) ? 'error' : 'success',
+				'error_code'  => (string) ( $context['error_code'] ?? '' ),
+				'message'     => $this->timeline_message( $event, $status ),
+				'context'     => $context,
 			)
 		);
 
@@ -290,6 +337,107 @@ final class ActivityLogger {
 		}
 
 		return $safe;
+	}
+
+	/**
+	 * Normalize timeline event names into the accepted event contract.
+	 *
+	 * @param string $event Timeline event type.
+	 */
+	private function timeline_event( string $event ): string {
+		$event = sanitize_key( str_replace( array( '/', '-' ), '_', strtolower( $event ) ) );
+
+		return in_array( $event, self::TIMELINE_EVENTS, true ) ? $event : 'error';
+	}
+
+	/**
+	 * Normalize timeline status values while preserving blocked detail in context.
+	 *
+	 * @param string $status Timeline event status.
+	 */
+	private function timeline_status( string $status ): string {
+		$status = sanitize_key( strtolower( $status ) );
+
+		return in_array( $status, array( 'success', 'error', 'blocked', 'started', 'issued', 'validated' ), true ) ? $status : 'success';
+	}
+
+	/**
+	 * Build support-safe timeline context without request bodies or OAuth material.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Raw metadata.
+	 * @param array<string, mixed> $auth     OAuth or connection context.
+	 * @return array<string, mixed>
+	 */
+	private function timeline_context( string $event, array $metadata, array $auth ): array {
+		$client_id = (string) ( $auth['client_id'] ?? $metadata['client_id'] ?? '' );
+		$provider  = (string) ( $auth['provider'] ?? $metadata['provider'] ?? 'mcp' );
+		$user_id   = (int) ( $auth['user_id'] ?? $metadata['user_id'] ?? 0 );
+		$tool      = isset( $metadata['tool'] ) && is_scalar( $metadata['tool'] ) ? sanitize_text_field( (string) $metadata['tool'] ) : '';
+		$risk      = isset( $metadata['risk_level'] ) && is_scalar( $metadata['risk_level'] ) ? sanitize_key( (string) $metadata['risk_level'] ) : '';
+
+		$context = array(
+			'timeline_event' => $event,
+			'session_hash'   => $this->hashed_identifier( implode( '|', array( $provider, $client_id, (string) $user_id ) ) ),
+			'provider'       => sanitize_key( $provider ),
+			'client_hash'    => $this->hashed_identifier( $client_id ),
+			'user_id'        => max( 0, $user_id ),
+			'status'         => $this->timeline_status( (string) ( $metadata['status'] ?? 'success' ) ),
+		);
+
+		foreach ( array( 'method', 'grant_type', 'result_class', 'blocked_by', 'confirmation_policy' ) as $key ) {
+			if ( isset( $metadata[ $key ] ) && is_scalar( $metadata[ $key ] ) ) {
+				$context[ $key ] = sanitize_key( (string) $metadata[ $key ] );
+			}
+		}
+
+		if ( '' !== $tool ) {
+			$context['tool_name'] = $tool;
+		}
+
+		if ( '' !== $risk ) {
+			$context['risk_level'] = $risk;
+		}
+
+		if ( isset( $metadata['duration_ms'] ) && is_numeric( $metadata['duration_ms'] ) ) {
+			$context['duration_ms'] = max( 0, (int) $metadata['duration_ms'] );
+		}
+
+		if ( isset( $metadata['target_summary'] ) && is_scalar( $metadata['target_summary'] ) ) {
+			$context['target_summary'] = substr( sanitize_text_field( (string) $metadata['target_summary'] ), 0, 160 );
+		}
+
+		if ( isset( $metadata['error_code'] ) && is_scalar( $metadata['error_code'] ) ) {
+			$context['error_code'] = substr( sanitize_key( (string) $metadata['error_code'] ), 0, 100 );
+		}
+
+		return $context;
+	}
+
+	/**
+	 * Return a deterministic non-reversible grouping identifier.
+	 *
+	 * @param string $identifier Raw identifier.
+	 */
+	private function hashed_identifier( string $identifier ): string {
+		$identifier = trim( $identifier );
+
+		return '' === $identifier ? '' : 'sha256:' . substr( hash( 'sha256', $identifier ), 0, 32 );
+	}
+
+	/**
+	 * Build a compact admin-safe activity message.
+	 *
+	 * @param string $event  Timeline event type.
+	 * @param string $status Timeline event status.
+	 */
+	private function timeline_message( string $event, string $status ): string {
+		return sprintf(
+			/* translators: 1: timeline event, 2: event status. */
+			__( 'MCP session timeline event %1$s recorded with %2$s status.', 'aculect-ai-companion' ),
+			$event,
+			$status
+		);
 	}
 
 	/**

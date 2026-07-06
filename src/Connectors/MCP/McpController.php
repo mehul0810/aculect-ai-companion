@@ -236,11 +236,34 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
-				return $this->rpc_result( $id, $this->initialize_payload() );
+				$started_at = microtime( true );
+				$result     = $this->initialize_payload();
+				$this->record_timeline_event(
+					'initialize',
+					array(
+						'method'      => 'initialize',
+						'status'      => 'success',
+						'duration_ms' => $this->duration_ms( $started_at ),
+					),
+					$auth
+				);
+				return $this->rpc_result( $id, $result );
 
 			case 'tools/list':
-				$cursor = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
-				return $this->rpc_result( $id, $this->list_tools( $cursor ) );
+				$started_at = microtime( true );
+				$cursor     = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
+				$result     = $this->list_tools( $cursor );
+				$this->record_timeline_event(
+					'tools_list',
+					array(
+						'method'         => 'tools/list',
+						'status'         => 'success',
+						'duration_ms'    => $this->duration_ms( $started_at ),
+						'target_summary' => 'tools:' . count( $result['tools'] ),
+					),
+					$auth
+				);
+				return $this->rpc_result( $id, $result );
 
 			case 'resources/list':
 				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
@@ -259,12 +282,26 @@ final class McpController {
 				}
 
 				$args  = (array) ( $body['params']['arguments'] ?? array() );
+				$risk  = ( new ToolSafety() )->risk_level( $tool, $args );
+				$timer = microtime( true );
+				$this->record_timeline_event(
+					'tool_call_start',
+					array(
+						'method'         => 'tools/call',
+						'tool'           => $tool,
+						'status'         => 'started',
+						'risk_level'     => $risk,
+						'target_summary' => $this->timeline_target_summary( $tool, $args ),
+					),
+					$auth
+				);
 				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
 				if ( $is_intelligence_tool && $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) ) ) {
 					$error = 'tool_hidden_by_profile';
 				}
 
 				if ( 'unknown_tool' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'unknown_tool', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -286,6 +323,7 @@ final class McpController {
 				}
 
 				if ( 'tool_disabled' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_disabled', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -307,6 +345,7 @@ final class McpController {
 				}
 
 				if ( 'tool_forbidden_for_role' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_for_role', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -328,6 +367,7 @@ final class McpController {
 				}
 
 				if ( 'tool_hidden_by_profile' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_hidden_by_profile', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -349,6 +389,7 @@ final class McpController {
 				}
 
 				if ( 'tool_forbidden_by_capability' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_by_capability', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -370,6 +411,7 @@ final class McpController {
 				}
 
 				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'access_paused', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -392,6 +434,7 @@ final class McpController {
 
 				$required = $is_intelligence_tool ? $intelligence->required_scopes( $tool ) : $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'insufficient_scope', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -426,7 +469,7 @@ final class McpController {
 					&& null === $replay
 					&& ! $write_permission_unblocked
 					&& $safety->requires_confirmation( $tool, $args )
-					&& ! $safety->validate_confirmation_token( $tool, $args, $auth );
+					&& ! $this->confirmation_token_validated( $tool, $args, $auth, $safety );
 				if ( null !== $replay ) {
 					$result = $replay;
 				} elseif ( $is_dry_run ) {
@@ -477,6 +520,19 @@ final class McpController {
 				}
 
 				$this->record_tool_activity( $tool, $args, $result, $activity_auth );
+				$this->record_timeline_event(
+					isset( $result['error'] ) ? 'error' : 'tool_call_end',
+					array(
+						'method'         => 'tools/call',
+						'tool'           => $tool,
+						'status'         => isset( $result['error'] ) ? 'error' : 'success',
+						'error_code'     => isset( $result['error'] ) && is_scalar( $result['error'] ) ? (string) $result['error'] : '',
+						'duration_ms'    => $this->duration_ms( $timer ),
+						'risk_level'     => $risk,
+						'target_summary' => $this->timeline_target_summary( $tool, $args, $result ),
+					),
+					$activity_auth
+				);
 
 				return $this->rpc_result(
 					$id,
@@ -1412,6 +1468,75 @@ final class McpController {
 	}
 
 	/**
+	 * Record one MCP session timeline event without affecting protocol success.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Support-safe metadata.
+	 * @param array<string, mixed> $auth     OAuth token context.
+	 */
+	private function record_timeline_event( string $event, array $metadata, array $auth ): void {
+		try {
+			( new ActivityLogger() )->record_timeline_event( $event, $metadata, $auth );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
+	}
+
+	/**
+	 * Record a policy or authorization block in the MCP session timeline.
+	 *
+	 * @param string               $tool       Internal ability ID.
+	 * @param array<string, mixed> $args       Tool arguments.
+	 * @param array<string, mixed> $auth       OAuth token context.
+	 * @param string               $blocked_by Block reason.
+	 * @param float                $started_at Request start time.
+	 */
+	private function record_blocked_timeline_event( string $tool, array $args, array $auth, string $blocked_by, float $started_at ): void {
+		$this->record_timeline_event(
+			'blocked_by',
+			array(
+				'method'         => 'tools/call',
+				'tool'           => $tool,
+				'status'         => 'blocked',
+				'blocked_by'     => $blocked_by,
+				'error_code'     => $blocked_by,
+				'duration_ms'    => $this->duration_ms( $started_at ),
+				'risk_level'     => ( new ToolSafety() )->risk_level( $tool, $args ),
+				'target_summary' => $this->timeline_target_summary( $tool, $args ),
+			),
+			$auth
+		);
+	}
+
+	/**
+	 * Validate a confirmation token and emit a support-safe timeline event.
+	 *
+	 * @param string               $tool   Internal ability ID.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $auth   OAuth token context.
+	 * @param ToolSafety           $safety Safety helper.
+	 */
+	private function confirmation_token_validated( string $tool, array $args, array $auth, ToolSafety $safety ): bool {
+		$validated = $safety->validate_confirmation_token( $tool, $args, $auth );
+		if ( $validated ) {
+			$this->record_timeline_event(
+				'confirmation_validated',
+				array(
+					'method'              => 'tools/call',
+					'tool'                => $tool,
+					'status'              => 'validated',
+					'confirmation_policy' => 'token',
+					'risk_level'          => $safety->risk_level( $tool, $args ),
+					'target_summary'      => $this->timeline_target_summary( $tool, $args ),
+				),
+				$auth
+			);
+		}
+
+		return $validated;
+	}
+
+	/**
 	 * Return bounded source metadata for intelligence feedback suggestions.
 	 *
 	 * @param array<string, mixed> $auth OAuth token context.
@@ -1441,6 +1566,18 @@ final class McpController {
 		$result['confirmation_token']        = $safety->issue_confirmation_token( $tool, $args, $auth );
 		$result['confirmation_expires_in']   = $safety->confirmation_ttl();
 		$result['confirmation_instructions'] = 'Repeat the same tool call with confirmation_token before it expires to apply these changes.';
+		$this->record_timeline_event(
+			'confirmation_issued',
+			array(
+				'method'              => 'tools/call',
+				'tool'                => $tool,
+				'status'              => 'issued',
+				'confirmation_policy' => 'dry_run_preview',
+				'risk_level'          => $safety->risk_level( $tool, $args ),
+				'target_summary'      => $this->timeline_target_summary( $tool, $args, $result ),
+			),
+			$auth
+		);
 
 		return $result;
 	}
@@ -1456,6 +1593,19 @@ final class McpController {
 	 * @return array<string,mixed>
 	 */
 	private function confirmation_required_payload( string $tool, array $args, array $auth, array $preview, ToolSafety $safety ): array {
+		$this->record_timeline_event(
+			'confirmation_issued',
+			array(
+				'method'              => 'tools/call',
+				'tool'                => $tool,
+				'status'              => 'issued',
+				'confirmation_policy' => 'required_before_write',
+				'risk_level'          => $safety->risk_level( $tool, $args ),
+				'target_summary'      => $this->timeline_target_summary( $tool, $args, $preview ),
+			),
+			$auth
+		);
+
 		return array(
 			'status'                    => 'confirmation_required',
 			'confirmation_required'     => true,
@@ -1532,6 +1682,35 @@ final class McpController {
 	 */
 	private function is_access_paused( int $user_id = 0 ): bool {
 		return AccessLockdown::is_paused() || UserAccessControl::is_paused( $user_id );
+	}
+
+	/**
+	 * Return elapsed milliseconds from a monotonic-enough request timestamp.
+	 *
+	 * @param float $started_at Request start timestamp.
+	 */
+	private function duration_ms( float $started_at ): int {
+		return max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
+	}
+
+	/**
+	 * Build a bounded target summary from safe identifiers only.
+	 *
+	 * @param string               $tool   Internal ability ID.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $result Optional result payload.
+	 */
+	private function timeline_target_summary( string $tool, array $args, array $result = array() ): string {
+		$parts = array( $tool );
+
+		foreach ( array( 'id', 'post_id', 'term_id', 'suggestion_id', 'type', 'post_type', 'taxonomy', 'status' ) as $key ) {
+			$value = $result[ $key ] ?? $args[ $key ] ?? null;
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				$parts[] = $key . ':' . ( is_numeric( $value ) ? (string) absint( $value ) : sanitize_key( (string) $value ) );
+			}
+		}
+
+		return substr( implode( ' ', array_filter( $parts ) ), 0, 160 );
 	}
 
 	/**

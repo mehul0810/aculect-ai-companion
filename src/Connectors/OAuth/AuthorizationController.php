@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\UserEntity;
@@ -201,6 +202,16 @@ final class AuthorizationController {
 		$state        = sanitize_text_field( (string) ( $params['state'] ?? '' ) );
 
 		if ( 'approve' !== $decision ) {
+			$this->record_timeline_event(
+				'oauth_consent_approval',
+				array(
+					'status'     => 'blocked',
+					'blocked_by' => 'access_denied',
+					'error_code' => 'access_denied',
+					'method'     => 'oauth/authorize',
+				),
+				$this->timeline_auth_context( $params, $client )
+			);
 			( new Logger() )->info(
 				'consent.denied',
 				'OAuth consent request was denied.',
@@ -259,10 +270,28 @@ final class AuthorizationController {
 				null,
 				302
 			);
+			$this->record_timeline_event(
+				'oauth_consent_approval',
+				array(
+					'status'         => 'success',
+					'method'         => 'oauth/authorize',
+					'target_summary' => 'scope:' . str_replace( ' ', ',', $this->scope_from_params( $params ) ),
+				),
+				$this->timeline_auth_context( $params, $client )
+			);
 			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
 			wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
 			exit;
 		} catch ( OAuthServerException $exception ) {
+			$this->record_timeline_event(
+				'error',
+				array(
+					'status'     => 'error',
+					'method'     => 'oauth/authorize',
+					'error_code' => $exception->getErrorType(),
+				),
+				$this->timeline_auth_context( $params, $client )
+			);
 			( new Logger() )->warning(
 				'consent.oauth_error',
 				'OAuth server rejected the consent approval.',
@@ -280,6 +309,15 @@ final class AuthorizationController {
 			);
 		} catch ( Exception $exception ) {
 			unset( $exception );
+			$this->record_timeline_event(
+				'error',
+				array(
+					'status'     => 'error',
+					'method'     => 'oauth/authorize',
+					'error_code' => 'server_error',
+				),
+				$this->timeline_auth_context( $params, $client )
+			);
 			( new Logger() )->error(
 				'consent.failed',
 				'OAuth consent approval failed.',
@@ -883,5 +921,38 @@ final class AuthorizationController {
 		}
 
 		return $context;
+	}
+
+	/**
+	 * Build timeline grouping context for OAuth authorization events.
+	 *
+	 * @param array<string, string> $params Authorization parameters.
+	 * @param ClientEntity          $client Registered OAuth client.
+	 * @return array<string, mixed>
+	 */
+	private function timeline_auth_context( array $params, ClientEntity $client ): array {
+		unset( $params );
+
+		return array(
+			'provider'    => $client->getProvider(),
+			'client_id'   => $client->getIdentifier(),
+			'client_name' => $client->getName(),
+			'user_id'     => get_current_user_id(),
+		);
+	}
+
+	/**
+	 * Record an OAuth timeline event without making consent completion depend on logging.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Support-safe metadata.
+	 * @param array<string, mixed> $auth     OAuth client context.
+	 */
+	private function record_timeline_event( string $event, array $metadata, array $auth ): void {
+		try {
+			( new ActivityLogger() )->record_timeline_event( $event, $metadata, $auth );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
 	}
 }

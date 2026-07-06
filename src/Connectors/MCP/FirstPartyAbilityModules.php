@@ -1125,6 +1125,26 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new SiteAbilities() )->list_plugins()
 			),
 			$this->module(
+				'plugin_lifecycle.list_plugins',
+				'List Plugin Lifecycle Status',
+				'List installed WordPress plugins with lifecycle-oriented status, active/network-active state, cached update availability, recovery pause state, multisite context, and capability blockers. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->list_plugins( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.get_plugin',
+				'Get Plugin Lifecycle Status',
+				'Read one installed WordPress plugin lifecycle status record with safe update and recovery metadata. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
+			),
+			$this->module(
 				'site.list_themes',
 				'List Themes',
 				'List installed WordPress themes and active state for users who can manage themes.',
@@ -1434,6 +1454,51 @@ final class FirstPartyAbilityModules {
 					'description' => 'Maximum findings to return. Defaults to 10 and caps at 20.',
 				),
 			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'network_active', 'update_available', 'paused' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum plugins to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
 		);
 	}
 

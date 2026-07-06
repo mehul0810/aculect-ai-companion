@@ -456,6 +456,33 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'site_workflow.audit', $modules );
 	}
 
+	public function test_plugin_lifecycle_operations_report_availability_and_capability_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'plugin_lifecycle.list_plugins', 'plugin_lifecycle.get_plugin' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertTrue( $operations['plugin_lifecycle']['list_plugins']['available'] );
+		self::assertSame( 'plugin_lifecycle_list_plugins', $operations['plugin_lifecycle']['list_plugins']['tool'] );
+		self::assertSame( array( 'content:read' ), $operations['plugin_lifecycle']['list_plugins']['required_scopes'] );
+		self::assertTrue( $operations['plugin_lifecycle']['list_plugins']['read_only'] );
+		self::assertContains( 'plugin_lifecycle_list_plugins', $tool_names );
+		self::assertTrue( $operations['plugin_lifecycle']['get_plugin']['available'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'activate_plugins' );
+
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+
+		self::assertFalse( $blocked['plugin_lifecycle']['list_plugins']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['list_plugins']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['get_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['get_plugin']['blocked_by'] );
+	}
+
 	public function test_wordpress_ability_diagnostics_report_capability_blocks(): void {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
@@ -692,7 +719,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'site_information', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'plugin_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

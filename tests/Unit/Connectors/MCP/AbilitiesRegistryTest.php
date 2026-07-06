@@ -115,6 +115,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
+		self::assertContains( 'Plugin Lifecycle', $groups );
 		self::assertContains( 'User Access', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
@@ -221,6 +222,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.get_health',
 				'site.maintenance_report',
 				'site.list_plugins',
+				'plugin_lifecycle.list_plugins',
+				'plugin_lifecycle.get_plugin',
 				'site.list_themes',
 			) as $ability_id
 		) {
@@ -299,6 +302,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );

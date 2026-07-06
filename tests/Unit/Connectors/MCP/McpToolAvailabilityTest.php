@@ -462,9 +462,10 @@ final class McpToolAvailabilityTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
 
 		$registry = new AbilitiesRegistry();
-		$registry->save_enabled_ids( array( 'plugin_lifecycle.list_plugins', 'plugin_lifecycle.get_plugin' ) );
+		$registry->save_enabled_ids( array( 'plugin_lifecycle.list_plugins', 'plugin_lifecycle.get_plugin', 'plugin_lifecycle.activate_plugin', 'plugin_lifecycle.deactivate_plugin' ) );
 
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$write_ops  = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
 		$tools      = ( new McpController() )->tool_manifest_for_current_user();
 		$tool_names = array_column( $tools['tools'], 'name' );
 
@@ -474,15 +475,23 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['plugin_lifecycle']['list_plugins']['read_only'] );
 		self::assertContains( 'plugin_lifecycle_list_plugins', $tool_names );
 		self::assertTrue( $operations['plugin_lifecycle']['get_plugin']['available'] );
+		self::assertTrue( $write_ops['plugin_lifecycle']['activate_plugin']['available'] );
+		self::assertSame( array( 'content:draft' ), $write_ops['plugin_lifecycle']['activate_plugin']['required_scopes'] );
+		self::assertFalse( $write_ops['plugin_lifecycle']['activate_plugin']['read_only'] );
+		self::assertTrue( $write_ops['plugin_lifecycle']['deactivate_plugin']['available'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'activate_plugins' );
 
-		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
 
 		self::assertFalse( $blocked['plugin_lifecycle']['list_plugins']['available'] );
 		self::assertSame( 'capability', $blocked['plugin_lifecycle']['list_plugins']['blocked_by'] );
 		self::assertFalse( $blocked['plugin_lifecycle']['get_plugin']['available'] );
 		self::assertSame( 'capability', $blocked['plugin_lifecycle']['get_plugin']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['activate_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['activate_plugin']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['deactivate_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['deactivate_plugin']['blocked_by'] );
 	}
 
 	public function test_theme_lifecycle_operations_report_availability_and_capability_blocks(): void {

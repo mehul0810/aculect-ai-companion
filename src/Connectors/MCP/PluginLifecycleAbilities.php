@@ -97,6 +97,26 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Activate one already-installed plugin on the current site.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function activate_plugin( array $args ): array {
+		return $this->change_plugin_activation( $args, 'activate' );
+	}
+
+	/**
+	 * Deactivate one already-installed plugin on the current site.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function deactivate_plugin( array $args ): array {
+		return $this->change_plugin_activation( $args, 'deactivate' );
+	}
+
+	/**
 	 * Build deterministic installed plugin inventory records.
 	 *
 	 * @return list<array<string, mixed>>
@@ -141,6 +161,89 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		);
 
 		return $items;
+	}
+
+	/**
+	 * Activate or deactivate one installed plugin using WordPress core APIs.
+	 *
+	 * @param array<string, mixed> $args      Tool arguments.
+	 * @param string               $operation Supported operation: activate or deactivate.
+	 * @return array<string, mixed>
+	 */
+	private function change_plugin_activation( array $args, string $operation ): array {
+		$this->load_plugin_functions();
+
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to manage plugin activation on this site.' );
+		}
+
+		$plugin_file = $this->requested_plugin_file( $args['plugin'] ?? '' );
+		if ( is_array( $plugin_file ) ) {
+			return $plugin_file;
+		}
+
+		$plugins = get_plugins();
+		if ( ! array_key_exists( $plugin_file, $plugins ) ) {
+			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
+		}
+
+		$current = $this->plugin_inventory_item( $plugin_file );
+		if ( null === $current ) {
+			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
+		}
+
+		if ( 'activate' === $operation && true === $current['active'] ) {
+			return $this->activation_noop_result( $current, 'already_active', 'Plugin is already active on this site.' );
+		}
+
+		if ( 'deactivate' === $operation && false === $current['site_active'] ) {
+			if ( true === $current['network_active'] ) {
+				return $this->error( 'network_active_plugin', 'Plugin is network active and cannot be deactivated from a site-scoped tool call.' );
+			}
+
+			return $this->activation_noop_result( $current, 'already_inactive', 'Plugin is already inactive on this site.' );
+		}
+
+		if ( $this->is_dry_run( $args ) ) {
+			return $this->preview_response(
+				'plugin_lifecycle.' . $operation . '_plugin',
+				$args,
+				$this->plugin_target_summary( $current ),
+				$this->plugin_activation_changes( $current, $operation ),
+				$this->plugin_activation_warnings( $operation )
+			);
+		}
+
+		if ( 'activate' === $operation ) {
+			$result = activate_plugin( $plugin_file, '', false, false );
+			if ( is_wp_error( $result ) ) {
+				return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+			}
+		} else {
+			deactivate_plugins( array( $plugin_file ), false, false );
+		}
+
+		$updated = $this->plugin_inventory_item( $plugin_file );
+		if ( null === $updated ) {
+			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
+		}
+
+		return array(
+			'status'                => 'activate' === $operation ? 'activated' : 'deactivated',
+			'operation'             => $operation,
+			'plugin'                => $updated,
+			'changed'               => true,
+			'context'               => $this->site_context(),
+			'capabilities'          => $this->lifecycle_capabilities(),
+			'capability_blockers'   => $this->capability_blockers(),
+			'rollback'              => array(
+				'operation' => 'activate' === $operation ? 'deactivate_plugin' : 'activate_plugin',
+				'plugin'    => $plugin_file,
+				'note'      => 'Repeat this workflow with a dry run and confirmation token before reversing the activation state.',
+			),
+			'safety'                => $this->write_safety_metadata( $operation ),
+			'confirmation_required' => false,
+		);
 	}
 
 	/**
@@ -317,6 +420,126 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			'raw_update_payloads_included' => false,
 			'secret_values_included'       => false,
 			'filesystem_paths_included'    => false,
+		);
+	}
+
+	/**
+	 * Return write-slice safety metadata for activation changes.
+	 *
+	 * @param string $operation Current write operation.
+	 * @return array<string, mixed>
+	 */
+	private function write_safety_metadata( string $operation ): array {
+		return array(
+			'read_only'                      => false,
+			'install_implemented'            => false,
+			'update_implemented'             => false,
+			'activate_implemented'           => true,
+			'deactivate_implemented'         => true,
+			'operation'                      => $operation,
+			'site_scope_only'                => true,
+			'network_scope_supported'        => false,
+			'filesystem_credentials_used'    => false,
+			'filesystem_writes'              => false,
+			'option_writes'                  => false,
+			'raw_plugin_code_included'       => false,
+			'raw_update_payloads_included'   => false,
+			'secret_values_included'         => false,
+			'filesystem_paths_included'      => false,
+			'rollback_requires_confirmation' => true,
+		);
+	}
+
+	/**
+	 * Return one inventory item for the requested plugin basename.
+	 *
+	 * @param string $plugin_file Plugin basename.
+	 * @return array<string, mixed>|null
+	 */
+	private function plugin_inventory_item( string $plugin_file ): ?array {
+		foreach ( $this->plugin_inventory() as $item ) {
+			if ( $plugin_file === $item['plugin'] ) {
+				return $item;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Build a target summary for activation previews.
+	 *
+	 * @param array<string, mixed> $plugin Current plugin item.
+	 * @return array<string, mixed>
+	 */
+	private function plugin_target_summary( array $plugin ): array {
+		return array(
+			'type'   => 'plugin',
+			'id'     => (string) $plugin['plugin'],
+			'name'   => (string) $plugin['name'],
+			'status' => (string) $plugin['status'],
+		);
+	}
+
+	/**
+	 * Build field-level changes for plugin activation previews.
+	 *
+	 * @param array<string, mixed> $plugin    Current plugin item.
+	 * @param string               $operation Current write operation.
+	 * @return array<int, array<string, mixed>|null>
+	 */
+	private function plugin_activation_changes( array $plugin, string $operation ): array {
+		$activate = 'activate' === $operation;
+
+		return array(
+			$this->change( 'status', $plugin['status'] ?? '', $activate ? 'active' : 'inactive' ),
+			$this->change( 'active', $plugin['active'] ?? false, $activate ),
+			$this->change( 'site_active', $plugin['site_active'] ?? false, $activate ),
+		);
+	}
+
+	/**
+	 * Build bounded activation warnings for preview and confirmation.
+	 *
+	 * @param string $operation Current write operation.
+	 * @return string[]
+	 */
+	private function plugin_activation_warnings( string $operation ): array {
+		if ( 'activate' === $operation ) {
+			return array(
+				'Activation can change site behavior immediately and should be confirmed before execution.',
+				'Rollback is available by deactivating the same plugin through the matching plugin lifecycle tool.',
+				'This first beta slice changes the current site only; network activation remains out of scope.',
+			);
+		}
+
+		return array(
+			'Deactivation can remove frontend or admin functionality immediately and should be confirmed before execution.',
+			'Rollback is available by activating the same plugin through the matching plugin lifecycle tool.',
+			'This first beta slice changes the current site only; network deactivation remains out of scope.',
+		);
+	}
+
+	/**
+	 * Build a deterministic no-op result for activation state requests.
+	 *
+	 * @param array<string, mixed> $plugin  Current plugin item.
+	 * @param string               $status  Result status.
+	 * @param string               $message User-facing message.
+	 * @return array<string, mixed>
+	 */
+	private function activation_noop_result( array $plugin, string $status, string $message ): array {
+		$operation = 'already_active' === $status ? 'activate' : 'deactivate';
+
+		return array(
+			'status'              => $status,
+			'changed'             => false,
+			'message'             => $message,
+			'plugin'              => $plugin,
+			'context'             => $this->site_context(),
+			'capabilities'        => $this->lifecycle_capabilities(),
+			'capability_blockers' => $this->capability_blockers(),
+			'safety'              => $this->write_safety_metadata( $operation ),
 		);
 	}
 

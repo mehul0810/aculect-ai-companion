@@ -78,3 +78,57 @@ if ( ! function_exists( 'is_network_admin' ) ) {
 		return (bool) ( $GLOBALS['aculect_ai_companion_test_network_admin'] ?? false );
 	}
 }
+
+if ( ! function_exists( 'activate_plugin' ) ) {
+	/**
+	 * Activate one installed test plugin on the current site.
+	 *
+	 * @param string $plugin Plugin basename.
+	 * @return mixed
+	 */
+	function activate_plugin( string $plugin ): mixed {
+		$errors = $GLOBALS['aculect_ai_companion_test_activate_plugin_errors'] ?? array();
+		if ( isset( $errors[ $plugin ] ) && $errors[ $plugin ] instanceof \WP_Error ) {
+			return $errors[ $plugin ];
+		}
+
+		$active = $GLOBALS['aculect_ai_companion_test_active_plugins'] ?? array();
+		if ( ! is_array( $active ) ) {
+			$active = array();
+		}
+
+		if ( ! in_array( $plugin, $active, true ) ) {
+			$active[] = $plugin;
+		}
+
+		$GLOBALS['aculect_ai_companion_test_active_plugins'] = array_values( $active );
+		$GLOBALS['aculect_ai_companion_test_options']['active_plugins'] = array_values( $active );
+		$GLOBALS['aculect_ai_companion_test_last_plugin_activation'] = $plugin;
+
+		return null;
+	}
+}
+
+if ( ! function_exists( 'deactivate_plugins' ) ) {
+	/**
+	 * Deactivate one or more installed test plugins on the current site.
+	 *
+	 * @param string|array<int, string> $plugins Plugin basename or basenames.
+	 */
+	function deactivate_plugins( string|array $plugins ): void {
+		$targets = is_array( $plugins ) ? array_values( $plugins ) : array( $plugins );
+		$active  = $GLOBALS['aculect_ai_companion_test_active_plugins'] ?? array();
+		if ( ! is_array( $active ) ) {
+			$active = array();
+		}
+
+		$GLOBALS['aculect_ai_companion_test_active_plugins'] = array_values(
+			array_filter(
+				$active,
+				static fn ( mixed $plugin ): bool => ! in_array( (string) $plugin, $targets, true )
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_options']['active_plugins'] = $GLOBALS['aculect_ai_companion_test_active_plugins'];
+		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = $targets;
+	}
+}

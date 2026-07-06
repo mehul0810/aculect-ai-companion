@@ -232,8 +232,10 @@ final class McpToolAvailability {
 			),
 			'plugin_lifecycle'   => $this->operation_group(
 				array(
-					'list_plugins' => 'plugin_lifecycle.list_plugins',
-					'get_plugin'   => 'plugin_lifecycle.get_plugin',
+					'list_plugins'      => 'plugin_lifecycle.list_plugins',
+					'get_plugin'        => 'plugin_lifecycle.get_plugin',
+					'activate_plugin'   => 'plugin_lifecycle.activate_plugin',
+					'deactivate_plugin' => 'plugin_lifecycle.deactivate_plugin',
 				),
 				$policy,
 				$registry,
@@ -645,7 +647,9 @@ final class McpToolAvailability {
 			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
 			'plugin_lifecycle.list_plugins',
-			'plugin_lifecycle.get_plugin' => array( 'activate_plugins' ),
+			'plugin_lifecycle.get_plugin',
+			'plugin_lifecycle.activate_plugin',
+			'plugin_lifecycle.deactivate_plugin' => array( 'activate_plugins' ),
 			'theme_lifecycle.list_themes',
 			'theme_lifecycle.get_theme',
 			'site.list_themes' => array( 'switch_themes' ),

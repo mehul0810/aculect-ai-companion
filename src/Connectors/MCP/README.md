@@ -125,6 +125,12 @@ site health summaries, and plugin/theme inventory. New user-managed ability grou
 should stay deterministic, paginated where applicable, and capability-checked at
 execution time.
 
+`plugin_lifecycle.list_plugins` and `plugin_lifecycle.get_plugin` provide
+read-only installed-plugin lifecycle status: active/network-active state, cached
+update availability, recovery pause state, multisite context, and capability
+blockers. They must not install, update, activate, deactivate, delete,
+uninstall, edit, execute, or expose raw plugin code.
+
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`

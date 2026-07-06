@@ -36,6 +36,7 @@ final class McpToolProfiles {
 				'description'       => 'Read-only discovery, diagnostics, retrieval, and audit workflows. No write-capable tools are visible.',
 				'included_groups'   => array(
 					'Site Information',
+					'Plugin Lifecycle',
 					'Content',
 					'Content Groups',
 					'Media',
@@ -99,6 +100,7 @@ final class McpToolProfiles {
 				'included_groups'   => array(
 					'Site Information',
 					'Site Workflows',
+					'Plugin Lifecycle',
 					'Site Editor Intelligence',
 					'Site Structure Discovery',
 					'Admin Menu Intelligence',

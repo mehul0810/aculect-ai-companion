@@ -15,6 +15,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	private const MAX_LONG_FORM_WORDS          = 5000;
 	private const DEFAULT_LONG_FORM_WORDS      = 3500;
 	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
+	private const BLOCK_COMMENT_PATTERN        = '/<!--\s+(\/?)wp:([A-Za-z0-9_\/.-]+)(?:\s+({.*?}))?\s*(\/?)-->/s';
 
 	private const SEMANTIC_BLOCKS = array(
 		'core/heading',
@@ -485,22 +486,17 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 			return array();
 		}
 
-		$matched = preg_match_all( '/<!--\s+wp:heading(?:\s+\{.*?\})?\s+-->.*?<!--\s+\/wp:heading\s+-->/is', $content, $matches, PREG_OFFSET_CAPTURE );
-		if ( false === $matched || 0 === $matched ) {
+		$blocks = $this->top_level_block_sections( $content );
+		if ( array() === $blocks ) {
 			return array();
 		}
 
 		$sections = array();
-		$count    = count( $matches[0] );
+		$count    = count( $blocks );
 		for ( $index = 0; $index < $count; ++$index ) {
-			$heading = (string) $matches[0][ $index ][0];
-			$start   = (int) $matches[0][ $index ][1];
-			$end     = $index + 1 < $count ? (int) $matches[0][ $index + 1 ][1] : strlen( $content );
-			$id      = $this->section_id_from_heading_block( $heading );
-
-			if ( '' === $id ) {
-				continue;
-			}
+			$start = (int) $blocks[ $index ]['start'];
+			$end   = $index + 1 < $count ? (int) $blocks[ $index + 1 ]['start'] : strlen( $content );
+			$id    = (string) $blocks[ $index ]['id'];
 
 			$sections[] = array(
 				'id'      => $id,
@@ -510,6 +506,65 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		}
 
 		return $sections;
+	}
+
+	/**
+	 * Find section-bearing top-level block boundaries without splitting nested containers.
+	 *
+	 * @param string $content Existing serialized block content.
+	 * @return list<array{id: string, start: int}>
+	 */
+	private function top_level_block_sections( string $content ): array {
+		$matches = array();
+		$matched = preg_match_all( self::BLOCK_COMMENT_PATTERN, $content, $matches, PREG_OFFSET_CAPTURE );
+		if ( false === $matched || 0 === $matched ) {
+			return array();
+		}
+
+		$sections        = array();
+		$stack           = array();
+		$token_count     = count( $matches[0] );
+		$top_level_start = null;
+
+		for ( $index = 0; $index < $token_count; ++$index ) {
+			$token         = (string) $matches[0][ $index ][0];
+			$position      = (int) $matches[0][ $index ][1];
+			$is_closer     = '/' === (string) ( $matches[1][ $index ][0] ?? '' );
+			$name_fragment = (string) ( $matches[2][ $index ][0] ?? '' );
+			$name          = str_contains( $name_fragment, '/' ) ? $name_fragment : 'core/' . $name_fragment;
+			$self_closed   = ! $is_closer && str_ends_with( rtrim( $token ), '/-->' );
+
+			if ( ! $is_closer ) {
+				if ( array() === $stack ) {
+					$top_level_start = $position;
+				}
+
+				if ( 'core/heading' === $name && null !== $top_level_start ) {
+					$id = $this->section_id_from_heading_block( $token );
+					if ( '' !== $id && ! isset( $sections[ $top_level_start ] ) ) {
+						$sections[ $top_level_start ] = array(
+							'id'    => $id,
+							'start' => $top_level_start,
+						);
+					}
+				}
+
+				if ( ! $self_closed ) {
+					$stack[] = $name;
+				}
+			} else {
+				$last = array_pop( $stack );
+				if ( $last !== $name ) {
+					$stack = array();
+				}
+			}
+
+			if ( array() === $stack ) {
+				$top_level_start = null;
+			}
+		}
+
+		return array_values( $sections );
 	}
 
 	/**

@@ -35,6 +35,9 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_active_plugins']         = array( 'acme/acme.php' );
 		$GLOBALS['aculect_ai_companion_test_network_active_plugins'] = array( 'network-tool/network-tool.php' );
 		$GLOBALS['aculect_ai_companion_test_paused_plugins']         = array( 'paused-plugin/paused-plugin.php' );
+		$GLOBALS['aculect_ai_companion_test_activate_plugin_errors'] = array();
+		$GLOBALS['aculect_ai_companion_test_last_plugin_activation'] = '';
+		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = array();
 		$GLOBALS['aculect_ai_companion_test_options']                = array(
 			'active_plugins' => array( 'acme/acme.php' ),
 		);
@@ -87,6 +90,9 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_network_admin']          = false;
 		$GLOBALS['aculect_ai_companion_test_recovery_mode']          = false;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']            = array();
+		$GLOBALS['aculect_ai_companion_test_activate_plugin_errors'] = array();
+		$GLOBALS['aculect_ai_companion_test_last_plugin_activation'] = '';
+		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = array();
 
 		parent::tearDown();
 	}
@@ -184,5 +190,55 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertSame( 'install_plugins', $result['capability_blockers']['install']['capability'] );
 		self::assertSame( 'update_plugins', $result['capability_blockers']['update']['capability'] );
 		self::assertSame( 'manage_network_plugins', $result['capability_blockers']['network_activate']['capability'] );
+	}
+
+	public function test_activate_plugin_returns_preview_for_dry_run(): void {
+		$result = $this->abilities->activate_plugin(
+			array(
+				'plugin'  => 'paused-plugin/paused-plugin.php',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertTrue( $result['dry_run'] );
+		self::assertSame( 'preview', $result['status'] );
+		self::assertSame( 'plugin_lifecycle.activate_plugin', $result['action'] );
+		self::assertTrue( $result['confirmation_required'] );
+		self::assertSame( 'Paused Plugin', $result['target']['name'] );
+	}
+
+	public function test_activate_plugin_activates_installed_plugin(): void {
+		$result = $this->abilities->activate_plugin( array( 'plugin' => 'paused-plugin/paused-plugin.php' ) );
+
+		self::assertSame( 'activated', $result['status'] );
+		self::assertTrue( $result['changed'] );
+		self::assertTrue( $result['plugin']['active'] );
+		self::assertTrue( in_array( 'paused-plugin/paused-plugin.php', $GLOBALS['aculect_ai_companion_test_active_plugins'], true ) );
+		self::assertSame( 'paused-plugin/paused-plugin.php', $GLOBALS['aculect_ai_companion_test_last_plugin_activation'] );
+		self::assertFalse( $result['safety']['read_only'] );
+	}
+
+	public function test_activate_plugin_rejects_invalid_or_missing_plugins(): void {
+		$invalid = $this->abilities->activate_plugin( array( 'plugin' => '../wp-config.php' ) );
+		$missing = $this->abilities->activate_plugin( array( 'plugin' => 'missing/missing.php' ) );
+
+		self::assertSame( 'invalid_plugin', $invalid['error'] );
+		self::assertSame( 'plugin_not_found', $missing['error'] );
+	}
+
+	public function test_deactivate_plugin_deactivates_site_active_plugin(): void {
+		$result = $this->abilities->deactivate_plugin( array( 'plugin' => 'acme/acme.php' ) );
+
+		self::assertSame( 'deactivated', $result['status'] );
+		self::assertTrue( $result['changed'] );
+		self::assertFalse( $result['plugin']['site_active'] );
+		self::assertFalse( in_array( 'acme/acme.php', $GLOBALS['aculect_ai_companion_test_active_plugins'], true ) );
+		self::assertSame( array( 'acme/acme.php' ), $GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] );
+	}
+
+	public function test_deactivate_plugin_blocks_network_active_plugins_from_site_scope(): void {
+		$result = $this->abilities->deactivate_plugin( array( 'plugin' => 'network-tool/network-tool.php' ) );
+
+		self::assertSame( 'network_active_plugin', $result['error'] );
 	}
 }

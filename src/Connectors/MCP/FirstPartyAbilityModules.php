@@ -1185,6 +1185,26 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
 			),
 			$this->module(
+				'plugin_lifecycle.activate_plugin',
+				'Activate an Installed Plugin',
+				'Activate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not install plugins, update plugins, delete plugins, or perform network-wide activation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->activate_plugin( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.deactivate_plugin',
+				'Deactivate an Installed Plugin',
+				'Deactivate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not delete plugins or perform network-wide deactivation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->deactivate_plugin( $args )
+			),
+			$this->module(
 				'theme_lifecycle.list_themes',
 				'List Theme Lifecycle Status',
 				'List installed WordPress themes with active state, parent and child relationships, cached update availability, block or classic or hybrid signals, multisite context, and capability blockers. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
@@ -1551,6 +1571,23 @@ final class FirstPartyAbilityModules {
 	 * @return array<string, mixed>
 	 */
 	private function plugin_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle mutation schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_mutation_schema(): array {
 		return $this->object_schema(
 			array(
 				'plugin' => array(

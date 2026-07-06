@@ -230,6 +230,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.list_plugins',
 				'plugin_lifecycle.list_plugins',
 				'plugin_lifecycle.get_plugin',
+				'plugin_lifecycle.activate_plugin',
+				'plugin_lifecycle.deactivate_plugin',
 				'theme_lifecycle.list_themes',
 				'theme_lifecycle.get_theme',
 				'site.list_themes',
@@ -315,6 +317,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.activate_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_deactivate_plugin' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );

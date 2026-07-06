@@ -77,6 +77,11 @@ $GLOBALS['aculect_ai_companion_test_patterns']    = array();
 $GLOBALS['aculect_ai_companion_test_block_templates'] = array();
 $GLOBALS['aculect_ai_companion_test_global_settings'] = array();
 $GLOBALS['aculect_ai_companion_test_global_styles'] = array();
+$GLOBALS['aculect_ai_companion_test_theme_supports'] = array();
+$GLOBALS['aculect_ai_companion_test_registered_nav_menus'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menu_locations'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menus'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menu_items'] = array();
 $GLOBALS['aculect_ai_companion_test_registered_settings'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
@@ -157,6 +162,26 @@ if ( ! function_exists( 'get_template' ) ) {
 	 */
 	function get_template(): string {
 		return (string) ( $GLOBALS['aculect_ai_companion_test_template'] ?? get_stylesheet() );
+	}
+}
+
+if ( ! function_exists( 'current_theme_supports' ) ) {
+	/**
+	 * Return whether the active test theme supports a feature.
+	 *
+	 * @param string $feature Theme feature.
+	 */
+	function current_theme_supports( string $feature ): bool {
+		$supports = $GLOBALS['aculect_ai_companion_test_theme_supports'] ?? array();
+		if ( array_key_exists( $feature, is_array( $supports ) ? $supports : array() ) ) {
+			return (bool) $supports[ $feature ];
+		}
+
+		if ( 'menus' === $feature ) {
+			return array() !== ( $GLOBALS['aculect_ai_companion_test_registered_nav_menus'] ?? array() );
+		}
+
+		return false;
 	}
 }
 
@@ -457,6 +482,112 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 		usort( $terms, static fn( WP_Term $a, WP_Term $b ): int => $a->term_id <=> $b->term_id );
 
 		return $terms;
+	}
+}
+
+if ( ! function_exists( 'get_registered_nav_menus' ) ) {
+	/**
+	 * Return registered classic navigation menu locations for tests.
+	 *
+	 * @return array<string, string>
+	 */
+	function get_registered_nav_menus(): array {
+		return array_map( 'strval', (array) ( $GLOBALS['aculect_ai_companion_test_registered_nav_menus'] ?? array() ) );
+	}
+}
+
+if ( ! function_exists( 'get_nav_menu_locations' ) ) {
+	/**
+	 * Return classic navigation menu assignments for tests.
+	 *
+	 * @return array<string, int>
+	 */
+	function get_nav_menu_locations(): array {
+		return array_map( 'absint', (array) ( $GLOBALS['aculect_ai_companion_test_nav_menu_locations'] ?? array() ) );
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menus' ) ) {
+	/**
+	 * Return test classic nav menus.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return list<WP_Term>
+	 */
+	function wp_get_nav_menus( array $args = array() ): array {
+		unset( $args );
+
+		$menus = array();
+		foreach ( (array) ( $GLOBALS['aculect_ai_companion_test_nav_menus'] ?? array() ) as $menu ) {
+			$menu = $menu instanceof WP_Term ? $menu : new WP_Term( is_array( $menu ) ? $menu : array() );
+			if ( 'nav_menu' === $menu->taxonomy || '' === $menu->taxonomy ) {
+				if ( '' === $menu->taxonomy ) {
+					$menu->taxonomy = 'nav_menu';
+				}
+				$menus[] = $menu;
+			}
+		}
+
+		usort( $menus, static fn ( WP_Term $a, WP_Term $b ): int => strcmp( $a->name, $b->name ) );
+
+		return $menus;
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menu_object' ) ) {
+	/**
+	 * Resolve a test classic nav menu by ID, slug, or name.
+	 *
+	 * @param WP_Term|int|string $menu Menu identifier.
+	 */
+	function wp_get_nav_menu_object( WP_Term|int|string $menu ): ?WP_Term {
+		if ( $menu instanceof WP_Term ) {
+			return $menu;
+		}
+
+		$menu_id = is_numeric( $menu ) ? absint( $menu ) : 0;
+		$key     = sanitize_key( (string) $menu );
+		$name    = sanitize_text_field( (string) $menu );
+
+		foreach ( wp_get_nav_menus() as $term ) {
+			if ( ( $menu_id > 0 && $menu_id === $term->term_id ) || $key === $term->slug || $name === $term->name ) {
+				return $term;
+			}
+		}
+
+		return null;
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menu_items' ) ) {
+	/**
+	 * Return test classic nav menu items.
+	 *
+	 * @param WP_Term|int|string    $menu Menu identifier.
+	 * @param array<string, mixed> $args Query args.
+	 * @return list<object|array<string, mixed>>
+	 */
+	function wp_get_nav_menu_items( WP_Term|int|string $menu, array $args = array() ): array {
+		unset( $args );
+
+		$term = wp_get_nav_menu_object( $menu );
+		if ( ! $term instanceof WP_Term ) {
+			return array();
+		}
+
+		$items = $GLOBALS['aculect_ai_companion_test_nav_menu_items'][ $term->term_id ] ?? array();
+		$items = is_array( $items ) ? array_values( $items ) : array();
+
+		usort(
+			$items,
+			static function ( mixed $a, mixed $b ): int {
+				$a_order = is_object( $a ) ? (int) ( $a->menu_order ?? 0 ) : (int) ( $a['menu_order'] ?? 0 );
+				$b_order = is_object( $b ) ? (int) ( $b->menu_order ?? 0 ) : (int) ( $b['menu_order'] ?? 0 );
+				return $a_order <=> $b_order;
+			}
+		);
+
+		return $items;
 	}
 }
 

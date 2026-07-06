@@ -18,13 +18,20 @@ use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__, 3 ) . '/fixtures/site-workflow-stubs.php';
 
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Files.OneObjectStructurePerFile.MultipleFound -- Focused maintenance-report tests replace wpdb with a local aggregate-only test double.
+
 /**
  * Verifies read-only maintenance reports stay bounded and support-safe.
  */
 final class SiteMaintenanceReportsTest extends TestCase {
 
+	private mixed $original_wpdb = null;
+
 	protected function setUp(): void {
 		parent::setUp();
+
+		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
+		unset( $GLOBALS['wpdb'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
 		$GLOBALS['aculect_ai_companion_test_denied_post_ids']     = array();
@@ -105,6 +112,16 @@ final class SiteMaintenanceReportsTest extends TestCase {
 				'file'     => '2026/07/inline-image.png',
 			),
 		);
+	}
+
+	protected function tearDown(): void {
+		if ( null !== $this->original_wpdb ) {
+			$GLOBALS['wpdb'] = $this->original_wpdb;
+		} else {
+			unset( $GLOBALS['wpdb'] );
+		}
+
+		parent::tearDown();
 	}
 
 	public function test_content_review_report_returns_bounded_redacted_findings(): void {
@@ -226,7 +243,7 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins'] = (object) array(
 			'last_checked' => time() - ( 2 * HOUR_IN_SECONDS ),
 			'response'     => array(
-				'acme/acme.php' => (object) array(
+				'acme/acme.php'   => (object) array(
 					'new_version'  => '2.0.0',
 					'tested'       => '6.7',
 					'requires_php' => '8.5',
@@ -321,6 +338,88 @@ final class SiteMaintenanceReportsTest extends TestCase {
 		self::assertArrayNotHasKey( 'response', $findings['update_metadata']['evidence'] );
 	}
 
+	public function test_autoload_readiness_report_summarizes_aggregate_option_size_safely(): void {
+		$wpdb            = new SiteMaintenanceReportsWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$before_options      = $GLOBALS['aculect_ai_companion_test_options'];
+		$before_site_options = $GLOBALS['aculect_ai_companion_test_site_options'];
+		$before_transients   = $GLOBALS['aculect_ai_companion_test_transients'];
+
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'autoload_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'autoload_readiness', $result['report_type'] );
+		self::assertTrue( $result['read_only'] );
+		self::assertSame( 4, $result['pagination']['returned'] );
+		self::assertSame( 'critical', $result['summary']['overall_severity'] );
+		self::assertTrue( $result['filters']['aggregate_database_access'] );
+		self::assertFalse( $result['filters']['option_values_included'] );
+		self::assertFalse( $result['filters']['option_names_included'] );
+		self::assertFalse( $result['filters']['serialized_data_included'] );
+		self::assertFalse( $result['filters']['raw_sql_results_included'] );
+		self::assertFalse( $result['filters']['secret_values_included'] );
+		self::assertFalse( $result['filters']['write_actions_performed'] );
+		self::assertFalse( $result['filters']['customer_data_included'] );
+		self::assertFalse( $result['filters']['order_payment_data_included'] );
+		self::assertFalse( $result['safety']['database_writes'] );
+		self::assertFalse( $result['safety']['write_actions_performed'] );
+		self::assertFalse( $result['safety']['option_values_included'] );
+		self::assertFalse( $result['safety']['option_names_included'] );
+		self::assertFalse( $result['safety']['raw_sql_results_included'] );
+		self::assertSame( 42, $findings['autoload_total_size']['evidence']['autoloaded_option_count'] );
+		self::assertSame( 1250000, $findings['autoload_total_size']['evidence']['total_bytes'] );
+		self::assertFalse( $findings['autoload_total_size']['evidence']['option_values_included'] );
+		self::assertFalse( $findings['autoload_total_size']['evidence']['option_names_included'] );
+		self::assertFalse( $findings['autoload_total_size']['evidence']['raw_sql_results_included'] );
+		self::assertSame( 1, $findings['autoload_size_buckets']['evidence']['oversized_option_count'] );
+		self::assertSame( 250000, $findings['autoload_largest_option_size']['evidence']['largest_option_bytes'] );
+		self::assertFalse( $findings['autoload_largest_option_size']['evidence']['option_name_included'] );
+		self::assertFalse( $findings['autoload_largest_option_size']['evidence']['option_value_included'] );
+		self::assertTrue( $findings['autoload_report_safety']['evidence']['aggregate_only'] );
+		self::assertFalse( $findings['autoload_report_safety']['evidence']['database_writes'] );
+		self::assertSame( 1, $wpdb->get_row_calls );
+		self::assertSame( 0, $wpdb->query_calls );
+		self::assertSame( 0, $wpdb->insert_calls );
+		self::assertStringContainsString( 'COUNT(*) AS total_options', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'FROM %i WHERE autoload IN', $wpdb->prepared[0]['query'] );
+		self::assertContains( 'wp_options', $wpdb->prepared[0]['args'] );
+		self::assertContains( 'yes', $wpdb->prepared[0]['args'] );
+		self::assertContains( 'auto-on', $wpdb->prepared[0]['args'] );
+		self::assertArrayNotHasKey( 'option_name', $findings['autoload_total_size']['evidence'] );
+		self::assertArrayNotHasKey( 'option_value', $findings['autoload_total_size']['evidence'] );
+		self::assertSame( $before_options, $GLOBALS['aculect_ai_companion_test_options'] );
+		self::assertSame( $before_site_options, $GLOBALS['aculect_ai_companion_test_site_options'] );
+		self::assertSame( $before_transients, $GLOBALS['aculect_ai_companion_test_transients'] );
+	}
+
+	public function test_autoload_readiness_report_handles_missing_database_access_without_values(): void {
+		$result   = ( new SiteMaintenanceReports() )->report(
+			array(
+				'report_type' => 'autoload_readiness',
+				'per_page'    => 20,
+			)
+		);
+		$findings = array_column( $result['findings'], null, 'id' );
+
+		self::assertSame( 'autoload_readiness', $result['report_type'] );
+		self::assertSame( 'warning', $result['summary']['overall_severity'] );
+		self::assertFalse( $result['filters']['aggregate_database_access'] );
+		self::assertFalse( $result['filters']['option_values_included'] );
+		self::assertFalse( $result['filters']['option_names_included'] );
+		self::assertFalse( $result['filters']['raw_sql_results_included'] );
+		self::assertFalse( $result['safety']['write_actions_performed'] );
+		self::assertFalse( $findings['autoload_report_safety']['evidence']['summary_available'] );
+		self::assertFalse( $findings['autoload_report_safety']['evidence']['option_values_included'] );
+		self::assertFalse( $findings['autoload_report_safety']['evidence']['option_names_included'] );
+		self::assertFalse( $findings['autoload_report_safety']['evidence']['raw_sql_results_included'] );
+	}
+
 	public function test_report_requires_manage_options(): void {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 
@@ -338,7 +437,7 @@ final class SiteMaintenanceReportsTest extends TestCase {
 
 		self::assertArrayHasKey( 'site_maintenance_report', $by_name );
 		self::assertTrue( $by_name['site_maintenance_report']['annotations']['readOnlyHint'] );
-		self::assertSame( array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
+		self::assertSame( array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness', 'autoload_readiness' ), $by_name['site_maintenance_report']['inputSchema']['properties']['report_type']['enum'] );
 		self::assertSame( 20, $by_name['site_maintenance_report']['inputSchema']['properties']['per_page']['maximum'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
@@ -346,5 +445,94 @@ final class SiteMaintenanceReportsTest extends TestCase {
 
 		self::assertFalse( $operations['site_information']['report']['available'] );
 		self::assertSame( 'capability', $operations['site_information']['report']['blocked_by'] );
+	}
+}
+
+/**
+ * Minimal wpdb double for aggregate autoload-readiness diagnostics.
+ */
+final class SiteMaintenanceReportsWpdb {
+
+	public string $prefix = 'wp_';
+
+	public string $options = 'wp_options';
+
+	public int $get_row_calls = 0;
+
+	public int $query_calls = 0;
+
+	public int $insert_calls = 0;
+
+	/**
+	 * Prepared SQL calls.
+	 *
+	 * @var list<array{query: string, args: array<int, mixed>}>
+	 */
+	public array $prepared = array();
+
+	/**
+	 * Record prepared SQL.
+	 *
+	 * @param string $query SQL query.
+	 * @param mixed  ...$args Placeholder arguments.
+	 */
+	public function prepare( string $query, mixed ...$args ): string {
+		$this->prepared[] = array(
+			'query' => $query,
+			'args'  => $args,
+		);
+
+		return $query;
+	}
+
+	/**
+	 * Return aggregate autoload counts only.
+	 *
+	 * @param string $query  Prepared SQL query.
+	 * @param string $output Output format.
+	 * @return array<string, string>
+	 */
+	public function get_row( string $query, string $output ): array {
+		unset( $query, $output );
+
+		++$this->get_row_calls;
+
+		return array(
+			'total_options'   => '42',
+			'total_bytes'     => '1250000',
+			'largest_bytes'   => '250000',
+			'standard_count'  => '20',
+			'medium_count'    => '12',
+			'large_count'     => '9',
+			'oversized_count' => '1',
+		);
+	}
+
+	/**
+	 * Track accidental write queries.
+	 *
+	 * @param string $query SQL query.
+	 */
+	public function query( string $query ): int {
+		unset( $query );
+
+		++$this->query_calls;
+
+		return 0;
+	}
+
+	/**
+	 * Track accidental inserts.
+	 *
+	 * @param string               $table   Table name.
+	 * @param array<string, mixed> $data    Insert data.
+	 * @param array<string>        $formats Field formats.
+	 */
+	public function insert( string $table, array $data, array $formats ): false {
+		unset( $table, $data, $formats );
+
+		++$this->insert_calls;
+
+		return false;
 	}
 }

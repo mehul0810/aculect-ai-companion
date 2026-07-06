@@ -10,14 +10,21 @@ use Aculect\AICompanion\Intelligence\ContentIndexer;
  * Bounded read-only site maintenance reports for assistant diagnostics.
  */
 final class SiteMaintenanceReports extends AbstractAbilityService {
-	private const REPORT_TYPES       = array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness' );
-	private const DEFAULT_PER_PAGE   = 10;
-	private const MAX_PER_PAGE       = 20;
-	private const STALE_DRAFT_DAYS   = 30;
-	private const OVERSIZED_BYTES    = 5242880;
-	private const MAX_TITLE_LENGTH   = 120;
-	private const MAX_POST_TYPE_KEYS = 8;
-	private const STALE_UPDATE_HOURS = 48;
+	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Autoload readiness uses one aggregate-only options-table query and never returns option names, values, or raw rows.
+
+	private const REPORT_TYPES                   = array( 'content_review', 'media_inventory', 'site_readiness', 'update_readiness', 'autoload_readiness' );
+	private const DEFAULT_PER_PAGE               = 10;
+	private const MAX_PER_PAGE                   = 20;
+	private const STALE_DRAFT_DAYS               = 30;
+	private const OVERSIZED_BYTES                = 5242880;
+	private const MAX_TITLE_LENGTH               = 120;
+	private const MAX_POST_TYPE_KEYS             = 8;
+	private const STALE_UPDATE_HOURS             = 48;
+	private const AUTOLOAD_WARNING_BYTES         = 800000;
+	private const AUTOLOAD_CRITICAL_BYTES        = 1000000;
+	private const AUTOLOAD_LARGE_OPTION_BYTES    = 102400;
+	private const AUTOLOAD_MEDIUM_OPTION_BYTES   = 10240;
+	private const AUTOLOAD_STANDARD_OPTION_BYTES = 1024;
 
 	/**
 	 * Return a compact maintenance report.
@@ -38,6 +45,7 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 			'media_inventory' => $this->media_inventory_report( $page, $per_page ),
 			'site_readiness'  => $this->site_readiness_report( $page, $per_page ),
 			'update_readiness' => $this->update_readiness_report( $page, $per_page ),
+			'autoload_readiness' => $this->autoload_readiness_report( $page, $per_page ),
 			default => $this->content_review_report( $page, $per_page ),
 		};
 	}
@@ -269,6 +277,245 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 				'filesystem_paths_included'    => false,
 			)
 		);
+	}
+
+	/**
+	 * Build a safe autoloaded option size report from aggregate database counts only.
+	 *
+	 * @param int $page     One-based page.
+	 * @param int $per_page Results per page.
+	 * @return array<string, mixed>
+	 */
+	private function autoload_readiness_report( int $page, int $per_page ): array {
+		$summary  = $this->autoload_option_summary();
+		$findings = array(
+			$this->autoload_total_size_finding( $summary ),
+			$this->autoload_bucket_finding( $summary ),
+			$this->autoload_largest_option_finding( $summary ),
+			$this->autoload_safety_finding( $summary ),
+		);
+
+		$offset             = ( $page - 1 ) * $per_page;
+		$paginated_findings = array_slice( $findings, $offset, $per_page );
+
+		return $this->static_report_payload(
+			'autoload_readiness',
+			'Autoload Readiness',
+			'Safe aggregate autoloaded option size signals without exposing option names, option values, serialized data, secrets, or raw SQL results.',
+			$page,
+			$per_page,
+			$findings,
+			$paginated_findings,
+			array(
+				'sources'                     => array( 'wp_options_autoload_aggregate' ),
+				'aggregate_database_access'   => $summary['available'],
+				'autoload_flags_counted'      => array( 'yes', 'on', 'auto-on', 'auto' ),
+				'option_values_included'      => false,
+				'option_names_included'       => false,
+				'serialized_data_included'    => false,
+				'raw_sql_results_included'    => false,
+				'secret_values_included'      => false,
+				'write_actions_performed'     => false,
+				'customer_data_included'      => false,
+				'order_payment_data_included' => false,
+			)
+		);
+	}
+
+	/**
+	 * Build an aggregate autoload-size finding.
+	 *
+	 * @param array<string, mixed> $summary Aggregate autoload summary.
+	 * @return array<string, mixed>
+	 */
+	private function autoload_total_size_finding( array $summary ): array {
+		$total_bytes = (int) $summary['total_bytes'];
+		$severity    = $this->autoload_severity( $summary );
+
+		return $this->finding(
+			'autoload_total_size',
+			'Autoloaded Option Size',
+			$severity,
+			array(
+				'summary_available'        => $summary['available'],
+				'autoloaded_option_count'  => (int) $summary['total_options'],
+				'total_bytes'              => $total_bytes,
+				'total_mb'                 => round( $total_bytes / 1048576, 2 ),
+				'warning_threshold_bytes'  => self::AUTOLOAD_WARNING_BYTES,
+				'critical_threshold_bytes' => self::AUTOLOAD_CRITICAL_BYTES,
+				'option_values_included'   => false,
+				'option_names_included'    => false,
+				'raw_sql_results_included' => false,
+			),
+			match ( $severity ) {
+				'critical' => 'Audit autoloaded options in WordPress or a trusted database tool and reduce entries that load on every request.',
+				'warning'  => 'Review autoloaded option growth before it becomes a front-end performance risk.',
+				default    => $summary['available'] ? 'Autoloaded option size is below the maintenance warning threshold.' : 'Run this report in a WordPress environment with database access to summarize autoloaded option size.',
+			}
+		);
+	}
+
+	/**
+	 * Build an autoload size bucket finding.
+	 *
+	 * @param array<string, mixed> $summary Aggregate autoload summary.
+	 * @return array<string, mixed>
+	 */
+	private function autoload_bucket_finding( array $summary ): array {
+		$oversized = (int) $summary['oversized_count'];
+
+		return $this->finding(
+			'autoload_size_buckets',
+			'Autoload Size Buckets',
+			0 < $oversized ? 'warning' : ( $summary['available'] ? 'info' : 'warning' ),
+			array(
+				'summary_available'      => $summary['available'],
+				'standard_option_count'  => (int) $summary['standard_count'],
+				'medium_option_count'    => (int) $summary['medium_count'],
+				'large_option_count'     => (int) $summary['large_count'],
+				'oversized_option_count' => $oversized,
+				'standard_max_bytes'     => self::AUTOLOAD_STANDARD_OPTION_BYTES - 1,
+				'medium_max_bytes'       => self::AUTOLOAD_MEDIUM_OPTION_BYTES - 1,
+				'large_max_bytes'        => self::AUTOLOAD_LARGE_OPTION_BYTES - 1,
+				'option_values_included' => false,
+				'option_names_included'  => false,
+			),
+			0 < $oversized ? 'Prioritize reviewing very large autoloaded options because they increase every-request memory pressure.' : 'No very large autoloaded option buckets were detected in the aggregate summary.'
+		);
+	}
+
+	/**
+	 * Build a largest autoloaded option size finding without identifying the option.
+	 *
+	 * @param array<string, mixed> $summary Aggregate autoload summary.
+	 * @return array<string, mixed>
+	 */
+	private function autoload_largest_option_finding( array $summary ): array {
+		$largest = (int) $summary['largest_bytes'];
+
+		return $this->finding(
+			'autoload_largest_option_size',
+			'Largest Autoloaded Option Size',
+			self::AUTOLOAD_LARGE_OPTION_BYTES <= $largest ? 'warning' : ( $summary['available'] ? 'info' : 'warning' ),
+			array(
+				'summary_available'            => $summary['available'],
+				'largest_option_bytes'         => $largest,
+				'largest_option_mb'            => round( $largest / 1048576, 2 ),
+				'large_option_threshold_bytes' => self::AUTOLOAD_LARGE_OPTION_BYTES,
+				'option_name_included'         => false,
+				'option_value_included'        => false,
+				'serialized_data_included'     => false,
+			),
+			self::AUTOLOAD_LARGE_OPTION_BYTES <= $largest ? 'Investigate large autoloaded options through trusted admin or database tooling without exposing values to assistant clients.' : 'The largest autoloaded option size is below the large-option threshold.'
+		);
+	}
+
+	/**
+	 * Build a finding that documents the safety boundary for this report.
+	 *
+	 * @param array<string, mixed> $summary Aggregate autoload summary.
+	 * @return array<string, mixed>
+	 */
+	private function autoload_safety_finding( array $summary ): array {
+		return $this->finding(
+			'autoload_report_safety',
+			'Autoload Report Safety',
+			$summary['available'] ? 'info' : 'warning',
+			array(
+				'summary_available'           => $summary['available'],
+				'aggregate_only'              => true,
+				'option_values_included'      => false,
+				'option_names_included'       => false,
+				'serialized_data_included'    => false,
+				'secret_values_included'      => false,
+				'raw_sql_results_included'    => false,
+				'database_writes'             => false,
+				'filesystem_writes'           => false,
+				'customer_data_included'      => false,
+				'order_payment_data_included' => false,
+			),
+			$summary['available'] ? 'Use the aggregate counts to decide whether a deeper owner-approved database review is needed.' : 'Database access was unavailable, so no autoload aggregate was produced.'
+		);
+	}
+
+	/**
+	 * Read aggregate autoloaded option counts and byte totals without returning option names or values.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function autoload_option_summary(): array {
+		global $wpdb;
+
+		$defaults = array(
+			'available'       => false,
+			'total_options'   => 0,
+			'total_bytes'     => 0,
+			'largest_bytes'   => 0,
+			'standard_count'  => 0,
+			'medium_count'    => 0,
+			'large_count'     => 0,
+			'oversized_count' => 0,
+		);
+
+		if ( ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_row' ) || ! isset( $wpdb->options ) || ! is_string( $wpdb->options ) ) {
+			return $defaults;
+		}
+
+		$table = $wpdb->options;
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT COUNT(*) AS total_options, COALESCE(SUM(LENGTH(option_value)), 0) AS total_bytes, COALESCE(MAX(LENGTH(option_value)), 0) AS largest_bytes, COALESCE(SUM(CASE WHEN LENGTH(option_value) < %d THEN 1 ELSE 0 END), 0) AS standard_count, COALESCE(SUM(CASE WHEN LENGTH(option_value) >= %d AND LENGTH(option_value) < %d THEN 1 ELSE 0 END), 0) AS medium_count, COALESCE(SUM(CASE WHEN LENGTH(option_value) >= %d AND LENGTH(option_value) < %d THEN 1 ELSE 0 END), 0) AS large_count, COALESCE(SUM(CASE WHEN LENGTH(option_value) >= %d THEN 1 ELSE 0 END), 0) AS oversized_count FROM %i WHERE autoload IN (%s, %s, %s, %s)',
+				self::AUTOLOAD_STANDARD_OPTION_BYTES,
+				self::AUTOLOAD_STANDARD_OPTION_BYTES,
+				self::AUTOLOAD_MEDIUM_OPTION_BYTES,
+				self::AUTOLOAD_MEDIUM_OPTION_BYTES,
+				self::AUTOLOAD_LARGE_OPTION_BYTES,
+				self::AUTOLOAD_LARGE_OPTION_BYTES,
+				$table,
+				'yes',
+				'on',
+				'auto-on',
+				'auto'
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) ) {
+			return $defaults;
+		}
+
+		return array(
+			'available'       => true,
+			'total_options'   => absint( $row['total_options'] ?? 0 ),
+			'total_bytes'     => absint( $row['total_bytes'] ?? 0 ),
+			'largest_bytes'   => absint( $row['largest_bytes'] ?? 0 ),
+			'standard_count'  => absint( $row['standard_count'] ?? 0 ),
+			'medium_count'    => absint( $row['medium_count'] ?? 0 ),
+			'large_count'     => absint( $row['large_count'] ?? 0 ),
+			'oversized_count' => absint( $row['oversized_count'] ?? 0 ),
+		);
+	}
+
+	/**
+	 * Return severity for the autoload aggregate.
+	 *
+	 * @param array<string, mixed> $summary Aggregate autoload summary.
+	 */
+	private function autoload_severity( array $summary ): string {
+		if ( ! $summary['available'] ) {
+			return 'warning';
+		}
+
+		$total = (int) $summary['total_bytes'];
+		if ( self::AUTOLOAD_CRITICAL_BYTES <= $total ) {
+			return 'critical';
+		}
+
+		if ( self::AUTOLOAD_WARNING_BYTES <= $total ) {
+			return 'warning';
+		}
+
+		return 'info';
 	}
 
 	/**
@@ -827,11 +1074,15 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 			'filters'     => $filters,
 			'findings'    => $findings,
 			'safety'      => array(
-				'arbitrary_php_execution' => false,
-				'raw_database_access'     => false,
-				'filesystem_writes'       => false,
-				'option_values_included'  => false,
-				'secret_values_included'  => false,
+				'arbitrary_php_execution'  => false,
+				'raw_database_access'      => false,
+				'filesystem_writes'        => false,
+				'database_writes'          => false,
+				'write_actions_performed'  => false,
+				'option_values_included'   => false,
+				'option_names_included'    => false,
+				'raw_sql_results_included' => false,
+				'secret_values_included'   => false,
 			),
 		);
 	}
@@ -870,11 +1121,15 @@ final class SiteMaintenanceReports extends AbstractAbilityService {
 			'filters'     => $filters,
 			'findings'    => $findings,
 			'safety'      => array(
-				'arbitrary_php_execution' => false,
-				'raw_database_access'     => false,
-				'filesystem_writes'       => false,
-				'option_values_included'  => false,
-				'secret_values_included'  => false,
+				'arbitrary_php_execution'  => false,
+				'raw_database_access'      => false,
+				'filesystem_writes'        => false,
+				'database_writes'          => false,
+				'write_actions_performed'  => false,
+				'option_values_included'   => false,
+				'option_names_included'    => false,
+				'raw_sql_results_included' => false,
+				'secret_values_included'   => false,
 			),
 		);
 	}

@@ -22,12 +22,12 @@ final class BlockKnowledgeAbilitiesTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->abilities = new BlockKnowledgeAbilities();
-		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
-		$GLOBALS['aculect_ai_companion_test_blog_id']     = 7;
+		$this->abilities                                   = new BlockKnowledgeAbilities();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']  = array();
+		$GLOBALS['aculect_ai_companion_test_blog_id']      = 7;
 		$GLOBALS['aculect_ai_companion_test_is_multisite'] = true;
-		$GLOBALS['aculect_ai_companion_test_stylesheet']  = 'pattern-theme';
-		$GLOBALS['aculect_ai_companion_test_template']    = 'pattern-parent';
+		$GLOBALS['aculect_ai_companion_test_stylesheet']   = 'pattern-theme';
+		$GLOBALS['aculect_ai_companion_test_template']     = 'pattern-parent';
 		$this->registerTestBlocks();
 		$this->registerTestPatterns();
 	}
@@ -201,6 +201,36 @@ final class BlockKnowledgeAbilitiesTest extends TestCase {
 		self::assertFalse( $result['valid'] );
 		self::assertFalse( $blocks['missing/block']['registered'] );
 		self::assertContains( 'Block missing/block is not registered on this site.', $result['warnings'] );
+	}
+
+	public function test_validate_block_content_rejects_registered_blocks_with_mismatched_structure(): void {
+		$result = $this->abilities->validate_block_content(
+			array(
+				'content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:paragraph --><p>Hello</p><!-- /wp:group --><!-- /wp:paragraph --></div>',
+			)
+		);
+
+		self::assertFalse( $result['valid'] );
+		self::assertFalse( $result['structure']['valid'] );
+		self::assertSame( 2, $result['structure']['tokenized_block_count'] );
+		self::assertContains( 'Block markup contains malformed block-comment structure. Review the reported structure issues and retry.', $result['warnings'] );
+		self::assertSame( 'mismatched_closing_block', $result['structure']['issues'][0]['code'] );
+		self::assertSame( 'core/group', $result['structure']['issues'][0]['block'] );
+		self::assertSame( 'core/paragraph', $result['structure']['issues'][0]['expected_block'] );
+		self::assertStringContainsString( 'valid serialized block structure', $result['message'] );
+	}
+
+	public function test_validate_block_content_rejects_registered_blocks_with_missing_closer(): void {
+		$result = $this->abilities->validate_block_content(
+			array(
+				'content' => '<!-- wp:paragraph --><p>Hello</p>',
+			)
+		);
+
+		self::assertFalse( $result['valid'] );
+		self::assertFalse( $result['structure']['valid'] );
+		self::assertSame( 'missing_closing_block', $result['structure']['issues'][0]['code'] );
+		self::assertSame( 'core/paragraph', $result['structure']['issues'][0]['block'] );
 	}
 
 	public function test_validate_block_content_warns_when_layout_intent_has_no_layout_blocks(): void {

@@ -350,7 +350,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 		if ( true !== ( $validation['valid'] ?? false ) ) {
 			return $this->workflow_error(
 				'invalid_block_content',
-				'Block content must use registered WordPress blocks and must not include core/html.',
+				(string) ( $validation['message'] ?? 'Block content must use registered WordPress blocks and must not include core/html.' ),
 				array(
 					'block_validation' => $validation,
 					'warnings'         => (array) ( $validation['warnings'] ?? array() ),

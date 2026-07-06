@@ -13,6 +13,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	private const MAX_PER_PAGE           = 100;
 	private const MAX_PATTERN_PREVIEW    = 600;
 	private const MAX_PATTERN_CONTENT    = 20000;
+	private const MAX_STRUCTURE_ISSUES   = 5;
 	private const CUSTOM_HTML_BLOCK_NAME = 'core/html';
 	private const LAYOUT_BLOCKS          = array( 'core/group', 'core/columns', 'core/column', 'core/cover', 'core/media-text', 'core/gallery', 'core/row', 'core/stack' );
 	private const LAYOUT_HINT_TERMS      = array( 'layout', 'visual', 'image', 'screenshot', 'columns', 'column', 'grid', 'cards', 'hero', 'media text', 'section', 'cta', 'call to action' );
@@ -187,11 +188,12 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			return $this->error( 'blocks_api_unavailable', 'The WordPress block parser is not available on this site.' );
 		}
 
-		$parsed   = parse_blocks( $content );
-		$names    = $this->flatten_block_names( $parsed );
-		$counts   = array_count_values( $names );
-		$warnings = array();
-		$blocks   = array();
+		$parsed    = parse_blocks( $content );
+		$names     = $this->flatten_block_names( $parsed );
+		$counts    = array_count_values( $names );
+		$structure = $this->analyze_block_structure( $content, count( $names ) );
+		$warnings  = array();
+		$blocks    = array();
 
 		foreach ( $counts as $name => $count ) {
 			$registered = null !== $this->registered_block( (string) $name );
@@ -217,17 +219,232 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			$warnings[] = 'No block markup was detected. Prefer registered WordPress blocks or patterns for assistant-generated content.';
 		}
 
+		if ( ! $structure['valid'] ) {
+			$warnings[] = 'Block markup contains malformed block-comment structure. Review the reported structure issues and retry.';
+		}
+
 		array_push( $warnings, ...$this->layout_expectation_warnings( $args, $names ) );
 
+		$valid = $structure['valid'] && array() === array_filter(
+			$blocks,
+			static fn( array $block ): bool => empty( $block['registered'] ) || empty( $block['allowed_for_generation'] )
+		);
+
 		return array(
-			'valid'            => array() === array_filter(
-				$blocks,
-				static fn( array $block ): bool => empty( $block['registered'] ) || empty( $block['allowed_for_generation'] )
-			),
+			'valid'            => $valid,
 			'blocks'           => $blocks,
+			'structure'        => $structure,
 			'warnings'         => array_values( array_unique( $warnings ) ),
+			'message'          => $valid
+				? 'Block content is valid.'
+				: $this->invalid_block_message( $structure ),
 			'content_guidance' => $this->content_guidance(),
 		);
+	}
+
+	/**
+	 * Analyze serialized block comments for malformed structure without exposing content.
+	 *
+	 * @param string $content            Serialized block content.
+	 * @param int    $parsed_block_count Parsed block count from the WordPress parser.
+	 * @return array<string, mixed>
+	 */
+	private function analyze_block_structure( string $content, int $parsed_block_count ): array {
+		$pattern       = '/<!--\s+(\/?)wp:([A-Za-z0-9_\/.-]+)(?:\s+({.*?}))?\s*(\/?)-->/s';
+		$token_matches = array();
+		$issue_count   = 0;
+		$issues        = array();
+		$stack         = array();
+
+		preg_match_all( $pattern, $content, $token_matches, PREG_OFFSET_CAPTURE );
+
+		$token_count         = count( $token_matches[0] );
+		$opening_token_count = 0;
+		$closing_token_count = 0;
+
+		for ( $index = 0; $index < $token_count; ++$index ) {
+			$raw_token     = (string) $token_matches[0][ $index ][0];
+			$position      = (int) $token_matches[0][ $index ][1];
+			$is_closer     = '/' === (string) ( $token_matches[1][ $index ][0] ?? '' );
+			$name_fragment = (string) ( $token_matches[2][ $index ][0] ?? '' );
+			$name          = str_contains( $name_fragment, '/' ) ? $name_fragment : 'core/' . $name_fragment;
+			$attrs_json    = (string) ( $token_matches[3][ $index ][0] ?? '' );
+			$self_closed   = ! $is_closer && str_ends_with( rtrim( $raw_token ), '/-->' );
+
+			if ( $is_closer ) {
+				++$closing_token_count;
+			} else {
+				++$opening_token_count;
+			}
+
+			if ( ! $is_closer && '' !== $attrs_json ) {
+				json_decode( $attrs_json, true );
+				if ( JSON_ERROR_NONE !== json_last_error() ) {
+					$this->add_structure_issue(
+						$issues,
+						$issue_count,
+						array(
+							'code'     => 'invalid_block_attributes_json',
+							'message'  => sprintf( 'Block %s has invalid JSON attributes in its opening comment.', $name ),
+							'block'    => $name,
+							'position' => $position,
+						)
+					);
+				}
+			}
+
+			if ( $self_closed ) {
+				continue;
+			}
+
+			if ( ! $is_closer ) {
+				$stack[] = array(
+					'name'     => $name,
+					'position' => $position,
+				);
+				continue;
+			}
+
+			if ( array() === $stack ) {
+				$this->add_structure_issue(
+					$issues,
+					$issue_count,
+					array(
+						'code'     => 'unexpected_closing_block',
+						'message'  => sprintf( 'Block markup closes %s without a matching opening block comment.', $name ),
+						'block'    => $name,
+						'position' => $position,
+					)
+				);
+				continue;
+			}
+
+			$top = $stack[ count( $stack ) - 1 ];
+			if ( (string) $top['name'] === $name ) {
+				array_pop( $stack );
+				continue;
+			}
+
+			$expected = (string) $top['name'];
+			$this->add_structure_issue(
+				$issues,
+				$issue_count,
+				array(
+					'code'           => 'mismatched_closing_block',
+					'message'        => sprintf( 'Block markup closes %s while %s is still open.', $name, $expected ),
+					'block'          => $name,
+					'expected_block' => $expected,
+					'position'       => $position,
+				)
+			);
+
+			$matched_depth = null;
+			for ( $depth = count( $stack ) - 1; $depth >= 0; --$depth ) {
+				if ( (string) $stack[ $depth ]['name'] === $name ) {
+					$matched_depth = $depth;
+					break;
+				}
+			}
+
+			if ( null === $matched_depth ) {
+				continue;
+			}
+
+			$stack = array_slice( $stack, 0, $matched_depth );
+		}
+
+		$opening_markers = $this->count_block_marker_occurrences( $content, '<!-- wp:' );
+		$closing_markers = $this->count_block_marker_occurrences( $content, '<!-- /wp:' );
+
+		if ( $opening_markers > $opening_token_count ) {
+			$this->add_structure_issue(
+				$issues,
+				$issue_count,
+				array(
+					'code'    => 'malformed_opening_block_comment',
+					'message' => 'One or more block opening comments are malformed or incomplete.',
+				)
+			);
+		}
+
+		if ( $closing_markers > $closing_token_count ) {
+			$this->add_structure_issue(
+				$issues,
+				$issue_count,
+				array(
+					'code'    => 'malformed_closing_block_comment',
+					'message' => 'One or more block closing comments are malformed or incomplete.',
+				)
+			);
+		}
+
+		foreach ( array_slice( array_reverse( $stack ), 0, self::MAX_STRUCTURE_ISSUES ) as $entry ) {
+			$this->add_structure_issue(
+				$issues,
+				$issue_count,
+				array(
+					'code'     => 'missing_closing_block',
+					'message'  => sprintf( 'Block %s is missing its closing block comment.', (string) $entry['name'] ),
+					'block'    => (string) $entry['name'],
+					'position' => (int) $entry['position'],
+				)
+			);
+		}
+
+		return array(
+			'valid'                 => 0 === $issue_count,
+			'issue_count'           => $issue_count,
+			'issues'                => $issues,
+			'parsed_block_count'    => $parsed_block_count,
+			'tokenized_block_count' => $opening_token_count,
+		);
+	}
+
+	/**
+	 * Add one bounded structure issue.
+	 *
+	 * @param array<int, array<string, mixed>> $issues Recorded issues.
+	 * @param int                              $issue_count Total issue count.
+	 * @param array<string, mixed>             $issue One safe actionable issue entry.
+	 */
+	private function add_structure_issue( array &$issues, int &$issue_count, array $issue ): void {
+		++$issue_count;
+		if ( count( $issues ) < self::MAX_STRUCTURE_ISSUES ) {
+			$issues[] = $issue;
+		}
+	}
+
+	/**
+	 * Count raw block comment marker occurrences.
+	 *
+	 * @param string $content Serialized block content.
+	 * @param string $needle  Block marker fragment.
+	 */
+	private function count_block_marker_occurrences( string $content, string $needle ): int {
+		$count  = 0;
+		$offset = 0;
+
+		$position = strpos( $content, $needle, $offset );
+		while ( false !== $position ) {
+			++$count;
+			$offset   = $position + strlen( $needle );
+			$position = strpos( $content, $needle, $offset );
+		}
+
+		return $count;
+	}
+
+	/**
+	 * Build a bounded invalid-content message from validation findings.
+	 *
+	 * @param array<string, mixed> $structure Structure analysis payload.
+	 */
+	private function invalid_block_message( array $structure ): string {
+		if ( ! empty( $structure['valid'] ) ) {
+			return 'Block content must use registered WordPress blocks and must not include core/html.';
+		}
+
+		return 'Block content must use registered WordPress blocks and valid serialized block structure. Review the reported structure issues and retry.';
 	}
 
 	/**

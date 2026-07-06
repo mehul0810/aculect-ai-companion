@@ -647,7 +647,10 @@ final class ContentAbilities extends AbstractAbilityService {
 
 		if ( true !== ( $validation['valid'] ?? false ) ) {
 			return array_merge(
-				$this->error( 'invalid_block_content', 'Block content must use registered WordPress blocks and must not include core/html.' ),
+				$this->error(
+					'invalid_block_content',
+					(string) ( $validation['message'] ?? 'Block content must use registered WordPress blocks and must not include core/html.' )
+				),
 				array(
 					'block_validation' => $validation,
 					'warnings'         => (array) ( $validation['warnings'] ?? array() ),

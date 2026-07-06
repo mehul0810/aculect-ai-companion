@@ -139,6 +139,22 @@ final class ContentWorkflowAbilitiesTest extends TestCase {
 		self::assertContains( 'Never use the Custom HTML block (core/html). Use registered semantic blocks or patterns instead.', $result['warnings'] );
 	}
 
+	public function test_create_draft_rejects_broken_registered_block_structure(): void {
+		$result = $this->abilities->create_draft(
+			array(
+				'title'   => 'Broken draft',
+				'content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:paragraph --><p>Hello</p><!-- /wp:group --><!-- /wp:paragraph --></div>',
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'invalid_block_content', $result['error'] );
+		self::assertFalse( $result['block_validation']['valid'] );
+		self::assertFalse( $result['block_validation']['structure']['valid'] );
+		self::assertSame( 'mismatched_closing_block', $result['block_validation']['structure']['issues'][0]['code'] );
+		self::assertStringContainsString( 'valid serialized block structure', $result['message'] );
+	}
+
 	public function test_update_post_dry_run_accepts_valid_section_map_and_requires_confirmation(): void {
 		$result = $this->abilities->update_post(
 			array(

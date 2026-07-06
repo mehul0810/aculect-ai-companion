@@ -19,6 +19,7 @@ import {
 	shouldShowPendingRequests,
 	wizardStepsForProvider,
 } from './connect-wizard.mjs';
+import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
 	Card,
@@ -6502,7 +6503,11 @@ function SettingsApp() {
 	const [ roleAbilitiesModalOpen, setRoleAbilitiesModalOpen ] =
 		useState( false );
 	const adminNoticesRef = useRef( null );
+	const tabsNavRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
+	const [ tabsOverflow, setTabsOverflow ] = useState( () =>
+		tabOverflowState()
+	);
 	const isAccessPaused = Boolean( data.accessPaused );
 	const currentUserId = Number( data.currentUserId || 0 );
 	const activeConnectionSessions = useMemo(
@@ -6550,6 +6555,46 @@ function SettingsApp() {
 	useEffect( () => {
 		setActivityFilterValues( activityFilterDefaults );
 	}, [ activityFilterDefaults ] );
+
+	useEffect( () => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return undefined;
+		}
+
+		const updateTabsOverflow = () => {
+			setTabsOverflow(
+				tabOverflowState( {
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				} )
+			);
+		};
+
+		updateTabsOverflow();
+		tabsNav.addEventListener( 'scroll', updateTabsOverflow, {
+			passive: true,
+		} );
+
+		if ( typeof window.ResizeObserver === 'function' ) {
+			const observer = new window.ResizeObserver( updateTabsOverflow );
+			observer.observe( tabsNav );
+
+			return () => {
+				tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+				observer.disconnect();
+			};
+		}
+
+		window.addEventListener( 'resize', updateTabsOverflow );
+
+		return () => {
+			tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+			window.removeEventListener( 'resize', updateTabsOverflow );
+		};
+	}, [] );
 
 	useEffect( () => {
 		if ( providers.length === 0 ) {
@@ -6639,6 +6684,26 @@ function SettingsApp() {
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
+
+	useEffect( () => {
+		if ( ! tabsOverflow.hasOverflow || ! tabsNavRef.current ) {
+			return;
+		}
+
+		const activeTabLink = tabsNavRef.current.querySelector(
+			'.aculect-ai-companion-tab.is-active'
+		);
+
+		if (
+			activeTabLink &&
+			typeof activeTabLink.scrollIntoView === 'function'
+		) {
+			activeTabLink.scrollIntoView( {
+				block: 'nearest',
+				inline: 'nearest',
+			} );
+		}
+	}, [ activeTab.name, tabsOverflow.hasOverflow ] );
 
 	useEffect( () => {
 		if ( activeTab.name !== 'abilities' || ! roleAbilitiesEnabled ) {
@@ -6739,6 +6804,26 @@ function SettingsApp() {
 		} );
 	};
 
+	const scrollTabs = ( direction ) => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return;
+		}
+
+		tabsNav.scrollTo( {
+			left: tabScrollTarget(
+				{
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				},
+				direction
+			),
+			behavior: 'smooth',
+		} );
+	};
+
 	return (
 		<div className="aculect-ai-companion-app-root">
 			<header className="aculect-ai-companion-app-header">
@@ -6799,30 +6884,64 @@ function SettingsApp() {
 				</div>
 			</header>
 
-			<nav
-				className="aculect-ai-companion-tabs"
-				aria-label="Aculect AI Companion settings"
-			>
-				{ visibleTabs.map( ( tab ) => {
-					const isActive = activeTab.name === tab.name;
+			<div className="aculect-ai-companion-tabs-shell">
+				<nav
+					id="aculect-ai-companion-primary-tabs"
+					ref={ tabsNavRef }
+					className="aculect-ai-companion-tabs"
+					data-overflowing={
+						tabsOverflow.hasOverflow ? 'true' : 'false'
+					}
+					aria-label="Aculect AI Companion settings"
+				>
+					{ visibleTabs.map( ( tab ) => {
+						const isActive = activeTab.name === tab.name;
 
-					return (
-						<a
-							key={ tab.name }
-							className={ `aculect-ai-companion-tab ${
-								isActive ? 'is-active' : ''
-							}` }
-							href={ tabUrl( tab.name, data.adminPageUrl ) }
-							aria-current={ isActive ? 'page' : undefined }
-							onClick={ ( event ) =>
-								maybeSelectTab( event, tab.name )
-							}
-						>
-							<span>{ tab.title }</span>
-						</a>
-					);
-				} ) }
-			</nav>
+						return (
+							<a
+								key={ tab.name }
+								className={ `aculect-ai-companion-tab ${
+									isActive ? 'is-active' : ''
+								}` }
+								href={ tabUrl( tab.name, data.adminPageUrl ) }
+								aria-current={ isActive ? 'page' : undefined }
+								onClick={ ( event ) =>
+									maybeSelectTab( event, tab.name )
+								}
+							>
+								<span>{ tab.title }</span>
+							</a>
+						);
+					} ) }
+				</nav>
+				{ tabsOverflow.hasOverflow && (
+					<div className="aculect-ai-companion-tabs-controls">
+						<p className="aculect-ai-companion-tabs-hint">
+							Swipe or scroll to reach the remaining tabs.
+						</p>
+						<div className="aculect-ai-companion-tabs-actions">
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollBackward }
+								onClick={ () => scrollTabs( 'backward' ) }
+							>
+								Earlier tabs
+							</Button>
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollForward }
+								onClick={ () => scrollTabs( 'forward' ) }
+							>
+								More tabs
+							</Button>
+						</div>
+					</div>
+				) }
+			</div>
 
 			<div
 				className="aculect-ai-companion-admin-notices"

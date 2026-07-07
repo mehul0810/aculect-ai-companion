@@ -1225,6 +1225,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->get_theme( $args )
 			),
 			$this->module(
+				'theme_lifecycle.switch_theme',
+				'Switch to an Installed Theme',
+				'Switch the current site to one already-installed WordPress theme with dry-run preview, confirmation-token gating, capability checks, and structured rollback metadata. This first beta slice does not install themes, update themes, delete themes, deactivate themes, or perform network-wide theme management.',
+				'Theme Lifecycle',
+				'content:draft',
+				false,
+				$this->theme_lifecycle_switch_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->switch_theme( $args )
+			),
+			$this->module(
 				'site.list_themes',
 				'List Themes',
 				'List installed WordPress themes and active state for users who can manage themes.',
@@ -1638,6 +1648,23 @@ final class FirstPartyAbilityModules {
 				'stylesheet' => array(
 					'type'        => 'string',
 					'description' => 'Installed theme stylesheet slug, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle switch schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_switch_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug to activate, for example twentytwentysix.',
 				),
 			),
 			array( 'stylesheet' )

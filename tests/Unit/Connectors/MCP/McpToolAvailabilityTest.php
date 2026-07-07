@@ -501,9 +501,10 @@ final class McpToolAvailabilityTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
 
 		$registry = new AbilitiesRegistry();
-		$registry->save_enabled_ids( array( 'theme_lifecycle.list_themes', 'theme_lifecycle.get_theme' ) );
+		$registry->save_enabled_ids( array( 'theme_lifecycle.list_themes', 'theme_lifecycle.get_theme', 'theme_lifecycle.switch_theme' ) );
 
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$write_ops  = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
 		$tools      = ( new McpController() )->tool_manifest_for_current_user();
 		$tool_names = array_column( $tools['tools'], 'name' );
 
@@ -513,15 +514,21 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['theme_lifecycle']['list_themes']['read_only'] );
 		self::assertContains( 'theme_lifecycle_list_themes', $tool_names );
 		self::assertTrue( $operations['theme_lifecycle']['get_theme']['available'] );
+		self::assertTrue( $write_ops['theme_lifecycle']['switch_theme']['available'] );
+		self::assertSame( 'theme_lifecycle_switch_theme', $write_ops['theme_lifecycle']['switch_theme']['tool'] );
+		self::assertSame( array( 'content:draft' ), $write_ops['theme_lifecycle']['switch_theme']['required_scopes'] );
+		self::assertFalse( $write_ops['theme_lifecycle']['switch_theme']['read_only'] );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'switch_themes' );
 
-		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
 
 		self::assertFalse( $blocked['theme_lifecycle']['list_themes']['available'] );
 		self::assertSame( 'capability', $blocked['theme_lifecycle']['list_themes']['blocked_by'] );
 		self::assertFalse( $blocked['theme_lifecycle']['get_theme']['available'] );
 		self::assertSame( 'capability', $blocked['theme_lifecycle']['get_theme']['blocked_by'] );
+		self::assertFalse( $blocked['theme_lifecycle']['switch_theme']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['switch_theme']['blocked_by'] );
 	}
 
 	public function test_wordpress_ability_diagnostics_report_capability_blocks(): void {

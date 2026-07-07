@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for read-only MCP theme lifecycle inventory abilities.
+ * Tests for MCP theme lifecycle inventory and switch abilities.
  *
  * @package Aculect\AICompanion\Tests\Unit\Connectors\MCP
  */
@@ -16,7 +16,7 @@ require_once dirname( __DIR__, 3 ) . '/fixtures/site-workflow-stubs.php';
 require_once dirname( __DIR__, 3 ) . '/fixtures/theme-lifecycle-stubs.php';
 
 /**
- * Verifies theme lifecycle inventory stays bounded, safe, and read-only.
+ * Verifies theme lifecycle inventory stays bounded and switching stays gated.
  */
 final class ThemeLifecycleAbilitiesTest extends TestCase {
 
@@ -47,6 +47,7 @@ final class ThemeLifecycleAbilitiesTest extends TestCase {
 				),
 			),
 		);
+		$GLOBALS['aculect_ai_companion_test_switched_themes']   = array();
 		$GLOBALS['aculect_ai_companion_test_themes']            = array(
 			'child-theme'  => array(
 				'Name'             => 'Child <strong>Theme</strong>',
@@ -88,11 +89,12 @@ final class ThemeLifecycleAbilitiesTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
-		$GLOBALS['aculect_ai_companion_test_themes']        = array();
-		$GLOBALS['aculect_ai_companion_test_site_options']  = array();
-		$GLOBALS['aculect_ai_companion_test_is_multisite']  = false;
-		$GLOBALS['aculect_ai_companion_test_network_admin'] = false;
-		$GLOBALS['aculect_ai_companion_test_denied_caps']   = array();
+		$GLOBALS['aculect_ai_companion_test_themes']          = array();
+		$GLOBALS['aculect_ai_companion_test_site_options']    = array();
+		$GLOBALS['aculect_ai_companion_test_is_multisite']    = false;
+		$GLOBALS['aculect_ai_companion_test_network_admin']   = false;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
+		$GLOBALS['aculect_ai_companion_test_switched_themes'] = array();
 
 		parent::tearDown();
 	}
@@ -105,7 +107,7 @@ final class ThemeLifecycleAbilitiesTest extends TestCase {
 		self::assertTrue( $result['safety']['read_only'] );
 		self::assertFalse( $result['safety']['install_implemented'] );
 		self::assertFalse( $result['safety']['update_implemented'] );
-		self::assertFalse( $result['safety']['switch_implemented'] );
+		self::assertTrue( $result['safety']['switch_implemented'] );
 		self::assertFalse( $result['safety']['deactivate_implemented'] );
 		self::assertFalse( $result['safety']['deactivate_supported'] );
 		self::assertSame( array( 'deactivate' ), $result['safety']['unsupported_operations'] );
@@ -164,6 +166,68 @@ final class ThemeLifecycleAbilitiesTest extends TestCase {
 
 		self::assertSame( 'invalid_theme', $invalid['error'] );
 		self::assertSame( 'theme_not_found', $missing['error'] );
+	}
+
+	public function test_switch_theme_dry_run_returns_preview_without_mutation(): void {
+		$result = $this->abilities->switch_theme(
+			array(
+				'stylesheet' => 'block-theme',
+				'dry_run'    => true,
+			)
+		);
+
+		self::assertTrue( $result['dry_run'] );
+		self::assertSame( 'preview', $result['status'] );
+		self::assertSame( 'theme_lifecycle.switch_theme', $result['action'] );
+		self::assertSame( 'system', $result['risk_level'] );
+		self::assertSame( 'block-theme', $result['target']['id'] );
+		self::assertSame( 'theme', $result['target']['type'] );
+		$diff_fields = array_column( $result['diff']['fields'], null, 'field' );
+		self::assertSame( 'child-theme', $diff_fields['active_stylesheet']['before']['value'] );
+		self::assertSame( 'block-theme', $diff_fields['active_stylesheet']['after']['value'] );
+		self::assertTrue( $result['confirmation_required'] );
+		self::assertSame( 'child-theme', $GLOBALS['aculect_ai_companion_test_active_stylesheet'] );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_switched_themes'] );
+	}
+
+	public function test_switch_theme_changes_active_theme_with_rollback_metadata(): void {
+		$result = $this->abilities->switch_theme( array( 'stylesheet' => 'block-theme' ) );
+
+		self::assertSame( 'switched', $result['status'] );
+		self::assertSame( 'switch_theme', $result['operation'] );
+		self::assertTrue( $result['changed'] );
+		self::assertSame( 'block-theme', $result['theme']['stylesheet'] );
+		self::assertTrue( $result['theme']['active'] );
+		self::assertSame( 'block-theme', $result['context']['active_stylesheet'] );
+		self::assertSame( 'switch_theme', $result['rollback']['operation'] );
+		self::assertSame( 'child-theme', $result['rollback']['stylesheet'] );
+		self::assertFalse( $result['safety']['read_only'] );
+		self::assertTrue( $result['safety']['switch_implemented'] );
+		self::assertTrue( $result['safety']['option_writes'] );
+		self::assertFalse( $result['safety']['filesystem_writes'] );
+		self::assertFalse( $result['confirmation_required'] );
+		self::assertSame( array( 'block-theme' ), $GLOBALS['aculect_ai_companion_test_switched_themes'] );
+	}
+
+	public function test_switch_theme_reports_noop_when_theme_already_active(): void {
+		$result = $this->abilities->switch_theme( array( 'stylesheet' => 'child-theme' ) );
+
+		self::assertSame( 'already_active', $result['status'] );
+		self::assertFalse( $result['changed'] );
+		self::assertSame( 'child-theme', $result['theme']['stylesheet'] );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_switched_themes'] );
+	}
+
+	public function test_switch_theme_rejects_invalid_missing_and_forbidden_requests(): void {
+		$invalid = $this->abilities->switch_theme( array( 'stylesheet' => '../wp-content/themes' ) );
+		$missing = $this->abilities->switch_theme( array( 'stylesheet' => 'missing-theme' ) );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'switch_themes' );
+		$forbidden                                        = $this->abilities->switch_theme( array( 'stylesheet' => 'block-theme' ) );
+
+		self::assertSame( 'invalid_theme', $invalid['error'] );
+		self::assertSame( 'theme_not_found', $missing['error'] );
+		self::assertSame( 'forbidden', $forbidden['error'] );
 	}
 
 	public function test_list_themes_supports_safe_status_filters(): void {

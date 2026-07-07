@@ -243,8 +243,9 @@ final class McpToolAvailability {
 			),
 			'theme_lifecycle'    => $this->operation_group(
 				array(
-					'list_themes' => 'theme_lifecycle.list_themes',
-					'get_theme'   => 'theme_lifecycle.get_theme',
+					'list_themes'  => 'theme_lifecycle.list_themes',
+					'get_theme'    => 'theme_lifecycle.get_theme',
+					'switch_theme' => 'theme_lifecycle.switch_theme',
 				),
 				$policy,
 				$registry,
@@ -663,6 +664,7 @@ final class McpToolAvailability {
 			'plugin_lifecycle.deactivate_plugin' => array( 'activate_plugins' ),
 			'theme_lifecycle.list_themes',
 			'theme_lifecycle.get_theme',
+			'theme_lifecycle.switch_theme',
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',
 			'site_editor.refresh_context',

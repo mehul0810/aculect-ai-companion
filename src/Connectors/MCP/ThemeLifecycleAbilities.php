@@ -1,6 +1,6 @@
 <?php
 /**
- * Read-only theme lifecycle inventory abilities.
+ * Theme lifecycle inventory and switch abilities.
  *
  * @package Aculect\AICompanion\Connectors\MCP
  */
@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
- * Builds bounded, lifecycle-oriented theme status models without mutating themes.
+ * Builds bounded, lifecycle-oriented theme status models and confirmed switch operations.
  */
 final class ThemeLifecycleAbilities extends AbstractAbilityService {
 
@@ -93,6 +93,68 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 		}
 
 		return $this->error( 'theme_not_found', 'Requested theme is not installed.' );
+	}
+
+	/**
+	 * Switch the current site to one already-installed theme.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function switch_theme( array $args ): array {
+		if ( ! current_user_can( 'switch_themes' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to switch themes on this site.' );
+		}
+
+		$stylesheet = $this->requested_stylesheet( $args['stylesheet'] ?? '' );
+		if ( is_array( $stylesheet ) ) {
+			return $stylesheet;
+		}
+
+		$current_active = $this->site_context();
+		$current        = $this->theme_inventory_item( (string) $current_active['active_stylesheet'] );
+		$target         = $this->theme_inventory_item( $stylesheet );
+		if ( null === $target ) {
+			return $this->error( 'theme_not_found', 'Requested theme is not installed.' );
+		}
+
+		if ( true === $target['active'] ) {
+			return $this->switch_noop_result( $target, 'already_active', 'Theme is already active on this site.' );
+		}
+
+		if ( $this->is_dry_run( $args ) ) {
+			return $this->preview_response(
+				'theme_lifecycle.switch_theme',
+				$args,
+				$this->theme_target_summary( $target ),
+				$this->theme_switch_changes( $current_active, $target ),
+				$this->theme_switch_warnings()
+			);
+		}
+
+		switch_theme( $stylesheet );
+
+		$updated = $this->theme_inventory_item( $stylesheet );
+		if ( null === $updated ) {
+			return $this->error( 'theme_not_found', 'Requested theme is not installed.' );
+		}
+
+		return array(
+			'status'                => 'switched',
+			'operation'             => 'switch_theme',
+			'theme'                 => $updated,
+			'changed'               => true,
+			'context'               => $this->site_context(),
+			'capabilities'          => $this->lifecycle_capabilities(),
+			'capability_blockers'   => $this->capability_blockers(),
+			'rollback'              => array(
+				'operation'  => 'switch_theme',
+				'stylesheet' => null === $current ? (string) $current_active['active_stylesheet'] : (string) $current['stylesheet'],
+				'note'       => 'Repeat this workflow with a dry run and confirmation token before switching back to the previous theme.',
+			),
+			'safety'                => $this->write_safety_metadata(),
+			'confirmation_required' => false,
+		);
 	}
 
 	/**
@@ -346,7 +408,7 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 			'read_only'                    => true,
 			'install_implemented'          => false,
 			'update_implemented'           => false,
-			'switch_implemented'           => false,
+			'switch_implemented'           => true,
 			'delete_implemented'           => false,
 			'deactivate_implemented'       => false,
 			'deactivate_supported'         => false,
@@ -358,6 +420,117 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 			'filesystem_paths_included'    => false,
 			'secret_values_included'       => false,
 			'unsupported_operations'       => array( 'deactivate' ),
+		);
+	}
+
+	/**
+	 * Return write-slice safety metadata for theme switching.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function write_safety_metadata(): array {
+		return array(
+			'read_only'                      => false,
+			'install_implemented'            => false,
+			'update_implemented'             => false,
+			'switch_implemented'             => true,
+			'delete_implemented'             => false,
+			'deactivate_implemented'         => false,
+			'deactivate_supported'           => false,
+			'operation'                      => 'switch_theme',
+			'site_scope_only'                => true,
+			'network_scope_supported'        => false,
+			'option_writes'                  => true,
+			'transient_writes'               => false,
+			'filesystem_writes'              => false,
+			'forced_update_checks'           => false,
+			'raw_update_payloads_included'   => false,
+			'filesystem_paths_included'      => false,
+			'secret_values_included'         => false,
+			'rollback_requires_confirmation' => true,
+			'unsupported_operations'         => array( 'install', 'update', 'delete', 'deactivate' ),
+		);
+	}
+
+	/**
+	 * Return one inventory item for the requested theme stylesheet.
+	 *
+	 * @param string $stylesheet Theme stylesheet.
+	 * @return array<string, mixed>|null
+	 */
+	private function theme_inventory_item( string $stylesheet ): ?array {
+		foreach ( $this->theme_inventory() as $item ) {
+			if ( $stylesheet === $item['stylesheet'] ) {
+				return $item;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Build a target summary for theme switch previews.
+	 *
+	 * @param array<string, mixed> $theme Current theme item.
+	 * @return array<string, mixed>
+	 */
+	private function theme_target_summary( array $theme ): array {
+		return array(
+			'type'       => 'theme',
+			'id'         => (string) $theme['stylesheet'],
+			'name'       => (string) $theme['name'],
+			'status'     => (string) $theme['status'],
+			'template'   => (string) $theme['template'],
+			'style_type' => (string) ( $theme['presentation']['classification'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Build field-level changes for theme switch previews.
+	 *
+	 * @param array<string, mixed> $context Current active theme context.
+	 * @param array<string, mixed> $target  Target theme item.
+	 * @return array<int, array<string, mixed>|null>
+	 */
+	private function theme_switch_changes( array $context, array $target ): array {
+		return array(
+			$this->change( 'active_stylesheet', $context['active_stylesheet'] ?? '', $target['stylesheet'] ?? '' ),
+			$this->change( 'active_template', $context['active_template'] ?? '', $target['template'] ?? '' ),
+			$this->change( 'active_theme_name', $context['active_theme_name'] ?? '', $target['name'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Build bounded switch warnings for preview and confirmation.
+	 *
+	 * @return string[]
+	 */
+	private function theme_switch_warnings(): array {
+		return array(
+			'Switching themes can change frontend templates, navigation rendering, widgets, and block theme settings immediately.',
+			'Rollback is available by switching back to the previous theme through the same theme lifecycle tool.',
+			'This first beta slice switches to an already-installed theme only; install, update, delete, and deactivate remain out of scope.',
+		);
+	}
+
+	/**
+	 * Build a deterministic no-op result for theme switch requests.
+	 *
+	 * @param array<string, mixed> $theme   Current theme item.
+	 * @param string               $status  Result status.
+	 * @param string               $message User-facing message.
+	 * @return array<string, mixed>
+	 */
+	private function switch_noop_result( array $theme, string $status, string $message ): array {
+		return array(
+			'status'              => $status,
+			'changed'             => false,
+			'message'             => $message,
+			'theme'               => $theme,
+			'context'             => $this->site_context(),
+			'capabilities'        => $this->lifecycle_capabilities(),
+			'capability_blockers' => $this->capability_blockers(),
+			'safety'              => $this->write_safety_metadata(),
 		);
 	}
 

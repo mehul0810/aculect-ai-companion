@@ -124,7 +124,8 @@ final class ToolSafety {
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
 			'plugin_lifecycle.activate_plugin',
-			'plugin_lifecycle.deactivate_plugin' => 'system',
+			'plugin_lifecycle.deactivate_plugin',
+			'theme_lifecycle.switch_theme' => 'system',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',

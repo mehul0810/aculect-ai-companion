@@ -234,6 +234,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'plugin_lifecycle.deactivate_plugin',
 				'theme_lifecycle.list_themes',
 				'theme_lifecycle.get_theme',
+				'theme_lifecycle.switch_theme',
 				'site.list_themes',
 			) as $ability_id
 		) {
@@ -321,6 +322,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_deactivate_plugin' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle.switch_theme' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );
@@ -367,6 +369,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'id', 'locator' ), $block_schema['required'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_block' ) );
 		self::assertFalse( $this->registry->is_read_only( 'content_update_block' ) );
+
+		$theme_schema = $this->registry->input_schema( 'theme_lifecycle.switch_theme' );
+		self::assertArrayHasKey( 'stylesheet', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $theme_schema['properties'] );
+		self::assertSame( array( 'stylesheet' ), $theme_schema['required'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle_switch_theme' ) );
+		self::assertFalse( $this->registry->is_read_only( 'theme_lifecycle_switch_theme' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {

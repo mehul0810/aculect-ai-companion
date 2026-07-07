@@ -17,3 +17,15 @@ if ( ! function_exists( 'is_network_admin' ) ) {
 		return (bool) ( $GLOBALS['aculect_ai_companion_test_network_admin'] ?? false );
 	}
 }
+
+if ( ! function_exists( 'switch_theme' ) ) {
+	/**
+	 * Switch the active test theme.
+	 *
+	 * @param string $stylesheet Theme stylesheet slug.
+	 */
+	function switch_theme( string $stylesheet ): void {
+		$GLOBALS['aculect_ai_companion_test_active_stylesheet'] = $stylesheet;
+		$GLOBALS['aculect_ai_companion_test_switched_themes'][] = $stylesheet;
+	}
+}

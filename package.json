@@ -8,6 +8,7 @@
     "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",
     "lint:css": "wp-scripts lint-style",
+    "smoke:release-fixture": "node scripts/smoke/release-fixture.mjs",
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",

@@ -1494,10 +1494,10 @@ final class SettingsPage {
 		return array(
 			'approvalMode'        => 'interactive_oauth',
 			'approvalModeEnabled' => false,
+			'queueAvailable'      => false,
+			'status'              => 'disabled',
 			'pendingCount'        => 0,
 			'items'               => array(),
-			'emptyTitle'          => __( 'No pending connection requests.', 'aculect-ai-companion' ),
-			'emptyDescription'    => __( 'Assistant approvals are handled during the WordPress OAuth consent flow. This site does not keep a separate pending approval queue yet.', 'aculect-ai-companion' ),
 		);
 	}
 

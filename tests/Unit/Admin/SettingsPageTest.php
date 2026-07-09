@@ -143,6 +143,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 2, $payload['activeSessionCount'] );
 		self::assertSame( 'interactive_oauth', $payload['connectionRequests']['approvalMode'] );
 		self::assertFalse( $payload['connectionRequests']['approvalModeEnabled'] );
+		self::assertFalse( $payload['connectionRequests']['queueAvailable'] );
+		self::assertSame( 'disabled', $payload['connectionRequests']['status'] );
 		self::assertSame( 0, $payload['connectionRequests']['pendingCount'] );
 		self::assertSame( array(), $payload['connectionRequests']['items'] );
 		self::assertSame( array(), $payload['sessions'] );

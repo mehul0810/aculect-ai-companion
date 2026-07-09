@@ -701,6 +701,19 @@ if ( ! function_exists( 'get_post' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_post_type' ) ) {
+	/**
+	 * Return a test post type.
+	 *
+	 * @param int|\WP_Post $post Post ID or object.
+	 */
+	function get_post_type( int|\WP_Post $post ): string {
+		$post = $post instanceof WP_Post ? $post : get_post( $post );
+
+		return $post instanceof WP_Post ? (string) $post->post_type : '';
+	}
+}
+
 if ( ! function_exists( 'get_post_type_object' ) ) {
 	/**
 	 * Return a test post type object.
@@ -718,6 +731,34 @@ if ( ! function_exists( 'get_post_type_object' ) ) {
 		}
 
 		return new WP_Post_Type( $post_type );
+	}
+}
+
+if ( ! function_exists( 'wp_get_post_terms' ) ) {
+	/**
+	 * Return stored test terms for one post/taxonomy pair.
+	 *
+	 * @param int    $post_id  Post ID.
+	 * @param string $taxonomy Taxonomy name.
+	 * @param array  $args     Query args.
+	 * @return array<int, \WP_Term>
+	 */
+	function wp_get_post_terms( int $post_id, string $taxonomy, array $args = array() ): array {
+		unset( $args );
+
+		$terms = $GLOBALS['aculect_ai_companion_test_post_terms'][ $post_id ][ $taxonomy ] ?? array();
+		if ( ! is_array( $terms ) ) {
+			return array();
+		}
+
+		return array_values(
+			array_filter(
+				array_map(
+					static fn ( mixed $term ): ?WP_Term => $term instanceof WP_Term ? $term : ( is_array( $term ) ? new WP_Term( $term ) : null ),
+					$terms
+				)
+			)
+		);
 	}
 }
 
@@ -1368,6 +1409,50 @@ if ( ! function_exists( 'update_post_meta' ) ) {
 		$GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ][ $key ] = $value;
 
 		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_schedule_single_event' ) ) {
+	/**
+	 * Record a scheduled single event for tests.
+	 *
+	 * @param int          $timestamp Unix timestamp.
+	 * @param string       $hook      Hook name.
+	 * @param array<mixed> $args      Event args.
+	 */
+	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array() ): bool {
+		unset( $args );
+
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] = $timestamp;
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_next_scheduled' ) ) {
+	/**
+	 * Return the next scheduled timestamp for a test cron hook.
+	 *
+	 * @param string       $hook Event hook.
+	 * @param array<mixed> $args Event args.
+	 */
+	function wp_next_scheduled( string $hook, array $args = array() ): int|false {
+		unset( $args );
+
+		$scheduled = $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ?? false;
+
+		return is_numeric( $scheduled ) ? (int) $scheduled : false;
+	}
+}
+
+if ( ! function_exists( 'wp_unschedule_hook' ) ) {
+	/**
+	 * Remove one scheduled hook from the test registry.
+	 *
+	 * @param string $hook Hook name.
+	 */
+	function wp_unschedule_hook( string $hook ): void {
+		unset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] );
 	}
 }
 

@@ -32,6 +32,10 @@ final class Plugin {
 	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
+	/** @var array<int, bool> */
+	private array $content_index_saved_posts = array();
+	/** @var array<int, bool> */
+	private array $content_index_deferred_posts = array();
 
 	/**
 	 * Return the singleton plugin instance.
@@ -308,6 +312,7 @@ final class Plugin {
 			return;
 		}
 
+		$this->content_index_saved_posts[ $post_id ] = true;
 		( new ContentIndexer() )->index_post( $post_id );
 	}
 
@@ -359,7 +364,7 @@ final class Plugin {
 	public function handle_content_index_terms_changed( int $object_id, mixed ...$args ): void {
 		unset( $args );
 
-		$this->mark_post_stale_once( $object_id );
+		$this->refresh_post_index_after_mutation( $object_id );
 	}
 
 	/**
@@ -382,7 +387,7 @@ final class Plugin {
 			return;
 		}
 
-		$this->mark_post_stale_once( $object_id );
+		$this->refresh_post_index_after_mutation( $object_id );
 	}
 
 	/**
@@ -394,6 +399,34 @@ final class Plugin {
 		$keys = apply_filters( 'aculect_ai_companion_indexed_internal_meta_keys', array( '_thumbnail_id' ) );
 
 		return is_array( $keys ) && in_array( $meta_key, $keys, true );
+	}
+
+	/**
+	 * Queue one post-save refresh when editor term/meta updates settle.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function refresh_post_index_after_mutation( int $post_id ): void {
+		$post_id = absint( $post_id );
+		if ( 0 >= $post_id ) {
+			return;
+		}
+
+		if ( ! isset( $this->content_index_saved_posts[ $post_id ] ) ) {
+			$this->mark_post_stale_once( $post_id );
+			return;
+		}
+
+		if ( isset( $this->content_index_deferred_posts[ $post_id ] ) ) {
+			return;
+		}
+
+		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
+			return;
+		}
+
+		$this->content_index_deferred_posts[ $post_id ] = true;
+		( new ContentIndexer() )->defer_index_post( $post_id );
 	}
 
 	/**
@@ -409,13 +442,23 @@ final class Plugin {
 			return;
 		}
 
-		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
-		if ( in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true ) ) {
+		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
 			return;
 		}
 
 		$marked[ $post_id ] = true;
 		( new ContentIndexer() )->mark_post_stale( $post_id );
+	}
+
+	/**
+	 * Return whether one post is eligible for content index writes.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function is_indexable_content_index_post( int $post_id ): bool {
+		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
+
+		return ! in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true );
 	}
 
 	/**

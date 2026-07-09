@@ -105,8 +105,8 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertTrue( $result['safety']['read_only'] );
 		self::assertFalse( $result['safety']['install_implemented'] );
 		self::assertFalse( $result['safety']['update_implemented'] );
-		self::assertFalse( $result['safety']['activate_implemented'] );
-		self::assertFalse( $result['safety']['deactivate_implemented'] );
+		self::assertTrue( $result['safety']['activate_implemented'] );
+		self::assertTrue( $result['safety']['deactivate_implemented'] );
 		self::assertFalse( $result['filters']['forced_update_checks'] );
 		self::assertFalse( $result['filters']['raw_update_payloads_included'] );
 		self::assertTrue( $result['context']['multisite'] );
@@ -151,6 +151,8 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertSame( 'acme', $result['plugin']['slug'] );
 		self::assertSame( '2.0.0', $result['plugin']['update']['new_version'] );
 		self::assertTrue( $result['safety']['read_only'] );
+		self::assertTrue( $result['safety']['activate_implemented'] );
+		self::assertTrue( $result['safety']['deactivate_implemented'] );
 	}
 
 	public function test_get_plugin_rejects_invalid_or_missing_plugin_basename(): void {

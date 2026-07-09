@@ -32,9 +32,17 @@ final class Plugin {
 	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
-	/** @var array<int, bool> */
+	/**
+	 * Tracks posts already handled during the current save cycle.
+	 *
+	 * @var array<int, bool>
+	 */
 	private array $content_index_saved_posts = array();
-	/** @var array<int, bool> */
+	/**
+	 * Tracks posts queued for deferred content index refreshes.
+	 *
+	 * @var array<int, bool>
+	 */
 	private array $content_index_deferred_posts = array();
 
 	/**

@@ -39,6 +39,7 @@ defined( 'ABSPATH' ) || exit;
 final class SettingsPage {
 
 	private const PAGE_SLUG            = 'aculect-ai-companion';
+	private const OAUTH_CONSENT_SLUG   = 'aculect-ai-companion-oauth-consent';
 	private const SETTINGS_PARENT_FILE = 'options-general.php';
 	private const ASSET_HANDLE         = 'aculect-ai-companion-settings-app';
 	private const STYLE_HANDLE         = 'aculect-ai-companion-settings-style';
@@ -80,6 +81,14 @@ final class SettingsPage {
 			__( 'AI Companion', 'aculect-ai-companion' ),
 			'manage_options',
 			self::PAGE_SLUG,
+			array( $this, 'render' )
+		);
+		add_submenu_page(
+			null,
+			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
+			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
+			'read',
+			self::OAUTH_CONSENT_SLUG,
 			array( $this, 'render' )
 		);
 
@@ -132,13 +141,13 @@ final class SettingsPage {
 	 * Render the settings page shell or the OAuth consent screen.
 	 */
 	public function render(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
-		}
-
 		if ( $this->is_oauth_consent_view() ) {
 			( new AuthorizationController() )->render_admin_consent();
 			return;
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
 		}
 
 		echo '<div class="wrap aculect-ai-companion-settings-wrap"><div id="aculect-ai-companion-settings-app-root" class="aculect-ai-companion-settings-app-root"></div></div>';
@@ -1820,7 +1829,7 @@ final class SettingsPage {
 	 */
 	private function is_oauth_consent_view(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing flag for the settings page.
-		return isset( $_GET['view'] ) && 'oauth-consent' === sanitize_key( wp_unslash( (string) $_GET['view'] ) );
+		return isset( $_GET['page'] ) && self::OAUTH_CONSENT_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**

@@ -492,6 +492,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	private function public_sources( mixed $sources ): array {
 		if ( is_string( $sources ) ) {
 			$unserialized = preg_match( '/^(a|s|i|b|d|N);|^(a|s|i|b|d|O|C):/', $sources )
+				// nosemgrep: Rank Math stores redirect source arrays as serialized DB values here; classes are disallowed and non-array results are discarded.
 				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Rank Math stores redirect source arrays as serialized data; classes are disallowed.
 				? unserialize( $sources, array( 'allowed_classes' => false ) )
 				: false;

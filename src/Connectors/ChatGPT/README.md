@@ -28,7 +28,7 @@ These values are generated from `Aculect\AICompanion\Connectors\Helpers`:
 - Protected resource metadata: `/.well-known/oauth-protected-resource` and resource-path variant
 - Authorization server metadata: `/.well-known/oauth-authorization-server` and issuer-path variant
 - Dynamic client registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
-- Authorization endpoint: `/wp-json/aculect-ai-companion/v1/oauth/authorize`
+- Authorization endpoint: `/oauth/authorize`
 - Token endpoint: `/wp-json/aculect-ai-companion/v1/oauth/token`
 
 The MCP endpoint must be the only primary value shown to users. Metadata and OAuth URLs belong in advanced diagnostics only.

@@ -19,6 +19,7 @@ import {
 	shouldShowPendingRequests,
 	wizardStepsForProvider,
 } from './connect-wizard.mjs';
+import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
 	Card,
@@ -79,7 +80,9 @@ const SETTINGS_TABS = [
 ];
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
+const CONSTRAINED_ADMIN_MEDIA_QUERY = '(max-width: 782px)';
 const DATA_VIEW_TABLE_LAYOUTS = { table: true };
+const DATA_VIEW_CONNECTION_LIST_LAYOUTS = { list: true };
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
 	{ name: 'pass', label: 'Passed' },
@@ -167,6 +170,41 @@ const LEARNING_REVIEW_SURFACES = [
 			'Inspect local sanitized workflow reports separately from learning review.',
 	},
 ];
+
+function useMediaQuery( query ) {
+	const getMatches = () =>
+		typeof window !== 'undefined' &&
+		typeof window.matchMedia === 'function' &&
+		window.matchMedia( query ).matches;
+	const [ matches, setMatches ] = useState( getMatches );
+
+	useEffect( () => {
+		if (
+			typeof window === 'undefined' ||
+			typeof window.matchMedia !== 'function'
+		) {
+			return undefined;
+		}
+
+		const mediaQueryList = window.matchMedia( query );
+		const handleChange = ( event ) => setMatches( event.matches );
+
+		setMatches( mediaQueryList.matches );
+
+		if ( typeof mediaQueryList.addEventListener === 'function' ) {
+			mediaQueryList.addEventListener( 'change', handleChange );
+
+			return () =>
+				mediaQueryList.removeEventListener( 'change', handleChange );
+		}
+
+		mediaQueryList.addListener( handleChange );
+
+		return () => mediaQueryList.removeListener( handleChange );
+	}, [ query ] );
+
+	return matches;
+}
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -2039,7 +2077,7 @@ function ActivityTable( { activity } ) {
 				<tbody>
 					{ items.map( ( item ) => (
 						<tr key={ item.id }>
-							<td>
+							<td data-label="Time">
 								<strong className="aculect-ai-companion-activity-table__time">
 									{ item.created_at }
 								</strong>
@@ -2047,13 +2085,19 @@ function ActivityTable( { activity } ) {
 									<SampleBadge label="Preview" />
 								) }
 							</td>
-							<td>{ activityUserName( item ) }</td>
-							<td>{ activityAssistantName( item ) }</td>
-							<td>
+							<td data-label="User">
+								{ activityUserName( item ) }
+							</td>
+							<td data-label="Assistant">
+								{ activityAssistantName( item ) }
+							</td>
+							<td data-label="Action">
 								<code>{ item.action }</code>
 							</td>
-							<td>{ activityTargetLabel( item ) }</td>
-							<td>
+							<td data-label="Target">
+								{ activityTargetLabel( item ) }
+							</td>
+							<td data-label="Result">
 								<ActivityStatusPill status={ item.status } />
 								{ item.error_code && (
 									<span className="aculect-ai-companion-activity-error-code">
@@ -2061,7 +2105,7 @@ function ActivityTable( { activity } ) {
 									</span>
 								) }
 							</td>
-							<td>
+							<td data-label="Details">
 								{ item.message || '-' }
 								<LogContext context={ item.context } />
 							</td>
@@ -3095,33 +3139,86 @@ function ConnectionActionsMenu( { session, data } ) {
 	);
 }
 
-function ConnectionsDataViews( {
-	sessions: connectionSessions,
-	data,
-	isAccessPaused,
-	currentUserId,
-	abilities,
-	enabledAbilityIds,
-} ) {
-	const dataViewsModule = useDataViewsModule();
-	const DataViewsComponent = dataViewsModule?.DataViews;
-	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
-	const connectorLogoUrls =
-		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
-			? data.connectorLogoUrls
-			: EMPTY_OBJECT;
-	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
-		useState( null );
-	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
-	const defaultView = {
-		type: 'table',
-		search: '',
-		page: 1,
-		perPage: 10,
-		sort: {
+function connectionAssistantName( session ) {
+	return (
+		session.client_name ||
+		connectionProviderLabel( session ) ||
+		session.client_id ||
+		'AI Assistant'
+	);
+}
+
+function connectionAssistantMeta( session ) {
+	const secondaryValues = [
+		connectionProviderLabel( session ),
+		session.client_id,
+	].filter( Boolean );
+
+	if ( session.client_name ) {
+		return secondaryValues.find(
+			( value ) => value !== session.client_name
+		);
+	}
+
+	return secondaryValues[ 1 ] || '';
+}
+
+function ConnectionResponsiveField( { label, children } ) {
+	return (
+		<div className="aculect-ai-companion-connection-list-field">
+			<span className="aculect-ai-companion-connection-list-field__label">
+				{ label }
+			</span>
+			<div className="aculect-ai-companion-connection-list-field__value">
+				{ children }
+			</div>
+		</div>
+	);
+}
+
+function normalizeConnectionsView( currentView, isConstrained ) {
+	const baseView = {
+		...currentView,
+		search: currentView.search || '',
+		page: currentView.page || 1,
+		perPage: currentView.perPage || 10,
+		sort: currentView.sort || {
 			field: 'status',
 			direction: 'desc',
 		},
+	};
+
+	if ( isConstrained ) {
+		return {
+			...baseView,
+			type: 'list',
+			titleField: 'assistantName',
+			descriptionField: 'user',
+			mediaField: 'assistant',
+			showTitle: true,
+			showDescription: true,
+			showMedia: true,
+			fields: [
+				'listStatus',
+				'listAccess',
+				'listAbilities',
+				'listActions',
+			],
+			layout: {
+				density: 'balanced',
+			},
+		};
+	}
+
+	return {
+		...baseView,
+		type: 'table',
+		titleField: undefined,
+		descriptionField: undefined,
+		mediaField: undefined,
+		showTitle: undefined,
+		showDescription: undefined,
+		showMedia: undefined,
 		fields: [
 			'assistant',
 			'user',
@@ -3158,7 +3255,38 @@ function ConnectionsDataViews( {
 			},
 		},
 	};
-	const [ view, setView ] = useState( defaultView );
+}
+
+function ConnectionsDataViews( {
+	sessions: connectionSessions,
+	data,
+	isAccessPaused,
+	currentUserId,
+	abilities,
+	enabledAbilityIds,
+} ) {
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const isConstrainedAdminWidth = useMediaQuery(
+		CONSTRAINED_ADMIN_MEDIA_QUERY
+	);
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
+	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
+		useState( null );
+	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
+	const [ view, setView ] = useState( () =>
+		normalizeConnectionsView( {}, isConstrainedAdminWidth )
+	);
+
+	useEffect( () => {
+		setView( ( currentView ) =>
+			normalizeConnectionsView( currentView, isConstrainedAdminWidth )
+		);
+	}, [ isConstrainedAdminWidth ] );
 	const providerOptions = useMemo(
 		() =>
 			connectionOptionElements(
@@ -3193,6 +3321,31 @@ function ConnectionsDataViews( {
 								connectorLogoUrls={ connectorLogoUrls }
 							/>
 						</Tooltip>
+					</div>
+				),
+			},
+			{
+				id: 'assistantName',
+				label: 'Assistant',
+				enableGlobalSearch: true,
+				getValue: ( { item } ) =>
+					[
+						connectionAssistantName( item ),
+						connectionAssistantMeta( item ),
+						item.provider,
+					]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong className="aculect-ai-companion-connections-table__primary">
+							{ connectionAssistantName( session ) }
+						</strong>
+						{ connectionAssistantMeta( session ) && (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ connectionAssistantMeta( session ) }
+							</span>
+						) }
 					</div>
 				),
 			},
@@ -3240,6 +3393,21 @@ function ConnectionsDataViews( {
 				),
 			},
 			{
+				id: 'listAbilities',
+				label: 'Effective abilities',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Effective abilities">
+						<ConnectionEffectiveAbilitiesControl
+							session={ session }
+							abilities={ abilities }
+							enabledAbilityIds={ enabledAbilityIds }
+							onOpen={ setEffectiveAbilitiesSession }
+						/>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
 				id: 'access',
 				label: 'Access',
 				elements: CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
@@ -3255,6 +3423,20 @@ function ConnectionsDataViews( {
 						data={ data }
 						onChange={ setAccessLevelSession }
 					/>
+				),
+			},
+			{
+				id: 'listAccess',
+				label: 'Access',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Access">
+						<ConnectionAccessControl
+							session={ session }
+							data={ data }
+							onChange={ setAccessLevelSession }
+						/>
+					</ConnectionResponsiveField>
 				),
 			},
 			{
@@ -3310,6 +3492,42 @@ function ConnectionsDataViews( {
 				),
 			},
 			{
+				id: 'listStatus',
+				label: 'Status',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Status">
+						<div className="aculect-ai-companion-connection-status-cell">
+							<div className="aculect-ai-companion-connection-status-cell__summary">
+								<ConnectionStatusChip
+									session={ session }
+									isAccessPaused={ isAccessPaused }
+								/>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									{ connectionRelativeExpiry(
+										session.expires_at
+									) }
+								</span>
+							</div>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								Last activity:{ ' ' }
+								{ connectionDateValue(
+									session.last_used_at,
+									'Never'
+								) }
+							</span>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								Created:{ ' ' }
+								{ connectionDateValue(
+									session.created_at,
+									'Unknown'
+								) }
+							</span>
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
 				id: 'ownership',
 				label: 'Owner',
 				elements: [
@@ -3339,6 +3557,20 @@ function ConnectionsDataViews( {
 				enableHiding: false,
 				render: ( { item: session } ) => (
 					<ConnectionActionsMenu session={ session } data={ data } />
+				),
+			},
+			{
+				id: 'listActions',
+				label: 'Actions',
+				enableSorting: false,
+				enableHiding: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Actions">
+						<ConnectionActionsMenu
+							session={ session }
+							data={ data }
+						/>
+					</ConnectionResponsiveField>
 				),
 			},
 		],
@@ -3390,13 +3622,24 @@ function ConnectionsDataViews( {
 					onChangeView={ setView }
 					search
 					searchLabel="Search connections"
-					defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
+					defaultLayouts={
+						isConstrainedAdminWidth
+							? DATA_VIEW_CONNECTION_LIST_LAYOUTS
+							: DATA_VIEW_TABLE_LAYOUTS
+					}
 					paginationInfo={ paginationInfo }
 					getItemId={ ( session ) =>
 						`${ session.status || 'active' }-${ session.id }`
 					}
 					config={ { perPageSizes: [ 10, 20, 50 ] } }
-					onReset={ () => setView( defaultView ) }
+					onReset={ () =>
+						setView(
+							normalizeConnectionsView(
+								{},
+								isConstrainedAdminWidth
+							)
+						)
+					}
 					empty={
 						<EmptyState title={ emptyStateTitle }>
 							{ connectionSessions.length > 0
@@ -6536,7 +6779,11 @@ function SettingsApp() {
 	const [ roleAbilitiesModalOpen, setRoleAbilitiesModalOpen ] =
 		useState( false );
 	const adminNoticesRef = useRef( null );
+	const tabsNavRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
+	const [ tabsOverflow, setTabsOverflow ] = useState( () =>
+		tabOverflowState()
+	);
 	const isAccessPaused = Boolean( data.accessPaused );
 	const currentUserId = Number( data.currentUserId || 0 );
 	const activeConnectionSessions = useMemo(
@@ -6597,6 +6844,46 @@ function SettingsApp() {
 	useEffect( () => {
 		setActivityFilterValues( activityFilterDefaults );
 	}, [ activityFilterDefaults ] );
+
+	useEffect( () => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return undefined;
+		}
+
+		const updateTabsOverflow = () => {
+			setTabsOverflow(
+				tabOverflowState( {
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				} )
+			);
+		};
+
+		updateTabsOverflow();
+		tabsNav.addEventListener( 'scroll', updateTabsOverflow, {
+			passive: true,
+		} );
+
+		if ( typeof window.ResizeObserver === 'function' ) {
+			const observer = new window.ResizeObserver( updateTabsOverflow );
+			observer.observe( tabsNav );
+
+			return () => {
+				tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+				observer.disconnect();
+			};
+		}
+
+		window.addEventListener( 'resize', updateTabsOverflow );
+
+		return () => {
+			tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+			window.removeEventListener( 'resize', updateTabsOverflow );
+		};
+	}, [] );
 
 	useEffect( () => {
 		if ( providers.length === 0 ) {
@@ -6686,6 +6973,26 @@ function SettingsApp() {
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
+
+	useEffect( () => {
+		if ( ! tabsOverflow.hasOverflow || ! tabsNavRef.current ) {
+			return;
+		}
+
+		const activeTabLink = tabsNavRef.current.querySelector(
+			'.aculect-ai-companion-tab.is-active'
+		);
+
+		if (
+			activeTabLink &&
+			typeof activeTabLink.scrollIntoView === 'function'
+		) {
+			activeTabLink.scrollIntoView( {
+				block: 'nearest',
+				inline: 'nearest',
+			} );
+		}
+	}, [ activeTab.name, tabsOverflow.hasOverflow ] );
 
 	useEffect( () => {
 		if ( activeTab.name !== 'abilities' || ! roleAbilitiesEnabled ) {
@@ -6786,6 +7093,26 @@ function SettingsApp() {
 		} );
 	};
 
+	const scrollTabs = ( direction ) => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return;
+		}
+
+		tabsNav.scrollTo( {
+			left: tabScrollTarget(
+				{
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				},
+				direction
+			),
+			behavior: 'smooth',
+		} );
+	};
+
 	return (
 		<div className="aculect-ai-companion-app-root">
 			<header className="aculect-ai-companion-app-header">
@@ -6846,30 +7173,61 @@ function SettingsApp() {
 				</div>
 			</header>
 
-			<nav
-				className="aculect-ai-companion-tabs"
-				aria-label="Aculect AI Companion settings"
-			>
-				{ visibleTabs.map( ( tab ) => {
-					const isActive = activeTab.name === tab.name;
+			<div className="aculect-ai-companion-tabs-shell">
+				<nav
+					id="aculect-ai-companion-primary-tabs"
+					ref={ tabsNavRef }
+					className="aculect-ai-companion-tabs"
+					data-overflowing={
+						tabsOverflow.hasOverflow ? 'true' : 'false'
+					}
+					aria-label="Aculect AI Companion settings"
+				>
+					{ visibleTabs.map( ( tab ) => {
+						const isActive = activeTab.name === tab.name;
 
-					return (
-						<a
-							key={ tab.name }
-							className={ `aculect-ai-companion-tab ${
-								isActive ? 'is-active' : ''
-							}` }
-							href={ tabUrl( tab.name, data.adminPageUrl ) }
-							aria-current={ isActive ? 'page' : undefined }
-							onClick={ ( event ) =>
-								maybeSelectTab( event, tab.name )
-							}
-						>
-							<span>{ tab.title }</span>
-						</a>
-					);
-				} ) }
-			</nav>
+						return (
+							<a
+								key={ tab.name }
+								className={ `aculect-ai-companion-tab ${
+									isActive ? 'is-active' : ''
+								}` }
+								href={ tabUrl( tab.name, data.adminPageUrl ) }
+								aria-current={ isActive ? 'page' : undefined }
+								onClick={ ( event ) =>
+									maybeSelectTab( event, tab.name )
+								}
+							>
+								<span>{ tab.title }</span>
+							</a>
+						);
+					} ) }
+				</nav>
+				{ tabsOverflow.hasOverflow && (
+					<div className="aculect-ai-companion-tabs-controls">
+						<div className="aculect-ai-companion-tabs-actions">
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollBackward }
+								onClick={ () => scrollTabs( 'backward' ) }
+							>
+								Earlier tabs
+							</Button>
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollForward }
+								onClick={ () => scrollTabs( 'forward' ) }
+							>
+								More tabs
+							</Button>
+						</div>
+					</div>
+				) }
+			</div>
 
 			<div
 				className="aculect-ai-companion-admin-notices"

@@ -8,6 +8,9 @@ namespace Aculect\AICompanion\Connectors\MCP;
  * Media abilities implementation.
  */
 final class MediaAbilities extends AbstractAbilityService {
+	private const MEDIA_AUDIT_MAX_PER_PAGE           = 100;
+	private const MEDIA_AUDIT_MAX_CONTENT_SCAN_LIMIT = 250;
+
 	/**
 	 * List media attachments.
 	 *
@@ -95,6 +98,76 @@ final class MediaAbilities extends AbstractAbilityService {
 		}
 
 		return $this->map_post( $attachment );
+	}
+
+	/**
+	 * Return bounded read-only media usage intelligence.
+	 *
+	 * @param array<string, mixed> $args Audit arguments.
+	 * @return array<string, mixed>
+	 */
+	public function audit_usage( array $args ): array {
+		if ( ! current_user_can( 'upload_files' ) && ! current_user_can( 'edit_posts' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to audit media.' );
+		}
+
+		$page               = max( 1, absint( $args['page'] ?? 1 ) );
+		$per_page           = max( 1, min( self::MEDIA_AUDIT_MAX_PER_PAGE, absint( $args['per_page'] ?? 20 ) ) );
+		$content_scan_limit = max( 0, min( self::MEDIA_AUDIT_MAX_CONTENT_SCAN_LIMIT, absint( $args['content_scan_limit'] ?? 100 ) ) );
+		$status_filter      = sanitize_key( (string) ( $args['status_filter'] ?? 'all' ) );
+		$allowed_filters    = array( 'all', 'unused', 'missing_alt', 'attached', 'unattached', 'used' );
+		if ( ! in_array( $status_filter, $allowed_filters, true ) ) {
+			$status_filter = 'all';
+		}
+
+		$attachments = $this->readable_editable_attachments( $args );
+		$total       = count( $attachments );
+		$usage       = $content_scan_limit > 0 ? $this->attachment_usage_map( $attachments, $content_scan_limit ) : array();
+		$items       = array();
+		$summary     = array(
+			'total_scanned'    => $total,
+			'attached'         => 0,
+			'unattached'       => 0,
+			'used'             => 0,
+			'likely_unused'    => 0,
+			'missing_alt'      => 0,
+			'with_caption'     => 0,
+			'with_description' => 0,
+		);
+
+		foreach ( $attachments as $attachment ) {
+			$item = $this->media_audit_item( $attachment, $usage[ $attachment->ID ] ?? array() );
+			$this->increment_media_summary( $summary, $item );
+			if ( ! $this->media_item_matches_filter( $item, $status_filter ) ) {
+				continue;
+			}
+
+			$items[] = $item;
+		}
+
+		return array(
+			'items'        => array_slice( $items, ( $page - 1 ) * $per_page, $per_page ),
+			'total'        => count( $items ),
+			'page'         => $page,
+			'per_page'     => $per_page,
+			'summary'      => $summary,
+			'bounds'       => array(
+				'attachments_considered' => $total,
+				'content_scan_limit'     => $content_scan_limit,
+				'content_scan_truncated' => ( $usage['__scanned_posts'] ?? 0 ) >= $content_scan_limit && $content_scan_limit > 0,
+			),
+			'safety'       => array(
+				'read_only'                 => true,
+				'deletion_actions_exposed'  => false,
+				'private_file_paths_hidden' => true,
+				'raw_sql_hidden'            => true,
+			),
+			'next_actions' => array(
+				'Use media_get_item for full metadata before updates.',
+				'Review likely_unused items manually before trashing media with existing media tools.',
+				'Use media_update_item to add missing alt text when appropriate.',
+			),
+		);
 	}
 
 	/**
@@ -517,6 +590,310 @@ final class MediaAbilities extends AbstractAbilityService {
 
 		$attachment = get_post( (int) $attachment_id );
 		return $attachment instanceof \WP_Post ? $this->map_post( $attachment ) : array( 'id' => (int) $attachment_id );
+	}
+
+	/**
+	 * Return attachments the current user can read and edit.
+	 *
+	 * @param array<string, mixed> $args Audit arguments.
+	 * @return list<\WP_Post>
+	 */
+	private function readable_editable_attachments( array $args ): array {
+		$query = array(
+			'post_type'              => 'attachment',
+			'post_status'            => $this->statuses_from_args( $args, array( 'inherit' ) ),
+			'posts_per_page'         => self::MEDIA_AUDIT_MAX_PER_PAGE * 5,
+			'perm'                   => 'readable',
+			'orderby'                => 'ID',
+			'order'                  => 'DESC',
+			'no_found_rows'          => true,
+			'update_post_meta_cache' => true,
+			'update_post_term_cache' => false,
+		);
+
+		if ( ! empty( $args['type'] ) ) {
+			$query['post_mime_type'] = sanitize_text_field( (string) $args['type'] ) . '/*';
+		}
+		if ( ! empty( $args['mime_type'] ) ) {
+			$query['post_mime_type'] = sanitize_text_field( (string) $args['mime_type'] );
+		}
+		if ( array_key_exists( 'parent_id', $args ) ) {
+			$query['post_parent'] = absint( $args['parent_id'] );
+		}
+
+		$posts = function_exists( 'get_posts' ) ? get_posts( $query ) : array();
+
+		return array_values(
+			array_filter(
+				$posts,
+				function ( mixed $post ) use ( $query ): bool {
+					if ( ! $post instanceof \WP_Post || 'attachment' !== $post->post_type ) {
+						return false;
+					}
+					if ( ! in_array( $post->post_status, (array) $query['post_status'], true ) ) {
+						return false;
+					}
+					if ( isset( $query['post_parent'] ) && (int) $query['post_parent'] !== (int) $post->post_parent ) {
+						return false;
+					}
+					if ( isset( $query['post_mime_type'] ) && ! $this->mime_matches_filter( $post->post_mime_type, (string) $query['post_mime_type'] ) ) {
+						return false;
+					}
+
+					return current_user_can( 'read_post', (int) $post->ID ) && current_user_can( 'edit_post', (int) $post->ID );
+				}
+			)
+		);
+	}
+
+	/**
+	 * Return compact content usage for each attachment ID.
+	 *
+	 * @param array $attachments Attachment posts.
+	 * @param int   $limit       Maximum content posts to scan.
+	 * @phpstan-param list<\WP_Post> $attachments
+	 * @return array<int|string, mixed>
+	 */
+	private function attachment_usage_map( array $attachments, int $limit ): array {
+		$scanned_posts = 0;
+		$map           = array();
+		if ( array() === $attachments || $limit <= 0 || ! function_exists( 'get_posts' ) ) {
+			return array( '__scanned_posts' => 0 );
+		}
+
+		$attachments_by_id = array();
+		foreach ( $attachments as $attachment ) {
+			$attachments_by_id[ (int) $attachment->ID ] = array(
+				'url' => (string) wp_get_attachment_url( (int) $attachment->ID ),
+			);
+		}
+
+		$posts = get_posts(
+			array(
+				'post_type'              => 'any',
+				'post_status'            => self::DEFAULT_POST_STATUSES,
+				'posts_per_page'         => $limit,
+				'perm'                   => 'readable',
+				'orderby'                => 'modified',
+				'order'                  => 'DESC',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => true,
+				'update_post_term_cache' => false,
+			)
+		);
+
+		foreach ( $posts as $post ) {
+			if ( ! $post instanceof \WP_Post || 'attachment' === $post->post_type || ! current_user_can( 'read_post', (int) $post->ID ) ) {
+				continue;
+			}
+
+			++$scanned_posts;
+			foreach ( $attachments_by_id as $attachment_id => $attachment_data ) {
+				$matches = $this->attachment_matches_content( $attachment_id, (string) $attachment_data['url'], $post );
+				if ( array() === $matches ) {
+					continue;
+				}
+
+				$map[ $attachment_id ] = array_merge(
+					$map[ $attachment_id ] ?? array(),
+					array(
+						array(
+							'post_id'  => (int) $post->ID,
+							'title'    => get_the_title( $post ),
+							'type'     => $post->post_type,
+							'status'   => $post->post_status,
+							'link'     => get_permalink( $post ),
+							'evidence' => $matches,
+						),
+					)
+				);
+			}
+		}
+
+		$map['__scanned_posts'] = $scanned_posts;
+
+		return $map;
+	}
+
+	/**
+	 * Build one media audit item.
+	 *
+	 * @param \WP_Post $attachment    Attachment post.
+	 * @param array    $content_usage Content references.
+	 * @phpstan-param list<array<string,mixed>> $content_usage
+	 * @return array<string, mixed>
+	 */
+	private function media_audit_item( \WP_Post $attachment, array $content_usage ): array {
+		$attachment_id = (int) $attachment->ID;
+		$alt_text      = trim( (string) get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) );
+		$caption       = trim( wp_strip_all_tags( (string) $attachment->post_excerpt ) );
+		$description   = trim( wp_strip_all_tags( (string) $attachment->post_content ) );
+		$dimensions    = $this->attachment_dimensions( $attachment_id );
+		$parent        = $this->attachment_parent_summary( (int) $attachment->post_parent );
+		$used          = (int) $attachment->post_parent > 0 || array() !== $content_usage;
+
+		return array(
+			'id'              => $attachment_id,
+			'title'           => get_the_title( $attachment ),
+			'status'          => $attachment->post_status,
+			'mime_type'       => $attachment->post_mime_type,
+			'source_url'      => wp_get_attachment_url( $attachment_id ),
+			'parent'          => $parent,
+			'dimensions'      => $dimensions,
+			'has_alt_text'    => '' !== $alt_text,
+			'has_caption'     => '' !== $caption,
+			'has_description' => '' !== $description,
+			'is_image'        => function_exists( 'wp_attachment_is_image' ) ? wp_attachment_is_image( $attachment_id ) : str_starts_with( $attachment->post_mime_type, 'image/' ),
+			'usage'           => array(
+				'attached'           => (int) $attachment->post_parent > 0,
+				'likely_used'        => $used,
+				'likely_unused'      => ! $used,
+				'content_matches'    => count( $content_usage ),
+				'content_references' => array_slice( $content_usage, 0, 5 ),
+			),
+		);
+	}
+
+	/**
+	 * Return safe attachment dimensions from WordPress metadata.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array<string, int>|null
+	 */
+	private function attachment_dimensions( int $attachment_id ): ?array {
+		if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
+			return null;
+		}
+
+		$metadata = wp_get_attachment_metadata( $attachment_id );
+		if ( ! is_array( $metadata ) ) {
+			return null;
+		}
+
+		$metadata = array_merge(
+			array(
+				'width'  => 0,
+				'height' => 0,
+			),
+			$metadata
+		);
+		$width    = absint( $metadata['width'] );
+		$height   = absint( $metadata['height'] );
+		if ( $width <= 0 || $height <= 0 ) {
+			return null;
+		}
+
+		return array(
+			'width'  => $width,
+			'height' => $height,
+		);
+	}
+
+	/**
+	 * Return compact parent post metadata.
+	 *
+	 * @param int $parent_id Attachment parent ID.
+	 * @return array<string, mixed>|null
+	 */
+	private function attachment_parent_summary( int $parent_id ): ?array {
+		if ( $parent_id <= 0 ) {
+			return null;
+		}
+
+		$parent = get_post( $parent_id );
+		if ( ! $parent instanceof \WP_Post || ! current_user_can( 'read_post', $parent_id ) ) {
+			return array( 'id' => $parent_id );
+		}
+
+		return array(
+			'id'     => $parent_id,
+			'title'  => get_the_title( $parent ),
+			'type'   => $parent->post_type,
+			'status' => $parent->post_status,
+			'link'   => get_permalink( $parent ),
+		);
+	}
+
+	/**
+	 * Return evidence that an attachment likely appears in post content.
+	 *
+	 * @param int      $attachment_id Attachment ID.
+	 * @param string   $source_url    Public attachment URL.
+	 * @param \WP_Post $post          Content post.
+	 * @return list<string>
+	 */
+	private function attachment_matches_content( int $attachment_id, string $source_url, \WP_Post $post ): array {
+		$content = (string) $post->post_content;
+		if ( '' === $content ) {
+			return array();
+		}
+
+		$matches = array();
+		if ( str_contains( $content, 'wp-image-' . $attachment_id ) ) {
+			$matches[] = 'wp_image_class';
+		}
+		if ( str_contains( $content, '"id":' . $attachment_id ) || str_contains( $content, '"id": ' . $attachment_id ) ) {
+			$matches[] = 'block_attribute_id';
+		}
+		if ( '' !== $source_url && str_contains( $content, $source_url ) ) {
+			$matches[] = 'source_url';
+		}
+		if ( (int) get_post_thumbnail_id( $post ) === $attachment_id ) {
+			$matches[] = 'featured_media';
+		}
+
+		return array_values( array_unique( $matches ) );
+	}
+
+	/**
+	 * Increment audit summary counts.
+	 *
+	 * @param array<string, int>   $summary Summary counts.
+	 * @param array<string, mixed> $item    Audit item.
+	 */
+	private function increment_media_summary( array &$summary, array $item ): void {
+		$usage = is_array( $item['usage'] ?? null ) ? $item['usage'] : array();
+
+		$summary['attached']         += ! empty( $usage['attached'] ) ? 1 : 0;
+		$summary['unattached']       += empty( $usage['attached'] ) ? 1 : 0;
+		$summary['used']             += ! empty( $usage['likely_used'] ) ? 1 : 0;
+		$summary['likely_unused']    += ! empty( $usage['likely_unused'] ) ? 1 : 0;
+		$summary['missing_alt']      += empty( $item['has_alt_text'] ) ? 1 : 0;
+		$summary['with_caption']     += ! empty( $item['has_caption'] ) ? 1 : 0;
+		$summary['with_description'] += ! empty( $item['has_description'] ) ? 1 : 0;
+	}
+
+	/**
+	 * Check whether one item matches the requested audit filter.
+	 *
+	 * @param array<string, mixed> $item   Audit item.
+	 * @param string               $filter Filter key.
+	 */
+	private function media_item_matches_filter( array $item, string $filter ): bool {
+		$usage = is_array( $item['usage'] ?? null ) ? $item['usage'] : array();
+
+		return match ( $filter ) {
+			'unused' => ! empty( $usage['likely_unused'] ),
+			'missing_alt' => empty( $item['has_alt_text'] ),
+			'attached' => ! empty( $usage['attached'] ),
+			'unattached' => empty( $usage['attached'] ),
+			'used' => ! empty( $usage['likely_used'] ),
+			default => true,
+		};
+	}
+
+	/**
+	 * Check whether an attachment MIME type matches a tool filter.
+	 *
+	 * @param string $mime_type MIME type.
+	 * @param string $filter    MIME filter.
+	 */
+	private function mime_matches_filter( string $mime_type, string $filter ): bool {
+		if ( str_ends_with( $filter, '/*' ) ) {
+			return str_starts_with( $mime_type, substr( $filter, 0, -1 ) );
+		}
+
+		return $mime_type === $filter;
 	}
 
 	/**

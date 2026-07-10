@@ -222,8 +222,30 @@ final class McpToolAvailability {
 					'get_settings' => 'site.get_settings',
 					'get_info'     => 'site.get_info',
 					'get_health'   => 'site.get_health',
+					'report'       => 'site.maintenance_report',
 					'list_plugins' => 'site.list_plugins',
 					'list_themes'  => 'site.list_themes',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
+			'plugin_lifecycle'   => $this->operation_group(
+				array(
+					'list_plugins'      => 'plugin_lifecycle.list_plugins',
+					'get_plugin'        => 'plugin_lifecycle.get_plugin',
+					'activate_plugin'   => 'plugin_lifecycle.activate_plugin',
+					'deactivate_plugin' => 'plugin_lifecycle.deactivate_plugin',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
+			'theme_lifecycle'    => $this->operation_group(
+				array(
+					'list_themes'  => 'theme_lifecycle.list_themes',
+					'get_theme'    => 'theme_lifecycle.get_theme',
+					'switch_theme' => 'theme_lifecycle.switch_theme',
 				),
 				$policy,
 				$registry,
@@ -303,6 +325,17 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'navigation'         => $this->operation_group(
+				array(
+					'get_context'    => 'navigation.get_context',
+					'list_menus'     => 'navigation.list_menus',
+					'list_locations' => 'navigation.list_locations',
+					'list_items'     => 'navigation.list_items',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'workflow_guides'    => $this->operation_group(
 				array(
 					'list'           => 'workflow_guides.list',
@@ -352,6 +385,7 @@ final class McpToolAvailability {
 				array(
 					'list'              => 'media.list_items',
 					'get'               => 'media.get_item',
+					'audit_usage'       => 'media.audit_usage',
 					'upload'            => 'media.upload_item',
 					'upload_image_data' => 'media.upload_image_data',
 					'search_cc0'        => 'content_media.search_cc0_images',
@@ -621,8 +655,16 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return match ( $ability_id ) {
-			'site.get_health' => array( 'manage_options' ),
+			'site.get_health',
+			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
+			'plugin_lifecycle.list_plugins',
+			'plugin_lifecycle.get_plugin',
+			'plugin_lifecycle.activate_plugin',
+			'plugin_lifecycle.deactivate_plugin' => array( 'activate_plugins' ),
+			'theme_lifecycle.list_themes',
+			'theme_lifecycle.get_theme',
+			'theme_lifecycle.switch_theme',
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',
 			'site_editor.refresh_context',

@@ -199,6 +199,21 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertContains( 'Block missing/block is not registered on this site.', $result['warnings'] );
 	}
 
+	public function test_create_item_rejects_broken_registered_block_structure(): void {
+		$result = ( new ContentAbilities() )->create_item(
+			array(
+				'title'   => 'Broken registered block',
+				'content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:paragraph --><p>Hello</p><!-- /wp:group --><!-- /wp:paragraph --></div>',
+			)
+		);
+
+		self::assertSame( 'invalid_block_content', $result['error'] );
+		self::assertFalse( $result['block_validation']['valid'] );
+		self::assertFalse( $result['block_validation']['structure']['valid'] );
+		self::assertSame( 'mismatched_closing_block', $result['block_validation']['structure']['issues'][0]['code'] );
+		self::assertStringContainsString( 'valid serialized block structure', $result['message'] );
+	}
+
 	public function test_create_item_dry_run_accepts_valid_serialized_block_content(): void {
 		$result = ( new ContentAbilities() )->create_item(
 			array(

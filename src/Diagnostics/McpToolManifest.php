@@ -464,8 +464,8 @@ final class McpToolManifest {
 			),
 			'site_management'    => array(
 				'label'          => 'Site management',
-				'description'    => 'Site readiness, Site Editor, admin navigation, and safe management discovery workflows.',
-				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
+				'description'    => 'Site readiness, Site Editor, site navigation, admin navigation, and safe management discovery workflows.',
+				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'navigation_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
 			),
 			'unscoped'           => array(
 				'label'          => 'Unscoped diagnostics',

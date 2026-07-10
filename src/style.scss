@@ -207,6 +207,11 @@
 	margin-bottom: 0;
 }
 
+.aculect-ai-companion-tabs-shell {
+	border-bottom: 1px solid #e5e7eb;
+	background: #fff;
+}
+
 .aculect-ai-companion-tabs {
 	display: flex;
 	align-items: stretch;
@@ -214,10 +219,29 @@
 	min-height: 45px;
 	margin: 0;
 	padding: 0 44px;
-	border-bottom: 1px solid #e5e7eb;
+	border-bottom: 0;
 	background: #fff;
 	overflow-x: auto;
 	scrollbar-width: thin;
+}
+
+.aculect-ai-companion-tabs-controls {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+	padding: 8px 44px 12px;
+}
+
+.aculect-ai-companion-tabs-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.aculect-ai-companion-tab-scroll-button.components-button {
+	min-height: 32px;
 }
 
 .aculect-ai-companion-tab {
@@ -2301,6 +2325,27 @@ td:last-child
 	font-size: 12px;
 	font-weight: 700;
 	line-height: 1.4;
+}
+
+.aculect-ai-companion-connection-list-field {
+	display: grid;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connection-list-field__label {
+	color: var(--aculect-ai-companion-muted);
+	font-size: 11px;
+	font-weight: 800;
+	line-height: 1.35;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-connection-list-field__value {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
 }
 
 .aculect-ai-companion-sample-badge {
@@ -4433,6 +4478,100 @@ td:first-child
 	color: var(--aculect-ai-companion-muted);
 }
 
+@media (max-width: 782px) {
+
+	.aculect-ai-companion-data-view--connections .dataviews-view-list {
+		padding: 0 16px 16px;
+	}
+
+	.aculect-ai-companion-data-view--connections .dataviews-view-list__item,
+	.aculect-ai-companion-data-view--connections .dataviews-view-list__field,
+	.aculect-ai-companion-data-view--connections .dataviews-view-list__field-value,
+	.aculect-ai-companion-data-view--connections .dataviews-view-list__fields {
+		width: 100%;
+		min-width: 0;
+	}
+
+	.aculect-ai-companion-data-view--connections .dataviews-view-list__field-wrapper {
+		width: 100%;
+	}
+
+	.aculect-ai-companion-activity-table-wrap,
+	.aculect-ai-companion-health-table-wrap {
+		overflow: visible;
+		border: 0;
+		background: transparent;
+	}
+
+	.aculect-ai-companion-activity-table,
+	.aculect-ai-companion-health-table {
+		min-width: 0;
+		border-collapse: separate;
+		border-spacing: 0;
+		background: transparent;
+	}
+
+	.aculect-ai-companion-activity-table thead,
+	.aculect-ai-companion-health-table thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+		white-space: nowrap;
+	}
+
+	.aculect-ai-companion-activity-table tbody,
+	.aculect-ai-companion-health-table tbody {
+		display: grid;
+		gap: 12px;
+	}
+
+	.aculect-ai-companion-activity-table tr,
+	.aculect-ai-companion-health-table tr {
+		display: block;
+		overflow: hidden;
+		border: 1px solid var(--aculect-ai-companion-border);
+		border-radius: 8px;
+		background: var(--aculect-ai-companion-surface);
+	}
+
+	.aculect-ai-companion-activity-table td,
+	.aculect-ai-companion-health-table td {
+		display: grid;
+		gap: 4px;
+		padding: 12px 14px;
+		border-bottom: 1px solid var(--aculect-ai-companion-border);
+		overflow-wrap: anywhere;
+	}
+
+	.aculect-ai-companion-activity-table td:last-child,
+	.aculect-ai-companion-health-table td:last-child {
+		border-bottom: 0;
+	}
+
+	.aculect-ai-companion-activity-table td::before,
+	.aculect-ai-companion-health-table td::before {
+		content: attr(data-label);
+		color: var(--aculect-ai-companion-muted);
+		font-size: 11px;
+		font-weight: 800;
+		line-height: 1.35;
+		text-transform: uppercase;
+	}
+
+	.aculect-ai-companion-activity-table__time {
+		white-space: normal;
+	}
+
+	.aculect-ai-companion-log-context pre {
+		max-width: 100%;
+	}
+}
+
 @media (max-width: 900px) {
 
 	.aculect-ai-companion-app-header,
@@ -4482,6 +4621,11 @@ td:first-child
 		gap: 20px;
 		min-height: 45px;
 		padding: 0 16px;
+	}
+
+	.aculect-ai-companion-tabs-controls {
+		padding-right: 16px;
+		padding-left: 16px;
 	}
 
 	.aculect-ai-companion-admin-notices,
@@ -4626,6 +4770,11 @@ td:first-child
 		gap: 14px;
 		min-height: 45px;
 		padding: 0 14px;
+	}
+
+	.aculect-ai-companion-tabs-controls {
+		padding-right: 14px;
+		padding-left: 14px;
 	}
 
 	.aculect-ai-companion-tab {

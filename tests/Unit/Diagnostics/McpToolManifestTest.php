@@ -158,6 +158,7 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( 'site_management', $export['session']['profile'] );
 		self::assertSame( array(), $export['profile']['hidden_by_profile'] );
 		self::assertContains( 'site_workflow_audit', $export['profile']['required_tools'] );
+		self::assertContains( 'navigation_get_context', $export['profile']['required_tools'] );
 
 		foreach ( $export['tools_list_payload']['tools'] as $tool ) {
 			self::assertArrayNotHasKey( 'profile', $tool );

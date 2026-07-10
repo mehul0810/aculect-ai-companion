@@ -80,8 +80,10 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		self::assertSame( McpToolProfiles::PROFILE_READ_ONLY_AUDIT, $connection['id'] );
 		self::assertSame( 'connection_override', $connection['source'] );
+		self::assertContains( 'Theme Lifecycle', $connection['profile']['included_groups'] );
 		self::assertSame( McpToolProfiles::PROFILE_SITE_MANAGEMENT, $role['id'] );
 		self::assertSame( 'role_default', $role['source'] );
+		self::assertContains( 'Theme Lifecycle', $role['profile']['included_groups'] );
 		self::assertSame( McpToolProfiles::PROFILE_CONTENT_MANAGEMENT, $global['id'] );
 		self::assertSame( 'global_default', $global['source'] );
 	}
@@ -325,8 +327,11 @@ final class McpToolAvailabilityTest extends TestCase {
 
 		$modules = ( new McpToolAvailability() )->tool_modules_for_user( 7, $registry, null, array( 'content:read' ) );
 
+		self::assertArrayHasKey( 'navigation.get_context', $modules );
+		self::assertArrayHasKey( 'navigation.list_items', $modules );
 		self::assertArrayHasKey( 'content_revisions.list', $modules );
 		self::assertArrayHasKey( 'content_autosaves.inspect', $modules );
+		self::assertTrue( $registry->is_core_default( 'navigation_get_context' ) );
 		self::assertTrue( $registry->is_core_default( 'content_revisions_list' ) );
 		self::assertTrue( $registry->is_core_default( 'content_autosaves.inspect' ) );
 		self::assertTrue( $modules['content_revisions.list']->is_read_only() );
@@ -454,6 +459,76 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['workflows']['site_audit']['available'] );
 		self::assertSame( 'capability:site.get_health', $operations['workflows']['site_audit']['blocked_by'] );
 		self::assertArrayNotHasKey( 'site_workflow.audit', $modules );
+	}
+
+	public function test_plugin_lifecycle_operations_report_availability_and_capability_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'plugin_lifecycle.list_plugins', 'plugin_lifecycle.get_plugin', 'plugin_lifecycle.activate_plugin', 'plugin_lifecycle.deactivate_plugin' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$write_ops  = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertTrue( $operations['plugin_lifecycle']['list_plugins']['available'] );
+		self::assertSame( 'plugin_lifecycle_list_plugins', $operations['plugin_lifecycle']['list_plugins']['tool'] );
+		self::assertSame( array( 'content:read' ), $operations['plugin_lifecycle']['list_plugins']['required_scopes'] );
+		self::assertTrue( $operations['plugin_lifecycle']['list_plugins']['read_only'] );
+		self::assertContains( 'plugin_lifecycle_list_plugins', $tool_names );
+		self::assertTrue( $operations['plugin_lifecycle']['get_plugin']['available'] );
+		self::assertTrue( $write_ops['plugin_lifecycle']['activate_plugin']['available'] );
+		self::assertSame( array( 'content:draft' ), $write_ops['plugin_lifecycle']['activate_plugin']['required_scopes'] );
+		self::assertFalse( $write_ops['plugin_lifecycle']['activate_plugin']['read_only'] );
+		self::assertTrue( $write_ops['plugin_lifecycle']['deactivate_plugin']['available'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'activate_plugins' );
+
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
+
+		self::assertFalse( $blocked['plugin_lifecycle']['list_plugins']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['list_plugins']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['get_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['get_plugin']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['activate_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['activate_plugin']['blocked_by'] );
+		self::assertFalse( $blocked['plugin_lifecycle']['deactivate_plugin']['available'] );
+		self::assertSame( 'capability', $blocked['plugin_lifecycle']['deactivate_plugin']['blocked_by'] );
+	}
+
+	public function test_theme_lifecycle_operations_report_availability_and_capability_blocks(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
+
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'theme_lifecycle.list_themes', 'theme_lifecycle.get_theme', 'theme_lifecycle.switch_theme' ) );
+
+		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:read' ) );
+		$write_ops  = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
+		$tools      = ( new McpController() )->tool_manifest_for_current_user();
+		$tool_names = array_column( $tools['tools'], 'name' );
+
+		self::assertTrue( $operations['theme_lifecycle']['list_themes']['available'] );
+		self::assertSame( 'theme_lifecycle_list_themes', $operations['theme_lifecycle']['list_themes']['tool'] );
+		self::assertSame( array( 'content:read' ), $operations['theme_lifecycle']['list_themes']['required_scopes'] );
+		self::assertTrue( $operations['theme_lifecycle']['list_themes']['read_only'] );
+		self::assertContains( 'theme_lifecycle_list_themes', $tool_names );
+		self::assertTrue( $operations['theme_lifecycle']['get_theme']['available'] );
+		self::assertTrue( $write_ops['theme_lifecycle']['switch_theme']['available'] );
+		self::assertSame( 'theme_lifecycle_switch_theme', $write_ops['theme_lifecycle']['switch_theme']['tool'] );
+		self::assertSame( array( 'content:draft' ), $write_ops['theme_lifecycle']['switch_theme']['required_scopes'] );
+		self::assertFalse( $write_ops['theme_lifecycle']['switch_theme']['read_only'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'switch_themes' );
+
+		$blocked = ( new McpToolAvailability() )->operations_manifest_for_user( 21, $registry, array( 'content:draft' ) );
+
+		self::assertFalse( $blocked['theme_lifecycle']['list_themes']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['list_themes']['blocked_by'] );
+		self::assertFalse( $blocked['theme_lifecycle']['get_theme']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['get_theme']['blocked_by'] );
+		self::assertFalse( $blocked['theme_lifecycle']['switch_theme']['available'] );
+		self::assertSame( 'capability', $blocked['theme_lifecycle']['switch_theme']['blocked_by'] );
 	}
 
 	public function test_wordpress_ability_diagnostics_report_capability_blocks(): void {
@@ -588,6 +663,10 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertTrue( $operations['admin_menu']['get_context']['available'] );
 		self::assertTrue( $operations['admin_menu']['get_context']['always_on'] );
 		self::assertTrue( $operations['admin_menu']['list_settings']['available'] );
+		self::assertTrue( $operations['navigation']['get_context']['available'] );
+		self::assertTrue( $operations['navigation']['list_items']['available'] );
+		self::assertTrue( $operations['navigation']['get_context']['always_on'] );
+		self::assertSame( 'core_default_read', $operations['navigation']['get_context']['availability_model'] );
 		self::assertSame( 'search', $operations['intelligence_index']['canonical_search']['tool'] );
 		self::assertSame( 'fetch', $operations['intelligence_index']['canonical_fetch']['tool'] );
 		self::assertSame( 'core_default_read', $operations['intelligence_index']['search_items']['availability_model'] );
@@ -603,6 +682,8 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayHasKey( 'site_editor.refresh_context', $modules );
 		self::assertArrayHasKey( 'admin_menu.get_context', $modules );
 		self::assertArrayHasKey( 'admin_menu.list_settings', $modules );
+		self::assertArrayHasKey( 'navigation.get_context', $modules );
+		self::assertArrayHasKey( 'navigation.list_items', $modules );
 		self::assertArrayHasKey( 'content_search.items', $modules );
 		self::assertArrayHasKey( 'content_internal_link.policy', $modules );
 		self::assertArrayHasKey( 'content_audit.internal_links', $modules );
@@ -631,6 +712,8 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertFalse( $operations['site_editor']['refresh_context']['available'] );
 		self::assertFalse( $operations['admin_menu']['get_context']['available'] );
 		self::assertFalse( $operations['admin_menu']['list_settings']['available'] );
+		self::assertFalse( $operations['navigation']['get_context']['available'] );
+		self::assertFalse( $operations['navigation']['list_items']['available'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['search_items']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['internal_link_policy']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['internal_link_audit']['blocked_by'] );
@@ -639,6 +722,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertSame( 'oauth_scope', $operations['intelligence_index']['memory_bootstrap']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['site_editor']['get_context']['blocked_by'] );
 		self::assertSame( 'oauth_scope', $operations['admin_menu']['get_context']['blocked_by'] );
+		self::assertSame( 'oauth_scope', $operations['navigation']['get_context']['blocked_by'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['search_items']['missing_scopes'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['internal_link_policy']['missing_scopes'] );
 		self::assertSame( array( 'content:read' ), $operations['intelligence_index']['internal_link_audit']['missing_scopes'] );
@@ -656,6 +740,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'workflow_guides.get', $modules );
 		self::assertArrayNotHasKey( 'site_editor.get_context', $modules );
 		self::assertArrayNotHasKey( 'admin_menu.get_context', $modules );
+		self::assertArrayNotHasKey( 'navigation.get_context', $modules );
 		self::assertArrayNotHasKey( 'content_search.items', $modules );
 		self::assertArrayNotHasKey( 'memory.save', $modules );
 		self::assertArrayNotHasKey( 'memory.bootstrap', $modules );
@@ -692,7 +777,7 @@ final class McpToolAvailabilityTest extends TestCase {
 	 */
 	private function operation_entries( array $operations ): array {
 		$entries = array();
-		foreach ( array( 'site_information', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'plugin_lifecycle', 'theme_lifecycle', 'content', 'workflows', 'site_editor', 'admin_menu', 'navigation', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $entry ) {
 				if ( is_array( $entry ) ) {
 					$entries[] = $entry;

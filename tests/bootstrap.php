@@ -77,6 +77,11 @@ $GLOBALS['aculect_ai_companion_test_patterns']    = array();
 $GLOBALS['aculect_ai_companion_test_block_templates'] = array();
 $GLOBALS['aculect_ai_companion_test_global_settings'] = array();
 $GLOBALS['aculect_ai_companion_test_global_styles'] = array();
+$GLOBALS['aculect_ai_companion_test_theme_supports'] = array();
+$GLOBALS['aculect_ai_companion_test_registered_nav_menus'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menu_locations'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menus'] = array();
+$GLOBALS['aculect_ai_companion_test_nav_menu_items'] = array();
 $GLOBALS['aculect_ai_companion_test_registered_settings'] = array();
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames -- PHPUnit bootstrap stubs WordPress core functions.
@@ -157,6 +162,26 @@ if ( ! function_exists( 'get_template' ) ) {
 	 */
 	function get_template(): string {
 		return (string) ( $GLOBALS['aculect_ai_companion_test_template'] ?? get_stylesheet() );
+	}
+}
+
+if ( ! function_exists( 'current_theme_supports' ) ) {
+	/**
+	 * Return whether the active test theme supports a feature.
+	 *
+	 * @param string $feature Theme feature.
+	 */
+	function current_theme_supports( string $feature ): bool {
+		$supports = $GLOBALS['aculect_ai_companion_test_theme_supports'] ?? array();
+		if ( array_key_exists( $feature, is_array( $supports ) ? $supports : array() ) ) {
+			return (bool) $supports[ $feature ];
+		}
+
+		if ( 'menus' === $feature ) {
+			return array() !== ( $GLOBALS['aculect_ai_companion_test_registered_nav_menus'] ?? array() );
+		}
+
+		return false;
 	}
 }
 
@@ -457,6 +482,112 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 		usort( $terms, static fn( WP_Term $a, WP_Term $b ): int => $a->term_id <=> $b->term_id );
 
 		return $terms;
+	}
+}
+
+if ( ! function_exists( 'get_registered_nav_menus' ) ) {
+	/**
+	 * Return registered classic navigation menu locations for tests.
+	 *
+	 * @return array<string, string>
+	 */
+	function get_registered_nav_menus(): array {
+		return array_map( 'strval', (array) ( $GLOBALS['aculect_ai_companion_test_registered_nav_menus'] ?? array() ) );
+	}
+}
+
+if ( ! function_exists( 'get_nav_menu_locations' ) ) {
+	/**
+	 * Return classic navigation menu assignments for tests.
+	 *
+	 * @return array<string, int>
+	 */
+	function get_nav_menu_locations(): array {
+		return array_map( 'absint', (array) ( $GLOBALS['aculect_ai_companion_test_nav_menu_locations'] ?? array() ) );
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menus' ) ) {
+	/**
+	 * Return test classic nav menus.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return list<WP_Term>
+	 */
+	function wp_get_nav_menus( array $args = array() ): array {
+		unset( $args );
+
+		$menus = array();
+		foreach ( (array) ( $GLOBALS['aculect_ai_companion_test_nav_menus'] ?? array() ) as $menu ) {
+			$menu = $menu instanceof WP_Term ? $menu : new WP_Term( is_array( $menu ) ? $menu : array() );
+			if ( 'nav_menu' === $menu->taxonomy || '' === $menu->taxonomy ) {
+				if ( '' === $menu->taxonomy ) {
+					$menu->taxonomy = 'nav_menu';
+				}
+				$menus[] = $menu;
+			}
+		}
+
+		usort( $menus, static fn ( WP_Term $a, WP_Term $b ): int => strcmp( $a->name, $b->name ) );
+
+		return $menus;
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menu_object' ) ) {
+	/**
+	 * Resolve a test classic nav menu by ID, slug, or name.
+	 *
+	 * @param WP_Term|int|string $menu Menu identifier.
+	 */
+	function wp_get_nav_menu_object( WP_Term|int|string $menu ): ?WP_Term {
+		if ( $menu instanceof WP_Term ) {
+			return $menu;
+		}
+
+		$menu_id = is_numeric( $menu ) ? absint( $menu ) : 0;
+		$key     = sanitize_key( (string) $menu );
+		$name    = sanitize_text_field( (string) $menu );
+
+		foreach ( wp_get_nav_menus() as $term ) {
+			if ( ( $menu_id > 0 && $menu_id === $term->term_id ) || $key === $term->slug || $name === $term->name ) {
+				return $term;
+			}
+		}
+
+		return null;
+	}
+}
+
+if ( ! function_exists( 'wp_get_nav_menu_items' ) ) {
+	/**
+	 * Return test classic nav menu items.
+	 *
+	 * @param WP_Term|int|string    $menu Menu identifier.
+	 * @param array<string, mixed> $args Query args.
+	 * @return list<object|array<string, mixed>>
+	 */
+	function wp_get_nav_menu_items( WP_Term|int|string $menu, array $args = array() ): array {
+		unset( $args );
+
+		$term = wp_get_nav_menu_object( $menu );
+		if ( ! $term instanceof WP_Term ) {
+			return array();
+		}
+
+		$items = $GLOBALS['aculect_ai_companion_test_nav_menu_items'][ $term->term_id ] ?? array();
+		$items = is_array( $items ) ? array_values( $items ) : array();
+
+		usort(
+			$items,
+			static function ( mixed $a, mixed $b ): int {
+				$a_order = is_object( $a ) ? (int) ( $a->menu_order ?? 0 ) : (int) ( $a['menu_order'] ?? 0 );
+				$b_order = is_object( $b ) ? (int) ( $b->menu_order ?? 0 ) : (int) ( $b['menu_order'] ?? 0 );
+				return $a_order <=> $b_order;
+			}
+		);
+
+		return $items;
 	}
 }
 
@@ -1015,12 +1146,28 @@ if ( ! function_exists( 'get_posts' ) ) {
 	 * @return list<WP_Post>
 	 */
 	function get_posts( array $args = array() ): array {
-		$post_type = (string) ( $args['post_type'] ?? '' );
+		$post_type = $args['post_type'] ?? '';
+		$post_type = is_array( $post_type ) ? array_map( 'strval', $post_type ) : (string) $post_type;
+		$status    = $args['post_status'] ?? '';
+		$statuses  = is_array( $status ) ? array_map( 'strval', $status ) : ( '' === $status ? array() : array( (string) $status ) );
+		$limit     = isset( $args['posts_per_page'] ) ? (int) $args['posts_per_page'] : -1;
+		$parent    = array_key_exists( 'post_parent', $args ) ? absint( $args['post_parent'] ) : null;
 		$posts     = array();
 		foreach ( $GLOBALS['aculect_ai_companion_test_posts'] as $post ) {
 			$post = $post instanceof WP_Post ? $post : new WP_Post( is_array( $post ) ? $post : array() );
-			if ( '' === $post_type || $post_type === $post->post_type ) {
-				$posts[] = $post;
+			if ( 'any' !== $post_type && '' !== $post_type && ( is_array( $post_type ) ? ! in_array( $post->post_type, $post_type, true ) : $post_type !== $post->post_type ) ) {
+				continue;
+			}
+			if ( array() !== $statuses && ! in_array( $post->post_status, $statuses, true ) ) {
+				continue;
+			}
+			if ( null !== $parent && $parent !== (int) $post->post_parent ) {
+				continue;
+			}
+
+			$posts[] = $post;
+			if ( 0 < $limit && count( $posts ) >= $limit ) {
+				break;
 			}
 		}
 
@@ -1253,6 +1400,37 @@ if ( ! function_exists( 'wp_attachment_is_image' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
+	/**
+	 * Return test attachment metadata.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return array<string, mixed>|false
+	 */
+	function wp_get_attachment_metadata( int $attachment_id ): array|false {
+		$metadata = $GLOBALS['aculect_ai_companion_test_attachment_metadata'][ $attachment_id ]
+			?? $GLOBALS['aculect_ai_companion_test_post_meta'][ $attachment_id ]['_wp_attachment_metadata']
+			?? false;
+
+		return is_array( $metadata ) ? $metadata : false;
+	}
+}
+
+if ( ! function_exists( 'wp_update_attachment_metadata' ) ) {
+	/**
+	 * Store test attachment metadata.
+	 *
+	 * @param int                  $attachment_id Attachment ID.
+	 * @param array<string, mixed> $metadata Attachment metadata.
+	 */
+	function wp_update_attachment_metadata( int $attachment_id, array $metadata ): bool {
+		$GLOBALS['aculect_ai_companion_test_attachment_metadata'][ $attachment_id ] = $metadata;
+		$GLOBALS['aculect_ai_companion_test_post_meta'][ $attachment_id ]['_wp_attachment_metadata'] = $metadata;
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'wp_get_post_revisions' ) ) {
 	/**
 	 * Return test post revisions for a parent post.
@@ -1456,7 +1634,9 @@ if ( ! function_exists( 'home_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function home_url( string $path = '' ): string {
-		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+		$home = (string) ( $GLOBALS['aculect_ai_companion_test_home_url'] ?? 'https://example.com' );
+
+		return rtrim( $home, '/' ) . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
 	}
 }
 
@@ -1467,7 +1647,9 @@ if ( ! function_exists( 'site_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function site_url( string $path = '' ): string {
-		return 'https://example.com' . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
+		$site = (string) ( $GLOBALS['aculect_ai_companion_test_site_url'] ?? 'https://example.com' );
+
+		return rtrim( $site, '/' ) . ( '' === $path ? '' : '/' . ltrim( $path, '/' ) );
 	}
 }
 
@@ -1478,7 +1660,9 @@ if ( ! function_exists( 'rest_url' ) ) {
 	 * @param string $path Optional path.
 	 */
 	function rest_url( string $path = '' ): string {
-		return 'https://example.com/wp-json/' . ltrim( $path, '/' );
+		$rest = (string) ( $GLOBALS['aculect_ai_companion_test_rest_url'] ?? 'https://example.com/wp-json/' );
+
+		return rtrim( $rest, '/' ) . '/' . ltrim( $path, '/' );
 	}
 }
 

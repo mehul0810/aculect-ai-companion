@@ -73,6 +73,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'users.current_access', $by_id );
 		self::assertArrayHasKey( 'users.roles_summary', $by_id );
 		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
+		self::assertArrayHasKey( 'navigation.get_context', $by_id );
 		self::assertArrayHasKey( 'search', $by_id );
 		self::assertArrayHasKey( 'content_revisions.list', $by_id );
 		self::assertArrayHasKey( 'content_autosaves.inspect', $by_id );
@@ -115,6 +116,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
+		self::assertContains( 'Plugin Lifecycle', $groups );
+		self::assertContains( 'Theme Lifecycle', $groups );
 		self::assertContains( 'User Access', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
@@ -198,6 +201,10 @@ final class AbilitiesRegistryTest extends TestCase {
 				'admin_menu.list_pages',
 				'admin_menu.get_navigation_target',
 				'admin_menu.list_settings',
+				'navigation.get_context',
+				'navigation.list_menus',
+				'navigation.list_locations',
+				'navigation.list_items',
 				'workflow_guides.list',
 				'workflow_guides.get',
 				'content_index.refresh_batch',
@@ -219,7 +226,15 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
+				'site.maintenance_report',
 				'site.list_plugins',
+				'plugin_lifecycle.list_plugins',
+				'plugin_lifecycle.get_plugin',
+				'plugin_lifecycle.activate_plugin',
+				'plugin_lifecycle.deactivate_plugin',
+				'theme_lifecycle.list_themes',
+				'theme_lifecycle.get_theme',
+				'theme_lifecycle.switch_theme',
 				'site.list_themes',
 			) as $ability_id
 		) {
@@ -279,10 +294,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.roles_summary' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'users.list_safe' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'users.current_access' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'navigation.list_items' ) );
 		self::assertArrayHasKey( 'per_page', $this->registry->input_schema( 'users_list_safe' )['properties'] );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation_list_items' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_revisions.list' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_autosaves_inspect' ) );
@@ -298,6 +316,13 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.activate_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_deactivate_plugin' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle.switch_theme' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );
@@ -344,6 +369,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'id', 'locator' ), $block_schema['required'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_block' ) );
 		self::assertFalse( $this->registry->is_read_only( 'content_update_block' ) );
+
+		$theme_schema = $this->registry->input_schema( 'theme_lifecycle.switch_theme' );
+		self::assertArrayHasKey( 'stylesheet', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $theme_schema['properties'] );
+		self::assertSame( array( 'stylesheet' ), $theme_schema['required'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle_switch_theme' ) );
+		self::assertFalse( $this->registry->is_read_only( 'theme_lifecycle_switch_theme' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {

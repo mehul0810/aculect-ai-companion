@@ -7,6 +7,7 @@
 - Follow least privilege and avoid exposing secrets or private options.
 - Minimum PHP version is 8.2.
 - Use locally installed Codex skills for WordPress and GitHub work, especially `$wp-expert` and `$github`; do not depend on repo-local skill copies.
+- Repo-local governance docs live in `AGENTS.md`, `DESIGN.md`, `TESTING.md`, and `RELEASE.md`; keep product-specific workflow rules there instead of only in chat or memory.
 
 ## Project Subagents
 - Project subagents live in `.codex/agents`; `.codex/config.toml` limits concurrency to three threads and one agent depth.
@@ -76,3 +77,9 @@
 - Maintain backward compatibility for public tool names and response shapes where practical.
 - Commit even minor completed changes and push once the whole task is done, after validation passes.
 - Never create a GitHub release or prerelease unless the user explicitly asks for one.
+
+## Worktree Hygiene
+- If the primary checkout is dirty or on the wrong branch for the requested work, do not edit in place.
+- Prefer a fresh scoped worktree from the correct base branch for release-train or issue-specific implementation.
+- Treat unrelated local changes as user-owned; do not revert or overwrite them.
+- When a scoped issue is already fixed on the target branch, report it as reconciled instead of forcing a no-op patch.

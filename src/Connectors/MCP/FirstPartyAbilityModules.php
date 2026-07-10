@@ -405,6 +405,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_settings( $args )
 			),
 			$this->module(
+				'navigation.get_context',
+				'Read Navigation Intelligence',
+				'Use this before planning navigation or menu work. It detects block theme, hybrid, classic-menu, and unsupported navigation context and states clearly that writes are not implemented in this slice.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->get_context( $args )
+			),
+			$this->module(
+				'navigation.list_menus',
+				'List Navigation Menus',
+				'List readable classic menus and wp_navigation entities with clear source markers, bounded counts, and no write capability.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_menus_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_menus( $args )
+			),
+			$this->module(
+				'navigation.list_locations',
+				'List Navigation Locations',
+				'List registered classic menu locations and assignments for classic or hybrid themes. Future location reassignment must remain explicit-only and is not implemented here.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_locations_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_locations( $args )
+			),
+			$this->module(
+				'navigation.list_items',
+				'List Navigation Items',
+				'List readable classic menu items or bounded block-navigation items for one menu, location, or wp_navigation entity. This inventory is read-only and never rewrites serialized navigation markup.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_items_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_items( $args )
+			),
+			$this->module(
 				'content_index.refresh_batch',
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',
@@ -986,6 +1026,39 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new MediaAbilities() )->get_media( (int) ( $args['id'] ?? 0 ) )
 			),
 			$this->module(
+				'media.audit_usage',
+				'Audit Media Usage',
+				'Return bounded read-only media usage intelligence for unused discovery, missing alt text, attached/unattached images, and likely content usage.',
+				'Media',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'page'               => $this->page_schema(),
+						'per_page'           => $this->per_page_schema( 100, 'Media audit items per page. Defaults to 20.' ),
+						'type'               => array(
+							'type'        => 'string',
+							'description' => 'Attachment family such as image, audio, video, or application.',
+						),
+						'mime_type'          => array( 'type' => 'string' ),
+						'parent_id'          => array(
+							'type'        => 'integer',
+							'description' => 'Filter by attachment parent post ID. Use 0 for unattached media.',
+						),
+						'status_filter'      => array(
+							'type'        => 'string',
+							'enum'        => array( 'all', 'unused', 'missing_alt', 'attached', 'unattached', 'used' ),
+							'description' => 'Return all audited media or only a focused subset.',
+						),
+						'content_scan_limit' => array(
+							'type'        => 'integer',
+							'description' => 'Maximum readable content posts to scan for likely usage. Defaults to 100 and is capped at 250.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new MediaAbilities() )->audit_usage( $args )
+			),
+			$this->module(
 				'media.update_item',
 				'Update Media Item',
 				'Update media title, alt text, caption, description, slug, or attachment parent.',
@@ -1072,6 +1145,16 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new SiteAbilities() )->get_site_health()
 			),
 			$this->module(
+				'site.maintenance_report',
+				'View Site Maintenance Report',
+				'Read a compact, paginated, read-only maintenance report with severity, bounded evidence, and next steps. Reports never run arbitrary PHP, dump raw database data, scan files, write files, or expose option values.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->site_maintenance_report_schema(),
+				static fn ( array $args ): array => ( new SiteMaintenanceReports() )->report( $args )
+			),
+			$this->module(
 				'site.list_plugins',
 				'List Plugins',
 				'List installed WordPress plugins and active state for users who can manage plugins.',
@@ -1080,6 +1163,76 @@ final class FirstPartyAbilityModules {
 				true,
 				$this->empty_schema(),
 				static fn (): array => ( new SiteAbilities() )->list_plugins()
+			),
+			$this->module(
+				'plugin_lifecycle.list_plugins',
+				'List Plugin Lifecycle Status',
+				'List installed WordPress plugins with lifecycle-oriented status, active/network-active state, cached update availability, recovery pause state, multisite context, and capability blockers. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->list_plugins( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.get_plugin',
+				'Get Plugin Lifecycle Status',
+				'Read one installed WordPress plugin lifecycle status record with safe update and recovery metadata. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.activate_plugin',
+				'Activate an Installed Plugin',
+				'Activate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not install plugins, update plugins, delete plugins, or perform network-wide activation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->activate_plugin( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.deactivate_plugin',
+				'Deactivate an Installed Plugin',
+				'Deactivate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not delete plugins or perform network-wide deactivation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->deactivate_plugin( $args )
+			),
+			$this->module(
+				'theme_lifecycle.list_themes',
+				'List Theme Lifecycle Status',
+				'List installed WordPress themes with active state, parent and child relationships, cached update availability, block or classic or hybrid signals, multisite context, and capability blockers. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->list_themes( $args )
+			),
+			$this->module(
+				'theme_lifecycle.get_theme',
+				'Get Theme Lifecycle Status',
+				'Read one installed WordPress theme lifecycle status record with safe update metadata and presentation signals. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->get_theme( $args )
+			),
+			$this->module(
+				'theme_lifecycle.switch_theme',
+				'Switch to an Installed Theme',
+				'Switch the current site to one already-installed WordPress theme with dry-run preview, confirmation-token gating, capability checks, and structured rollback metadata. This first beta slice does not install themes, update themes, delete themes, deactivate themes, or perform network-wide theme management.',
+				'Theme Lifecycle',
+				'content:draft',
+				false,
+				$this->theme_lifecycle_switch_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->switch_theme( $args )
 			),
 			$this->module(
 				'site.list_themes',
@@ -1363,6 +1516,158 @@ final class FirstPartyAbilityModules {
 			'type'                 => 'object',
 			'properties'           => new \stdClass(),
 			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build the site maintenance report schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function site_maintenance_report_schema(): array {
+		return $this->object_schema(
+			array(
+				'report_type' => array(
+					'type'        => 'string',
+					'enum'        => SiteMaintenanceReports::report_types(),
+					'description' => 'Report to return. Defaults to content_review.',
+				),
+				'page'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page'    => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 20,
+					'description' => 'Maximum findings to return. Defaults to 10 and caps at 20.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'network_active', 'update_available', 'paused' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum plugins to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle mutation schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_mutation_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'child', 'parent', 'update_available', 'block', 'classic', 'hybrid' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum themes to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle switch schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_switch_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug to activate, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
 		);
 	}
 
@@ -3118,6 +3423,86 @@ final class FirstPartyAbilityModules {
 					'type'        => 'string',
 					'description' => 'Optional search term for registered setting name, group, or description.',
 				),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation menu listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_menus_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type' => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'classic_menu', 'wp_navigation' ),
+					'description' => 'Optional navigation source filter. Defaults to all.',
+				),
+				'search'      => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for menu name, title, slug, or source marker.',
+				),
+				'page'        => $this->page_schema(),
+				'per_page'    => $this->per_page_schema( 100, 'Menus per page. Defaults to 20.' ),
+				'context'     => $this->context_schema( 'Use compact for inventory or full for bounded structure summaries. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation location listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_locations_schema(): array {
+		return $this->object_schema(
+			array(
+				'search'        => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for location slug, label, or assigned menu name.',
+				),
+				'assigned_only' => array(
+					'type'        => 'boolean',
+					'description' => 'Return only assigned classic locations.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Locations per page. Defaults to 20.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation item listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_items_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'classic_menu', 'classic_location', 'wp_navigation' ),
+					'description' => 'Optional explicit source type for the requested target.',
+				),
+				'menu_id'       => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'Classic menu term ID.',
+				),
+				'navigation_id' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'wp_navigation post ID.',
+				),
+				'location'      => array(
+					'type'        => 'string',
+					'description' => 'Registered classic menu location slug.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Navigation items per page. Defaults to 20.' ),
+				'context'       => $this->context_schema( 'Use compact for item inventory or full for bounded block/link attrs and structure notes. Defaults to compact.' ),
 			)
 		);
 	}

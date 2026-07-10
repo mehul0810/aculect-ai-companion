@@ -94,6 +94,7 @@ The intelligence layer is divided into these context domains:
 - Site Intelligence: site identity, WordPress runtime, active theme, and connector context.
 - Site Editor Intelligence: active theme, Appearance > Editor availability, global settings/styles, templates, template parts, navigation, blocks, and patterns without theme-file writes.
 - Admin Menu Intelligence: visible admin menu pages, navigation targets, and registered setting metadata without raw option values.
+- Navigation Intelligence: active navigation mode plus read-only classic menu, classic location, and `wp_navigation` inventory with bounded Navigation block parsing and no serialized markup writes.
 - Content Intelligence: content types, taxonomies, registered block and pattern summaries, and generation constraints.
 - Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
 - Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.
@@ -124,6 +125,28 @@ comments, media library listing/upload, safe site settings, site information,
 site health summaries, and plugin/theme inventory. New user-managed ability groups
 should stay deterministic, paginated where applicable, and capability-checked at
 execution time.
+
+`plugin_lifecycle.list_plugins` and `plugin_lifecycle.get_plugin` provide
+read-only installed-plugin lifecycle status: active/network-active state, cached
+update availability, recovery pause state, multisite context, and capability
+blockers. They must not install, update, activate, deactivate, delete,
+uninstall, edit, execute, or expose raw plugin code.
+
+`theme_lifecycle.list_themes` and `theme_lifecycle.get_theme` provide read-only
+installed-theme lifecycle status: active state, parent and child relationships,
+cached update availability, and block or classic or hybrid signals derived from
+safe WordPress core helpers. They must not install, update, switch, delete,
+edit, or expose filesystem paths, and they explicitly do not implement a
+standalone theme-deactivation action because WordPress switches themes instead.
+
+`navigation_get_context`, `navigation_list_menus`, `navigation_list_locations`,
+and `navigation_list_items` provide read-only navigation context and inventory.
+They cover classic menus and locations plus `wp_navigation` entities and bounded
+Navigation block inspection. This slice intentionally does not implement menu
+writes, location reassignment, `wp_navigation` mutation, theme-template edits,
+or raw serialized navigation string edits. Future writes must preserve
+unknown/custom blocks and attrs, validate parsed block structure before save,
+and fail closed with recovery guidance.
 
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The

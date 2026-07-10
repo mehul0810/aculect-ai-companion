@@ -26,10 +26,10 @@ use WP_REST_Server;
  */
 final class AuthorizationController {
 
-	private const NONCE_ACTION = 'aculect_ai_companion_oauth_authorize';
+	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize';
 	private const CONSENT_REQUEST_PARAM = 'request_token';
 	private const CONSENT_REQUEST_TTL   = 600;
-	private const OAUTH_PARAMS = array(
+	private const OAUTH_PARAMS          = array(
 		'response_type',
 		'client_id',
 		'redirect_uri',
@@ -113,7 +113,7 @@ final class AuthorizationController {
 			$request
 		);
 
-		$context = $this->authorization_context( $params, false, $request );
+		$context     = $this->authorization_context( $params, false, $request );
 		$consent_url = $this->admin_consent_url(
 			$this->store_consent_request( $context['params'] )
 		);
@@ -199,10 +199,11 @@ final class AuthorizationController {
 	/**
 	 * Complete or deny the authorization request and redirect back to the client.
 	 *
-	 * @param array<string, string> $params   Validated authorization parameters.
-	 * @param ClientEntity          $client   Registered OAuth client.
-	 * @param string                $resource MCP resource URL.
-	 * @param string                $decision User decision.
+	 * @param string                $request_token Stored consent request token.
+	 * @param array<string, string> $params        Validated authorization parameters.
+	 * @param ClientEntity          $client        Registered OAuth client.
+	 * @param string                $resource      MCP resource URL.
+	 * @param string                $decision      User decision.
 	 */
 	private function handle_decision( string $request_token, array $params, ClientEntity $client, string $resource, string $decision ): never {
 		$redirect_uri = esc_url_raw( (string) ( $params['redirect_uri'] ?? '' ) );
@@ -350,9 +351,10 @@ final class AuthorizationController {
 	/**
 	 * Render the consent form details and hidden OAuth request parameters.
 	 *
-	 * @param array<string, string> $params   Authorization parameters.
-	 * @param ClientEntity          $client   Registered OAuth client.
-	 * @param string                $resource MCP resource URL.
+	 * @param string                $request_token Stored consent request token.
+	 * @param array<string, string> $params        Authorization parameters.
+	 * @param ClientEntity          $client        Registered OAuth client.
+	 * @param string                $resource      MCP resource URL.
 	 */
 	private function render_consent_markup( string $request_token, array $params, ClientEntity $client, string $resource ): void {
 		unset( $resource );
@@ -893,13 +895,13 @@ final class AuthorizationController {
 	/**
 	 * Build the wp-admin consent URL for login redirects and rendering.
 	 *
-	 * @param array<string, string> $params Authorization parameters.
+	 * @param string $request_token Stored consent request token.
 	 * @return string
 	 */
 	private function admin_consent_url( string $request_token ): string {
 		return add_query_arg(
 			array(
-				'page'                    => 'aculect-ai-companion-oauth-consent',
+				'page'                      => 'aculect-ai-companion-oauth-consent',
 				self::CONSENT_REQUEST_PARAM => $request_token,
 			),
 			admin_url( 'admin.php' )

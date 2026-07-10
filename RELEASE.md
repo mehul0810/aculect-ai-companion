@@ -6,9 +6,9 @@
 - Do not merge production branches, create tags, publish releases, or ship prereleases without explicit owner approval.
 
 ## Current Pre-1.0 Train
-- `0.7.0-beta.1` is the active release-candidate target on `release/0.7.0`.
+- `0.7.0-beta.2` is the active release-candidate target on `release/0.7.0`.
 - Beta-readiness work should stay focused on proof, metadata, docs, package validation, hardening, and small reliability fixes.
-- Do not pull `0.8.0` custom workflow planning scope into the `0.7.0-beta.1` train.
+- Do not pull `0.8.0` custom workflow planning scope into the `0.7.0-beta.2` train.
 
 ## Quality Gates
 - Security/privacy

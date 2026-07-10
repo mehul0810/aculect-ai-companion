@@ -158,7 +158,7 @@ function fixtureForScenario( scenario ) {
 			protocolVersion: '2025-03-26',
 			serverInfo: {
 				name: 'aculect-ai-companion-fixture',
-				version: '0.7.0-beta.1',
+				version: '0.7.0-beta.2',
 			},
 			capabilities: {
 				tools: {

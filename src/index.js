@@ -2280,8 +2280,7 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 			title: 'Endpoint unavailable',
 			description:
 				'Aculect AI Companion could not determine the canonical MCP Server URL for this site.',
-			detail:
-				'Check the external site URL and rerun diagnostics before connecting an assistant.',
+			detail: 'Check the external site URL and rerun diagnostics before connecting an assistant.',
 		};
 	}
 
@@ -2332,8 +2331,7 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 		title: 'Not yet verified',
 		description:
 			'The canonical MCP Server URL is available, but diagnostics have not confirmed external readiness yet.',
-		detail:
-			'Run Connection Diagnostics to verify HTTPS, route shape, and the authorization challenge.',
+		detail: 'Run Connection Diagnostics to verify HTTPS, route shape, and the authorization challenge.',
 	};
 }
 
@@ -4740,8 +4738,8 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 				<div>
 					<h2>MCP Server URL</h2>
 					<p>
-						Keep the canonical endpoint visible here before,
-						during, and after setup.
+						Keep the canonical endpoint visible here before, during,
+						and after setup.
 					</p>
 				</div>
 				<StatusBadge status={ status.status } />

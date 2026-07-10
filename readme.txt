@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.0-beta.1
+Stable tag: 0.7.0-beta.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -263,6 +263,10 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.7.0-beta.2 =
+
+* Fixed incident reporting so authorized `plugin_incident_list` calls remain read-only while `plugin_incident_report` uses the standard confirmation and replay-safe storage flow.
+
 = 0.7.0-beta.1 =
 
 * Added WordPress core management discovery abilities for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
@@ -411,6 +415,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.0-beta.2 =
+
+Fixes MCP incident reporting: read-only listing no longer requests write approval, and report submissions now use the standard confirmation and replay-safe storage flow.
 
 = 0.7.0-beta.1 =
 

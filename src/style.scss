@@ -2303,6 +2303,21 @@ td:last-child
 	line-height: 1.4;
 }
 
+.aculect-ai-companion-sample-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	align-self: flex-start;
+	padding: 2px 8px;
+	border: 1px solid #d7b55f;
+	border-radius: 999px;
+	background: #fff7df;
+	color: #7c5c09;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1.3;
+}
+
 .aculect-ai-companion-danger-zone--connections {
 	display: flex;
 	justify-content: flex-end;

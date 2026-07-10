@@ -247,3 +247,37 @@ test( 'merges diagnostic updates without clearing loaded logs', () => {
 		}
 	);
 } );
+
+test( 'sample notice copy is explicit preview language', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/Preview data - these are examples, not real connections or activity\./
+	);
+} );
+
+test( 'sample connection rows render preview badges and hide real action controls', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/session\.isSample && <SampleBadge label="Preview" \/>/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/if \( session\.isSample \) \{\s*return renderUnavailableAction\( 'Preview only' \);\s*\}/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const canManage =\s*! session\.isSample &&\s*session\.status !== 'revoked'/s
+	);
+} );
+
+test( 'real connection state stays separate from sample rows in the connections dashboard', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const hasRealActiveConnections = activeSessionCount > 0;/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/let accessStatusLabel = 'No active AI access';[\s\S]*else if \( hasRealActiveConnections \) \{\s*accessStatusLabel = 'AI access is active';/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /\{ hasRealActiveConnections && \(/ );
+} );

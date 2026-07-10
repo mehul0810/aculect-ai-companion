@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit;
 
+use Aculect\AICompanion\Admin\LocalSampleData;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Plugin;
 use PHPUnit\Framework\TestCase;
@@ -23,6 +24,7 @@ final class PluginTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_rest_routes'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']     = array();
 	}
 
 	public function test_register_routes_includes_settings_payload_endpoint(): void {
@@ -94,6 +96,14 @@ final class PluginTest extends TestCase {
 				array( $wp )
 			)
 		);
+	}
+
+	public function test_first_install_timestamp_helper_is_idempotent(): void {
+		$first_installed_at = LocalSampleData::ensure_first_installed_at( 1704067200 );
+
+		self::assertSame( 1704067200, $first_installed_at );
+		self::assertSame( 1704067200, (int) get_option( LocalSampleData::OPTION_FIRST_INSTALLED_AT, 0 ) );
+		self::assertSame( 1704067200, LocalSampleData::ensure_first_installed_at( 1704153600 ) );
 	}
 
 	/**

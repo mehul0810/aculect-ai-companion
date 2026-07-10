@@ -282,7 +282,7 @@ final class McpController {
 				}
 
 				$args  = (array) ( $body['params']['arguments'] ?? array() );
-				$risk  = ( new ToolSafety() )->risk_level( $tool, $args );
+				$risk  = $this->tool_risk_level( $tool, $args );
 				$timer = microtime( true );
 				$this->record_timeline_event(
 					'tool_call_start',
@@ -456,50 +456,10 @@ final class McpController {
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
-				$safety                     = new ToolSafety();
-				$is_write_tool              = ! $is_intelligence_tool && ! $registry->is_read_only( $tool );
-				$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
-				$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
-				$replay                     = $is_write_tool && ! $is_dry_run
-					? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
-					: null;
-				$trusted_write_executed     = false;
-				$needs_confirmation_gate    = $is_write_tool
-					&& ! $is_dry_run
-					&& null === $replay
-					&& ! $write_permission_unblocked
-					&& $safety->requires_confirmation( $tool, $args )
-					&& ! $this->confirmation_token_validated( $tool, $args, $auth, $safety );
-				if ( null !== $replay ) {
-					$result = $replay;
-				} elseif ( $is_dry_run ) {
-					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					if ( ! isset( $result['error'] ) ) {
-						if ( $write_permission_unblocked ) {
-							$result = $this->write_permission_preview_payload( $result );
-						} elseif ( $safety->requires_confirmation( $tool, $args ) ) {
-							$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
-						}
-					}
-				} elseif ( $needs_confirmation_gate ) {
-					$preview_args            = $safety->strip_control_args( $args );
-					$preview_args['dry_run'] = true;
-					$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					$result                  = isset( $preview['error'] )
-						? $preview
-						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
-				} else {
-					$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-					$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					if ( $is_write_tool && ! isset( $result['error'] ) ) {
-						$trusted_write_executed = $write_permission_unblocked;
-						if ( $trusted_write_executed ) {
-							$result = $this->trusted_write_result_payload( $result, $auth );
-						}
-						$safety->remember_write_result( $tool, $args, $auth, $result );
-					}
-					$args = $exec_args;
-				}
+				$execution              = $this->execute_tool_with_safety( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
+				$result                 = $execution['result'];
+				$args                   = $execution['args'];
+				$trusted_write_executed = $execution['trusted_write_executed'];
 
 				$activity_auth = $auth;
 				if ( $trusted_write_executed ) {
@@ -848,11 +808,16 @@ final class McpController {
 			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
 		);
 
+		$input_schema = $module->input_schema();
+		if ( 'plugin.incident.report' === $module->id() ) {
+			$input_schema = $this->plugin_incident_report_input_schema( $input_schema );
+		}
+
 		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
 			'title'           => $module->title(),
 			'description'     => $module->description(),
-			'inputSchema'     => $module->input_schema(),
+			'inputSchema'     => $input_schema,
 			'securitySchemes' => $security,
 			'_meta'           => $meta,
 			'annotations'     => $this->tool_annotations( $module ),
@@ -873,7 +838,7 @@ final class McpController {
 	 * @return array<string, bool>
 	 */
 	private function tool_annotations( AbilityModuleInterface $module ): array {
-		$risk = ( new ToolSafety() )->risk_level( $module->id(), array() );
+		$risk = $this->tool_risk_level( $module->id(), array() );
 
 		return array(
 			'readOnlyHint'    => $module->is_read_only(),
@@ -892,12 +857,41 @@ final class McpController {
 					'comments.bulk_update',
 					'media.upload_item',
 					'media.upload_image_data',
-					'plugin.incident.report',
 					'wp_abilities.run',
 				),
 				true
 			),
 		);
+	}
+
+	/**
+	 * Add the standard write-safety controls to the incident report descriptor.
+	 *
+	 * The incident reporter is an always-on intelligence module, but it writes a
+	 * local option. Its public schema therefore needs the same controls as other
+	 * confirmation-gated write tools without changing its registry scope or
+	 * read-only metadata.
+	 *
+	 * @param array<string, mixed> $schema Incident report input schema.
+	 * @return array<string, mixed>
+	 */
+	private function plugin_incident_report_input_schema( array $schema ): array {
+		$properties                       = isset( $schema['properties'] ) && is_array( $schema['properties'] ) ? $schema['properties'] : array();
+		$properties['dry_run']            = array(
+			'type'        => 'boolean',
+			'description' => 'Preview the sanitized incident draft without storing it.',
+		);
+		$properties['confirmation_token'] = array(
+			'type'        => 'string',
+			'description' => 'Confirmation token from a previous preview of the same incident report.',
+		);
+		$properties['idempotency_key']    = array(
+			'type'        => 'string',
+			'description' => 'Optional stable key that makes retried report submissions replay-safe.',
+		);
+		$schema['properties']             = $properties;
+
+		return $schema;
 	}
 
 	/**
@@ -1040,21 +1034,30 @@ final class McpController {
 		if ( 'plugin.incident.report' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
-					'status'            => array(
+					'status'                    => array(
 						'type'        => 'string',
 						'description' => 'stored_ready_for_client_submission when a local incident and public GitHub issue draft were prepared, or rejected when required fields are missing.',
 					),
-					'message'           => array( 'type' => 'string' ),
-					'error'             => array( 'type' => 'string' ),
-					'report_id'         => array( 'type' => 'string' ),
-					'correlation_id'    => array( 'type' => 'string' ),
-					'repository'        => array( 'type' => 'string' ),
-					'title'             => array( 'type' => 'string' ),
-					'body'              => array( 'type' => 'string' ),
-					'issue_url'         => array( 'type' => 'string' ),
-					'can_create_direct' => array( 'type' => 'boolean' ),
-					'incident'          => array( 'type' => 'object' ),
-					'next_actions'      => array( 'type' => 'array' ),
+					'message'                   => array( 'type' => 'string' ),
+					'error'                     => array( 'type' => 'string' ),
+					'report_id'                 => array( 'type' => 'string' ),
+					'correlation_id'            => array( 'type' => 'string' ),
+					'repository'                => array( 'type' => 'string' ),
+					'title'                     => array( 'type' => 'string' ),
+					'body'                      => array( 'type' => 'string' ),
+					'issue_url'                 => array( 'type' => 'string' ),
+					'can_create_direct'         => array( 'type' => 'boolean' ),
+					'incident'                  => array( 'type' => 'object' ),
+					'next_actions'              => array( 'type' => 'array' ),
+					'dry_run'                   => array( 'type' => 'boolean' ),
+					'confirmation_required'     => array( 'type' => 'boolean' ),
+					'confirmation_token'        => array( 'type' => 'string' ),
+					'confirmation_expires_in'   => array( 'type' => 'integer' ),
+					'confirmation_instructions' => array( 'type' => 'string' ),
+					'action'                    => array( 'type' => 'string' ),
+					'risk_level'                => array( 'type' => 'string' ),
+					'preview'                   => array( 'type' => 'object' ),
+					'replayed'                  => array( 'type' => 'boolean' ),
 				),
 				array( 'status' )
 			);
@@ -1456,6 +1459,92 @@ final class McpController {
 	}
 
 	/**
+	 * Execute one MCP tool through the shared dry-run, confirmation, and replay controls.
+	 *
+	 * Plugin incident reporting is an always-on intelligence tool that writes a
+	 * local incident option. It is therefore the only intelligence tool treated as
+	 * a confirmation-gated write here; all other intelligence tools retain their
+	 * existing behavior.
+	 *
+	 * @param string               $tool                 Internal ability ID.
+	 * @param array<string, mixed> $args                 Tool arguments.
+	 * @param AbilitiesRegistry    $registry             Ability registry.
+	 * @param IntelligenceRegistry $intelligence         Intelligence registry.
+	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
+	 * @param array<string, mixed> $auth                 OAuth token context.
+	 * @return array{result: array<string, mixed>, args: array<string, mixed>, trusted_write_executed: bool}
+	 */
+	private function execute_tool_with_safety( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth ): array {
+		$safety                     = new ToolSafety();
+		$is_incident_report         = 'plugin.incident.report' === $tool;
+		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $registry->is_read_only( $tool ) );
+		$requires_confirmation      = $is_incident_report || $safety->requires_confirmation( $tool, $args );
+		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
+		$write_permission_unblocked = $is_write_tool && ! $is_incident_report && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
+		$replay                     = $is_write_tool && ! $is_dry_run
+			? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
+			: null;
+		$trusted_write_executed     = false;
+		$needs_confirmation_gate    = $is_write_tool
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& ! $this->confirmation_token_validated( $tool, $args, $auth, $safety );
+
+		if ( null !== $replay ) {
+			$result = $replay;
+		} elseif ( $is_dry_run ) {
+			$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			if ( ! isset( $result['error'] ) ) {
+				if ( $write_permission_unblocked ) {
+					$result = $this->write_permission_preview_payload( $result );
+				} elseif ( $requires_confirmation ) {
+					$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
+				}
+			}
+		} elseif ( $needs_confirmation_gate ) {
+			$preview_args            = $safety->strip_control_args( $args );
+			$preview_args['dry_run'] = true;
+			$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			$result                  = isset( $preview['error'] )
+				? $preview
+				: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
+		} else {
+			$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
+			$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			if ( $is_write_tool && ! isset( $result['error'] ) ) {
+				$trusted_write_executed = $write_permission_unblocked;
+				if ( $trusted_write_executed ) {
+					$result = $this->trusted_write_result_payload( $result, $auth );
+				}
+				$safety->remember_write_result( $tool, $args, $auth, $result );
+			}
+			$args = $exec_args;
+		}
+
+		return array(
+			'result'                 => $result,
+			'args'                   => $args,
+			'trusted_write_executed' => $trusted_write_executed,
+		);
+	}
+
+	/**
+	 * Return the risk level used in MCP protocol responses and activity telemetry.
+	 *
+	 * @param string               $tool Internal ability ID.
+	 * @param array<string, mixed> $args Tool arguments.
+	 */
+	private function tool_risk_level( string $tool, array $args ): string {
+		if ( 'plugin.incident.report' === $tool ) {
+			return 'update';
+		}
+
+		return ( new ToolSafety() )->risk_level( $tool, $args );
+	}
+
+	/**
 	 * Record one MCP tool event without making activity storage part of request success.
 	 *
 	 * @param string               $tool   Internal tool ID.
@@ -1505,7 +1594,7 @@ final class McpController {
 				'blocked_by'     => $blocked_by,
 				'error_code'     => $blocked_by,
 				'duration_ms'    => $this->duration_ms( $started_at ),
-				'risk_level'     => ( new ToolSafety() )->risk_level( $tool, $args ),
+				'risk_level'     => $this->tool_risk_level( $tool, $args ),
 				'target_summary' => $this->timeline_target_summary( $tool, $args ),
 			),
 			$auth
@@ -1530,7 +1619,7 @@ final class McpController {
 					'tool'                => $tool,
 					'status'              => 'validated',
 					'confirmation_policy' => 'token',
-					'risk_level'          => $safety->risk_level( $tool, $args ),
+					'risk_level'          => $this->tool_risk_level( $tool, $args ),
 					'target_summary'      => $this->timeline_target_summary( $tool, $args ),
 				),
 				$auth
@@ -1577,7 +1666,7 @@ final class McpController {
 				'tool'                => $tool,
 				'status'              => 'issued',
 				'confirmation_policy' => 'dry_run_preview',
-				'risk_level'          => $safety->risk_level( $tool, $args ),
+				'risk_level'          => $this->tool_risk_level( $tool, $args ),
 				'target_summary'      => $this->timeline_target_summary( $tool, $args, $result ),
 			),
 			$auth
@@ -1604,7 +1693,7 @@ final class McpController {
 				'tool'                => $tool,
 				'status'              => 'issued',
 				'confirmation_policy' => 'required_before_write',
-				'risk_level'          => $safety->risk_level( $tool, $args ),
+				'risk_level'          => $this->tool_risk_level( $tool, $args ),
 				'target_summary'      => $this->timeline_target_summary( $tool, $args, $preview ),
 			),
 			$auth
@@ -1617,7 +1706,7 @@ final class McpController {
 			'confirmation_expires_in'   => $safety->confirmation_ttl(),
 			'confirmation_instructions' => 'Repeat the same tool call with confirmation_token before it expires to apply these changes.',
 			'action'                    => $tool,
-			'risk_level'                => $safety->risk_level( $tool, $args ),
+			'risk_level'                => $this->tool_risk_level( $tool, $args ),
 			'preview'                   => $preview,
 		);
 	}

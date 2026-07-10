@@ -199,6 +199,28 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'body', $list['items'][0]['github'] );
 	}
 
+	public function test_plugin_incident_report_dry_run_prepares_sanitized_draft_without_storage(): void {
+		$result = $this->registry->execute(
+			'plugin_incident_report',
+			array(
+				'title'   => 'Preview an incident report',
+				'summary' => 'The preview must not create a local incident report.',
+				'dry_run' => true,
+			),
+			array(
+				'provider'    => 'chatgpt',
+				'client_name' => 'ChatGPT',
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertTrue( $result['dry_run'] );
+		self::assertStringContainsString( '## Summary', $result['body'] );
+		self::assertArrayNotHasKey( 'id', $result['incident'] );
+		self::assertStringStartsWith( 'air_', $result['incident']['correlation_id'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
 	public function test_capability_directory_summarizes_abilities_workflows_and_intelligence(): void {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_users'][7]        = (object) array(

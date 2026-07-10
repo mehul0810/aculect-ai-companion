@@ -59,6 +59,7 @@ final class PluginIncidentReporter {
 	public function report( array $args, array $source = array() ): array {
 		$title   = $this->sanitize_single_line( $args['title'] ?? '', self::MAX_TITLE_LENGTH );
 		$summary = $this->sanitize_multiline( $args['summary'] ?? $args['issue'] ?? '', self::MAX_FIELD_LENGTH );
+		$dry_run = ! empty( $args['dry_run'] );
 
 		if ( '' === $title && '' !== $summary ) {
 			$title = $this->sanitize_single_line( $summary, self::MAX_TITLE_LENGTH );
@@ -74,6 +75,27 @@ final class PluginIncidentReporter {
 
 		$repository = $this->repository();
 		$report     = $this->incident_report( $args, $source, $title, $summary, $repository );
+		if ( $dry_run ) {
+			$preview = $this->public_report( $report, true );
+			unset( $preview['id'], $preview['created_at'], $preview['updated_at'] );
+
+			return array(
+				'status'            => 'preview',
+				'dry_run'           => true,
+				'message'           => 'Sanitized plugin incident report preview prepared without storing a local report.',
+				'repository'        => $repository,
+				'title'             => $title,
+				'body'              => $report['github']['body'],
+				'issue_url'         => $report['github']['issue_url'],
+				'can_create_direct' => false,
+				'incident'          => $preview,
+				'next_actions'      => array(
+					'Review the sanitized incident draft before confirming it for local storage.',
+					'Do not add secrets, credentials, OAuth tokens, raw tool arguments, private content, or private site settings to the public issue.',
+				),
+			);
+		}
+
 		$this->save_report( $report );
 
 		return array(
@@ -229,14 +251,17 @@ final class PluginIncidentReporter {
 	private function incident_report( array $args, array $source, string $title, string $summary, string $repository ): array {
 		$now            = gmdate( 'Y-m-d\TH:i:s\Z' );
 		$report_id      = $this->generate_id();
-		$correlation_id = $this->sanitize_identifier( $args['correlation_id'] ?? '', 100 );
 		$category       = $this->category( $args );
 		$severity       = $this->severity( $args );
-		$body           = $this->issue_body( $args, $source, $summary, $category, $severity, '' === $correlation_id ? $report_id : $correlation_id );
+		$correlation_id = $this->sanitize_identifier( $args['correlation_id'] ?? '', 100 );
+		if ( '' === $correlation_id ) {
+			$correlation_id = $this->generated_correlation_id( $args, $source, $title, $summary, $category, $severity );
+		}
+		$body = $this->issue_body( $args, $source, $summary, $category, $severity, $correlation_id );
 
 		return array(
 			'id'                    => $report_id,
-			'correlation_id'        => '' === $correlation_id ? $report_id : $correlation_id,
+			'correlation_id'        => $correlation_id,
 			'title'                 => $title,
 			'summary'               => $summary,
 			'category'              => $category,
@@ -268,6 +293,41 @@ final class PluginIncidentReporter {
 				'public_issue_ready'     => '' !== $repository,
 			),
 		);
+	}
+
+	/**
+	 * Derive a stable correlation ID for a report without a client-provided one.
+	 *
+	 * The values are the sanitized fields that shape the public issue draft. This
+	 * keeps a confirmation preview and its exact confirmed retry on the same
+	 * correlation ID and prefilled issue URL without persisting the preview.
+	 *
+	 * @param array<string, mixed> $args     Tool arguments.
+	 * @param array<string, mixed> $source   Authenticated MCP connection context.
+	 * @param string               $title    Sanitized public title.
+	 * @param string               $summary  Sanitized public summary.
+	 * @param string               $category Sanitized incident category.
+	 * @param string               $severity Sanitized incident severity.
+	 */
+	private function generated_correlation_id( array $args, array $source, string $title, string $summary, string $category, string $severity ): string {
+		$payload = array(
+			'title'              => $title,
+			'summary'            => $summary,
+			'client_name'        => $this->sanitize_single_line( $args['client_name'] ?? $source['client_name'] ?? $source['provider'] ?? 'MCP client', 100 ),
+			'provider'           => $this->sanitize_single_line( $source['provider'] ?? $args['provider'] ?? '', 80 ),
+			'workflow'           => $this->sanitize_single_line( $args['workflow'] ?? '', 120 ),
+			'tool_name'          => $this->sanitize_single_line( $args['tool_name'] ?? '', 120 ),
+			'category'           => $category,
+			'severity'           => $severity,
+			'activity_id'        => absint( $args['activity_id'] ?? 0 ),
+			'steps_to_reproduce' => $this->string_list( $args['steps_to_reproduce'] ?? array(), 8 ),
+			'recovery_attempts'  => $this->string_list( $args['recovery_attempts'] ?? array(), 8 ),
+			'expected_behavior'  => $this->sanitize_multiline( $args['expected_behavior'] ?? '', self::MAX_FIELD_LENGTH ),
+			'actual_behavior'    => $this->sanitize_multiline( $args['actual_behavior'] ?? '', self::MAX_FIELD_LENGTH ),
+			'evidence'           => $this->sanitize_multiline( $args['evidence'] ?? '', self::MAX_FIELD_LENGTH ),
+		);
+
+		return 'air_' . substr( hash( 'sha256', (string) wp_json_encode( $payload ) ), 0, 24 );
 	}
 
 	/**

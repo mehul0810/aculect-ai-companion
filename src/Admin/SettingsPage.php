@@ -222,8 +222,9 @@ final class SettingsPage {
 	/**
 	 * Return shared settings data that is cheap enough for every tab.
 	 *
-	 * @param string $payload_tab          Normalized payload tab.
-	 * @param int    $active_session_count Active OAuth session count.
+	 * @param string                $payload_tab          Normalized payload tab.
+	 * @param int                   $active_session_count Active OAuth session count.
+	 * @param AccessTokenRepository $access_tokens Access token repository.
 	 * @return array<string, mixed>
 	 */
 	private function base_payload( string $payload_tab, int $active_session_count, AccessTokenRepository $access_tokens ): array {

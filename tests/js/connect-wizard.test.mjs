@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionState,
+	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
 	preferredWizardProviderId,
 	shouldShowPendingRequests,
@@ -126,4 +128,157 @@ test( 'hides pending requests until enabled or real requests exist', () => {
 		} ),
 		true
 	);
+} );
+
+test( 'uses the approval step as the recovery target when available', () => {
+	assert.equal(
+		connectWizardRecoveryStepIndex( {
+			wizard: {
+				steps: [
+					{ id: 'open' },
+					{ id: 'add' },
+					{ id: 'approve' },
+					{ id: 'complete' },
+				],
+			},
+		} ),
+		2
+	);
+} );
+
+test( 'does not report success when no verified active session exists', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'chatgpt', label: 'ChatGPT' },
+		[],
+		{},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'idle' );
+	assert.equal( state.tone, 'warning' );
+	assert.match(
+		state.description,
+		/No verified ChatGPT session is active\./
+	);
+} );
+
+test( 'surfaces pending authorization with a recovery action', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'chatgpt', label: 'ChatGPT' },
+		[],
+		{
+			items: [
+				{
+					id: 'request-1',
+					provider: 'chatgpt',
+					status: 'pending',
+					requestedAt: '2026-07-10 09:30:00',
+				},
+			],
+		},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'pending' );
+	assert.equal( state.actionLabel, 'Review approval step' );
+	assert.deepEqual( state.details[ 0 ], {
+		label: 'Status',
+		value: 'Awaiting approval',
+	} );
+} );
+
+test( 'surfaces failed authorization with retry guidance', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'claude', label: 'Claude' },
+		[],
+		{
+			items: [
+				{
+					id: 'request-2',
+					provider: 'claude',
+					status: 'failed',
+					updatedAt: '2026-07-10 09:40:00',
+					message: 'OAuth callback did not complete.',
+				},
+			],
+		},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'failed' );
+	assert.equal( state.actionLabel, 'Retry authorization' );
+	assert.equal( state.details[ 1 ].value, '2026-07-10 09:40:00' );
+} );
+
+test( 'treats expired authorization payloads as not connected', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'codex', label: 'Codex' },
+		[],
+		{
+			items: [
+				{
+					id: 'request-3',
+					provider: 'codex',
+					status: 'expired',
+				},
+			],
+		},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'expired' );
+	assert.equal( state.actionLabel, 'Reconnect assistant' );
+} );
+
+test( 'reports matching verified sessions with the last verified activity', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'chatgpt', label: 'ChatGPT' },
+		[
+			{
+				id: 12,
+				provider: 'chatgpt',
+				client_name: 'Editorial Copilot',
+				status: 'active',
+				last_used_at: '2026-07-10 09:55:00',
+				expires_at: '2026-07-11 09:55:00',
+			},
+			{
+				id: 10,
+				provider: 'claude',
+				client_name: 'Other Assistant',
+				status: 'active',
+				last_used_at: '2026-07-10 09:59:00',
+				expires_at: '2026-07-11 09:59:00',
+			},
+		],
+		{},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'active' );
+	assert.equal( state.session.client_name, 'Editorial Copilot' );
+	assert.deepEqual( state.details[ 2 ], {
+		label: 'Last verified activity',
+		value: '2026-07-10 09:55:00',
+	} );
+} );
+
+test( 'ignores expired sessions so stale payloads cannot keep success visible', () => {
+	const state = connectWizardCompletionState(
+		{ id: 'chatgpt', label: 'ChatGPT' },
+		[
+			{
+				id: 22,
+				provider: 'chatgpt',
+				client_name: 'Stale Session',
+				status: 'active',
+				last_used_at: '2026-07-10 08:00:00',
+				expires_at: '2026-07-10 08:30:00',
+			},
+		],
+		{},
+		Date.parse( '2026-07-10T10:00:00Z' )
+	);
+
+	assert.equal( state.key, 'idle' );
 } );

@@ -207,7 +207,7 @@ final class SettingsPage {
 		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
 
 		$payload = array_merge(
-			$this->base_payload( $payload_tab, $active_session_count ),
+			$this->base_payload( $payload_tab, $active_session_count, $access_tokens ),
 			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
@@ -226,7 +226,7 @@ final class SettingsPage {
 	 * @param int    $active_session_count Active OAuth session count.
 	 * @return array<string, mixed>
 	 */
-	private function base_payload( string $payload_tab, int $active_session_count ): array {
+	private function base_payload( string $payload_tab, int $active_session_count, AccessTokenRepository $access_tokens ): array {
 		return array(
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
@@ -244,6 +244,7 @@ final class SettingsPage {
 			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
+			'connectSessions'    => $access_tokens->list_active_sessions(),
 			'accessPaused'       => AccessLockdown::is_paused(),
 			'currentUserId'      => get_current_user_id(),
 			'mcpUrl'             => Helpers::mcp_resource(),

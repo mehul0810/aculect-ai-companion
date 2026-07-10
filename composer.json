@@ -46,6 +46,7 @@
       "@lint:php",
       "@lint:wpcs",
       "@analyse:mcp",
+      "@analyse:core",
       "@test:unit"
     ],
     "release:ready": [

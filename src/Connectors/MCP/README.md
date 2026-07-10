@@ -99,6 +99,14 @@ The intelligence layer is divided into these context domains:
 - Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
 - Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.
 
+Internal-link intelligence is part of the MCP content workflow, not a dedicated
+WordPress admin destination. Assistants should read
+`content_internal_link_policy`, inspect existing health with
+`content_audit_internal_links` when needed, find candidates with
+`content_find_internal_links`, and only then move through the reviewed
+suggestion flow toward an apply call that still respects dry-run and
+confirmation safeguards.
+
 Block and pattern inspection helpers also live in this layer so assistant
 clients can understand the site's editable content surface without administrators
 having to enable a separate user-managed ability. All intelligence guidance must

@@ -152,8 +152,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
 		self::assertSame( 0, $payload['memoryRecords']['summary']['total'] );
-		self::assertSame( 0, $payload['internalLinksMap']['summary']['totalIndexed'] );
-		self::assertSame( array(), $payload['internalLinksMap']['items'] );
+		self::assertArrayNotHasKey( 'internalLinksMap', $payload );
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
@@ -374,7 +373,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $overview['memoryRecords']['items'] );
 	}
 
-	public function test_internal_links_map_payload_is_bounded_and_adds_admin_action_links(): void {
+	public function test_retired_internal_links_tab_falls_back_to_overview_payload(): void {
 		$_GET['tab']               = 'links-map';
 		$_GET['links_state']       = 'orphan';
 		$_GET['links_post_type']   = 'page';
@@ -384,47 +383,11 @@ final class SettingsPageTest extends TestCase {
 		$_GET['links_thin_words']  = '250';
 
 		$payload = $this->settings_payload();
-		$map     = $payload['internalLinksMap'];
 
-		self::assertSame( 'links-map', $payload['payloadTab'] );
-		self::assertContains( 'links-map', $payload['hydratedTabs'] );
-		self::assertSame( 50, $map['perPage'] );
-		self::assertSame( 'orphan', $map['filters']['state'] );
-		self::assertSame( 'page', $map['filters']['post_type'] );
-		self::assertSame( 'publish', $map['filters']['status'] );
-		self::assertSame( 3, $map['filters']['min_inbound_links'] );
-		self::assertSame( 250, $map['filters']['thin_word_count'] );
-		self::assertSame( 80, $map['total'] );
-		self::assertSame( 12, $map['summary']['totalIndexed'] );
-		self::assertSame( 4, $map['summary']['staleIndexRows'] );
-		self::assertSame( 1, $map['summary']['orphan'] );
-		self::assertSame( 'Internal Link Strategy', $map['items'][0]['title'] );
-		self::assertSame( 'https://example.com/wp-admin/post.php?post=42&action=edit', $map['items'][0]['editUrl'] );
-		self::assertSame( 'https://example.com/internal-link-strategy/', $map['items'][0]['viewUrl'] );
-		self::assertStringContainsString( 'tab=learning', $map['items'][0]['suggestionsUrl'] );
-		self::assertArrayNotHasKey( 'search_text', $map['items'][0] );
-		self::assertArrayNotHasKey( 'post_content', $map['items'][0] );
-		self::assertSame( 'page', $map['clusters'][0]['id'] );
-		self::assertStringContainsString( 'links_per_page=50', $map['nextUrl'] );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'LIMIT %d OFFSET %d' ) );
-	}
-
-	public function test_internal_links_map_sanitizes_filters_and_reports_empty_index_state(): void {
-		$this->wpdb->return_empty_results = true;
-		$_GET['tab']                      = 'links-map';
-		$_GET['links_state']              = 'invalid';
-		$_GET['links_status']             = 'trash';
-		$_GET['links_per_page']           = '0';
-
-		$payload = $this->settings_payload();
-		$map     = $payload['internalLinksMap'];
-
-		self::assertSame( 'needs_review', $map['filters']['state'] );
-		self::assertSame( '', $map['filters']['status'] );
-		self::assertSame( 20, $map['filters']['per_page'] );
-		self::assertSame( 0, $map['summary']['totalIndexed'] );
-		self::assertSame( array(), $map['items'] );
-		self::assertSame( 'No indexed content yet', $map['emptyState']['title'] );
+		self::assertSame( 'overview', $payload['payloadTab'] );
+		self::assertSame( array( 'overview', 'connect', 'diagnostics', 'advanced' ), $payload['hydratedTabs'] );
+		self::assertArrayNotHasKey( 'internalLinksMap', $payload );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_content_index' ) );
 	}
 
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {

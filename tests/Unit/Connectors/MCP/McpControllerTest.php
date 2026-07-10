@@ -246,6 +246,9 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'content_search_items', $result['instructions'] );
 		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
 		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
+		self::assertStringContainsString( 'content_internal_link_policy', $result['instructions'] );
+		self::assertStringContainsString( 'content_audit_internal_links', $result['instructions'] );
+		self::assertStringContainsString( 'confirmation_token', $result['instructions'] );
 		self::assertStringContainsString( 'memory_list', $result['instructions'] );
 		self::assertStringContainsString( 'site_workflow_audit', $result['instructions'] );
 		self::assertStringContainsString( 'memory_save', $result['instructions'] );

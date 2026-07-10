@@ -63,8 +63,10 @@ final class McpControllerTest extends TestCase {
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
 		self::assertFalse( $tools_by_name['plugin_incident_report']['annotations']['readOnlyHint'] );
-		self::assertTrue( $tools_by_name['plugin_incident_report']['annotations']['openWorldHint'] );
+		self::assertFalse( $tools_by_name['plugin_incident_report']['annotations']['openWorldHint'] );
 		self::assertTrue( $tools_by_name['plugin_incident_list']['annotations']['readOnlyHint'] );
+		self::assertArrayHasKey( 'dry_run', $tools_by_name['plugin_incident_report']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $tools_by_name['plugin_incident_report']['inputSchema']['properties'] );
 	}
 
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
@@ -729,6 +731,63 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'confirmation_token', $read_schema['properties'] );
 	}
 
+	public function test_plugin_incident_report_requires_confirmation_and_replays_without_duplicate_storage(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-test-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+		$args       = array(
+			'title'   => 'Incident confirmation is required',
+			'summary' => 'A report must be previewed before it is stored.',
+		);
+
+		$initial = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( 'confirmation_required', $initial['status'] );
+		self::assertTrue( $initial['confirmation_required'] );
+		self::assertSame( 'update', $initial['risk_level'] );
+		self::assertSame( 'preview', $initial['preview']['status'] );
+		self::assertTrue( $initial['preview']['dry_run'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
+
+		$args['confirmation_token'] = $initial['confirmation_token'];
+		$confirmed                  = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( 'stored_ready_for_client_submission', $confirmed['status'] );
+		self::assertFalse( $confirmed['can_create_direct'] );
+		self::assertSame( $initial['preview']['incident']['correlation_id'], $confirmed['correlation_id'] );
+		self::assertSame( $initial['preview']['body'], $confirmed['body'] );
+		self::assertSame( $initial['preview']['issue_url'], $confirmed['issue_url'] );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+
+		$replay = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( $confirmed['report_id'], $replay['report_id'] );
+		self::assertTrue( $replay['replayed'] );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
+	public function test_plugin_incident_list_never_requires_confirmation(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-list-test-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+
+		$result = $this->pluginIncidentToolCall( $controller, array(), 'plugin_incident_list', $auth );
+
+		self::assertSame( 0, $result['total'] );
+		self::assertArrayNotHasKey( 'confirmation_required', $result );
+		self::assertArrayNotHasKey( 'confirmation_token', $result );
+	}
+
 	/**
 	 * Resolve a tool input schema from the module registry.
 	 *
@@ -1017,6 +1076,36 @@ final class McpControllerTest extends TestCase {
 		} while ( '' !== $cursor );
 
 		return array( 'tools' => $tools );
+	}
+
+	/**
+	 * Exercise one plugin incident tool through the controller safety controls.
+	 *
+	 * @param McpController        $controller Controller under test.
+	 * @param array<string, mixed> $arguments Tool arguments.
+	 * @param string               $name      Public tool name.
+	 * @param array<string, mixed> $auth      OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function pluginIncidentToolCall( McpController $controller, array $arguments, string $name, array $auth ): array {
+		$registry             = new AbilitiesRegistry();
+		$intelligence         = new IntelligenceRegistry();
+		$tool                 = $intelligence->internal_id( $name );
+		$is_intelligence_tool = $intelligence->is_known( $tool );
+		if ( ! $is_intelligence_tool ) {
+			$tool = $registry->internal_id( $name );
+		}
+
+		$result = $this->invokePrivate(
+			$controller,
+			'execute_tool_with_safety',
+			array( $tool, $arguments, $registry, $intelligence, $is_intelligence_tool, $auth )
+		);
+
+		self::assertIsArray( $result );
+		self::assertIsArray( $result['result'] ?? null );
+
+		return $result['result'];
 	}
 
 	/**

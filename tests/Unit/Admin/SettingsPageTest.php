@@ -148,6 +148,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertFalse( $payload['connectionRequests']['approvalModeEnabled'] );
 		self::assertSame( 0, $payload['connectionRequests']['pendingCount'] );
 		self::assertSame( array(), $payload['connectionRequests']['items'] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $payload['mcpUrl'] );
 		self::assertSame( array(), $payload['sessions'] );
 		self::assertSame( array(), $payload['revokedSessions'] );
 		self::assertFalse( $payload['roleAbilities']['enabled'] );
@@ -556,6 +557,26 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'local', $payload['connectionHealth']['system']['environment_type'] );
 		self::assertTrue( $payload['connectionHealth']['items'][0]['is_sample'] );
 		self::assertSame( array( 'diagnostics' ), $payload['sampleData']['appliedTabs'] );
+	}
+
+	public function test_payload_uses_server_derived_sanitized_mcp_url(): void {
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/external_url'] =
+			static fn (): string => 'https://edge.example.test/site///';
+
+		$payload   = $this->settings_payload();
+		$providers = array_column( $payload['providers'], null, 'id' );
+
+		self::assertSame( 'https://edge.example.test/site/wp-json/aculect-ai-companion/v1/mcp', $payload['mcpUrl'] );
+		self::assertSame(
+			$payload['mcpUrl'],
+			$providers['codex']['setupSections'][0]['copyFields'][1]['value']
+		);
+		self::assertStringContainsString(
+			$payload['mcpUrl'],
+			$providers['cursor']['setupSections'][0]['copyFields'][0]['value']
+		);
+
+		unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/external_url'] );
 	}
 
 	/**

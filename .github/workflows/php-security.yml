@@ -22,31 +22,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  codeql-php:
-    name: CodeQL PHP Security
+  semgrep-php:
+    name: Semgrep PHP Security
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: php
-          queries: security-and-quality
+      - name: Run Semgrep PHP security scan
+        run: semgrep scan --config p/php --config p/secrets --exclude vendor --exclude node_modules --exclude release --sarif --output semgrep.sarif --error .
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - name: Upload SARIF to GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          php-version: "8.2"
-          coverage: none
-          tools: composer:v2
-
-      - name: Install composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: /language:php
+          sarif_file: semgrep.sarif
+          category: /tool:semgrep/language:php

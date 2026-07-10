@@ -156,6 +156,31 @@ test( 'admin app removes the retired internal links tab surface', () => {
 	);
 } );
 
+test( 'activity admin view uses DataViews while preserving server filters and table fallback', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function ActivityDataViews\( \{ activity \} \)/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/if \( ! DataViewsComponent \|\| ! filterSortAndPaginateRows \) \{\s*return <ActivityTable activity=\{ activity \} \/>;\s*\}/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/defaultLayouts=\{\s*isConstrainedAdminWidth\s*\?\s*DATA_VIEW_CONNECTION_LIST_LAYOUTS\s*:\s*DATA_VIEW_TABLE_LAYOUTS\s*\}/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /name="activity_range"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_status"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_user"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_assistant"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_action"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_search"/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/<ActivityDataViews\s+activity=\{ activity \}\s*\/>/s
+	);
+} );
+
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

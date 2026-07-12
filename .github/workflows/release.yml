@@ -14,6 +14,29 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Verify production tag is on main
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          tag_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          expected_version="${RELEASE_TAG#v}"
+          release_version="$(sed -n -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*([^[:space:]]+).*$/\1/p' aculect-ai-companion.php | head -n 1)"
+          main_version="$(git show origin/main:aculect-ai-companion.php | sed -n -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*([^[:space:]]+).*$/\1/p' | head -n 1)"
+
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            echo "Production release tag $RELEASE_TAG is not contained in main. Merge the exact tagged release commit into main before deployment." >&2
+            exit 1
+          fi
+
+          if [ -z "$release_version" ] || [ "$release_version" != "$expected_version" ] || [ "$release_version" != "$main_version" ]; then
+            echo "Production release tag $RELEASE_TAG expects version $expected_version, but tagged source is $release_version and main is $main_version." >&2
+            exit 1
+          fi
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2

@@ -38,6 +38,7 @@ Open `AI Companion > Connect` in WordPress and follow the setup flow:
 - Upload and list media.
 - View site settings, active plugins, and themes.
 - Inspect Site Editor and Admin Menu intelligence before planning admin-level theme or settings work.
+- Keep internal-link discovery, audit, review, and approved apply flows in assistant-driven MCP workflows instead of a dedicated admin destination.
 - Read compact MCP resources for capability, site, Site Editor, admin menu, content, brand, workflow, and memory context.
 - Connect and disconnect AI assistants.
 
@@ -128,6 +129,8 @@ Safe baseline read/discovery modules can be classified as `core_default` in `Abi
 `workflow_route_request` is the preferred first call for ambiguous or multi-step work. It classifies the user request, returns the next tool with arguments, points to a workflow guide, and reports operation blockers. `workflow_session_start`, `workflow_session_get`, and `workflow_session_update` provide compact server-side workflow state so clients do not need saved chat memory to resume long content or site-management work. `workflow_loop_create`, `workflow_loop_run_next`, and `workflow_loop_run_batch` add bounded item-aware progress for "do all" style collection workflows such as thin-page cleanup.
 
 `content_media_apply_image` handles common image workflows end to end: use an existing media attachment, sideload a public image URL, import an externally generated image URL, accept base64/data URL image payloads, or search Openverse CC0 candidates before importing. The workflow can set the resolved image as featured media or insert safe core image, gallery, cover, or media/text blocks into existing content while preserving the existing media upload guardrails and content validation.
+
+Internal-link intelligence is intentionally assistant-first. Use `content_internal_link_policy`, `content_audit_internal_links`, `content_find_internal_links`, and the reviewed suggestion flow to inspect policy, audit existing link health, find candidates, and only then dry-run or apply a reviewed update with the normal confirmation safeguards. This capability is not exposed as a dedicated admin tab.
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 

@@ -7,7 +7,6 @@ const TAB_SCOPED_PAYLOAD_KEYS = {
 	connections: [ 'sessions', 'revokedSessions' ],
 	abilities: [ 'roleAbilityPolicy' ],
 	activity: [ 'activity' ],
-	'links-map': [ 'internalLinksMap' ],
 	learning: [ 'learningSuggestions', 'memoryRecords', 'incidentReports' ],
 	brand: [ 'brandProfile' ],
 	changelog: [ 'changelog' ],

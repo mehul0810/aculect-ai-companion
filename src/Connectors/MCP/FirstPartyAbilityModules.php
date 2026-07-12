@@ -487,7 +487,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content_internal_link.policy',
 				'Get Internal Link Policy',
-				'Read the active internal-linking exclusions, limits, and placement guardrails before proposing or applying links.',
+				'Read the active internal-linking exclusions, limits, and placement guardrails before auditing existing links, proposing candidates, or applying a reviewed update.',
 				'Content Intelligence Index',
 				'content:read',
 				true,
@@ -497,7 +497,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content_find.internal_links',
 				'Find Internal Link Opportunities',
-				'Find internal link candidates and anchor suggestions from the local content index while avoiding links already present in the source item.',
+				'Find internal link candidates and anchor suggestions from the local content index after reviewing policy and existing-link health, while avoiding links already present in the source item.',
 				'Content Intelligence Index',
 				'content:read',
 				true,
@@ -507,7 +507,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content_audit.internal_links',
 				'Audit Internal Link Health',
-				'List orphan, underlinked, thin, stale, or link-heavy indexed content using the local link graph without reading full post bodies or applying changes.',
+				'List orphan, underlinked, thin, stale, or link-heavy indexed content using the local link graph before planning new internal-link suggestions or requesting any write.',
 				'Content Intelligence Index',
 				'content:read',
 				true,
@@ -547,7 +547,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content_internal_link.suggestion_apply',
 				'Apply Internal Link Suggestion',
-				'Dry-run or apply one approved internal-link suggestion through the targeted content.update_block path. Applies only one reviewed suggestion per call and never performs automatic site-wide mutation.',
+				'Dry-run or apply one approved internal-link suggestion through the targeted content.update_block path. Applies only one reviewed suggestion per call, never performs automatic site-wide mutation, and may require confirmation before writes.',
 				'Content Intelligence Index',
 				'content:draft',
 				false,

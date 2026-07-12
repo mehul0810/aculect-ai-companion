@@ -14,6 +14,8 @@ import {
 } from './admin-tab-hydration.mjs';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionState,
+	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
 	preferredWizardProviderId,
 	shouldShowPendingRequests,
@@ -4409,17 +4411,22 @@ function WizardStepPanel( {
 	step,
 	stepIndex,
 	stepCount,
-	activeSessionCount,
+	sessions,
+	requests,
 	onCopy,
 	onNext,
 	onPrevious,
 	onViewConnection,
 	connectionUrl,
 	onConnectAnother,
+	onRecoverAuthorization,
 } ) {
 	const copyFields = Array.isArray( step.copyFields ) ? step.copyFields : [];
 	const isFirst = stepIndex === 0;
 	const isLast = stepIndex === stepCount - 1;
+	const completionState = isLast
+		? connectWizardCompletionState( provider, sessions, requests )
+		: null;
 
 	return (
 		<div className="aculect-ai-companion-wizard-step-panel">
@@ -4474,15 +4481,25 @@ function WizardStepPanel( {
 			) }
 			{ isLast && (
 				<div className="aculect-ai-companion-wizard-complete">
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Status: Connected after approval
-					</span>
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Active sessions: { activeSessionCount }
-					</span>
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Last activity: after authorization
-					</span>
+					<strong>{ completionState.title }</strong>
+					<p>{ completionState.description }</p>
+					{ completionState.details.map( ( item ) => (
+						<span
+							key={ item.label }
+							className="aculect-ai-companion-wizard-complete__item"
+						>
+							{ item.label }: { item.value }
+						</span>
+					) ) }
+					{ completionState.actionLabel && (
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={ onRecoverAuthorization }
+						>
+							{ completionState.actionLabel }
+						</Button>
+					) }
 				</div>
 			) }
 			<div className="aculect-ai-companion-wizard-actions">
@@ -4516,16 +4533,22 @@ function WizardStepPanel( {
 				) }
 				{ isLast ? (
 					<>
-						<Button
-							href={ connectionUrl }
-							variant="primary"
-							onClick={ onViewConnection }
-						>
-							View connection
-						</Button>
+						{ completionState?.key === 'active' && (
+							<Button
+								href={ connectionUrl }
+								variant="primary"
+								onClick={ onViewConnection }
+							>
+								View connection
+							</Button>
+						) }
 						<Button
 							type="button"
-							variant="secondary"
+							variant={
+								completionState?.key === 'active'
+									? 'secondary'
+									: 'primary'
+							}
 							onClick={ onConnectAnother }
 						>
 							Connect another assistant
@@ -4546,7 +4569,8 @@ function SetupWizard( {
 	selectedProvider,
 	selectedProviderId,
 	stepIndex,
-	activeSessionCount,
+	sessions,
+	requests,
 	onSelectProvider,
 	onSelectStep,
 	onCopy,
@@ -4608,7 +4632,8 @@ function SetupWizard( {
 					step={ activeStep }
 					stepIndex={ activeStepIndex }
 					stepCount={ steps.length }
-					activeSessionCount={ activeSessionCount }
+					sessions={ sessions }
+					requests={ requests }
 					onCopy={ onCopy }
 					onPrevious={ () =>
 						onSelectStep( Math.max( 0, activeStepIndex - 1 ) )
@@ -4621,6 +4646,11 @@ function SetupWizard( {
 					onViewConnection={ onViewConnection }
 					connectionUrl={ connectionUrl }
 					onConnectAnother={ onConnectAnother }
+					onRecoverAuthorization={ () =>
+						onSelectStep(
+							connectWizardRecoveryStepIndex( selectedProvider )
+						)
+					}
 				/>
 			</div>
 		</section>
@@ -6278,6 +6308,9 @@ function SettingsApp() {
 		? sampleData.tabs
 		: EMPTY_ARRAY;
 	const activeSessionCount = Number( data.activeSessionCount || 0 );
+	const connectSessions = Array.isArray( data.connectSessions )
+		? data.connectSessions
+		: EMPTY_ARRAY;
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
@@ -7184,7 +7217,8 @@ function SettingsApp() {
 										selectedConnectProviderId
 									}
 									stepIndex={ connectWizardStep }
-									activeSessionCount={ activeSessionCount }
+									sessions={ connectSessions }
+									requests={ connectionRequests }
 									onSelectProvider={ ( providerId ) => {
 										setSelectedConnectProviderId(
 											providerId

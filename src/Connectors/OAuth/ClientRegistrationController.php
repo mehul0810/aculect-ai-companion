@@ -49,7 +49,7 @@ final class ClientRegistrationController {
 	}
 
 	/**
-	 * Register a confidential OAuth client from validated DCR metadata.
+	 * Register an OAuth client from validated DCR metadata.
 	 *
 	 * @param WP_REST_Request $request Registration request.
 	 * @return WP_REST_Response|WP_Error
@@ -65,18 +65,36 @@ final class ClientRegistrationController {
 		$client_name       = sanitize_text_field( (string) ( $body['client_name'] ?? 'Aculect AI Companion MCP Client' ) );
 		$raw_redirect_uris = $this->raw_redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
 		$provider          = Helpers::provider_from_client( $client_name, $raw_redirect_uris );
+		$auth_method       = TokenEndpointAuthMethod::from_registration_request( $body['token_endpoint_auth_method'] ?? null );
 
 		$logger->info(
 			'dcr.received',
 			'Dynamic client registration request received.',
 			array(
-				'provider'           => $provider,
-				'client_name'        => $client_name,
-				'redirect_hosts'     => $sanitizer->redirect_hosts( $raw_redirect_uris ),
-				'redirect_uri_count' => count( $raw_redirect_uris ),
+				'provider'                   => $provider,
+				'client_name'                => $client_name,
+				'redirect_hosts'             => $sanitizer->redirect_hosts( $raw_redirect_uris ),
+				'redirect_uri_count'         => count( $raw_redirect_uris ),
+				'token_endpoint_auth_method' => is_scalar( $body['token_endpoint_auth_method'] ?? null ) ? (string) $body['token_endpoint_auth_method'] : '',
 			),
 			$request
 		);
+
+		if ( '' === $auth_method ) {
+			$logger->warning(
+				'dcr.invalid_client_metadata',
+				'Dynamic client registration requested an unsupported token endpoint auth method.',
+				array(
+					'provider'           => $provider,
+					'error_code'         => 'invalid_client_metadata',
+					'redirect_hosts'     => $sanitizer->redirect_hosts( $raw_redirect_uris ),
+					'redirect_uri_count' => count( $raw_redirect_uris ),
+				),
+				$request,
+				400
+			);
+			return new WP_Error( 'invalid_client_metadata', 'Unsupported token_endpoint_auth_method.', array( 'status' => 400 ) );
+		}
 
 		$redirect_uris = $this->redirect_uris( $raw_redirect_uris );
 		if ( array() === $redirect_uris ) {
@@ -95,7 +113,7 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
-		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, true, null );
+		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null );
 		if ( ! is_array( $client ) ) {
 			$logger->error(
 				'dcr.registration_failed',
@@ -116,29 +134,32 @@ final class ClientRegistrationController {
 			'dcr.registered',
 			'Dynamic client registration completed.',
 			array(
-				'provider'           => (string) ( $client['provider'] ?? $provider ),
-				'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
-				'redirect_uri_count' => count( $redirect_uris ),
+				'provider'                   => (string) ( $client['provider'] ?? $provider ),
+				'redirect_hosts'             => $sanitizer->redirect_hosts( $redirect_uris ),
+				'redirect_uri_count'         => count( $redirect_uris ),
+				'token_endpoint_auth_method' => $auth_method,
 			),
 			$request,
 			201
 		);
 
-		return new WP_REST_Response(
-			array(
-				'client_id'                  => (string) $client['client_id'],
-				'client_secret'              => (string) $client['client_secret'],
-				'client_id_issued_at'        => time(),
-				'client_secret_expires_at'   => 0,
-				'client_name'                => $client_name,
-				'redirect_uris'              => $redirect_uris,
-				'grant_types'                => array( 'authorization_code', 'refresh_token' ),
-				'response_types'             => array( 'code' ),
-				'token_endpoint_auth_method' => 'client_secret_post',
-				'scope'                      => implode( ' ', Helpers::supported_scopes() ),
-			),
-			201
+		$response = array(
+			'client_id'                  => (string) $client['client_id'],
+			'client_id_issued_at'        => time(),
+			'client_name'                => $client_name,
+			'redirect_uris'              => $redirect_uris,
+			'grant_types'                => array( 'authorization_code', 'refresh_token' ),
+			'response_types'             => array( 'code' ),
+			'token_endpoint_auth_method' => $auth_method,
+			'scope'                      => implode( ' ', Helpers::supported_scopes() ),
 		);
+
+		if ( TokenEndpointAuthMethod::is_confidential( $auth_method ) ) {
+			$response['client_secret']            = (string) $client['client_secret'];
+			$response['client_secret_expires_at'] = 0;
+		}
+
+		return new WP_REST_Response( $response, 201 );
 	}
 
 	/**

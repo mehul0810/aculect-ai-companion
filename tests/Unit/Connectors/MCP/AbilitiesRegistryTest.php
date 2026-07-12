@@ -22,8 +22,9 @@ final class AbilitiesRegistryTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$this->registry                               = new AbilitiesRegistry();
+		$GLOBALS['aculect_ai_companion_test_options']      = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+		$this->registry                                    = new AbilitiesRegistry();
 	}
 
 	public function test_public_tool_names_are_claude_safe_and_round_trip_to_internal_ids(): void {
@@ -78,6 +79,10 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
+		self::assertNotContains( 'Site Workflows', $groups );
+		self::assertNotContains( 'Site Editor Intelligence', $groups );
+		self::assertNotContains( 'Admin Menu Intelligence', $groups );
+		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
 		self::assertNotContains( 'Block Knowledge', $groups );
 
@@ -90,8 +95,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'search', $by_id );
+		self::assertArrayNotHasKey( 'fetch', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
+		self::assertArrayNotHasKey( 'workflow_guides.get', $by_id );
 		self::assertArrayNotHasKey( 'memory.list', $by_id );
-		self::assertArrayHasKey( 'memory.save', $by_id );
+		self::assertArrayNotHasKey( 'memory.save', $by_id );
+		self::assertArrayNotHasKey( 'memory.bootstrap', $by_id );
 	}
 
 	public function test_requested_expansion_abilities_are_registered(): void {
@@ -99,6 +110,13 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		foreach (
 			array(
+				'workflow.route_request',
+				'workflow_session.start',
+				'workflow_session.get',
+				'workflow_session.update',
+				'mcp_learning.inspect_activity',
+				'search',
+				'fetch',
 				'wp_abilities.discover',
 				'wp_abilities.get_info',
 				'wp_abilities.run',
@@ -114,13 +132,29 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_workflow.create_draft',
 				'content_workflow.update_post',
 				'seo_workflow.update_rankmath',
+				'site_workflow.audit',
+				'site_editor.get_context',
+				'site_editor.refresh_context',
+				'site_editor.list_templates',
+				'site_editor.get_template',
+				'site_editor.list_template_parts',
+				'site_editor.get_template_part',
+				'admin_menu.get_context',
+				'admin_menu.refresh_context',
+				'admin_menu.list_pages',
+				'admin_menu.get_navigation_target',
+				'admin_menu.list_settings',
+				'workflow_guides.list',
+				'workflow_guides.get',
 				'content_index.refresh_batch',
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
 				'content_find.internal_links',
+				'content_audit.internal_links',
 				'memory.list',
 				'memory.save',
+				'memory.bootstrap',
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
@@ -138,14 +172,47 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_workflow.create_draft' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'content_workflow_create_draft' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'seo_workflow.update_rankmath' ) );
+		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( 'search', $this->registry->tool_name( 'search' ) );
+		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_audit_internal_links' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_audit.internal_links' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_start' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_session_get' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_update' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'mcp_learning_inspect_activity' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_start' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_session_get' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_update' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'mcp_learning_inspect_activity' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides_list' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_guides.get' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.list_templates' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'site_editor.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.save' ) );
+		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.bootstrap' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_bootstrap' ) );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
+		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
@@ -169,7 +236,13 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		$result = $module->execute( array( 'search' => 'content' ) );
 
-		self::assertSame( 'abilities_api_unavailable', $result['error'] );
+		if ( isset( $result['error'] ) ) {
+			self::assertSame( 'abilities_api_unavailable', $result['error'] );
+			return;
+		}
+
+		self::assertSame( 0, $result['total'] );
+		self::assertSame( array(), $result['items'] );
 	}
 
 	public function test_write_module_schema_includes_safety_controls(): void {
@@ -189,9 +262,18 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content_list_items',
 				'content.create_draft',
 				'content_workflow.create_draft',
+				'search',
+				'fetch',
+				'workflow_guides.list',
+				'workflow.route_request',
+				'workflow_session.start',
+				'workflow_session.get',
+				'workflow_session.update',
+				'mcp_learning.inspect_activity',
 				'content_search.items',
 				'memory.list',
 				'memory.save',
+				'memory.bootstrap',
 				'<script>',
 				array(),
 			)
@@ -201,7 +283,6 @@ final class AbilitiesRegistryTest extends TestCase {
 			array(
 				'content.list_items',
 				'content.create_item',
-				'memory.save',
 			),
 			$this->registry->enabled_ids()
 		);

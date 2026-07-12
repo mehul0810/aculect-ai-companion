@@ -136,6 +136,14 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
+		$validated_content = $this->validated_block_content_argument( $data );
+		if ( isset( $validated_content['error'] ) ) {
+			return $validated_content;
+		}
+		if ( array_key_exists( 'content', $validated_content ) ) {
+			$data['content'] = $validated_content['content'];
+		}
+
 		$featured_media = null;
 		if ( array_key_exists( 'featured_media', $data ) ) {
 			if ( ! post_type_supports( $post_type, 'thumbnail' ) ) {
@@ -164,6 +172,11 @@ final class ContentAbilities extends AbstractAbilityService {
 		if ( isset( $date_payload['error'] ) ) {
 			$error = $date_payload['error'];
 			return is_array( $error ) ? $error : $this->error( 'invalid_date', 'Date could not be resolved.' );
+		}
+
+		$schedule_error = $this->future_status_error( $status, $date_payload, null );
+		if ( array() !== $schedule_error ) {
+			return $schedule_error;
 		}
 
 		$payload = array_merge( $payload, $date_payload );
@@ -195,6 +208,13 @@ final class ContentAbilities extends AbstractAbilityService {
 		 */
 
 		if ( $this->is_dry_run( $data ) ) {
+			$additional_changes = array_merge(
+				$this->taxonomy_assignment_changes( $taxonomy_assignments ),
+				null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
+			);
+			$diff               = $this->post_payload_diff( array(), $payload );
+			$additional_diff    = $this->diff_from_changes( $additional_changes );
+
 			return $this->preview_response(
 				'content.create_item',
 				$data,
@@ -204,9 +224,10 @@ final class ContentAbilities extends AbstractAbilityService {
 				),
 				array_merge(
 					$this->post_payload_changes( array(), $payload ),
-					$this->taxonomy_assignment_changes( $taxonomy_assignments ),
-					null !== $featured_media ? array( $this->change( 'featured_media', null, $featured_media ) ) : array()
-				)
+					$additional_changes
+				),
+				array(),
+				$this->diff_payload( array_merge( $diff['fields'], $additional_diff['fields'] ) )
 			);
 		}
 
@@ -258,6 +279,14 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
 		}
 
+		$validated_content = $this->validated_block_content_argument( $data );
+		if ( isset( $validated_content['error'] ) ) {
+			return $validated_content;
+		}
+		if ( array_key_exists( 'content', $validated_content ) ) {
+			$data['content'] = $validated_content['content'];
+		}
+
 		$update = array( 'ID' => $post_id );
 		if ( array_key_exists( 'title', $data ) ) {
 			$update['post_title'] = sanitize_text_field( (string) $data['title'] );
@@ -280,6 +309,7 @@ final class ContentAbilities extends AbstractAbilityService {
 
 			$update['post_author'] = $author_id;
 		}
+		$requested_status = null;
 		if ( array_key_exists( 'status', $data ) ) {
 			$status = $this->writable_status( (string) $data['status'] );
 			if ( '' === $status ) {
@@ -292,6 +322,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				}
 
 				if ( $this->is_dry_run( $data ) ) {
+					$can_read_before = current_user_can( 'read_post', $post_id );
 					return $this->preview_response(
 						'content.update_item',
 						$data,
@@ -300,9 +331,14 @@ final class ContentAbilities extends AbstractAbilityService {
 							'id'   => $post_id,
 						),
 						array(
-							$this->change( 'status', $post->post_status, 'trash' ),
+							$this->change( 'status', $can_read_before ? $post->post_status : null, 'trash' ),
 						),
-						array( 'This item will be moved to the WordPress trash and can be restored from the admin.' )
+						array( 'This item will be moved to the WordPress trash and can be restored from the admin.' ),
+						$this->diff_payload(
+							array(
+								$this->field_diff( 'status', $post->post_status, 'trash', $can_read_before, 'not_readable' ),
+							)
+						)
 					);
 				}
 
@@ -323,6 +359,7 @@ final class ContentAbilities extends AbstractAbilityService {
 			if ( in_array( $status, array( 'future', 'publish' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 				return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 			}
+			$requested_status      = $status;
 			$update['post_status'] = $status;
 		}
 
@@ -330,6 +367,13 @@ final class ContentAbilities extends AbstractAbilityService {
 		if ( isset( $date_payload['error'] ) ) {
 			$error = $date_payload['error'];
 			return is_array( $error ) ? $error : $this->error( 'invalid_date', 'Date could not be resolved.' );
+		}
+
+		if ( null !== $requested_status ) {
+			$schedule_error = $this->future_status_error( $requested_status, $date_payload, $post );
+			if ( array() !== $schedule_error ) {
+				return $schedule_error;
+			}
 		}
 
 		$update = array_merge( $update, $date_payload );
@@ -356,6 +400,27 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		if ( $this->is_dry_run( $data ) ) {
+			$from               = array(
+				'post_title'    => $post->post_title,
+				'post_content'  => $post->post_content,
+				'post_excerpt'  => $post->post_excerpt,
+				'post_name'     => $post->post_name,
+				'post_status'   => $post->post_status,
+				'post_author'   => (int) $post->post_author,
+				'post_date'     => $post->post_date,
+				'post_date_gmt' => $post->post_date_gmt,
+			);
+			$can_read_before    = current_user_can( 'read_post', $post_id );
+			$changes_from       = $can_read_before ? $from : array();
+			$additional_changes = array_merge(
+				$this->taxonomy_assignment_changes( $taxonomy_assignments, $can_read_before ? $post_id : 0 ),
+				! empty( $featured_media_change )
+					? array( $this->change( 'featured_media', $can_read_before ? get_post_thumbnail_id( $post_id ) : null, $featured_media_change['value'] ) )
+					: array()
+			);
+			$diff               = $this->post_payload_diff( $from, $update, $can_read_before );
+			$additional_diff    = $this->diff_from_changes( $additional_changes );
+
 			return $this->preview_response(
 				'content.update_item',
 				$data,
@@ -364,24 +429,11 @@ final class ContentAbilities extends AbstractAbilityService {
 					'id'   => $post_id,
 				),
 				array_merge(
-					$this->post_payload_changes(
-						array(
-							'post_title'    => $post->post_title,
-							'post_content'  => $post->post_content,
-							'post_excerpt'  => $post->post_excerpt,
-							'post_name'     => $post->post_name,
-							'post_status'   => $post->post_status,
-							'post_author'   => (int) $post->post_author,
-							'post_date'     => $post->post_date,
-							'post_date_gmt' => $post->post_date_gmt,
-						),
-						$update
-					),
-					$this->taxonomy_assignment_changes( $taxonomy_assignments, $post_id ),
-					! empty( $featured_media_change )
-						? array( $this->change( 'featured_media', get_post_thumbnail_id( $post_id ), $featured_media_change['value'] ) )
-						: array()
-				)
+					$this->post_payload_changes( $changes_from, $update ),
+					$additional_changes
+				),
+				array(),
+				$this->diff_payload( array_merge( $diff['fields'], $additional_diff['fields'] ) )
 			);
 		}
 
@@ -404,6 +456,50 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		return $this->get_item( $post_id );
+	}
+
+	/**
+	 * Validate serialized block content for atomic content writes.
+	 *
+	 * @param array<string, mixed> $data Content fields.
+	 * @return array<string, mixed>
+	 */
+	private function validated_block_content_argument( array $data ): array {
+		if ( ! array_key_exists( 'content', $data ) ) {
+			return array();
+		}
+
+		$content = trim( (string) $data['content'] );
+		if ( '' === $content ) {
+			return $this->error( 'invalid_block_content', 'Provide serialized WordPress block content.' );
+		}
+
+		if ( ! str_contains( $content, '<!-- wp:' ) ) {
+			return $this->error( 'invalid_block_content', 'Use serialized WordPress block markup, not raw HTML or plain text.' );
+		}
+
+		$validation = ( new BlockKnowledgeAbilities() )->validate_block_content( array( 'content' => $content ) );
+		if ( isset( $validation['error'] ) ) {
+			return array_merge(
+				$this->error( (string) $validation['error'], (string) ( $validation['message'] ?? 'Block validation failed.' ) ),
+				array( 'block_validation' => $validation )
+			);
+		}
+
+		if ( true !== ( $validation['valid'] ?? false ) ) {
+			return array_merge(
+				$this->error( 'invalid_block_content', 'Block content must use registered WordPress blocks and must not include core/html.' ),
+				array(
+					'block_validation' => $validation,
+					'warnings'         => (array) ( $validation['warnings'] ?? array() ),
+				)
+			);
+		}
+
+		return array(
+			'content'          => $content,
+			'block_validation' => $validation,
+		);
 	}
 
 	/**
@@ -449,6 +545,63 @@ final class ContentAbilities extends AbstractAbilityService {
 			'post_date'     => $site_date->format( 'Y-m-d H:i:s' ),
 			'post_date_gmt' => $gmt_date->format( 'Y-m-d H:i:s' ),
 		);
+	}
+
+	/**
+	 * Reject schedule requests WordPress would normalize into a publish.
+	 *
+	 * @param string               $status       Requested post status.
+	 * @param array<string, mixed> $date_payload Resolved post date payload.
+	 * @param \WP_Post|null        $existing     Existing post for update calls.
+	 * @return array<string, mixed>
+	 */
+	private function future_status_error( string $status, array $date_payload, ?\WP_Post $existing ): array {
+		if ( 'future' !== $status ) {
+			return array();
+		}
+
+		$date_gmt = (string) ( $date_payload['post_date_gmt'] ?? '' );
+		if ( '' === $date_gmt && $existing instanceof \WP_Post ) {
+			$date_gmt = (string) $existing->post_date_gmt;
+		}
+
+		if ( '' === $date_gmt || str_starts_with( $date_gmt, '0000-00-00' ) ) {
+			return $this->schedule_date_error( 'Scheduling requires a future date. Pass date with status future.' );
+		}
+
+		$scheduled = $this->create_date_from_format( '!Y-m-d H:i:s', $date_gmt, new DateTimeZone( 'UTC' ) );
+		if ( ! $scheduled instanceof DateTimeImmutable ) {
+			return $this->schedule_date_error( 'Scheduling requires a valid future date. Pass date as site-local time or ISO 8601 with an offset.', $date_gmt );
+		}
+
+		$now = new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
+		if ( $scheduled <= $now ) {
+			return $this->schedule_date_error( 'Scheduled posts require date to be in the future relative to the WordPress site timezone.', $date_gmt );
+		}
+
+		return array();
+	}
+
+	/**
+	 * Build a structured scheduling error with enough context for MCP clients.
+	 *
+	 * @param string $message  Human-readable message.
+	 * @param string $date_gmt Resolved GMT date.
+	 * @return array<string, mixed>
+	 */
+	private function schedule_date_error( string $message, string $date_gmt = '' ): array {
+		$error = $this->error( 'invalid_schedule_date', $message );
+
+		$site_timezone = $this->site_timezone();
+		$site_now      = ( new DateTimeImmutable( 'now', $site_timezone ) )->format( 'Y-m-d H:i:s' );
+
+		$error['site_timezone']     = $site_timezone->getName();
+		$error['site_current_time'] = $site_now;
+		if ( '' !== $date_gmt ) {
+			$error['resolved_date_gmt'] = $date_gmt;
+		}
+
+		return $error;
 	}
 
 	/**

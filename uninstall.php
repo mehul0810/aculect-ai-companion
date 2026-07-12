@@ -44,6 +44,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Intelligence\Database\Installer::uninstall();
 \Aculect\AICompanion\Brand\BrandProfile::delete();
 \Aculect\AICompanion\Intelligence\LearningSuggestionRepository::delete();
+\Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter::delete();
 \Aculect\AICompanion\Diagnostics\ConnectionHealth::delete();
 \Aculect\AICompanion\Connectors\OAuth\Server\KeyManager::delete_keys();
 \Aculect\AICompanion\Connectors\OAuth\StorageMaintenance::delete_options();
@@ -53,6 +54,8 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Connectors\MCP\UserAccessControl::delete();
 \Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy::delete();
 \Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint::delete();
+\Aculect\AICompanion\Connectors\MCP\SiteEditorAbilities::delete();
+\Aculect\AICompanion\Connectors\MCP\AdminMenuAbilities::delete();
 
 delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );
 delete_option( 'aculect_ai_companion_rewrite_version' );

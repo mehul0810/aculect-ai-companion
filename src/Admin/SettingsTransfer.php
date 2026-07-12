@@ -11,9 +11,11 @@ namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\AdminMenuAbilities;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
+use Aculect\AICompanion\Connectors\MCP\SiteEditorAbilities;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
@@ -36,7 +38,9 @@ final class SettingsTransfer {
 	 * @return array<string, mixed>
 	 */
 	public function export_payload(): array {
-		$registry = new AbilitiesRegistry();
+		$registry                    = new AbilitiesRegistry();
+		$role_ability_policy         = new RoleAbilitiesPolicy();
+		$role_ability_policy_enabled = RoleAbilitiesPolicy::is_editing_enabled();
 
 		return array(
 			'schema'        => self::SCHEMA,
@@ -44,19 +48,20 @@ final class SettingsTransfer {
 			'pluginVersion' => ACULECT_AI_COMPANION_VERSION,
 			'exportedAt'    => gmdate( 'c' ),
 			'settings'      => array(
-				'enabledAbilities'    => $registry->enabled_ids(),
-				'enabledWpAbilities'  => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
-				'confirmationGroups'  => ( new ToolSafety() )->confirmation_groups(),
-				'roleAbilityPolicies' => ( new RoleAbilitiesPolicy() )->saved_policies( $registry ),
-				'roleConnections'     => array(
+				'enabledAbilities'                => $registry->enabled_ids(),
+				'enabledWpAbilities'              => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
+				'confirmationGroups'              => ( new ToolSafety() )->confirmation_groups(),
+				'roleAbilityPolicyEditingEnabled' => $role_ability_policy_enabled,
+				'roleAbilityPolicies'             => $role_ability_policy_enabled ? $role_ability_policy->saved_policies( $registry ) : array(),
+				'roleConnections'                 => array(
 					'enabled'      => RoleConnectionEntryPoint::is_enabled(),
 					'allowedRoles' => RoleConnectionEntryPoint::allowed_roles(),
 				),
-				'diagnostics'         => array(
+				'diagnostics'                     => array(
 					'loggingEnabled' => LogSettings::is_enabled(),
 					'retentionDays'  => LogSettings::retention_days(),
 				),
-				'brandProfile'        => ( new BrandProfile() )->saved(),
+				'brandProfile'                    => ( new BrandProfile() )->saved(),
 			),
 		);
 	}
@@ -116,6 +121,8 @@ final class SettingsTransfer {
 		AccessLockdown::delete();
 		UserAccessControl::delete();
 		ContentIndexer::delete_options();
+		SiteEditorAbilities::delete();
+		AdminMenuAbilities::delete();
 	}
 
 	/**
@@ -157,11 +164,19 @@ final class SettingsTransfer {
 			( new ToolSafety() )->save_confirmation_groups( $this->string_list( $settings['confirmationGroups'] ) );
 		}
 
+		if ( array_key_exists( 'roleAbilityPolicyEditingEnabled', $settings ) ) {
+			RoleAbilitiesPolicy::set_editing_enabled( $this->boolean_value( $settings['roleAbilityPolicyEditingEnabled'] ) );
+		}
+
 		if ( array_key_exists( 'roleAbilityPolicies', $settings ) ) {
-			( new RoleAbilitiesPolicy() )->replace_policies(
-				$this->role_policy_map( $settings['roleAbilityPolicies'] ),
-				$registry
-			);
+			if ( RoleAbilitiesPolicy::is_editing_enabled() ) {
+				( new RoleAbilitiesPolicy() )->replace_policies(
+					$this->role_policy_map( $settings['roleAbilityPolicies'] ),
+					$registry
+				);
+			} else {
+				( new RoleAbilitiesPolicy() )->replace_policies( array(), $registry );
+			}
 		}
 	}
 

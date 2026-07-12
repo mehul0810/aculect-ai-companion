@@ -116,9 +116,9 @@ final class IntelligenceContext {
 	 * @return array<string, mixed>
 	 */
 	public function capabilities( array $args = array() ): array {
-		$detail     = 'full' === sanitize_key( (string) ( $args['detail'] ?? 'summary' ) ) ? 'full' : 'summary';
-		$operations = $this->operations_manifest();
-		$regular    = array(
+		$detail      = 'full' === sanitize_key( (string) ( $args['detail'] ?? 'summary' ) ) ? 'full' : 'summary';
+		$operations  = $this->operations_manifest();
+		$regular     = array(
 			$this->capability_group( 'content', 'Content', $operations['content'] ?? array(), $detail ),
 			$this->capability_group( 'content_groups', 'Content Groups', $operations['content_groups'] ?? array(), $detail ),
 			$this->capability_group( 'media', 'Media', $operations['media'] ?? array(), $detail ),
@@ -126,8 +126,11 @@ final class IntelligenceContext {
 			$this->capability_group( 'site_information', 'Site Information', $operations['site_information'] ?? array(), $detail ),
 			$this->capability_group( 'wordpress_actions', 'WordPress Actions', $operations['actions'] ?? array(), $detail ),
 		);
-		$workflows  = $this->capability_group( 'workflows', 'Guided Workflows', $operations['workflows'] ?? array(), $detail );
-		$blocked    = $this->blocked_capability_summary( $operations, $detail );
+		$workflows   = $this->capability_group( 'workflows', 'Guided Workflows', $operations['workflows'] ?? array(), $detail );
+		$site_editor = $this->capability_group( 'site_editor', 'Site Editor Intelligence', $operations['site_editor'] ?? array(), $detail );
+		$admin_menu  = $this->capability_group( 'admin_menu', 'Admin Menu Intelligence', $operations['admin_menu'] ?? array(), $detail );
+		$guides      = $this->capability_group( 'workflow_guides', 'Workflow Guides', $operations['workflow_guides'] ?? array(), $detail );
+		$blocked     = $this->blocked_capability_summary( $operations, $detail );
 
 		return array(
 			'type'                 => 'capability_directory',
@@ -135,22 +138,34 @@ final class IntelligenceContext {
 			'description'          => 'Safe startup summary for questions like what can you do, detect available abilities, or what workflows are possible.',
 			'detail'               => $detail,
 			'summary'              => array(
-				'available_regular_tools' => $this->sum_counts( $regular, 'available_count' ),
-				'blocked_regular_tools'   => $this->sum_counts( $regular, 'blocked_count' ),
-				'available_workflows'     => (int) $workflows['available_count'],
-				'blocked_workflows'       => (int) $workflows['blocked_count'],
-				'intelligence_surfaces'   => count( $this->intelligence_context_tools() ) + count( $this->intelligence_knowledge_tools() ),
-				'blocked_reason_counts'   => $blocked['counts_by_reason'],
+				'available_regular_tools'     => $this->sum_counts( $regular, 'available_count' ),
+				'blocked_regular_tools'       => $this->sum_counts( $regular, 'blocked_count' ),
+				'available_workflows'         => (int) $workflows['available_count'],
+				'blocked_workflows'           => (int) $workflows['blocked_count'],
+				'available_site_editor_tools' => (int) $site_editor['available_count'],
+				'available_admin_menu_tools'  => (int) $admin_menu['available_count'],
+				'available_guide_tools'       => (int) $guides['available_count'],
+				'intelligence_surfaces'       => count( $this->intelligence_context_tools() ) + count( $this->intelligence_knowledge_tools() ),
+				'blocked_reason_counts'       => $blocked['counts_by_reason'],
 			),
 			'regular_abilities'    => $regular,
 			'workflows'            => $workflows,
+			'site_editor'          => $site_editor,
+			'admin_menu'           => $admin_menu,
+			'workflow_guides'      => $guides,
 			'intelligence'         => array(
 				'context_tools'   => $this->intelligence_context_tools(),
 				'knowledge_tools' => $this->intelligence_knowledge_tools(),
 				'index_tools'     => $this->capability_group( 'intelligence_index', 'Content Intelligence Index', $operations['intelligence_index'] ?? array(), $detail ),
 				'learning'        => array(
-					'feedback_tool' => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
-					'write_policy'  => 'Use intelligence_feedback_submit for reviewed learning suggestions. Durable memory updates require memory_save availability, explicit write permission, and admin review/confirmation.',
+					'feedback_tool'          => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
+					'plugin_incident_tool'   => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.report' ),
+					'incident_tools'         => array(
+						'report' => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.report' ),
+						'list'   => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.list' ),
+					),
+					'write_policy'           => 'Use intelligence_feedback_submit for reviewed learning suggestions. Durable memory updates require memory_save availability, explicit write permission, and admin review/confirmation.',
+					'incident_report_policy' => 'Use plugin_incident_report when the plugin or MCP workflow fails. It stores a local incident report, returns a report_id and correlation_id, and prepares a public GitHub issue draft and URL for assistant-side submission when GitHub or browser tools are available.',
 				),
 			),
 			'blocked_capabilities' => $blocked,
@@ -159,10 +174,14 @@ final class IntelligenceContext {
 				'Which content workflows are available right now?',
 				'Find relevant internal links for this draft before updating it.',
 				'Prepare a long-form draft using only valid WordPress blocks.',
+				'What Site Editor templates, template parts, and design settings are available?',
+				'Which WordPress admin page should I use for this plugin or core setting?',
 			),
 			'next_actions'         => array(
 				'For planning, call the relevant intelligence context tool before using write tools.',
 				'Use available workflow tools for normal content creation and editing.',
+				'For Appearance > Editor work, call site_editor_get_context before planning changes.',
+				'For core, plugin, or theme settings work, call admin_menu_get_context or admin_menu_get_navigation_target first.',
 				'If a needed capability is blocked, inspect blocked_by and reconnect or update role/global policy before retrying.',
 			),
 			'safety'               => array(
@@ -182,11 +201,16 @@ final class IntelligenceContext {
 	private function learning_protocol(): array {
 		return array(
 			'feedback_tool'         => ( new AbilitiesRegistry() )->tool_name( 'intelligence.feedback.submit' ),
+			'plugin_incident_tool'  => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.report' ),
+			'incident_tools'        => array(
+				'report' => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.report' ),
+				'list'   => ( new AbilitiesRegistry() )->tool_name( 'plugin.incident.list' ),
+			),
 			'status'                => 'suggestion_only',
 			'admin_review_required' => true,
 			'direct_memory_updates' => false,
 			'domains'               => array( 'site', 'content', 'developer', 'brand' ),
-			'instruction'           => 'If this intelligence is incomplete or causes poor results, submit a bounded learning suggestion. Suggestions are queued for admin review and never update site, content, developer, or brand memory directly.',
+			'instruction'           => 'If this intelligence is incomplete or causes poor results, submit a bounded learning suggestion. If the plugin or MCP workflow itself fails, store a local incident and prepare a public GitHub issue with plugin_incident_report, then create it through the assistant client when possible. Suggestions are queued for admin review and never update site, content, developer, or brand memory directly.',
 			'do_not_include'        => array( 'secrets', 'credentials', 'personal data', 'raw tool arguments' ),
 		);
 	}
@@ -296,6 +320,8 @@ final class IntelligenceContext {
 			$this->intelligence_tool( 'content', 'Content types, taxonomies, block guidance, patterns, and content constraints.', 'intelligence.content.get_context', true, $registry ),
 			$this->intelligence_tool( 'developer', 'Safe WordPress runtime and extension context.', 'intelligence.developer.get_context', true, $registry ),
 			$this->intelligence_tool( 'brand', 'Saved and detected brand guidance.', 'intelligence.brand.get_context', true, $registry ),
+			$this->intelligence_tool( 'site_editor', 'Appearance > Editor theme, template, global styles, block, pattern, and navigation context.', 'site_editor.get_context', true, $registry ),
+			$this->intelligence_tool( 'admin_menu', 'Admin menu navigation and registered settings-surface context.', 'admin_menu.get_context', true, $registry ),
 		);
 	}
 
@@ -314,6 +340,8 @@ final class IntelligenceContext {
 			$this->intelligence_tool( 'patterns_get', 'Inspect one registered block pattern.', 'intelligence.patterns.get_info', true, $registry ),
 			$this->intelligence_tool( 'validate_blocks', 'Validate serialized WordPress block content before writes.', 'intelligence.content.validate_blocks', true, $registry ),
 			$this->intelligence_tool( 'feedback_submit', 'Queue bounded learning suggestions for admin review.', 'intelligence.feedback.submit', false, $registry ),
+			$this->intelligence_tool( 'plugin_incident_report', 'Store a local incident report and prepare a sanitized public GitHub issue draft when the plugin or MCP workflow fails.', 'plugin.incident.report', false, $registry ),
+			$this->intelligence_tool( 'plugin_incident_list', 'List local incident reports submitted by MCP clients.', 'plugin.incident.list', true, $registry ),
 		);
 	}
 
@@ -348,7 +376,7 @@ final class IntelligenceContext {
 		$items  = array();
 		$counts = array();
 
-		foreach ( array( 'site_information', 'content', 'workflows', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
+		foreach ( array( 'site_information', 'content', 'workflows', 'site_editor', 'admin_menu', 'workflow_guides', 'intelligence_index', 'content_groups', 'media', 'comments', 'actions' ) as $group ) {
 			foreach ( (array) ( $operations[ $group ] ?? array() ) as $key => $entry ) {
 				if ( ! is_array( $entry ) || true === ( $entry['available'] ?? false ) ) {
 					continue;
@@ -505,9 +533,36 @@ final class IntelligenceContext {
 		);
 
 		return array(
-			'total'     => (int) ( $result['total'] ?? 0 ),
-			'available' => true,
-			'items'     => (array) ( $result['items'] ?? array() ),
+			'total'          => (int) ( $result['total'] ?? 0 ),
+			'available'      => true,
+			'items'          => (array) ( $result['items'] ?? array() ),
+			'groups'         => array(
+				'text'   => $this->block_family_summary( 'text' ),
+				'media'  => $this->block_family_summary( 'media' ),
+				'layout' => $this->block_family_summary( 'layout' ),
+			),
+			'discovery_rule' => 'For image, screenshot, page-layout, grid, columns, card, hero, service page, product page, or landing page requests, call intelligence_blocks_list_available with purpose=layout and call intelligence_patterns_list_available before drafting.',
+		);
+	}
+
+	/**
+	 * Return a compact block-family summary.
+	 *
+	 * @param string $family Block family.
+	 * @return array<string, mixed>
+	 */
+	private function block_family_summary( string $family ): array {
+		$result = ( new BlockKnowledgeAbilities() )->list_blocks(
+			array(
+				'context'  => 'compact',
+				'purpose'  => $family,
+				'per_page' => 8,
+			)
+		);
+
+		return array(
+			'total' => (int) ( $result['total'] ?? 0 ),
+			'items' => (array) ( $result['items'] ?? array() ),
 		);
 	}
 
@@ -533,9 +588,11 @@ final class IntelligenceContext {
 		);
 
 		return array(
-			'total'     => (int) ( $result['total'] ?? 0 ),
-			'available' => true,
-			'items'     => (array) ( $result['items'] ?? array() ),
+			'total'                    => (int) ( $result['total'] ?? 0 ),
+			'available'                => true,
+			'items'                    => (array) ( $result['items'] ?? array() ),
+			'recommended_search_terms' => array( 'hero', 'landing', 'features', 'cards', 'grid', 'columns', 'media text', 'call to action', 'service', 'product', 'case study' ),
+			'discovery_rule'           => 'Use pattern search terms that match the requested content type and visual layout before composing custom block sections.',
 		);
 	}
 

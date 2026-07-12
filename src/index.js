@@ -13,6 +13,13 @@ import {
 	tabNameIsHydrated,
 } from './admin-tab-hydration.mjs';
 import {
+	clampWizardStepIndex,
+	normalizeConnectionRequests,
+	preferredWizardProviderId,
+	shouldShowPendingRequests,
+	wizardStepsForProvider,
+} from './connect-wizard.mjs';
+import {
 	Button,
 	Card,
 	CardBody,
@@ -33,8 +40,6 @@ import {
 	category,
 	chartBar,
 	check,
-	chevronDown,
-	chevronUp,
 	cog,
 	comment,
 	copy,
@@ -72,6 +77,7 @@ const SETTINGS_TABS = [
 	{ name: 'logs', title: 'Logs', hidden: true },
 ];
 const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
 const DATA_VIEW_TABLE_LAYOUTS = { table: true };
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
@@ -95,6 +101,8 @@ const LEARNING_DOMAIN_LABELS = {
 	content: 'Content',
 	developer: 'Developer',
 	brand: 'Brand',
+	seo: 'SEO',
+	workflow: 'Workflow',
 };
 const LEARNING_STATUS_LABELS = {
 	pending: 'Pending',
@@ -106,6 +114,42 @@ const LEARNING_CONFIDENCE_LABELS = {
 	medium: 'Medium confidence',
 	high: 'High confidence',
 };
+const INCIDENT_CATEGORY_LABELS = {
+	bug: 'Bug',
+	compatibility: 'Compatibility',
+	workflow_gap: 'Workflow gap',
+	documentation: 'Documentation',
+	configuration: 'Configuration',
+	client_behavior: 'Client behavior',
+	usability: 'Usability',
+	enhancement: 'Enhancement',
+};
+const INCIDENT_SEVERITY_LABELS = {
+	low: 'Low',
+	medium: 'Medium',
+	high: 'High',
+	blocking: 'Blocking',
+};
+const LEARNING_REVIEW_SURFACES = [
+	{
+		id: 'suggestions',
+		label: 'Learning Suggestions',
+		description:
+			'Review durable intelligence suggestions before they influence future assistant behavior.',
+	},
+	{
+		id: 'memory',
+		label: 'Memory Records',
+		description:
+			'Review durable guidance records separately from new learning suggestions.',
+	},
+	{
+		id: 'incidents',
+		label: 'Incident Reports',
+		description:
+			'Inspect local sanitized workflow reports separately from learning review.',
+	},
+];
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -116,35 +160,27 @@ const CONNECTION_ACCESS_LEVELS = [
 	{
 		value: 'read',
 		label: 'Read',
-		description: 'Can read any content of your website.',
+		description:
+			'Write tools require confirmation after the normal ability, scope, role, and WordPress capability checks pass.',
 		tone: 'is-read',
+		directWrite: false,
 	},
 	{
-		value: 'selective_read',
-		label: 'Selective Read',
-		description: 'Can read non-sensitive content of your website.',
-		tone: 'is-selective-read',
-	},
-	{
-		value: 'selective_write',
-		label: 'Selective Write',
-		description: 'Can write some content of your website.',
-		tone: 'is-selective-write',
-	},
-	{
-		value: 'full_write',
-		label: 'Full Write',
-		description: 'Can write any content on your website.',
-		tone: 'is-full-write',
-	},
-	{
-		value: 'execute',
-		label: 'Execute',
-		description: 'Can execute any commands or code on your website.',
-		tone: 'is-execute',
+		value: 'write',
+		label: 'Write',
+		description:
+			'Trusted write level. Already-authorized write tools can run without an additional confirmation prompt.',
+		tone: 'is-write',
+		directWrite: true,
 	},
 ];
-const DEFAULT_CONNECTION_ACCESS_LEVEL = 'selective_read';
+const DEFAULT_CONNECTION_ACCESS_LEVEL = 'read';
+const LEGACY_WRITE_CONNECTION_ACCESS_LEVELS = [
+	'selective_write',
+	'full_write',
+	'execute',
+];
+const LEGACY_READ_CONNECTION_ACCESS_LEVELS = [ 'selective_read' ];
 const ADMIN_NOTICE_SELECTOR = [
 	'#wpbody-content > .notice',
 	'#wpbody-content > .updated',
@@ -465,43 +501,63 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 	);
 }
 
-function ConnectStepHeading( { number, title, children } ) {
-	return (
-		<div className="aculect-ai-companion-connect-step-heading">
-			<span className="aculect-ai-companion-connect-step-number">
-				{ number }
-			</span>
-			<div>
-				<h2>{ title }</h2>
-				{ children && <p>{ children }</p> }
-			</div>
-		</div>
-	);
-}
-
-function preferredOpenProviderId( providers ) {
-	return (
-		providers.find( ( provider ) => provider.id === 'chatgpt' )?.id ||
-		providers[ 0 ]?.id ||
-		''
-	);
-}
-
 function providerBadgeLabel( provider ) {
 	const labels = {
 		chatgpt: 'C',
 		claude: 'A',
 		codex: 'Cx',
+		cursor: 'Cu',
+		gemini: 'G',
 	};
 
 	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
 }
 
-function providerOverviewText( provider ) {
-	return `Connect ${ provider.label } to manage your WordPress site.`;
+function providerAttribution( provider ) {
+	if ( provider.id === 'mcp' ) {
+		return {
+			description:
+				'Connect this WordPress site to any MCP-compatible client.',
+		};
+	}
+
+	return {
+		brandName: provider.brandName || provider.label,
+		brandUrl: safeExternalUrl(
+			provider.brandUrl || provider.primaryActionUrl || ''
+		),
+	};
+}
+
+function connectorLogoUrl( provider, connectorLogoUrls = EMPTY_OBJECT ) {
+	const providerId =
+		typeof provider === 'string' ? provider : provider?.id || '';
+	const providerIconUrl =
+		typeof provider === 'object' && provider?.iconUrl
+			? provider.iconUrl
+			: '';
+
+	return providerIconUrl || connectorLogoUrls[ providerId ] || '';
+}
+
+function ConnectorBadgeMark( { logoUrl, logoPath, fallback } ) {
+	if ( logoUrl ) {
+		return <img src={ logoUrl } alt="" aria-hidden="true" />;
+	}
+
+	if ( logoPath ) {
+		return (
+			<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+				<path d={ logoPath } />
+			</svg>
+		);
+	}
+
+	return fallback;
 }
 
 function ConnectProviderBadge( { provider } ) {
+	const logoUrl = connectorLogoUrl( provider );
 	const logoPath = CONNECTOR_LOGO_PATHS[ provider.id ] || '';
 
 	return (
@@ -509,13 +565,11 @@ function ConnectProviderBadge( { provider } ) {
 			className={ `aculect-ai-companion-provider-badge is-${ provider.id }` }
 			aria-hidden="true"
 		>
-			{ logoPath ? (
-				<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-					<path d={ logoPath } />
-				</svg>
-			) : (
-				providerBadgeLabel( provider )
-			) }
+			<ConnectorBadgeMark
+				logoUrl={ logoUrl }
+				logoPath={ logoPath }
+				fallback={ providerBadgeLabel( provider ) }
+			/>
 		</span>
 	);
 }
@@ -532,13 +586,20 @@ function connectionProviderLabel( session ) {
 		chatgpt: 'ChatGPT',
 		claude: 'Claude',
 		codex: 'Codex',
+		cursor: 'Cursor',
+		gemini: 'Gemini',
 	};
 
 	return labels[ provider ] || session.provider || 'AI';
 }
 
-function ConnectionProviderLogo( { session, decorative = true } ) {
+function ConnectionProviderLogo( {
+	session,
+	decorative = true,
+	connectorLogoUrls = EMPTY_OBJECT,
+} ) {
 	const provider = connectionProviderKey( session );
+	const logoUrl = connectorLogoUrl( provider, connectorLogoUrls );
 	const logoPath = CONNECTOR_LOGO_PATHS[ provider ] || '';
 	const label = connectionProviderLabel( session );
 	const accessibleLabel = session.client_name
@@ -552,13 +613,11 @@ function ConnectionProviderLogo( { session, decorative = true } ) {
 				? { 'aria-hidden': 'true' }
 				: { role: 'img', 'aria-label': accessibleLabel } ) }
 		>
-			{ logoPath ? (
-				<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-					<path d={ logoPath } />
-				</svg>
-			) : (
-				label.slice( 0, 2 ).toUpperCase()
-			) }
+			<ConnectorBadgeMark
+				logoUrl={ logoUrl }
+				logoPath={ logoPath }
+				fallback={ label.slice( 0, 2 ).toUpperCase() }
+			/>
 		</span>
 	);
 }
@@ -919,6 +978,410 @@ function learningSourceLabel( source ) {
 	return source.client_name || source.provider || 'MCP client';
 }
 
+function incidentReportsList( incidentReports ) {
+	return Array.isArray( incidentReports?.items )
+		? incidentReports.items
+		: EMPTY_ARRAY;
+}
+
+function incidentReportsSummary( incidentReports ) {
+	return incidentReports?.summary &&
+		typeof incidentReports.summary === 'object'
+		? incidentReports.summary
+		: {};
+}
+
+function memoryRecordsList( memoryRecords ) {
+	return Array.isArray( memoryRecords?.items )
+		? memoryRecords.items
+		: EMPTY_ARRAY;
+}
+
+function memoryRecordsSummary( memoryRecords ) {
+	return memoryRecords?.summary && typeof memoryRecords.summary === 'object'
+		? memoryRecords.summary
+		: {};
+}
+
+function incidentCategoryLabel( categoryName ) {
+	return INCIDENT_CATEGORY_LABELS[ categoryName ] || 'Bug';
+}
+
+function incidentSeverityLabel( severity ) {
+	return INCIDENT_SEVERITY_LABELS[ severity ] || 'Medium';
+}
+
+function IncidentReportCard( { report } ) {
+	const github =
+		report?.github && typeof report.github === 'object'
+			? report.github
+			: {};
+	const source =
+		report?.source && typeof report.source === 'object'
+			? report.source
+			: {};
+	const reportId = report?.id || '';
+
+	return (
+		<article className="aculect-ai-companion-learning-card aculect-ai-companion-incident-card">
+			<div className="aculect-ai-companion-learning-card__header">
+				<div>
+					<h3>{ report?.title || 'Untitled incident' }</h3>
+					<p className="aculect-ai-companion-learning-source">
+						<span>
+							{ source.client_name ||
+								source.provider ||
+								'MCP client' }
+						</span>
+						{ report?.tool_name ? (
+							<code>{ report.tool_name }</code>
+						) : null }
+					</p>
+				</div>
+				<div className="aculect-ai-companion-learning-card__badges">
+					<span className="aculect-ai-companion-learning-pill is-developer">
+						{ incidentCategoryLabel( report?.category ) }
+					</span>
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${
+							report?.severity || 'medium'
+						}` }
+					>
+						{ incidentSeverityLabel( report?.severity ) }
+					</span>
+				</div>
+			</div>
+			<div className="aculect-ai-companion-learning-card__body">
+				<dl className="aculect-ai-companion-learning-details">
+					<div>
+						<dt>Summary</dt>
+						<dd>{ report?.summary || 'No summary provided.' }</dd>
+					</div>
+					<div>
+						<dt>Report ID</dt>
+						<dd>
+							<code>{ reportId }</code>
+						</dd>
+					</div>
+					{ report?.correlation_id ? (
+						<div>
+							<dt>Correlation</dt>
+							<dd>
+								<code>{ report.correlation_id }</code>
+							</dd>
+						</div>
+					) : null }
+				</dl>
+			</div>
+			<div className="aculect-ai-companion-learning-card__footer">
+				<span className="aculect-ai-companion-learning-card__date">
+					{ report?.created_at || 'Pending timestamp' }
+				</span>
+				{ github.issue_url ? (
+					<Button
+						variant="secondary"
+						href={ github.issue_url }
+						target="_blank"
+						icon={ external }
+					>
+						Open issue draft
+					</Button>
+				) : null }
+			</div>
+		</article>
+	);
+}
+
+function MemoryRecordHiddenInputs( { record, action } ) {
+	return (
+		<>
+			<input type="hidden" name="memory_key" value={ record.key || '' } />
+			<input type="hidden" name="memory_action" value={ action } />
+			<input
+				type="hidden"
+				name="memory_item[key]"
+				value={ record.key || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[domain]"
+				value={ record.domain || 'content' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[value]"
+				value={ record.value || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[evidence]"
+				value={ record.evidence || '' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[confidence]"
+				value={ record.confidence || 'medium' }
+			/>
+			<input
+				type="hidden"
+				name="memory_item[source]"
+				value={ record.source || 'admin' }
+			/>
+		</>
+	);
+}
+
+function MemoryRecordReviewForm( {
+	data,
+	record,
+	action,
+	label,
+	icon,
+	destructive = false,
+} ) {
+	return (
+		<ActionForm
+			data={ data }
+			action={ data.actions?.reviewMemoryAction }
+			nonce={ data.actions?.reviewMemoryNonce }
+			label={ label }
+			variant={ destructive ? 'secondary' : 'primary' }
+			destructive={ destructive }
+			confirmMessage={ destructive ? `${ label } this memory item?` : '' }
+			confirmTitle="Review memory"
+			buttonContent={
+				<>
+					<Icon icon={ icon } size={ 16 } />
+					<span>{ label }</span>
+				</>
+			}
+			disabled={
+				! data.actions?.reviewMemoryAction ||
+				! data.actions?.reviewMemoryNonce
+			}
+		>
+			<MemoryRecordHiddenInputs record={ record } action={ action } />
+		</ActionForm>
+	);
+}
+
+function MemoryRecordEditModal( { data, record, onClose } ) {
+	const [ formValues, setFormValues ] = useState( {
+		key: record.key || '',
+		domain: record.domain || 'content',
+		value: record.value || '',
+		evidence: record.evidence || '',
+		confidence: record.confidence || 'medium',
+		status: record.status || 'pending',
+		source: record.source || 'admin',
+	} );
+	const updateValue = ( key ) => ( value ) => {
+		setFormValues( ( current ) => ( {
+			...current,
+			[ key ]: value,
+		} ) );
+	};
+
+	return (
+		<Modal title="Edit memory item" onRequestClose={ onClose }>
+			<form
+				method="post"
+				action={ data.actions?.adminPostUrl }
+				className="aculect-ai-companion-learning-edit-form"
+			>
+				<input
+					type="hidden"
+					name="action"
+					value={ data.actions?.reviewMemoryAction }
+				/>
+				<input
+					type="hidden"
+					name="_wpnonce"
+					value={ data.actions?.reviewMemoryNonce }
+				/>
+				<input
+					type="hidden"
+					name="memory_key"
+					value={ record.key || '' }
+				/>
+				<input type="hidden" name="memory_action" value="update" />
+				<TextControl
+					label="Key"
+					name="memory_item[key]"
+					value={ formValues.key }
+					onChange={ updateValue( 'key' ) }
+				/>
+				<SelectControl
+					label="Domain"
+					name="memory_item[domain]"
+					value={ formValues.domain }
+					options={ Object.entries( LEARNING_DOMAIN_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'domain' ) }
+				/>
+				<TextareaControl
+					label="Value"
+					name="memory_item[value]"
+					value={ formValues.value }
+					onChange={ updateValue( 'value' ) }
+					rows={ 4 }
+				/>
+				<TextareaControl
+					label="Evidence"
+					name="memory_item[evidence]"
+					value={ formValues.evidence }
+					onChange={ updateValue( 'evidence' ) }
+					rows={ 3 }
+				/>
+				<SelectControl
+					label="Confidence"
+					name="memory_item[confidence]"
+					value={ formValues.confidence }
+					options={ Object.entries( LEARNING_CONFIDENCE_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'confidence' ) }
+				/>
+				<SelectControl
+					label="Status"
+					name="memory_item[status]"
+					value={ formValues.status }
+					options={ Object.entries( LEARNING_STATUS_LABELS ).map(
+						( [ value, label ] ) => ( { value, label } )
+					) }
+					onChange={ updateValue( 'status' ) }
+				/>
+				<input
+					type="hidden"
+					name="memory_item[source]"
+					value={ formValues.source }
+				/>
+				<div className="aculect-ai-companion-confirm-dialog__actions">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ onClose }
+					>
+						Cancel
+					</Button>
+					<Button
+						type="submit"
+						variant="primary"
+						disabled={
+							! data.actions?.reviewMemoryAction ||
+							! data.actions?.reviewMemoryNonce
+						}
+						accessibleWhenDisabled
+					>
+						Save Memory
+					</Button>
+				</div>
+			</form>
+		</Modal>
+	);
+}
+
+function MemoryRecordCard( { data, record } ) {
+	const [ isEditing, setIsEditing ] = useState( false );
+	const status = record.status || 'pending';
+	const domain = record.domain || 'content';
+	const isApproved = status === 'approved';
+	const isDismissed = status === 'dismissed';
+
+	return (
+		<article
+			className={ `aculect-ai-companion-learning-card aculect-ai-companion-memory-card is-${ status }` }
+		>
+			<div className="aculect-ai-companion-learning-card__header">
+				<div>
+					<h3>{ record.key || 'Memory item' }</h3>
+					<p className="aculect-ai-companion-learning-source">
+						<span>{ record.source || 'manual' }</span>
+					</p>
+				</div>
+				<div className="aculect-ai-companion-learning-card__badges">
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ domain }` }
+					>
+						{ learningDomainLabel( domain ) }
+					</span>
+					<span
+						className={ `aculect-ai-companion-learning-pill is-${ status }` }
+					>
+						{ learningStatusLabel( status ) }
+					</span>
+					<span className="aculect-ai-companion-learning-pill is-confidence">
+						{ learningConfidenceLabel( record.confidence ) }
+					</span>
+				</div>
+			</div>
+			<div className="aculect-ai-companion-learning-card__body">
+				<dl className="aculect-ai-companion-learning-details">
+					<div>
+						<dt>Value</dt>
+						<dd>{ record.value || '-' }</dd>
+					</div>
+					{ record.evidence && (
+						<div>
+							<dt>Evidence</dt>
+							<dd>{ record.evidence }</dd>
+						</div>
+					) }
+				</dl>
+			</div>
+			<div className="aculect-ai-companion-learning-card__footer">
+				<span className="aculect-ai-companion-learning-card__date">
+					{ connectionDateValue( record.updated_at, 'Updated' ) }
+				</span>
+				<div className="aculect-ai-companion-learning-actions">
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={ () => setIsEditing( true ) }
+					>
+						Edit
+					</Button>
+					{ ! isApproved && (
+						<MemoryRecordReviewForm
+							data={ data }
+							record={ record }
+							action="approve"
+							label="Approve"
+							icon={ check }
+						/>
+					) }
+					{ ! isDismissed && (
+						<MemoryRecordReviewForm
+							data={ data }
+							record={ record }
+							action="dismiss"
+							label="Dismiss"
+							icon={ trash }
+							destructive
+						/>
+					) }
+					<MemoryRecordReviewForm
+						data={ data }
+						record={ record }
+						action="delete"
+						label="Delete"
+						icon={ trash }
+						destructive
+					/>
+				</div>
+			</div>
+			{ isEditing && (
+				<MemoryRecordEditModal
+					data={ data }
+					record={ record }
+					onClose={ () => setIsEditing( false ) }
+				/>
+			) }
+		</article>
+	);
+}
+
 function LearningSuggestionReviewForm( {
 	data,
 	suggestion,
@@ -1173,50 +1636,213 @@ function LearningSuggestionCard( { data, suggestion } ) {
 	);
 }
 
-function LearningSuggestionsDashboard( { data, learningSuggestions } ) {
+function LearningSuggestionsDashboard( {
+	data,
+	learningSuggestions,
+	memoryRecords,
+	incidentReports,
+} ) {
+	const [ activeSurface, setActiveSurface ] = useState( 'suggestions' );
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
+	const memories = memoryRecordsList( memoryRecords );
+	const memorySummary = memoryRecordsSummary( memoryRecords );
+	const incidents = incidentReportsList( incidentReports );
+	const incidentSummary = incidentReportsSummary( incidentReports );
+	const surfaces = LEARNING_REVIEW_SURFACES.map( ( surface ) => {
+		if ( surface.id === 'memory' ) {
+			return {
+				...surface,
+				count: Number( memorySummary.total || 0 ),
+			};
+		}
+		if ( surface.id === 'incidents' ) {
+			return {
+				...surface,
+				count: Number( incidentSummary.total || 0 ),
+			};
+		}
+		return {
+			...surface,
+			count: Number( summary.total || 0 ),
+		};
+	} );
+	const selectedSurface =
+		surfaces.find( ( surface ) => surface.id === activeSurface ) ||
+		surfaces[ 0 ];
+
+	let summaryItems = [
+		{
+			value: Number( summary.pending || 0 ),
+			label: 'Pending',
+		},
+		{
+			value: Number( summary.approved || 0 ),
+			label: 'Approved',
+		},
+		{
+			value: Number( summary.dismissed || 0 ),
+			label: 'Dismissed',
+		},
+	];
+
+	if ( activeSurface === 'memory' ) {
+		summaryItems = [
+			{
+				value: Number( memorySummary.pending || 0 ),
+				label: 'Pending',
+			},
+			{
+				value: Number( memorySummary.approved || 0 ),
+				label: 'Approved',
+			},
+			{
+				value: Number( memorySummary.dismissed || 0 ),
+				label: 'Dismissed',
+			},
+		];
+	}
+
+	if ( activeSurface === 'incidents' ) {
+		summaryItems = [
+			{
+				value: Number( incidentSummary.open || 0 ),
+				label: 'Open',
+			},
+			{
+				value: Number( incidentSummary.resolved || 0 ),
+				label: 'Resolved',
+			},
+			{
+				value: Number( incidentSummary.total || 0 ),
+				label: 'Total',
+			},
+		];
+	}
 
 	return (
 		<div className="aculect-ai-companion-learning-dashboard">
 			<div className="aculect-ai-companion-learning-toolbar">
 				<div>
-					<h2>Learning Review</h2>
-					<p>
-						Review MCP suggestions before they influence Aculect
-						Intelligence.
-					</p>
+					<h2>{ selectedSurface.label }</h2>
+					<p>{ selectedSurface.description }</p>
 				</div>
 				<div className="aculect-ai-companion-learning-summary">
-					<span>
-						<strong>{ Number( summary.pending || 0 ) }</strong>
-						Pending
-					</span>
-					<span>
-						<strong>{ Number( summary.approved || 0 ) }</strong>
-						Approved
-					</span>
-					<span>
-						<strong>{ Number( summary.dismissed || 0 ) }</strong>
-						Dismissed
-					</span>
-				</div>
-			</div>
-			{ items.length === 0 ? (
-				<EmptyState title="No learning suggestions">
-					MCP clients can queue suggestions when site, content,
-					developer, or brand intelligence needs review.
-				</EmptyState>
-			) : (
-				<div className="aculect-ai-companion-learning-list">
-					{ items.map( ( suggestion ) => (
-						<LearningSuggestionCard
-							key={ suggestion.id }
-							data={ data }
-							suggestion={ suggestion }
-						/>
+					{ summaryItems.map( ( item ) => (
+						<span key={ item.label }>
+							<strong>{ item.value }</strong>
+							{ item.label }
+						</span>
 					) ) }
 				</div>
+			</div>
+			<div
+				className="aculect-ai-companion-learning-surface-nav"
+				role="tablist"
+				aria-label="Learning review surfaces"
+			>
+				{ surfaces.map( ( surface ) => {
+					const isSelected = surface.id === activeSurface;
+					return (
+						<Button
+							key={ surface.id }
+							type="button"
+							variant={ isSelected ? 'primary' : 'secondary' }
+							isPressed={ isSelected }
+							role="tab"
+							aria-selected={ isSelected }
+							onClick={ () => setActiveSurface( surface.id ) }
+						>
+							<span>{ surface.label }</span>
+							<span className="aculect-ai-companion-learning-surface-nav__count">
+								{ surface.count }
+							</span>
+						</Button>
+					);
+				} ) }
+			</div>
+			{ activeSurface === 'memory' && (
+				<section className="aculect-ai-companion-memory-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Memory Records</h3>
+						<p>
+							Admin-reviewed durable guidance used by MCP
+							workflows after explicit review.
+						</p>
+					</div>
+					{ memories.length === 0 ? (
+						<EmptyState title="No memory records">
+							AI clients can call memory_bootstrap or memory_save
+							without a key and value to prepare initial memory
+							for review.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ memories.map( ( record ) => (
+								<MemoryRecordCard
+									key={ record.key }
+									data={ data }
+									record={ record }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
+			) }
+			{ activeSurface === 'incidents' && (
+				<section className="aculect-ai-companion-incident-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Incident Reports</h3>
+						<p>
+							Local, sanitized reports prepared by MCP clients
+							when a plugin workflow or connector behavior fails.
+						</p>
+					</div>
+					{ incidents.length === 0 ? (
+						<EmptyState title="No incident reports">
+							AI clients can call plugin_incident_report to store
+							a local report and prepare a public GitHub issue
+							draft.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ incidents.map( ( report ) => (
+								<IncidentReportCard
+									key={ report.id }
+									report={ report }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
+			) }
+			{ activeSurface === 'suggestions' && (
+				<section className="aculect-ai-companion-learning-section">
+					<div className="aculect-ai-companion-learning-section-heading">
+						<h3>Learning Suggestions</h3>
+						<p>
+							Review durable intelligence suggestions before they
+							influence future assistant behavior.
+						</p>
+					</div>
+					{ items.length === 0 ? (
+						<EmptyState title="No learning suggestions">
+							MCP clients can queue suggestions when site,
+							content, developer, or brand intelligence needs
+							review.
+						</EmptyState>
+					) : (
+						<div className="aculect-ai-companion-learning-list">
+							{ items.map( ( suggestion ) => (
+								<LearningSuggestionCard
+									key={ suggestion.id }
+									data={ data }
+									suggestion={ suggestion }
+								/>
+							) ) }
+						</div>
+					) }
+				</section>
 			) }
 		</div>
 	);
@@ -1684,114 +2310,6 @@ function ConnectionHealthChecks( { health, filter } ) {
 	);
 }
 
-function SetupSection( { provider, section, sectionIndex, onCopy } ) {
-	const steps = Array.isArray( section.steps ) ? section.steps : [];
-	const copyFields = Array.isArray( section.copyFields )
-		? section.copyFields
-		: [];
-
-	return (
-		<div
-			className={ `aculect-ai-companion-setup-method ${
-				copyFields.length > 0 ? 'has-copy-fields' : ''
-			}` }
-		>
-			<div className="aculect-ai-companion-setup-method__content">
-				<h4 className="aculect-ai-companion-setup-method__title">
-					{ section.title || 'Setup' }
-				</h4>
-				{ section.description && (
-					<p className="aculect-ai-companion-setup-method__description">
-						{ section.description }
-					</p>
-				) }
-				{ steps.length > 0 && (
-					<ol className="aculect-ai-companion-steps">
-						{ steps.map( ( step, index ) => (
-							<li
-								key={ `${ provider.id }-${ sectionIndex }-${ index }` }
-							>
-								{ step }
-							</li>
-						) ) }
-					</ol>
-				) }
-				{ section.actionUrl && (
-					<div className="aculect-ai-companion-provider-actions">
-						<Button
-							href={ section.actionUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-							variant="secondary"
-						>
-							{ section.actionLabel || 'Open Docs' }
-						</Button>
-					</div>
-				) }
-			</div>
-			{ copyFields.length > 0 && (
-				<div className="aculect-ai-companion-setup-method__fields">
-					<h5 className="aculect-ai-companion-section-heading">
-						Copy
-					</h5>
-					{ copyFields.map( ( field ) => (
-						<CopyField
-							key={ `${ provider.id }-${ sectionIndex }-${ field.label }` }
-							label={ field.label }
-							value={ field.value }
-							secret={ Boolean( field.secret ) }
-							onCopy={ ( value ) =>
-								onCopy( value, `${ field.label } copied.` )
-							}
-						/>
-					) ) }
-				</div>
-			) }
-		</div>
-	);
-}
-
-function connectStatusDetails( {
-	isAccessPaused,
-	hasActiveSessions,
-	sessionCount,
-} ) {
-	if ( isAccessPaused ) {
-		return {
-			tone: 'is-paused',
-			title: 'Access paused',
-			description:
-				'Existing connections are paused and cannot run MCP actions until access is resumed.',
-			meta:
-				sessionCount > 0
-					? `${ sessionCount } active session${
-							sessionCount === 1 ? '' : 's'
-					  } paused`
-					: 'No active sessions',
-		};
-	}
-
-	if ( hasActiveSessions ) {
-		return {
-			tone: 'is-connected',
-			title: 'Connected',
-			description:
-				'At least one AI assistant has an active WordPress-approved session.',
-			meta: `${ sessionCount } active session${
-				sessionCount === 1 ? '' : 's'
-			}`,
-		};
-	}
-
-	return {
-		tone: 'is-ready',
-		title: 'Ready to connect',
-		description:
-			'No assistants are connected yet. Follow the steps to get started.',
-		meta: 'No active sessions',
-	};
-}
-
 function uniqueHelpLinks( providers ) {
 	const links = [];
 	const seenUrls = new Set();
@@ -1827,32 +2345,6 @@ function uniqueHelpLinks( providers ) {
 	return links;
 }
 
-function ConnectStatusPanel( { status, connectionsUrl, onNavigate } ) {
-	const statusIcon = status.tone === 'is-paused' ? lock : check;
-
-	return (
-		<div
-			className={ `aculect-ai-companion-connect-card aculect-ai-companion-connection-status ${ status.tone }` }
-		>
-			<span className="aculect-ai-companion-connection-status__icon">
-				<Icon icon={ statusIcon } size={ 18 } />
-			</span>
-			<div>
-				<h3>{ status.title }</h3>
-				<p>{ status.description }</p>
-				<strong>{ status.meta }</strong>
-				<a
-					className="aculect-ai-companion-connection-status__link"
-					href={ connectionsUrl }
-					onClick={ onNavigate }
-				>
-					Learn more about connections
-				</a>
-			</div>
-		</div>
-	);
-}
-
 function normalizeConnectionSession( session, status ) {
 	const writePermissionEnabled = isEnabledFlag(
 		session.write_permission_enabled ??
@@ -1880,6 +2372,18 @@ function connectionAccessLevelKey( session ) {
 		session.access_level || session.accessLevel || ''
 	).trim();
 	if (
+		value === 'write' ||
+		LEGACY_WRITE_CONNECTION_ACCESS_LEVELS.includes( value )
+	) {
+		return 'write';
+	}
+	if (
+		value === 'read' ||
+		LEGACY_READ_CONNECTION_ACCESS_LEVELS.includes( value )
+	) {
+		return 'read';
+	}
+	if (
 		value &&
 		CONNECTION_ACCESS_LEVELS.some( ( level ) => level.value === value )
 	) {
@@ -1887,7 +2391,7 @@ function connectionAccessLevelKey( session ) {
 	}
 
 	return session.writePermissionEnabled
-		? 'selective_write'
+		? 'write'
 		: DEFAULT_CONNECTION_ACCESS_LEVEL;
 }
 
@@ -1980,20 +2484,11 @@ function connectionSessionStatus( session, isAccessPaused ) {
 }
 
 function connectionAbilityLabels( session, abilities, enabledAbilityIds ) {
-	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
-	const enabledIds = new Set( enabledAbilityIds );
-	const labels = abilities
-		.filter(
-			( ability ) =>
-				enabledIds.has( ability.id ) && scopes.includes( ability.scope )
-		)
-		.map( ( ability ) => ability.title || ability.id );
-
-	if ( labels.length > 0 ) {
-		return Array.from( new Set( labels ) );
-	}
-
-	return scopes.map( connectionScopeLabel );
+	return connectionEffectiveAbilities(
+		session,
+		abilities,
+		enabledAbilityIds
+	).map( ( ability ) => ability.title || ability.id );
 }
 
 function isCurrentUserSession( session, currentUserId ) {
@@ -2075,7 +2570,27 @@ function connectionUserRolesLabel( session ) {
 	return roles.length > 0 ? roles.join( ', ' ) : 'Role unknown';
 }
 
-function connectionAssignedAbilities( session, abilities, enabledAbilityIds ) {
+function connectionEffectiveAbilities( session, abilities, enabledAbilityIds ) {
+	let effectiveAbilities = [];
+	if ( Array.isArray( session.effective_abilities ) ) {
+		effectiveAbilities = session.effective_abilities;
+	} else if ( Array.isArray( session.effectiveAbilities ) ) {
+		effectiveAbilities = session.effectiveAbilities;
+	}
+
+	if ( effectiveAbilities.length > 0 ) {
+		return effectiveAbilities.map( ( ability ) => ( {
+			id: ability.id || ability.toolName || ability.title,
+			title: ability.title || ability.id || ability.toolName,
+			description: ability.description || '',
+			scope: Array.isArray( ability.scopes )
+				? ability.scopes.join( ', ' )
+				: ability.scope || ability.toolName || ability.id || '',
+			toolName: ability.toolName || '',
+			readOnly: ability.readOnly,
+		} ) );
+	}
+
 	const scopes = Array.isArray( session.scopes ) ? session.scopes : [];
 	const enabledIds = new Set(
 		Array.isArray( enabledAbilityIds ) ? enabledAbilityIds : []
@@ -2113,67 +2628,176 @@ function connectionAssignedAbilities( session, abilities, enabledAbilityIds ) {
 	} ) );
 }
 
-function ConnectionAssignedAbilitiesControl( {
+function connectionEffectiveAbilitySummary( session, effectiveAbilities ) {
+	const rawSummary =
+		session.effective_ability_summary ||
+		session.effectiveAbilitySummary ||
+		{};
+	const numberValue = ( snakeKey, camelKey, fallback = 0 ) => {
+		const value = rawSummary[ snakeKey ] ?? rawSummary[ camelKey ];
+		const parsed = Number( value );
+		return Number.isFinite( parsed ) ? parsed : fallback;
+	};
+	const booleanValue = ( snakeKey, camelKey ) =>
+		rawSummary[ snakeKey ] === true || rawSummary[ camelKey ] === true;
+	const fallbackWriteCount = effectiveAbilities.filter(
+		( ability ) => ability.readOnly === false
+	).length;
+	const directWriteCount = Number(
+		session.effective_write_ability_count ??
+			session.effectiveWriteAbilityCount ??
+			fallbackWriteCount
+	);
+
+	return {
+		availableCount: numberValue(
+			'available_count',
+			'availableCount',
+			effectiveAbilities.length
+		),
+		writeCount: numberValue(
+			'write_count',
+			'writeCount',
+			Number.isFinite( directWriteCount )
+				? directWriteCount
+				: fallbackWriteCount
+		),
+		blockedByGlobalCount: numberValue(
+			'blocked_by_global_count',
+			'blockedByGlobalCount'
+		),
+		blockedByRoleCount: numberValue(
+			'blocked_by_role_count',
+			'blockedByRoleCount'
+		),
+		defaultReadOnlyPolicy: booleanValue(
+			'default_read_only_policy',
+			'defaultReadOnlyPolicy'
+		),
+		explicitRolePolicy: booleanValue(
+			'explicit_role_policy',
+			'explicitRolePolicy'
+		),
+		scopeAware: booleanValue( 'scope_aware', 'scopeAware' ),
+		missingUser: booleanValue( 'missing_user', 'missingUser' ),
+		missingRole: booleanValue( 'missing_role', 'missingRole' ),
+	};
+}
+
+function connectionPolicyNotes( summary ) {
+	const notes = [];
+
+	if ( summary.missingUser ) {
+		notes.push( 'Connected user missing' );
+	} else if ( summary.missingRole ) {
+		notes.push( 'Role missing' );
+	} else if ( summary.explicitRolePolicy ) {
+		notes.push( 'Role policy applied' );
+	} else if ( summary.defaultReadOnlyPolicy ) {
+		notes.push( 'Default read-only role policy' );
+	}
+
+	if ( summary.scopeAware ) {
+		notes.push( 'OAuth scopes applied' );
+	}
+
+	if ( summary.blockedByRoleCount > 0 ) {
+		notes.push( `${ summary.blockedByRoleCount } blocked by role` );
+	}
+
+	if ( summary.blockedByGlobalCount > 0 ) {
+		notes.push( `${ summary.blockedByGlobalCount } globally disabled` );
+	}
+
+	return notes;
+}
+
+function ConnectionEffectiveAbilitiesControl( {
 	session,
 	abilities,
 	enabledAbilityIds,
 	onOpen,
 } ) {
-	const assignedAbilities = connectionAssignedAbilities(
+	const effectiveAbilities = connectionEffectiveAbilities(
 		session,
 		abilities,
 		enabledAbilityIds
 	);
+	const summary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
 
-	if ( assignedAbilities.length === 0 ) {
+	if ( effectiveAbilities.length === 0 ) {
 		return <span className="aculect-ai-companion-muted">No abilities</span>;
 	}
 
 	return (
-		<div className="aculect-ai-companion-connection-assigned-abilities">
+		<div className="aculect-ai-companion-connection-effective-abilities">
 			<Button
 				type="button"
 				variant="link"
 				onClick={ () => onOpen( session ) }
 			>
-				View Assigned Abilities
+				View Effective Abilities
 			</Button>
 			<span>
-				{ assignedAbilities.length } assigned
-				{ assignedAbilities.length === 1 ? '' : ' abilities' }
+				{ summary.availableCount } available; { summary.writeCount }{ ' ' }
+				write-capable
 			</span>
 		</div>
 	);
 }
 
-function ConnectionAssignedAbilitiesModal( {
+function ConnectionEffectiveAbilitiesModal( {
 	session,
 	abilities,
 	enabledAbilityIds,
+	connectorLogoUrls = EMPTY_OBJECT,
 	onClose,
 } ) {
-	const assignedAbilities = connectionAssignedAbilities(
+	const effectiveAbilities = connectionEffectiveAbilities(
 		session,
 		abilities,
 		enabledAbilityIds
 	);
+	const summary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
+	const notes = connectionPolicyNotes( summary );
 
 	return (
 		<Modal
-			title="Assigned abilities"
+			title="Effective abilities"
 			className="aculect-ai-companion-connection-abilities-modal"
 			onRequestClose={ onClose }
 		>
 			<div className="aculect-ai-companion-connection-abilities-modal__intro">
-				<ConnectionProviderLogo session={ session } />
+				<ConnectionProviderLogo
+					session={ session }
+					connectorLogoUrls={ connectorLogoUrls }
+				/>
 				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
 					<span>{ connectionProviderLabel( session ) }</span>
 				</div>
 			</div>
-			{ assignedAbilities.length > 0 ? (
+			<p className="aculect-ai-companion-connection-abilities-modal__copy">
+				Effective abilities are the tools this connection can use after
+				global ability settings, role policy, OAuth scopes, and
+				WordPress permissions are applied.
+			</p>
+			{ notes.length > 0 && (
+				<ul className="aculect-ai-companion-connection-policy-notes">
+					{ notes.map( ( note ) => (
+						<li key={ note }>{ note }</li>
+					) ) }
+				</ul>
+			) }
+			{ effectiveAbilities.length > 0 ? (
 				<ul className="aculect-ai-companion-connection-abilities-modal__list">
-					{ assignedAbilities.map( ( ability ) => (
+					{ effectiveAbilities.map( ( ability ) => (
 						<li key={ ability.id }>
 							<div>
 								<strong>{ ability.title }</strong>
@@ -2181,14 +2805,18 @@ function ConnectionAssignedAbilitiesModal( {
 									<p>{ ability.description }</p>
 								) }
 							</div>
-							<code>{ ability.scope || ability.id }</code>
+							<code>
+								{ ability.toolName ||
+									ability.scope ||
+									ability.id }
+							</code>
 						</li>
 					) ) }
 				</ul>
 			) : (
-				<EmptyState title="No assigned abilities">
-					This connection does not currently have any granted
-					abilities.
+				<EmptyState title="No effective abilities">
+					This connection does not currently have any tools available
+					after ability, role, scope, and permission checks.
 				</EmptyState>
 			) }
 		</Modal>
@@ -2227,20 +2855,44 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 					Unavailable
 				</span>
 			) }
+			<span className="aculect-ai-companion-connection-access__meta">
+				{ accessLevel.directWrite
+					? 'Skips write confirmation'
+					: 'Confirmation required for writes' }
+			</span>
 		</div>
 	);
 }
 
-function ConnectionAccessLevelModal( { session, data, onClose } ) {
+function ConnectionAccessLevelModal( {
+	session,
+	data,
+	connectorLogoUrls = EMPTY_OBJECT,
+	onClose,
+} ) {
 	const [ selectedAccessLevel, setSelectedAccessLevel ] = useState(
 		connectionAccessLevelKey( session )
 	);
 	const selectedAccessLevelDefinition =
 		connectionAccessLevelDefinition( selectedAccessLevel );
+	const effectiveAbilities = connectionEffectiveAbilities( session, [], [] );
+	const effectiveSummary = connectionEffectiveAbilitySummary(
+		session,
+		effectiveAbilities
+	);
+	const hasEffectiveSummary = Boolean(
+		session.effective_ability_summary || session.effectiveAbilitySummary
+	);
+	const trustedWriteSelected =
+		selectedAccessLevelDefinition?.directWrite === true;
+	const trustedWriteNoOp =
+		hasEffectiveSummary &&
+		trustedWriteSelected &&
+		effectiveSummary.writeCount === 0;
 
 	return (
 		<Modal
-			title="Change access"
+			title="Change connection access"
 			className="aculect-ai-companion-connection-access-modal"
 			onRequestClose={ onClose }
 		>
@@ -2248,6 +2900,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				<ConnectionProviderLogo
 					session={ session }
 					decorative={ false }
+					connectorLogoUrls={ connectorLogoUrls }
 				/>
 				<div className="aculect-ai-companion-connection-modal__identity">
 					<strong>{ session.client_name || 'AI Assistant' }</strong>
@@ -2255,8 +2908,9 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				</div>
 			</div>
 			<p className="aculect-ai-companion-connection-access-modal__copy">
-				Access levels stay limited by granted abilities, OAuth scopes,
-				WordPress role permissions, and enabled plugin controls.
+				Connection access controls whether already-authorized write
+				tools need confirmation. Role-based abilities decide which tools
+				are available.
 			</p>
 			<ActionForm
 				data={ data }
@@ -2275,7 +2929,7 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				/>
 				<SelectControl
 					className="aculect-ai-companion-connection-access-field"
-					label="Access"
+					label="Connection access"
 					value={ selectedAccessLevel }
 					__next40pxDefaultSize
 					options={ CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
@@ -2287,6 +2941,12 @@ function ConnectionAccessLevelModal( { session, data, onClose } ) {
 				<p className="aculect-ai-companion-connection-access-modal__description">
 					{ selectedAccessLevelDefinition.description }
 				</p>
+				{ trustedWriteNoOp && (
+					<p className="aculect-ai-companion-connection-access-modal__warning">
+						This connection currently has no effective write tools.
+						Write access will not grant new abilities.
+					</p>
+				) }
 			</ActionForm>
 		</Modal>
 	);
@@ -2382,7 +3042,11 @@ function ConnectionsDataViews( {
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
-	const [ assignedAbilitiesSession, setAssignedAbilitiesSession ] =
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
+	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
 		useState( null );
 	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
 	const defaultView = {
@@ -2462,6 +3126,7 @@ function ConnectionsDataViews( {
 							<ConnectionProviderLogo
 								session={ session }
 								decorative={ false }
+								connectorLogoUrls={ connectorLogoUrls }
 							/>
 						</Tooltip>
 					</div>
@@ -2490,7 +3155,7 @@ function ConnectionsDataViews( {
 			},
 			{
 				id: 'abilities',
-				label: 'Granted Abilities',
+				label: 'Effective Abilities',
 				type: 'array',
 				enableSorting: false,
 				enableGlobalSearch: true,
@@ -2501,11 +3166,11 @@ function ConnectionsDataViews( {
 						enabledAbilityIds
 					),
 				render: ( { item: session } ) => (
-					<ConnectionAssignedAbilitiesControl
+					<ConnectionEffectiveAbilitiesControl
 						session={ session }
 						abilities={ abilities }
 						enabledAbilityIds={ enabledAbilityIds }
-						onOpen={ setAssignedAbilitiesSession }
+						onOpen={ setEffectiveAbilitiesSession }
 					/>
 				),
 			},
@@ -2615,9 +3280,10 @@ function ConnectionsDataViews( {
 			data,
 			enabledAbilityIds,
 			isAccessPaused,
+			connectorLogoUrls,
 			providerOptions,
 			setAccessLevelSession,
-			setAssignedAbilitiesSession,
+			setEffectiveAbilitiesSession,
 		]
 	);
 	const { data: visibleSessions, paginationInfo } = useMemo(
@@ -2672,18 +3338,20 @@ function ConnectionsDataViews( {
 					}
 				/>
 			</div>
-			{ assignedAbilitiesSession && (
-				<ConnectionAssignedAbilitiesModal
-					session={ assignedAbilitiesSession }
+			{ effectiveAbilitiesSession && (
+				<ConnectionEffectiveAbilitiesModal
+					session={ effectiveAbilitiesSession }
 					abilities={ abilities }
 					enabledAbilityIds={ enabledAbilityIds }
-					onClose={ () => setAssignedAbilitiesSession( null ) }
+					connectorLogoUrls={ connectorLogoUrls }
+					onClose={ () => setEffectiveAbilitiesSession( null ) }
 				/>
 			) }
 			{ accessLevelSession && (
 				<ConnectionAccessLevelModal
 					session={ accessLevelSession }
 					data={ data }
+					connectorLogoUrls={ connectorLogoUrls }
 					onClose={ () => setAccessLevelSession( null ) }
 				/>
 			) }
@@ -2857,6 +3525,8 @@ function AdvancedDashboard( {
 	roleConnections,
 	loggingEnabled,
 	onLoggingChange,
+	roleAbilitiesEnabled,
+	onRoleAbilitiesChange,
 	roleConnectionsEnabled,
 	onRoleConnectionsChange,
 	roleConnectionRoles,
@@ -2899,6 +3569,11 @@ function AdvancedDashboard( {
 					type="hidden"
 					name="role_connections_enabled"
 					value={ roleConnectionsEnabled ? '1' : '0' }
+				/>
+				<input
+					type="hidden"
+					name="role_abilities_enabled"
+					value={ roleAbilitiesEnabled ? '1' : '0' }
 				/>
 				{ roleConnectionRoles.map( ( role ) => (
 					<input
@@ -2998,6 +3673,24 @@ function AdvancedDashboard( {
 							>
 								Edit Abilities
 							</Button>
+						</AdvancedSettingRow>
+						<AdvancedSettingRow
+							title="Role ability policy editor"
+							description="Optional editor for non-administrator assistant access. Administrators inherit all globally enabled abilities."
+							status={
+								roleAbilitiesEnabled ? 'Enabled' : 'Disabled'
+							}
+							statusTone={
+								roleAbilitiesEnabled ? 'is-active' : ''
+							}
+						>
+							<ToggleControl
+								label="Enable role ability policies"
+								checked={ roleAbilitiesEnabled }
+								onChange={ ( checked ) =>
+									onRoleAbilitiesChange( Boolean( checked ) )
+								}
+							/>
 						</AdvancedSettingRow>
 					</AdvancedSection>
 
@@ -3256,6 +3949,14 @@ function DiagnosticsDashboard( {
 					label="Export Tool Manifest"
 					variant="secondary"
 				/>
+				<ActionForm
+					data={ data }
+					action={ data.actions?.runContentIndexSweepAction }
+					nonce={ data.actions?.runContentIndexSweepNonce }
+					label="Run index sweep"
+					busyLabel="Running sweep"
+					variant="secondary"
+				/>
 			</div>
 
 			<div className="aculect-ai-companion-diagnostics-layout">
@@ -3298,79 +3999,463 @@ function DiagnosticsDashboard( {
 	);
 }
 
-function ConnectProviderCard( { provider, isOpen, onToggle, onCopy } ) {
-	const setupSections = Array.isArray( provider.setupSections )
-		? provider.setupSections
-		: [];
-	const panelId = `aculect-ai-companion-provider-panel-${ provider.id }`;
+function AssistantSelector( {
+	providers,
+	selectedProviderId,
+	onSelectProvider,
+} ) {
+	return (
+		<div className="aculect-ai-companion-assistant-selector">
+			<span className="aculect-ai-companion-eyebrow">Step 1 of 4</span>
+			<h2>Choose your assistant</h2>
+			<div className="aculect-ai-companion-assistant-selector__list">
+				{ providers.map( ( provider ) => {
+					const isSelected = provider.id === selectedProviderId;
+					const attribution = providerAttribution( provider );
+
+					return (
+						<div
+							key={ provider.id }
+							className={ `aculect-ai-companion-assistant-card ${
+								isSelected ? 'is-selected' : ''
+							}` }
+						>
+							<button
+								type="button"
+								className="aculect-ai-companion-assistant-card__button"
+								aria-label={ `Select ${ provider.label }` }
+								aria-pressed={ isSelected }
+								onClick={ () =>
+									onSelectProvider( provider.id )
+								}
+							/>
+							<ConnectProviderBadge provider={ provider } />
+							<span className="aculect-ai-companion-assistant-card__identity">
+								<strong>{ provider.label }</strong>
+								<AssistantAttribution
+									attribution={ attribution }
+								/>
+							</span>
+						</div>
+					);
+				} ) }
+			</div>
+		</div>
+	);
+}
+
+function AssistantAttribution( { attribution } ) {
+	if ( attribution.description ) {
+		return (
+			<span className="aculect-ai-companion-assistant-card__byline">
+				{ attribution.description }
+			</span>
+		);
+	}
+
+	if ( attribution.brandUrl ) {
+		return (
+			<span className="aculect-ai-companion-assistant-card__byline">
+				by{ ' ' }
+				<a
+					href={ attribution.brandUrl }
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{ attribution.brandName }
+				</a>
+			</span>
+		);
+	}
 
 	return (
-		<div
-			key={ provider.id }
-			className={ `aculect-ai-companion-provider-card ${
-				isOpen ? 'is-open' : ''
-			}` }
-		>
-			<div className="aculect-ai-companion-provider-card__header">
-				<ConnectProviderBadge provider={ provider } />
-				<div className="aculect-ai-companion-provider-card__title-wrap">
-					<h3 className="aculect-ai-companion-provider-card__title">
-						{ provider.label }
-					</h3>
-					<p className="aculect-ai-companion-provider-card__description">
-						{ providerOverviewText( provider ) }
-					</p>
-				</div>
-				<Button
-					variant="secondary"
-					className="aculect-ai-companion-provider-toggle"
-					onClick={ onToggle }
-					aria-expanded={ isOpen }
-					aria-controls={ panelId }
-				>
-					<span>{ isOpen ? 'Hide steps' : 'Show steps' }</span>
-					<Icon
-						icon={ isOpen ? chevronUp : chevronDown }
-						size={ 16 }
-					/>
-				</Button>
-			</div>
+		<span className="aculect-ai-companion-assistant-card__byline">
+			by { attribution.brandName }
+		</span>
+	);
+}
 
-			{ isOpen && (
-				<div
-					id={ panelId }
-					className="aculect-ai-companion-provider-panel"
-				>
-					{ setupSections.length > 0 ? (
-						<div className="aculect-ai-companion-setup-method-list">
-							{ setupSections.map( ( section, index ) => (
-								<SetupSection
-									key={ `${ provider.id }-${ index }` }
-									provider={ provider }
-									section={ section }
-									sectionIndex={ index }
-									onCopy={ onCopy }
-								/>
-							) ) }
-						</div>
-					) : (
-						<p className="aculect-ai-companion-provider-card__description">
-							Setup steps are not available for this provider yet.
-						</p>
-					) }
-					<div className="aculect-ai-companion-connect-info-message">
-						<span aria-hidden="true">
-							<Icon icon={ info } size={ 18 } />
+function WizardProgress( { steps, activeIndex, onSelectStep } ) {
+	return (
+		<div
+			className="aculect-ai-companion-wizard-progress"
+			aria-label="Setup progress"
+		>
+			{ steps.map( ( step, index ) => {
+				const isActive = index === activeIndex;
+				const isComplete = index < activeIndex;
+
+				return (
+					<button
+						key={ step.id || step.title || index }
+						type="button"
+						className={ `aculect-ai-companion-wizard-progress__step ${
+							isActive ? 'is-active' : ''
+						} ${ isComplete ? 'is-complete' : '' }` }
+						aria-current={ isActive ? 'step' : undefined }
+						onClick={ () => onSelectStep( index ) }
+					>
+						<span className="aculect-ai-companion-wizard-progress__number">
+							{ index + 1 }
 						</span>
-						<p>
-							You will be asked to approve the connection in
-							WordPress. You can review or remove access at any
-							time.
-						</p>
+						<em className="aculect-ai-companion-wizard-progress__title">
+							{ step.title }
+						</em>
+					</button>
+				);
+			} ) }
+		</div>
+	);
+}
+
+function WizardStepInstructions( { instructions } ) {
+	if ( ! Array.isArray( instructions ) || instructions.length === 0 ) {
+		return null;
+	}
+
+	return (
+		<ol className="aculect-ai-companion-wizard-instructions">
+			{ instructions.map( ( instruction, index ) => (
+				<li key={ `${ instruction.title || 'step' }-${ index }` }>
+					<strong>{ instruction.title }</strong>
+					{ instruction.description && (
+						<p>{ instruction.description }</p>
+					) }
+				</li>
+			) ) }
+		</ol>
+	);
+}
+
+function WizardStepPanel( {
+	provider,
+	step,
+	stepIndex,
+	stepCount,
+	activeSessionCount,
+	onCopy,
+	onNext,
+	onPrevious,
+	onViewConnection,
+	connectionUrl,
+	onConnectAnother,
+} ) {
+	const copyFields = Array.isArray( step.copyFields ) ? step.copyFields : [];
+	const isFirst = stepIndex === 0;
+	const isLast = stepIndex === stepCount - 1;
+
+	return (
+		<div className="aculect-ai-companion-wizard-step-panel">
+			<div className="aculect-ai-companion-wizard-step-panel__header">
+				<span className="aculect-ai-companion-eyebrow">
+					Step { stepIndex + 1 } of { stepCount }
+				</span>
+				<div className="aculect-ai-companion-wizard-step-panel__heading">
+					<ConnectProviderBadge provider={ provider } />
+					<div>
+						<h3>{ step.title }</h3>
+						<p>{ step.subtitle || step.description }</p>
+					</div>
+				</div>
+			</div>
+			{ step.description && step.subtitle && (
+				<p className="aculect-ai-companion-wizard-step-panel__copy">
+					{ step.description }
+				</p>
+			) }
+			<WizardStepInstructions instructions={ step.instructions } />
+			{ copyFields.length > 0 && (
+				<div className="aculect-ai-companion-wizard-copy-fields">
+					{ copyFields.map( ( field ) => (
+						<div
+							key={ `${ step.id }-${ field.label }` }
+							className="aculect-ai-companion-wizard-copy-field"
+						>
+							{ field.description && (
+								<p>{ field.description }</p>
+							) }
+							<CopyField
+								label={ field.label }
+								value={ field.value }
+								secret={ Boolean( field.secret ) }
+								onCopy={ ( value ) =>
+									onCopy( value, `${ field.label } copied.` )
+								}
+							/>
+						</div>
+					) ) }
+				</div>
+			) }
+			{ step.helpTitle && (
+				<div className="aculect-ai-companion-wizard-help">
+					<Icon icon={ help } size={ 18 } />
+					<div>
+						<strong>{ step.helpTitle }</strong>
+						<p>{ step.helpText }</p>
 					</div>
 				</div>
 			) }
+			{ isLast && (
+				<div className="aculect-ai-companion-wizard-complete">
+					<span className="aculect-ai-companion-wizard-complete__item">
+						Status: Connected after approval
+					</span>
+					<span className="aculect-ai-companion-wizard-complete__item">
+						Active sessions: { activeSessionCount }
+					</span>
+					<span className="aculect-ai-companion-wizard-complete__item">
+						Last activity: after authorization
+					</span>
+				</div>
+			) }
+			<div className="aculect-ai-companion-wizard-actions">
+				<Button
+					type="button"
+					variant="secondary"
+					onClick={ onPrevious }
+					disabled={ isFirst }
+				>
+					Back
+				</Button>
+				{ step.primaryActionUrl && (
+					<Button
+						href={ step.primaryActionUrl }
+						target="_blank"
+						rel="noreferrer noopener"
+						variant="secondary"
+					>
+						{ step.primaryActionLabel || 'Open assistant' }
+					</Button>
+				) }
+				{ step.secondaryUrl && (
+					<Button
+						href={ step.secondaryUrl }
+						target="_blank"
+						rel="noreferrer noopener"
+						variant="tertiary"
+					>
+						{ step.secondaryLabel || 'View documentation' }
+					</Button>
+				) }
+				{ isLast ? (
+					<>
+						<Button
+							href={ connectionUrl }
+							variant="primary"
+							onClick={ onViewConnection }
+						>
+							View connection
+						</Button>
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={ onConnectAnother }
+						>
+							Connect another assistant
+						</Button>
+					</>
+				) : (
+					<Button type="button" variant="primary" onClick={ onNext }>
+						Next step
+					</Button>
+				) }
+			</div>
 		</div>
+	);
+}
+
+function SetupWizard( {
+	providers,
+	selectedProvider,
+	selectedProviderId,
+	stepIndex,
+	activeSessionCount,
+	onSelectProvider,
+	onSelectStep,
+	onCopy,
+	onViewConnection,
+	connectionUrl,
+	onConnectAnother,
+} ) {
+	if ( providers.length === 0 || ! selectedProvider ) {
+		return (
+			<section className="aculect-ai-companion-connect-card">
+				<EmptyState title="No setup guides available">
+					Provider setup metadata is not available for this site.
+				</EmptyState>
+			</section>
+		);
+	}
+
+	const steps = wizardStepsForProvider( selectedProvider );
+	const activeStepIndex = clampWizardStepIndex( selectedProvider, stepIndex );
+	const activeStep = steps[ activeStepIndex ];
+	const wizard =
+		selectedProvider.wizard && typeof selectedProvider.wizard === 'object'
+			? selectedProvider.wizard
+			: {};
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-setup-wizard">
+			<AssistantSelector
+				providers={ providers }
+				selectedProviderId={ selectedProviderId }
+				onSelectProvider={ onSelectProvider }
+			/>
+			<div className="aculect-ai-companion-setup-wizard__main">
+				<div className="aculect-ai-companion-setup-wizard__intro">
+					<div>
+						<span className="aculect-ai-companion-eyebrow">
+							Setup wizard
+						</span>
+						<h2>Connect { selectedProvider.label }</h2>
+						<p>
+							Add Aculect AI Companion to{ ' ' }
+							{ selectedProvider.label } in { steps.length } easy
+							steps.
+						</p>
+					</div>
+					{ wizard.estimatedTime && (
+						<span className="aculect-ai-companion-estimated-time">
+							Estimated time: { wizard.estimatedTime }
+						</span>
+					) }
+				</div>
+				<WizardProgress
+					steps={ steps }
+					activeIndex={ activeStepIndex }
+					onSelectStep={ onSelectStep }
+				/>
+				<WizardStepPanel
+					provider={ selectedProvider }
+					step={ activeStep }
+					stepIndex={ activeStepIndex }
+					stepCount={ steps.length }
+					activeSessionCount={ activeSessionCount }
+					onCopy={ onCopy }
+					onPrevious={ () =>
+						onSelectStep( Math.max( 0, activeStepIndex - 1 ) )
+					}
+					onNext={ () =>
+						onSelectStep(
+							Math.min( steps.length - 1, activeStepIndex + 1 )
+						)
+					}
+					onViewConnection={ onViewConnection }
+					connectionUrl={ connectionUrl }
+					onConnectAnother={ onConnectAnother }
+				/>
+			</div>
+		</section>
+	);
+}
+
+function PendingConnectionRequests( { requests } ) {
+	const normalized = normalizeConnectionRequests( requests );
+
+	if ( ! shouldShowPendingRequests( normalized ) ) {
+		return null;
+	}
+
+	if ( normalized.items.length === 0 ) {
+		return (
+			<section className="aculect-ai-companion-connect-card aculect-ai-companion-pending-requests">
+				<h2>Pending connection requests</h2>
+				<EmptyState
+					title={
+						normalized.emptyTitle ||
+						'No pending connection requests.'
+					}
+				>
+					{ normalized.emptyDescription ||
+						'Requests from AI assistants will appear here when approval is required.' }
+				</EmptyState>
+				<Button type="button" variant="secondary" disabled>
+					Refresh requests
+				</Button>
+			</section>
+		);
+	}
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-pending-requests">
+			<h2>Pending connection requests</h2>
+			<div className="aculect-ai-companion-pending-requests__list">
+				{ normalized.items.map( ( item ) => (
+					<div
+						key={ item.id || item.requestedAt || item.assistant }
+						className="aculect-ai-companion-pending-request"
+					>
+						<strong>
+							{ item.assistant || 'AI assistant' } wants to
+							connect
+						</strong>
+						<p>
+							{ item.description ||
+								'Requested through secure OAuth.' }
+						</p>
+						<Button type="button" variant="secondary">
+							Review
+						</Button>
+					</div>
+				) ) }
+			</div>
+		</section>
+	);
+}
+
+function ConnectCapabilitySummary( { permissionsUrl, onManagePermissions } ) {
+	return (
+		<section className="aculect-ai-companion-connect-capabilities">
+			<div className="aculect-ai-companion-connect-section-heading">
+				<div>
+					<h2>What your AI assistant can do</h2>
+					<p>
+						These actions are always subject to WordPress
+						permissions and Aculect settings.
+					</p>
+				</div>
+				<Button
+					href={ permissionsUrl }
+					variant="secondary"
+					onClick={ onManagePermissions }
+				>
+					Manage permissions
+				</Button>
+			</div>
+			<div className="aculect-ai-companion-connect-capability-grid">
+				<ConnectCapabilityCard
+					icon={ postContent }
+					title="Create and edit content"
+				>
+					Draft and update posts, pages, and custom content.
+				</ConnectCapabilityCard>
+				<ConnectCapabilityCard
+					icon={ media }
+					title="Manage media"
+					tone="green"
+				>
+					Upload, organize, and manage media files.
+				</ConnectCapabilityCard>
+				<ConnectCapabilityCard
+					icon={ comment }
+					title="Moderate comments"
+					tone="purple"
+				>
+					Review, reply to, and manage comments.
+				</ConnectCapabilityCard>
+				<ConnectCapabilityCard
+					icon={ category }
+					title="Use SEO tools"
+					tone="orange"
+				>
+					View and update SEO data when supported.
+				</ConnectCapabilityCard>
+				<ConnectCapabilityCard icon={ shield } title="Secure by design">
+					You stay in control and can revoke access anytime.
+				</ConnectCapabilityCard>
+			</div>
+		</section>
 	);
 }
 
@@ -3519,6 +4604,7 @@ function AbilityDashboard( {
 	confirmationGroups,
 	confirmationGroupOptions,
 	activeConnectionCount,
+	roleAbilitiesEnabled,
 	hasChanges,
 	onToggleAbility,
 	onToggleWpAbility,
@@ -3923,10 +5009,19 @@ function AbilityDashboard( {
 								type="button"
 								variant="secondary"
 								onClick={ onManageRoleAbilities }
+								disabled={ ! roleAbilitiesEnabled }
+								accessibleWhenDisabled
 							>
 								Manage Role Based Abilities
 							</Button>
 						</div>
+						{ ! roleAbilitiesEnabled && (
+							<p className="aculect-ai-companion-help-text">
+								Role policy editing is optional. Enable it from
+								Advanced only when non-administrator assistant
+								access needs custom policies.
+							</p>
+						) }
 					</section>
 					{ confirmationGroupOptions.length > 0 && (
 						<section className="aculect-ai-companion-abilities-panel">
@@ -4808,9 +5903,22 @@ function SettingsApp() {
 		pluginMetadata.documentationUrl || pluginMetadata.wordpressOrgUrl
 	);
 	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
-	const providers = Array.isArray( data.providers )
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
+	const rawProviders = Array.isArray( data.providers )
 		? data.providers
 		: EMPTY_ARRAY;
+	const providers = useMemo(
+		() =>
+			rawProviders.map( ( provider ) => ( {
+				...provider,
+				iconUrl:
+					provider.iconUrl || connectorLogoUrls[ provider.id ] || '',
+			} ) ),
+		[ connectorLogoUrls, rawProviders ]
+	);
 	const sessions = Array.isArray( data.sessions )
 		? data.sessions
 		: EMPTY_ARRAY;
@@ -4843,6 +5951,14 @@ function SettingsApp() {
 		data.learningSuggestions && typeof data.learningSuggestions === 'object'
 			? data.learningSuggestions
 			: {};
+	const memoryRecords =
+		data.memoryRecords && typeof data.memoryRecords === 'object'
+			? data.memoryRecords
+			: {};
+	const incidentReports =
+		data.incidentReports && typeof data.incidentReports === 'object'
+			? data.incidentReports
+			: {};
 	const brandProfile =
 		data.brandProfile && typeof data.brandProfile === 'object'
 			? data.brandProfile
@@ -4874,6 +5990,13 @@ function SettingsApp() {
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
+			: {};
+	const connectionRequests = normalizeConnectionRequests(
+		data.connectionRequests
+	);
+	const roleAbilities =
+		data.roleAbilities && typeof data.roleAbilities === 'object'
+			? data.roleAbilities
 			: {};
 	const roleAbilityPolicy =
 		data.roleAbilityPolicy && typeof data.roleAbilityPolicy === 'object'
@@ -4911,14 +6034,26 @@ function SettingsApp() {
 	);
 	const [ diagnosticFilter, setDiagnosticFilter ] = useState( 'all' );
 	const [ diagnosticsRunning, setDiagnosticsRunning ] = useState( false );
-	const [ openProvider, setOpenProvider ] = useState(
-		preferredOpenProviderId( providers )
+	const [ selectedConnectProviderId, setSelectedConnectProviderId ] =
+		useState( preferredWizardProviderId( providers ) );
+	const [ connectWizardStep, setConnectWizardStep ] = useState( 0 );
+	const selectedConnectProvider = useMemo(
+		() =>
+			providers.find(
+				( provider ) => provider.id === selectedConnectProviderId
+			) ||
+			providers[ 0 ] ||
+			null,
+		[ providers, selectedConnectProviderId ]
 	);
 	const [ loggingEnabled, setLoggingEnabled ] = useState(
 		Boolean( diagnostics.loggingEnabled )
 	);
 	const [ roleConnectionsEnabled, setRoleConnectionsEnabled ] = useState(
 		Boolean( roleConnections.enabled )
+	);
+	const [ roleAbilitiesEnabled, setRoleAbilitiesEnabled ] = useState(
+		Boolean( roleAbilities.enabled )
 	);
 	const [ roleConnectionRoles, setRoleConnectionRoles ] = useState(
 		Array.isArray( roleConnections.allowedRoles )
@@ -4944,7 +6079,6 @@ function SettingsApp() {
 	const adminNoticesRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
 	const isAccessPaused = Boolean( data.accessPaused );
-	const hasActiveSessions = activeSessionCount > 0;
 	const currentUserId = Number( data.currentUserId || 0 );
 	const activeConnectionSessions = useMemo(
 		() =>
@@ -4968,11 +6102,6 @@ function SettingsApp() {
 		! sameStringSet( enabledAbilities, originalEnabledAbilities ) ||
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
 		! sameStringSet( confirmationGroups, originalConfirmationGroups );
-	const connectionStatus = connectStatusDetails( {
-		isAccessPaused,
-		hasActiveSessions,
-		sessionCount: activeSessionCount,
-	} );
 	const helpLinks = uniqueHelpLinks( providers );
 	const shouldShowAccessControl = Boolean(
 		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
@@ -5002,16 +6131,26 @@ function SettingsApp() {
 			return;
 		}
 
-		setOpenProvider( ( currentProvider ) => {
+		setSelectedConnectProviderId( ( currentProvider ) => {
 			const providerIsAvailable = providers.some(
 				( provider ) => provider.id === currentProvider
 			);
 
 			return providerIsAvailable
 				? currentProvider
-				: preferredOpenProviderId( providers );
+				: preferredWizardProviderId( providers );
 		} );
 	}, [ providers ] );
+
+	useEffect( () => {
+		if ( ! selectedConnectProvider ) {
+			return;
+		}
+
+		setConnectWizardStep( ( currentStep ) =>
+			clampWizardStepIndex( selectedConnectProvider, currentStep )
+		);
+	}, [ selectedConnectProvider ] );
 
 	useEffect( () => {
 		const target = adminNoticesRef.current;
@@ -5077,10 +6216,10 @@ function SettingsApp() {
 	}, [ activeTab.title ] );
 
 	useEffect( () => {
-		if ( activeTab.name !== 'abilities' ) {
+		if ( activeTab.name !== 'abilities' || ! roleAbilitiesEnabled ) {
 			setRoleAbilitiesModalOpen( false );
 		}
-	}, [ activeTab.name ] );
+	}, [ activeTab.name, roleAbilitiesEnabled ] );
 
 	useEffect( () => {
 		const tabName = activeTab.name;
@@ -5291,6 +6430,12 @@ function SettingsApp() {
 						Role ability policy saved.
 					</Notice>
 				) }
+				{ data.status === 'role_abilities_not_enabled' && (
+					<Notice status="warning" isDismissible={ false }>
+						Role ability policy editing is disabled in Advanced
+						settings.
+					</Notice>
+				) }
 				{ data.status === 'revoked' && (
 					<Notice status="warning" isDismissible={ false }>
 						AI assistant disconnected.
@@ -5347,6 +6492,31 @@ function SettingsApp() {
 						Learning suggestion was not updated.
 					</Notice>
 				) }
+				{ data.status === 'memory_approved' && (
+					<Notice status="success" isDismissible={ false }>
+						Memory item approved.
+					</Notice>
+				) }
+				{ data.status === 'memory_dismissed' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item dismissed.
+					</Notice>
+				) }
+				{ data.status === 'memory_deleted' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item deleted.
+					</Notice>
+				) }
+				{ data.status === 'memory_updated' && (
+					<Notice status="success" isDismissible={ false }>
+						Memory item updated.
+					</Notice>
+				) }
+				{ data.status === 'memory_not_updated' && (
+					<Notice status="warning" isDismissible={ false }>
+						Memory item was not updated.
+					</Notice>
+				) }
 				{ data.status === 'logs_cleared' && (
 					<Notice status="warning" isDismissible={ false }>
 						Diagnostic logs cleared.
@@ -5392,6 +6562,11 @@ function SettingsApp() {
 				{ data.status === 'diagnostics_run' && (
 					<Notice status="success" isDismissible={ false }>
 						Connection diagnostics updated.
+					</Notice>
+				) }
+				{ data.status === 'index_sweep_run' && (
+					<Notice status="success" isDismissible={ false }>
+						Index sweep completed and diagnostics were updated.
 					</Notice>
 				) }
 			</div>
@@ -5573,165 +6748,60 @@ function SettingsApp() {
 					if ( tab.name === 'connect' ) {
 						return (
 							<div className="aculect-ai-companion-connect">
-								<div className="aculect-ai-companion-connect-step-row">
-									<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
-										<ConnectStepHeading
-											number="1"
-											title="Copy the connection URL"
-										>
-											Copy the URL below and paste it into
-											your AI assistant when prompted.
-										</ConnectStepHeading>
-										<div className="aculect-ai-companion-connect-url-panel">
-											<CopyField
-												label="Connection URL"
-												value={ data.mcpUrl }
-												onCopy={ ( value ) =>
-													copyValue(
-														value,
-														'Connection URL copied.'
-													)
-												}
-											/>
-										</div>
-										<div className="aculect-ai-companion-connect-secure-note">
-											<Icon icon={ lock } size={ 16 } />
-											<span>
-												This link is unique to your site
-												and can be used by approved AI
-												assistants only.
-											</span>
-										</div>
-									</section>
-									<ConnectStatusPanel
-										status={ connectionStatus }
-										connectionsUrl={ tabUrl(
-											'connections',
-											data.adminPageUrl
-										) }
-										onNavigate={ ( event ) =>
-											maybeSelectTab(
-												event,
-												'connections'
-											)
-										}
-									/>
-								</div>
-
-								<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--providers">
-									<ConnectStepHeading
-										number="2"
-										title="Add the connection in your AI assistant"
-									>
-										Choose your AI assistant and follow the
-										simple steps to add the connection.
-									</ConnectStepHeading>
-									<div className="aculect-ai-companion-provider-list">
-										{ providers.map( ( provider ) => (
-											<ConnectProviderCard
-												key={ provider.id }
-												provider={ provider }
-												isOpen={
-													openProvider === provider.id
-												}
-												onToggle={ () =>
-													setOpenProvider(
-														openProvider ===
-															provider.id
-															? ''
-															: provider.id
-													)
-												}
-												onCopy={ copyValue }
-											/>
-										) ) }
-									</div>
-
-									<section className="aculect-ai-companion-connect-capabilities">
-										<h2>What your AI assistant can do</h2>
+								<div className="aculect-ai-companion-connect__heading">
+									<div>
+										<h1>Connect Your AI Assistant</h1>
 										<p>
-											These actions are always subject to
-											your permissions and settings.
+											Connect AI assistants to your
+											WordPress site in a few simple
+											steps.
 										</p>
-										<div className="aculect-ai-companion-connect-capability-grid">
-											<ConnectCapabilityCard
-												icon={ postContent }
-												title="Create & edit content"
-											>
-												Draft and update posts, pages,
-												and more.
-											</ConnectCapabilityCard>
-											<ConnectCapabilityCard
-												icon={ category }
-												title="Manage content"
-												tone="green"
-											>
-												Organize categories, tags, and
-												media.
-											</ConnectCapabilityCard>
-											<ConnectCapabilityCard
-												icon={ comment }
-												title="Moderate comments"
-												tone="purple"
-											>
-												Review, reply to, and manage
-												comments.
-											</ConnectCapabilityCard>
-											<ConnectCapabilityCard
-												icon={ shield }
-												title="Secure by design"
-												tone="orange"
-											>
-												You stay in control and can
-												revoke access anytime.
-											</ConnectCapabilityCard>
-										</div>
-									</section>
-								</section>
-
-								<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--approval">
-									<ConnectStepHeading
-										number="3"
-										title="Approve the connection in WordPress"
-									>
-										When your AI assistant tries to connect,
-										you will see a request here.
-									</ConnectStepHeading>
-									<div className="aculect-ai-companion-connect-request-panel">
-										<span
-											className="aculect-ai-companion-connect-request-panel__icon"
-											aria-hidden="true"
-										>
-											<Icon icon={ lock } size={ 18 } />
-										</span>
-										<div>
-											<strong>
-												No connection requests yet
-											</strong>
-											<p>
-												Requests from your AI assistant
-												will appear here for your
-												review.
-											</p>
-										</div>
-										<Button
-											href={ tabUrl(
-												'connections',
-												data.adminPageUrl
-											) }
-											variant="secondary"
-											className="aculect-ai-companion-connect-request-panel__button"
-											onClick={ ( event ) =>
-												maybeSelectTab(
-													event,
-													'connections'
-												)
-											}
-										>
-											Review requests
-										</Button>
 									</div>
-								</section>
+								</div>
+								<SetupWizard
+									providers={ providers }
+									selectedProvider={ selectedConnectProvider }
+									selectedProviderId={
+										selectedConnectProviderId
+									}
+									stepIndex={ connectWizardStep }
+									activeSessionCount={ activeSessionCount }
+									onSelectProvider={ ( providerId ) => {
+										setSelectedConnectProviderId(
+											providerId
+										);
+										setConnectWizardStep( 0 );
+									} }
+									onSelectStep={ setConnectWizardStep }
+									onCopy={ copyValue }
+									connectionUrl={ tabUrl(
+										'connections',
+										data.adminPageUrl
+									) }
+									onViewConnection={ ( event ) =>
+										maybeSelectTab( event, 'connections' )
+									}
+									onConnectAnother={ () => {
+										setSelectedConnectProviderId(
+											preferredWizardProviderId(
+												providers
+											)
+										);
+										setConnectWizardStep( 0 );
+									} }
+								/>
+								<PendingConnectionRequests
+									requests={ connectionRequests }
+								/>
+								<ConnectCapabilitySummary
+									permissionsUrl={ tabUrl(
+										'abilities',
+										data.adminPageUrl
+									) }
+									onManagePermissions={ ( event ) =>
+										maybeSelectTab( event, 'abilities' )
+									}
+								/>
 							</div>
 						);
 					}
@@ -5873,6 +6943,9 @@ function SettingsApp() {
 										confirmationGroupOptions
 									}
 									activeConnectionCount={ activeSessionCount }
+									roleAbilitiesEnabled={
+										roleAbilitiesEnabled
+									}
 									hasChanges={ hasAbilityChanges }
 									onToggleAbility={ toggleAbility }
 									onToggleWpAbility={ toggleWpAbility }
@@ -5896,6 +6969,7 @@ function SettingsApp() {
 										setEnabledWpAbilities( [] );
 									} }
 									onManageRoleAbilities={ () =>
+										roleAbilitiesEnabled &&
 										setRoleAbilitiesModalOpen( true )
 									}
 									onResetChanges={ () => {
@@ -5911,31 +6985,34 @@ function SettingsApp() {
 									} }
 									onCopy={ copyValue }
 								/>
-								{ roleAbilitiesModalOpen && (
-									<Modal
-										title="Manage Role Based Abilities"
-										className="aculect-ai-companion-role-abilities-modal"
-										onRequestClose={ () =>
-											setRoleAbilitiesModalOpen( false )
-										}
-										shouldCloseOnClickOutside={ false }
-									>
-										<RoleAbilitiesEditor
-											data={ data }
-											abilities={ abilities }
-											roleAbilityPolicy={
-												roleAbilityPolicy
+								{ roleAbilitiesEnabled &&
+									roleAbilitiesModalOpen && (
+										<Modal
+											title="Manage Role Based Abilities"
+											className="aculect-ai-companion-role-abilities-modal"
+											onRequestClose={ () =>
+												setRoleAbilitiesModalOpen(
+													false
+												)
 											}
-											selectedRole={
-												selectedRoleAbilityRole
-											}
-											onSelectRole={
-												setSelectedRoleAbilityRole
-											}
-											isModal
-										/>
-									</Modal>
-								) }
+											shouldCloseOnClickOutside={ false }
+										>
+											<RoleAbilitiesEditor
+												data={ data }
+												abilities={ abilities }
+												roleAbilityPolicy={
+													roleAbilityPolicy
+												}
+												selectedRole={
+													selectedRoleAbilityRole
+												}
+												onSelectRole={
+													setSelectedRoleAbilityRole
+												}
+												isModal
+											/>
+										</Modal>
+									) }
 							</>
 						);
 					}
@@ -6270,6 +7347,8 @@ function SettingsApp() {
 							<LearningSuggestionsDashboard
 								data={ data }
 								learningSuggestions={ learningSuggestions }
+								memoryRecords={ memoryRecords }
+								incidentReports={ incidentReports }
 							/>
 						);
 					}
@@ -6282,6 +7361,10 @@ function SettingsApp() {
 								roleConnections={ roleConnections }
 								loggingEnabled={ loggingEnabled }
 								onLoggingChange={ setLoggingEnabled }
+								roleAbilitiesEnabled={ roleAbilitiesEnabled }
+								onRoleAbilitiesChange={
+									setRoleAbilitiesEnabled
+								}
 								roleConnectionsEnabled={
 									roleConnectionsEnabled
 								}

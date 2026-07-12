@@ -13,21 +13,48 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class AbilitiesRegistry {
 
-	public const OPTION_ENABLED_ABILITIES         = 'aculect_ai_companion_enabled_abilities';
-	private const TOOL_NAME_PATTERN               = '/^[a-zA-Z0-9_-]{1,64}$/';
-	private const DERIVED_WORKFLOW_IDS            = array(
+	public const OPTION_ENABLED_ABILITIES          = 'aculect_ai_companion_enabled_abilities';
+	private const TOOL_NAME_PATTERN                = '/^[a-zA-Z0-9_-]{1,64}$/';
+	private const DERIVED_WORKFLOW_IDS             = array(
 		'content_workflow.prepare_post',
 		'content_workflow.create_draft',
 		'content_workflow.update_post',
+		'content_media.apply_image',
 		'seo_workflow.update_rankmath',
+		'site_workflow.audit',
 	);
-	private const ALWAYS_ON_READ_INTELLIGENCE_IDS = array(
+	private const ALWAYS_ON_READ_INTELLIGENCE_IDS  = array(
+		'workflow.route_request',
+		'workflow_session.get',
+		'site_editor.get_context',
+		'site_editor.list_templates',
+		'site_editor.get_template',
+		'site_editor.list_template_parts',
+		'site_editor.get_template_part',
+		'admin_menu.get_context',
+		'admin_menu.list_pages',
+		'admin_menu.get_navigation_target',
+		'admin_menu.list_settings',
+		'mcp_learning.inspect_activity',
+		'search',
+		'fetch',
+		'workflow_guides.list',
+		'workflow_guides.get',
 		'content_search.items',
 		'content_search.chunks',
 		'content_find.related',
 		'content_find.internal_links',
+		'content_audit.internal_links',
 		'memory.list',
 		'content_batch.status',
+	);
+	private const ALWAYS_ON_WRITE_INTELLIGENCE_IDS = array(
+		'workflow_session.start',
+		'workflow_session.update',
+		'site_editor.refresh_context',
+		'admin_menu.refresh_context',
+		'memory.save',
+		'memory.bootstrap',
 	);
 
 	/**
@@ -84,16 +111,15 @@ final class AbilitiesRegistry {
 	/**
 	 * Return ability definitions that administrators can directly enable or disable.
 	 *
-	 * Workflow tools are derived from their underlying atomic abilities, so they
+	 * Workflow tools are first-party orchestration over atomic abilities, so they
 	 * stay registered for MCP but are not persisted as independent policy rows.
-	 * Read-only intelligence retrieval is always available through MCP when the
-	 * connected session has the required scope, so it is not stored as a normal
-	 * ability-policy toggle.
+	 * Intelligence retrieval and durable memory writes are first-party Aculect
+	 * guidance surfaces, so they are not stored as normal ability-policy toggles.
 	 *
 	 * @return array<string, array<string, bool|string>>
 	 */
 	public function configurable_definitions(): array {
-		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS ) ) );
+		return array_diff_key( $this->definitions(), array_flip( array_merge( self::DERIVED_WORKFLOW_IDS, self::ALWAYS_ON_READ_INTELLIGENCE_IDS, self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) ) );
 	}
 
 	/**
@@ -143,6 +169,15 @@ final class AbilitiesRegistry {
 	 */
 	public function always_on_read_intelligence_modules(): array {
 		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_READ_INTELLIGENCE_IDS ) );
+	}
+
+	/**
+	 * Return always-on write intelligence modules.
+	 *
+	 * @return array<string, AbilityModuleInterface>
+	 */
+	public function always_on_write_intelligence_modules(): array {
+		return array_intersect_key( $this->modules(), array_flip( self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS ) );
 	}
 
 	/**
@@ -274,6 +309,15 @@ final class AbilitiesRegistry {
 	}
 
 	/**
+	 * Check whether an ability is always-on write intelligence.
+	 *
+	 * @param string $id Internal ID, legacy alias, or public tool name.
+	 */
+	public function is_always_on_write_intelligence( string $id ): bool {
+		return in_array( $this->internal_id( $id ), self::ALWAYS_ON_WRITE_INTELLIGENCE_IDS, true );
+	}
+
+	/**
 	 * Return operational ability IDs that must also be available before a workflow can run.
 	 *
 	 * @param string $id Internal ID, legacy alias, or public tool name.
@@ -284,7 +328,9 @@ final class AbilitiesRegistry {
 			'content_workflow.prepare_post' => array( 'site.list_post_types' ),
 			'content_workflow.create_draft' => array( 'content.create_item' ),
 			'content_workflow.update_post' => array( 'content.update_item' ),
+			'content_media.apply_image' => array( 'content.update_item', 'media.upload_item' ),
 			'seo_workflow.update_rankmath' => array( 'content.update_seo' ),
+			'site_workflow.audit' => array( 'site.get_info', 'site.get_health' ),
 			default => array(),
 		};
 	}

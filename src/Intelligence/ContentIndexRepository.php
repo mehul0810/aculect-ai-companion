@@ -260,33 +260,47 @@ final class ContentIndexRepository {
 		$offset   = ( $page - 1 ) * $per_page;
 		$where    = $this->content_where_clause( $args );
 		$table    = Installer::content_index_table();
+		$count    = $this->bool_arg( $args['include_total'] ?? true, true );
+		$limit    = $count ? $per_page : $per_page + 1;
 
 		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
 				"SELECT * FROM %i {$where['sql']} ORDER BY stale ASC, modified_gmt DESC, object_id DESC LIMIT %d OFFSET %d",
-				...array_merge( array( $table ), $where['values'], array( $per_page, $offset ) )
+				...array_merge( array( $table ), $where['values'], array( $limit, $offset ) )
 			),
 			ARRAY_A
 		);
 
-		$total = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
-				"SELECT COUNT(*) FROM %i {$where['sql']}",
-				...array_merge( array( $table ), $where['values'] )
-			)
-		);
+		$rows     = is_array( $rows ) ? $rows : array();
+		$has_more = ! $count && count( $rows ) > $per_page;
+		$rows     = $has_more ? array_slice( $rows, 0, $per_page ) : $rows;
 
-		return array(
-			'items'    => is_array( $rows ) ? array_map( array( $this, 'public_content_row' ), $rows ) : array(),
-			'total'    => $total,
+		$result = array(
+			'items'    => array_map( array( $this, 'public_content_row' ), $rows ),
 			'page'     => $page,
 			'per_page' => $per_page,
 			'context'  => $this->context( $args ),
-			'index'    => $this->summary(),
 		);
+
+		if ( $count ) {
+			$result['total'] = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in content_where_clause().
+					"SELECT COUNT(*) FROM %i {$where['sql']}",
+					...array_merge( array( $table ), $where['values'] )
+				)
+			);
+		} else {
+			$result['has_more'] = $has_more;
+		}
+
+		if ( $this->bool_arg( $args['include_index_summary'] ?? true, true ) ) {
+			$result['index'] = $this->summary();
+		}
+
+		return $result;
 	}
 
 	/**
@@ -304,36 +318,49 @@ final class ContentIndexRepository {
 		$where     = $this->chunk_where_clause( $args );
 		$chunk_tbl = Installer::content_chunks_table();
 		$index_tbl = Installer::content_index_table();
+		$count     = $this->bool_arg( $args['include_total'] ?? true, true );
+		$limit     = $count ? $per_page : $per_page + 1;
 
 		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
 				"SELECT chunks.*, idx.title, idx.post_type, idx.post_status, idx.permalink, idx.stale FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']} ORDER BY idx.stale ASC, chunks.word_count DESC, chunks.id DESC LIMIT %d OFFSET %d",
-				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'], array( $per_page, $offset ) )
+				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'], array( $limit, $offset ) )
 			),
 			ARRAY_A
 		);
 
-		$total = (int) $wpdb->get_var(
-			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Query has two identifier placeholders plus a variable number of safe filter placeholders.
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
-				"SELECT COUNT(*) FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']}",
-				...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'] )
-			)
-		);
+		$rows     = is_array( $rows ) ? $rows : array();
+		$has_more = ! $count && count( $rows ) > $per_page;
+		$rows     = $has_more ? array_slice( $rows, 0, $per_page ) : $rows;
+		$context  = $this->context( $args );
 
-		$context = $this->context( $args );
-
-		return array(
-			'items'    => is_array( $rows ) ? array_map( fn ( array $row ): array => $this->public_chunk_row( $row, $context ), $rows ) : array(),
-			'total'    => $total,
+		$result = array(
+			'items'    => array_map( fn ( array $row ): array => $this->public_chunk_row( $row, $context ), $rows ),
 			'page'     => $page,
 			'per_page' => $per_page,
 			'context'  => $context,
-			'index'    => $this->summary(),
 		);
+
+		if ( $count ) {
+			$result['total'] = (int) $wpdb->get_var(
+				// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Query has two identifier placeholders plus a variable number of safe filter placeholders.
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE clause is built from fixed fragments and placeholder values in chunk_where_clause().
+					"SELECT COUNT(*) FROM %i chunks INNER JOIN %i idx ON idx.object_id = chunks.object_id {$where['sql']}",
+					...array_merge( array( $chunk_tbl, $index_tbl ), $where['values'] )
+				)
+			);
+		} else {
+			$result['has_more'] = $has_more;
+		}
+
+		if ( $this->bool_arg( $args['include_index_summary'] ?? true, true ) ) {
+			$result['index'] = $this->summary();
+		}
+
+		return $result;
 	}
 
 	/**
@@ -354,6 +381,76 @@ final class ContentIndexRepository {
 		);
 
 		return array_values( array_filter( array_map( 'absint', is_array( $rows ) ? $rows : array() ) ) );
+	}
+
+	/**
+	 * Return a bounded internal-link audit over the content index and link graph.
+	 *
+	 * @param array<string, mixed> $args Audit arguments.
+	 * @return array<string, mixed>
+	 */
+	public function internal_link_audit( array $args ): array {
+		global $wpdb;
+
+		$page       = max( 1, absint( $args['page'] ?? 1 ) );
+		$per_page   = $this->limit( $args['per_page'] ?? self::DEFAULT_LIMIT );
+		$offset     = ( $page - 1 ) * $per_page;
+		$thresholds = array(
+			'min_inbound_links'  => max( 1, min( 100, absint( $args['min_inbound_links'] ?? 2 ) ) ),
+			'thin_word_count'    => max( 1, min( 5000, absint( $args['thin_word_count'] ?? 300 ) ) ),
+			'max_outbound_links' => max( 1, min( 500, absint( $args['max_outbound_links'] ?? 25 ) ) ),
+		);
+		$state      = $this->audit_state( $args['state'] ?? 'needs_review' );
+		$where      = $this->audit_where_clause( $args );
+		$having     = $this->audit_having_clause( $state, $thresholds );
+		$index_tbl  = Installer::content_index_table();
+		$link_tbl   = Installer::link_graph_table();
+		$select     = 'idx.*, COUNT(DISTINCT inbound.source_id) AS inbound_internal_links, COUNT(DISTINCT outbound.id) AS outbound_internal_links';
+		$joins      = 'LEFT JOIN %i inbound ON inbound.target_id = idx.object_id LEFT JOIN %i outbound ON outbound.source_id = idx.object_id AND outbound.target_id IS NOT NULL AND outbound.target_id > 0';
+		$group      = 'GROUP BY idx.object_id, idx.object_type, idx.post_type, idx.post_status, idx.title, idx.slug, idx.permalink, idx.excerpt, idx.summary, idx.word_count, idx.content_hash, idx.indexed_at, idx.modified_gmt, idx.stale, idx.search_text, idx.metadata';
+
+		$rows = $wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE and HAVING clauses are built from fixed fragments and placeholder values.
+				"SELECT {$select} FROM %i idx {$joins} {$where['sql']} {$group} {$having['sql']} ORDER BY idx.stale DESC, inbound_internal_links ASC, idx.word_count ASC, outbound_internal_links DESC, idx.modified_gmt DESC, idx.object_id DESC LIMIT %d OFFSET %d",
+				...array_merge( array( $index_tbl, $link_tbl, $link_tbl ), $where['values'], $having['values'], array( $per_page, $offset ) )
+			),
+			ARRAY_A
+		);
+
+		$total = (int) $wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Dynamic filters add a variable number of placeholder values via argument unpacking.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WHERE and HAVING clauses are built from fixed fragments and placeholder values.
+				"SELECT COUNT(*) FROM (SELECT idx.object_id, COUNT(DISTINCT inbound.source_id) AS inbound_internal_links, COUNT(DISTINCT outbound.id) AS outbound_internal_links, idx.word_count, idx.stale FROM %i idx {$joins} {$where['sql']} GROUP BY idx.object_id, idx.word_count, idx.stale {$having['sql']}) audit_rows",
+				...array_merge( array( $index_tbl, $link_tbl, $link_tbl ), $where['values'], $having['values'] )
+			)
+		);
+
+		$items = array_map(
+			fn ( array $row ): array => $this->public_link_audit_row( $row, $thresholds ),
+			array_filter( is_array( $rows ) ? $rows : array(), 'is_array' )
+		);
+
+		return array(
+			'items'        => $items,
+			'total'        => $total,
+			'page'         => $page,
+			'per_page'     => $per_page,
+			'context'      => 'compact',
+			'filters'      => array(
+				'state'     => $state,
+				'post_type' => $this->key( $args['post_type'] ?? '', 60 ),
+				'status'    => $this->key( $args['status'] ?? '', 20 ),
+			),
+			'thresholds'   => $thresholds,
+			'index'        => $this->summary(),
+			'next_actions' => array(
+				'Refresh stale rows with content_index_refresh_batch before relying on audit results for large edits.',
+				'Use content_find_internal_links for candidate anchors after choosing a source item from the audit.',
+			),
+		);
 	}
 
 	/**
@@ -379,6 +476,72 @@ final class ContentIndexRepository {
 			'total_items'       => (int) ( $row['total'] ?? 0 ),
 			'stale_items'       => (int) ( $row['stale'] ?? 0 ),
 			'latest_indexed_at' => (string) ( $row['latest_indexed_at'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Return job counts grouped by status for one job type.
+	 *
+	 * @param string $type Job type.
+	 * @return array<string, int>
+	 */
+	public function job_status_counts( string $type = 'content_index_refresh' ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT status, COUNT(*) AS total FROM %i WHERE job_type = %s GROUP BY status',
+				Installer::jobs_table(),
+				$this->key( $type, 60 )
+			),
+			ARRAY_A
+		);
+
+		$counts = array(
+			'queued'   => 0,
+			'running'  => 0,
+			'partial'  => 0,
+			'complete' => 0,
+			'failed'   => 0,
+		);
+
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			if ( ! is_array( $row ) ) {
+				continue;
+			}
+
+			$status            = $this->job_status( $row['status'] ?? '' );
+			$counts[ $status ] = (int) ( $row['total'] ?? 0 );
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Return recent job summaries without args or result payloads.
+	 *
+	 * @param int    $limit Maximum jobs.
+	 * @param string $type  Job type.
+	 * @return list<array<string, mixed>>
+	 */
+	public function recent_job_summaries( int $limit = 5, string $type = 'content_index_refresh' ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, job_key, job_type, status, total_items, processed_items, error_count, created_at, updated_at FROM %i WHERE job_type = %s ORDER BY updated_at DESC, id DESC LIMIT %d',
+				Installer::jobs_table(),
+				$this->key( $type, 60 ),
+				min( 20, max( 1, $limit ) )
+			),
+			ARRAY_A
+		);
+
+		return array_values(
+			array_map(
+				array( $this, 'public_job_summary_row' ),
+				array_filter( is_array( $rows ) ? $rows : array(), 'is_array' )
+			)
 		);
 	}
 
@@ -452,6 +615,45 @@ final class ContentIndexRepository {
 			'status'  => 'success',
 			'memory'  => $this->memory_by_key( $key ),
 			'message' => 'Memory item saved for future Aculect Intelligence responses.',
+		);
+	}
+
+	/**
+	 * Delete one durable memory item.
+	 *
+	 * @param string $key Memory key.
+	 * @return array<string, mixed>
+	 */
+	public function delete_memory( string $key ): array {
+		global $wpdb;
+
+		$key = $this->memory_key( $key );
+		if ( '' === $key ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'invalid_memory_key',
+				'message' => 'Provide a stable memory key.',
+			);
+		}
+
+		$result = $wpdb->delete(
+			Installer::memory_items_table(),
+			array( 'memory_key' => $key ),
+			array( '%s' )
+		);
+
+		if ( false === $result ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'memory_delete_failed',
+				'message' => 'Memory item could not be deleted.',
+			);
+		}
+
+		return array(
+			'status'  => 'success',
+			'deleted' => (int) $result,
+			'key'     => $key,
 		);
 	}
 
@@ -690,6 +892,52 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return a public internal-link audit row.
+	 *
+	 * @param array<string, mixed> $row        Database row.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @return array<string, mixed>
+	 */
+	private function public_link_audit_row( array $row, array $thresholds ): array {
+		$content  = $this->public_content_row( $row );
+		$inbound  = (int) ( $row['inbound_internal_links'] ?? 0 );
+		$outbound = (int) ( $row['outbound_internal_links'] ?? 0 );
+		$words    = (int) ( $content['word_count'] ?? 0 );
+		$stale    = ! empty( $content['stale'] );
+		$flags    = array();
+
+		if ( 0 === $inbound ) {
+			$flags[] = 'orphan';
+		} elseif ( $inbound < $thresholds['min_inbound_links'] ) {
+			$flags[] = 'underlinked';
+		}
+
+		if ( $words <= $thresholds['thin_word_count'] ) {
+			$flags[] = 'thin';
+		}
+
+		if ( $stale ) {
+			$flags[] = 'stale_index';
+		}
+
+		if ( $outbound > $thresholds['max_outbound_links'] ) {
+			$flags[] = 'link_heavy';
+		}
+
+		return array_merge(
+			$content,
+			array(
+				'post_id'                 => (int) ( $content['id'] ?? 0 ),
+				'inbound_internal_links'  => $inbound,
+				'outbound_internal_links' => $outbound,
+				'flags'                   => $flags,
+				'needs_review'            => array() !== $flags,
+				'suggested_next_action'   => $this->link_audit_next_action( $flags ),
+			)
+		);
+	}
+
+	/**
 	 * Return a public chunk row.
 	 *
 	 * @param array<string, mixed> $row     Database row.
@@ -770,6 +1018,26 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Return a public job summary row without args or result payloads.
+	 *
+	 * @param array<string, mixed> $row Database row.
+	 * @return array<string, mixed>
+	 */
+	private function public_job_summary_row( array $row ): array {
+		return array(
+			'id'              => (int) ( $row['id'] ?? 0 ),
+			'job_key'         => (string) ( $row['job_key'] ?? '' ),
+			'job_type'        => (string) ( $row['job_type'] ?? '' ),
+			'status'          => $this->job_status( $row['status'] ?? '' ),
+			'total_items'     => (int) ( $row['total_items'] ?? 0 ),
+			'processed_items' => (int) ( $row['processed_items'] ?? 0 ),
+			'error_count'     => (int) ( $row['error_count'] ?? 0 ),
+			'created_at'      => (string) ( $row['created_at'] ?? '' ),
+			'updated_at'      => (string) ( $row['updated_at'] ?? '' ),
+		);
+	}
+
+	/**
 	 * Build content search WHERE clause.
 	 *
 	 * @param array<string, mixed> $args Search args.
@@ -813,10 +1081,130 @@ final class ContentIndexRepository {
 			$values[]  = empty( $args['stale'] ) ? 0 : 1;
 		}
 
+		$max_word_count = absint( $args['max_word_count'] ?? 0 );
+		if ( $max_word_count > 0 ) {
+			$clauses[] = 'word_count <= %d';
+			$values[]  = $max_word_count;
+		}
+
 		return array(
 			'sql'    => array() === $clauses ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
 			'values' => $values,
 		);
+	}
+
+	/**
+	 * Build internal-link audit WHERE filters.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array{sql: string, values: list<mixed>}
+	 */
+	private function audit_where_clause( array $args ): array {
+		$clauses = array();
+		$values  = array();
+
+		$post_type = $this->key( $args['post_type'] ?? '', 60 );
+		if ( '' !== $post_type ) {
+			$clauses[] = 'idx.post_type = %s';
+			$values[]  = $post_type;
+		}
+
+		$status = $this->key( $args['status'] ?? '', 20 );
+		if ( '' !== $status ) {
+			$clauses[] = 'idx.post_status = %s';
+			$values[]  = $status;
+		}
+
+		return array(
+			'sql'    => array() === $clauses ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
+			'values' => $values,
+		);
+	}
+
+	/**
+	 * Build internal-link audit HAVING filters from a state.
+	 *
+	 * @param string             $state      Audit state.
+	 * @param array<string, int> $thresholds Audit thresholds.
+	 * @return array{sql: string, values: list<mixed>}
+	 */
+	private function audit_having_clause( string $state, array $thresholds ): array {
+		$values = array();
+
+		switch ( $state ) {
+			case 'orphan':
+				$sql = 'HAVING inbound_internal_links = 0';
+				break;
+			case 'underlinked':
+				$sql      = 'HAVING inbound_internal_links > 0 AND inbound_internal_links < %d';
+				$values[] = $thresholds['min_inbound_links'];
+				break;
+			case 'thin':
+				$sql      = 'HAVING idx.word_count <= %d';
+				$values[] = $thresholds['thin_word_count'];
+				break;
+			case 'stale':
+				$sql = 'HAVING idx.stale = 1';
+				break;
+			case 'link_heavy':
+				$sql      = 'HAVING outbound_internal_links > %d';
+				$values[] = $thresholds['max_outbound_links'];
+				break;
+			case 'needs_review':
+				$sql      = 'HAVING inbound_internal_links = 0 OR (inbound_internal_links > 0 AND inbound_internal_links < %d) OR idx.word_count <= %d OR idx.stale = 1 OR outbound_internal_links > %d';
+				$values[] = $thresholds['min_inbound_links'];
+				$values[] = $thresholds['thin_word_count'];
+				$values[] = $thresholds['max_outbound_links'];
+				break;
+			default:
+				$sql = '';
+				break;
+		}
+
+		return array(
+			'sql'    => $sql,
+			'values' => $values,
+		);
+	}
+
+	/**
+	 * Normalize audit state.
+	 *
+	 * @param mixed $state Raw state.
+	 */
+	private function audit_state( mixed $state ): string {
+		$state = $this->key( $state, 30 );
+
+		return in_array( $state, array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ), true ) ? $state : 'needs_review';
+	}
+
+	/**
+	 * Return a compact recommended next action for one audit row.
+	 *
+	 * @param array<int, string> $flags Audit flags.
+	 */
+	private function link_audit_next_action( array $flags ): string {
+		if ( in_array( 'stale_index', $flags, true ) ) {
+			return 'Refresh this item in the content intelligence index before making internal-link decisions.';
+		}
+
+		if ( in_array( 'orphan', $flags, true ) ) {
+			return 'Find relevant source pages and add one or more contextual links to this item.';
+		}
+
+		if ( in_array( 'underlinked', $flags, true ) ) {
+			return 'Add more contextual internal links from related content to this item.';
+		}
+
+		if ( in_array( 'thin', $flags, true ) ) {
+			return 'Review this thin item before adding link suggestions so the target page has enough substance.';
+		}
+
+		if ( in_array( 'link_heavy', $flags, true ) ) {
+			return 'Review outbound links and prune or rebalance links before adding more.';
+		}
+
+		return 'No immediate internal-link action is flagged by the current thresholds.';
 	}
 
 	/**
@@ -1001,6 +1389,34 @@ final class ContentIndexRepository {
 	 */
 	private function use_fulltext_search(): bool {
 		return (bool) apply_filters( 'aculect_ai_companion_content_index_use_fulltext', true );
+	}
+
+	/**
+	 * Return a normalized boolean argument.
+	 *
+	 * @param mixed $value   Raw argument value.
+	 * @param bool  $default Default when the value is not a recognizable scalar.
+	 */
+	private function bool_arg( mixed $value, bool $default ): bool {
+		if ( is_bool( $value ) ) {
+			return $value;
+		}
+
+		if ( is_int( $value ) ) {
+			return 1 === $value;
+		}
+
+		if ( is_string( $value ) ) {
+			$value = strtolower( trim( $value ) );
+			if ( in_array( $value, array( '1', 'true', 'yes', 'on' ), true ) ) {
+				return true;
+			}
+			if ( in_array( $value, array( '0', 'false', 'no', 'off' ), true ) ) {
+				return false;
+			}
+		}
+
+		return $default;
 	}
 
 	/**

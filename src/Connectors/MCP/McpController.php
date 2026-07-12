@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
 use Aculect\AICompanion\Diagnostics\Logger;
 use WP_REST_Request;
@@ -241,6 +242,12 @@ final class McpController {
 				$cursor = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
 				return $this->rpc_result( $id, $this->list_tools( $cursor ) );
 
+			case 'resources/list':
+				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
+
+			case 'resources/read':
+				return $this->rpc_result( $id, ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) ) );
+
 			case 'tools/call':
 				$registry             = new AbilitiesRegistry();
 				$intelligence         = new IntelligenceRegistry();
@@ -367,6 +374,7 @@ final class McpController {
 				$replay                     = $is_write_tool && ! $is_dry_run
 					? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
 					: null;
+				$trusted_write_executed     = false;
 				$needs_confirmation_gate    = $is_write_tool
 					&& ! $is_dry_run
 					&& null === $replay
@@ -395,12 +403,34 @@ final class McpController {
 					$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
 					$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
 					if ( $is_write_tool && ! isset( $result['error'] ) ) {
+						$trusted_write_executed = $write_permission_unblocked;
+						if ( $trusted_write_executed ) {
+							$result = $this->trusted_write_result_payload( $result, $auth );
+						}
 						$safety->remember_write_result( $tool, $args, $auth, $result );
 					}
 					$args = $exec_args;
 				}
 
-				$this->record_tool_activity( $tool, $args, $result, $auth );
+				$activity_auth = $auth;
+				if ( $trusted_write_executed ) {
+					$activity_auth['write_permission_used'] = true;
+					( new Logger() )->info(
+						'mcp.trusted_write',
+						'MCP write tool executed through a trusted connection.',
+						array_merge(
+							$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), '', $tool ),
+							array(
+								'access_level'             => (string) ( $auth['access_level'] ?? '' ),
+								'write_permission_enabled' => true,
+							)
+						),
+						$request,
+						200
+					);
+				}
+
+				$this->record_tool_activity( $tool, $args, $result, $activity_auth );
 
 				return $this->rpc_result(
 					$id,
@@ -479,7 +509,19 @@ final class McpController {
 	 */
 	public function tool_manifest_for_current_user(): array {
 		$user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id );
+
+		return $this->tool_manifest_for_user( (int) $user_id );
+	}
+
+	/**
+	 * Build the complete, unpaginated tool manifest for one user and scope set.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @return array{tools: list<array<string, mixed>>}
+	 */
+	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
@@ -487,10 +529,38 @@ final class McpController {
 	}
 
 	/**
+	 * Build one paginated tools/list payload for diagnostics and deterministic smoke tests.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param string            $cursor         Opaque cursor from a previous page.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 */
+	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '' ): array {
+		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes ), $cursor );
+	}
+
+	/**
+	 * Build the exact initialize payload for diagnostics and manifest exports.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function initialize_payload_for_diagnostics(): array {
+		return $this->initialize_payload();
+	}
+
+	/**
 	 * Tools returned per tools/list page. Below typical client truncation
 	 * thresholds while keeping most installs single-page.
 	 */
 	private const TOOLS_PAGE_SIZE = 60;
+
+	/**
+	 * Return the current tools/list page size for diagnostics.
+	 */
+	public static function tools_page_size(): int {
+		return self::TOOLS_PAGE_SIZE;
+	}
 
 	/**
 	 * Build the MCP tools/list payload from internal intelligence and enabled abilities.
@@ -504,9 +574,31 @@ final class McpController {
 	private function list_tools( string $cursor = '' ): array {
 		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
-		$modules        = ( new McpToolAvailability() )->tool_modules_for_user( (int) $user_id, null, null, $granted_scopes );
-		$tools          = array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
 
+		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor );
+	}
+
+	/**
+	 * Build all tool descriptors for one user and scope set.
+	 *
+	 * @param int               $user_id        WordPress user ID.
+	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @return list<array<string, mixed>>
+	 */
+	private function tools_for_user( int $user_id, ?array $granted_scopes = null ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+
+		return array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
+	}
+
+	/**
+	 * Return one deterministic page from a complete tools/list descriptor set.
+	 *
+	 * @param list<array<string, mixed>> $tools  Complete tool descriptors.
+	 * @param string                     $cursor Opaque cursor from a previous page.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 */
+	private function tools_list_page( array $tools, string $cursor = '' ): array {
 		$offset = $this->tools_cursor_offset( $cursor );
 		$page   = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
 		$result = array( 'tools' => $page );
@@ -581,15 +673,20 @@ final class McpController {
 		return array(
 			'readOnlyHint'    => $module->is_read_only(),
 			'destructiveHint' => in_array( $risk, array( 'destructive', 'system' ), true ),
-			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save' ), true ),
+			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save', 'memory.bootstrap' ), true ),
 			'openWorldHint'   => in_array(
 				$module->id(),
 				array(
 					'content.create_item',
 					'content.update_item',
+					'content_media.search_cc0_images',
+					'content_media.apply_image',
 					'comments.create_item',
 					'comments.update_item',
 					'comments.bulk_update',
+					'media.upload_item',
+					'media.upload_image_data',
+					'plugin.incident.report',
 					'wp_abilities.run',
 				),
 				true
@@ -611,7 +708,12 @@ final class McpController {
 			),
 			'instructions'    => $this->mcp_instructions(),
 			'capabilities'    => array(
-				'tools' => new \stdClass(),
+				'tools'     => array(
+					'listChanged' => true,
+				),
+				'resources' => array(
+					'listChanged' => true,
+				),
 			),
 		);
 	}
@@ -624,12 +726,24 @@ final class McpController {
 			' ',
 			array(
 				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
+				'For ambiguous or multi-step work, call workflow_route_request first; when the workflow spans multiple tools, call workflow_session_start and pass workflow_session_id through workflow calls.',
+				'Clients that support MCP resources can call resources/list and resources/read for compact Aculect context such as capability directory, site summary, content model, workflow guides, brand profile, and approved memory.',
 				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
+				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
-				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
+				'For "do all" style collection work such as thin-page cleanup, create a workflow_loop after discovery, then use workflow_loop_run_next or workflow_loop_run_batch to process bounded items and report completion without resending the full item list.',
+				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. If memory_list is empty or missing obvious site guidance, call memory_bootstrap or memory_save with no key/value to prepare initial memory for admin review. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
+				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
+				'When repeated MCP errors or poor tool choices happen, call mcp_learning_inspect_activity and submit a bounded learning suggestion with intelligence_feedback_submit when the owner should review durable guidance.',
+				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
+				'For Appearance > Editor, full-site editing, template, template part, navigation, global style, or theme design-token work, call site_editor_get_context first, then inspect templates or template parts as needed. Site Editor work is admin-level only; do not request filesystem or theme-file changes.',
+				'For WordPress core, plugin, or theme admin settings work, call admin_menu_get_context or admin_menu_get_navigation_target first. Use registered settings metadata for discovery only; do not read or write arbitrary wp_options.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
+				'For image workflows, use content_media_apply_image to import an existing attachment, public URL, externally generated image URL, direct image data, or Openverse CC0 result, then set featured media or insert core image/gallery/cover/media-text blocks without hand-stitching raw media and content calls.',
+				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
 				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
 				'If intelligence is incomplete, stale, or causes poor results, call intelligence_feedback_submit with a bounded learning suggestion for admin review.',
 				'Never use raw Custom HTML blocks or core/html; use registered WordPress blocks and patterns, and validate block content before write operations.',
@@ -645,10 +759,20 @@ final class McpController {
 	 * @return array<string, mixed>
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
-		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
-			return $this->is_collection_module( $module )
-				? $this->collection_output_schema()
-				: $this->operational_output_schema();
+		if ( 'search' === $module->id() ) {
+			return $this->canonical_search_output_schema();
+		}
+
+		if ( 'fetch' === $module->id() ) {
+			return $this->canonical_fetch_output_schema();
+		}
+
+		if ( 'workflow_guides.list' === $module->id() ) {
+			return $this->workflow_guides_list_output_schema();
+		}
+
+		if ( 'workflow_guides.get' === $module->id() ) {
+			return $this->workflow_guides_get_output_schema();
 		}
 
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
@@ -667,6 +791,47 @@ final class McpController {
 			);
 		}
 
+		if ( 'plugin.incident.report' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'status'            => array(
+						'type'        => 'string',
+						'description' => 'stored_ready_for_client_submission when a local incident and public GitHub issue draft were prepared, or rejected when required fields are missing.',
+					),
+					'message'           => array( 'type' => 'string' ),
+					'error'             => array( 'type' => 'string' ),
+					'report_id'         => array( 'type' => 'string' ),
+					'correlation_id'    => array( 'type' => 'string' ),
+					'repository'        => array( 'type' => 'string' ),
+					'title'             => array( 'type' => 'string' ),
+					'body'              => array( 'type' => 'string' ),
+					'issue_url'         => array( 'type' => 'string' ),
+					'can_create_direct' => array( 'type' => 'boolean' ),
+					'incident'          => array( 'type' => 'object' ),
+					'next_actions'      => array( 'type' => 'array' ),
+				),
+				array( 'status' )
+			);
+		}
+
+		if ( 'plugin.incident.list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'    => array( 'type' => 'array' ),
+					'total'    => array( 'type' => 'integer' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+					'summary'  => array( 'type' => 'object' ),
+				)
+			);
+		}
+
+		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
+			return $this->is_collection_module( $module )
+				? $this->collection_output_schema()
+				: $this->operational_output_schema();
+		}
+
 		return $this->object_output_schema(
 			array(
 				'type'                 => array( 'type' => 'string' ),
@@ -675,6 +840,7 @@ final class McpController {
 				'operations'           => array( 'type' => 'object' ),
 				'regular_abilities'    => array( 'type' => 'array' ),
 				'workflows'            => array( 'type' => 'object' ),
+				'workflow_guides'      => array( 'type' => 'object' ),
 				'intelligence'         => array( 'type' => 'object' ),
 				'blocked_capabilities' => array( 'type' => 'object' ),
 				'example_prompts'      => array( 'type' => 'array' ),
@@ -697,11 +863,13 @@ final class McpController {
 			$module->id(),
 			array(
 				'site.list_post_types',
+				'workflow_guides.list',
 				'content.list_items',
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
 				'content_find.internal_links',
+				'content_audit.internal_links',
 				'memory.list',
 				'taxonomy.list_taxonomies',
 				'taxonomy.list_terms',
@@ -710,6 +878,105 @@ final class McpController {
 				'wp_abilities.discover',
 			),
 			true
+		);
+	}
+
+	/**
+	 * Return the canonical MCP search output schema used by retrieval clients.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_search_output_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'results' => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'properties'           => array(
+							'id'    => array( 'type' => 'string' ),
+							'title' => array( 'type' => 'string' ),
+							'url'   => array( 'type' => 'string' ),
+						),
+						'required'             => array( 'id', 'title', 'url' ),
+						'additionalProperties' => false,
+					),
+				),
+				'error'   => array( 'type' => 'string' ),
+				'message' => array( 'type' => 'string' ),
+			),
+			'required'             => array( 'results' ),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Return workflow guide list output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_list_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'items'        => array( 'type' => 'array' ),
+				'total'        => array( 'type' => 'integer' ),
+				'context'      => array( 'type' => 'string' ),
+				'bounded'      => array( 'type' => 'boolean' ),
+				'max_guides'   => array( 'type' => 'integer' ),
+				'next_actions' => array( 'type' => 'array' ),
+				'error'        => array( 'type' => 'string' ),
+				'message'      => array( 'type' => 'string' ),
+			)
+		);
+	}
+
+	/**
+	 * Return the canonical MCP fetch output schema used by retrieval clients.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function canonical_fetch_output_schema(): array {
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'id'       => array( 'type' => 'string' ),
+				'title'    => array( 'type' => 'string' ),
+				'text'     => array( 'type' => 'string' ),
+				'url'      => array( 'type' => 'string' ),
+				'metadata' => array( 'type' => 'object' ),
+				'status'   => array( 'type' => 'string' ),
+				'error'    => array( 'type' => 'string' ),
+				'message'  => array( 'type' => 'string' ),
+			),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Return workflow guide lookup output schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function workflow_guides_get_output_schema(): array {
+		return $this->object_output_schema(
+			array(
+				'id'                          => array( 'type' => 'string' ),
+				'title'                       => array( 'type' => 'string' ),
+				'summary'                     => array( 'type' => 'string' ),
+				'task_category'               => array( 'type' => 'string' ),
+				'risk_level'                  => array( 'type' => 'string' ),
+				'estimated_response_size'     => array( 'type' => 'string' ),
+				'available'                   => array( 'type' => 'boolean' ),
+				'required_operations'         => array( 'type' => 'array' ),
+				'optional_operations'         => array( 'type' => 'array' ),
+				'missing_required_operations' => array( 'type' => 'array' ),
+				'steps'                       => array( 'type' => 'array' ),
+				'next_actions'                => array( 'type' => 'array' ),
+				'status'                      => array( 'type' => 'string' ),
+				'error'                       => array( 'type' => 'string' ),
+				'message'                     => array( 'type' => 'string' ),
+			)
 		);
 	}
 
@@ -749,28 +1016,60 @@ final class McpController {
 	private function operational_output_schema(): array {
 		return $this->object_output_schema(
 			array(
-				'status'                => array( 'type' => 'string' ),
-				'error'                 => array( 'type' => 'string' ),
-				'message'               => array( 'type' => 'string' ),
-				'workflow'              => array( 'type' => 'string' ),
-				'post_id'               => array( 'type' => 'integer' ),
-				'post_type'             => array( 'type' => 'string' ),
-				'intelligence_context'  => array( 'type' => 'object' ),
-				'edit_url'              => array( 'type' => 'string' ),
-				'permalink'             => array( 'type' => 'string' ),
-				'fields'                => array( 'type' => 'object' ),
-				'items'                 => array( 'type' => 'array' ),
-				'job'                   => array( 'type' => 'object' ),
-				'index'                 => array( 'type' => 'object' ),
-				'changes'               => array( 'type' => 'array' ),
-				'warnings'              => array( 'type' => 'array' ),
-				'next_actions'          => array( 'type' => 'array' ),
-				'block_validation'      => array( 'type' => 'object' ),
-				'seo'                   => array( 'type' => 'object' ),
-				'dry_run'               => array( 'type' => 'boolean' ),
-				'confirmation_required' => array( 'type' => 'boolean' ),
-				'confirmation_token'    => array( 'type' => 'string' ),
-				'replayed'              => array(
+				'status'                   => array( 'type' => 'string' ),
+				'error'                    => array( 'type' => 'string' ),
+				'message'                  => array( 'type' => 'string' ),
+				'action'                   => array( 'type' => 'string' ),
+				'risk_level'               => array( 'type' => 'string' ),
+				'target'                   => array( 'type' => 'object' ),
+				'workflow'                 => array( 'type' => 'string' ),
+				'workflow_session'         => array( 'type' => 'object' ),
+				'workflow_loop'            => array( 'type' => 'object' ),
+				'workflow_session_plan'    => array( 'type' => 'object' ),
+				'workflow_guide_id'        => array( 'type' => 'string' ),
+				'workflow_guide'           => array( 'type' => 'object' ),
+				'intent'                   => array( 'type' => 'string' ),
+				'content_mode'             => array( 'type' => 'string' ),
+				'confidence'               => array( 'type' => 'string' ),
+				'next_tool'                => array( 'type' => 'string' ),
+				'next_tool_arguments'      => array( 'type' => 'object' ),
+				'recommended_sequence'     => array( 'type' => 'array' ),
+				'required_operations'      => array( 'type' => 'array' ),
+				'blocked_operations'       => array( 'type' => 'array' ),
+				'post_id'                  => array( 'type' => 'integer' ),
+				'post_type'                => array( 'type' => 'string' ),
+				'intelligence_context'     => array( 'type' => 'object' ),
+				'edit_url'                 => array( 'type' => 'string' ),
+				'permalink'                => array( 'type' => 'string' ),
+				'fields'                   => array( 'type' => 'object' ),
+				'items'                    => array( 'type' => 'array' ),
+				'items_to_process'         => array( 'type' => 'array' ),
+				'active_item'              => array( 'type' => 'object' ),
+				'total'                    => array( 'type' => 'integer' ),
+				'filters'                  => array( 'type' => 'object' ),
+				'insights'                 => array( 'type' => 'array' ),
+				'job'                      => array( 'type' => 'object' ),
+				'index'                    => array( 'type' => 'object' ),
+				'summary'                  => array( 'type' => 'object' ),
+				'findings'                 => array( 'type' => 'array' ),
+				'operation_entries'        => array( 'type' => 'object' ),
+				'changes'                  => array( 'type' => 'array' ),
+				'skipped'                  => array( 'type' => 'array' ),
+				'warnings'                 => array( 'type' => 'array' ),
+				'next_actions'             => array( 'type' => 'array' ),
+				'review_status'            => array( 'type' => 'object' ),
+				'block_validation'         => array( 'type' => 'object' ),
+				'seo'                      => array( 'type' => 'object' ),
+				'dry_run'                  => array( 'type' => 'boolean' ),
+				'confirmation_required'    => array( 'type' => 'boolean' ),
+				'confirmation_policy'      => array( 'type' => 'string' ),
+				'confirmation_token'       => array( 'type' => 'string' ),
+				'write_permission_enabled' => array( 'type' => 'boolean' ),
+				'access_level'             => array( 'type' => 'string' ),
+				'repository'               => array( 'type' => 'string' ),
+				'issue_url'                => array( 'type' => 'string' ),
+				'can_create_direct'        => array( 'type' => 'boolean' ),
+				'replayed'                 => array(
 					'type'        => 'boolean',
 					'description' => 'True when this result was replayed from a previous successful call with the same idempotency_key or confirmation_token; the write did not execute again.',
 				),
@@ -910,9 +1209,10 @@ final class McpController {
 	 * @param array<string, mixed> $auth     OAuth context.
 	 */
 	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth ): bool {
-		$enabled = $auth['write_permission_enabled'] ?? false;
+		$enabled = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
+			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
 
-		return ! $registry->is_read_only( $tool ) && in_array( $enabled, array( true, 1, '1' ), true );
+		return ! $registry->is_read_only( $tool ) && $enabled;
 	}
 
 	/**
@@ -923,7 +1223,29 @@ final class McpController {
 	 */
 	private function write_permission_preview_payload( array $result ): array {
 		$result['confirmation_required']    = false;
+		$result['confirmation_policy']      = 'trusted_connection_direct_write';
 		$result['write_permission_enabled'] = true;
+		unset(
+			$result['confirmation_token'],
+			$result['confirmation_expires_in'],
+			$result['confirmation_instructions']
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Mark a successful write as executed by an admin-trusted connection.
+	 *
+	 * @param array<string, mixed> $result Tool result.
+	 * @param array<string, mixed> $auth   OAuth token context.
+	 * @return array<string, mixed>
+	 */
+	private function trusted_write_result_payload( array $result, array $auth ): array {
+		$result['confirmation_required']    = false;
+		$result['confirmation_policy']      = 'trusted_connection_direct_write';
+		$result['write_permission_enabled'] = true;
+		$result['access_level']             = ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) );
 		unset(
 			$result['confirmation_token'],
 			$result['confirmation_expires_in'],
@@ -954,21 +1276,35 @@ final class McpController {
 			return 'unknown_tool';
 		}
 
-		if ( ! $registry->is_enabled( $tool ) ) {
+		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
+		$role_policy       = new RoleAbilitiesPolicy();
+		$availability      = new McpToolAvailability();
+
+		if ( $is_policy_managed && ! $registry->is_enabled( $tool ) ) {
 			return 'tool_disabled';
 		}
 
-		if ( ! ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $tool, $user_id, $registry ) ) {
+		if ( $is_policy_managed && ! $role_policy->is_allowed_for_user( $tool, $user_id, $registry ) ) {
 			return 'tool_forbidden_for_role';
 		}
 
+		if ( ! $availability->capabilities_available( $tool ) ) {
+			return 'tool_forbidden_by_capability';
+		}
+
 		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-			if ( ! $registry->is_enabled( $dependency_id ) ) {
+			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
+
+			if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
 				return 'tool_disabled';
 			}
 
-			if ( ! ( new RoleAbilitiesPolicy() )->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
+			if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
 				return 'tool_forbidden_for_role';
+			}
+
+			if ( ! $availability->capabilities_available( $dependency_id ) ) {
+				return 'tool_forbidden_by_capability';
 			}
 		}
 

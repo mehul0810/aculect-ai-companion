@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Brand\BrandProfile;
+use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -40,20 +41,20 @@ final class SettingsPageTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new FakeSettingsPageWpdb();
 
-		$GLOBALS['wpdb']                                      = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['wpdb']                                       = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'production';
-		$GLOBALS['aculect_ai_companion_test_admin_pages']     = array(
+		$GLOBALS['aculect_ai_companion_test_admin_pages']      = array(
 			'menu'    => array(),
 			'options' => array(),
 			'submenu' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_hooks']           = array(
+		$GLOBALS['aculect_ai_companion_test_hooks']            = array(
 			'actions' => array(),
 			'filters' => array(),
 		);
-		$GLOBALS['aculect_ai_companion_test_users']           = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 5;
+		$GLOBALS['aculect_ai_companion_test_users']            = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 5;
 		$_GET = array(
 			'page' => 'aculect-ai-companion',
 		);
@@ -120,6 +121,18 @@ final class SettingsPageTest extends TestCase {
 			$payload['brandMarkUrl']
 		);
 		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/cursor.svg',
+			$payload['connectorLogoUrls']['cursor']
+		);
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/gemini.svg',
+			$payload['connectorLogoUrls']['gemini']
+		);
+		self::assertSame(
+			'https://example.com/wp-content/plugins/aculect-ai-companion/assets/images/connectors/mcp-client.svg',
+			$payload['connectorLogoUrls']['mcp']
+		);
+		self::assertSame(
 			'https://wordpress.org/plugins/aculect-ai-companion/',
 			$payload['pluginMetadata']['documentationUrl']
 		);
@@ -127,19 +140,47 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'nonce-wp_rest', $payload['settingsRestNonce'] );
 		self::assertTrue( $payload['isConnected'] );
 		self::assertSame( 2, $payload['activeSessionCount'] );
+		self::assertSame( 'interactive_oauth', $payload['connectionRequests']['approvalMode'] );
+		self::assertFalse( $payload['connectionRequests']['approvalModeEnabled'] );
+		self::assertSame( 0, $payload['connectionRequests']['pendingCount'] );
+		self::assertSame( array(), $payload['connectionRequests']['items'] );
 		self::assertSame( array(), $payload['sessions'] );
 		self::assertSame( array(), $payload['revokedSessions'] );
+		self::assertFalse( $payload['roleAbilities']['enabled'] );
 		self::assertSame( array(), $payload['roleAbilityPolicy'] );
 		self::assertSame( array(), $payload['brandProfile'] );
 		self::assertSame( 0, $payload['learningSuggestions']['summary']['total'] );
+		self::assertSame( 0, $payload['memoryRecords']['summary']['total'] );
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertIsArray( $providers['claude'] );
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );
+		self::assertArrayHasKey( 'wizard', $providers['claude'] );
+		self::assertSame( 'Open Claude', $providers['claude']['wizard']['steps'][0]['title'] );
 		self::assertArrayHasKey( 'codex', $providers );
-		self::assertStringContainsString( 'scopes = ["content:read", "content:draft"]', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'https://developers.openai.com/codex/mcp', $providers['codex']['primaryActionUrl'] );
+		self::assertStringContainsString( 'Streamable HTTP', $providers['codex']['setupSections'][0]['description'] );
+		self::assertSame( 'aculect_ai_companion', $providers['codex']['wizard']['steps'][1]['copyFields'][0]['value'] );
+		self::assertSame( 'MCP Server Name', $providers['codex']['setupSections'][0]['copyFields'][0]['label'] );
+		self::assertSame( 'aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertSame( 'MCP URL', $providers['codex']['setupSections'][0]['copyFields'][1]['label'] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $providers['codex']['setupSections'][0]['copyFields'][1]['value'] );
+		self::assertStringContainsString( 'codex mcp login aculect_ai_companion', $providers['codex']['setupSections'][0]['copyFields'][2]['value'] );
+		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertArrayHasKey( 'cursor', $providers );
+		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertSame( 'Add MCP server', $providers['cursor']['wizard']['steps'][1]['title'] );
+		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
+		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
+		self::assertArrayHasKey( 'gemini', $providers );
+		self::assertStringContainsString( 'CLI add command', $providers['gemini']['wizard']['steps'][1]['copyFields'][0]['label'] );
+		self::assertStringContainsString( 'settings.json', $providers['gemini']['wizard']['steps'][1]['copyFields'][1]['label'] );
+		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][1]['value'] );
+		self::assertStringContainsString( 'Gemini web does not currently provide', $providers['gemini']['wizard']['steps'][0]['description'] );
+		self::assertStringContainsString( 'gemini.google.com', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(
@@ -167,12 +208,28 @@ final class SettingsPageTest extends TestCase {
 			$payload['actions']['exportMcpToolManifestNonce']
 		);
 		self::assertSame(
+			'aculect_ai_companion_run_content_index_sweep',
+			$payload['actions']['runContentIndexSweepAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_run_content_index_sweep',
+			$payload['actions']['runContentIndexSweepNonce']
+		);
+		self::assertSame(
 			'aculect_ai_companion_review_learning_suggestion',
 			$payload['actions']['reviewLearningSuggestionAction']
 		);
 		self::assertSame(
 			'nonce-aculect_ai_companion_review_learning_suggestion',
 			$payload['actions']['reviewLearningSuggestionNonce']
+		);
+		self::assertSame(
+			'aculect_ai_companion_review_memory_item',
+			$payload['actions']['reviewMemoryAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_review_memory_item',
+			$payload['actions']['reviewMemoryNonce']
 		);
 		self::assertFalse( $this->wpdb->has_query_fragment( 'ORDER BY access_tokens.created_at DESC' ) );
 		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
@@ -189,6 +246,43 @@ final class SettingsPageTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.revoked = 0' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.expires_at >= %s' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
+	}
+
+	public function test_connections_payload_includes_effective_ability_details(): void {
+		$_GET['tab'] = 'connections';
+		$GLOBALS['aculect_ai_companion_test_users'][7] = (object) array(
+			'ID'           => 7,
+			'roles'        => array( 'administrator' ),
+			'display_name' => 'Admin User',
+			'user_login'   => 'admin',
+		);
+		$this->wpdb->active_session_rows                = array(
+			array(
+				'id'                       => '5',
+				'client_id'                => 'client-1',
+				'user_id'                  => '7',
+				'scopes'                   => '["content:read"]',
+				'resource'                 => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+				'access_token_expires_at'  => '2026-06-01 01:00:00',
+				'connection_expires_at'    => '2026-07-01 00:00:00',
+				'created_at'               => '2026-06-01 00:00:00',
+				'last_used_at'             => '',
+				'write_permission_enabled' => '0',
+				'access_level'             => 'read',
+				'client_name'              => 'ChatGPT',
+				'provider'                 => 'chatgpt',
+			),
+		);
+
+		$payload = $this->settings_payload();
+		$session = $payload['sessions'][0];
+		$ids     = array_column( $session['effective_abilities'], 'id' );
+
+		self::assertContains( 'content.get_item', $ids );
+		self::assertNotContains( 'content.update_item', $ids );
+		self::assertTrue( $session['effective_ability_summary']['scope_aware'] );
+		self::assertSame( count( $session['effective_abilities'] ), $session['effective_ability_summary']['available_count'] );
+		self::assertArrayHasKey( 'effective_write_ability_count', $session );
 	}
 
 	public function test_activity_payload_loads_activity_rows_only_for_activity_tab(): void {
@@ -244,8 +338,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'changelog', $changelog['payloadTab'] );
 		self::assertContains( 'changelog', $changelog['hydratedTabs'] );
 		self::assertSame( array(), $changelog['brandProfile'] );
-		self::assertArrayHasKey( '0.5.3', $changelog['changelog'] );
-		self::assertSame( '2026-06-12', $changelog['changelog']['0.5.3']['date'] );
+		self::assertArrayHasKey( '0.6.0', $changelog['changelog'] );
+		self::assertSame( '2026-06-16', $changelog['changelog']['0.6.0']['date'] );
 	}
 
 	public function test_learning_payload_loads_suggestions_only_for_learning_tab(): void {
@@ -264,6 +358,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertContains( 'learning', $learning['hydratedTabs'] );
 		self::assertSame( 1, $learning['learningSuggestions']['summary']['total'] );
 		self::assertSame( 'Missing site guidance.', $learning['learningSuggestions']['items'][0]['issue'] );
+		self::assertSame( 0, $learning['memoryRecords']['summary']['total'] );
 
 		$_GET['tab'] = 'overview';
 		$overview    = $this->settings_payload();
@@ -271,6 +366,8 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'overview', $overview['payloadTab'] );
 		self::assertSame( 0, $overview['learningSuggestions']['summary']['total'] );
 		self::assertSame( array(), $overview['learningSuggestions']['items'] );
+		self::assertSame( 0, $overview['memoryRecords']['summary']['total'] );
+		self::assertSame( array(), $overview['memoryRecords']['items'] );
 	}
 
 	public function test_rest_settings_payload_loads_requested_tab_without_global_get_tab(): void {
@@ -309,7 +406,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'connections';
+		$_GET['tab'] = 'connections';
 
 		$payload = $this->settings_payload();
 
@@ -325,7 +422,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_abilities_payload_reports_sample_connection_count_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'abilities';
+		$_GET['tab'] = 'abilities';
 
 		$payload = $this->settings_payload();
 
@@ -336,10 +433,30 @@ final class SettingsPageTest extends TestCase {
 		self::assertNotEmpty( $payload['abilities'] );
 	}
 
+	public function test_abilities_payload_hides_role_policy_editor_until_enabled(): void {
+		$_GET['tab'] = 'abilities';
+
+		$default_payload = $this->settings_payload();
+
+		self::assertFalse( $default_payload['roleAbilities']['enabled'] );
+		self::assertFalse( $default_payload['roleAbilityPolicy']['enabled'] );
+		self::assertSame( array(), $default_payload['roleAbilityPolicy']['roles'] );
+
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+
+		$enabled_payload = $this->settings_payload();
+		$roles           = array_column( $enabled_payload['roleAbilityPolicy']['roles'], null, 'id' );
+
+		self::assertTrue( $enabled_payload['roleAbilities']['enabled'] );
+		self::assertTrue( $enabled_payload['roleAbilityPolicy']['enabled'] );
+		self::assertArrayNotHasKey( 'administrator', $roles );
+		self::assertArrayHasKey( 'editor', $roles );
+	}
+
 	public function test_local_activity_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'activity';
+		$_GET['tab'] = 'activity';
 
 		$payload = $this->settings_payload();
 
@@ -354,7 +471,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_logs_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'logs';
+		$_GET['tab'] = 'logs';
 
 		$payload = $this->settings_payload();
 
@@ -367,7 +484,7 @@ final class SettingsPageTest extends TestCase {
 
 	public function test_local_learning_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
-		$_GET['tab']                                           = 'learning';
+		$_GET['tab'] = 'learning';
 
 		$payload = $this->settings_payload();
 
@@ -380,7 +497,7 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_diagnostics_payload_applies_sample_checks_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
-		$_GET['tab']                                           = 'diagnostics';
+		$_GET['tab'] = 'diagnostics';
 
 		$payload = $this->settings_payload();
 
@@ -424,6 +541,20 @@ final class FakeSettingsPageWpdb {
 	public string $prefix = 'wp_';
 
 	public bool $return_empty_results = false;
+
+	/**
+	 * Active OAuth session rows returned by get_results().
+	 *
+	 * @var array<int, array<string, mixed>>
+	 */
+	public array $active_session_rows = array();
+
+	/**
+	 * Revoked OAuth session rows returned by get_results().
+	 *
+	 * @var array<int, array<string, mixed>>
+	 */
+	public array $revoked_session_rows = array();
 
 	/**
 	 * @var string[]
@@ -476,6 +607,17 @@ final class FakeSettingsPageWpdb {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Record a write query.
+	 *
+	 * @param string $query SQL query.
+	 */
+	public function query( string $query ): int|false {
+		$this->queries[] = $query;
+
+		return 1;
 	}
 
 	/**
@@ -566,6 +708,16 @@ final class FakeSettingsPageWpdb {
 					'context'        => '{}',
 				),
 			);
+		}
+
+		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_access_tokens' ) ) {
+			if ( $this->return_empty_results ) {
+				return array();
+			}
+
+			return str_contains( $query, 'WHERE access_tokens.revoked = 1' )
+				? $this->revoked_session_rows
+				: $this->active_session_rows;
 		}
 
 		return array();

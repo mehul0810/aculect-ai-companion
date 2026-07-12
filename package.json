@@ -1,6 +1,6 @@
 {
   "name": "aculect-ai-companion",
-  "version": "0.5.3",
+  "version": "0.6.1",
   "private": true,
   "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {
@@ -8,6 +8,8 @@
     "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",
     "lint:css": "wp-scripts lint-style",
+    "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
+    "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
     "test:js": "node --test tests/js/*.test.mjs",
     "format": "wp-scripts format"
   },
@@ -16,6 +18,7 @@
     "npm": ">=11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@wordpress/components": "^33.1.0",
     "@wordpress/dataviews": "^14.3.0",
     "@wordpress/element": "^6.46.0",

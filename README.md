@@ -32,10 +32,13 @@ Open `AI Companion > Connect` in WordPress and follow the setup flow:
 ## Features
 
 - Create, edit, and publish posts and pages.
+- Route multi-step MCP requests through guided content, SEO, site audit, and troubleshooting workflows.
 - Manage categories, tags, and content groups.
 - Moderate and reply to comments.
 - Upload and list media.
 - View site settings, active plugins, and themes.
+- Inspect Site Editor and Admin Menu intelligence before planning admin-level theme or settings work.
+- Read compact MCP resources for capability, site, Site Editor, admin menu, content, brand, workflow, and memory context.
 - Connect and disconnect AI assistants.
 
 ## Supported AI Tools
@@ -47,6 +50,10 @@ Aculect AI Companion currently includes setup guidance for:
 - Claude app, Claude Desktop, Claude Cowork, and Claude mobile.
 - Claude Code.
 - Claude API integrations that support remote connectors.
+- Codex custom MCP and config.toml setups.
+- Cursor Agent through global or project mcp.json.
+- Gemini CLI and Gemini Code Assist agent mode.
+- Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
@@ -101,6 +108,7 @@ Admins can enable or disable these abilities from `AI Companion > Abilities` aft
 ## Project Docs
 
 - [Contributing guidelines](CONTRIBUTING.md)
+- [Release-candidate regression checklist](docs/release-candidate-regression-checklist.md)
 - [Security policy](SECURITY.md)
 
 ## Developer Notes
@@ -114,6 +122,12 @@ Production ZIP files include built assets and Composer dependencies. Development
 ### MCP Ability Architecture
 
 First-party MCP tools are registered as internal ability modules. Each module owns its metadata, JSON input schema, required OAuth scope, read-only flag, and execution callback. `AbilitiesRegistry` maps internal dotted IDs to client-safe public tool names and keeps legacy aliases working.
+
+`workflow_route_request` is the preferred first call for ambiguous or multi-step work. It classifies the user request, returns the next tool with arguments, points to a workflow guide, and reports operation blockers. `workflow_session_start`, `workflow_session_get`, and `workflow_session_update` provide compact server-side workflow state so clients do not need saved chat memory to resume long content or site-management work. `workflow_loop_create`, `workflow_loop_run_next`, and `workflow_loop_run_batch` add bounded item-aware progress for "do all" style collection workflows such as thin-page cleanup.
+
+`content_media_apply_image` handles common image workflows end to end: use an existing media attachment, sideload a public image URL, import an externally generated image URL, accept base64/data URL image payloads, or search Openverse CC0 candidates before importing. The workflow can set the resolved image as featured media or insert safe core image, gallery, cover, or media/text blocks into existing content while preserving the existing media upload guardrails and content validation.
+
+Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
 This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
 

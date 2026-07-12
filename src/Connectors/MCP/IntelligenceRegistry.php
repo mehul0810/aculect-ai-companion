@@ -92,6 +92,12 @@ final class IntelligenceRegistry {
 		if ( 'intelligence.feedback.submit' === $internal_id ) {
 			return ( new LearningSuggestionRepository() )->submit( $args, $source );
 		}
+		if ( 'plugin.incident.report' === $internal_id ) {
+			return ( new PluginIncidentReporter() )->report( $args, $source );
+		}
+		if ( 'plugin.incident.list' === $internal_id ) {
+			return ( new PluginIncidentReporter() )->list_reports( $args );
+		}
 
 		$module = $this->module( $internal_id );
 
@@ -157,6 +163,8 @@ final class IntelligenceRegistry {
 			'patterns_get_info'       => 'intelligence.patterns.get_info',
 			'content.validate_blocks' => 'intelligence.content.validate_blocks',
 			'content_validate_blocks' => 'intelligence.content.validate_blocks',
+			'plugin.issue.report'     => 'plugin.incident.report',
+			'plugin_issue_report'     => 'plugin.incident.report',
 		);
 
 		return $aliases[ $id ] ?? $id;
@@ -226,17 +234,18 @@ final class IntelligenceRegistry {
 							'description' => 'Optional block namespace such as core, woocommerce, or a plugin namespace.',
 						),
 						'category'  => array( 'type' => 'string' ),
+						'purpose'   => array(
+							'type'        => 'string',
+							'enum'        => array( 'text', 'media', 'layout', 'navigation', 'data', 'embed', 'design', 'widget' ),
+							'description' => 'Optional generation family filter. Use layout for columns, grids, cards, covers, grouped sections, and visual page composition.',
+						),
 						'inserter'  => array(
 							'type'        => 'boolean',
 							'description' => 'Filter by whether the block is intended to appear in inserter-style selection flows.',
 						),
-						'page'      => array( 'type' => 'integer' ),
-						'per_page'  => array( 'type' => 'integer' ),
-						'context'   => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for browsing or full to include attribute/support keys. Defaults to compact.',
-						),
+						'page'      => $this->page_schema(),
+						'per_page'  => $this->per_page_schema( 100, 'Blocks per page. Defaults to 50.' ),
+						'context'   => $this->context_schema( 'Use compact for browsing or full to include attribute/support keys. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => $block_knowledge->list_blocks( $args )
@@ -272,13 +281,9 @@ final class IntelligenceRegistry {
 							'type'        => 'boolean',
 							'description' => 'Filter by whether the pattern is intended to appear in inserter-style selection flows.',
 						),
-						'page'       => array( 'type' => 'integer' ),
-						'per_page'   => array( 'type' => 'integer' ),
-						'context'    => array(
-							'type'        => 'string',
-							'enum'        => array( 'compact', 'full' ),
-							'description' => 'Use compact for browsing or full to include bounded content previews. Defaults to compact.',
-						),
+						'page'       => $this->page_schema(),
+						'per_page'   => $this->per_page_schema( 100, 'Patterns per page. Defaults to 50.' ),
+						'context'    => $this->context_schema( 'Use compact for browsing or full to include bounded content previews. Defaults to compact.' ),
 					)
 				),
 				static fn ( array $args ): array => $block_knowledge->list_patterns( $args )
@@ -308,9 +313,35 @@ final class IntelligenceRegistry {
 				'Validate serialized block content before writing it and reject Custom HTML block usage.',
 				$this->object_schema(
 					array(
-						'content' => array(
+						'content'                  => array(
 							'type'        => 'string',
 							'description' => 'Serialized WordPress block content to validate before create or update operations.',
+						),
+						'content_mode'             => array(
+							'type'        => 'string',
+							'enum'        => array( 'article', 'page', 'landing_page', 'visual_layout', 'service_page', 'product_page', 'case_study' ),
+							'description' => 'Expected content shape. Layout-oriented modes return warnings when no layout blocks are present.',
+						),
+						'layout_intent'            => array(
+							'type'        => 'string',
+							'description' => 'Expected layout direction, such as hero plus columns, grid cards, media/text, or visual page sections.',
+						),
+						'visual_reference_summary' => array(
+							'type'        => 'string',
+							'description' => 'Concise non-sensitive summary of any image/screenshot/design reference used to generate this block content.',
+						),
+						'expected_block_families'  => array(
+							'type'        => 'array',
+							'description' => 'Expected block families. Include layout when the document should use grid/columns/page-section blocks.',
+							'items'       => array(
+								'type' => 'string',
+								'enum' => array( 'text', 'media', 'layout', 'navigation', 'data', 'embed', 'design', 'widget' ),
+							),
+						),
+						'expected_blocks'          => array(
+							'type'        => 'array',
+							'description' => 'Specific block names expected in the document, such as core/columns or core/media-text.',
+							'items'       => array( 'type' => 'string' ),
 						),
 					),
 					array( 'content' )
@@ -358,6 +389,103 @@ final class IntelligenceRegistry {
 				},
 				false
 			),
+			$this->build_module(
+				'plugin.incident.report',
+				'Report Aculect Plugin Incident',
+				'Store a sanitized local incident report and prepare a public GitHub issue draft when this MCP server, plugin behavior, or an assistant workflow fails. The plugin does not need a GitHub token; use the returned issue draft or URL with your own GitHub/browser tools.',
+				$this->object_schema(
+					array(
+						'title'              => array(
+							'type'        => 'string',
+							'description' => 'Short public incident title.',
+						),
+						'summary'            => array(
+							'type'        => 'string',
+							'description' => 'Concise public summary of what went wrong. Do not include secrets, credentials, raw OAuth tokens, raw tool arguments, or private content.',
+						),
+						'correlation_id'     => array(
+							'type'        => 'string',
+							'description' => 'Optional correlation ID from a failed tool response or activity row.',
+						),
+						'client_name'        => array(
+							'type'        => 'string',
+							'description' => 'Assistant client where the issue occurred, such as ChatGPT, Claude, Codex, Gemini, or another MCP client.',
+						),
+						'workflow'           => array(
+							'type'        => 'string',
+							'description' => 'Workflow or task being attempted, such as long-form draft creation or Rank Math SEO update.',
+						),
+						'tool_name'          => array(
+							'type'        => 'string',
+							'description' => 'MCP tool involved, if known.',
+						),
+						'category'           => array(
+							'type'        => 'string',
+							'enum'        => array( 'bug', 'compatibility', 'workflow_gap', 'documentation', 'configuration', 'client_behavior', 'usability', 'enhancement' ),
+							'description' => 'Incident category. Defaults to bug.',
+						),
+						'severity'           => array(
+							'type'        => 'string',
+							'enum'        => array( 'low', 'medium', 'high', 'blocking' ),
+							'description' => 'Incident severity. Defaults to medium.',
+						),
+						'activity_id'        => array(
+							'type'        => 'integer',
+							'description' => 'Optional local Activity tab row ID related to the incident.',
+						),
+						'steps_to_reproduce' => array(
+							'type'        => 'array',
+							'description' => 'Bounded public reproduction steps.',
+							'items'       => array( 'type' => 'string' ),
+						),
+						'recovery_attempts'  => array(
+							'type'        => 'array',
+							'description' => 'Bounded non-sensitive recovery attempts the assistant already tried.',
+							'items'       => array( 'type' => 'string' ),
+						),
+						'expected_behavior'  => array( 'type' => 'string' ),
+						'actual_behavior'    => array( 'type' => 'string' ),
+						'evidence'           => array(
+							'type'        => 'string',
+							'description' => 'Optional bounded, non-sensitive evidence.',
+						),
+					),
+					array( 'title', 'summary' )
+				),
+				static function ( array $args ): array {
+					unset( $args );
+
+					return array(
+						'status'  => 'unavailable',
+						'message' => 'Plugin incident reports must be submitted through the registry executor.',
+					);
+				},
+				false
+			),
+			$this->build_module(
+				'plugin.incident.list',
+				'List Aculect Plugin Incidents',
+				'List sanitized local incident reports previously submitted by MCP clients.',
+				$this->object_schema(
+					array(
+						'status'   => array(
+							'type'        => 'string',
+							'enum'        => array( 'open', 'dismissed', 'submitted' ),
+							'description' => 'Optional status filter.',
+						),
+						'page'     => array( 'type' => 'integer' ),
+						'per_page' => array( 'type' => 'integer' ),
+					)
+				),
+				static function ( array $args ): array {
+					unset( $args );
+
+					return array(
+						'status'  => 'unavailable',
+						'message' => 'Plugin incidents must be listed through the registry executor.',
+					);
+				}
+			),
 		);
 
 		$keyed = array();
@@ -401,8 +529,9 @@ final class IntelligenceRegistry {
 	 */
 	private function object_schema( array $properties, array $required = array() ): array {
 		$schema = array(
-			'type'       => 'object',
-			'properties' => $properties,
+			'type'                 => 'object',
+			'properties'           => $properties,
+			'additionalProperties' => false,
 		);
 
 		if ( array() !== $required ) {
@@ -419,8 +548,52 @@ final class IntelligenceRegistry {
 	 */
 	private function empty_schema(): array {
 		return array(
-			'type'       => 'object',
-			'properties' => new \stdClass(),
+			'type'                 => 'object',
+			'properties'           => new \stdClass(),
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Build a bounded page-number schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function page_schema(): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'description' => 'One-based page number. Defaults to 1.',
+		);
+	}
+
+	/**
+	 * Build a bounded per-page schema.
+	 *
+	 * @param int    $maximum     Maximum value accepted by the handler.
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function per_page_schema( int $maximum, string $description ): array {
+		return array(
+			'type'        => 'integer',
+			'minimum'     => 1,
+			'maximum'     => $maximum,
+			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build a compact/full response context schema.
+	 *
+	 * @param string $description Schema description.
+	 * @return array<string, mixed>
+	 */
+	private function context_schema( string $description ): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'compact', 'full' ),
+			'description' => $description,
 		);
 	}
 }

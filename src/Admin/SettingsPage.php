@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Admin;
 
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Activity\ActivityRepository;
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
@@ -16,14 +20,13 @@ use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
-use Aculect\AICompanion\Connectors\Providers\ChatGPT\Provider as ChatGPTProvider;
-use Aculect\AICompanion\Connectors\Providers\Claude\Provider as ClaudeProvider;
-use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
-use Aculect\AICompanion\Connectors\Providers\ProviderInterface;
+use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
+use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -193,18 +196,19 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function settings_payload( ?string $requested_tab = null ): array {
-		$payload_tab          = null === $requested_tab
+		$payload_tab      = null === $requested_tab
 			? $this->current_payload_tab()
 			: $this->normalize_payload_tab( $requested_tab );
-		$access_tokens        = new AccessTokenRepository();
-		$ability_registry     = new AbilitiesRegistry();
-		$sample_data          = new LocalSampleData();
+		$access_tokens    = new AccessTokenRepository();
+		$ability_registry = new AbilitiesRegistry();
+		$sample_data      = new LocalSampleData();
+		$access_tokens->revoke_superseded_active_sessions();
 		$real_session_count   = $access_tokens->active_token_count();
 		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
 
 		$payload = array_merge(
 			$this->base_payload( $payload_tab, $active_session_count ),
-			$this->connection_payload( $payload_tab, $access_tokens ),
+			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
 			array(
@@ -237,15 +241,18 @@ final class SettingsPage {
 			'brandMarkUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-mark.svg'
 			),
+			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
 			'accessPaused'       => AccessLockdown::is_paused(),
 			'currentUserId'      => get_current_user_id(),
 			'mcpUrl'             => Helpers::mcp_resource(),
+			'connectionRequests' => $this->connection_requests(),
 			'providers'          => $this->providers(),
 			'status'             => $this->status(),
 			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
+			'roleAbilities'      => $this->role_abilities_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
 		);
 	}
@@ -255,9 +262,10 @@ final class SettingsPage {
 	 *
 	 * @param string                $payload_tab   Normalized payload tab.
 	 * @param AccessTokenRepository $access_tokens Access token repository.
+	 * @param AbilitiesRegistry     $registry      Ability registry.
 	 * @return array<string, mixed>
 	 */
-	private function connection_payload( string $payload_tab, AccessTokenRepository $access_tokens ): array {
+	private function connection_payload( string $payload_tab, AccessTokenRepository $access_tokens, AbilitiesRegistry $registry ): array {
 		if ( 'connections' !== $payload_tab ) {
 			return array(
 				'sessions'        => array(),
@@ -266,8 +274,65 @@ final class SettingsPage {
 		}
 
 		return array(
-			'sessions'        => $access_tokens->list_active_sessions(),
-			'revokedSessions' => $access_tokens->list_revoked_sessions(),
+			'sessions'        => $this->connection_sessions_with_effective_abilities( $access_tokens->list_active_sessions(), $registry ),
+			'revokedSessions' => $this->connection_sessions_with_effective_abilities( $access_tokens->list_revoked_sessions(), $registry ),
+		);
+	}
+
+	/**
+	 * Add effective MCP ability details to admin connection rows.
+	 *
+	 * @param array<int, array<string, mixed>> $sessions Connection sessions.
+	 * @param AbilitiesRegistry                $registry Ability registry.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function connection_sessions_with_effective_abilities( array $sessions, AbilitiesRegistry $registry ): array {
+		if ( array() === $sessions ) {
+			return $sessions;
+		}
+
+		$availability = new McpToolAvailability();
+
+		return array_map(
+			function ( array $session ) use ( $availability, $registry ): array {
+				$user_id = absint( $session['user_id'] ?? 0 );
+				$scopes  = array_values( array_map( 'strval', (array) ( $session['scopes'] ?? array() ) ) );
+				$modules = $availability->ability_modules_for_user( $user_id, $registry, $scopes );
+				$policy  = $availability->ability_policy_for_user( $user_id, $registry, $scopes );
+				$writes  = array_filter(
+					$modules,
+					static fn( AbilityModuleInterface $module ): bool => ! $module->is_read_only()
+				);
+
+				$session['effective_abilities']           = array_values(
+					array_map(
+						fn( AbilityModuleInterface $module ): array => array(
+							'id'          => $module->id(),
+							'toolName'    => $registry->tool_name( $module->id() ),
+							'title'       => $module->title(),
+							'description' => $module->description(),
+							'scopes'      => $module->required_scopes(),
+							'readOnly'    => $module->is_read_only(),
+						),
+						$modules
+					)
+				);
+				$session['effective_write_ability_count'] = count( $writes );
+				$session['effective_ability_summary']     = array(
+					'available_count'          => count( $modules ),
+					'write_count'              => count( $writes ),
+					'blocked_by_global_count'  => count( (array) ( $policy['blocked_by_global_ids'] ?? array() ) ),
+					'blocked_by_role_count'    => count( (array) ( $policy['blocked_by_role_ids'] ?? array() ) ),
+					'default_read_only_policy' => true === ( $policy['default_read_only_policy'] ?? false ),
+					'explicit_role_policy'     => true === ( $policy['explicit_role_policy'] ?? false ),
+					'scope_aware'              => true === ( $policy['scope_aware'] ?? false ),
+					'missing_user'             => true === ( $policy['missing_user'] ?? false ),
+					'missing_role'             => true === ( $policy['missing_role'] ?? false ),
+				);
+
+				return $session;
+			},
+			$sessions
 		);
 	}
 
@@ -320,6 +385,12 @@ final class SettingsPage {
 		$learning         = 'learning' === $payload_tab
 			? ( new LearningSuggestionRepository() )->admin_payload()
 			: LearningSuggestionRepository::empty_payload();
+		$memory           = 'learning' === $payload_tab
+			? $this->memory_payload()
+			: $this->empty_memory_payload();
+		$incidents        = 'learning' === $payload_tab
+			? ( new PluginIncidentReporter() )->admin_payload()
+			: PluginIncidentReporter::empty_payload();
 		$changelog        = 'changelog' === $payload_tab
 			? $this->load_changelog()
 			: array();
@@ -328,7 +399,62 @@ final class SettingsPage {
 			'activity'            => $activity_payload,
 			'brandProfile'        => $brand_profile,
 			'learningSuggestions' => $learning,
+			'memoryRecords'       => $memory,
+			'incidentReports'     => $incidents,
 			'changelog'           => $changelog,
+		);
+	}
+
+	/**
+	 * Return durable memory rows for the admin app.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function memory_payload(): array {
+		$payload = ( new ContentIndexRepository() )->list_memories(
+			array(
+				'status'   => '',
+				'per_page' => 50,
+			)
+		);
+		$items   = is_array( $payload['items'] ?? null ) ? $payload['items'] : array();
+		$summary = array(
+			'total'     => (int) ( $payload['total'] ?? count( $items ) ),
+			'approved'  => 0,
+			'pending'   => 0,
+			'dismissed' => 0,
+		);
+
+		foreach ( $items as $item ) {
+			$status = (string) ( is_array( $item ) ? ( $item['status'] ?? 'pending' ) : 'pending' );
+			if ( array_key_exists( $status, $summary ) ) {
+				++$summary[ $status ];
+			}
+		}
+
+		$payload['summary'] = $summary;
+
+		return $payload;
+	}
+
+	/**
+	 * Return empty memory payload shape.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function empty_memory_payload(): array {
+		return array(
+			'items'    => array(),
+			'total'    => 0,
+			'page'     => 1,
+			'per_page' => 50,
+			'context'  => 'compact',
+			'summary'  => array(
+				'total'     => 0,
+				'approved'  => 0,
+				'pending'   => 0,
+				'dismissed' => 0,
+			),
 		);
 	}
 
@@ -349,6 +475,17 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Return role ability policy editor settings.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function role_abilities_payload(): array {
+		return array(
+			'enabled' => RoleAbilitiesPolicy::is_editing_enabled(),
+		);
+	}
+
+	/**
 	 * Return admin-post action names and nonces for forms.
 	 *
 	 * @return array<string, string>
@@ -365,7 +502,9 @@ final class SettingsPage {
 			'resetSettingsAction'             => 'aculect_ai_companion_reset_settings',
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
+			'reviewMemoryAction'              => 'aculect_ai_companion_review_memory_item',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
+			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
 			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
 			'setSessionAccessLevelAction'     => 'aculect_ai_companion_set_session_access_level',
@@ -381,7 +520,9 @@ final class SettingsPage {
 			'resetSettingsNonce'              => wp_create_nonce( 'aculect_ai_companion_reset_settings' ),
 			'saveBrandNonce'                  => wp_create_nonce( 'aculect_ai_companion_save_brand' ),
 			'reviewLearningSuggestionNonce'   => wp_create_nonce( 'aculect_ai_companion_review_learning_suggestion' ),
+			'reviewMemoryNonce'               => wp_create_nonce( 'aculect_ai_companion_review_memory_item' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+			'runContentIndexSweepNonce'       => wp_create_nonce( 'aculect_ai_companion_run_content_index_sweep' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
 			'setSessionAccessLevelNonce'      => wp_create_nonce( 'aculect_ai_companion_set_session_access_level' ),
@@ -407,6 +548,21 @@ final class SettingsPage {
 			: array();
 		$copy_from = isset( $_POST['copy_from_role'] ) ? sanitize_key( wp_unslash( (string) $_POST['copy_from_role'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( ! RoleAbilitiesPolicy::is_editing_enabled() ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'page'                       => 'aculect-ai-companion',
+						'tab'                        => 'abilities',
+						'role_abilities_not_enabled' => '1',
+						'role'                       => $role,
+					),
+					$this->settings_url()
+				)
+			);
+			exit;
+		}
 
 		if ( 'reset' === $action ) {
 			$policy->reset_role_policy( $role, $registry );
@@ -487,9 +643,11 @@ final class SettingsPage {
 		$role_connection_roles    = isset( $_POST['role_connection_roles'] )
 			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['role_connection_roles'] ) )
 			: array();
+		$role_abilities_enabled   = isset( $_POST['role_abilities_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_abilities_enabled'] ) );
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		RoleConnectionEntryPoint::save( $role_connections_enabled, $role_connection_roles );
+		RoleAbilitiesPolicy::set_editing_enabled( $role_abilities_enabled );
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -738,6 +896,65 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Review or edit one durable Aculect memory item.
+	 */
+	public function handle_review_memory_item(): void {
+		$this->guard_action( 'aculect_ai_companion_review_memory_item' );
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before these reads.
+		$action       = isset( $_POST['memory_action'] ) ? sanitize_key( wp_unslash( (string) $_POST['memory_action'] ) ) : '';
+		$original_key = isset( $_POST['memory_key'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['memory_key'] ) ) : '';
+		$memory_item  = isset( $_POST['memory_item'] ) && is_array( $_POST['memory_item'] )
+			? (array) wp_unslash( $_POST['memory_item'] )
+			: array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$repository = new ContentIndexRepository();
+		$updated    = false;
+
+		if ( 'delete' === $action ) {
+			$result  = $repository->delete_memory( $original_key );
+			$updated = 'success' === ( $result['status'] ?? '' );
+		} else {
+			$status = match ( $action ) {
+				'approve' => 'approved',
+				'dismiss' => 'dismissed',
+				default => sanitize_key( (string) ( $memory_item['status'] ?? 'pending' ) ),
+			};
+			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
+
+			$result = $repository->upsert_memory(
+				array(
+					'key'        => $key,
+					'domain'     => $memory_item['domain'] ?? 'content',
+					'value'      => $memory_item['value'] ?? '',
+					'evidence'   => $memory_item['evidence'] ?? '',
+					'confidence' => $memory_item['confidence'] ?? 'medium',
+					'status'     => $status,
+					'source'     => $memory_item['source'] ?? 'admin',
+				)
+			);
+
+			$updated = 'success' === ( $result['status'] ?? '' );
+			if ( $updated && '' !== $original_key && $key !== $original_key ) {
+				$repository->delete_memory( $original_key );
+			}
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'learning',
+					'memory_reviewed' => $updated ? $action : 'not_updated',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
 	 * Clear diagnostic logs from the admin form.
 	 */
 	public function handle_clear_logs(): void {
@@ -793,7 +1010,12 @@ final class SettingsPage {
 			: ConnectionAccessLevel::DEFAULT;
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_access_level( $session_id, $access_level );
+		$access_tokens = new AccessTokenRepository();
+		$before        = $session_id > 0 ? $access_tokens->session_summary( $session_id ) : array();
+		$updated       = $session_id > 0 && $access_tokens->set_access_level( $session_id, $access_level );
+		if ( $updated ) {
+			$this->record_session_access_change( $session_id, $before, $access_level );
+		}
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -819,8 +1041,14 @@ final class SettingsPage {
 			&& '1' === sanitize_text_field( wp_unslash( (string) $_POST['write_permission_enabled'] ) );
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		$updated = $session_id > 0 && ( new AccessTokenRepository() )->set_write_permission( $session_id, $enabled );
-		$status  = $updated ? ( $enabled ? 'enabled' : 'disabled' ) : 'not_updated';
+		$access_tokens = new AccessTokenRepository();
+		$before        = $session_id > 0 ? $access_tokens->session_summary( $session_id ) : array();
+		$access_level  = ConnectionAccessLevel::from_write_permission( $enabled );
+		$updated       = $session_id > 0 && $access_tokens->set_write_permission( $session_id, $enabled );
+		if ( $updated ) {
+			$this->record_session_access_change( $session_id, $before, $access_level );
+		}
+		$status = $updated ? ( $enabled ? 'enabled' : 'disabled' ) : 'not_updated';
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -833,6 +1061,35 @@ final class SettingsPage {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Record a sanitized activity entry for admin-managed connection trust changes.
+	 *
+	 * @param int                  $session_id       Access-token table primary key.
+	 * @param array<string, mixed> $previous_session Session metadata before the update.
+	 * @param string               $new_access_level New access level.
+	 */
+	private function record_session_access_change( int $session_id, array $previous_session, string $new_access_level ): void {
+		$old_access_level = ConnectionAccessLevel::normalize( (string) ( $previous_session['access_level'] ?? '' ) );
+		$new_access_level = ConnectionAccessLevel::normalize( $new_access_level );
+
+		( new ActivityLogger() )->record_user_access_event(
+			'connection_access.update',
+			(int) ( $previous_session['user_id'] ?? 0 ),
+			get_current_user_id(),
+			__( 'Connection trust updated for assistant session.', 'aculect-ai-companion' ),
+			array(
+				'session_id'       => $session_id,
+				'client_id'        => (string) ( $previous_session['client_id'] ?? '' ),
+				'client_name'      => (string) ( $previous_session['client_name'] ?? '' ),
+				'provider'         => (string) ( $previous_session['provider'] ?? 'mcp' ),
+				'old_access_level' => $old_access_level,
+				'new_access_level' => $new_access_level,
+				'old_direct_write' => ConnectionAccessLevel::allows_direct_write( $old_access_level ) ? 1 : 0,
+				'new_direct_write' => ConnectionAccessLevel::allows_direct_write( $new_access_level ) ? 1 : 0,
+			)
+		);
 	}
 
 	/**
@@ -849,6 +1106,28 @@ final class SettingsPage {
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'diagnostics',
 					'diagnostics_run' => '1',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Run one bounded stale index sweep and refresh diagnostics.
+	 */
+	public function handle_run_content_index_sweep(): void {
+		$this->guard_action( 'aculect_ai_companion_run_content_index_sweep' );
+
+		( new ContentIndexer() )->run_stale_sweep();
+		( new ConnectionHealth() )->run();
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'            => 'aculect-ai-companion',
+					'tab'             => 'diagnostics',
+					'index_sweep_run' => '1',
 				),
 				$this->settings_url()
 			)
@@ -903,23 +1182,37 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function providers(): array {
-		$mcp_url = Helpers::mcp_resource();
-		return array_map(
-			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
-				return array(
-					'id'                 => $provider->id(),
-					'label'              => $provider->label(),
-					'description'        => $provider->description(),
-					'primaryActionUrl'   => $provider->primary_action_url(),
-					'primaryActionLabel' => $provider->primary_action_label(),
-					'setupSections'      => $provider->setup_sections( $mcp_url ),
-				);
-			},
-			array(
-				new ClaudeProvider(),
-				new ChatGPTProvider(),
-				new CodexProvider(),
-			)
+		return ( new ProviderRegistry() )->setup_definitions( Helpers::mcp_resource() );
+	}
+
+	/**
+	 * Return local connector logo URLs for admin UI badges.
+	 *
+	 * @return array<string, string>
+	 */
+	private function connector_logo_urls(): array {
+		$base_url = ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/connectors/';
+
+		return array(
+			'cursor' => esc_url_raw( $base_url . 'cursor.svg' ),
+			'gemini' => esc_url_raw( $base_url . 'gemini.svg' ),
+			'mcp'    => esc_url_raw( $base_url . 'mcp-client.svg' ),
+		);
+	}
+
+	/**
+	 * Return the Phase 1 connection request shape without faking pending data.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function connection_requests(): array {
+		return array(
+			'approvalMode'        => 'interactive_oauth',
+			'approvalModeEnabled' => false,
+			'pendingCount'        => 0,
+			'items'               => array(),
+			'emptyTitle'          => __( 'No pending connection requests.', 'aculect-ai-companion' ),
+			'emptyDescription'    => __( 'Assistant approvals are handled during the WordPress OAuth consent flow. This site does not keep a separate pending approval queue yet.', 'aculect-ai-companion' ),
 		);
 	}
 
@@ -1337,6 +1630,17 @@ final class SettingsPage {
 			};
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['memory_reviewed'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return match ( sanitize_key( wp_unslash( (string) $_GET['memory_reviewed'] ) ) ) {
+				'approve' => 'memory_approved',
+				'dismiss' => 'memory_dismissed',
+				'delete'  => 'memory_deleted',
+				'update'  => 'memory_updated',
+				default   => 'memory_not_updated',
+			};
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['logs_cleared'] ) ) {
 			return 'logs_cleared';
 		}
@@ -1366,12 +1670,20 @@ final class SettingsPage {
 			return 'diagnostics_run';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['index_sweep_run'] ) ) {
+			return 'index_sweep_run';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['abilities_saved'] ) ) {
 			return 'abilities_saved';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['role_abilities_saved'] ) ) {
 			return 'role_abilities_saved';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['role_abilities_not_enabled'] ) ) {
+			return 'role_abilities_not_enabled';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['revoked_all'] ) ) {

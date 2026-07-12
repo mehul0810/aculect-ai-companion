@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Activity;
 
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 
 /**
  * Records connected AI actions with sanitized metadata only.
@@ -46,7 +47,7 @@ final class ActivityLogger {
 				'status'      => $status,
 				'error_code'  => 'error' === $status ? (string) ( $result['error'] ?? 'tool_error' ) : '',
 				'message'     => 'error' === $status ? (string) ( $result['message'] ?? 'AI action failed.' ) : 'AI action completed.',
-				'context'     => $this->context( $action, $args, $result, $risk ),
+				'context'     => $this->context( $action, $args, $result, $risk, $auth ),
 			)
 		);
 
@@ -64,15 +65,25 @@ final class ActivityLogger {
 	 * @param array<string, mixed> $args   Tool arguments.
 	 * @param array<string, mixed> $result Tool result.
 	 * @param string               $risk   Tool risk level.
+	 * @param array<string, mixed> $auth   OAuth authentication context.
 	 * @return array<string, mixed>
 	 */
-	private function context( string $action, array $args, array $result, string $risk ): array {
-		return array(
+	private function context( string $action, array $args, array $result, string $risk, array $auth = array() ): array {
+		$context = array(
 			'argument_keys' => $this->argument_keys( $args ),
 			'risk_level'    => $risk,
 			'metadata'      => $this->safe_argument_metadata( $action, $args ),
 			'result'        => $this->result_metadata( $result ),
 		);
+
+		if ( true === ( $auth['write_permission_used'] ?? false ) ) {
+			$context['write_permission'] = array(
+				'used'         => true,
+				'access_level' => ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) ),
+			);
+		}
+
+		return $context;
 	}
 
 	/**
@@ -128,7 +139,7 @@ final class ActivityLogger {
 	 */
 	private function target( string $action, array $args, array $result ): array {
 		return match ( $action ) {
-			'content.create_item', 'content.update_item', 'content.update_seo', 'content_workflow.create_draft', 'content_workflow.update_post', 'seo_workflow.update_rankmath' => array(
+			'content.create_item', 'content.update_item', 'content.update_seo', 'content_workflow.create_draft', 'content_workflow.update_post', 'content_media.apply_image', 'seo_workflow.update_rankmath' => array(
 				'type' => sanitize_key( (string) ( $result['type'] ?? $args['post_type'] ?? 'content' ) ),
 				'id'   => $this->first_id( $result, $args, array( 'id', 'post_id' ) ),
 			),
@@ -136,12 +147,16 @@ final class ActivityLogger {
 				'type' => sanitize_key( (string) ( $result['taxonomy'] ?? $args['taxonomy'] ?? 'term' ) ),
 				'id'   => $this->first_id( $result, $args, array( 'id', 'term_id' ) ),
 			),
-			'media.upload_item' => array(
+			'media.upload_item', 'media.upload_image_data' => array(
 				'type' => 'attachment',
 				'id'   => $this->first_id( $result, $args, array( 'id', 'post_id' ) ),
 			),
 			'comments.create_item', 'comments.update_item' => array(
 				'type' => 'comment',
+				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
+			),
+			'redirects.create' => array(
+				'type' => 'redirect',
 				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
 			),
 			'wp_abilities.run' => array(
@@ -210,7 +225,7 @@ final class ActivityLogger {
 			'action' => $action,
 		);
 
-		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'term_id', 'post_id', 'update_mode', 'job_key' ) as $key ) {
+		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'term_id', 'post_id', 'update_mode', 'job_key', 'source_type', 'target', 'block_type', 'placement', 'provider' ) as $key ) {
 			if ( isset( $args[ $key ] ) && is_scalar( $args[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $args[ $key ] ) ? absint( $args[ $key ] ) : sanitize_text_field( (string) $args[ $key ] );
 			}
@@ -239,7 +254,7 @@ final class ActivityLogger {
 	private function result_metadata( array $result ): array {
 		$metadata = array();
 
-		foreach ( array( 'id', 'post_id', 'type', 'status', 'workflow', 'taxonomy', 'mime_type' ) as $key ) {
+		foreach ( array( 'id', 'post_id', 'attachment_id', 'type', 'status', 'workflow', 'taxonomy', 'mime_type', 'target', 'block_type' ) as $key ) {
 			if ( isset( $result[ $key ] ) && is_scalar( $result[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $result[ $key ] ) ? absint( $result[ $key ] ) : sanitize_text_field( (string) $result[ $key ] );
 			}

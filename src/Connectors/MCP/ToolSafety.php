@@ -121,6 +121,7 @@ final class ToolSafety {
 				default => 'update',
 			},
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
+			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
@@ -137,10 +138,13 @@ final class ToolSafety {
 			'content.update_seo',
 			'content_index.refresh_batch',
 			'memory.save',
+			'memory.bootstrap',
 			'seo_workflow.update_rankmath',
 			'media.rename_file',
 			'media.update_item',
 			'media.upload_item',
+			'media.upload_image_data',
+			'redirects.create',
 			'taxonomy.create_term',
 			'taxonomy.set_term_image',
 			'taxonomy.update_term' => 'update',
@@ -164,7 +168,7 @@ final class ToolSafety {
 			return true;
 		}
 
-		if ( 'memory.save' === $tool ) {
+		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap' ), true ) ) {
 			return true;
 		}
 

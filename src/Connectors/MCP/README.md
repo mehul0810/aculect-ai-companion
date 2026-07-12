@@ -16,6 +16,72 @@ When adding or changing tools:
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
 
+## Workflow Routing And Sessions
+
+`workflow_route_request` is the first-party entry point for ambiguous or
+multi-step work. It classifies the user request, chooses a workflow guide when
+one applies, returns the recommended next tool with arguments, and includes
+operation availability so the assistant can explain blockers before retrying a
+tool.
+
+`workflow_session_start`, `workflow_session_get`, and
+`workflow_session_update` store bounded transient workflow progress. Use these
+for long-form content, SEO, site audit, and troubleshooting flows that may span
+multiple MCP calls. Session data must remain compact: keep brief, intent,
+content mode, target metadata, state, and short event messages; never store full
+article bodies, secrets, OAuth tokens, or raw request payloads.
+
+Workflow and session tools are first-party Aculect surfaces. They do not appear
+in the admin ability list and are not controlled by global or role ability
+toggles. They still require authenticated MCP access, OAuth scope checks, and
+the normal execution-time WordPress capability checks in the underlying write
+tools.
+
+## Workflow Loops
+
+`workflow_loop_create`, `workflow_loop_get`, `workflow_loop_run_next`,
+`workflow_loop_run_batch`, `workflow_loop_pause`, and `workflow_loop_cancel`
+store bounded item-aware progress for collection workflows. Use them when a
+user asks for "do all" behavior after discovery, such as finding thin pages and
+applying the same guidance item by item.
+
+Loops store compact item metadata, per-item status, recent events, filters, and
+the user's reusable guidance. They do not generate or write content themselves.
+Run calls return the next `content_workflow_prepare_post` arguments so the
+assistant still uses the normal content workflow, block validation, dry-run,
+OAuth scope, role policy, capability checks, trusted-write policy, and activity
+logging before any WordPress data changes.
+
+Keep loop responses bounded. Do not store full article bodies, raw HTML, OAuth
+tokens, private option values, or unbounded prior chat context in loop state.
+
+## Content Media Workflows
+
+`content_media_search_cc0_images` searches Openverse for bounded CC0 image
+candidates. It is a review/discovery tool; the import path still validates the
+selected media URL with the normal upload guard before WordPress sideloading.
+
+`content_media_apply_image` resolves one image source and applies it to an
+existing content item. Supported sources are existing attachment IDs, public
+image URLs, externally generated image URLs, base64/data URL image payloads, and
+Openverse CC0 search results. Supported targets are featured image assignment
+and insertion of core image, gallery, cover, or media/text blocks. The workflow
+uses existing media upload, featured-media validation, block validation,
+dry-run, OAuth scope, trusted-write policy, capability checks, and activity
+logging; it must not bypass the lower-level content or media safeguards.
+
+## MCP Resources
+
+The MCP endpoint supports `resources/list` and `resources/read` for compact
+context that some clients can load more reliably than large tool calls. Current
+resources cover capability directory, site summary, Site Editor context, admin
+menu context, content model, brand profile, workflow guide summaries, and
+approved Aculect memory.
+
+Keep resource payloads bounded, JSON encoded, and free of secrets. Resources are
+context surfaces, not write paths; changes to WordPress data must still go
+through tools.
+
 ## Aculect Intelligence
 
 Aculect Intelligence tools are always-on read-only MCP context tools. They are
@@ -23,9 +89,11 @@ not user-managed abilities, do not appear in the admin Abilities list, and are
 not controlled by global or role-based ability toggles. They still require an
 authenticated connection, the `content:read` OAuth scope, and active AI access.
 
-The intelligence layer is divided into four context domains:
+The intelligence layer is divided into these context domains:
 
 - Site Intelligence: site identity, WordPress runtime, active theme, and connector context.
+- Site Editor Intelligence: active theme, Appearance > Editor availability, global settings/styles, templates, template parts, navigation, blocks, and patterns without theme-file writes.
+- Admin Menu Intelligence: visible admin menu pages, navigation targets, and registered setting metadata without raw option values.
 - Content Intelligence: content types, taxonomies, registered block and pattern summaries, and generation constraints.
 - Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
 - Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.
@@ -85,17 +153,53 @@ updating attachment title, alt text, caption, description, slug, and attachment
 parent. Updating `post_id` changes the attachment parent relationship only after
 the connected user can edit both the attachment and the target parent post.
 
+`content_get_seo` reads saved SEO title, meta description, and focus keywords
+for a connected user's readable content item through supported active SEO
+plugin adapters. It does not expose arbitrary post meta, and unsupported,
+inactive, inaccessible, missing, and adapter-failure states return distinct
+public-safe errors.
+
 ## Safety Controls
 
 Write-capable tools accept `dry_run: true` to validate the request and return a
 deterministic preview without changing WordPress data. Previews include the
-target object, proposed changes, warnings, risk level, and whether confirmation
-is required.
+target object, proposed changes, warnings, risk level, whether confirmation is
+required, and a reusable `diff` object for field-level review.
+
+Dry-run `diff` responses use this shape:
+
+```json
+{
+  "version": "1.0",
+  "type": "field",
+  "fields": [
+    {
+      "field": "title",
+      "before": { "available": true, "value": "Old title" },
+      "after": { "available": true, "value": "New title" },
+      "changed": true
+    }
+  ],
+  "unsupported": []
+}
+```
+
+`fields[].field` is the public tool field name, not a storage key. `before`
+values must be omitted with `{ "available": false, "reason": "not_readable" }`
+when the connected user can validate a write but cannot safely read the
+previous value. Long body fields are summarized in `diff` instead of returning
+unbounded serialized content. Keep the legacy `changes` array for compatibility,
+but prefer `diff` for new clients and future navigation, menu, and redirect
+write previews.
 
 High-risk actions such as publishing, trashing, spam changes, and running
 generic WordPress abilities require a short-lived `confirmation_token` before
-execution. Tokens are bound to the connected user, OAuth client, provider, tool,
-and exact argument payload, and are consumed after one successful use.
+execution only when the connection is not trusted for direct writes. Connections
+set to Write access in the admin Connections tab skip the token
+prompt after OAuth scopes, role policy, global pause state, and WordPress
+capability checks pass. Tokens are bound to the connected user, OAuth client,
+provider, tool, and exact argument payload, and are consumed after one
+successful use.
 
 Comment workflows support review filters for moderation status, post, author,
 author email, author user ID, search, and date ranges. Replies are created with

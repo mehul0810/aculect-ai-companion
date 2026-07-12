@@ -125,7 +125,7 @@ final class DiscoveryController {
 				),
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_documentation'                => 'https://github.com/mehul0810/aculect-ai-companion',
-				'token_endpoint_auth_methods_supported' => array( 'client_secret_post', 'client_secret_basic' ),
+				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 			),
 			200
 		);
@@ -172,7 +172,7 @@ final class DiscoveryController {
 				'registration_endpoint'                 => Helpers::registration_endpoint(),
 				'response_types_supported'              => array( 'code' ),
 				'grant_types_supported'                 => array( 'authorization_code', 'refresh_token' ),
-				'token_endpoint_auth_methods_supported' => array( 'client_secret_post', 'client_secret_basic' ),
+				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 				'code_challenge_methods_supported'      => array( 'S256' ),
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_indicators_supported'         => true,

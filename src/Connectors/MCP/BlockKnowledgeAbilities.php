@@ -14,6 +14,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	private const MAX_PATTERN_PREVIEW    = 600;
 	private const MAX_PATTERN_CONTENT    = 20000;
 	private const CUSTOM_HTML_BLOCK_NAME = 'core/html';
+	private const LAYOUT_BLOCKS          = array( 'core/group', 'core/columns', 'core/column', 'core/cover', 'core/media-text', 'core/gallery', 'core/row', 'core/stack' );
+	private const LAYOUT_HINT_TERMS      = array( 'layout', 'visual', 'image', 'screenshot', 'columns', 'column', 'grid', 'cards', 'hero', 'media text', 'section', 'cta', 'call to action' );
 
 	/**
 	 * List registered blocks with bounded metadata and usage guidance.
@@ -97,6 +99,10 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			return $this->error( 'patterns_api_unavailable', 'The WordPress block patterns registry is not available on this site.' );
 		}
 
+		if ( ! $this->can_read_patterns() ) {
+			return $this->error( 'forbidden', 'You do not have permission to list block patterns on this site.' );
+		}
+
 		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
 		$per_page = max( 1, min( self::MAX_PER_PAGE, (int) ( $args['per_page'] ?? self::DEFAULT_PER_PAGE ) ) );
 		$context  = $this->collection_context( $args );
@@ -126,6 +132,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'page'             => $page,
 			'per_page'         => $per_page,
 			'context'          => $context,
+			'site_context'     => $this->site_context(),
 			'content_guidance' => $this->content_guidance(),
 		);
 	}
@@ -141,6 +148,10 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			return $this->error( 'patterns_api_unavailable', 'The WordPress block patterns registry is not available on this site.' );
 		}
 
+		if ( ! $this->can_read_patterns() ) {
+			return $this->error( 'forbidden', 'You do not have permission to inspect block patterns on this site.' );
+		}
+
 		$name = $this->sanitize_identifier( (string) ( $args['name'] ?? '' ) );
 		if ( '' === $name ) {
 			return $this->error( 'invalid_pattern', 'Pattern name is required.' );
@@ -154,6 +165,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		return array_merge(
 			$this->map_pattern( $patterns[ $name ], $name, true, ! empty( $args['include_content'] ) ),
 			array(
+				'site_context'     => $this->site_context(),
 				'content_guidance' => $this->content_guidance(),
 			)
 		);
@@ -204,6 +216,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		if ( array() === $blocks ) {
 			$warnings[] = 'No block markup was detected. Prefer registered WordPress blocks or patterns for assistant-generated content.';
 		}
+
+		array_push( $warnings, ...$this->layout_expectation_warnings( $args, $names ) );
 
 		return array(
 			'valid'            => array() === array_filter(
@@ -296,6 +310,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'category'               => $category,
 			'description'            => $description,
 			'keywords'               => $this->string_list( $this->object_value( $block, 'keywords' ) ),
+			'families'               => $this->block_families_for_metadata( $name, $category, $title, $description ),
+			'layout_role'            => $this->layout_role( $name, $category, $title, $description ),
 			'supports_inserter'      => $this->supports_inserter( $block ),
 			'allowed_for_generation' => self::CUSTOM_HTML_BLOCK_NAME !== $name,
 			'best_for'               => $guidance['best_for'],
@@ -333,16 +349,26 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		$content           = is_string( $pattern['content'] ?? null ) ? (string) $pattern['content'] : '';
 		$contains_html     = $this->contains_custom_html_block( $content );
 		$content_truncated = strlen( $content ) > self::MAX_PATTERN_CONTENT;
+		$categories        = $this->string_list( $pattern['categories'] ?? array() );
+		$content_blocks    = $include_full || $include_content ? $this->content_block_names( $content ) : array();
 		$item              = array(
+			'id'                     => $name,
 			'name'                   => $name,
 			'title'                  => '' === $title ? $name : $title,
 			'description'            => $description,
-			'categories'             => $this->string_list( $pattern['categories'] ?? array() ),
+			'categories'             => $categories,
+			'category_labels'        => $this->pattern_category_labels( $categories ),
 			'keywords'               => $this->string_list( $pattern['keywords'] ?? array() ),
 			'block_types'            => $this->string_list( $pattern['blockTypes'] ?? array() ),
 			'post_types'             => $this->string_list( $pattern['postTypes'] ?? array() ),
-			'source'                 => $this->clean_text( (string) ( $pattern['source'] ?? '' ) ),
+			'template_types'         => $this->string_list( $pattern['templateTypes'] ?? array() ),
+			'source'                 => $this->pattern_source( $pattern ),
 			'inserter'               => $this->pattern_inserter_enabled( $pattern ),
+			'viewport_width'         => isset( $pattern['viewportWidth'] ) ? max( 0, (int) $pattern['viewportWidth'] ) : 0,
+			'content_available'      => '' !== $content,
+			'content_length'         => strlen( $content ),
+			'content_block_count'    => count( $content_blocks ),
+			'contains_custom_html'   => $contains_html,
 			'allowed_for_generation' => ! $contains_html,
 			'use_cases'              => $this->pattern_use_cases( $title, $description, $pattern ),
 			'guidance'               => $contains_html
@@ -351,9 +377,8 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		);
 
 		if ( $include_full ) {
-			$item['template_types']  = $this->string_list( $pattern['templateTypes'] ?? array() );
-			$item['viewport_width']  = isset( $pattern['viewportWidth'] ) ? (int) $pattern['viewportWidth'] : 0;
-			$item['content_preview'] = $this->truncate( $this->clean_text( $content ), self::MAX_PATTERN_PREVIEW );
+			$item['content_blocks']  = $content_blocks;
+			$item['content_preview'] = $this->truncate( $this->clean_text( wp_strip_all_tags( $content ) ), self::MAX_PATTERN_PREVIEW );
 		}
 
 		if ( $include_content ) {
@@ -362,6 +387,29 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		}
 
 		return $item;
+	}
+
+	/**
+	 * Check whether the current user may read pattern inventory.
+	 */
+	private function can_read_patterns(): bool {
+		return ! function_exists( 'current_user_can' ) || current_user_can( 'read' );
+	}
+
+	/**
+	 * Return deterministic context for the current WordPress site only.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function site_context(): array {
+		return array(
+			'blog_id'    => function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0,
+			'multisite'  => function_exists( 'is_multisite' ) && is_multisite(),
+			'stylesheet' => function_exists( 'get_stylesheet' ) ? $this->clean_text( (string) get_stylesheet() ) : '',
+			'template'   => function_exists( 'get_template' ) ? $this->clean_text( (string) get_template() ) : '',
+			'wp_version' => function_exists( 'get_bloginfo' ) ? $this->clean_text( (string) get_bloginfo( 'version' ) ) : '',
+			'registry'   => 'current_site',
+		);
 	}
 
 	/**
@@ -382,6 +430,11 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		}
 
 		if ( array_key_exists( 'inserter', $args ) && (bool) $args['inserter'] !== (bool) $block['supports_inserter'] ) {
+			return false;
+		}
+
+		$purpose = sanitize_key( (string) ( $args['purpose'] ?? $args['family'] ?? '' ) );
+		if ( '' !== $purpose && ! in_array( $purpose, (array) $block['families'], true ) ) {
 			return false;
 		}
 
@@ -456,6 +509,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'never_use'        => array( self::CUSTOM_HTML_BLOCK_NAME ),
 			'custom_html_rule' => 'Never use the Custom HTML block (core/html). Use semantic core blocks, registered site blocks, or patterns instead.',
 			'fallback_rule'    => 'If a requested layout cannot be represented with registered blocks or patterns, ask for an approved block or pattern instead of adding raw HTML.',
+			'layout_rule'      => 'When a user provides an image, screenshot, grid, cards, columns, landing page, service page, product page, or other visual layout direction, discover layout/media blocks and patterns first, then compose with editable registered blocks instead of paragraph-only article markup.',
 		);
 	}
 
@@ -487,6 +541,183 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 			'avoid_for' => array( 'Raw HTML fallbacks or layouts better served by a registered pattern.' ),
 			'guidance'  => 'Use this registered block only when it matches the requested semantic content. Do not use the Custom HTML block as a fallback.',
 		);
+	}
+
+	/**
+	 * Return block families for a registered block.
+	 *
+	 * @param string $name Registered block name.
+	 * @param string $category Block category.
+	 * @param string $title Block title.
+	 * @param string $description Block description.
+	 * @return list<string>
+	 */
+	private function block_families_for_metadata( string $name, string $category, string $title = '', string $description = '' ): array {
+		$families = array();
+		if ( in_array( $name, self::LAYOUT_BLOCKS, true ) ) {
+			$families[] = 'layout';
+		}
+
+		if ( in_array( $name, array( 'core/image', 'core/gallery', 'core/video', 'core/audio', 'core/file', 'core/media-text', 'core/cover' ), true ) ) {
+			$families[] = 'media';
+		}
+
+		if ( in_array( $name, array( 'core/paragraph', 'core/heading', 'core/list', 'core/quote', 'core/pullquote', 'core/table', 'core/buttons', 'core/button' ), true ) ) {
+			$families[] = 'text';
+		}
+
+		if ( str_contains( $name, 'navigation' ) || 'navigation' === $category ) {
+			$families[] = 'navigation';
+		}
+
+		foreach ( array( $category, $title, $description, $name ) as $value ) {
+			$value = strtolower( $value );
+			if ( str_contains( $value, 'layout' ) || str_contains( $value, 'design' ) || str_contains( $value, 'card' ) || str_contains( $value, 'grid' ) || str_contains( $value, 'column' ) ) {
+				$families[] = 'layout';
+			}
+			if ( str_contains( $value, 'media' ) || str_contains( $value, 'image' ) || str_contains( $value, 'gallery' ) || str_contains( $value, 'video' ) ) {
+				$families[] = 'media';
+			}
+		}
+
+		if ( array() === $families && 'text' === $category ) {
+			$families[] = 'text';
+		}
+		if ( array() === $families && 'widgets' === $category ) {
+			$families[] = 'widget';
+		}
+
+		return array_values( array_unique( $families ) );
+	}
+
+	/**
+	 * Return the layout role for a block when it has one.
+	 *
+	 * @param string $name Registered block name.
+	 * @param string $category Block category.
+	 * @param string $title Block title.
+	 * @param string $description Block description.
+	 */
+	private function layout_role( string $name, string $category, string $title, string $description ): string {
+		if ( in_array( $name, array( 'core/group', 'core/cover', 'core/columns', 'core/row', 'core/stack' ), true ) ) {
+			return 'container';
+		}
+		if ( 'core/column' === $name ) {
+			return 'container_child';
+		}
+		if ( 'core/media-text' === $name ) {
+			return 'media_text';
+		}
+		if ( 'core/gallery' === $name ) {
+			return 'media_grid';
+		}
+
+		return in_array( 'layout', $this->block_families_for_metadata( $name, $category, $title, $description ), true ) ? 'layout_candidate' : '';
+	}
+
+	/**
+	 * Return warnings when generated content ignores an expected layout shape.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 * @param array                $names Parsed block names.
+	 * @phpstan-param list<string> $names
+	 * @return list<string>
+	 */
+	private function layout_expectation_warnings( array $args, array $names ): array {
+		$warnings = array();
+		if ( ! $this->layout_expected( $args ) ) {
+			return $warnings;
+		}
+
+		$has_layout = false;
+		foreach ( $names as $name ) {
+			$block    = $this->registered_block( $name );
+			$category = null === $block ? '' : sanitize_key( $this->object_string( $block, 'category' ) );
+			$title    = null === $block ? '' : $this->clean_text( $this->object_string( $block, 'title' ) );
+			$desc     = null === $block ? '' : $this->clean_text( $this->object_string( $block, 'description' ) );
+			if ( in_array( 'layout', $this->block_families_for_metadata( $name, $category, $title, $desc ), true ) ) {
+				$has_layout = true;
+				break;
+			}
+		}
+
+		if ( ! $has_layout ) {
+			$warnings[] = 'Layout intent was provided, but no layout container blocks were detected. Use registered patterns or layout blocks such as core/group, core/columns, core/cover, or core/media-text instead of paragraph-only article markup.';
+		}
+
+		$expected_blocks = $this->expected_block_names( $args );
+		if ( array() !== $expected_blocks ) {
+			$missing = array_values( array_diff( $expected_blocks, $names ) );
+			if ( array() !== $missing ) {
+				$warnings[] = 'Expected block(s) were not detected in the serialized content: ' . implode( ', ', array_slice( $missing, 0, 8 ) ) . '.';
+			}
+		}
+
+		return $warnings;
+	}
+
+	/**
+	 * Determine whether validation should expect layout blocks.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 */
+	private function layout_expected( array $args ): bool {
+		$content_mode = sanitize_key( (string) ( $args['content_mode'] ?? $args['content_type'] ?? '' ) );
+		if ( in_array( $content_mode, array( 'page', 'landing_page', 'visual_layout', 'service_page', 'product_page', 'case_study' ), true ) ) {
+			return true;
+		}
+
+		$families = array();
+		foreach ( array_merge( (array) ( $args['expected_block_families'] ?? array() ), (array) ( $args['preferred_block_families'] ?? array() ) ) as $family ) {
+			if ( is_scalar( $family ) ) {
+				$families[] = sanitize_key( (string) $family );
+			}
+		}
+		if ( in_array( 'layout', $families, true ) ) {
+			return true;
+		}
+
+		$intent = strtolower(
+			implode(
+				' ',
+				array_filter(
+					array_map(
+						static fn( mixed $value ): string => is_scalar( $value ) ? (string) $value : '',
+						array( $args['layout_intent'] ?? '', $args['visual_reference_summary'] ?? '' )
+					)
+				)
+			)
+		);
+
+		foreach ( self::LAYOUT_HINT_TERMS as $term ) {
+			if ( str_contains( $intent, $term ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Return expected block names from validation args.
+	 *
+	 * @param array<string, mixed> $args Validation args.
+	 * @return list<string>
+	 */
+	private function expected_block_names( array $args ): array {
+		$raw = array_merge( (array) ( $args['expected_blocks'] ?? array() ), (array) ( $args['preferred_blocks'] ?? array() ) );
+		$out = array();
+		foreach ( $raw as $name ) {
+			if ( ! is_scalar( $name ) ) {
+				continue;
+			}
+			$name = $this->sanitize_identifier( (string) $name );
+			if ( '' !== $name ) {
+				$out[] = $name;
+			}
+		}
+
+		return array_values( array_slice( array_unique( $out ), 0, 20 ) );
 	}
 
 	/**
@@ -626,6 +857,93 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 		}
 
 		return array_values( array_slice( array_unique( $cases ), 0, 6 ) );
+	}
+
+	/**
+	 * Return a normalized pattern source label.
+	 *
+	 * @param array<string, mixed> $pattern Pattern metadata.
+	 */
+	private function pattern_source( array $pattern ): string {
+		$source = isset( $pattern['source'] ) && is_scalar( $pattern['source'] ) ? sanitize_key( (string) $pattern['source'] ) : '';
+		if ( '' !== $source ) {
+			return $source;
+		}
+
+		return 'registered';
+	}
+
+	/**
+	 * Return category labels for registered pattern category slugs.
+	 *
+	 * @param array $categories Pattern category slugs.
+	 * @phpstan-param list<string> $categories
+	 * @return array<string, string>
+	 */
+	private function pattern_category_labels( array $categories ): array {
+		if ( array() === $categories ) {
+			return array();
+		}
+
+		$registered = $this->registered_pattern_categories();
+		$labels     = array();
+		foreach ( $categories as $category ) {
+			$labels[ $category ] = $registered[ $category ] ?? $category;
+		}
+
+		return $labels;
+	}
+
+	/**
+	 * Return registered pattern category labels keyed by slug.
+	 *
+	 * @return array<string, string>
+	 */
+	private function registered_pattern_categories(): array {
+		if ( ! class_exists( '\WP_Block_Pattern_Categories_Registry' ) || ! method_exists( '\WP_Block_Pattern_Categories_Registry', 'get_instance' ) ) {
+			return array();
+		}
+
+		$registry = \WP_Block_Pattern_Categories_Registry::get_instance();
+		if ( ! method_exists( $registry, 'get_all_registered' ) ) {
+			return array();
+		}
+
+		$categories = $registry->get_all_registered();
+		if ( ! is_array( $categories ) ) {
+			return array();
+		}
+
+		$labels = array();
+		foreach ( $categories as $name => $category ) {
+			if ( ! is_array( $category ) ) {
+				continue;
+			}
+
+			$name  = $this->sanitize_identifier( (string) ( $category['name'] ?? $name ) );
+			$label = isset( $category['label'] ) && is_scalar( $category['label'] ) ? $this->clean_text( (string) $category['label'] ) : '';
+			if ( '' !== $name && '' !== $label ) {
+				$labels[ $name ] = $label;
+			}
+		}
+
+		ksort( $labels );
+
+		return $labels;
+	}
+
+	/**
+	 * Return block names parsed from pattern content.
+	 *
+	 * @param string $content Serialized block content.
+	 * @return list<string>
+	 */
+	private function content_block_names( string $content ): array {
+		if ( '' === trim( $content ) || ! function_exists( 'parse_blocks' ) ) {
+			return array();
+		}
+
+		return array_values( array_slice( array_unique( $this->flatten_block_names( parse_blocks( $content ) ) ), 0, 50 ) );
 	}
 
 	/**

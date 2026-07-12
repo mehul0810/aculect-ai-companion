@@ -18,14 +18,17 @@ final class Installer {
 
 	/**
 	 * Create or update the diagnostic log table.
+	 *
+	 * @param bool $verify_tables Whether to verify table existence even when the stored version is current.
 	 */
-	public static function install(): void {
-		$installed    = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		$table_exists = self::table_exists();
-
-		if ( self::should_install_schema( $installed, $table_exists ) ) {
-			self::create_table();
-			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+	public static function install( bool $verify_tables = false ): void {
+		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		if ( version_compare( $installed, self::DB_VERSION, '<' ) || $verify_tables ) {
+			$table_exists = self::table_exists();
+			if ( self::should_install_schema( $installed, $table_exists ) ) {
+				self::create_table();
+				update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+			}
 		}
 
 		LogSettings::ensure_defaults();
@@ -35,7 +38,7 @@ final class Installer {
 	 * Activation entry point.
 	 */
 	public static function activate(): void {
-		self::install();
+		self::install( true );
 	}
 
 	/**

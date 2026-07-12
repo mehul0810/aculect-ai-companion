@@ -9,13 +9,95 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 
 /**
  * Exposes indexed search, chunk retrieval, link suggestions, memories, and batch refresh to MCP clients.
  */
 final class IntelligenceIndexAbilities extends AbstractAbilityService {
+
+	private const CANONICAL_FETCH_TEXT_LIMIT = 120000;
+
+	/**
+	 * Search WordPress content using the canonical MCP retrieval contract.
+	 *
+	 * @param array<string, mixed> $args Search args.
+	 * @return array<string, mixed>
+	 */
+	public function canonical_search( array $args ): array {
+		$query = sanitize_text_field( (string) ( $args['query'] ?? '' ) );
+		if ( '' === $query ) {
+			return array( 'results' => array() );
+		}
+
+		$items = array();
+		if ( $this->index_runtime_available() ) {
+			$result = $this->search_items(
+				array(
+					'query'    => $query,
+					'per_page' => 10,
+					'context'  => 'compact',
+				)
+			);
+			$items  = (array) ( $result['items'] ?? array() );
+		}
+
+		if ( array() === $items ) {
+			$items = $this->degraded_live_items(
+				array(
+					'query'    => $query,
+					'per_page' => 10,
+				)
+			);
+		}
+
+		return array(
+			'results' => array_values(
+				array_filter(
+					array_map( array( $this, 'canonical_search_result' ), $items )
+				)
+			),
+		);
+	}
+
+	/**
+	 * Fetch one WordPress content item using the canonical MCP retrieval contract.
+	 *
+	 * @param array<string, mixed> $args Fetch args.
+	 * @return array<string, mixed>
+	 */
+	public function canonical_fetch( array $args ): array {
+		$id = sanitize_text_field( (string) ( $args['id'] ?? '' ) );
+		if ( '' === $id ) {
+			return $this->error_response( 'invalid_id', 'Provide an ID returned by search or a readable WordPress post ID.' );
+		}
+
+		$chunk = $this->canonical_chunk_identity( $id );
+		if ( null !== $chunk ) {
+			return $this->canonical_fetch_chunk( (int) $chunk['post_id'], (string) $chunk['chunk_id'] );
+		}
+
+		$post_id = $this->canonical_post_id( $id );
+		if ( $post_id <= 0 ) {
+			return $this->error_response( 'invalid_id', 'Provide an ID returned by search or a readable WordPress post ID.' );
+		}
+
+		if ( ! $this->can_read_post( $post_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to read that content item.' );
+		}
+
+		$post = function_exists( 'get_post' ) ? get_post( $post_id ) : null;
+		if ( ! $post instanceof \WP_Post ) {
+			return $this->error_response( 'not_found', 'No readable WordPress content item exists for that ID.' );
+		}
+
+		$indexed = $this->index_runtime_available() ? $this->repo()->content_item( $post_id ) : array();
+
+		return $this->canonical_post_document( $post, $indexed );
+	}
 
 	/**
 	 * Search indexed content items.
@@ -27,7 +109,8 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$result          = $this->repo()->search_items( $args );
 		$result['items'] = $this->filled_readable_items( $args, $result );
 
-		if ( array() === $result['items'] && '' !== trim( (string) ( $args['query'] ?? '' ) ) ) {
+		$should_degrade = '' !== trim( (string) ( $args['query'] ?? '' ) ) || absint( $args['max_word_count'] ?? 0 ) > 0;
+		if ( array() === $result['items'] && $should_degrade ) {
 			$live = $this->degraded_live_items( $args );
 			if ( array() !== $live ) {
 				$result['items']           = $live;
@@ -67,6 +150,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$per_page  = max( 1, min( 50, absint( $args['per_page'] ?? 10 ) ) );
 		$post_type = sanitize_key( (string) ( $args['post_type'] ?? '' ) );
 		$status    = sanitize_key( (string) ( $args['status'] ?? '' ) );
+		$max_words = absint( $args['max_word_count'] ?? 0 );
 
 		$posts = get_posts(
 			array(
@@ -86,8 +170,19 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			if ( ! $post instanceof \WP_Post || ! $this->can_read_post( (int) $post->ID ) ) {
 				continue;
 			}
+			if ( '' !== $post_type && $post_type !== (string) $post->post_type ) {
+				continue;
+			}
+			if ( '' !== $status && $status !== (string) $post->post_status ) {
+				continue;
+			}
 
-			$text    = wp_strip_all_tags( (string) $post->post_content );
+			$text  = wp_strip_all_tags( (string) $post->post_content );
+			$words = str_word_count( $text );
+			if ( $max_words > 0 && $words > $max_words ) {
+				continue;
+			}
+
 			$items[] = array(
 				'id'           => (int) $post->ID,
 				'type'         => (string) $post->post_type,
@@ -97,7 +192,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				'permalink'    => (string) get_permalink( $post ),
 				'excerpt'      => wp_strip_all_tags( (string) $post->post_excerpt ),
 				'summary'      => wp_trim_words( $text, 45 ),
-				'word_count'   => str_word_count( $text ),
+				'word_count'   => $words,
 				'content_hash' => '',
 				'indexed_at'   => '',
 				'modified_gmt' => (string) $post->post_modified_gmt,
@@ -248,6 +343,44 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Audit indexed content for internal-link health signals.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array<string, mixed>
+	 */
+	public function audit_internal_links( array $args ): array {
+		$result = $this->repo()->internal_link_audit( $args );
+		$items  = $this->filter_readable_items( (array) ( $result['items'] ?? array() ) );
+
+		$result['items']         = $items;
+		$result['visible_total'] = count( $items );
+		if ( $this->can_view_global_index_summary() ) {
+			$result['filtered_by_access'] = false;
+			$result['total_is_estimated'] = false;
+		} else {
+			$result['total']              = count( $items );
+			$result['filtered_by_access'] = true;
+			$result['total_is_estimated'] = true;
+		}
+
+		$filters           = (array) ( $result['filters'] ?? array() );
+		$result['index']   = $this->index_summary_for_items( $items );
+		$result['summary'] = array(
+			'returned_items' => count( $items ),
+			'state'          => (string) ( $filters['state'] ?? 'needs_review' ),
+			'thresholds'     => (array) ( $result['thresholds'] ?? array() ),
+		);
+		$result['usage']   = array(
+			'read_only'       => 'This audit reports indexed link-health signals only; it does not store suggestions or apply content changes.',
+			'freshness'       => 'Rows marked stale_index should be refreshed with content_index_refresh_batch before relying on counts.',
+			'next_tool'       => 'Use content_find_internal_links for candidate anchors after selecting a source item.',
+			'large_site_note' => 'Use page, per_page, post_type, status, and state filters instead of requesting the whole graph.',
+		);
+
+		return $result;
+	}
+
+	/**
 	 * List durable Aculect memory items.
 	 *
 	 * @param array<string, mixed> $args Query args.
@@ -272,6 +405,10 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function save_memory( array $args ): array {
+		if ( $this->is_memory_bootstrap_request( $args ) ) {
+			return $this->bootstrap_memories( $args, 'memory.save' );
+		}
+
 		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
 		if ( ! in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ) {
 			$status = 'pending';
@@ -309,6 +446,366 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Bootstrap durable memory from local intelligence signals.
+	 *
+	 * @param array<string, mixed> $args Bootstrap args.
+	 * @return array<string, mixed>
+	 */
+	public function bootstrap_memory( array $args ): array {
+		return $this->bootstrap_memories( $args, 'memory.bootstrap' );
+	}
+
+	/**
+	 * Return whether a memory_save request should bootstrap initial memory.
+	 *
+	 * @param array<string, mixed> $args Tool args.
+	 */
+	private function is_memory_bootstrap_request( array $args ): bool {
+		$mode      = sanitize_key( (string) ( $args['mode'] ?? '' ) );
+		$has_key   = '' !== sanitize_text_field( (string) ( $args['key'] ?? $args['memory_key'] ?? '' ) );
+		$has_value = '' !== sanitize_text_field( (string) ( $args['value'] ?? '' ) );
+
+		return 'bootstrap' === $mode || ( ! $has_key && ! $has_value );
+	}
+
+	/**
+	 * Bootstrap missing memory rows.
+	 *
+	 * @param array<string, mixed> $args   Tool args.
+	 * @param string               $action Tool action.
+	 * @return array<string, mixed>
+	 */
+	private function bootstrap_memories( array $args, string $action ): array {
+		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
+		if ( ! in_array( $status, array( 'approved', 'pending' ), true ) ) {
+			$status = 'pending';
+		}
+
+		$force         = ! empty( $args['force'] );
+		$candidates    = $this->initial_memory_candidates();
+		$existing      = $this->repo()->list_memories(
+			array(
+				'status'   => '',
+				'per_page' => 100,
+			)
+		);
+		$existing_keys = array_fill_keys( array_map( 'strval', array_column( (array) ( $existing['items'] ?? array() ), 'key' ) ), true );
+		$items         = array();
+		$skipped       = array();
+
+		foreach ( $candidates as $candidate ) {
+			$key = (string) ( $candidate['key'] ?? '' );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			$memory = array_merge( $candidate, array( 'status' => $status ) );
+			if ( isset( $existing_keys[ $key ] ) && ! $force ) {
+				$skipped[] = array_merge( $memory, array( 'reason' => 'already_exists' ) );
+				continue;
+			}
+
+			$items[] = $memory;
+		}
+
+		if ( $this->is_dry_run( $args ) ) {
+			return array(
+				'dry_run'               => true,
+				'status'                => 'preview',
+				'action'                => $action,
+				'risk_level'            => 'update',
+				'target'                => array(
+					'type' => 'memory_bootstrap',
+					'id'   => 'initial_memory',
+				),
+				'items'                 => $items,
+				'skipped'               => $skipped,
+				'changes'               => array_map(
+					static fn ( array $item ): array => array(
+						'field' => (string) ( $item['key'] ?? '' ),
+						'from'  => null,
+						'to'    => (string) ( $item['value'] ?? '' ),
+					),
+					$items
+				),
+				'warnings'              => $this->bootstrap_warnings( $items, $skipped, $status ),
+				'confirmation_required' => true,
+				'next_actions'          => array( 'Repeat this tool call with confirmation_token to store these memory rows.' ),
+			);
+		}
+
+		$saved = array();
+		foreach ( $items as $item ) {
+			$result = $this->repo()->upsert_memory( $item );
+			if ( 'success' === ( $result['status'] ?? '' ) && is_array( $result['memory'] ?? null ) ) {
+				$saved[] = $result['memory'];
+			}
+		}
+
+		return array(
+			'status'        => array() === $saved ? 'unchanged' : 'success',
+			'message'       => array() === $saved
+				? 'No new Aculect memory rows were created. Existing memory already covers the bootstrap keys.'
+				: 'Aculect memory bootstrap stored local memory rows for future MCP workflows.',
+			'items'         => $saved,
+			'skipped'       => $skipped,
+			'summary'       => array(
+				'created'  => count( $saved ),
+				'skipped'  => count( $skipped ),
+				'status'   => $status,
+				'existing' => (int) ( $existing['total'] ?? count( $existing_keys ) ),
+			),
+			'review_status' => array(
+				'status'                => $status,
+				'admin_review_required' => 'approved' !== $status,
+				'updates_memory'        => 'approved' === $status,
+			),
+			'next_actions'  => 'approved' === $status
+				? array( 'Call memory_list to use the new approved memory in planning.' )
+				: array( 'Review and approve pending memory rows in the Aculect Intelligence admin screen before relying on them in future workflows.' ),
+		);
+	}
+
+	/**
+	 * Return bootstrap warnings.
+	 *
+	 * @param list<array<string, mixed>> $items   Proposed items.
+	 * @param list<array<string, mixed>> $skipped Skipped items.
+	 * @param string                     $status  Review status.
+	 * @return list<string>
+	 */
+	private function bootstrap_warnings( array $items, array $skipped, string $status ): array {
+		$warnings = array();
+		if ( array() === $items && array() !== $skipped ) {
+			$warnings[] = 'Existing memory rows already cover the bootstrap keys. Use force=true to update them.';
+		}
+		if ( 'approved' !== $status ) {
+			$warnings[] = 'Bootstrap memories will be pending by default and must be approved before future workflows treat them as active guidance.';
+		}
+
+		return $warnings;
+	}
+
+	/**
+	 * Build initial memory candidates from local signals.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function initial_memory_candidates(): array {
+		$candidates = array_merge(
+			$this->brand_memory_candidates(),
+			$this->site_memory_candidates(),
+			$this->content_memory_candidates(),
+			$this->workflow_memory_candidates(),
+			$this->approved_learning_memory_candidates()
+		);
+
+		return array_values(
+			array_filter(
+				$candidates,
+				static fn ( array $item ): bool => '' !== trim( (string) ( $item['key'] ?? '' ) ) && '' !== trim( (string) ( $item['value'] ?? '' ) )
+			)
+		);
+	}
+
+	/**
+	 * Return brand-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function brand_memory_candidates(): array {
+		$profile = ( new BrandProfile() )->public_profile();
+		$fields  = array(
+			'brand.site.name'          => array(
+				'domain' => 'brand',
+				'value'  => $profile['site']['name']['value'] ?? '',
+			),
+			'brand.site.tagline'       => array(
+				'domain' => 'brand',
+				'value'  => $profile['site']['tagline']['value'] ?? '',
+			),
+			'brand.editorial.tone'     => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['tone']['value'] ?? '',
+			),
+			'brand.editorial.audience' => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['audience']['value'] ?? '',
+			),
+			'brand.editorial.avoid'    => array(
+				'domain' => 'brand',
+				'value'  => $profile['editorial']['avoid']['value'] ?? '',
+			),
+			'brand.colors.primary'     => array(
+				'domain' => 'brand',
+				'value'  => $profile['colors']['primary']['value'] ?? '',
+			),
+			'brand.colors.accent'      => array(
+				'domain' => 'brand',
+				'value'  => $profile['colors']['accent']['value'] ?? '',
+			),
+		);
+
+		return $this->memory_candidates_from_fields( $fields, 'Detected from saved Aculect brand profile or WordPress site defaults.', 'high', 'bootstrap' );
+	}
+
+	/**
+	 * Return site-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function site_memory_candidates(): array {
+		$timezone = function_exists( 'wp_timezone' ) ? wp_timezone()->getName() : '';
+		$locale   = function_exists( 'get_locale' ) ? (string) get_locale() : '';
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'site.timezone' => array(
+					'domain' => 'site',
+					'value'  => $timezone,
+				),
+				'site.locale'   => array(
+					'domain' => 'site',
+					'value'  => $locale,
+				),
+			),
+			'Detected from WordPress site settings.',
+			'high',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return content-derived memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function content_memory_candidates(): array {
+		$post_types = array();
+		if ( function_exists( 'get_post_types' ) ) {
+			$objects = get_post_types( array( 'show_in_rest' => true ), 'objects' );
+			if ( is_array( $objects ) ) {
+				foreach ( $objects as $name => $object ) {
+					if ( is_object( $object ) && ! empty( $object->show_ui ) ) {
+						$post_types[] = (string) $name;
+					}
+				}
+			}
+		}
+		if ( array() === $post_types ) {
+			$post_types = array( 'post', 'page' );
+		}
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'content.primary_post_types' => array(
+					'domain' => 'content',
+					'value'  => implode( ', ', array_values( array_unique( $post_types ) ) ),
+				),
+			),
+			'Detected from WordPress REST-visible post types.',
+			'medium',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return workflow memory candidates.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function workflow_memory_candidates(): array {
+		$seo_plugin = defined( 'RANK_MATH_VERSION' ) || class_exists( '\RankMath' ) ? 'Rank Math' : '';
+
+		return $this->memory_candidates_from_fields(
+			array(
+				'workflow.blocks.no_custom_html'     => array(
+					'domain' => 'workflow',
+					'value'  => 'Use registered WordPress blocks and patterns; never use raw Custom HTML or core/html for generated content.',
+				),
+				'workflow.content.prepare_first'     => array(
+					'domain' => 'workflow',
+					'value'  => 'Call content_workflow_prepare_post before normal content creation or editing, then use workflow write tools when available.',
+				),
+				'workflow.content.default_status'    => array(
+					'domain' => 'workflow',
+					'value'  => 'Create and update long-form content as drafts unless the user explicitly asks to publish or schedule and confirmation is available.',
+				),
+				'workflow.long_form.block_authoring' => array(
+					'domain' => 'workflow',
+					'value'  => 'Represent long-form content as sectioned serialized WordPress block markup with stable headings, not HTML blobs.',
+				),
+				'seo.plugin.detected'                => array(
+					'domain' => 'seo',
+					'value'  => $seo_plugin,
+				),
+			),
+			'Bundled Aculect workflow guidance for safer MCP content management.',
+			'high',
+			'bootstrap'
+		);
+	}
+
+	/**
+	 * Return memory candidates from approved learning suggestions.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function approved_learning_memory_candidates(): array {
+		$items      = ( new LearningSuggestionRepository() )->approved_items();
+		$candidates = array();
+
+		foreach ( $items as $item ) {
+			$id     = sanitize_key( (string) ( $item['id'] ?? '' ) );
+			$domain = sanitize_key( (string) ( $item['domain'] ?? 'content' ) );
+			if ( '' === $id ) {
+				continue;
+			}
+
+			$candidates[] = array(
+				'key'        => 'learning.' . $domain . '.' . $id,
+				'domain'     => $domain,
+				'value'      => (string) ( $item['suggested_update'] ?? '' ),
+				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) ),
+				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
+				'source'     => 'learning',
+			);
+		}
+
+		return $candidates;
+	}
+
+	/**
+	 * Convert key/value fields into memory candidates.
+	 *
+	 * @param array<string, array{domain:string,value:mixed}> $fields Fields keyed by memory key.
+	 * @param string                                          $evidence Evidence text.
+	 * @param string                                          $confidence Confidence level.
+	 * @param string                                          $source Source label.
+	 * @return list<array<string, mixed>>
+	 */
+	private function memory_candidates_from_fields( array $fields, string $evidence, string $confidence, string $source ): array {
+		$candidates = array();
+		foreach ( $fields as $key => $field ) {
+			$value = is_scalar( $field['value'] ) ? trim( (string) $field['value'] ) : '';
+			if ( '' === $value ) {
+				continue;
+			}
+
+			$candidates[] = array(
+				'key'        => $key,
+				'domain'     => $field['domain'],
+				'value'      => $value,
+				'evidence'   => $evidence,
+				'confidence' => $confidence,
+				'source'     => $source,
+			);
+		}
+
+		return $candidates;
 	}
 
 	/**
@@ -360,6 +857,303 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			'job'    => $this->public_job_for_current_user( $job ),
 			'index'  => $this->job_index_summary( $job ),
 		);
+	}
+
+	/**
+	 * Convert an indexed item row to the canonical MCP search result shape.
+	 *
+	 * @param array<string, mixed> $item Indexed or live item row.
+	 * @return array<string, string>
+	 */
+	private function canonical_search_result( array $item ): array {
+		$post_id = absint( $item['id'] ?? $item['post_id'] ?? 0 );
+		if ( $post_id <= 0 ) {
+			return array();
+		}
+
+		$title = sanitize_text_field( (string) ( $item['title'] ?? $item['post_title'] ?? '' ) );
+		$url   = $this->canonical_item_url( $item, $post_id );
+		if ( '' === $url ) {
+			return array();
+		}
+
+		return array(
+			'id'    => 'wp-post:' . $post_id,
+			'title' => '' === $title ? 'Untitled' : $title,
+			'url'   => $url,
+		);
+	}
+
+	/**
+	 * Resolve a canonical post ID.
+	 *
+	 * @param string $id Canonical or numeric ID.
+	 */
+	private function canonical_post_id( string $id ): int {
+		if ( 1 === preg_match( '/^(?:wp-)?post:(\d+)$/i', $id, $matches ) ) {
+			return absint( $matches[1] );
+		}
+
+		if ( ctype_digit( $id ) ) {
+			return absint( $id );
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Resolve a canonical chunk identity.
+	 *
+	 * @param string $id Canonical chunk ID.
+	 * @return array{post_id: int, chunk_id: string}|null
+	 */
+	private function canonical_chunk_identity( string $id ): ?array {
+		if ( 1 !== preg_match( '/^(?:wp-)?chunk:(\d+):(.+)$/i', $id, $matches ) ) {
+			return null;
+		}
+
+		$post_id  = absint( $matches[1] );
+		$chunk_id = sanitize_key( (string) $matches[2] );
+		if ( $post_id <= 0 || '' === $chunk_id ) {
+			return null;
+		}
+
+		return array(
+			'post_id'  => $post_id,
+			'chunk_id' => $chunk_id,
+		);
+	}
+
+	/**
+	 * Fetch one indexed chunk as a canonical document.
+	 *
+	 * @param int    $post_id  Parent post ID.
+	 * @param string $chunk_id Chunk ID.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_fetch_chunk( int $post_id, string $chunk_id ): array {
+		if ( ! $this->can_read_post( $post_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to read that content section.' );
+		}
+
+		if ( ! $this->index_runtime_available() ) {
+			return $this->error_response( 'index_unavailable', 'Indexed section fetches require the Aculect content intelligence index.' );
+		}
+
+		$result = $this->search_chunks(
+			array(
+				'post_id'  => $post_id,
+				'context'  => 'full',
+				'per_page' => 50,
+			)
+		);
+
+		foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			if ( (string) ( $item['chunk_id'] ?? '' ) === $chunk_id || (string) ( $item['id'] ?? '' ) === $chunk_id ) {
+				return $this->canonical_chunk_document( $item );
+			}
+		}
+
+		return $this->error_response( 'not_found', 'No readable indexed section exists for that ID.' );
+	}
+
+	/**
+	 * Build a canonical post document.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_post_document( \WP_Post $post, array $indexed ): array {
+		$post_id = absint( $post->ID );
+
+		return array(
+			'id'       => 'wp-post:' . $post_id,
+			'title'    => $this->canonical_post_title( $post, $indexed ),
+			'text'     => $this->canonical_text( (string) $post->post_content ),
+			'url'      => $this->canonical_post_url( $post, $indexed ),
+			'metadata' => $this->canonical_metadata(
+				array(
+					'source'       => 'wordpress',
+					'post_id'      => $post_id,
+					'post_type'    => (string) $post->post_type,
+					'status'       => (string) $post->post_status,
+					'slug'         => (string) $post->post_name,
+					'indexed_at'   => (string) ( $indexed['indexed_at'] ?? '' ),
+					'content_hash' => (string) ( $indexed['content_hash'] ?? '' ),
+					'stale'        => (bool) ( $indexed['stale'] ?? false ),
+				)
+			),
+		);
+	}
+
+	/**
+	 * Build a canonical chunk document.
+	 *
+	 * @param array<string, mixed> $chunk Indexed chunk row.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_chunk_document( array $chunk ): array {
+		$post_id  = absint( $chunk['post_id'] ?? 0 );
+		$chunk_id = sanitize_key( (string) ( $chunk['chunk_id'] ?? $chunk['id'] ?? '' ) );
+		$heading  = sanitize_text_field( (string) ( $chunk['heading'] ?? '' ) );
+		$title    = '' !== $heading ? $heading : sanitize_text_field( (string) ( $chunk['post_title'] ?? '' ) );
+		$text     = (string) ( $chunk['block_markup'] ?? '' );
+		if ( '' === $text ) {
+			$text = (string) ( $chunk['text'] ?? '' );
+		}
+
+		return array(
+			'id'       => 'wp-chunk:' . $post_id . ':' . $chunk_id,
+			'title'    => '' === $title ? 'Untitled section' : $title,
+			'text'     => $this->canonical_text( $text ),
+			'url'      => $this->append_url_fragment(
+				$this->safe_url( (string) ( $chunk['permalink'] ?? '' ) ),
+				(string) ( $chunk['anchor'] ?? '' )
+			),
+			'metadata' => $this->canonical_metadata(
+				array(
+					'source'        => 'wordpress_index_chunk',
+					'post_id'       => $post_id,
+					'post_type'     => (string) ( $chunk['post_type'] ?? '' ),
+					'status'        => (string) ( $chunk['post_status'] ?? '' ),
+					'chunk_id'      => $chunk_id,
+					'section_index' => absint( $chunk['section_index'] ?? 0 ),
+					'content_hash'  => (string) ( $chunk['content_hash'] ?? '' ),
+					'stale'         => (bool) ( $chunk['stale'] ?? false ),
+				)
+			),
+		);
+	}
+
+	/**
+	 * Return a canonical title for one post.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 */
+	private function canonical_post_title( \WP_Post $post, array $indexed ): string {
+		$title = sanitize_text_field( (string) ( $indexed['title'] ?? '' ) );
+		if ( '' === $title ) {
+			$title = sanitize_text_field( (string) $post->post_title );
+		}
+
+		return '' === $title ? 'Untitled' : $title;
+	}
+
+	/**
+	 * Return a canonical URL for one post.
+	 *
+	 * @param \WP_Post             $post    Post object.
+	 * @param array<string, mixed> $indexed Optional indexed item metadata.
+	 */
+	private function canonical_post_url( \WP_Post $post, array $indexed ): string {
+		$url = $this->safe_url( (string) ( $indexed['permalink'] ?? '' ) );
+		if ( '' !== $url ) {
+			return $url;
+		}
+
+		if ( function_exists( 'get_permalink' ) ) {
+			$permalink = get_permalink( $post );
+			if ( is_string( $permalink ) ) {
+				$url = $this->safe_url( $permalink );
+			}
+		}
+
+		return '' !== $url ? $url : $this->fallback_post_url( absint( $post->ID ) );
+	}
+
+	/**
+	 * Return a canonical URL for a search item.
+	 *
+	 * @param array<string, mixed> $item    Indexed or live item row.
+	 * @param int                  $post_id Post ID.
+	 */
+	private function canonical_item_url( array $item, int $post_id ): string {
+		$url = $this->safe_url( (string) ( $item['url'] ?? $item['permalink'] ?? '' ) );
+
+		return '' !== $url ? $url : $this->fallback_post_url( $post_id );
+	}
+
+	/**
+	 * Return a fallback post URL when permalink helpers are unavailable.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function fallback_post_url( int $post_id ): string {
+		$path = '?p=' . max( 0, $post_id );
+
+		return function_exists( 'home_url' ) ? $this->safe_url( home_url( $path ) ) : $this->safe_url( 'https://example.com/' . $path );
+	}
+
+	/**
+	 * Strip markup and bound canonical fetch text.
+	 *
+	 * @param string $text Raw text or block markup.
+	 */
+	private function canonical_text( string $text ): string {
+		$text = wp_strip_all_tags( $text );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) ?? '' );
+
+		return strlen( $text ) > self::CANONICAL_FETCH_TEXT_LIMIT ? substr( $text, 0, self::CANONICAL_FETCH_TEXT_LIMIT ) : $text;
+	}
+
+	/**
+	 * Return only useful metadata values.
+	 *
+	 * @param array<string, mixed> $metadata Metadata.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_metadata( array $metadata ): array {
+		return array_filter(
+			$metadata,
+			static fn ( mixed $value ): bool => null !== $value && '' !== $value
+		);
+	}
+
+	/**
+	 * Sanitize a URL string.
+	 *
+	 * @param string $url Raw URL.
+	 */
+	private function safe_url( string $url ): string {
+		$url = trim( $url );
+		if ( '' === $url ) {
+			return '';
+		}
+
+		return function_exists( 'esc_url_raw' ) ? esc_url_raw( $url ) : $url;
+	}
+
+	/**
+	 * Append a fragment to a URL when one is available.
+	 *
+	 * @param string $url      Base URL.
+	 * @param string $fragment Raw fragment.
+	 */
+	private function append_url_fragment( string $url, string $fragment ): string {
+		$fragment = sanitize_key( $fragment );
+		if ( '' === $url || '' === $fragment ) {
+			return $url;
+		}
+
+		return strtok( $url, '#' ) . '#' . $fragment;
+	}
+
+	/**
+	 * Check whether the local index repository can run database-backed queries.
+	 */
+	private function index_runtime_available(): bool {
+		global $wpdb;
+
+		return is_object( $wpdb )
+			&& method_exists( $wpdb, 'prepare' )
+			&& method_exists( $wpdb, 'get_row' )
+			&& method_exists( $wpdb, 'get_results' );
 	}
 
 	/**

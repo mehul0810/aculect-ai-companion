@@ -109,6 +109,20 @@ final class LearningSuggestionRepository {
 	}
 
 	/**
+	 * Return approved suggestions for MCP memory bootstrap.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function approved_items(): array {
+		return array_values(
+			array_filter(
+				$this->all(),
+				static fn ( array $item ): bool => 'approved' === (string) ( $item['status'] ?? '' )
+			)
+		);
+	}
+
+	/**
 	 * Return an empty admin payload shape.
 	 *
 	 * @return array<string, mixed>
@@ -143,6 +157,7 @@ final class LearningSuggestionRepository {
 		$updated = false;
 		$status  = 'approve' === $action ? 'approved' : 'dismissed';
 
+		$reviewed_item = array();
 		foreach ( $items as &$item ) {
 			if ( ! hash_equals( (string) ( $item['id'] ?? '' ), $id ) ) {
 				continue;
@@ -151,6 +166,7 @@ final class LearningSuggestionRepository {
 			$item['status']      = $status;
 			$item['review_note'] = $this->sanitize_text( $review_note, 800 );
 			$item['updated_at']  = gmdate( 'Y-m-d\TH:i:s\Z' );
+			$reviewed_item       = $item;
 			$updated             = true;
 			break;
 		}
@@ -158,6 +174,7 @@ final class LearningSuggestionRepository {
 
 		if ( $updated ) {
 			$this->save( $items );
+			$this->sync_memory_for_reviewed_item( $reviewed_item );
 		}
 
 		return $updated;
@@ -184,6 +201,7 @@ final class LearningSuggestionRepository {
 		$items   = $this->all();
 		$updated = false;
 
+		$updated_item = array();
 		foreach ( $items as &$item ) {
 			if ( ! hash_equals( (string) ( $item['id'] ?? '' ), $id ) ) {
 				continue;
@@ -196,6 +214,7 @@ final class LearningSuggestionRepository {
 			$item['confidence']       = $confidence;
 			$item['review_note']      = $this->sanitize_text( $review_note, 800 );
 			$item['updated_at']       = gmdate( 'Y-m-d\TH:i:s\Z' );
+			$updated_item             = $item;
 			$updated                  = true;
 			break;
 		}
@@ -203,9 +222,53 @@ final class LearningSuggestionRepository {
 
 		if ( $updated ) {
 			$this->save( $items );
+			$this->sync_memory_for_reviewed_item( $updated_item );
 		}
 
 		return $updated;
+	}
+
+	/**
+	 * Sync approved or dismissed learning suggestions into durable memory.
+	 *
+	 * @param array<string, mixed> $item Learning suggestion item.
+	 */
+	private function sync_memory_for_reviewed_item( array $item ): void {
+		$key    = $this->memory_key( $item );
+		$status = (string) ( $item['status'] ?? 'pending' );
+		if ( '' === $key || 'pending' === $status ) {
+			return;
+		}
+
+		$memory = new ContentIndexRepository();
+		if ( 'dismissed' === $status ) {
+			$memory->delete_memory( $key );
+			return;
+		}
+
+		$memory->upsert_memory(
+			array(
+				'key'        => $key,
+				'domain'     => (string) ( $item['domain'] ?? 'content' ),
+				'value'      => (string) ( $item['suggested_update'] ?? '' ),
+				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
+				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
+				'status'     => 'approved',
+				'source'     => 'learning',
+			)
+		);
+	}
+
+	/**
+	 * Return the durable memory key for a learning suggestion.
+	 *
+	 * @param array<string, mixed> $item Learning suggestion item.
+	 */
+	private function memory_key( array $item ): string {
+		$id     = sanitize_key( (string) ( $item['id'] ?? '' ) );
+		$domain = sanitize_key( (string) ( $item['domain'] ?? 'content' ) );
+
+		return '' === $id ? '' : 'learning.' . $domain . '.' . $id;
 	}
 
 	/**
@@ -308,7 +371,7 @@ final class LearningSuggestionRepository {
 	 */
 	private function sanitize_source( array $source ): array {
 		return array(
-			'provider'    => $this->sanitize_enum( $source['provider'] ?? '', array( 'chatgpt', 'claude', 'codex', 'mcp' ), 'mcp' ),
+			'provider'    => $this->sanitize_enum( $source['provider'] ?? '', array( 'chatgpt', 'claude', 'codex', 'gemini', 'mcp' ), 'mcp' ),
 			'client_id'   => $this->sanitize_text( $source['client_id'] ?? '', 100 ),
 			'client_name' => $this->sanitize_text( $source['client_name'] ?? '', 160 ),
 			'user_id'     => absint( $source['user_id'] ?? 0 ),

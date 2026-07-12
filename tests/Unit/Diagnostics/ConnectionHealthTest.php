@@ -105,14 +105,14 @@ final class ConnectionHealthTest extends TestCase {
 			)
 		);
 
-		self::assertSame('2026-05-20', $result['ranAt']);
-		self::assertSame('ok', $result['items'][0]['message']);
-		self::assertSame('8.2.0', $result['system']['php_version']);
-		self::assertArrayNotHasKey('client_secret', $result['items'][0]['details']);
-		self::assertArrayNotHasKey('access_token', $result['details']);
-		self::assertArrayNotHasKey('auth_header', $result['system']);
-		self::assertArrayNotHasKey('private_payload', $result['system']);
-		self::assertArrayNotHasKey('wp_salt', $result['system']);
+		self::assertSame( '2026-05-20', $result['ranAt'] );
+		self::assertSame( 'ok', $result['items'][0]['message'] );
+		self::assertSame( '8.2.0', $result['system']['php_version'] );
+		self::assertArrayNotHasKey( 'client_secret', $result['items'][0]['details'] );
+		self::assertArrayNotHasKey( 'access_token', $result['details'] );
+		self::assertArrayNotHasKey( 'auth_header', $result['system'] );
+		self::assertArrayNotHasKey( 'private_payload', $result['system'] );
+		self::assertArrayNotHasKey( 'wp_salt', $result['system'] );
 	}
 
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
@@ -124,6 +124,21 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( array(), $result['details']['duplicate_tool_names'] );
 		self::assertSame( array(), $result['details']['invalid_tool_names'] );
 		self::assertArrayHasKey( 'ability_policy', $result['details'] );
+		self::assertArrayHasKey( 'wordpress_abilities', $result['details'] );
+		self::assertArrayHasKey( 'api_available', $result['details']['wordpress_abilities'] );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $result['details']['metadata_fingerprint'] );
+		self::assertIsString( $result['details']['metadata_generated_at'] );
+		self::assertArrayHasKey( 'chatgpt_app', $result['details']['metadata_refresh_guidance'] );
+		self::assertArrayHasKey( 'gemini_cli', $result['details']['metadata_refresh_guidance'] );
+		self::assertStringContainsString( 'fingerprint', $result['remediation'] );
+	}
+
+	public function test_wordpress_abilities_runtime_check_reports_api_context(): void {
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_wordpress_abilities_runtime' );
+
+		self::assertSame( 'wordpress_abilities_runtime', $result['id'] );
+		self::assertArrayHasKey( 'api_available', $result['details'] );
+		self::assertArrayHasKey( 'registration_functions_present', $result['details'] );
 	}
 
 	public function test_cloudflare_compatibility_check_reports_best_effort_when_not_detected(): void {
@@ -199,9 +214,9 @@ final class ConnectionHealthTest extends TestCase {
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object       $object    Object instance.
+	 * @param string       $method    Method name.
+	 * @param array<mixed> $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

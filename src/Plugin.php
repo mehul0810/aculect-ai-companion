@@ -9,6 +9,7 @@ use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
@@ -77,6 +78,8 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
+		add_filter( 'plugin_action_links_' . plugin_basename( ACULECT_AI_COMPANION_PLUGIN_FILE ), array( $this, 'add_plugin_action_links' ) );
+		( new WordPressAbilitiesRegistrar() )->register_hooks();
 		$this->register_settings_actions();
 		add_action( 'admin_post_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
 		add_action( 'admin_post_nopriv_aculect_ai_companion_oauth_consent', array( $this, 'handle_oauth_consent' ) );
@@ -113,7 +116,9 @@ final class Plugin {
 		'reset_settings'               => 'handle_reset_settings',
 		'save_brand'                   => 'handle_save_brand',
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
+		'review_memory_item'           => 'handle_review_memory_item',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
+		'run_content_index_sweep'      => 'handle_run_content_index_sweep',
 		'clear_logs'                   => 'handle_clear_logs',
 		'set_lockdown'                 => 'handle_set_lockdown',
 		'set_session_access_level'     => 'handle_set_session_access_level',
@@ -253,6 +258,25 @@ final class Plugin {
 	 */
 	public function register_user_access_controls(): void {
 		( new UserAccessControls() )->register();
+	}
+
+	/**
+	 * Add a direct settings link on the WordPress Plugins screen.
+	 *
+	 * @param array<int|string, string> $links Existing plugin action links.
+	 * @return array<int|string, string>
+	 */
+	public function add_plugin_action_links( array $links ): array {
+		array_unshift(
+			$links,
+			sprintf(
+				'<a href="%s">%s</a>',
+				esc_url( admin_url( 'options-general.php?page=aculect-ai-companion' ) ),
+				esc_html__( 'Settings', 'aculect-ai-companion' )
+			)
+		);
+
+		return $links;
 	}
 
 	/**

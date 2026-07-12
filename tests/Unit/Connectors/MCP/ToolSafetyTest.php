@@ -46,6 +46,8 @@ final class ToolSafetyTest extends TestCase {
 
 		self::assertSame( 'update', $this->safety->risk_level( 'memory.save', array( 'key' => 'brand.voice.primary' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'memory.save', array( 'key' => 'brand.voice.primary' ) ) );
+		self::assertSame( 'update', $this->safety->risk_level( 'memory.bootstrap', array() ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'memory.bootstrap', array() ) );
 
 		self::assertSame( 'draft', $this->safety->risk_level( 'content_workflow.create_draft', array( 'title' => 'Draft' ) ) );
 		self::assertSame(

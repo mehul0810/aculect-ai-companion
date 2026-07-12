@@ -103,6 +103,13 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			),
 			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
+
+		$this->revoke_superseded_sessions_for_token(
+			(string) $accessTokenEntity->getClient()->getIdentifier(),
+			$accessTokenEntity->getUserIdentifier(),
+			$resource,
+			$this->hash_identifier( $accessTokenEntity->getIdentifier() )
+		);
 	}
 
 	/**
@@ -176,6 +183,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		$this->touch( $token_id, (string) ( $row['last_used_at'] ?? '' ) );
 		$scopes = json_decode( (string) ( $row['scopes'] ?? '[]' ), true );
 
+		$access_level = $this->access_level_from_row( $row );
+
 		return array(
 			'token_id'                 => $token_id,
 			'user_id'                  => (int) ( $row['user_id'] ?? 0 ),
@@ -185,8 +194,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			'scopes'                   => is_array( $scopes ) ? array_values( array_map( 'strval', $scopes ) ) : array(),
 			'resource'                 => (string) ( $row['resource'] ?? '' ),
 			'expires_at'               => (string) ( $row['expires_at'] ?? '' ),
-			'access_level'             => $this->access_level_from_row( $row ),
-			'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
+			'access_level'             => $access_level,
+			'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
 		);
 	}
 
@@ -206,6 +215,58 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 */
 	public function list_revoked_sessions(): array {
 		return $this->list_sessions_by_revoked_state( true );
+	}
+
+	/**
+	 * Return sanitized admin metadata for one connector session.
+	 *
+	 * Token hashes and OAuth material are intentionally excluded; this is used for
+	 * activity/audit entries around admin-managed session changes.
+	 *
+	 * @param int $session_id Access-token table primary key.
+	 * @return array<string, mixed>
+	 */
+	public function session_summary( int $session_id ): array {
+		$session_id = absint( $session_id );
+		if ( $session_id <= 0 ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT access_tokens.id, access_tokens.client_id, access_tokens.user_id,
+					access_tokens.write_permission_enabled, access_tokens.access_level,
+					access_tokens.revoked, clients.client_name, clients.provider
+				FROM %i access_tokens
+				LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE access_tokens.id = %d
+				LIMIT 1',
+				$tables['access_tokens'],
+				$tables['clients'],
+				$session_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) ) {
+			return array();
+		}
+
+		$access_level = $this->access_level_from_row( $row );
+
+		return array(
+			'id'                       => (int) ( $row['id'] ?? 0 ),
+			'client_id'                => (string) ( $row['client_id'] ?? '' ),
+			'client_name'              => (string) ( $row['client_name'] ?? '' ),
+			'provider'                 => (string) ( $row['provider'] ?? 'mcp' ),
+			'user_id'                  => (int) ( $row['user_id'] ?? 0 ),
+			'access_level'             => $access_level,
+			'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
+			'revoked'                  => '1' === (string) ( $row['revoked'] ?? '0' ),
+		);
 	}
 
 	/**
@@ -281,6 +342,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					}
 				}
 
+				$access_level = $this->access_level_from_row( $row );
+
 				return array(
 					'id'                       => (int) $row['id'],
 					'client_id'                => (string) ( $row['client_id'] ?? '' ),
@@ -295,8 +358,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 					'created_at'               => (string) ( $row['created_at'] ?? '' ),
 					'last_used_at'             => (string) ( $row['last_used_at'] ?? '' ),
 					'expires_at'               => (string) ( $row['connection_expires_at'] ?? $row['expires_at'] ?? '' ),
-					'access_level'             => $this->access_level_from_row( $row ),
-					'write_permission_enabled' => '1' === (string) ( $row['write_permission_enabled'] ?? '0' ),
+					'access_level'             => $access_level,
+					'write_permission_enabled' => ConnectionAccessLevel::allows_direct_write( $access_level ),
 				);
 			},
 			$rows
@@ -332,6 +395,30 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 
 		return (int) $count;
+	}
+
+	/**
+	 * Revoke older duplicate sessions for the same assistant/user/resource.
+	 *
+	 * Known assistant providers are treated as one logical connection per
+	 * provider, WordPress user, and resource URL. Generic MCP clients are only
+	 * deduplicated when the exact client ID matches, so unrelated custom clients
+	 * remain independent.
+	 *
+	 * @param string|null $now   Current UTC datetime for tests.
+	 * @param int         $limit Maximum access-token rows to revoke.
+	 * @return int Number of superseded access-token rows revoked.
+	 */
+	public function revoke_superseded_active_sessions( ?string $now = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
+		$now   = null !== $now && '' !== $now ? $now : gmdate( 'Y-m-d H:i:s' );
+		$limit = $this->normalized_batch_limit( $limit );
+
+		$revoked = $this->revoke_superseded_access_tokens( $now, $limit );
+		if ( $revoked > 0 ) {
+			$this->revoke_refresh_tokens_for_revoked_access_tokens( $limit );
+		}
+
+		return $revoked;
 	}
 
 	/**
@@ -511,6 +598,196 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
+	 * Revoke older active sessions when a newer token is issued.
+	 *
+	 * @param string      $client_id  OAuth client identifier for the new token.
+	 * @param string|null $user_id    WordPress user identifier for the new token.
+	 * @param string      $resource   OAuth resource URL.
+	 * @param string      $token_hash Stored hash for the new access token.
+	 */
+	private function revoke_superseded_sessions_for_token( string $client_id, ?string $user_id, string $resource, string $token_hash ): void {
+		if ( '' === $client_id || '' === $resource || '' === $token_hash ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$tables  = Installer::table_names();
+		$user_id = absint( $user_id ?? 0 );
+		$now     = gmdate( 'Y-m-d H:i:s' );
+		$wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE id IN (
+					SELECT id FROM (
+						SELECT access_tokens.id
+						FROM %i access_tokens
+						INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+						LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+						LEFT JOIN %i current_client ON current_client.client_id = %s
+						WHERE access_tokens.revoked = 0
+						AND refresh_tokens.revoked = 0
+						AND refresh_tokens.expires_at >= %s
+						AND access_tokens.token_hash <> %s
+						AND COALESCE(access_tokens.user_id, 0) = %d
+						AND access_tokens.resource = %s
+						AND (
+							(
+								current_client.provider IS NOT NULL
+								AND current_client.provider <> %s
+								AND current_client.provider <> %s
+								AND clients.provider = current_client.provider
+							)
+							OR (
+								(
+									current_client.provider IS NULL
+									OR current_client.provider = %s
+									OR current_client.provider = %s
+								)
+								AND access_tokens.client_id = %s
+							)
+						)
+					) superseded_tokens
+				)',
+				$tables['access_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['clients'],
+				$tables['clients'],
+				$client_id,
+				$now,
+				$token_hash,
+				$user_id,
+				$resource,
+				'',
+				'mcp',
+				'',
+				'mcp',
+				$client_id
+			)
+		);
+
+		$this->revoke_refresh_tokens_for_revoked_access_tokens( self::DEFAULT_PRUNE_BATCH_SIZE );
+	}
+
+	/**
+	 * Revoke older active access tokens that have a newer matching session.
+	 *
+	 * @param string $now   Current UTC datetime.
+	 * @param int    $limit Maximum rows to revoke.
+	 */
+	private function revoke_superseded_access_tokens( string $now, int $limit ): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE id IN (
+					SELECT id FROM (
+						SELECT older.id
+						FROM %i older
+						INNER JOIN %i older_refresh ON older_refresh.access_token_hash = older.token_hash
+						INNER JOIN %i newer ON newer.revoked = 0
+							AND newer.token_hash <> older.token_hash
+							AND newer.resource = older.resource
+							AND COALESCE(newer.user_id, 0) = COALESCE(older.user_id, 0)
+						INNER JOIN %i newer_refresh ON newer_refresh.access_token_hash = newer.token_hash
+						LEFT JOIN %i older_client ON older_client.client_id = older.client_id
+						LEFT JOIN %i newer_client ON newer_client.client_id = newer.client_id
+						WHERE older.revoked = 0
+						AND older_refresh.revoked = 0
+						AND older_refresh.expires_at >= %s
+						AND newer_refresh.revoked = 0
+						AND newer_refresh.expires_at >= %s
+						AND (
+							newer_refresh.expires_at > older_refresh.expires_at
+							OR (
+								newer_refresh.expires_at = older_refresh.expires_at
+								AND newer.created_at > older.created_at
+							)
+							OR (
+								newer_refresh.expires_at = older_refresh.expires_at
+								AND newer.created_at = older.created_at
+								AND newer.id > older.id
+							)
+						)
+						AND (
+							(
+								older_client.provider IS NOT NULL
+								AND older_client.provider <> %s
+								AND older_client.provider <> %s
+								AND newer_client.provider = older_client.provider
+							)
+							OR (
+								(
+									older_client.provider IS NULL
+									OR older_client.provider = %s
+									OR older_client.provider = %s
+								)
+								AND newer.client_id = older.client_id
+							)
+						)
+						LIMIT %d
+					) superseded_tokens
+				)',
+				$tables['access_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$tables['clients'],
+				$tables['clients'],
+				$now,
+				$now,
+				'',
+				'mcp',
+				'',
+				'mcp',
+				$limit
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Revoke refresh tokens linked to revoked access-token rows.
+	 *
+	 * @param int $limit Maximum refresh-token rows to revoke.
+	 */
+	private function revoke_refresh_tokens_for_revoked_access_tokens( int $limit ): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$limit  = $this->normalized_batch_limit( $limit );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i
+				SET revoked = 1
+				WHERE access_token_hash IN (
+					SELECT token_hash FROM (
+						SELECT access_tokens.token_hash
+						FROM %i access_tokens
+						INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
+						WHERE access_tokens.revoked = 1
+						AND refresh_tokens.revoked = 0
+						LIMIT %d
+					) revoked_access_tokens
+				)',
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$limit
+			)
+		);
+
+		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
 	 * Delete expired access-token rows that no longer anchor active refresh.
 	 *
 	 * Expired access-token rows are kept while a non-revoked refresh token can
@@ -609,9 +886,14 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * @param array<string, mixed> $row Access-token row.
 	 */
 	private function access_level_from_row( array $row ): string {
-		$access_level = ConnectionAccessLevel::normalize( (string) ( $row['access_level'] ?? '' ) );
-		if ( ConnectionAccessLevel::DEFAULT === $access_level && '1' === (string) ( $row['write_permission_enabled'] ?? '0' ) ) {
-			return ConnectionAccessLevel::SELECTIVE_WRITE;
+		$raw_access_level = sanitize_key( (string) ( $row['access_level'] ?? '' ) );
+		$access_level     = ConnectionAccessLevel::normalize( $raw_access_level );
+		if (
+			ConnectionAccessLevel::READ === $access_level
+			&& ConnectionAccessLevel::READ !== $raw_access_level
+			&& '1' === (string) ( $row['write_permission_enabled'] ?? '0' )
+		) {
+			return ConnectionAccessLevel::WRITE;
 		}
 
 		return $access_level;

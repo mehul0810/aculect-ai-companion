@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -131,6 +132,44 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertSame( 'Aculect AI Companion could not complete the authorization request. Try reconnecting the client.', $description );
 		self::assertStringNotContainsString( 'SQL', $description );
 		self::assertStringNotContainsString( 'Exception', $description );
+	}
+
+	public function test_consent_markup_uses_connection_request_framing(): void {
+		$client = new ClientEntity();
+		$client->setName( 'OpenAI ChatGPT Connector' );
+		$client->setProvider( 'chatgpt' );
+
+		ob_start();
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'render_consent_markup',
+			array(
+				array(
+					'response_type'         => 'code',
+					'client_id'             => 'client-1',
+					'redirect_uri'          => 'https://chatgpt.com/oauth/callback',
+					'scope'                 => 'content:read content:draft',
+					'code_challenge'        => str_repeat( 'a', 43 ),
+					'code_challenge_method' => 'S256',
+					'resource'              => Helpers::mcp_resource(),
+				),
+				$client,
+				Helpers::mcp_resource(),
+			)
+		);
+		$html = (string) ob_get_clean();
+
+		self::assertStringContainsString( 'Review connection request', $html );
+		self::assertStringContainsString(
+			'ChatGPT is requesting permission to connect to your WordPress site through Aculect AI Companion.',
+			$html
+		);
+		self::assertStringContainsString( 'Connection details', $html );
+		self::assertStringContainsString( 'What ChatGPT will be able to do', $html );
+		self::assertStringContainsString( 'Security and privacy', $html );
+		self::assertStringContainsString( 'Approve connection', $html );
+		self::assertStringContainsString( 'Deny', $html );
+		self::assertStringNotContainsString( 'Approve AI assistant access', $html );
 	}
 
 	/**

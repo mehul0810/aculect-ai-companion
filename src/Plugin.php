@@ -6,6 +6,7 @@ namespace Aculect\AICompanion;
 
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
+use Aculect\AICompanion\Admin\LocalSampleData;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
@@ -64,6 +65,7 @@ final class Plugin {
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
 		IntelligenceInstaller::activate();
+		LocalSampleData::ensure_first_installed_at();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
@@ -111,6 +113,7 @@ final class Plugin {
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();
+		LocalSampleData::ensure_first_installed_at();
 		OAuthStorageMaintenance::maybe_prune();
 	}
 

@@ -1669,7 +1669,7 @@ function LearningSuggestionCard( { data, suggestion } ) {
 							Edit Brand Profile
 						</Button>
 					) }
-					{ isPending && (
+					{ isPending && ! isSampleRecord( suggestion ) && (
 						<>
 							<Button
 								type="button"
@@ -1694,6 +1694,9 @@ function LearningSuggestionCard( { data, suggestion } ) {
 								destructive
 							/>
 						</>
+					) }
+					{ isSampleRecord( suggestion ) && (
+						<SampleBadge label="Preview" />
 					) }
 				</div>
 			</div>
@@ -1967,7 +1970,12 @@ function LogsTable( { logs } ) {
 				<tbody>
 					{ items.map( ( item ) => (
 						<tr key={ item.id }>
-							<td>{ item.created_at }</td>
+							<td>
+								<strong>{ item.created_at }</strong>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
+								) }
+							</td>
 							<td>
 								<span
 									className={ `aculect-ai-companion-log-level is-${ item.level }` }
@@ -2073,6 +2081,9 @@ function ActivityTable( { activity } ) {
 								<strong className="aculect-ai-companion-activity-table__time">
 									{ item.created_at }
 								</strong>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
+								) }
 							</td>
 							<td data-label="User">
 								{ activityUserName( item ) }
@@ -2368,6 +2379,9 @@ function ConnectionHealthChecks( { health, filter } ) {
 								<strong>
 									{ formatDiagnosticCheckLabel( item.id ) }
 								</strong>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
+								) }
 								<code>{ item.id }</code>
 							</td>
 							<td data-label="Status">
@@ -2432,6 +2446,7 @@ function normalizeConnectionSession( session, status ) {
 
 	return {
 		...session,
+		isSample: session.is_sample === true || session.isSample === true,
 		status: session.status || status,
 		writePermissionEnabled,
 		accessLevel: connectionAccessLevelKey( {
@@ -2443,6 +2458,14 @@ function normalizeConnectionSession( session, status ) {
 
 function isEnabledFlag( value ) {
 	return value === true || value === 1 || value === '1';
+}
+
+function isSampleRecord( value ) {
+	return value?.is_sample === true || value?.isSample === true;
+}
+
+function SampleBadge( { label = 'Sample' } ) {
+	return <span className="aculect-ai-companion-sample-badge">{ label }</span>;
 }
 
 function connectionAccessLevelKey( session ) {
@@ -2904,6 +2927,7 @@ function ConnectionEffectiveAbilitiesModal( {
 function ConnectionAccessControl( { session, data, onChange } ) {
 	const accessLevel = connectionAccessLevelDefinition( session );
 	const canManage =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.setSessionAccessLevelAction &&
 		data.actions?.setSessionAccessLevelNonce;
@@ -2930,7 +2954,7 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 			</div>
 			{ ! canManage && session.status !== 'revoked' && (
 				<span className="aculect-ai-companion-connection-action-note">
-					Unavailable
+					{ session.isSample ? 'Preview' : 'Unavailable' }
 				</span>
 			) }
 			<span className="aculect-ai-companion-connection-access__meta">
@@ -3032,10 +3056,12 @@ function ConnectionAccessLevelModal( {
 
 function ConnectionActionsMenu( { session, data } ) {
 	const canRevoke =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.revokeSessionAction &&
 		data.actions?.revokeSessionNonce;
 	const canExportManifest =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.exportMcpToolManifestAction &&
 		data.actions?.exportMcpToolManifestNonce;
@@ -3052,6 +3078,10 @@ function ConnectionActionsMenu( { session, data } ) {
 
 	if ( session.status === 'revoked' ) {
 		return renderUnavailableAction( 'Reconnect required' );
+	}
+
+	if ( session.isSample ) {
+		return renderUnavailableAction( 'Preview only' );
 	}
 
 	if ( ! canRevoke ) {
@@ -3334,6 +3364,7 @@ function ConnectionsDataViews( {
 						<strong className="aculect-ai-companion-connections-table__primary">
 							{ session.user || 'Unknown user' }
 						</strong>
+						{ session.isSample && <SampleBadge label="Preview" /> }
 						<span className="aculect-ai-companion-connections-table__secondary">
 							{ connectionUserRolesLabel( session ) }
 						</span>
@@ -3434,6 +3465,9 @@ function ConnectionsDataViews( {
 								session={ session }
 								isAccessPaused={ isAccessPaused }
 							/>
+							{ session.isSample && (
+								<SampleBadge label="Preview" />
+							) }
 							<span className="aculect-ai-companion-connections-table__secondary">
 								{ connectionRelativeExpiry(
 									session.expires_at
@@ -6778,6 +6812,19 @@ function SettingsApp() {
 	const shouldShowAccessControl = Boolean(
 		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
 	);
+	const hasRealActiveConnections = activeSessionCount > 0;
+	let accessStatusLabel = 'No active AI access';
+	let accessStatusDescription =
+		'Connect a real assistant to enable live connection controls. Preview rows do not change site access.';
+	if ( isAccessPaused ) {
+		accessStatusLabel = 'AI access is paused';
+		accessStatusDescription =
+			'Connected assistants keep their sessions, but cannot run actions until access is resumed.';
+	} else if ( hasRealActiveConnections ) {
+		accessStatusLabel = 'AI access is active';
+		accessStatusDescription =
+			'Pause access to stop active assistants from running actions without disconnecting their sessions.';
+	}
 	const setActivityFilterValue = ( key ) => ( value ) => {
 		setActivityFilterValues( ( current ) => ( {
 			...current,
@@ -7200,7 +7247,7 @@ function SettingsApp() {
 				{ sampleDataActive && (
 					<Notice status="info" isDismissible={ false }>
 						{ sampleData.message ||
-							'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.' }
+							'Preview data - these are examples, not real connections or activity.' }
 					</Notice>
 				) }
 				{ data.status === 'abilities_saved' && (
@@ -7600,15 +7647,9 @@ function SettingsApp() {
 									>
 										<div className="aculect-ai-companion-lockdown__content">
 											<strong>
-												{ isAccessPaused
-													? 'AI access is paused'
-													: 'AI access is active' }
+												{ accessStatusLabel }
 											</strong>
-											<p>
-												{ isAccessPaused
-													? 'Connected assistants keep their sessions, but cannot run actions until access is resumed.'
-													: 'Pause access to stop active assistants from running actions without disconnecting their sessions.' }
-											</p>
+											<p>{ accessStatusDescription }</p>
 										</div>
 										<ActionForm
 											data={ data }
@@ -7655,8 +7696,7 @@ function SettingsApp() {
 											}
 										/>
 
-										{ activeConnectionSessions.length >
-											0 && (
+										{ hasRealActiveConnections && (
 											<div className="aculect-ai-companion-danger-zone aculect-ai-companion-danger-zone--connections">
 												<ActionForm
 													data={ data }

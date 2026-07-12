@@ -204,7 +204,7 @@ final class SettingsPage {
 		$sample_data      = new LocalSampleData();
 		$access_tokens->revoke_superseded_active_sessions();
 		$real_session_count   = $access_tokens->active_token_count();
-		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
+		$active_session_count = $real_session_count;
 
 		$payload = array_merge(
 			$this->base_payload( $payload_tab, $active_session_count ),

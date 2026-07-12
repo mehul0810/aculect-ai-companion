@@ -482,16 +482,21 @@ final class SettingsPageTest extends TestCase {
 	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
+		update_option( 'aculect_ai_companion_first_installed_at', 1704067200, false );
 		$_GET['tab'] = 'connections';
 
 		$payload = $this->settings_payload();
 
-		self::assertSame( 3, $payload['activeSessionCount'] );
-		self::assertTrue( $payload['isConnected'] );
+		self::assertSame( 0, $payload['activeSessionCount'] );
+		self::assertFalse( $payload['isConnected'] );
 		self::assertCount( 3, $payload['sessions'] );
 		self::assertCount( 1, $payload['revokedSessions'] );
 		self::assertSame( 'ChatGPT Local QA', $payload['sessions'][0]['client_name'] );
 		self::assertSame( 'revoked', $payload['revokedSessions'][0]['status'] );
+		self::assertTrue( $payload['sessions'][0]['is_sample'] );
+		self::assertTrue( $payload['revokedSessions'][0]['is_sample'] );
+		self::assertGreaterThanOrEqual( 1704067200, strtotime( (string) $payload['sessions'][0]['created_at'] . ' UTC' ) );
+		self::assertSame( 'Preview data - these are examples, not real connections or activity.', $payload['sampleData']['message'] );
 		self::assertSame( array( 'connections' ), $payload['sampleData']['appliedTabs'] );
 	}
 
@@ -503,8 +508,8 @@ final class SettingsPageTest extends TestCase {
 		$payload = $this->settings_payload();
 
 		self::assertSame( 'abilities', $payload['payloadTab'] );
-		self::assertSame( 3, $payload['activeSessionCount'] );
-		self::assertTrue( $payload['isConnected'] );
+		self::assertSame( 0, $payload['activeSessionCount'] );
+		self::assertFalse( $payload['isConnected'] );
 		self::assertContains( 'abilities', $payload['sampleData']['appliedTabs'] );
 		self::assertNotEmpty( $payload['abilities'] );
 	}
@@ -541,6 +546,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 4, $payload['activity']['summary']['successes'] );
 		self::assertSame( 1, $payload['activity']['summary']['failures'] );
 		self::assertSame( 'content.update_item', $payload['activity']['items'][0]['action'] );
+		self::assertTrue( $payload['activity']['items'][0]['is_sample'] );
 		self::assertSame( array( 'activity' ), $payload['sampleData']['appliedTabs'] );
 	}
 
@@ -555,6 +561,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 4, $payload['diagnostics']['logs']['total'] );
 		self::assertCount( 4, $payload['diagnostics']['logs']['items'] );
 		self::assertSame( 'oauth.registered', $payload['diagnostics']['logs']['items'][0]['event'] );
+		self::assertTrue( $payload['diagnostics']['logs']['items'][0]['is_sample'] );
 		self::assertSame( array( 'logs' ), $payload['sampleData']['appliedTabs'] );
 	}
 
@@ -567,6 +574,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 3, $payload['learningSuggestions']['summary']['total'] );
 		self::assertCount( 3, $payload['learningSuggestions']['items'] );
 		self::assertSame( 'learn_local_brand', $payload['learningSuggestions']['items'][0]['id'] );
+		self::assertTrue( $payload['learningSuggestions']['items'][0]['is_sample'] );
 		self::assertSame( array( 'learning' ), $payload['sampleData']['appliedTabs'] );
 	}
 
@@ -580,6 +588,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'warn', $payload['connectionHealth']['summary'] );
 		self::assertCount( 5, $payload['connectionHealth']['items'] );
 		self::assertSame( 'local', $payload['connectionHealth']['system']['environment_type'] );
+		self::assertTrue( $payload['connectionHealth']['items'][0]['is_sample'] );
 		self::assertSame( array( 'diagnostics' ), $payload['sampleData']['appliedTabs'] );
 	}
 

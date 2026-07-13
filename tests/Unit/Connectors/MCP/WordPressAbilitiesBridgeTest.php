@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesBridge;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use PHPUnit\Framework\TestCase;
 use WP_Error;
 
@@ -101,6 +102,30 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 
 		self::assertSame( 'custom_denied', $result['error'] );
 		self::assertSame( 'Custom denial.', $result['message'] );
+	}
+
+	public function test_incident_abilities_resolve_aliases_with_distinct_read_write_metadata(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$bridge = new WordPressAbilitiesBridge();
+		$list   = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
+		$report = $bridge->get_info( array( 'id' => 'plugin_issue_report' ) );
+
+		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $list['id'] );
+		self::assertTrue( $list['readOnly'] );
+		self::assertTrue( $list['allowed'] );
+		self::assertSame( 'plugin_incident_list', $list['meta']['mcp']['tool'] );
+
+		self::assertSame( 'aculect-ai-companion/plugin-incident-report', $report['id'] );
+		self::assertFalse( $report['readOnly'] );
+		self::assertTrue( $report['allowed'] );
+		self::assertSame( 'plugin_incident_report', $report['meta']['mcp']['tool'] );
+
+		$result = $bridge->run( array( 'id' => 'plugin_incident_list' ) );
+
+		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $result['ability'] );
+		self::assertSame( 0, $result['result']['total'] );
+		self::assertArrayNotHasKey( 'confirmation_required', $result['result'] );
 	}
 
 	/**

@@ -30,7 +30,7 @@ final class WordPressAbilitiesPolicy {
 			}
 
 			$id = $this->ability_name( $ability );
-			if ( $registrar->is_first_party_read_intelligence( $id ) ) {
+			if ( $registrar->is_first_party_intelligence( $id ) ) {
 				continue;
 			}
 
@@ -87,7 +87,7 @@ final class WordPressAbilitiesPolicy {
 	 */
 	public function is_allowed( string $id ): bool {
 		$id = sanitize_text_field( $id );
-		if ( ( new WordPressAbilitiesRegistrar() )->is_first_party_read_intelligence( $id ) ) {
+		if ( ( new WordPressAbilitiesRegistrar() )->is_first_party_intelligence( $id ) ) {
 			return true;
 		}
 
@@ -124,7 +124,7 @@ final class WordPressAbilitiesPolicy {
 			$registrar = new WordPressAbilitiesRegistrar();
 			foreach ( $this->abilities() as $ability ) {
 				$name = $this->ability_name( $ability );
-				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $name ) ) {
+				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_intelligence( $name ) ) {
 					$known[] = $name;
 				}
 			}

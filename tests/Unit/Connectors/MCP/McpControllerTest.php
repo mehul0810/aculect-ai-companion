@@ -20,6 +20,9 @@ use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use ReflectionMethod;
 use ReflectionProperty;
+use WP_REST_Request;
+
+require_once dirname( __DIR__, 3 ) . '/fixtures/mcp-request-stubs.php';
 
 /**
  * Verifies public MCP tool payloads remain compatible with assistant clients.
@@ -757,6 +760,7 @@ final class McpControllerTest extends TestCase {
 		self::assertTrue( $initial['preview']['dry_run'] );
 		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
 
+		$args['dry_run']            = true;
 		$args['confirmation_token'] = $initial['confirmation_token'];
 		$confirmed                  = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
 
@@ -772,6 +776,33 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( $confirmed['report_id'], $replay['report_id'] );
 		self::assertTrue( $replay['replayed'] );
 		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
+	public function test_plugin_incident_report_rejects_invalid_confirmation_token(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-invalid-confirmation-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+		$result     = $this->pluginIncidentToolCall(
+			$controller,
+			array(
+				'title'              => 'Invalid incident confirmation',
+				'summary'            => 'An invalid confirmation token must not be treated as missing approval.',
+				'confirmation_token' => 'invalid-token',
+			),
+			'plugin_incident_report',
+			$auth
+		);
+
+		self::assertSame( 'blocked', $result['status'] );
+		self::assertSame( 'invalid_confirmation_token', $result['error'] );
+		self::assertTrue( $result['confirmation_required'] );
+		self::assertSame( 'update', $result['risk_level'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
 	public function test_plugin_incident_list_never_requires_confirmation(): void {
@@ -1082,7 +1113,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	/**
-	 * Exercise one plugin incident tool through the controller safety controls.
+	 * Exercise one plugin incident tool through the public JSON-RPC request path.
 	 *
 	 * @param McpController        $controller Controller under test.
 	 * @param array<string, mixed> $arguments Tool arguments.
@@ -1091,24 +1122,29 @@ final class McpControllerTest extends TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function pluginIncidentToolCall( McpController $controller, array $arguments, string $name, array $auth ): array {
-		$registry             = new AbilitiesRegistry();
-		$intelligence         = new IntelligenceRegistry();
-		$tool                 = $intelligence->internal_id( $name );
-		$is_intelligence_tool = $intelligence->is_known( $tool );
-		if ( ! $is_intelligence_tool ) {
-			$tool = $registry->internal_id( $name );
-		}
-
-		$result = $this->invokePrivate(
-			$controller,
-			'execute_tool_with_safety',
-			array( $tool, $arguments, $registry, $intelligence, $is_intelligence_tool, $auth )
+		$this->setPrivateProperty( $controller, 'request_auth', $auth );
+		$response = $controller->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 376,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => $name,
+						'arguments' => $arguments,
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
 		);
 
-		self::assertIsArray( $result );
-		self::assertIsArray( $result['result'] ?? null );
+		self::assertIsArray( $response );
+		self::assertIsArray( $response['result']['structuredContent'] ?? null );
 
-		return $result['result'];
+		return $response['result']['structuredContent'];
 	}
 
 	/**

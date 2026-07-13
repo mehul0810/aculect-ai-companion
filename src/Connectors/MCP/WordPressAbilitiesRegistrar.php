@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
- * Registers first-party read-only intelligence with the WordPress Abilities API.
+ * Registers first-party intelligence with the WordPress Abilities API.
  */
 final class WordPressAbilitiesRegistrar {
 
-	private const CATEGORY  = 'aculect-intelligence';
-	private const NAMESPACE = 'aculect-ai-companion';
+	private const CATEGORY              = 'aculect-intelligence';
+	private const NAMESPACE             = 'aculect-ai-companion';
+	private const FIRST_PARTY_WRITE_IDS = array(
+		'plugin.incident.report',
+	);
 
 	/**
 	 * Cached first-party WordPress Ability names.
@@ -40,20 +43,20 @@ final class WordPressAbilitiesRegistrar {
 			self::CATEGORY,
 			array(
 				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Read-only site, admin menu, Site Editor, content, brand, block, pattern, search, and memory intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident reporting intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
 			)
 		);
 	}
 
 	/**
-	 * Register read-only Aculect Intelligence abilities.
+	 * Register Aculect Intelligence abilities.
 	 */
 	public function register_abilities(): void {
 		if ( ! function_exists( 'wp_register_ability' ) ) {
 			return;
 		}
 
-		foreach ( $this->read_only_modules() as $module ) {
+		foreach ( $this->first_party_modules() as $module ) {
 			call_user_func( 'wp_register_ability', $this->ability_name( $module ), $this->ability_args( $module ) );
 		}
 	}
@@ -79,8 +82,17 @@ final class WordPressAbilitiesRegistrar {
 	public function module_ability_names(): array {
 		return array_map(
 			fn( AbilityModuleInterface $module ): string => $this->ability_name( $module ),
-			$this->read_only_modules()
+			$this->first_party_modules()
 		);
+	}
+
+	/**
+	 * Check whether an ability name belongs to first-party intelligence.
+	 *
+	 * @param string $name WordPress Ability name.
+	 */
+	public function is_first_party_intelligence( string $name ): bool {
+		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
 	}
 
 	/**
@@ -89,19 +101,43 @@ final class WordPressAbilitiesRegistrar {
 	 * @param string $name WordPress Ability name.
 	 */
 	public function is_first_party_read_intelligence( string $name ): bool {
-		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
+		$name    = sanitize_text_field( $name );
+		$modules = array_flip( $this->module_ability_names() );
+		$module  = $modules[ $name ] ?? '';
+
+		return '' !== $module && ! in_array( $module, self::FIRST_PARTY_WRITE_IDS, true );
 	}
 
 	/**
-	 * Return read-only intelligence modules that should be mirrored to WordPress Abilities.
+	 * Return the public WordPress Ability name for a first-party module ID or alias.
+	 *
+	 * @param string $id Internal module ID, MCP tool name, legacy alias, or public ability name.
+	 */
+	public function ability_name_for_id( string $id ): string {
+		$id = sanitize_text_field( $id );
+		if ( str_starts_with( $id, self::NAMESPACE . '/' ) ) {
+			return $id;
+		}
+
+		$module = ( new IntelligenceRegistry() )->module( $id );
+		if ( null === $module ) {
+			return '';
+		}
+
+		$names = $this->module_ability_names();
+		return $names[ $module->id() ] ?? '';
+	}
+
+	/**
+	 * Return intelligence modules that should be mirrored to WordPress Abilities.
 	 *
 	 * @return array<string, AbilityModuleInterface>
 	 */
-	private function read_only_modules(): array {
+	private function first_party_modules(): array {
 		$modules = array();
 
 		foreach ( ( new IntelligenceRegistry() )->modules() as $module ) {
-			if ( $module->is_read_only() ) {
+			if ( $module->is_read_only() || in_array( $module->id(), self::FIRST_PARTY_WRITE_IDS, true ) ) {
 				$modules[ $module->id() ] = $module;
 			}
 		}
@@ -140,14 +176,14 @@ final class WordPressAbilitiesRegistrar {
 			'category'            => self::CATEGORY,
 			'input_schema'        => $module->input_schema(),
 			'output_schema'       => $this->output_schema_for_module( $module ),
-			'execute_callback'    => fn( mixed $input = array() ): array => $module->execute( is_array( $input ) ? $input : array() ),
+			'execute_callback'    => fn( mixed $input = array() ): array => ( new IntelligenceRegistry() )->execute( $module->id(), is_array( $input ) ? $input : array() ),
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
 				'show_in_rest' => true,
 				'annotations'  => array(
-					'readonly'    => true,
+					'readonly'    => $module->is_read_only(),
 					'destructive' => false,
-					'idempotent'  => true,
+					'idempotent'  => $module->is_read_only(),
 				),
 				'mcp'          => array(
 					'public' => true,
@@ -188,6 +224,20 @@ final class WordPressAbilitiesRegistrar {
 	 * @return array<string, mixed>
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
+		if ( 'plugin.incident.list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'    => array( 'type' => 'array' ),
+					'total'    => array( 'type' => 'integer' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+					'summary'  => array( 'type' => 'object' ),
+					'error'    => array( 'type' => 'string' ),
+					'message'  => array( 'type' => 'string' ),
+				)
+			);
+		}
+
 		if ( $this->is_collection_module( $module ) ) {
 			return $this->object_output_schema(
 				array(
@@ -230,6 +280,25 @@ final class WordPressAbilitiesRegistrar {
 					'message' => array( 'type' => 'string' ),
 					'job'     => array( 'type' => 'object' ),
 					'items'   => array( 'type' => 'array' ),
+				)
+			);
+		}
+
+		if ( 'plugin.incident.report' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'status'            => array( 'type' => 'string' ),
+					'message'           => array( 'type' => 'string' ),
+					'error'             => array( 'type' => 'string' ),
+					'report_id'         => array( 'type' => 'string' ),
+					'correlation_id'    => array( 'type' => 'string' ),
+					'repository'        => array( 'type' => 'string' ),
+					'title'             => array( 'type' => 'string' ),
+					'body'              => array( 'type' => 'string' ),
+					'issue_url'         => array( 'type' => 'string' ),
+					'can_create_direct' => array( 'type' => 'boolean' ),
+					'incident'          => array( 'type' => 'object' ),
+					'next_actions'      => array( 'type' => 'array' ),
 				)
 			);
 		}

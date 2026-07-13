@@ -66,8 +66,10 @@ final class SiteStructureDiscoveryAbilitiesTest extends TestCase {
 			'Stylesheet' => 'twentytwentysix',
 			'Template'   => 'twentytwentysix',
 		);
+		$GLOBALS['aculect_ai_companion_test_options']         = array(
+			'sidebars_widgets' => array(),
+		);
 		$this->set_registered_sidebars();
-		$GLOBALS['aculect_ai_companion_test_sidebars_widgets'] = array();
 	}
 
 	protected function tearDown(): void {
@@ -76,8 +78,8 @@ final class SiteStructureDiscoveryAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_posts']           = array();
 		$GLOBALS['aculect_ai_companion_test_post_types']      = array();
 		$GLOBALS['aculect_ai_companion_test_block_templates'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']         = array();
 		$this->set_registered_sidebars();
-		$GLOBALS['aculect_ai_companion_test_sidebars_widgets'] = array();
 
 		parent::tearDown();
 	}
@@ -187,7 +189,7 @@ final class SiteStructureDiscoveryAbilitiesTest extends TestCase {
 				'block-2' => array( 'name' => 'Block' ),
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_sidebars_widgets'] = array(
+		$GLOBALS['aculect_ai_companion_test_options']['sidebars_widgets'] = array(
 			'sidebar-1' => array( 'block-2' ),
 			'footer-1'  => array(),
 		);

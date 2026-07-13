@@ -259,7 +259,7 @@ final class SiteStructureDiscoveryAbilities extends AbstractAbilityService {
 		global $wp_registered_sidebars, $wp_registered_widgets;
 
 		$registered = is_array( $wp_registered_sidebars ?? null ) ? $wp_registered_sidebars : array();
-		$widgets    = function_exists( 'wp_get_sidebars_widgets' ) ? wp_get_sidebars_widgets() : (array) get_option( 'sidebars_widgets', array() );
+		$widgets    = (array) get_option( 'sidebars_widgets', array() );
 		$items      = array();
 
 		foreach ( $registered as $id => $sidebar ) {

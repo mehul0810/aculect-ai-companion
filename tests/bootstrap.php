@@ -129,6 +129,18 @@ if ( ! function_exists( 'get_site_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_site_transient' ) ) {
+	/**
+	 * Return a test site transient value.
+	 *
+	 * @param string $transient Transient name.
+	 * @return mixed
+	 */
+	function get_site_transient( string $transient ): mixed {
+		return get_site_option( '_site_transient_' . $transient, false );
+	}
+}
+
 if ( ! function_exists( 'is_multisite' ) ) {
 	/**
 	 * Return whether the test site is multisite.
@@ -1278,17 +1290,6 @@ if ( ! function_exists( 'post_type_supports' ) ) {
 		$supports = $GLOBALS['aculect_ai_companion_test_post_type_supports'][ $post_type ] ?? array( 'thumbnail' );
 
 		return in_array( $feature, is_array( $supports ) ? $supports : array(), true );
-	}
-}
-
-if ( ! function_exists( 'wp_get_sidebars_widgets' ) ) {
-	/**
-	 * Return test sidebar widget assignments.
-	 *
-	 * @return array<string, list<string>>
-	 */
-	function wp_get_sidebars_widgets(): array {
-		return $GLOBALS['aculect_ai_companion_test_sidebars_widgets'] ?? array();
 	}
 }
 

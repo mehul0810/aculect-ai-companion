@@ -1,4 +1,18 @@
 {
+	"0.7.0": {
+		"date": "2026-07-13",
+		"New": [
+			"Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.",
+			"Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions."
+		],
+		"Improved": [
+			"Improved deterministic MCP discovery, verified connection state, and post-save content-index refresh reliability.",
+			"Removed the dedicated Internal Links admin tab while retaining the supported MCP internal-link workflows."
+		],
+		"Reliability": [
+			"Added release tooling, package verification, and production release guards for the 0.7.0 production line."
+		]
+	},
 	"0.7.0-beta.3": {
 		"date": "2026-07-13",
 		"Fixed": [

@@ -8,7 +8,7 @@ Stable tag: 0.7.0-beta.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Use ChatGPT, Claude, Codex, Cursor, Gemini, and other MCP AI assistants to manage WordPress content, media, comments, and site workflows.
+Use ChatGPT, Claude, Codex, Cursor, Gemini, and other MCP AI assistants to manage WordPress content, internal linking, media, comments, and site workflows.
 
 == Description ==
 
@@ -26,6 +26,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 
 * Connect WordPress to ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible MCP clients
 * Create, update, and organize WordPress content through controlled AI workflows
+* Audit internal linking, review link opportunities, and apply approved suggestions through MCP
 * Work with posts, pages, custom post types, categories, tags, comments, and media
 * Use block-aware content workflows instead of raw custom HTML
 * Inspect Site Editor and admin menu surfaces before planning theme or settings work
@@ -46,6 +47,7 @@ After approval, Aculect AI Companion checks the connected WordPress user's permi
 
 * Create, edit, and publish posts, pages, and supported custom post types
 * Plan and draft long-form block content for WordPress
+* Audit internal linking, prepare reviewable link suggestions, and apply approved links through MCP
 * Manage categories, tags, custom taxonomies, and content groups
 * Moderate, reply to, and bulk-manage comments
 * Upload, list, update, attach, detach, and safely rename media
@@ -89,6 +91,15 @@ Content:
 * Create a post, page, or custom content item with optional featured image, author, and taxonomy assignments
 * Update title, content, excerpt, slug, status, featured image, author, or taxonomy assignments for an existing item
 * Update SEO title, SEO description, and focus keywords for supported SEO plugins
+
+Internal linking with MCP:
+
+* Audit supported content for internal-link gaps and discover relevant on-site content
+* Map potential linking opportunities and prepare reviewable suggestions
+* Review individual suggestions before applying them to supported content
+* Apply approved suggestions only when the connected user's WordPress permissions and configured MCP policy allow the change
+
+Aculect AI Companion keeps internal linking in the MCP content workflow instead of a separate Internal Links admin tab. It does not add links automatically when the plugin is activated or when an AI assistant connects.
 
 Redirects and 404 workflows:
 
@@ -181,6 +192,10 @@ Yes. After an administrator connects and approves the assistant, ChatGPT, Claude
 
 Yes. Aculect AI Companion includes guided content workflows for planning long-form posts, validating block content, creating drafts, updating existing content, and applying supported SEO metadata.
 
+= Can Aculect AI Companion help with internal linking? =
+
+Yes. When the appropriate MCP abilities are enabled, a connected AI assistant can audit supported content, find relevant on-site pages and posts, prepare reviewable internal-link suggestions, and apply approved suggestions. The workflow stays permission-aware and policy-controlled; Aculect AI Companion does not insert links automatically just because an assistant is connected.
+
 = Does Aculect AI Companion support Rank Math SEO? =
 
 Yes. Aculect AI Companion can update supported Rank Math SEO fields, including SEO title, meta description, and focus keywords, when Rank Math is active and the connected user has permission to edit the content.
@@ -262,6 +277,14 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.7.0 =
+
+* Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
+* Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions.
+* Improved deterministic MCP discovery, verified connection state, and post-save content-index refresh reliability.
+* Removed the dedicated Internal Links admin tab while retaining the supported MCP internal-link workflows.
+* Added release tooling, package verification, and production release guards for the 0.7.0 production line.
 
 = 0.7.0-beta.3 =
 
@@ -425,6 +448,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.0 =
+
+Adds WordPress management discovery, policy-controlled MCP internal-linking workflows, more reliable connections and content indexing, and stronger release packaging safeguards.
 
 = 0.7.0-beta.3 =
 

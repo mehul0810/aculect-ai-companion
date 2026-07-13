@@ -3,48 +3,23 @@
 		"date": "2026-07-13",
 		"New": [
 			"Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.",
-			"Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions."
+			"Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions.",
+			"Added beta package review support with release tooling, templates, regression checklist coverage, and Playground proof helpers."
 		],
-		"Improved": [
-			"Improved deterministic MCP discovery, verified connection state, and post-save content-index refresh reliability.",
-			"Removed the dedicated Internal Links admin tab while retaining the supported MCP internal-link workflows."
-		],
-		"Reliability": [
-			"Added release tooling, package verification, and production release guards for the 0.7.0 production line."
-		]
-	},
-	"0.7.0-beta.3": {
-		"date": "2026-07-13",
 		"Fixed": [
 			"Fixed content-index refresh scheduling so post-save term and metadata changes settle before indexing.",
 			"Fixed Connect completion state so it reflects a verified active session rather than local setup signals.",
 			"Fixed local sample history so it stays distinct from real connection state.",
-			"Fixed plugin lifecycle safety metadata to accurately report supported activation and deactivation operations."
+			"Fixed plugin lifecycle safety metadata to accurately report supported activation and deactivation operations.",
+			"Fixed incident reporting so authorized plugin_incident_list calls remain read-only while plugin_incident_report uses the standard confirmation and replay-safe storage flow."
 		],
 		"Improved": [
-			"Removed the retired Internal Links admin tab while retaining the supported MCP internal-link workflows."
+			"Improved deterministic MCP discovery, verified connection state, and post-save content-index refresh reliability."
 		],
 		"Reliability": [
 			"Added a production release guard that blocks deployment unless the exact release tag is already on main and the versions match.",
 			"Updated prerelease packaging so a published draft prerelease triggers its build, package verification, Plugin Check, and artifact upload."
 		]
-	},
-	"0.7.0-beta.2": {
-		"date": "2026-07-10",
-		"Fixed": [
-			"Fixed incident reporting so authorized plugin_incident_list calls remain read-only while plugin_incident_report uses the standard confirmation and replay-safe storage flow."
-		]
-	},
-  "0.7.0-beta.1": {
-    "date": "2026-07-03",
-    "New": [
-      "Added WordPress core management discovery abilities for supported site, user, role, capability, revision, autosave, and REST schema surfaces.",
-      "Added internal linking workflows for reviewing suggestions, applying approved links, mapping link opportunities, and surfacing editor suggestions.",
-      "Added beta package review support with release tooling, templates, regression checklist coverage, and Playground proof helpers."
-    ],
-    "Improved": [
-      "Improved MCP discovery cursor reliability so paginated tool discovery remains deterministic for supported clients."
-    ]
   },
   "0.6.0": {
     "date": "2026-06-16",

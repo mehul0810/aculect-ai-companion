@@ -283,29 +283,13 @@ Composer dependencies for production releases are installed with:
 * Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
 * Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions.
 * Improved deterministic MCP discovery, verified connection state, and post-save content-index refresh reliability.
-* Removed the dedicated Internal Links admin tab while retaining the supported MCP internal-link workflows.
-* Added release tooling, package verification, and production release guards for the 0.7.0 production line.
-
-= 0.7.0-beta.3 =
-
 * Fixed content-index refresh scheduling so post-save term and metadata changes settle before indexing.
 * Fixed Connect completion state so it reflects a verified active session rather than local setup signals.
 * Fixed local sample history so it stays distinct from real connection state.
 * Fixed plugin lifecycle safety metadata to accurately report supported activation and deactivation operations.
-* Removed the retired Internal Links admin tab while retaining the supported MCP internal-link workflows.
+* Fixed incident reporting so authorized `plugin_incident_list` calls remain read-only while `plugin_incident_report` uses the standard confirmation and replay-safe storage flow.
 * Added a production release guard that blocks deployment unless the exact release tag is already on main and the versions match.
 * Updated prerelease packaging so a published draft prerelease triggers its build, package verification, Plugin Check, and artifact upload.
-
-= 0.7.0-beta.2 =
-
-* Fixed incident reporting so authorized `plugin_incident_list` calls remain read-only while `plugin_incident_report` uses the standard confirmation and replay-safe storage flow.
-
-= 0.7.0-beta.1 =
-
-* Added WordPress core management discovery abilities for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
-* Added internal linking workflows for reviewing suggestions, applying approved links, mapping link opportunities, and surfacing editor suggestions.
-* Improved MCP discovery cursor reliability so paginated tool discovery remains deterministic for supported clients.
-* Added release tooling, templates, regression checklist, and Playground proof support for beta package review.
 
 = 0.6.1 =
 
@@ -451,19 +435,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.0 =
 
-Adds WordPress management discovery, policy-controlled MCP internal-linking workflows, more reliable connections and content indexing, and stronger release packaging safeguards.
-
-= 0.7.0-beta.3 =
-
-Improves connection state accuracy, post-save content-index reliability, lifecycle safety metadata, and the focused MCP-only internal-link workflow.
-
-= 0.7.0-beta.2 =
-
-Fixes MCP incident reporting: read-only listing no longer requests write approval, and report submissions now use the standard confirmation and replay-safe storage flow.
-
-= 0.7.0-beta.1 =
-
-Adds WordPress core management discovery, internal linking review/apply/map/editor suggestions, more reliable MCP discovery cursors, and beta release proof tooling.
+Adds WordPress management discovery, policy-controlled MCP internal-linking workflows, more reliable connections and content indexing, safer incident reporting, and stronger release packaging safeguards.
 
 = 0.6.1 =
 

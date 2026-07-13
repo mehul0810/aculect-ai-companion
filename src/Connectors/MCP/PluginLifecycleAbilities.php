@@ -283,7 +283,7 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	 * @return array{available: bool, age_hours: int, response: array<string, mixed>}
 	 */
 	private function plugin_update_metadata(): array {
-		$value        = get_site_option( '_site_transient_update_plugins', false );
+		$value        = get_site_transient( 'update_plugins' );
 		$available    = false !== $value && null !== $value;
 		$last_checked = $this->metadata_int( $value, 'last_checked' );
 		$response     = $this->metadata_value( $value, 'response' );

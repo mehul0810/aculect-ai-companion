@@ -144,7 +144,11 @@ final class WordPressAbilitiesBridge {
 	 * @return list<object>
 	 */
 	private function abilities(): array {
-		$abilities = wp_get_abilities();
+		if ( ! function_exists( 'wp_get_abilities' ) ) {
+			return array();
+		}
+
+		$abilities = call_user_func( 'wp_get_abilities' );
 		if ( ! is_array( $abilities ) ) {
 			return array();
 		}

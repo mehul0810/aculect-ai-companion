@@ -48,6 +48,29 @@
 	line-height: 1.6;
 }
 
+.aculect-ai-companion-oauth-capabilities li,
+.aculect-ai-companion-oauth-security-list li {
+	margin-bottom: 14px;
+}
+
+.aculect-ai-companion-oauth-capabilities li:last-child,
+.aculect-ai-companion-oauth-security-list li:last-child {
+	margin-bottom: 0;
+}
+
+.aculect-ai-companion-oauth-capabilities li strong,
+.aculect-ai-companion-oauth-security-list li strong {
+	display: block;
+}
+
+.aculect-ai-companion-oauth-capabilities li span,
+.aculect-ai-companion-oauth-security-list li span {
+	display: block;
+	margin-top: 3px;
+	color: #50575e;
+	line-height: 1.5;
+}
+
 .aculect-ai-companion-oauth-details {
 	margin: 0 0 32px;
 	border: 1px solid #dcdcde;

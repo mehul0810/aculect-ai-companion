@@ -181,7 +181,11 @@ final class WordPressAbilitiesDiagnostics {
 			return $this->registered;
 		}
 
-		$abilities = wp_get_abilities();
+		if ( ! function_exists( 'wp_get_abilities' ) ) {
+			return $this->registered;
+		}
+
+		$abilities = call_user_func( 'wp_get_abilities' );
 		if ( ! is_array( $abilities ) ) {
 			return $this->registered;
 		}

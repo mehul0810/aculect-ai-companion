@@ -30,13 +30,16 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( '0.7.0-beta.3', (string) ( $package['version'] ?? '' ) );
 		self::assertSame( '0.7.0-beta.3', (string) ( $lockfile['version'] ?? '' ) );
 		self::assertSame( '0.7.0-beta.3', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
-		self::assertArrayHasKey( '0.7.0-beta.3', $log );
+
+		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
+		self::assertSame( '0.7.0', $release_version );
+		self::assertArrayHasKey( $release_version, $log );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
 			self::assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $entry['date'] ?? '' ) );
 		}
-		self::assertStringContainsString( '= 0.7.0-beta.3 =', $readme );
+		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

@@ -24,19 +24,27 @@ final class ReleaseMetadataTest extends TestCase {
 		$lockfile = $this->json_file( $root . '/package-lock.json' );
 		$log      = $this->json_file( $root . '/changelog.json' );
 
-		self::assertSame( '0.7.0-beta.2', $this->header( $plugin, 'Version' ) );
-		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.0-beta.2' );", $plugin );
-		self::assertSame( '0.7.0-beta.2', $this->header( $readme, 'Stable tag' ) );
-		self::assertSame( '0.7.0-beta.2', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.0-beta.2', (string) ( $lockfile['version'] ?? '' ) );
-		self::assertSame( '0.7.0-beta.2', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
-		self::assertArrayHasKey( '0.7.0-beta.2', $log );
+		self::assertSame( '0.7.0-beta.3', $this->header( $plugin, 'Version' ) );
+		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.0-beta.3' );", $plugin );
+		self::assertSame( '0.7.0-beta.3', $this->header( $readme, 'Stable tag' ) );
+		self::assertSame( '0.7.0-beta.3', (string) ( $package['version'] ?? '' ) );
+		self::assertSame( '0.7.0-beta.3', (string) ( $lockfile['version'] ?? '' ) );
+		self::assertSame( '0.7.0-beta.3', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertArrayHasKey( '0.7.0-beta.3', $log );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
 			self::assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $entry['date'] ?? '' ) );
 		}
-		self::assertStringContainsString( '= 0.7.0-beta.2 =', $readme );
+		self::assertStringContainsString( '= 0.7.0-beta.3 =', $readme );
+	}
+
+	public function test_prerelease_workflow_builds_published_prereleases_only(): void {
+		$root     = dirname( __DIR__, 3 );
+		$workflow = $this->file_contents( $root . '/.github/workflows/prerelease.yml' );
+
+		self::assertStringContainsString( 'types: [published]', $workflow );
+		self::assertStringContainsString( 'if: github.event.release.prerelease', $workflow );
 	}
 
 	/**

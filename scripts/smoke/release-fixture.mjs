@@ -2,6 +2,7 @@
 /* eslint-disable no-console -- Smoke harness output is its CLI contract. */
 
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -45,6 +46,10 @@ const LEARNING_SURFACES = [
 	'Memory Records',
 	'Incident Reports',
 ];
+
+const PACKAGE_VERSION = JSON.parse(
+	readFileSync( new URL( '../../package.json', import.meta.url ), 'utf8' )
+).version;
 
 const BASE_TOOLS = [
 	{
@@ -158,7 +163,7 @@ function fixtureForScenario( scenario ) {
 			protocolVersion: '2025-03-26',
 			serverInfo: {
 				name: 'aculect-ai-companion-fixture',
-				version: '0.7.0-beta.2',
+				version: PACKAGE_VERSION,
 			},
 			capabilities: {
 				tools: {

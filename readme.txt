@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.0-beta.2
+Stable tag: 0.7.0-beta.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -263,6 +263,16 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.7.0-beta.3 =
+
+* Fixed content-index refresh scheduling so post-save term and metadata changes settle before indexing.
+* Fixed Connect completion state so it reflects a verified active session rather than local setup signals.
+* Fixed local sample history so it stays distinct from real connection state.
+* Fixed plugin lifecycle safety metadata to accurately report supported activation and deactivation operations.
+* Removed the retired Internal Links admin tab while retaining the supported MCP internal-link workflows.
+* Added a production release guard that blocks deployment unless the exact release tag is already on main and the versions match.
+* Updated prerelease packaging so a published draft prerelease triggers its build, package verification, Plugin Check, and artifact upload.
+
 = 0.7.0-beta.2 =
 
 * Fixed incident reporting so authorized `plugin_incident_list` calls remain read-only while `plugin_incident_report` uses the standard confirmation and replay-safe storage flow.
@@ -415,6 +425,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.0-beta.3 =
+
+Improves connection state accuracy, post-save content-index reliability, lifecycle safety metadata, and the focused MCP-only internal-link workflow.
 
 = 0.7.0-beta.2 =
 

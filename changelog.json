@@ -1,4 +1,20 @@
 {
+	"0.7.0-beta.3": {
+		"date": "2026-07-13",
+		"Fixed": [
+			"Fixed content-index refresh scheduling so post-save term and metadata changes settle before indexing.",
+			"Fixed Connect completion state so it reflects a verified active session rather than local setup signals.",
+			"Fixed local sample history so it stays distinct from real connection state.",
+			"Fixed plugin lifecycle safety metadata to accurately report supported activation and deactivation operations."
+		],
+		"Improved": [
+			"Removed the retired Internal Links admin tab while retaining the supported MCP internal-link workflows."
+		],
+		"Reliability": [
+			"Added a production release guard that blocks deployment unless the exact release tag is already on main and the versions match.",
+			"Updated prerelease packaging so a published draft prerelease triggers its build, package verification, Plugin Check, and artifact upload."
+		]
+	},
 	"0.7.0-beta.2": {
 		"date": "2026-07-10",
 		"Fixed": [

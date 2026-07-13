@@ -2,13 +2,14 @@ name: Build Plugin Pre-Release
 
 on:
   release:
-    types: [prereleased]
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: github.event.release.prerelease
     name: Build Plugin Artifact
     runs-on: ubuntu-latest
 

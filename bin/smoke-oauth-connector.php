@@ -270,7 +270,7 @@ function aculect_smoke_assert_logged_out_location( array $result ): void {
 		throw new RuntimeException( 'Logged-out authorize expected wp-login.php, got ' . aculect_smoke_sanitized_url( $location ) . '.' );
 	}
 
-	if ( ! str_contains( $decoded, 'options-general.php' ) || ! str_contains( $decoded, 'page=aculect-ai-companion' ) || ! str_contains( $decoded, 'view=oauth-consent' ) ) {
+	if ( ! aculect_smoke_is_consent_location( $decoded ) ) {
 		throw new RuntimeException( 'Logged-out authorize login redirect_to did not target the Aculect consent screen.' );
 	}
 
@@ -290,9 +290,15 @@ function aculect_smoke_assert_logged_in_location( array $result ): void {
 		throw new RuntimeException( 'Logged-in authorize redirected to login instead of admin consent.' );
 	}
 
-	if ( ! str_contains( $decoded, 'options-general.php' ) || ! str_contains( $decoded, 'page=aculect-ai-companion' ) || ! str_contains( $decoded, 'view=oauth-consent' ) ) {
+	if ( ! aculect_smoke_is_consent_location( $decoded ) ) {
 		throw new RuntimeException( 'Logged-in authorize did not redirect to the Aculect consent screen. Location: ' . aculect_smoke_sanitized_url( $location ) . '.' );
 	}
+}
+
+function aculect_smoke_is_consent_location( string $location ): bool {
+	return str_contains( $location, 'admin.php' )
+		&& str_contains( $location, 'page=aculect-ai-companion-oauth-consent' )
+		&& 1 === preg_match( '/[?&]request_token=[a-f0-9]{32}(?:&|$)/', $location );
 }
 
 function aculect_smoke_sanitized_url( string $url ): string {

@@ -77,7 +77,7 @@ final class SettingsPageTest extends TestCase {
 
 		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_pages']['menu'] );
 		self::assertCount( 1, $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'] );
-		self::assertNull( $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][0]['parent_slug'] );
+		self::assertSame( '', $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][0]['parent_slug'] );
 		self::assertSame( 'read', $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][0]['capability'] );
 		self::assertSame( 'aculect-ai-companion-oauth-consent', $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][0]['menu_slug'] );
 		self::assertCount( 1, $GLOBALS['aculect_ai_companion_test_admin_pages']['options'] );

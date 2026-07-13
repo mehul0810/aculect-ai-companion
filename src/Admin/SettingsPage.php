@@ -84,7 +84,7 @@ final class SettingsPage {
 			array( $this, 'render' )
 		);
 		add_submenu_page(
-			null,
+			'',
 			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
 			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
 			'read',

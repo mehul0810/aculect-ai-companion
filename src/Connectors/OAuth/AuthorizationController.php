@@ -186,7 +186,7 @@ final class AuthorizationController {
 			( new Logger() )->warning(
 				'consent.invalid_decision',
 				'OAuth consent submission included an invalid decision.',
-				$this->log_context( $params, $context['client'], 'invalid_decision' ),
+				$this->log_context( $context['params'], $context['client'], 'invalid_decision' ),
 				null,
 				400
 			);
@@ -650,26 +650,6 @@ final class AuthorizationController {
 	}
 
 	/**
-	 * Collect OAuth query parameters from the admin consent URL.
-	 *
-	 * @return array<string, string>
-	 */
-	private function query_params(): array {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public OAuth query parameters are allowlisted and sanitized by params_from_array().
-		return $this->params_from_array( $_GET, true );
-	}
-
-	/**
-	 * Collect OAuth POST parameters from the consent form.
-	 *
-	 * @return array<string, string>
-	 */
-	private function posted_params(): array {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- OAuth POST parameters are allowlisted and sanitized by params_from_array(); nonce is verified before action.
-		return $this->params_from_array( $_POST, true );
-	}
-
-	/**
 	 * Return the sanitized consent request token from GET data.
 	 */
 	private function query_request_token(): string {
@@ -1067,8 +1047,12 @@ final class AuthorizationController {
 			$this->fail( 'Login required', 'Sign in to continue the authorization request.', 401, $admin_context );
 		}
 
-		if ( $bound_user_id > 0 && $bound_user_id !== $current_user_id && ! current_user_can( 'manage_options' ) ) {
+		if ( $bound_user_id > 0 && $bound_user_id !== $current_user_id ) {
 			$this->fail( 'Invalid request', 'This authorization request belongs to a different WordPress user.', 403, $admin_context );
+		}
+
+		if ( null !== $client->getUserId() && $client->getUserId() !== $current_user_id ) {
+			$this->fail( 'Invalid request', 'This authorization request is not available for your WordPress account.', 403, $admin_context );
 		}
 
 		if ( UserAccessControl::is_paused( $current_user_id ) ) {
@@ -1081,10 +1065,6 @@ final class AuthorizationController {
 
 		if ( ! RoleConnectionEntryPoint::is_enabled() || ! RoleConnectionEntryPoint::current_user_allowed() ) {
 			$this->fail( 'Insufficient permissions', 'Your WordPress role is not allowed to approve AI assistant connections on this site.', 403, $admin_context );
-		}
-
-		if ( null !== $client->getUserId() && $client->getUserId() !== $current_user_id ) {
-			$this->fail( 'Invalid request', 'This authorization request is not available for your WordPress account.', 403, $admin_context );
 		}
 
 		if ( ! $this->requested_scopes_allowed_for_current_user( $this->scope_tokens_from_params( $params ) ) ) {

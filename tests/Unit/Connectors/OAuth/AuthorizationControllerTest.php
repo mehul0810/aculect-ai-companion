@@ -85,14 +85,14 @@ final class AuthorizationControllerTest extends TestCase {
 
 	public function test_posted_helpers_unslash_sanitize_and_validate_form_fields(): void {
 		$_POST = array(
-			'client_id' => 'client\\\\id',
-			'_wpnonce'  => 'nonce\\value',
-			'decision'  => 'approve',
+			'request_token' => 'ABCD\\1234-not-a-token',
+			'_wpnonce'      => 'nonce\\value',
+			'decision'      => 'approve',
 		);
 
 		$controller = new AuthorizationController();
 
-		self::assertSame( 'client\\id', $this->invokePrivate( $controller, 'posted_params' )['client_id'] );
+		self::assertSame( 'abcd1234ae', $this->invokePrivate( $controller, 'posted_request_token' ) );
 		self::assertSame( 'noncevalue', $this->invokePrivate( $controller, 'posted_nonce' ) );
 		self::assertSame( 'approve', $this->invokePrivate( $controller, 'posted_decision' ) );
 	}
@@ -258,6 +258,31 @@ final class AuthorizationControllerTest extends TestCase {
 				),
 				$client,
 				9,
+				true,
+			)
+		);
+	}
+
+	public function test_assert_current_user_can_consent_rejects_admin_for_different_users_request(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 9;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
+
+		$client = new ClientEntity();
+		$client->setIdentifier( 'client-1' );
+		$client->setUserId( 7 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'This authorization request belongs to a different WordPress user.' );
+
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'assert_current_user_can_consent',
+			array(
+				array(
+					'scope' => 'content:read',
+				),
+				$client,
+				7,
 				true,
 			)
 		);

@@ -168,7 +168,12 @@ final class WordPressAbilitiesBridge {
 			return null;
 		}
 
-		$first_party_name = ( new WordPressAbilitiesRegistrar() )->ability_name_for_id( $name );
+		$registrar = new WordPressAbilitiesRegistrar();
+		if ( $registrar->is_mcp_only_intelligence( $name ) ) {
+			return null;
+		}
+
+		$first_party_name = $registrar->ability_name_for_id( $name );
 		if ( '' !== $first_party_name ) {
 			$name = $first_party_name;
 		}

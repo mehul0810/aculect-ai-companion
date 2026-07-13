@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesBridge;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
@@ -27,6 +28,7 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 
 		$GLOBALS['aculect_ai_companion_test_options']      = array();
 		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']  = array();
 	}
 
 	public function test_run_denies_execution_when_permission_callback_denies(): void {
@@ -104,28 +106,73 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( 'Custom denial.', $result['message'] );
 	}
 
-	public function test_incident_abilities_resolve_aliases_with_distinct_read_write_metadata(): void {
+	public function test_read_capable_bridge_caller_can_execute_incident_list_alias(): void {
 		( new WordPressAbilitiesRegistrar() )->register_abilities();
 
 		$bridge = new WordPressAbilitiesBridge();
 		$list   = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
-		$report = $bridge->get_info( array( 'id' => 'plugin_issue_report' ) );
 
 		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $list['id'] );
 		self::assertTrue( $list['readOnly'] );
 		self::assertTrue( $list['allowed'] );
 		self::assertSame( 'plugin_incident_list', $list['meta']['mcp']['tool'] );
 
-		self::assertSame( 'aculect-ai-companion/plugin-incident-report', $report['id'] );
-		self::assertFalse( $report['readOnly'] );
-		self::assertTrue( $report['allowed'] );
-		self::assertSame( 'plugin_incident_report', $report['meta']['mcp']['tool'] );
-
 		$result = $bridge->run( array( 'id' => 'plugin_incident_list' ) );
 
 		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $result['ability'] );
 		self::assertSame( 0, $result['result']['total'] );
 		self::assertArrayNotHasKey( 'confirmation_required', $result['result'] );
+	}
+
+	public function test_read_capable_bridge_caller_cannot_execute_incident_report(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+		wp_register_ability(
+			'aculect-ai-companion/plugin-incident-report',
+			array(
+				'label'               => 'Unsafe incident report route',
+				'description'         => 'Test-only public write route.',
+				'category'            => 'aculect-intelligence',
+				'input_schema'        => array( 'type' => 'object' ),
+				'output_schema'       => array( 'type' => 'object' ),
+				'permission_callback' => static fn (): bool => current_user_can( 'read' ),
+				'execute_callback'    => static fn( array $input ): array => ( new PluginIncidentReporter() )->report( $input ),
+				'meta'                => array(
+					'show_in_rest' => true,
+					'annotations'  => array( 'readonly' => false ),
+				),
+			)
+		);
+
+		$policy = new WordPressAbilitiesPolicy();
+		$policy->save_allowed_ids( array( 'aculect-ai-companion/plugin-incident-report' ) );
+		self::assertSame( array(), $policy->allowed_ids() );
+		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
+
+		$bridge = new WordPressAbilitiesBridge();
+		$args   = array(
+			'arguments' => array(
+				'title'   => 'Bridge bypass attempt',
+				'summary' => 'A read-capable remote caller must not store an incident report.',
+			),
+		);
+
+		foreach (
+			array(
+				'plugin.incident.report',
+				'plugin_incident_report',
+				'plugin.issue.report',
+				'plugin_issue_report',
+				'aculect-ai-companion/plugin-incident-report',
+			) as $report_id
+		) {
+			$info = $bridge->get_info( array( 'id' => $report_id ) );
+			self::assertSame( 'not_found', $info['error'], $report_id );
+
+			$result = $bridge->run( array_merge( $args, array( 'id' => $report_id ) ) );
+			self::assertSame( 'not_found', $result['error'], $report_id );
+		}
+
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
 	/**

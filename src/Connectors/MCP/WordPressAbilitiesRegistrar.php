@@ -9,9 +9,9 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class WordPressAbilitiesRegistrar {
 
-	private const CATEGORY              = 'aculect-intelligence';
-	private const NAMESPACE             = 'aculect-ai-companion';
-	private const FIRST_PARTY_WRITE_IDS = array(
+	private const CATEGORY     = 'aculect-intelligence';
+	private const NAMESPACE    = 'aculect-ai-companion';
+	private const MCP_ONLY_IDS = array(
 		'plugin.incident.report',
 	);
 
@@ -43,7 +43,7 @@ final class WordPressAbilitiesRegistrar {
 			self::CATEGORY,
 			array(
 				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident reporting intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
 			)
 		);
 	}
@@ -56,7 +56,7 @@ final class WordPressAbilitiesRegistrar {
 			return;
 		}
 
-		foreach ( $this->first_party_modules() as $module ) {
+		foreach ( $this->read_only_modules() as $module ) {
 			call_user_func( 'wp_register_ability', $this->ability_name( $module ), $this->ability_args( $module ) );
 		}
 	}
@@ -82,17 +82,8 @@ final class WordPressAbilitiesRegistrar {
 	public function module_ability_names(): array {
 		return array_map(
 			fn( AbilityModuleInterface $module ): string => $this->ability_name( $module ),
-			$this->first_party_modules()
+			$this->read_only_modules()
 		);
-	}
-
-	/**
-	 * Check whether an ability name belongs to first-party intelligence.
-	 *
-	 * @param string $name WordPress Ability name.
-	 */
-	public function is_first_party_intelligence( string $name ): bool {
-		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
 	}
 
 	/**
@@ -101,11 +92,31 @@ final class WordPressAbilitiesRegistrar {
 	 * @param string $name WordPress Ability name.
 	 */
 	public function is_first_party_read_intelligence( string $name ): bool {
-		$name    = sanitize_text_field( $name );
-		$modules = array_flip( $this->module_ability_names() );
-		$module  = $modules[ $name ] ?? '';
+		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
+	}
 
-		return '' !== $module && ! in_array( $module, self::FIRST_PARTY_WRITE_IDS, true );
+	/**
+	 * Check whether an ID must execute only through the MCP safety layer.
+	 *
+	 * @param string $id Module ID, MCP tool name, legacy alias, or public ability name.
+	 */
+	public function is_mcp_only_intelligence( string $id ): bool {
+		$id       = sanitize_text_field( $id );
+		$registry = new IntelligenceRegistry();
+		$module   = $registry->module( $id );
+
+		if ( null !== $module && in_array( $module->id(), self::MCP_ONLY_IDS, true ) ) {
+			return true;
+		}
+
+		foreach ( self::MCP_ONLY_IDS as $module_id ) {
+			$module = $registry->module( $module_id );
+			if ( null !== $module && hash_equals( $this->ability_name( $module ), $id ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -133,11 +144,11 @@ final class WordPressAbilitiesRegistrar {
 	 *
 	 * @return array<string, AbilityModuleInterface>
 	 */
-	private function first_party_modules(): array {
+	private function read_only_modules(): array {
 		$modules = array();
 
 		foreach ( ( new IntelligenceRegistry() )->modules() as $module ) {
-			if ( $module->is_read_only() || in_array( $module->id(), self::FIRST_PARTY_WRITE_IDS, true ) ) {
+			if ( $module->is_read_only() ) {
 				$modules[ $module->id() ] = $module;
 			}
 		}
@@ -181,9 +192,9 @@ final class WordPressAbilitiesRegistrar {
 			'meta'                => array(
 				'show_in_rest' => true,
 				'annotations'  => array(
-					'readonly'    => $module->is_read_only(),
+					'readonly'    => true,
 					'destructive' => false,
-					'idempotent'  => $module->is_read_only(),
+					'idempotent'  => true,
 				),
 				'mcp'          => array(
 					'public' => true,
@@ -280,25 +291,6 @@ final class WordPressAbilitiesRegistrar {
 					'message' => array( 'type' => 'string' ),
 					'job'     => array( 'type' => 'object' ),
 					'items'   => array( 'type' => 'array' ),
-				)
-			);
-		}
-
-		if ( 'plugin.incident.report' === $module->id() ) {
-			return $this->object_output_schema(
-				array(
-					'status'            => array( 'type' => 'string' ),
-					'message'           => array( 'type' => 'string' ),
-					'error'             => array( 'type' => 'string' ),
-					'report_id'         => array( 'type' => 'string' ),
-					'correlation_id'    => array( 'type' => 'string' ),
-					'repository'        => array( 'type' => 'string' ),
-					'title'             => array( 'type' => 'string' ),
-					'body'              => array( 'type' => 'string' ),
-					'issue_url'         => array( 'type' => 'string' ),
-					'can_create_direct' => array( 'type' => 'boolean' ),
-					'incident'          => array( 'type' => 'object' ),
-					'next_actions'      => array( 'type' => 'array' ),
 				)
 			);
 		}

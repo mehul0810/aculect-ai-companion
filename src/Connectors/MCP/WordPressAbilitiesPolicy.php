@@ -30,7 +30,7 @@ final class WordPressAbilitiesPolicy {
 			}
 
 			$id = $this->ability_name( $ability );
-			if ( $registrar->is_first_party_intelligence( $id ) ) {
+			if ( $registrar->is_first_party_read_intelligence( $id ) || $registrar->is_mcp_only_intelligence( $id ) ) {
 				continue;
 			}
 
@@ -86,8 +86,13 @@ final class WordPressAbilitiesPolicy {
 	 * @param string $id Ability ID.
 	 */
 	public function is_allowed( string $id ): bool {
-		$id = sanitize_text_field( $id );
-		if ( ( new WordPressAbilitiesRegistrar() )->is_first_party_intelligence( $id ) ) {
+		$id        = sanitize_text_field( $id );
+		$registrar = new WordPressAbilitiesRegistrar();
+		if ( $registrar->is_mcp_only_intelligence( $id ) ) {
+			return false;
+		}
+
+		if ( $registrar->is_first_party_read_intelligence( $id ) ) {
 			return true;
 		}
 
@@ -119,12 +124,12 @@ final class WordPressAbilitiesPolicy {
 	 * @return list<string>
 	 */
 	private function sanitize_ids( array $ids ): array {
-		$known = array();
+		$known     = array();
+		$registrar = new WordPressAbilitiesRegistrar();
 		if ( function_exists( 'wp_get_abilities' ) ) {
-			$registrar = new WordPressAbilitiesRegistrar();
 			foreach ( $this->abilities() as $ability ) {
 				$name = $this->ability_name( $ability );
-				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_intelligence( $name ) ) {
+				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $name ) && ! $registrar->is_mcp_only_intelligence( $name ) ) {
 					$known[] = $name;
 				}
 			}
@@ -135,6 +140,10 @@ final class WordPressAbilitiesPolicy {
 				static fn( mixed $id ): string => is_scalar( $id ) ? sanitize_text_field( (string) $id ) : '',
 				$ids
 			)
+		);
+		$ids = array_filter(
+			$ids,
+			static fn( string $id ): bool => ! $registrar->is_mcp_only_intelligence( $id )
 		);
 
 		if ( array() !== $known ) {

@@ -74,6 +74,15 @@ final class ToolSafety {
 	}
 
 	/**
+	 * Check whether a call includes a non-empty confirmation token.
+	 *
+	 * @param array<mixed> $args Tool arguments.
+	 */
+	public function has_confirmation_token( array $args ): bool {
+		return '' !== $this->confirmation_token_arg( $args );
+	}
+
+	/**
 	 * Return confirmation token lifetime in seconds.
 	 */
 	public function confirmation_ttl(): int {
@@ -144,6 +153,7 @@ final class ToolSafety {
 			'content_internal_link.suggestions_create',
 			'content_internal_link.suggestion_review',
 			'content_internal_link.suggestion_apply',
+			'plugin.incident.report',
 			'memory.save',
 			'memory.bootstrap',
 			'seo_workflow.update_rankmath',

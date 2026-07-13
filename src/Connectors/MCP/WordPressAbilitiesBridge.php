@@ -168,6 +168,16 @@ final class WordPressAbilitiesBridge {
 			return null;
 		}
 
+		$registrar = new WordPressAbilitiesRegistrar();
+		if ( $registrar->is_mcp_only_intelligence( $name ) ) {
+			return null;
+		}
+
+		$first_party_name = $registrar->ability_name_for_id( $name );
+		if ( '' !== $first_party_name ) {
+			$name = $first_party_name;
+		}
+
 		foreach ( $this->abilities() as $ability ) {
 			if ( hash_equals( $this->ability_name( $ability ), $name ) ) {
 				return $ability;

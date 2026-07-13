@@ -1481,18 +1481,32 @@ final class McpController {
 		$is_incident_report         = 'plugin.incident.report' === $tool;
 		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $registry->is_read_only( $tool ) );
 		$requires_confirmation      = $is_incident_report || $safety->requires_confirmation( $tool, $args );
-		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
+		$has_confirmation_token     = $is_write_tool && $safety->has_confirmation_token( $args );
+		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args ) && ! $has_confirmation_token;
 		$write_permission_unblocked = $is_write_tool && ! $is_incident_report && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
 		$replay                     = $is_write_tool && ! $is_dry_run
 			? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
 			: null;
 		$trusted_write_executed     = false;
+		$confirmation_validated     = $is_write_tool
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& $this->confirmation_token_validated( $tool, $args, $auth, $safety );
+		$invalid_confirmation       = $has_confirmation_token
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& ! $confirmation_validated;
 		$needs_confirmation_gate    = $is_write_tool
 			&& ! $is_dry_run
 			&& null === $replay
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
-			&& ! $this->confirmation_token_validated( $tool, $args, $auth, $safety );
+			&& ! $has_confirmation_token
+			&& ! $confirmation_validated;
 
 		if ( null !== $replay ) {
 			$result = $replay;
@@ -1505,6 +1519,8 @@ final class McpController {
 					$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
 				}
 			}
+		} elseif ( $invalid_confirmation ) {
+			$result = $this->invalid_confirmation_payload( $tool, $args, $auth );
 		} elseif ( $needs_confirmation_gate ) {
 			$preview_args            = $safety->strip_control_args( $args );
 			$preview_args['dry_run'] = true;
@@ -1675,6 +1691,40 @@ final class McpController {
 		);
 
 		return $result;
+	}
+
+	/**
+	 * Build a distinct response for an invalid, expired, or mismatched token.
+	 *
+	 * @param string               $tool Internal ability ID.
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @param array<string, mixed> $auth OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function invalid_confirmation_payload( string $tool, array $args, array $auth ): array {
+		$this->record_timeline_event(
+			'blocked_by',
+			array(
+				'method'         => 'tools/call',
+				'tool'           => $tool,
+				'status'         => 'blocked',
+				'blocked_by'     => 'invalid_confirmation_token',
+				'error_code'     => 'invalid_confirmation_token',
+				'risk_level'     => $this->tool_risk_level( $tool, $args ),
+				'target_summary' => $this->timeline_target_summary( $tool, $args ),
+			),
+			$auth
+		);
+
+		return array(
+			'status'                => 'blocked',
+			'error'                 => 'invalid_confirmation_token',
+			'message'               => 'The confirmation token is invalid, expired, or does not match this tool call.',
+			'confirmation_required' => true,
+			'action'                => $tool,
+			'risk_level'            => $this->tool_risk_level( $tool, $args ),
+			'next_actions'          => array( 'Repeat the call without confirmation_token to request a new preview and token.' ),
+		);
 	}
 
 	/**

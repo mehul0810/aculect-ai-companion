@@ -16,6 +16,8 @@ use ReflectionMethod;
 use WP_REST_Request;
 use WP_REST_Response;
 
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused token timeline tests replace wpdb with a local test double.
+
 /**
  * Verifies token endpoint resource handling and error response shape.
  */
@@ -126,6 +128,79 @@ final class TokenControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'refresh_token', $context );
 	}
 
+	public function test_invalid_grant_refresh_context_is_pre_auth_and_storage_backed(): void {
+		$raw             = 'raw-refresh-token';
+		$wpdb            = new FakeTokenTimelineWpdb(
+			array(
+				'revoked'       => '0',
+				'expires_at'    => '2000-01-01 00:00:00',
+				'connection_id' => '42',
+				'client_id'     => 'stored-codex-client',
+				'provider'      => 'codex',
+			)
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+		$controller      = new TokenController();
+		$request         = new WP_REST_Request(
+			array(
+				'grant_type'    => 'refresh_token',
+				'refresh_token' => $raw,
+			)
+		);
+
+		$context      = $this->invokePrivate( $controller, 'refresh_rejection_context', array( $request, 'invalid_grant' ) );
+		$auth         = $this->invokePrivate(
+			$controller,
+			'correlate_timeline_auth',
+			array(
+				array(
+					'provider'  => '',
+					'client_id' => '',
+				),
+				$context,
+			)
+		);
+		$request_auth = $this->invokePrivate(
+			$controller,
+			'correlate_timeline_auth',
+			array(
+				array(
+					'provider'  => 'chatgpt',
+					'client_id' => 'request-client',
+				),
+				$context,
+			)
+		);
+
+		self::assertSame( 'unavailable_pre_auth', $context['identity_status'] );
+		self::assertSame( 'reconnect_assistant', $context['recovery_action'] );
+		self::assertSame( 'expired', $context['refresh_token_state'] );
+		self::assertSame( 42, $context['connection_id'] );
+		self::assertSame( 'codex', $auth['provider'] );
+		self::assertSame( 'stored-codex-client', $auth['client_id'] );
+		self::assertSame( 'chatgpt', $request_auth['provider'] );
+		self::assertSame( 'request-client', $request_auth['client_id'] );
+		self::assertArrayNotHasKey( 'user_id', $context );
+		self::assertArrayNotHasKey( 'refresh_token', $context );
+		self::assertSame( hash( 'sha256', $raw ), $wpdb->prepared[0]['args'][3] );
+		self::assertNotContains( $raw, $wpdb->prepared[0]['args'] );
+	}
+
+	public function test_other_refresh_errors_get_pre_auth_guidance_without_token_state(): void {
+		$request = new WP_REST_Request(
+			array(
+				'grant_type'    => 'refresh_token',
+				'refresh_token' => 'do-not-read',
+			)
+		);
+
+		$context = $this->invokePrivate( new TokenController(), 'refresh_rejection_context', array( $request, 'invalid_client' ) );
+
+		self::assertSame( 'unavailable_pre_auth', $context['identity_status'] );
+		self::assertSame( 'reconnect_assistant', $context['recovery_action'] );
+		self::assertArrayNotHasKey( 'refresh_token_state', $context );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *
@@ -138,5 +213,58 @@ final class TokenControllerTest extends TestCase {
 		$reflection = new ReflectionMethod( $object, $method );
 
 		return $reflection->invokeArgs( $object, $arguments );
+	}
+}
+
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test double is intentionally local to token timeline coverage.
+
+/**
+ * Minimal wpdb test double for refresh-token timeline correlation.
+ */
+final class FakeTokenTimelineWpdb {
+
+	public string $prefix = 'wp_';
+
+	/**
+	 * Prepared SQL calls.
+	 *
+	 * @var array<int, array{query: string, args: array<int, mixed>}>
+	 */
+	public array $prepared = array();
+
+	/**
+	 * Initialize the test double.
+	 *
+	 * @param array<string, mixed>|null $row Configured row.
+	 */
+	public function __construct( private ?array $row ) {
+	}
+
+	/**
+	 * Record a prepared SQL template and arguments.
+	 *
+	 * @param string $query SQL query with placeholders.
+	 * @param mixed  ...$args Placeholder arguments.
+	 */
+	public function prepare( string $query, mixed ...$args ): string {
+		$this->prepared[] = array(
+			'query' => $query,
+			'args'  => $args,
+		);
+
+		return $query;
+	}
+
+	/**
+	 * Return the configured row.
+	 *
+	 * @param string $query  SQL query.
+	 * @param string $output Output format.
+	 * @return array<string, mixed>|null
+	 */
+	public function get_row( string $query, string $output ): ?array {
+		unset( $query, $output );
+
+		return $this->row;
 	}
 }

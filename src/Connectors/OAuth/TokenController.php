@@ -9,6 +9,7 @@ use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogSanitizer;
@@ -125,6 +126,8 @@ final class TokenController {
 
 			return Psr7Bridge::to_rest_response( $response );
 		} catch ( OAuthServerException $exception ) {
+			$refresh_context = $this->refresh_rejection_context( $request, $exception->getErrorType() );
+			$timeline_auth   = $this->correlate_timeline_auth( $timeline_auth, $refresh_context );
 			$logger->warning(
 				'token.oauth_error',
 				'OAuth token request was rejected.',
@@ -134,13 +137,16 @@ final class TokenController {
 			);
 			$this->record_timeline_event(
 				$timeline_event,
-				array(
-					'status'       => 'error',
-					'method'       => 'oauth/token',
-					'grant_type'   => (string) $request->get_param( 'grant_type' ),
-					'result_class' => $this->token_result_class( $exception->getHttpStatusCode() ),
-					'error_code'   => $exception->getErrorType(),
-					'duration_ms'  => $this->duration_ms( $started_at ),
+				array_merge(
+					array(
+						'status'       => 'error',
+						'method'       => 'oauth/token',
+						'grant_type'   => (string) $request->get_param( 'grant_type' ),
+						'result_class' => $this->token_result_class( $exception->getHttpStatusCode() ),
+						'error_code'   => $exception->getErrorType(),
+						'duration_ms'  => $this->duration_ms( $started_at ),
+					),
+					$refresh_context
 				),
 				$timeline_auth
 			);
@@ -266,6 +272,59 @@ final class TokenController {
 			'provider'  => $this->client_provider( $request ),
 			'client_id' => $client_id,
 		);
+	}
+
+	/**
+	 * Build support metadata for a rejected pre-auth refresh request.
+	 *
+	 * @param WP_REST_Request $request    Token request.
+	 * @param string          $error_code OAuth error code.
+	 * @return array<string, mixed>
+	 */
+	private function refresh_rejection_context( WP_REST_Request $request, string $error_code ): array {
+		if ( 'refresh_token' !== (string) $request->get_param( 'grant_type' ) ) {
+			return array();
+		}
+
+		$context = array(
+			'identity_status' => 'unavailable_pre_auth',
+			'recovery_action' => 'reconnect_assistant',
+		);
+		if ( 'invalid_grant' !== $error_code ) {
+			return $context;
+		}
+
+		$token = (string) $request->get_param( 'refresh_token' );
+		if ( '' === $token ) {
+			return $context;
+		}
+
+		try {
+			return array_merge( $context, ( new RefreshTokenRepository() )->support_context_from_token_id( $token ) );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return $context;
+		}
+	}
+
+	/**
+	 * Fill missing timeline grouping fields from an existing stored connection.
+	 *
+	 * @param array<string, mixed> $auth    Request-derived timeline context.
+	 * @param array<string, mixed> $context Stored refresh-token support context.
+	 * @return array<string, mixed>
+	 */
+	private function correlate_timeline_auth( array $auth, array $context ): array {
+		if ( '' === (string) ( $auth['provider'] ?? '' ) && isset( $context['provider'] ) ) {
+			$auth['provider'] = (string) $context['provider'];
+		}
+
+		if ( '' === (string) ( $auth['client_id'] ?? '' ) && isset( $context['connection_client_id'] ) ) {
+			$auth['client_id'] = (string) $context['connection_client_id'];
+		}
+
+		return $auth;
 	}
 
 	/**

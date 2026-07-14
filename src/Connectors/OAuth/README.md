@@ -32,6 +32,19 @@ Expired access-token rows are retained only while they anchor an active refresh
 token, keeping admin revocation available for the full connection window without
 extending bearer-token validity.
 
+## Rejected Refresh Activity
+
+An `invalid_grant` refresh rejection happens before OAuth establishes a
+WordPress identity. Activity therefore labels the identity as unavailable at
+rejection time; it does not represent an authenticated unknown-user session.
+Support metadata may classify the hashed stored refresh-token record as
+`expired`, `revoked`, `not_found`, or `active_in_storage`, and may correlate the
+event with an existing provider, hashed client identifier, and numeric
+connection identifier. A revoked row does not preserve whether rotation,
+disconnect, or another revocation path caused the state, so activity does not
+claim that the token was replaced. Client-facing OAuth responses remain
+unchanged, and the support action is to reconnect the assistant.
+
 ## Plugin Check DB Warnings
 
 The repository classes contain scoped PHPCS suppressions for:

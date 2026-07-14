@@ -88,6 +88,73 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	}
 
 	/**
+	 * Return support-safe stored context for a presented refresh token.
+	 *
+	 * The raw identifier is used only to derive the existing storage hash. A
+	 * revoked row does not prove whether rotation, disconnect, or another
+	 * revocation path caused the state, so no revocation reason is inferred.
+	 *
+	 * @param string $tokenId Raw refresh token identifier.
+	 * @return array{}|array{refresh_token_state: string, connection_id?: int, connection_client_id?: string, provider?: string}
+	 */
+	public function support_context_from_token_id( string $tokenId ): array {
+		global $wpdb;
+
+		if ( '' === $tokenId ) {
+			return array();
+		}
+
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT refresh_tokens.revoked, refresh_tokens.expires_at,
+					access_tokens.id AS connection_id, access_tokens.client_id, clients.provider
+				FROM %i refresh_tokens
+				LEFT JOIN %i access_tokens ON access_tokens.token_hash = refresh_tokens.access_token_hash
+				LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE refresh_tokens.token_hash = %s
+				LIMIT 1',
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['clients'],
+				$this->hash_identifier( $tokenId )
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) ) {
+			return array( 'refresh_token_state' => 'not_found' );
+		}
+
+		$expires_at = strtotime( (string) ( $row['expires_at'] ?? '' ) );
+		if ( '1' === (string) ( $row['revoked'] ?? '0' ) ) {
+			$state = 'revoked';
+		} elseif ( false === $expires_at || $expires_at < time() ) {
+			$state = 'expired';
+		} else {
+			$state = 'active_in_storage';
+		}
+
+		$context       = array( 'refresh_token_state' => $state );
+		$connection_id = absint( $row['connection_id'] ?? 0 );
+		if ( $connection_id > 0 ) {
+			$context['connection_id'] = $connection_id;
+		}
+
+		$client_id = (string) ( $row['client_id'] ?? '' );
+		if ( '' !== $client_id ) {
+			$context['connection_client_id'] = $client_id;
+		}
+
+		$provider = sanitize_key( (string) ( $row['provider'] ?? '' ) );
+		if ( '' !== $provider ) {
+			$context['provider'] = $provider;
+		}
+
+		return $context;
+	}
+
+	/**
 	 * Revoke all refresh tokens issued from an access token.
 	 *
 	 * @param string $access_token_id Raw access token identifier.

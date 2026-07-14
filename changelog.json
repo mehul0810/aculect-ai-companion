@@ -1,6 +1,6 @@
 {
 	"0.7.0": {
-		"date": "2026-07-13",
+		"date": "2026-07-14",
 		"New": [
 			"Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.",
 			"Added MCP internal-linking workflows for auditing content, finding opportunities, reviewing suggestions, applying approved links, and surfacing editor suggestions.",

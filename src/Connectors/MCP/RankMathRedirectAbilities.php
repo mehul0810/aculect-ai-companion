@@ -535,7 +535,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 			return array();
 		}
 
-		if ( $offset !== strlen( $serialized ) || ! is_array( $value ) ) {
+		if ( strlen( $serialized ) !== $offset || ! is_array( $value ) ) {
 			return array();
 		}
 
@@ -721,7 +721,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	 */
 	private function parse_serialized_token( string $serialized, int &$offset, string $type ): ?string {
 		$prefix = $type . ':';
-		if ( $prefix !== substr( $serialized, $offset, 2 ) ) {
+		if ( substr( $serialized, $offset, 2 ) !== $prefix ) {
 			return null;
 		}
 
@@ -745,7 +745,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	 */
 	private function parse_serialized_length( string $serialized, int &$offset, string $type ): ?int {
 		$prefix = $type . ':';
-		if ( $prefix !== substr( $serialized, $offset, 2 ) ) {
+		if ( substr( $serialized, $offset, 2 ) !== $prefix ) {
 			return null;
 		}
 

@@ -709,9 +709,7 @@ final class SettingsPage {
 			);
 		}
 
-		$json = wp_json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-		echo is_string( $json ) ? $json : '{}'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON is encoded immediately above.
-		exit;
+		wp_send_json( $manifest, null, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
 	}
 
 	/**

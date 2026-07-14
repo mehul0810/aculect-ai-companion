@@ -439,7 +439,6 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 		}
 
 		return class_exists( '\RankMath\Helper' )
-			&& is_callable( array( '\RankMath\Helper', 'has_cap' ) )
 			&& true === \RankMath\Helper::has_cap( $rank_math_capability );
 	}
 
@@ -491,11 +490,7 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	 */
 	private function public_sources( mixed $sources ): array {
 		if ( is_string( $sources ) ) {
-			$unserialized = preg_match( '/^(a|s|i|b|d|N);|^(a|s|i|b|d|O|C):/', $sources )
-				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Rank Math stores redirect source arrays as serialized data; classes are disallowed.
-				? unserialize( $sources, array( 'allowed_classes' => false ) )
-				: false;
-			$sources = false === $unserialized ? array() : $unserialized;
+			$sources = $this->parse_serialized_redirect_sources( $sources );
 		}
 
 		if ( ! is_array( $sources ) ) {
@@ -519,22 +514,274 @@ final class RankMathRedirectAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Parse Rank Math redirect sources from a serialized array string.
+	 *
+	 * Rank Math stores redirect sources as serialized arrays. Accept only array,
+	 * string, int, bool, float, and null tokens; reject objects and malformed
+	 * payloads so public output never depends on PHP object deserialization.
+	 *
+	 * @param string $serialized Raw serialized value.
+	 * @return list<array<string, mixed>>
+	 */
+	private function parse_serialized_redirect_sources( string $serialized ): array {
+		if ( '' === $serialized || ! str_starts_with( $serialized, 'a:' ) ) {
+			return array();
+		}
+
+		$offset = 0;
+		$value  = null;
+
+		if ( ! $this->parse_serialized_value( $serialized, $offset, 0, $value ) ) {
+			return array();
+		}
+
+		if ( strlen( $serialized ) !== $offset || ! is_array( $value ) ) {
+			return array();
+		}
+
+		$normalized = array();
+		foreach ( $value as $source ) {
+			if ( ! is_array( $source ) ) {
+				return array();
+			}
+
+			$normalized[] = $source;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Parse one serialized PHP value from a narrow allowlist.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param int    $depth      Current nesting depth.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_value( string $serialized, int &$offset, int $depth, mixed &$value ): bool {
+		if ( $depth > 8 || $offset >= strlen( $serialized ) ) {
+			return false;
+		}
+
+		$type = $serialized[ $offset ] ?? '';
+		switch ( $type ) {
+			case 'a':
+				return $this->parse_serialized_array( $serialized, $offset, $depth, $value );
+			case 's':
+				return $this->parse_serialized_string( $serialized, $offset, $value );
+			case 'i':
+				return $this->parse_serialized_integer( $serialized, $offset, $value );
+			case 'b':
+				return $this->parse_serialized_boolean( $serialized, $offset, $value );
+			case 'd':
+				return $this->parse_serialized_float( $serialized, $offset, $value );
+			case 'N':
+				if ( 'N;' !== substr( $serialized, $offset, 2 ) ) {
+					return false;
+				}
+
+				$offset += 2;
+				$value   = null;
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	/**
+	 * Parse a serialized PHP array.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param int    $depth      Current nesting depth.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_array( string $serialized, int &$offset, int $depth, mixed &$value ): bool {
+		$count = $this->parse_serialized_length( $serialized, $offset, 'a' );
+		if ( null === $count ) {
+			return false;
+		}
+
+		$array = array();
+		for ( $index = 0; $index < $count; $index++ ) {
+			$key        = null;
+			$item_value = null;
+
+			if ( ! $this->parse_serialized_value( $serialized, $offset, $depth + 1, $key ) ) {
+				return false;
+			}
+
+			if ( ! is_int( $key ) && ! is_string( $key ) ) {
+				return false;
+			}
+
+			if ( ! $this->parse_serialized_value( $serialized, $offset, $depth + 1, $item_value ) ) {
+				return false;
+			}
+
+			$array[ $key ] = $item_value;
+		}
+
+		if ( '}' !== ( $serialized[ $offset ] ?? '' ) ) {
+			return false;
+		}
+
+		++$offset;
+		$value = $array;
+		return true;
+	}
+
+	/**
+	 * Parse a serialized PHP string.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_string( string $serialized, int &$offset, mixed &$value ): bool {
+		$length = $this->parse_serialized_length( $serialized, $offset, 's' );
+		if ( null === $length || '"' !== ( $serialized[ $offset ] ?? '' ) ) {
+			return false;
+		}
+
+		++$offset;
+		$string = substr( $serialized, $offset, $length );
+		if ( strlen( $string ) !== $length ) {
+			return false;
+		}
+
+		$offset += $length;
+		if ( '";' !== substr( $serialized, $offset, 2 ) ) {
+			return false;
+		}
+
+		$offset += 2;
+		$value   = $string;
+		return true;
+	}
+
+	/**
+	 * Parse a serialized PHP integer.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_integer( string $serialized, int &$offset, mixed &$value ): bool {
+		$token = $this->parse_serialized_token( $serialized, $offset, 'i' );
+		if ( null === $token || ! preg_match( '/^-?\d+$/', $token ) ) {
+			return false;
+		}
+
+		$value = (int) $token;
+		return true;
+	}
+
+	/**
+	 * Parse a serialized PHP boolean.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_boolean( string $serialized, int &$offset, mixed &$value ): bool {
+		$token = $this->parse_serialized_token( $serialized, $offset, 'b' );
+		if ( null === $token || ( '0' !== $token && '1' !== $token ) ) {
+			return false;
+		}
+
+		$value = '1' === $token;
+		return true;
+	}
+
+	/**
+	 * Parse a serialized PHP float.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param mixed  $value      Parsed value output.
+	 */
+	private function parse_serialized_float( string $serialized, int &$offset, mixed &$value ): bool {
+		$token = $this->parse_serialized_token( $serialized, $offset, 'd' );
+		if ( null === $token || ! is_numeric( $token ) ) {
+			return false;
+		}
+
+		$value = (float) $token;
+		return true;
+	}
+
+	/**
+	 * Parse a typed serialized token ending with `;`.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param string $type       Expected serialized type.
+	 */
+	private function parse_serialized_token( string $serialized, int &$offset, string $type ): ?string {
+		$prefix = $type . ':';
+		if ( substr( $serialized, $offset, 2 ) !== $prefix ) {
+			return null;
+		}
+
+		$offset += 2;
+		$end     = strpos( $serialized, ';', $offset );
+		if ( false === $end ) {
+			return null;
+		}
+
+		$token  = substr( $serialized, $offset, $end - $offset );
+		$offset = $end + 1;
+		return $token;
+	}
+
+	/**
+	 * Parse the declared length/count prefix for serialized arrays and strings.
+	 *
+	 * @param string $serialized Full serialized payload.
+	 * @param int    $offset     Current read offset.
+	 * @param string $type       Expected serialized type.
+	 */
+	private function parse_serialized_length( string $serialized, int &$offset, string $type ): ?int {
+		$prefix = $type . ':';
+		if ( substr( $serialized, $offset, 2 ) !== $prefix ) {
+			return null;
+		}
+
+		$offset += 2;
+		$end     = strpos( $serialized, ':', $offset );
+		if ( false === $end ) {
+			return null;
+		}
+
+		$token = substr( $serialized, $offset, $end - $offset );
+		if ( '' === $token || ! ctype_digit( $token ) ) {
+			return null;
+		}
+
+		$offset = $end + 1;
+		if ( 'a' === $type ) {
+			if ( '{' !== ( $serialized[ $offset ] ?? '' ) ) {
+				return null;
+			}
+
+			++$offset;
+		}
+
+		return (int) $token;
+	}
+
+	/**
 	 * Return conflicts for a normalized source path.
 	 *
 	 * @param string $source Normalized redirect source.
 	 * @return list<array<string, mixed>>
 	 */
 	private function redirect_conflicts( string $source ): array {
-		if ( ! is_callable( array( '\RankMath\Redirections\DB', 'match_redirections_source' ) ) ) {
-			return array();
-		}
-
-		$matches = $this->call_rank_math_redirects( 'match_redirections_source', $source );
-		if ( ! is_array( $matches ) ) {
-			return array();
-		}
-
-		return array_map( array( $this, 'public_redirect' ), $matches );
+		return array_values(
+			array_map( array( $this, 'public_redirect' ), $this->call_rank_math_redirects( 'match_redirections_source', $source ) )
+		);
 	}
 
 	/**

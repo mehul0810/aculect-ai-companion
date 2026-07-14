@@ -1,0 +1,43 @@
+name: PHP Security
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/**"
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: php-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep-php:
+    name: Semgrep PHP Security
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Semgrep PHP security scan
+        run: semgrep scan --config p/php --config p/secrets --exclude vendor --exclude node_modules --exclude release --sarif --output semgrep.sarif --error .
+
+      - name: Upload SARIF to GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: /tool:semgrep/language:php

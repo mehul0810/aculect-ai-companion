@@ -21,6 +21,7 @@
 ## Validation
 
 - Commands/checks run:
+- PHPStan baseline justification:
 - UI or workflow proof:
   - [ ] Screenshot, screen recording, CLI output, or reason not applicable is included for UI/workflow-visible changes.
 

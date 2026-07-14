@@ -4763,7 +4763,10 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 			<div
 				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
 			>
-				<span aria-hidden="true">
+				<span
+					aria-hidden="true"
+					className="aculect-ai-companion-connect-info-message__icon"
+				>
 					<Icon
 						icon={ status.status === 'fail' ? info : shield }
 						size={ 16 }

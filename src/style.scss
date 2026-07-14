@@ -2246,7 +2246,7 @@ td:last-child
 	background: #fef2f2;
 }
 
-.aculect-ai-companion-connect-info-message span {
+.aculect-ai-companion-connect-info-message__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -2257,17 +2257,17 @@ td:last-child
 	color: var(--aculect-ai-companion-primary);
 }
 
-.aculect-ai-companion-connect-info-message.is-pass span {
+.aculect-ai-companion-connect-info-message.is-pass .aculect-ai-companion-connect-info-message__icon {
 	background: #dcfce7;
 	color: #15803d;
 }
 
-.aculect-ai-companion-connect-info-message.is-warn span {
+.aculect-ai-companion-connect-info-message.is-warn .aculect-ai-companion-connect-info-message__icon {
 	background: #ffedd5;
 	color: #c2410c;
 }
 
-.aculect-ai-companion-connect-info-message.is-fail span {
+.aculect-ai-companion-connect-info-message.is-fail .aculect-ai-companion-connect-info-message__icon {
 	background: #fee2e2;
 	color: #b91c1c;
 }

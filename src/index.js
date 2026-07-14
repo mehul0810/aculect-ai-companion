@@ -2017,6 +2017,32 @@ function ActivityStatusPill( { status } ) {
 	);
 }
 
+function activityStatusLabel( status ) {
+	return status === 'error' ? 'Failed' : 'Success';
+}
+
+function ActivityResultCell( { item } ) {
+	return (
+		<>
+			<ActivityStatusPill status={ item.status } />
+			{ item.error_code && (
+				<span className="aculect-ai-companion-activity-error-code">
+					{ item.error_code }
+				</span>
+			) }
+		</>
+	);
+}
+
+function ActivityDetailsCell( { item } ) {
+	return (
+		<div className="aculect-ai-companion-data-view__stack">
+			<span>{ item.message || '-' }</span>
+			<LogContext context={ item.context } />
+		</div>
+	);
+}
+
 function ActivityTable( { activity } ) {
 	const items = Array.isArray( activity?.items ) ? activity.items : [];
 
@@ -2066,21 +2092,383 @@ function ActivityTable( { activity } ) {
 								{ activityTargetLabel( item ) }
 							</td>
 							<td data-label="Result">
-								<ActivityStatusPill status={ item.status } />
-								{ item.error_code && (
-									<span className="aculect-ai-companion-activity-error-code">
-										{ item.error_code }
-									</span>
-								) }
+								<ActivityResultCell item={ item } />
 							</td>
 							<td data-label="Details">
-								{ item.message || '-' }
-								<LogContext context={ item.context } />
+								<ActivityDetailsCell item={ item } />
 							</td>
 						</tr>
 					) ) }
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+function normalizeActivityView( currentView, itemCount, isConstrained ) {
+	const perPage = Math.max( 1, itemCount || 1 );
+	const baseView = {
+		...currentView,
+		search: '',
+		page: 1,
+		perPage,
+	};
+
+	if ( isConstrained ) {
+		return {
+			...baseView,
+			type: 'list',
+			titleField: 'summary',
+			descriptionField: 'timeSummary',
+			showTitle: true,
+			showDescription: true,
+			fields: [
+				'listUser',
+				'listAssistant',
+				'listTarget',
+				'listResult',
+				'listDetails',
+			],
+			layout: {
+				density: 'balanced',
+			},
+		};
+	}
+
+	return {
+		...baseView,
+		type: 'table',
+		titleField: undefined,
+		descriptionField: undefined,
+		showTitle: undefined,
+		showDescription: undefined,
+		fields: [
+			'time',
+			'user',
+			'assistant',
+			'action',
+			'target',
+			'result',
+			'details',
+		],
+		layout: {
+			density: 'balanced',
+			styles: {
+				time: {
+					width: '15%',
+				},
+				user: {
+					width: '14%',
+				},
+				assistant: {
+					width: '16%',
+				},
+				action: {
+					width: '12%',
+				},
+				target: {
+					width: '12%',
+				},
+				result: {
+					width: '12%',
+				},
+				details: {
+					width: '19%',
+				},
+			},
+		},
+	};
+}
+
+function ActivityDataViews( { activity } ) {
+	const items = useMemo(
+		() => ( Array.isArray( activity?.items ) ? activity.items : [] ),
+		[ activity ]
+	);
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const isConstrainedAdminWidth = useMediaQuery(
+		CONSTRAINED_ADMIN_MEDIA_QUERY
+	);
+	const [ view, setView ] = useState( () =>
+		normalizeActivityView( {}, items.length, isConstrainedAdminWidth )
+	);
+
+	useEffect( () => {
+		setView( ( currentView ) =>
+			normalizeActivityView(
+				currentView,
+				items.length,
+				isConstrainedAdminWidth
+			)
+		);
+	}, [ isConstrainedAdminWidth, items.length ] );
+
+	const fields = useMemo(
+		() => [
+			{
+				id: 'summary',
+				label: 'Activity',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ item.action, item.message, item.error_code ]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>
+							<code>{ item.action || 'ai.activity' }</code>
+						</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ item.message ||
+								'No additional details recorded.' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'timeSummary',
+				label: 'Time',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.created_at || '',
+				render: ( { item } ) => (
+					<span className="aculect-ai-companion-connections-table__secondary">
+						{ item.created_at || 'Unknown time' }
+					</span>
+				),
+			},
+			{
+				id: 'time',
+				label: 'Time',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.created_at || '',
+				render: ( { item } ) => (
+					<strong className="aculect-ai-companion-activity-table__time">
+						{ item.created_at || 'Unknown time' }
+					</strong>
+				),
+			},
+			{
+				id: 'user',
+				label: 'User',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ activityUserName( item ), item.user_id ].join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityUserName( item ) }</strong>
+						{ item.user_id ? (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								User ID { item.user_id }
+							</span>
+						) : null }
+					</div>
+				),
+			},
+			{
+				id: 'listUser',
+				label: 'User',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="User">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityUserName( item ) }</strong>
+							{ item.user_id ? (
+								<span className="aculect-ai-companion-connections-table__secondary">
+									User ID { item.user_id }
+								</span>
+							) : null }
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'assistant',
+				label: 'Assistant',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[
+						activityAssistantName( item ),
+						item.provider,
+						item.client_id,
+					]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityAssistantName( item ) }</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ item.provider ||
+								item.client_id ||
+								'Unknown provider' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'listAssistant',
+				label: 'Assistant',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Assistant">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityAssistantName( item ) }</strong>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ item.provider ||
+									item.client_id ||
+									'Unknown provider' }
+							</span>
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'action',
+				label: 'Action',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.action || '',
+				render: ( { item } ) => (
+					<code>{ item.action || 'ai.activity' }</code>
+				),
+			},
+			{
+				id: 'target',
+				label: 'Target',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[
+						item.target_type,
+						item.target_id,
+						activityTargetLabel( item ),
+					].join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityTargetLabel( item ) }</strong>
+						{ item.target_id ? (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								ID { item.target_id }
+							</span>
+						) : null }
+					</div>
+				),
+			},
+			{
+				id: 'listTarget',
+				label: 'Target',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Target">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityTargetLabel( item ) }</strong>
+							{ item.target_id ? (
+								<span className="aculect-ai-companion-connections-table__secondary">
+									ID { item.target_id }
+								</span>
+							) : null }
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'result',
+				label: 'Result',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ activityStatusLabel( item.status ), item.error_code ]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => <ActivityResultCell item={ item } />,
+			},
+			{
+				id: 'listResult',
+				label: 'Result',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Result">
+						<ActivityResultCell item={ item } />
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'details',
+				label: 'Details',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.message || '',
+				render: ( { item } ) => <ActivityDetailsCell item={ item } />,
+			},
+			{
+				id: 'listDetails',
+				label: 'Details',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Details">
+						<ActivityDetailsCell item={ item } />
+					</ConnectionResponsiveField>
+				),
+			},
+		],
+		[]
+	);
+	const { data: visibleItems, paginationInfo } = useMemo(
+		() =>
+			filterSortAndPaginateRows
+				? filterSortAndPaginateRows( items, view, fields )
+				: {
+						data: items,
+						paginationInfo: {
+							totalItems: items.length,
+							totalPages: items.length > 0 ? 1 : 0,
+						},
+				  },
+		[ fields, filterSortAndPaginateRows, items, view ]
+	);
+
+	if ( ! DataViewsComponent || ! filterSortAndPaginateRows ) {
+		return <ActivityTable activity={ activity } />;
+	}
+
+	return (
+		<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--activity">
+			<DataViewsComponent
+				data={ visibleItems }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				defaultLayouts={
+					isConstrainedAdminWidth
+						? DATA_VIEW_CONNECTION_LIST_LAYOUTS
+						: DATA_VIEW_TABLE_LAYOUTS
+				}
+				paginationInfo={ paginationInfo }
+				getItemId={ ( item ) => String( item.id || '' ) }
+				config={ {
+					perPageSizes: [ Math.max( 1, items.length || 1 ) ],
+				} }
+				onReset={ () =>
+					setView(
+						normalizeActivityView(
+							{},
+							items.length,
+							isConstrainedAdminWidth
+						)
+					)
+				}
+				empty={
+					<EmptyState title="No connected AI activity">
+						No connected AI activity has been recorded yet.
+					</EmptyState>
+				}
+			/>
 		</div>
 	);
 }
@@ -7763,7 +8151,9 @@ function SettingsApp() {
 												records
 											</strong>
 										</div>
-										<ActivityTable activity={ activity } />
+										<ActivityDataViews
+											activity={ activity }
+										/>
 										<div className="aculect-ai-companion-log-pagination">
 											<Button
 												href={

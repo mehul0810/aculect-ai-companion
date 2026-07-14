@@ -858,7 +858,7 @@ if ( ! function_exists( 'add_submenu_page' ) ) {
 	 * @param mixed    $callback    Page callback.
 	 * @param int|null $position    Menu position.
 	 */
-	function add_submenu_page( string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
+	function add_submenu_page( ?string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, mixed $callback = '', ?int $position = null ): string {
 		$GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][] = array(
 			'parent_slug' => $parent_slug,
 			'page_title'  => $page_title,
@@ -961,6 +961,48 @@ if ( ! function_exists( 'get_userdata' ) ) {
 	 */
 	function get_userdata( int $user_id ): object|false {
 		return $GLOBALS['aculect_ai_companion_test_users'][ $user_id ] ?? false;
+	}
+}
+
+if ( ! class_exists( 'WP_User' ) ) {
+	/**
+	 * Minimal WordPress user object used by unit tests.
+	 */
+	class WP_User {
+		public int $ID = 0;
+		/** @var list<string> */
+		public array $roles = array();
+
+		/**
+		 * @param array<string, mixed> $data User fields.
+		 */
+		public function __construct( array $data = array() ) {
+			$this->ID    = absint( $data['ID'] ?? 0 );
+			$this->roles = array_values( array_map( 'strval', (array) ( $data['roles'] ?? array() ) ) );
+		}
+	}
+}
+
+if ( ! function_exists( 'wp_get_current_user' ) ) {
+	/**
+	 * Return the current test user.
+	 */
+	function wp_get_current_user(): WP_User {
+		$user = get_userdata( get_current_user_id() );
+		if ( $user instanceof WP_User ) {
+			return $user;
+		}
+
+		return is_object( $user ) ? new WP_User( (array) $user ) : new WP_User();
+	}
+}
+
+if ( ! function_exists( 'is_user_logged_in' ) ) {
+	/**
+	 * Return whether a current test user is set.
+	 */
+	function is_user_logged_in(): bool {
+		return get_current_user_id() > 0;
 	}
 }
 
@@ -1681,6 +1723,33 @@ if ( ! function_exists( 'wp_create_nonce' ) ) {
 	 */
 	function wp_create_nonce( string $action = '' ): string {
 		return 'nonce-' . $action;
+	}
+}
+
+if ( ! function_exists( 'wp_verify_nonce' ) ) {
+	/**
+	 * Validate deterministic test nonces.
+	 *
+	 * @param string $nonce  Nonce value.
+	 * @param string $action Nonce action.
+	 */
+	function wp_verify_nonce( string $nonce, string $action = '-1' ): bool {
+		return $nonce === wp_create_nonce( $action );
+	}
+}
+
+if ( ! function_exists( 'wp_die' ) ) {
+	/**
+	 * Fail fast in tests when wp_die() would have been called.
+	 *
+	 * @param mixed $message Error message.
+	 * @param mixed $title   Error title.
+	 * @param mixed $args    Additional args.
+	 */
+	function wp_die( mixed $message = '', mixed $title = '', mixed $args = array() ): never {
+		unset( $title, $args );
+
+		throw new \RuntimeException( is_scalar( $message ) ? (string) $message : 'wp_die' );
 	}
 }
 

@@ -1484,6 +1484,10 @@
 	gap: 16px;
 }
 
+.aculect-ai-companion-connect-section-heading--status {
+	align-items: flex-start;
+}
+
 .aculect-ai-companion-connect-section-heading p {
 	margin: 6px 0 0;
 	color: var(--aculect-ai-companion-muted);
@@ -2227,7 +2231,22 @@ td:last-child
 	background: #eff6ff;
 }
 
-.aculect-ai-companion-connect-info-message span {
+.aculect-ai-companion-connect-info-message.is-pass {
+	border-color: #bbf7d0;
+	background: #f0fdf4;
+}
+
+.aculect-ai-companion-connect-info-message.is-warn {
+	border-color: #fed7aa;
+	background: #fff7ed;
+}
+
+.aculect-ai-companion-connect-info-message.is-fail {
+	border-color: #fecaca;
+	background: #fef2f2;
+}
+
+.aculect-ai-companion-connect-info-message__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -2238,11 +2257,38 @@ td:last-child
 	color: var(--aculect-ai-companion-primary);
 }
 
+.aculect-ai-companion-connect-info-message.is-pass .aculect-ai-companion-connect-info-message__icon {
+	background: #dcfce7;
+	color: #15803d;
+}
+
+.aculect-ai-companion-connect-info-message.is-warn .aculect-ai-companion-connect-info-message__icon {
+	background: #ffedd5;
+	color: #c2410c;
+}
+
+.aculect-ai-companion-connect-info-message.is-fail .aculect-ai-companion-connect-info-message__icon {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+.aculect-ai-companion-connect-info-message div {
+	display: grid;
+	gap: 6px;
+}
+
 .aculect-ai-companion-connect-info-message p {
 	margin: 0;
 	color: var(--aculect-ai-companion-ink);
 	font-size: 13px;
 	line-height: 1.45;
+}
+
+.aculect-ai-companion-connect-url-panel__empty {
+	margin: 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 14px;
+	line-height: 1.55;
 }
 
 .aculect-ai-companion-danger-zone {
@@ -4548,6 +4594,10 @@ td:first-child
 	.aculect-ai-companion-setup-wizard__intro {
 		align-items: flex-start;
 		flex-direction: column;
+	}
+
+	.aculect-ai-companion-connect-section-heading--status {
+		justify-content: stretch;
 	}
 
 	.aculect-ai-companion-connect__heading h1 {

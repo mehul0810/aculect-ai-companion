@@ -2159,6 +2159,12 @@ function diagnosticItems( health ) {
 	return Array.isArray( health?.items ) ? health.items : [];
 }
 
+function diagnosticItemById( health, id ) {
+	return (
+		diagnosticItems( health ).find( ( item ) => item?.id === id ) || null
+	);
+}
+
 function diagnosticCounts( items ) {
 	return items.reduce(
 		( counts, item ) => {
@@ -2263,6 +2269,70 @@ function diagnosticSupportInfo( health ) {
 	}
 
 	return lines.join( '\n' );
+}
+
+function persistentMcpUrlStatus( mcpUrl, health ) {
+	const endpoint = String( mcpUrl || '' ).trim();
+
+	if ( endpoint === '' ) {
+		return {
+			status: 'fail',
+			title: 'Endpoint unavailable',
+			description:
+				'Aculect AI Companion could not determine the canonical MCP Server URL for this site.',
+			detail: 'Check the external site URL and rerun diagnostics before connecting an assistant.',
+		};
+	}
+
+	const httpsCheck = diagnosticItemById( health, 'https_url' );
+	const routeCheck = diagnosticItemById( health, 'rest_route_shape' );
+	const blockingCheck = [ httpsCheck, routeCheck ].find(
+		( item ) => item?.status === 'fail'
+	);
+
+	if ( blockingCheck ) {
+		return {
+			status: 'fail',
+			title: 'Not externally ready',
+			description:
+				blockingCheck.message ||
+				'The canonical MCP Server URL is available, but diagnostics found a blocking issue.',
+			detail: blockingCheck.remediation || '',
+		};
+	}
+
+	const warningCheck = [ httpsCheck, routeCheck ].find(
+		( item ) => item?.status === 'warn'
+	);
+
+	if ( warningCheck ) {
+		return {
+			status: 'warn',
+			title: 'Needs attention',
+			description:
+				warningCheck.message ||
+				'The canonical MCP Server URL is available, but external readiness needs review.',
+			detail: warningCheck.remediation || '',
+		};
+	}
+
+	if ( httpsCheck || routeCheck ) {
+		return {
+			status: 'pass',
+			title: 'Ready to copy',
+			description:
+				'The canonical MCP Server URL matches the expected secure REST endpoint.',
+			detail: '',
+		};
+	}
+
+	return {
+		status: 'warn',
+		title: 'Not yet verified',
+		description:
+			'The canonical MCP Server URL is available, but diagnostics have not confirmed external readiness yet.',
+		detail: 'Run Connection Diagnostics to verify HTTPS, route shape, and the authorization challenge.',
+	};
 }
 
 function StatusBadge( { status } ) {
@@ -4657,6 +4727,67 @@ function SetupWizard( {
 	);
 }
 
+function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
+	const endpoint = String( mcpUrl || '' ).trim();
+	const hasEndpoint = endpoint !== '';
+	const status = persistentMcpUrlStatus( endpoint, health );
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
+			<div className="aculect-ai-companion-connect-section-heading aculect-ai-companion-connect-section-heading--status">
+				<div>
+					<h2>MCP Server URL</h2>
+					<p>
+						Keep the canonical endpoint visible here before, during,
+						and after setup.
+					</p>
+				</div>
+				<StatusBadge status={ status.status } />
+			</div>
+			<div className="aculect-ai-companion-connect-url-panel">
+				{ hasEndpoint ? (
+					<CopyField
+						label="MCP Server URL"
+						value={ endpoint }
+						onCopy={ ( value ) =>
+							onCopy( value, 'MCP Server URL copied.' )
+						}
+					/>
+				) : (
+					<p className="aculect-ai-companion-connect-url-panel__empty">
+						The canonical MCP Server URL is unavailable for this
+						site right now.
+					</p>
+				) }
+			</div>
+			<div
+				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
+			>
+				<span
+					aria-hidden="true"
+					className="aculect-ai-companion-connect-info-message__icon"
+				>
+					<Icon
+						icon={ status.status === 'fail' ? info : shield }
+						size={ 16 }
+					/>
+				</span>
+				<div>
+					<p>
+						<strong>{ status.title }</strong> { status.description }
+					</p>
+					{ status.detail && <p>{ status.detail }</p> }
+				</div>
+			</div>
+			<p className="aculect-ai-companion-connect-secure-note">
+				<Icon icon={ lock } size={ 16 } />
+				This endpoint never includes secrets, tokens, nonces, or
+				user-specific approval material.
+			</p>
+		</section>
+	);
+}
+
 function PendingConnectionRequests( { requests } ) {
 	const normalized = normalizeConnectionRequests( requests );
 
@@ -6330,6 +6461,7 @@ function SettingsApp() {
 		data.connectionHealth && typeof data.connectionHealth === 'object'
 			? data.connectionHealth
 			: {};
+	const mcpUrl = String( data.mcpUrl || '' );
 	const logs =
 		diagnostics.logs && typeof diagnostics.logs === 'object'
 			? diagnostics.logs
@@ -7210,6 +7342,11 @@ function SettingsApp() {
 										</p>
 									</div>
 								</div>
+								<ConnectMcpUrlUtility
+									mcpUrl={ mcpUrl }
+									health={ connectionHealth }
+									onCopy={ copyValue }
+								/>
 								<SetupWizard
 									providers={ providers }
 									selectedProvider={ selectedConnectProvider }

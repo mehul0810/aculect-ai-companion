@@ -127,6 +127,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP {
 	use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 	use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 	use Aculect\AICompanion\Connectors\MCP\RankMathRedirectAbilities;
+	use Aculect\AICompanion\Intelligence\InternalLinkTargetInspector;
 	use PHPUnit\Framework\TestCase;
 	use RankMath\Helper;
 	use RankMath\Monitor\DB as MonitorDB;
@@ -219,6 +220,36 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP {
 			self::assertSame( 'https://example.com/new-page', $result['items'][0]['destination'] );
 		}
 
+		public function test_list_redirects_decodes_serialized_rank_math_sources_without_unserialize(): void {
+			RedirectionsDB::$redirections[0]['sources'] = 'a:2:{i:0;a:3:{s:7:"pattern";s:8:"old-page";s:10:"comparison";s:5:"exact";s:6:"ignore";s:4:"case";}i:1;a:3:{s:7:"pattern";s:11:"legacy-page";s:10:"comparison";s:5:"start";s:6:"ignore";s:0:"";}}';
+
+			$result = ( new RankMathRedirectAbilities() )->list_redirects( array() );
+
+			self::assertSame(
+				array(
+					array(
+						'pattern'    => 'old-page',
+						'match_type' => 'exact',
+						'ignore'     => 'case',
+					),
+					array(
+						'pattern'    => 'legacy-page',
+						'match_type' => 'start',
+						'ignore'     => '',
+					),
+				),
+				$result['items'][0]['sources']
+			);
+		}
+
+		public function test_list_redirects_rejects_serialized_object_payloads(): void {
+			RedirectionsDB::$redirections[0]['sources'] = 'a:1:{i:0;O:8:"stdClass":1:{s:7:"pattern";s:8:"old-page";}}';
+
+			$result = ( new RankMathRedirectAbilities() )->list_redirects( array() );
+
+			self::assertSame( array(), $result['items'][0]['sources'] );
+		}
+
 		public function test_recent_404_list_redacts_query_strings(): void {
 			$result = ( new RankMathRedirectAbilities() )->list_recent_404s( array() );
 
@@ -246,6 +277,22 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP {
 			self::assertSame( 'old-page', $result['proposal']['source'] );
 			self::assertSame( 'https://example.com/new-page', $result['proposal']['destination'] );
 			self::assertSame( 12, $result['conflicts'][0]['id'] );
+		}
+
+		public function test_internal_link_target_inspector_reports_rank_math_redirects(): void {
+			RedirectionsDB::$matches['old-page'] = RedirectionsDB::$redirections;
+
+			$result = ( new InternalLinkTargetInspector() )->inspect(
+				array(
+					'target_id'  => 0,
+					'target_url' => 'https://example.com/old-page',
+				)
+			);
+
+			self::assertSame( 'redirected', $result['state'] );
+			self::assertSame( 'old-page', $result['evidence']['redirect_source'] );
+			self::assertSame( 'https://example.com/new-page', $result['evidence']['redirect_destination'] );
+			self::assertSame( 301, $result['evidence']['redirect_code'] );
 		}
 
 		public function test_validate_redirect_rejects_unsafe_destination(): void {

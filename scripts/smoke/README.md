@@ -1,5 +1,24 @@
 # Release UI Smoke
 
+## No-Secret Release Fixture Smoke
+
+Run the fixture-backed release-gate smoke when owner-provided WordPress admin credentials or MCP bearer tokens are unavailable:
+
+```bash
+npm run smoke:release-fixture
+```
+
+The fixture smoke requires no `ACULECT_SMOKE_*` or `ACULECT_MCP_SMOKE_*` values. It validates the release UI smoke contract metadata, tab and viewport matrix, Learning surface expectations, deferred manual-proof statuses, summary JSON shape, and MCP initialize plus paginated `tools/list` determinism using bounded fixture responses. It writes a public-safe summary to `artifacts/smoke/release-fixture/latest/summary.json` and never writes bearer tokens or raw live MCP payloads.
+
+Negative fixture scenarios are available for release-gate regression checks:
+
+```bash
+npm run smoke:release-fixture -- --scenario invalid-tool-name
+npm run smoke:release-fixture -- --scenario duplicate-tool-name
+```
+
+This command does not replace live browser screenshots, real WordPress admin navigation, Connect approval, OAuth consent/revoke, or live bearer-token MCP proof. Those remain covered by the live smoke commands below when the owner provides safe test inputs.
+
 Run the first browser release-readiness smoke against a disposable WordPress admin site with Aculect AI Companion active:
 
 ```bash

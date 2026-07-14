@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
- * Registers first-party read-only intelligence with the WordPress Abilities API.
+ * Registers first-party intelligence with the WordPress Abilities API.
  */
 final class WordPressAbilitiesRegistrar {
 
-	private const CATEGORY  = 'aculect-intelligence';
-	private const NAMESPACE = 'aculect-ai-companion';
+	private const CATEGORY     = 'aculect-intelligence';
+	private const NAMESPACE    = 'aculect-ai-companion';
+	private const MCP_ONLY_IDS = array(
+		'plugin.incident.report',
+	);
 
 	/**
 	 * Cached first-party WordPress Ability names.
@@ -40,13 +43,13 @@ final class WordPressAbilitiesRegistrar {
 			self::CATEGORY,
 			array(
 				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Read-only site, admin menu, Site Editor, content, brand, block, pattern, search, and memory intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
 			)
 		);
 	}
 
 	/**
-	 * Register read-only Aculect Intelligence abilities.
+	 * Register Aculect Intelligence abilities.
 	 */
 	public function register_abilities(): void {
 		if ( ! function_exists( 'wp_register_ability' ) ) {
@@ -93,7 +96,51 @@ final class WordPressAbilitiesRegistrar {
 	}
 
 	/**
-	 * Return read-only intelligence modules that should be mirrored to WordPress Abilities.
+	 * Check whether an ID must execute only through the MCP safety layer.
+	 *
+	 * @param string $id Module ID, MCP tool name, legacy alias, or public ability name.
+	 */
+	public function is_mcp_only_intelligence( string $id ): bool {
+		$id       = sanitize_text_field( $id );
+		$registry = new IntelligenceRegistry();
+		$module   = $registry->module( $id );
+
+		if ( null !== $module && in_array( $module->id(), self::MCP_ONLY_IDS, true ) ) {
+			return true;
+		}
+
+		foreach ( self::MCP_ONLY_IDS as $module_id ) {
+			$module = $registry->module( $module_id );
+			if ( null !== $module && hash_equals( $this->ability_name( $module ), $id ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Return the public WordPress Ability name for a first-party module ID or alias.
+	 *
+	 * @param string $id Internal module ID, MCP tool name, legacy alias, or public ability name.
+	 */
+	public function ability_name_for_id( string $id ): string {
+		$id = sanitize_text_field( $id );
+		if ( str_starts_with( $id, self::NAMESPACE . '/' ) ) {
+			return $id;
+		}
+
+		$module = ( new IntelligenceRegistry() )->module( $id );
+		if ( null === $module ) {
+			return '';
+		}
+
+		$names = $this->module_ability_names();
+		return $names[ $module->id() ] ?? '';
+	}
+
+	/**
+	 * Return intelligence modules that should be mirrored to WordPress Abilities.
 	 *
 	 * @return array<string, AbilityModuleInterface>
 	 */
@@ -140,7 +187,7 @@ final class WordPressAbilitiesRegistrar {
 			'category'            => self::CATEGORY,
 			'input_schema'        => $module->input_schema(),
 			'output_schema'       => $this->output_schema_for_module( $module ),
-			'execute_callback'    => fn( mixed $input = array() ): array => $module->execute( is_array( $input ) ? $input : array() ),
+			'execute_callback'    => fn( mixed $input = array() ): array => ( new IntelligenceRegistry() )->execute( $module->id(), is_array( $input ) ? $input : array() ),
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
 				'show_in_rest' => true,
@@ -188,6 +235,20 @@ final class WordPressAbilitiesRegistrar {
 	 * @return array<string, mixed>
 	 */
 	private function output_schema_for_module( AbilityModuleInterface $module ): array {
+		if ( 'plugin.incident.list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'    => array( 'type' => 'array' ),
+					'total'    => array( 'type' => 'integer' ),
+					'page'     => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer' ),
+					'summary'  => array( 'type' => 'object' ),
+					'error'    => array( 'type' => 'string' ),
+					'message'  => array( 'type' => 'string' ),
+				)
+			);
+		}
+
 		if ( $this->is_collection_module( $module ) ) {
 			return $this->object_output_schema(
 				array(
@@ -202,6 +263,7 @@ final class WordPressAbilitiesRegistrar {
 					'total_is_estimated' => array( 'type' => 'boolean' ),
 					'degraded'           => array( 'type' => 'boolean' ),
 					'degraded_reason'    => array( 'type' => 'string' ),
+					'quality_summary'    => array( 'type' => 'object' ),
 					'error'              => array( 'type' => 'string' ),
 					'message'            => array( 'type' => 'string' ),
 				)
@@ -269,6 +331,7 @@ final class WordPressAbilitiesRegistrar {
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
+				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
 				'memory.list',

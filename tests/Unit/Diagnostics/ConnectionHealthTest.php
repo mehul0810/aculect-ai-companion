@@ -9,21 +9,31 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Diagnostics;
 
+use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Connectors\OAuth\Server\SecretsVault;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+
+require_once dirname( __DIR__, 2 ) . '/fixtures/wordpress-abilities-stubs.php';
 
 /**
  * Verifies connection diagnostics summarize and sanitize stored results.
  */
 final class ConnectionHealthTest extends TestCase {
 
+	protected function setUp(): void {
+		parent::setUp();
+
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+	}
+
 	protected function tearDown(): void {
 		delete_option( ConnectionHealth::OPTION_LAST_RESULT );
 		delete_option( 'aculect_ai_companion_connection_health_transient_probe' );
 		delete_option( 'aculect_ai_companion_secret_storage_key' );
-		$GLOBALS['aculect_ai_companion_test_transients'] = array();
+		$GLOBALS['aculect_ai_companion_test_transients']   = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
 		unset(
 			$_SERVER['HTTP_CF_RAY'],
 			$_SERVER['HTTP_CF_VISITOR'],
@@ -139,6 +149,54 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( 'wordpress_abilities_runtime', $result['id'] );
 		self::assertArrayHasKey( 'api_available', $result['details'] );
 		self::assertArrayHasKey( 'registration_functions_present', $result['details'] );
+		self::assertSame( 'available', $result['details']['runtime_status'] );
+	}
+
+	public function test_wordpress_abilities_checks_report_registration_schema_and_policy_separately(): void {
+		$health = new ConnectionHealth();
+
+		$registration = $this->invokePrivate( $health, 'check_wordpress_abilities_registration' );
+		self::assertSame( 'wordpress_abilities_registration', $registration['id'] );
+		self::assertSame( 'warn', $registration['status'] );
+		self::assertSame( 'incomplete', $registration['details']['registration_status'] );
+
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$registration = $this->invokePrivate( $health, 'check_wordpress_abilities_registration' );
+		self::assertSame( 'pass', $registration['status'] );
+		self::assertSame( 'complete', $registration['details']['registration_status'] );
+
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'][0]['args']['input_schema'] = array( 'type' => 'string' );
+
+		$schema = $this->invokePrivate( $health, 'check_wordpress_abilities_schema' );
+		self::assertSame( 'wordpress_abilities_schema', $schema['id'] );
+		self::assertSame( 'warn', $schema['status'] );
+		self::assertSame( 'invalid', $schema['details']['schema_status'] );
+
+		wp_register_ability(
+			'external-plugin/public-action',
+			array(
+				'label'         => 'External public action',
+				'description'   => 'External action.',
+				'category'      => 'external',
+				'input_schema'  => array(
+					'type'       => 'object',
+					'properties' => array(),
+				),
+				'output_schema' => array(
+					'type'       => 'object',
+					'properties' => array(),
+				),
+				'meta'          => array(
+					'show_in_rest' => true,
+				),
+			)
+		);
+
+		$policy = $this->invokePrivate( $health, 'check_wordpress_abilities_policy' );
+		self::assertSame( 'wordpress_abilities_policy', $policy['id'] );
+		self::assertSame( 'warn', $policy['status'] );
+		self::assertSame( 'blocked', $policy['details']['policy_status'] );
 	}
 
 	public function test_cloudflare_compatibility_check_reports_best_effort_when_not_detected(): void {

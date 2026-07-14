@@ -1,4 +1,5 @@
 .git/
+.git
 .github/
 .wordpress-org/
 .codex/
@@ -20,6 +21,7 @@ eslint.config.cjs
 phpcs.xml.dist
 phpunit.xml.dist
 phpstan.neon.dist
+vendor/**/phpstan.neon.dist
 phpstan-bootstrap.php
 phpstan-baseline.neon
 AGENTS.md

@@ -119,11 +119,51 @@ final class McpToolManifestTest extends TestCase {
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertTrue( $export['ability_policy']['scope_aware'] );
 		self::assertSame( array( 'content:read' ), $export['ability_policy']['granted_scopes'] );
+		self::assertSame( 'read_only_audit', $export['profile']['id'] );
+		self::assertSame( 'inferred_from_scopes', $export['profile']['source'] );
+		self::assertContains( 'content_get_item', $export['profile']['visible_tools'] );
+		self::assertContains( 'content_update_item', $export['profile']['hidden_tools'] );
+		self::assertSame( 'oauth_scope', $this->hiddenProfileReason( $export, 'content_update_item' )['reason'] );
+		self::assertSame( array( 'content:draft' ), $this->hiddenProfileReason( $export, 'content_update_item' )['missing_scopes'] );
 		self::assertFalse( $export['operations_manifest']['content']['update']['available'] );
 		self::assertSame( 'oauth_scope', $export['operations_manifest']['content']['update']['blocked_by'] );
 		self::assertSame( array( 'content:draft' ), $export['operations_manifest']['content']['update']['missing_scopes'] );
 		self::assertSame( count( $names ), $export['summary']['tool_count'] );
 		self::assertSame( count( $names ), $export['tools_list_pagination']['total_tools'] );
+	}
+
+	public function test_export_includes_explicit_profile_metadata_without_changing_tool_schema(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+
+		$export     = ( new McpToolManifest() )->export_for_current_user(
+			array(
+				'id'           => 55,
+				'provider'     => 'codex',
+				'client_name'  => 'Codex',
+				'user_id'      => 7,
+				'user_roles'   => array( 'administrator' ),
+				'profile'      => 'site_management',
+				'scopes'       => array( 'content:read', 'content:draft' ),
+				'resource'     => 'https://example.com/wp-json/aculect-ai-companion/v1/mcp',
+				'status'       => 'active',
+				'access_level' => 'read',
+			)
+		);
+		$tool_names = array_column( $export['tools_list_payload']['tools'], 'name' );
+
+		self::assertSame( 'site_management', $export['profile']['id'] );
+		self::assertSame( 'session', $export['profile']['source'] );
+		self::assertSame( array( 'content:read', 'content:draft' ), $export['profile']['granted_scopes'] );
+		self::assertSame( $tool_names, $export['profile']['visible_tools'] );
+		self::assertSame( 'site_management', $export['session']['profile'] );
+		self::assertSame( array(), $export['profile']['hidden_by_profile'] );
+		self::assertContains( 'site_workflow_audit', $export['profile']['required_tools'] );
+		self::assertContains( 'navigation_get_context', $export['profile']['required_tools'] );
+
+		foreach ( $export['tools_list_payload']['tools'] as $tool ) {
+			self::assertArrayNotHasKey( 'profile', $tool );
+			self::assertArrayNotHasKey( 'hidden_by_profile', $tool );
+		}
 	}
 
 	public function test_export_reports_registered_first_party_wordpress_abilities(): void {
@@ -136,6 +176,7 @@ final class McpToolManifestTest extends TestCase {
 		self::assertTrue( $export['wordpress_abilities']['schema_valid'] );
 		self::assertSame( 'available', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['status'] );
 		self::assertSame( 'aculect-ai-companion/content-search-items', $export['operations_manifest']['intelligence_index']['search_items']['wordpress_ability']['name'] );
+		self::assertSame( 'both', $export['operations_manifest']['intelligence_index']['search_items']['availability_channels']['summary'] );
 	}
 
 	public function test_metadata_fingerprint_changes_when_tools_or_instructions_change(): void {
@@ -218,5 +259,22 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( 2, $summary['read_only_tool_count'] );
 		self::assertSame( 1, $summary['write_tool_count'] );
 		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $summary['metadata_fingerprint'] );
+	}
+
+	/**
+	 * Return one hidden profile reason from an export.
+	 *
+	 * @param array<string, mixed> $export    Manifest export.
+	 * @param string               $tool_name Public tool name.
+	 * @return array<string, mixed>
+	 */
+	private function hiddenProfileReason( array $export, string $tool_name ): array {
+		foreach ( (array) ( $export['profile']['hidden_by_profile'] ?? array() ) as $entry ) {
+			if ( is_array( $entry ) && (string) ( $entry['tool'] ?? '' ) === $tool_name ) {
+				return $entry;
+			}
+		}
+
+		self::fail( sprintf( 'Missing hidden profile reason for %s.', $tool_name ) );
 	}
 }

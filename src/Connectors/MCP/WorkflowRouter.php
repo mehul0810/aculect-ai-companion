@@ -192,9 +192,9 @@ final class WorkflowRouter {
 			),
 			'internal_links' => array(
 				'guide_id'   => '',
-				'next_tool'  => $registry->tool_name( 'content_find.internal_links' ),
-				'sequence'   => array( 'intelligence_content_get_context', 'content_search_items', 'content_find_internal_links' ),
-				'operations' => array( 'intelligence_index.internal_links' ),
+				'next_tool'  => $registry->tool_name( 'content_internal_link.policy' ),
+				'sequence'   => array( 'intelligence_content_get_context', 'content_internal_link_policy', 'content_audit_internal_links', 'content_find_internal_links', 'content_internal_link_suggestions_create', 'content_internal_link_suggestion_review', 'content_internal_link_suggestion_apply' ),
+				'operations' => array( 'intelligence_index.internal_link_policy', 'intelligence_index.internal_link_audit', 'intelligence_index.internal_links', 'intelligence_index.internal_link_suggestions_create', 'intelligence_index.internal_link_suggestion_review', 'intelligence_index.internal_link_suggestion_apply' ),
 				'risk_level' => 'read_only',
 				'confidence' => 'high',
 			),
@@ -276,6 +276,9 @@ final class WorkflowRouter {
 		if ( $this->contains_any( $text, array( 'what can you do', 'available abilities', 'available tools', 'possibilities', 'help directory', 'detect available' ) ) ) {
 			return 'capability_discovery';
 		}
+		if ( $this->contains_any( $text, array( 'internal link', 'related content', 'link opportunity' ) ) ) {
+			return 'internal_links';
+		}
 		if ( $this->contains_any( $text, array( 'audit', 'health', 'readiness', 'maintenance', 'site management', 'diagnostic' ) ) ) {
 			return 'site_audit';
 		}
@@ -287,9 +290,6 @@ final class WorkflowRouter {
 		}
 		if ( $this->contains_any( $text, array( 'rank math', 'meta title', 'meta description', 'focus keyword', 'seo title', 'seo metadata' ) ) ) {
 			return 'seo_update';
-		}
-		if ( $this->contains_any( $text, array( 'internal link', 'related content', 'link opportunity' ) ) ) {
-			return 'internal_links';
 		}
 		if ( $this->contains_any( $text, array( 'update', 'rewrite', 'revise', 'refresh', 'replace', 'edit existing' ) ) || absint( $args['existing_post_id'] ?? $args['post_id'] ?? 0 ) > 0 ) {
 			return 'content_update';

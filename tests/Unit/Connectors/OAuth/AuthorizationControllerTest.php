@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +25,18 @@ final class AuthorizationControllerTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+		$GLOBALS['aculect_ai_companion_test_users']           = array(
+			7 => new \WP_User( array(
+				'ID'    => 7,
+				'roles' => array( 'editor' ),
+			) ),
+			9 => new \WP_User( array(
+				'ID'    => 9,
+				'roles' => array( 'author' ),
+			) ),
+		);
 		$_GET  = array();
 		$_POST = array();
 	}
@@ -72,14 +85,14 @@ final class AuthorizationControllerTest extends TestCase {
 
 	public function test_posted_helpers_unslash_sanitize_and_validate_form_fields(): void {
 		$_POST = array(
-			'client_id' => 'client\\\\id',
-			'_wpnonce'  => 'nonce\\value',
-			'decision'  => 'approve',
+			'request_token' => 'ABCD\\1234-not-a-token',
+			'_wpnonce'      => 'nonce\\value',
+			'decision'      => 'approve',
 		);
 
 		$controller = new AuthorizationController();
 
-		self::assertSame( 'client\\id', $this->invokePrivate( $controller, 'posted_params' )['client_id'] );
+		self::assertSame( 'abcd1234ae', $this->invokePrivate( $controller, 'posted_request_token' ) );
 		self::assertSame( 'noncevalue', $this->invokePrivate( $controller, 'posted_nonce' ) );
 		self::assertSame( 'approve', $this->invokePrivate( $controller, 'posted_decision' ) );
 	}
@@ -97,22 +110,13 @@ final class AuthorizationControllerTest extends TestCase {
 		$url = $this->invokePrivate(
 			new AuthorizationController(),
 			'admin_consent_url',
-			array(
-				array(
-					'response_type'         => 'code',
-					'client_id'             => 'client-1',
-					'redirect_uri'          => 'https://chatgpt.com/oauth/callback',
-					'code_challenge'        => str_repeat( 'a', 43 ),
-					'code_challenge_method' => 'S256',
-				),
-			)
+			array( 'abcdef1234567890' )
 		);
 
 		self::assertIsString( $url );
-		self::assertStringStartsWith( 'https://example.com/wp-admin/options-general.php?', $url );
-		self::assertStringContainsString( 'page=aculect-ai-companion', $url );
-		self::assertStringContainsString( 'view=oauth-consent', $url );
-		self::assertStringContainsString( 'client_id=client-1', $url );
+		self::assertStringStartsWith( 'https://example.com/wp-admin/admin.php?', $url );
+		self::assertStringContainsString( 'page=aculect-ai-companion-oauth-consent', $url );
+		self::assertStringContainsString( 'request_token=abcdef1234567890', $url );
 	}
 
 	public function test_authorization_endpoint_uses_root_route_for_browser_cookie_auth(): void {
@@ -144,6 +148,7 @@ final class AuthorizationControllerTest extends TestCase {
 			new AuthorizationController(),
 			'render_consent_markup',
 			array(
+				'abcdef1234567890',
 				array(
 					'response_type'         => 'code',
 					'client_id'             => 'client-1',
@@ -169,7 +174,118 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertStringContainsString( 'Security and privacy', $html );
 		self::assertStringContainsString( 'Approve connection', $html );
 		self::assertStringContainsString( 'Deny', $html );
+		self::assertStringContainsString( 'name="request_token"', $html );
+		self::assertStringNotContainsString( 'name="client_id"', $html );
 		self::assertStringNotContainsString( 'Approve AI assistant access', $html );
+	}
+
+	public function test_load_consent_request_returns_null_for_expired_request(): void {
+		$controller = new AuthorizationController();
+
+		set_transient(
+			'aculect_ai_companion_oauth_consent_expired',
+			array(
+				'params'     => array(
+					'response_type'         => 'code',
+					'client_id'             => 'client-1',
+					'redirect_uri'          => 'https://chatgpt.com/oauth/callback',
+					'code_challenge'        => str_repeat( 'a', 43 ),
+					'code_challenge_method' => 'S256',
+				),
+				'user_id'    => 7,
+				'expires_at' => 99,
+			),
+			600
+		);
+
+		self::assertNull(
+			$this->invokePrivate( $controller, 'load_consent_request', array( 'expired', 100 ) )
+		);
+	}
+
+	public function test_requested_scopes_allowed_for_current_user_rejects_unavailable_scope(): void {
+		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
+
+		$allowed = $this->invokePrivate(
+			new AuthorizationController(),
+			'requested_scopes_allowed_for_current_user',
+			array( array( 'options:write' ) )
+		);
+
+		self::assertFalse( $allowed );
+	}
+
+	public function test_assert_current_user_can_consent_allows_configured_non_admin_with_own_client(): void {
+		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
+
+		$client = new ClientEntity();
+		$client->setIdentifier( 'client-1' );
+		$client->setName( 'ChatGPT Connector' );
+		$client->setUserId( 7 );
+
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'assert_current_user_can_consent',
+			array(
+				array(
+					'scope' => 'content:read',
+				),
+				$client,
+				7,
+				false,
+			)
+		);
+
+		self::assertTrue( true );
+	}
+
+	public function test_assert_current_user_can_consent_rejects_request_for_different_user(): void {
+		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
+
+		$client = new ClientEntity();
+		$client->setIdentifier( 'client-1' );
+		$client->setUserId( 7 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'This authorization request belongs to a different WordPress user.' );
+
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'assert_current_user_can_consent',
+			array(
+				array(
+					'scope' => 'content:read',
+				),
+				$client,
+				9,
+				true,
+			)
+		);
+	}
+
+	public function test_assert_current_user_can_consent_rejects_admin_for_different_users_request(): void {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 9;
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
+
+		$client = new ClientEntity();
+		$client->setIdentifier( 'client-1' );
+		$client->setUserId( 7 );
+
+		$this->expectException( \RuntimeException::class );
+		$this->expectExceptionMessage( 'This authorization request belongs to a different WordPress user.' );
+
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'assert_current_user_can_consent',
+			array(
+				array(
+					'scope' => 'content:read',
+				),
+				$client,
+				7,
+				true,
+			)
+		);
 	}
 
 	/**

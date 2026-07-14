@@ -40,6 +40,8 @@ final class ToolSafetyTest extends TestCase {
 
 		self::assertSame( 'update', $this->safety->risk_level( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
 		self::assertFalse( $this->safety->requires_confirmation( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
+		self::assertSame( 'update', $this->safety->risk_level( 'content.update_block', array( 'text' => 'Draft edit' ) ) );
+		self::assertFalse( $this->safety->requires_confirmation( 'content.update_block', array( 'text' => 'Draft edit' ) ) );
 
 		self::assertSame( 'update', $this->safety->risk_level( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'comments.bulk_update', array( 'status' => 'hold' ) ) );
@@ -48,6 +50,7 @@ final class ToolSafetyTest extends TestCase {
 		self::assertTrue( $this->safety->requires_confirmation( 'memory.save', array( 'key' => 'brand.voice.primary' ) ) );
 		self::assertSame( 'update', $this->safety->risk_level( 'memory.bootstrap', array() ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'memory.bootstrap', array() ) );
+		self::assertSame( 'update', $this->safety->risk_level( 'plugin.incident.report', array() ) );
 
 		self::assertSame( 'draft', $this->safety->risk_level( 'content_workflow.create_draft', array( 'title' => 'Draft' ) ) );
 		self::assertSame(
@@ -96,6 +99,13 @@ final class ToolSafetyTest extends TestCase {
 		self::assertSame( array( 'Content Groups' ), $this->safety->confirmation_groups() );
 		self::assertTrue( $this->safety->requires_confirmation( 'taxonomy.update_term', array( 'name' => 'News' ) ) );
 		self::assertFalse( $this->safety->requires_confirmation( 'content.update_item', array( 'title' => 'Draft edit' ) ) );
+	}
+
+	public function test_confirmation_token_presence_requires_a_non_empty_scalar_value(): void {
+		self::assertFalse( $this->safety->has_confirmation_token( array() ) );
+		self::assertFalse( $this->safety->has_confirmation_token( array( 'confirmation_token' => '' ) ) );
+		self::assertFalse( $this->safety->has_confirmation_token( array( 'confirmation_token' => array( 'invalid' ) ) ) );
+		self::assertTrue( $this->safety->has_confirmation_token( array( 'confirmation_token' => 'token-123' ) ) );
 	}
 
 	public function test_confirmation_token_validates_then_replays_after_success(): void {

@@ -74,6 +74,15 @@ final class ToolSafety {
 	}
 
 	/**
+	 * Check whether a call includes a non-empty confirmation token.
+	 *
+	 * @param array<mixed> $args Tool arguments.
+	 */
+	public function has_confirmation_token( array $args ): bool {
+		return '' !== $this->confirmation_token_arg( $args );
+	}
+
+	/**
 	 * Return confirmation token lifetime in seconds.
 	 */
 	public function confirmation_ttl(): int {
@@ -120,8 +129,12 @@ final class ToolSafety {
 				'future', 'publish' => 'publish',
 				default => 'update',
 			},
+			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
+			'plugin_lifecycle.activate_plugin',
+			'plugin_lifecycle.deactivate_plugin',
+			'theme_lifecycle.switch_theme' => 'system',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
@@ -137,6 +150,10 @@ final class ToolSafety {
 			'wp_abilities.run' => 'system',
 			'content.update_seo',
 			'content_index.refresh_batch',
+			'content_internal_link.suggestions_create',
+			'content_internal_link.suggestion_review',
+			'content_internal_link.suggestion_apply',
+			'plugin.incident.report',
 			'memory.save',
 			'memory.bootstrap',
 			'seo_workflow.update_rankmath',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Exception;
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
@@ -59,9 +60,12 @@ final class TokenController {
 	 * @return WP_REST_Response
 	 */
 	public function token( WP_REST_Request $request ): WP_REST_Response {
-		$logger   = new Logger();
-		$resource = $this->resource_from_request( $request );
-		$context  = $this->log_context( $request, $resource );
+		$logger         = new Logger();
+		$resource       = $this->resource_from_request( $request );
+		$context        = $this->log_context( $request, $resource );
+		$timeline_event = $this->token_timeline_event( $request );
+		$timeline_auth  = $this->timeline_auth_context( $request );
+		$started_at     = microtime( true );
 
 		$logger->info(
 			'token.received',
@@ -77,6 +81,18 @@ final class TokenController {
 				array_merge( $context, array( 'error_code' => 'invalid_target' ) ),
 				$request,
 				400
+			);
+			$this->record_timeline_event(
+				$timeline_event,
+				array(
+					'status'       => 'error',
+					'method'       => 'oauth/token',
+					'grant_type'   => (string) $request->get_param( 'grant_type' ),
+					'result_class' => 'invalid_target',
+					'error_code'   => 'invalid_target',
+					'duration_ms'  => $this->duration_ms( $started_at ),
+				),
+				$timeline_auth
 			);
 			return $this->error( 'invalid_target', 'The requested resource does not match this Aculect AI Companion MCP server.', 400 );
 		}
@@ -95,6 +111,17 @@ final class TokenController {
 				$request,
 				$response->getStatusCode()
 			);
+			$this->record_timeline_event(
+				$timeline_event,
+				array(
+					'status'       => 400 <= $response->getStatusCode() ? 'error' : 'success',
+					'method'       => 'oauth/token',
+					'grant_type'   => (string) $request->get_param( 'grant_type' ),
+					'result_class' => $this->token_result_class( $response->getStatusCode() ),
+					'duration_ms'  => $this->duration_ms( $started_at ),
+				),
+				$timeline_auth
+			);
 
 			return Psr7Bridge::to_rest_response( $response );
 		} catch ( OAuthServerException $exception ) {
@@ -105,6 +132,18 @@ final class TokenController {
 				$request,
 				$exception->getHttpStatusCode()
 			);
+			$this->record_timeline_event(
+				$timeline_event,
+				array(
+					'status'       => 'error',
+					'method'       => 'oauth/token',
+					'grant_type'   => (string) $request->get_param( 'grant_type' ),
+					'result_class' => $this->token_result_class( $exception->getHttpStatusCode() ),
+					'error_code'   => $exception->getErrorType(),
+					'duration_ms'  => $this->duration_ms( $started_at ),
+				),
+				$timeline_auth
+			);
 			return Psr7Bridge::to_rest_response( $exception->generateHttpResponse( Psr7Bridge::response() ) );
 		} catch ( Exception $exception ) {
 			unset( $exception );
@@ -114,6 +153,18 @@ final class TokenController {
 				array_merge( $context, array( 'error_code' => 'server_error' ) ),
 				$request,
 				500
+			);
+			$this->record_timeline_event(
+				$timeline_event,
+				array(
+					'status'       => 'error',
+					'method'       => 'oauth/token',
+					'grant_type'   => (string) $request->get_param( 'grant_type' ),
+					'result_class' => 'server_error',
+					'error_code'   => 'server_error',
+					'duration_ms'  => $this->duration_ms( $started_at ),
+				),
+				$timeline_auth
 			);
 			return $this->error( 'server_error', $this->server_error_description(), 500 );
 		} finally {
@@ -174,6 +225,71 @@ final class TokenController {
 		$client = ( new ClientRepository() )->getClientEntity( $client_id );
 
 		return $client instanceof ClientEntity ? $client->getProvider() : '';
+	}
+
+	/**
+	 * Return the timeline event name for the requested OAuth grant.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 */
+	private function token_timeline_event( WP_REST_Request $request ): string {
+		return 'refresh_token' === (string) $request->get_param( 'grant_type' ) ? 'token_refresh' : 'token_exchange';
+	}
+
+	/**
+	 * Build a support-safe result class from an OAuth token response status.
+	 *
+	 * @param int $status HTTP status code.
+	 */
+	private function token_result_class( int $status ): string {
+		if ( $status >= 500 ) {
+			return 'server_error';
+		}
+
+		if ( $status >= 400 ) {
+			return 'oauth_error';
+		}
+
+		return 'issued';
+	}
+
+	/**
+	 * Build timeline grouping context for token endpoint events.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 * @return array<string, mixed>
+	 */
+	private function timeline_auth_context( WP_REST_Request $request ): array {
+		$client_id = (string) $request->get_param( 'client_id' );
+
+		return array(
+			'provider'  => $this->client_provider( $request ),
+			'client_id' => $client_id,
+		);
+	}
+
+	/**
+	 * Record a token endpoint timeline event without making token issuance depend on logging.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Support-safe metadata.
+	 * @param array<string, mixed> $auth     OAuth client context.
+	 */
+	private function record_timeline_event( string $event, array $metadata, array $auth ): void {
+		try {
+			( new ActivityLogger() )->record_timeline_event( $event, $metadata, $auth );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
+	}
+
+	/**
+	 * Return elapsed milliseconds from a token request timestamp.
+	 *
+	 * @param float $started_at Request start timestamp.
+	 */
+	private function duration_ms( float $started_at ): int {
+		return max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
 	}
 
 	/**

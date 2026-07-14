@@ -37,16 +37,22 @@ final class McpToolAvailability {
 	 * @param AbilitiesRegistry|null    $registry     Optional ability registry.
 	 * @param IntelligenceRegistry|null $intelligence Optional intelligence registry.
 	 * @param array<mixed>|null         $granted_scopes Optional granted OAuth scopes.
+	 * @param array<string, mixed>      $profile_context Optional profile selection context.
 	 * @return array<string, AbilityModuleInterface>
 	 */
-	public function tool_modules_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?IntelligenceRegistry $intelligence = null, ?array $granted_scopes = null ): array {
+	public function tool_modules_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?IntelligenceRegistry $intelligence = null, ?array $granted_scopes = null, array $profile_context = array() ): array {
 		$registry     = $registry ?? new AbilitiesRegistry();
 		$intelligence = $intelligence ?? new IntelligenceRegistry();
 		$scopes       = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
+		$profiles     = new McpToolProfiles();
+		$profile      = $profiles->resolve_for_user( $user_id, $registry, $profile_context )['profile'];
 
 		return array_merge(
-			$this->ability_modules_for_user( $user_id, $registry, $scopes ),
-			$this->scope_filtered_modules( $intelligence->modules(), $scopes )
+			$this->ability_modules_for_user( $user_id, $registry, $scopes, $profile_context ),
+			array_filter(
+				$this->scope_filtered_modules( $intelligence->modules(), $scopes ),
+				fn ( AbilityModuleInterface $module ): bool => $profiles->allows_ability( $module->id(), $profile, $registry, $module )
+			)
 		);
 	}
 
@@ -56,23 +62,27 @@ final class McpToolAvailability {
 	 * @param int                    $user_id  WordPress user ID.
 	 * @param AbilitiesRegistry|null $registry Optional ability registry.
 	 * @param array<mixed>|null      $granted_scopes Optional granted OAuth scopes.
+	 * @param array<string, mixed>   $profile_context Optional profile selection context.
 	 * @return array<string, AbilityModuleInterface>
 	 */
-	public function ability_modules_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null ): array {
+	public function ability_modules_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null, array $profile_context = array() ): array {
 		$registry = $registry ?? new AbilitiesRegistry();
 		$scopes   = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
+		$profiles = new McpToolProfiles();
+		$profile  = $profiles->resolve_for_user( $user_id, $registry, $profile_context )['profile'];
 
-		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->always_on_read_intelligence_modules() + $registry->always_on_write_intelligence_modules();
-		$policy         = $this->ability_policy_for_user( $user_id, $registry, $scopes );
+		$modules        = ( new RoleAbilitiesPolicy() )->enabled_modules_for_user( $user_id, $registry ) + $registry->derived_workflow_modules() + $registry->core_default_modules() + $registry->always_on_read_intelligence_modules() + $registry->always_on_write_intelligence_modules();
+		$policy         = $this->ability_policy_for_user( $user_id, $registry, $scopes, $profile_context );
 		$global_enabled = (array) ( $policy['global_enabled_ids'] ?? array() );
 		$role_allowed   = (array) ( $policy['role_allowed_ids'] ?? array() );
 
 		return array_filter(
 			$modules,
 			fn ( AbilityModuleInterface $module ): bool => $this->module_allowed( $module->id(), $global_enabled, $role_allowed, $registry )
-				&& $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry, $scopes )
+				&& $this->dependencies_available( $module->id(), $global_enabled, $role_allowed, $registry, $scopes, $profile )
 				&& $this->capabilities_available( $module->id() )
 				&& $this->scopes_available( $module->required_scopes(), $scopes )
+				&& $profiles->allows_ability( $module->id(), $profile, $registry, $module )
 		);
 	}
 
@@ -82,25 +92,36 @@ final class McpToolAvailability {
 	 * @param int                    $user_id  WordPress user ID.
 	 * @param AbilitiesRegistry|null $registry Optional ability registry.
 	 * @param array<mixed>|null      $granted_scopes Optional granted OAuth scopes.
+	 * @param array<string, mixed>   $profile_context Optional profile selection context.
 	 * @return array<string, mixed>
 	 */
-	public function ability_policy_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null ): array {
+	public function ability_policy_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null, array $profile_context = array() ): array {
 		$registry       = $registry ?? new AbilitiesRegistry();
 		$scopes         = null === $granted_scopes ? null : self::normalize_scope_list( $granted_scopes );
 		$policy         = new RoleAbilitiesPolicy();
+		$profiles       = new McpToolProfiles();
+		$profile        = $profiles->resolve_for_user( $user_id, $registry, $profile_context );
 		$all_ids        = array_keys( $registry->definitions() );
 		$configurable   = array_values( array_filter( $all_ids, array( $registry, 'is_configurable' ) ) );
-		$global_enabled = $registry->enabled_ids();
+		$global_enabled = $registry->policy_enabled_ids();
+		$config_enabled = $registry->enabled_ids();
 		$role_allowed   = $policy->allowed_ids_for_user( $user_id, $registry );
-		$exposed        = array_values(
+		$policy_exposed = array_values(
 			array_filter(
 				$all_ids,
 				fn ( string $ability_id ): bool => $this->module_allowed( $ability_id, $global_enabled, $role_allowed, $registry )
-					&& $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry, $scopes )
+					&& $this->dependencies_available( $ability_id, $global_enabled, $role_allowed, $registry, $scopes, null )
 					&& $this->capabilities_available( $ability_id )
 					&& $this->scopes_available( $registry->required_scopes( $ability_id ), $scopes )
 			)
 		);
+		$exposed        = array_values(
+			array_filter(
+				$policy_exposed,
+				fn ( string $ability_id ): bool => $profiles->allows_ability( $ability_id, $profile['profile'], $registry )
+			)
+		);
+		$hidden         = array_values( array_diff( $policy_exposed, $exposed ) );
 		$roles          = $this->roles_for_user( $user_id );
 		$user_state     = $this->user_policy_state( $user_id, $roles );
 
@@ -116,26 +137,37 @@ final class McpToolAvailability {
 		$default_read_only_policy = 'default_read_only' === $user_state && ! $explicit_role_policy;
 
 		return array(
-			'user_id'                   => $user_id,
-			'user_roles'                => $roles,
-			'user_policy_state'         => $user_state,
-			'global_enabled_count'      => count( $global_enabled ),
-			'role_allowed_count'        => count( $role_allowed ),
-			'exposed_ability_count'     => count( $exposed ),
-			'all_ability_count'         => count( $all_ids ),
-			'global_enabled_ids'        => array_values( $global_enabled ),
-			'role_allowed_ids'          => array_values( $role_allowed ),
-			'exposed_ability_ids'       => $exposed,
-			'blocked_by_global_ids'     => array_values( array_diff( $configurable, $global_enabled ) ),
-			'blocked_by_role_ids'       => array_values( array_diff( $global_enabled, $role_allowed ) ),
-			'explicit_role_policy'      => $explicit_role_policy,
-			'default_read_only_policy'  => $default_read_only_policy,
-			'missing_user'              => 'missing_user' === $user_state,
-			'missing_role'              => 'missing_role' === $user_state,
-			'operation_tool_names'      => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
-			'global_enabled_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
-			'scope_aware'               => null !== $scopes,
-			'granted_scopes'            => null === $scopes ? array() : $scopes,
+			'user_id'                      => $user_id,
+			'user_roles'                   => $roles,
+			'user_policy_state'            => $user_state,
+			'global_enabled_count'         => count( $global_enabled ),
+			'configurable_enabled_count'   => count( $config_enabled ),
+			'core_default_count'           => count( $registry->core_default_ids() ),
+			'role_allowed_count'           => count( $role_allowed ),
+			'exposed_ability_count'        => count( $exposed ),
+			'all_ability_count'            => count( $all_ids ),
+			'global_enabled_ids'           => array_values( $global_enabled ),
+			'configurable_enabled_ids'     => array_values( $config_enabled ),
+			'core_default_ids'             => $registry->core_default_ids(),
+			'role_allowed_ids'             => array_values( $role_allowed ),
+			'exposed_ability_ids'          => $exposed,
+			'profile_id'                   => $profile['id'],
+			'profile_source'               => $profile['source'],
+			'profile_fallback'             => $profile['fallback'],
+			'profile'                      => $this->public_profile( $profile['profile'] ),
+			'hidden_by_profile_ids'        => $hidden,
+			'hidden_by_profile_count'      => count( $hidden ),
+			'hidden_by_profile_tool_names' => array_values( array_map( array( $registry, 'tool_name' ), $hidden ) ),
+			'blocked_by_global_ids'        => array_values( array_diff( $configurable, $config_enabled ) ),
+			'blocked_by_role_ids'          => array_values( array_diff( $config_enabled, $role_allowed ) ),
+			'explicit_role_policy'         => $explicit_role_policy,
+			'default_read_only_policy'     => $default_read_only_policy,
+			'missing_user'                 => 'missing_user' === $user_state,
+			'missing_role'                 => 'missing_role' === $user_state,
+			'operation_tool_names'         => array_values( array_map( array( $registry, 'tool_name' ), $exposed ) ),
+			'global_enabled_tool_names'    => array_values( array_map( array( $registry, 'tool_name' ), $global_enabled ) ),
+			'scope_aware'                  => null !== $scopes,
+			'granted_scopes'               => null === $scopes ? array() : $scopes,
 		);
 	}
 
@@ -155,25 +187,33 @@ final class McpToolAvailability {
 	 * @param int                    $user_id  WordPress user ID.
 	 * @param AbilitiesRegistry|null $registry Optional ability registry.
 	 * @param array<mixed>|null      $granted_scopes Optional granted OAuth scopes.
+	 * @param array<string, mixed>   $profile_context Optional profile selection context.
 	 * @return array<string, mixed>
 	 */
-	public function operations_manifest_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null ): array {
+	public function operations_manifest_for_user( int $user_id, ?AbilitiesRegistry $registry = null, ?array $granted_scopes = null, array $profile_context = array() ): array {
 		$registry     = $registry ?? new AbilitiesRegistry();
-		$policy       = $this->ability_policy_for_user( $user_id, $registry, $granted_scopes );
+		$policy       = $this->ability_policy_for_user( $user_id, $registry, $granted_scopes, $profile_context );
 		$wp_abilities = new WordPressAbilitiesDiagnostics();
 
 		return array(
-			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, missing_user, missing_role, or oauth_scope) before assuming WordPress data or permissions are missing. Workflow and read-intelligence tools are always-on first-party guidance surfaces and remain subject to OAuth scopes plus execution-time WordPress capability checks.',
+			'description'        => 'Exact MCP operational tool names and availability for the connected WordPress user. Choose only available tools; blocked_by explains why an operation is unavailable (global_disabled, role_policy, role_default_read_only, missing_user, missing_role, oauth_scope, hidden_by_profile, or capability) before assuming WordPress data or permissions are missing. Workflow and read-intelligence tools are always-on first-party guidance surfaces and remain subject to profile visibility, OAuth scopes, and execution-time WordPress capability checks.',
 			'policy'             => array(
 				'user_id'                  => $policy['user_id'],
 				'user_roles'               => $policy['user_roles'],
 				'user_policy_state'        => $policy['user_policy_state'],
 				'exposed_ability_count'    => $policy['exposed_ability_count'],
 				'all_ability_count'        => $policy['all_ability_count'],
+				'core_default_count'       => $policy['core_default_count'],
 				'explicit_role_policy'     => $policy['explicit_role_policy'],
 				'default_read_only_policy' => $policy['default_read_only_policy'],
 				'scope_aware'              => $policy['scope_aware'],
 				'granted_scopes'           => $policy['granted_scopes'],
+				'profile_id'               => $policy['profile_id'],
+				'profile_source'           => $policy['profile_source'],
+				'profile_fallback'         => $policy['profile_fallback'],
+				'profile'                  => $policy['profile'],
+				'hidden_by_profile_count'  => $policy['hidden_by_profile_count'],
+				'hidden_by_profile_ids'    => $policy['hidden_by_profile_ids'],
 				'missing_user'             => $policy['missing_user'],
 				'missing_role'             => $policy['missing_role'],
 			),
@@ -182,6 +222,7 @@ final class McpToolAvailability {
 					'get_settings' => 'site.get_settings',
 					'get_info'     => 'site.get_info',
 					'get_health'   => 'site.get_health',
+					'report'       => 'site.maintenance_report',
 					'list_plugins' => 'site.list_plugins',
 					'list_themes'  => 'site.list_themes',
 				),
@@ -189,14 +230,36 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'plugin_lifecycle'   => $this->operation_group(
+				array(
+					'list_plugins'      => 'plugin_lifecycle.list_plugins',
+					'get_plugin'        => 'plugin_lifecycle.get_plugin',
+					'activate_plugin'   => 'plugin_lifecycle.activate_plugin',
+					'deactivate_plugin' => 'plugin_lifecycle.deactivate_plugin',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
+			'theme_lifecycle'    => $this->operation_group(
+				array(
+					'list_themes'  => 'theme_lifecycle.list_themes',
+					'get_theme'    => 'theme_lifecycle.get_theme',
+					'switch_theme' => 'theme_lifecycle.switch_theme',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'content'            => $this->operation_group(
 				array(
-					'list_types' => 'site.list_post_types',
-					'list_items' => 'content.list_items',
-					'get_item'   => 'content.get_item',
-					'create'     => 'content.create_item',
-					'update'     => 'content.update_item',
-					'seo'        => 'content.update_seo',
+					'discover_core_schema' => 'core_schema.discover',
+					'list_types'           => 'site.list_post_types',
+					'list_items'           => 'content.list_items',
+					'get_item'             => 'content.get_item',
+					'create'               => 'content.create_item',
+					'update'               => 'content.update_item',
+					'seo'                  => 'content.update_seo',
 				),
 				$policy,
 				$registry,
@@ -240,6 +303,16 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
+			'user_access'        => $this->operation_group(
+				array(
+					'current_access' => 'users.current_access',
+					'roles_summary'  => 'users.roles_summary',
+					'list_safe'      => 'users.list_safe',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
 			'admin_menu'         => $this->operation_group(
 				array(
 					'get_context'           => 'admin_menu.get_context',
@@ -247,6 +320,17 @@ final class McpToolAvailability {
 					'list_pages'            => 'admin_menu.list_pages',
 					'get_navigation_target' => 'admin_menu.get_navigation_target',
 					'list_settings'         => 'admin_menu.list_settings',
+				),
+				$policy,
+				$registry,
+				$wp_abilities
+			),
+			'navigation'         => $this->operation_group(
+				array(
+					'get_context'    => 'navigation.get_context',
+					'list_menus'     => 'navigation.list_menus',
+					'list_locations' => 'navigation.list_locations',
+					'list_items'     => 'navigation.list_items',
 				),
 				$policy,
 				$registry,
@@ -266,19 +350,20 @@ final class McpToolAvailability {
 			),
 			'intelligence_index' => $this->operation_group(
 				array(
-					'canonical_search'    => 'search',
-					'canonical_fetch'     => 'fetch',
-					'refresh_batch'       => 'content_index.refresh_batch',
-					'search_items'        => 'content_search.items',
-					'search_chunks'       => 'content_search.chunks',
-					'find_related'        => 'content_find.related',
-					'internal_links'      => 'content_find.internal_links',
-					'internal_link_audit' => 'content_audit.internal_links',
-					'memory_list'         => 'memory.list',
-					'memory_save'         => 'memory.save',
-					'memory_bootstrap'    => 'memory.bootstrap',
-					'batch_status'        => 'content_batch.status',
-					'activity_learning'   => 'mcp_learning.inspect_activity',
+					'canonical_search'     => 'search',
+					'canonical_fetch'      => 'fetch',
+					'refresh_batch'        => 'content_index.refresh_batch',
+					'search_items'         => 'content_search.items',
+					'search_chunks'        => 'content_search.chunks',
+					'find_related'         => 'content_find.related',
+					'internal_link_policy' => 'content_internal_link.policy',
+					'internal_links'       => 'content_find.internal_links',
+					'internal_link_audit'  => 'content_audit.internal_links',
+					'memory_list'          => 'memory.list',
+					'memory_save'          => 'memory.save',
+					'memory_bootstrap'     => 'memory.bootstrap',
+					'batch_status'         => 'content_batch.status',
+					'activity_learning'    => 'mcp_learning.inspect_activity',
 				),
 				$policy,
 				$registry,
@@ -300,6 +385,7 @@ final class McpToolAvailability {
 				array(
 					'list'              => 'media.list_items',
 					'get'               => 'media.get_item',
+					'audit_usage'       => 'media.audit_usage',
 					'upload'            => 'media.upload_item',
 					'upload_image_data' => 'media.upload_image_data',
 					'search_cc0'        => 'content_media.search_cc0_images',
@@ -378,6 +464,7 @@ final class McpToolAvailability {
 		$global_enabled       = (array) ( $policy['global_enabled_ids'] ?? array() );
 		$role_allowed         = (array) ( $policy['role_allowed_ids'] ?? array() );
 		$exposed              = (array) ( $policy['exposed_ability_ids'] ?? array() );
+		$hidden_by_profile    = (array) ( $policy['hidden_by_profile_ids'] ?? array() );
 		$scope_aware          = true === ( $policy['scope_aware'] ?? false );
 		$granted_scopes       = self::normalize_scope_list( (array) ( $policy['granted_scopes'] ?? array() ) );
 		$module               = $registry->module( $ability_id );
@@ -386,29 +473,33 @@ final class McpToolAvailability {
 		$is_derived_workflow  = $registry->is_derived_workflow( $ability_id );
 		$is_always_on_read    = $registry->is_always_on_read_intelligence( $ability_id );
 		$is_always_on_write   = $registry->is_always_on_write_intelligence( $ability_id );
+		$is_core_default      = $registry->is_core_default( $ability_id );
 		$is_always_on         = $is_always_on_read || $is_always_on_write;
 		$blocked_by           = '';
 		$blocked_dependencies = array();
 		$missing_scopes       = array();
 		$wp_metadata          = $wp_abilities->operation_metadata( $ability_id, $registry );
 
-		if ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $global_enabled, true ) ) {
+		if ( ! $is_derived_workflow && ! $is_always_on && ! $is_core_default && ! in_array( $ability_id, $global_enabled, true ) ) {
 			$blocked_by = 'global_disabled';
-		} elseif ( ! $is_derived_workflow && ! $is_always_on && ! in_array( $ability_id, $role_allowed, true ) ) {
+		} elseif ( ! $is_derived_workflow && ! $is_always_on && ! $is_core_default && ! in_array( $ability_id, $role_allowed, true ) ) {
 			$blocked_by = $this->role_block_reason( $policy, $module );
 		} elseif ( ! $this->capabilities_available( $ability_id ) || 'capability_blocked' === ( $wp_metadata['status'] ?? '' ) ) {
 			$blocked_by = 'capability';
 		} elseif ( $scope_aware && ! $this->scopes_available( $required_scopes, $granted_scopes ) ) {
 			$blocked_by     = 'oauth_scope';
 			$missing_scopes = $this->missing_scopes( $required_scopes, $granted_scopes );
+		} elseif ( in_array( $ability_id, $hidden_by_profile, true ) ) {
+			$blocked_by = 'hidden_by_profile';
 		} else {
 			foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
 				$dependency = $registry->module( $dependency_id );
 
-				if ( ! in_array( $dependency_id, $global_enabled, true ) ) {
+				$is_core_default_dependency = $registry->is_core_default( $dependency_id );
+				if ( ! $is_core_default_dependency && ! in_array( $dependency_id, $global_enabled, true ) ) {
 					$blocked_by             = 'global_disabled';
 					$blocked_dependencies[] = $dependency_id;
-				} elseif ( ! in_array( $dependency_id, $role_allowed, true ) ) {
+				} elseif ( ! $is_core_default_dependency && ! in_array( $dependency_id, $role_allowed, true ) ) {
 					$blocked_by             = $this->role_block_reason( $policy, $dependency );
 					$blocked_dependencies[] = $dependency_id;
 				} elseif ( ! $this->capabilities_available( $dependency_id ) ) {
@@ -422,17 +513,25 @@ final class McpToolAvailability {
 						$missing_scopes         = array_merge( $missing_scopes, $this->missing_scopes( $dependency_scopes, $granted_scopes ) );
 					}
 				}
+
+				if ( '' === $blocked_by && in_array( $dependency_id, $hidden_by_profile, true ) ) {
+					$blocked_by             = 'hidden_by_profile';
+					$blocked_dependencies[] = $dependency_id;
+				}
 			}
 		}
 
 		$available = in_array( $ability_id, $exposed, true ) && '' === $blocked_by;
 
 		$entry = array(
-			'tool'              => $registry->tool_name( $ability_id ),
-			'available'         => $available,
-			'required_scopes'   => array_values( $required_scopes ),
-			'read_only'         => $is_read_only,
-			'wordpress_ability' => $wp_metadata,
+			'tool'                  => $registry->tool_name( $ability_id ),
+			'available'             => $available,
+			'required_scopes'       => array_values( $required_scopes ),
+			'read_only'             => $is_read_only,
+			'core_default'          => $is_core_default,
+			'configurable'          => $registry->is_configurable( $ability_id ),
+			'wordpress_ability'     => $wp_metadata,
+			'availability_channels' => $this->availability_channels( $available, $wp_metadata ),
 		);
 
 		if ( $is_derived_workflow ) {
@@ -445,6 +544,10 @@ final class McpToolAvailability {
 		if ( $is_always_on ) {
 			$entry['always_on']          = true;
 			$entry['availability_model'] = $is_always_on_write ? 'always_on_write_intelligence' : 'always_on_read_intelligence';
+		}
+
+		if ( $is_core_default ) {
+			$entry['availability_model'] = 'core_default_read';
 		}
 
 		if ( ! $available ) {
@@ -460,18 +563,49 @@ final class McpToolAvailability {
 	}
 
 	/**
+	 * Summarize whether an operation is reachable through MCP, WordPress Abilities, both, or neither.
+	 *
+	 * @param bool                 $mcp_available MCP tool availability.
+	 * @param array<string, mixed> $wp_metadata   WordPress Abilities diagnostic metadata.
+	 * @return array<string, mixed>
+	 */
+	private function availability_channels( bool $mcp_available, array $wp_metadata ): array {
+		$wp_available = 'available' === (string) ( $wp_metadata['status'] ?? '' );
+		$summary      = match ( true ) {
+			$mcp_available && $wp_available => 'both',
+			$mcp_available => 'mcp_only',
+			$wp_available => 'wordpress_abilities_only',
+			default => 'neither',
+		};
+
+		return array(
+			'mcp'                 => $mcp_available,
+			'wordpress_abilities' => $wp_available,
+			'summary'             => $summary,
+			'wordpress_status'    => sanitize_key( (string) ( $wp_metadata['status'] ?? 'unknown' ) ),
+		);
+	}
+
+	/**
 	 * Check workflow dependency policy, scopes, and known static capabilities.
 	 *
-	 * @param string            $ability_id     Ability ID.
-	 * @param string[]          $global_enabled Globally enabled IDs.
-	 * @param string[]          $role_allowed   Role-allowed IDs.
-	 * @param AbilitiesRegistry $registry       Ability registry.
-	 * @param array|null        $granted_scopes Optional granted OAuth scopes.
+	 * @param string                    $ability_id     Ability ID.
+	 * @param string[]                  $global_enabled Globally enabled IDs.
+	 * @param string[]                  $role_allowed   Role-allowed IDs.
+	 * @param AbilitiesRegistry         $registry       Ability registry.
+	 * @param array|null                $granted_scopes Optional granted OAuth scopes.
+	 * @param array<string, mixed>|null $profile Optional profile definition.
 	 * @phpstan-param list<string>|null $granted_scopes
 	 */
-	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry, ?array $granted_scopes = null ): bool {
+	private function dependencies_available( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry, ?array $granted_scopes = null, ?array $profile = null ): bool {
+		$profiles = new McpToolProfiles();
+
 		foreach ( $registry->dependency_ids( $ability_id ) as $dependency_id ) {
-			if ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) ) {
+			$is_core_default_dependency = $registry->is_core_default( $dependency_id );
+			if (
+				! $is_core_default_dependency
+				&& ( ! in_array( $dependency_id, $global_enabled, true ) || ! in_array( $dependency_id, $role_allowed, true ) )
+			) {
 				return false;
 			}
 
@@ -480,6 +614,10 @@ final class McpToolAvailability {
 			}
 
 			if ( null !== $granted_scopes && ! $this->scopes_available( $registry->required_scopes( $dependency_id ), $granted_scopes ) ) {
+				return false;
+			}
+
+			if ( null !== $profile && ! $profiles->allows_ability( $dependency_id, $profile, $registry ) ) {
 				return false;
 			}
 		}
@@ -517,8 +655,16 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return match ( $ability_id ) {
-			'site.get_health' => array( 'manage_options' ),
+			'site.get_health',
+			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
+			'plugin_lifecycle.list_plugins',
+			'plugin_lifecycle.get_plugin',
+			'plugin_lifecycle.activate_plugin',
+			'plugin_lifecycle.deactivate_plugin' => array( 'activate_plugins' ),
+			'theme_lifecycle.list_themes',
+			'theme_lifecycle.get_theme',
+			'theme_lifecycle.switch_theme',
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',
 			'site_editor.refresh_context',
@@ -526,6 +672,8 @@ final class McpToolAvailability {
 			'site_editor.get_template',
 			'site_editor.list_template_parts',
 			'site_editor.get_template_part' => array( 'edit_theme_options' ),
+			'users.roles_summary' => array( 'promote_users' ),
+			'users.list_safe' => array( 'list_users' ),
 			'admin_menu.get_context',
 			'admin_menu.refresh_context',
 			'admin_menu.list_pages',
@@ -549,7 +697,7 @@ final class McpToolAvailability {
 	 * @param AbilitiesRegistry $registry       Ability registry.
 	 */
 	private function module_allowed( string $ability_id, array $global_enabled, array $role_allowed, AbilitiesRegistry $registry ): bool {
-		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_always_on_read_intelligence( $ability_id ) || $registry->is_always_on_write_intelligence( $ability_id ) ) {
+		if ( $registry->is_derived_workflow( $ability_id ) || $registry->is_core_default( $ability_id ) || $registry->is_always_on_write_intelligence( $ability_id ) ) {
 			return true;
 		}
 
@@ -646,6 +794,24 @@ final class McpToolAvailability {
 		}
 
 		return 'role_policy';
+	}
+
+	/**
+	 * Return support-safe profile metadata for diagnostics.
+	 *
+	 * @param array<string, mixed> $profile Sanitized profile definition.
+	 * @return array<string, mixed>
+	 */
+	private function public_profile( array $profile ): array {
+		return array(
+			'id'                => (string) ( $profile['id'] ?? '' ),
+			'label'             => (string) ( $profile['label'] ?? '' ),
+			'description'       => (string) ( $profile['description'] ?? '' ),
+			'included_groups'   => array_values( array_map( 'strval', (array) ( $profile['included_groups'] ?? array() ) ) ),
+			'hidden_groups'     => array_values( array_map( 'strval', (array) ( $profile['hidden_groups'] ?? array() ) ) ),
+			'read_only_default' => true === ( $profile['read_only_default'] ?? false ),
+			'risk_level'        => (string) ( $profile['risk_level'] ?? '' ),
+		);
 	}
 
 	/**

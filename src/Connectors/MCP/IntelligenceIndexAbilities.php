@@ -12,6 +12,9 @@ namespace Aculect\AICompanion\Connectors\MCP;
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\InternalLinkPolicy;
+use Aculect\AICompanion\Intelligence\InternalLinkSuggestionRepository;
+use Aculect\AICompanion\Intelligence\InternalLinkTargetInspector;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 
 /**
@@ -286,6 +289,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$source_id = absint( $args['source_id'] ?? 0 );
 		$topic     = sanitize_text_field( (string) ( $args['topic'] ?? $args['query'] ?? '' ) );
 		$source    = $source_id > 0 ? $this->repo()->content_item( $source_id ) : array();
+		$policy    = $this->internal_link_policy()->active();
 
 		if ( $source_id > 0 && ! $this->can_read_post( $source_id ) ) {
 			return $this->error_response( 'forbidden', 'You do not have permission to read the source content item.' );
@@ -300,45 +304,118 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		}
 
 		$already_linked = $source_id > 0 ? $this->repo()->linked_target_ids( $source_id ) : array();
-		$related        = $this->find_related(
+		$limit          = max( 1, min( (int) $policy['limits']['max_suggestions_per_source'], absint( $args['limit'] ?? $policy['limits']['max_suggestions_per_source'] ) ) );
+		$result         = $this->repo()->search_items(
 			array(
-				'post_id'   => $source_id,
 				'query'     => $topic,
 				'post_type' => $args['post_type'] ?? '',
 				'status'    => $args['status'] ?? '',
-				'limit'     => max( 5, min( 30, absint( $args['limit'] ?? 10 ) * 2 ) ),
+				'per_page'  => min( 50, max( $limit * 3, 10 ) ),
 			)
+		);
+		$related_items  = $this->internal_link_policy()->filter_candidates(
+			0,
+			$source,
+			$this->rank_items( $topic, $this->filter_readable_items( (array) ( $result['items'] ?? array() ) ) )
+		);
+		$target_ids     = array_values(
+			array_filter(
+				array_map(
+					static fn ( array $item ): int => (int) ( $item['id'] ?? 0 ),
+					$related_items
+				),
+				static fn ( int $id ): bool => $id > 0
+			)
+		);
+		if ( $source_id > 0 ) {
+			$target_ids[] = $source_id;
+		}
+
+		$link_stats = $this->repo()->internal_link_stats( $target_ids );
+		$anchors    = array_map(
+			fn ( array $item ): string => $this->anchor_text( $item, $topic ),
+			$related_items
+		);
+		$usage      = $this->repo()->internal_link_anchor_usage( $anchors, $source_id );
+		$source_seo = $source_id > 0 ? $this->seo_terms_for_post( $source_id ) : array();
+		$excluded   = array(
+			'self_links'             => 0,
+			'already_linked_targets' => 0,
 		);
 
 		$items = array();
-		foreach ( (array) ( $related['items'] ?? array() ) as $item ) {
+		foreach ( $related_items as $item ) {
 			$id = (int) ( $item['id'] ?? 0 );
-			if ( $id <= 0 || $id === $source_id || in_array( $id, $already_linked, true ) ) {
+			if ( $id <= 0 ) {
 				continue;
 			}
 
-			$items[] = array(
-				'post_id'     => $id,
-				'title'       => (string) ( $item['title'] ?? '' ),
-				'permalink'   => (string) ( $item['permalink'] ?? '' ),
-				'anchor_text' => $this->anchor_text( $item, $topic ),
-				'score'       => (int) ( $item['score'] ?? 0 ),
-				'reason'      => 'Indexed content overlaps with the source topic and is not already linked from the source item.',
-				'stale'       => ! empty( $item['stale'] ),
+			if ( $id === $source_id ) {
+				++$excluded['self_links'];
+				continue;
+			}
+
+			if ( in_array( $id, $already_linked, true ) ) {
+				++$excluded['already_linked_targets'];
+				continue;
+			}
+
+			$anchor  = $this->anchor_text( $item, $topic );
+			$quality = $this->internal_link_quality(
+				$source,
+				$item,
+				$anchor,
+				$topic,
+				$link_stats[ $id ] ?? array(),
+				$link_stats[ $source_id ] ?? array(),
+				$usage[ $this->anchor_key( $anchor ) ] ?? array(),
+				$source_seo,
+				$this->seo_terms_for_post( $id )
 			);
+
+			$items[] = array(
+				'post_id'         => $id,
+				'title'           => (string) ( $item['title'] ?? '' ),
+				'permalink'       => (string) ( $item['permalink'] ?? '' ),
+				'anchor_text'     => $anchor,
+				'score'           => (int) $quality['score'],
+				'quality_score'   => (int) $quality['score'],
+				'relevance_score' => (int) ( $item['score'] ?? 0 ),
+				'confidence'      => (string) $quality['confidence'],
+				'reasons'         => (array) $quality['reasons'],
+				'warnings'        => (array) $quality['warnings'],
+				'quality_signals' => (array) $quality['signals'],
+				'reason'          => implode( ' ', (array) $quality['reasons'] ),
+				'stale'           => ! empty( $item['stale'] ),
+			);
+
+			if ( count( $items ) >= $limit ) {
+				break;
+			}
 		}
 
-		$limit = max( 1, min( 20, absint( $args['limit'] ?? 10 ) ) );
-
 		return array(
-			'items'              => array_slice( $items, 0, $limit ),
-			'total'              => min( count( $items ), $limit ),
+			'items'              => $items,
+			'total'              => count( $items ),
 			'source_post'        => $source,
 			'topic'              => $topic,
 			'already_linked_ids' => $already_linked,
 			'context'            => 'compact',
 			'index'              => $this->index_summary_for_items( $items ),
-			'next_actions'       => array( 'Use the suggested anchors inside semantic paragraph/list blocks, not raw HTML.' ),
+			'quality_summary'    => array(
+				'read_only'       => true,
+				'excluded'        => $excluded,
+				'scoring_version' => 'anchor-quality-v1',
+				'bounds'          => array(
+					'candidate_scan_limit' => min( 50, max( $limit * 3, 10 ) ),
+					'return_limit'         => $limit,
+					'max_new_links'        => (int) $policy['limits']['max_new_links_per_source'],
+					'max_repeated_targets' => (int) $policy['limits']['max_repeated_target_links'],
+				),
+			),
+			'policy'             => $policy,
+			'usage'              => $this->internal_link_policy()->guidance(),
+			'next_actions'       => array( 'Use the suggested anchors inside semantic paragraph/list blocks, not raw HTML.', 'Do not add more than the active policy max_new_links_per_source without explicit user review.' ),
 		);
 	}
 
@@ -349,8 +426,21 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function audit_internal_links( array $args ): array {
+		$state = sanitize_key( (string) ( $args['state'] ?? 'needs_review' ) );
+		if ( in_array( $state, array( 'broken', 'missing_target', 'unreadable_target', 'unpublished_target', 'stale_permalink', 'redirected' ), true ) ) {
+			$result = $this->audit_internal_link_targets( $args, $state );
+
+			return $this->with_internal_link_health( $result, $args );
+		}
+
 		$result = $this->repo()->internal_link_audit( $args );
-		$items  = $this->filter_readable_items( (array) ( $result['items'] ?? array() ) );
+		$policy = $this->internal_link_policy()->active();
+		$items  = array_values(
+			array_filter(
+				$this->filter_readable_items( (array) ( $result['items'] ?? array() ) ),
+				fn ( array $item ): bool => $this->internal_link_policy()->allows_item( $item, $policy )
+			)
+		);
 
 		$result['items']         = $items;
 		$result['visible_total'] = count( $items );
@@ -370,14 +460,625 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			'state'          => (string) ( $filters['state'] ?? 'needs_review' ),
 			'thresholds'     => (array) ( $result['thresholds'] ?? array() ),
 		);
+		$result['policy']  = $policy;
 		$result['usage']   = array(
 			'read_only'       => 'This audit reports indexed link-health signals only; it does not store suggestions or apply content changes.',
 			'freshness'       => 'Rows marked stale_index should be refreshed with content_index_refresh_batch before relying on counts.',
 			'next_tool'       => 'Use content_find_internal_links for candidate anchors after selecting a source item.',
 			'large_site_note' => 'Use page, per_page, post_type, status, and state filters instead of requesting the whole graph.',
+			'policy'          => $this->internal_link_policy()->guidance(),
+		);
+
+		return $this->with_internal_link_health( $result, $args );
+	}
+
+	/**
+	 * Add a compact internal-link health summary and action queue.
+	 *
+	 * @param array<string, mixed> $result Audit result.
+	 * @param array<string, mixed> $args   Audit args.
+	 * @return array<string, mixed>
+	 */
+	private function with_internal_link_health( array $result, array $args ): array {
+		$thresholds = (array) ( $result['thresholds'] ?? $this->internal_link_thresholds( $args ) );
+		$queue      = $this->internal_link_action_queue( $args, $thresholds );
+		$counts     = $this->internal_link_health_counts( $args, $thresholds, $result, $queue );
+
+		$result['health_summary'] = array(
+			'score'       => $this->internal_link_health_score( $counts ),
+			'status'      => $this->internal_link_health_status( $counts ),
+			'counts'      => $counts,
+			'read_only'   => true,
+			'scope'       => $counts['filtered_by_access'] ? 'visible_content' : 'site_index',
+			'methodology' => array(
+				'version' => 'internal-link-health-v1',
+				'basis'   => 'Bounded local content index, link graph, internal-link policy, anchor warnings, and indexed target-state signals.',
+				'claim'   => 'Site-structure and discoverability guidance only; this is not an SEO ranking guarantee.',
+			),
+		);
+		$result['action_queue']   = $queue;
+		$result['next_actions']   = array_values(
+			array_unique(
+				array_merge(
+					(array) ( $result['next_actions'] ?? array() ),
+					array(
+						'Work through action_queue in priority order; every action is review-only and requires a separate content edit.',
+						'Refresh stale index rows before relying on link counts for large cleanup decisions.',
+					)
+				)
+			)
 		);
 
 		return $result;
+	}
+
+	/**
+	 * Build normalized internal-link audit thresholds.
+	 *
+	 * @param array<string, mixed> $args Audit args.
+	 * @return array{min_inbound_links:int,thin_word_count:int,max_outbound_links:int}
+	 */
+	private function internal_link_thresholds( array $args ): array {
+		return array(
+			'min_inbound_links'  => max( 1, min( 100, absint( $args['min_inbound_links'] ?? 2 ) ) ),
+			'thin_word_count'    => max( 1, min( 5000, absint( $args['thin_word_count'] ?? 300 ) ) ),
+			'max_outbound_links' => max( 1, min( 500, absint( $args['max_outbound_links'] ?? 25 ) ) ),
+		);
+	}
+
+	/**
+	 * Build compact health counts.
+	 *
+	 * @param array<string, mixed> $args       Audit args.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @param array<string, mixed> $result     Current audit result.
+	 * @param array<string, mixed> $queue      Action queue result.
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_health_counts( array $args, array $thresholds, array $result, array $queue ): array {
+		$index             = (array) ( $result['index'] ?? array() );
+		$filtered          = ! empty( $result['filtered_by_access'] );
+		$global_index      = ! $filtered && $this->can_view_global_index_summary();
+		$total_items       = $global_index ? (int) ( $index['total_items'] ?? 0 ) : (int) ( $index['visible_items'] ?? $result['visible_total'] ?? 0 );
+		$stale_index_items = $global_index ? (int) ( $index['stale_items'] ?? 0 ) : (int) ( $index['stale_visible_items'] ?? 0 );
+
+		$counts = array(
+			'total_indexed_items'       => max( 0, $total_items ),
+			'orphan_content'            => 0,
+			'underlinked_content'       => 0,
+			'thin_content'              => 0,
+			'stale_index_rows'          => max( 0, $stale_index_items ),
+			'link_heavy_content'        => 0,
+			'broken_internal_links'     => 0,
+			'stale_internal_links'      => 0,
+			'anchor_quality_warnings'   => 0,
+			'pending_suggestions'       => (int) ( $queue['total'] ?? count( (array) ( $queue['items'] ?? array() ) ) ),
+			'filtered_by_access'        => $filtered,
+			'total_is_estimated'        => ! empty( $result['total_is_estimated'] ),
+			'large_site_bounds_applied' => ! empty( $queue['has_more'] ),
+			'candidate_scan_limit'      => (int) ( $queue['bounds']['candidate_scan_limit'] ?? 0 ),
+			'action_queue_return_limit' => (int) ( $queue['bounds']['return_limit'] ?? 0 ),
+		);
+
+		if ( $global_index ) {
+			foreach ( array( 'orphan', 'underlinked', 'thin', 'link_heavy' ) as $state ) {
+				$state_result                        = $this->repo()->internal_link_audit(
+					array_merge(
+						$args,
+						$thresholds,
+						array(
+							'state'    => $state,
+							'page'     => 1,
+							'per_page' => 1,
+						)
+					)
+				);
+				$key                                 = 'orphan' === $state ? 'orphan_content' : $state . '_content';
+				$counts[ $key ]                      = (int) ( $state_result['total'] ?? 0 );
+				$counts['large_site_bounds_applied'] = $counts['large_site_bounds_applied'] || (int) ( $state_result['total'] ?? 0 ) > 1;
+			}
+		} else {
+			foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+				if ( ! is_array( $item ) ) {
+					continue;
+				}
+
+				$flags = (array) ( $item['flags'] ?? array() );
+				if ( in_array( 'orphan', $flags, true ) ) {
+					++$counts['orphan_content'];
+				}
+				if ( in_array( 'underlinked', $flags, true ) ) {
+					++$counts['underlinked_content'];
+				}
+				if ( in_array( 'thin', $flags, true ) ) {
+					++$counts['thin_content'];
+				}
+				if ( in_array( 'link_heavy', $flags, true ) ) {
+					++$counts['link_heavy_content'];
+				}
+			}
+		}
+
+		foreach ( (array) ( $queue['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$action = (string) ( $item['action'] ?? '' );
+			if ( 'fix_broken_link' === $action ) {
+				++$counts['broken_internal_links'];
+			}
+			if ( in_array( $action, array( 'refresh_stale_index', 'fix_stale_link_target' ), true ) ) {
+				++$counts['stale_internal_links'];
+			}
+			if ( 'review_anchor_quality' === $action ) {
+				++$counts['anchor_quality_warnings'];
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Return a prioritized, bounded action queue.
+	 *
+	 * @param array<string, mixed> $args       Audit args.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_action_queue( array $args, array $thresholds ): array {
+		$limit      = max( 1, min( 50, absint( $args['queue_limit'] ?? $args['per_page'] ?? 10 ) ) );
+		$scan_limit = max( $limit, min( 50, $limit * 3 ) );
+		$candidates = array_merge(
+			$this->internal_link_target_actions( $args, $scan_limit ),
+			$this->internal_link_content_actions( $args, $thresholds, $scan_limit )
+		);
+		$candidates = array_values( $candidates );
+		$total      = count( $candidates );
+
+		usort(
+			$candidates,
+			static function ( array $a, array $b ): int {
+				$priority = (int) ( $b['priority_score'] ?? 0 ) <=> (int) ( $a['priority_score'] ?? 0 );
+				if ( 0 !== $priority ) {
+					return $priority;
+				}
+
+				return strcmp( (string) ( $a['title'] ?? '' ), (string) ( $b['title'] ?? '' ) );
+			}
+		);
+
+		return array(
+			'items'     => array_slice( $candidates, 0, $limit ),
+			'total'     => min( $total, $scan_limit * 2 ),
+			'has_more'  => $total > $limit,
+			'context'   => 'compact',
+			'read_only' => true,
+			'bounds'    => array(
+				'candidate_scan_limit' => $scan_limit,
+				'return_limit'         => $limit,
+			),
+			'usage'     => array(
+				'no_auto_apply' => 'Queue items are recommendations only; they do not mutate content.',
+				'pagination'    => 'Increase queue_limit up to 50 or use state filters to inspect specific issue classes.',
+			),
+		);
+	}
+
+	/**
+	 * Return action candidates for broken or stale indexed targets.
+	 *
+	 * @param array<string, mixed> $args       Audit args.
+	 * @param int                  $scan_limit Candidate scan limit.
+	 * @return list<array<string, mixed>>
+	 */
+	private function internal_link_target_actions( array $args, int $scan_limit ): array {
+		$result  = $this->audit_internal_link_targets(
+			array_merge(
+				$args,
+				array(
+					'state'    => 'broken',
+					'page'     => 1,
+					'per_page' => $scan_limit,
+				)
+			),
+			'broken'
+		);
+		$actions = array();
+
+		foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$source = (array) ( $item['source_post'] ?? array() );
+			$state  = (string) ( $item['state'] ?? '' );
+			$action = 'stale_permalink' === $state || 'redirected' === $state ? 'fix_stale_link_target' : 'fix_broken_link';
+			$score  = 'fix_broken_link' === $action ? 96 : 88;
+			if ( ! empty( $source['stale'] ) ) {
+				$score -= 8;
+			}
+
+			$actions[] = array(
+				'id'             => 'link:' . (int) ( $item['link_id'] ?? 0 ),
+				'action'         => $action,
+				'title'          => (string) ( $source['title'] ?? '' ),
+				'post_id'        => (int) ( $source['post_id'] ?? 0 ),
+				'post_type'      => (string) ( $source['post_type'] ?? '' ),
+				'post_status'    => (string) ( $source['post_status'] ?? '' ),
+				'priority_score' => max( 0, min( 100, $score ) ),
+				'reasons'        => array_values(
+					array_filter(
+						array(
+							'fix_broken_link' === $action ? 'Indexed internal link points to a missing, unreadable, or unpublished local target.' : 'Indexed internal link appears to use a stale URL or redirect destination.',
+							(string) ( $item['suggested_next_action'] ?? '' ),
+						)
+					)
+				),
+				'signals'        => array(
+					'target_state' => $state,
+					'anchor_text'  => (string) ( $item['anchor_text'] ?? '' ),
+					'target_url'   => (string) ( $item['target_url'] ?? '' ),
+					'source_stale' => ! empty( $source['stale'] ),
+				),
+			);
+		}
+
+		return $actions;
+	}
+
+	/**
+	 * Return action candidates for content-level internal-link health flags.
+	 *
+	 * @param array<string, mixed> $args       Audit args.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @param int                  $scan_limit Candidate scan limit.
+	 * @return list<array<string, mixed>>
+	 */
+	private function internal_link_content_actions( array $args, array $thresholds, int $scan_limit ): array {
+		$result  = $this->repo()->internal_link_audit(
+			array_merge(
+				$args,
+				$thresholds,
+				array(
+					'state'    => 'needs_review',
+					'page'     => 1,
+					'per_page' => $scan_limit,
+				)
+			)
+		);
+		$policy  = $this->internal_link_policy()->active();
+		$actions = array();
+
+		foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) || ! $this->can_read_post( (int) ( $item['post_id'] ?? $item['id'] ?? 0 ) ) || ! $this->internal_link_policy()->allows_item( $item, $policy ) ) {
+				continue;
+			}
+
+			$actions[] = $this->internal_link_content_action( $item, $thresholds );
+		}
+
+		return array_values( array_filter( $actions ) );
+	}
+
+	/**
+	 * Convert one content audit row into a queue action.
+	 *
+	 * @param array<string, mixed> $item       Content audit row.
+	 * @param array<string, int>   $thresholds Audit thresholds.
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_content_action( array $item, array $thresholds ): array {
+		$flags   = (array) ( $item['flags'] ?? array() );
+		$action  = '';
+		$reasons = array();
+		$score   = 0;
+
+		if ( in_array( 'stale_index', $flags, true ) ) {
+			$action    = 'refresh_stale_index';
+			$score     = 82;
+			$reasons[] = 'Indexed row is stale; refresh it before trusting link counts or recommendations.';
+		} elseif ( in_array( 'orphan', $flags, true ) || in_array( 'underlinked', $flags, true ) ) {
+			$action    = 'add_inbound_links';
+			$score     = in_array( 'orphan', $flags, true ) ? 78 : 68;
+			$reasons[] = in_array( 'orphan', $flags, true ) ? 'No inbound internal links are indexed for this content.' : 'Indexed inbound links are below the configured threshold.';
+		} elseif ( in_array( 'link_heavy', $flags, true ) ) {
+			$action    = 'reduce_link_heavy_page';
+			$score     = 56;
+			$reasons[] = 'Outbound internal links exceed the configured link-heavy threshold.';
+		} elseif ( in_array( 'thin', $flags, true ) ) {
+			$action    = 'review_anchor_quality';
+			$score     = 48;
+			$reasons[] = 'Thin indexed content may need stronger context before adding more internal links.';
+		}
+
+		if ( '' === $action ) {
+			return array();
+		}
+
+		$inbound  = (int) ( $item['inbound_internal_links'] ?? 0 );
+		$outbound = (int) ( $item['outbound_internal_links'] ?? 0 );
+		$words    = (int) ( $item['word_count'] ?? 0 );
+		if ( $words >= 900 && in_array( $action, array( 'add_inbound_links', 'review_anchor_quality' ), true ) ) {
+			$score += 6;
+		}
+		if ( $outbound > (int) $thresholds['max_outbound_links'] ) {
+			$score += 4;
+		}
+		if ( 0 === $inbound ) {
+			$score += 5;
+		}
+
+		return array(
+			'id'             => 'post:' . (int) ( $item['post_id'] ?? $item['id'] ?? 0 ) . ':' . $action,
+			'action'         => $action,
+			'title'          => (string) ( $item['title'] ?? '' ),
+			'post_id'        => (int) ( $item['post_id'] ?? $item['id'] ?? 0 ),
+			'post_type'      => (string) ( $item['type'] ?? $item['post_type'] ?? '' ),
+			'post_status'    => (string) ( $item['status'] ?? $item['post_status'] ?? '' ),
+			'priority_score' => max( 0, min( 100, $score ) ),
+			'reasons'        => $reasons,
+			'signals'        => array(
+				'flags'                   => $flags,
+				'inbound_internal_links'  => $inbound,
+				'outbound_internal_links' => $outbound,
+				'word_count'              => $words,
+				'stale_index'             => ! empty( $item['stale'] ),
+			),
+		);
+	}
+
+	/**
+	 * Score internal-link health from local signals.
+	 *
+	 * @param array<string, mixed> $counts Health counts.
+	 */
+	private function internal_link_health_score( array $counts ): int {
+		$total  = max( 1, (int) ( $counts['total_indexed_items'] ?? 0 ) );
+		$score  = 100;
+		$score -= min( 30, (int) ceil( ( (int) $counts['orphan_content'] / $total ) * 30 ) );
+		$score -= min( 18, (int) ceil( ( (int) $counts['underlinked_content'] / $total ) * 18 ) );
+		$score -= min( 14, (int) ceil( ( (int) $counts['stale_index_rows'] / $total ) * 14 ) );
+		$score -= min( 10, (int) ceil( ( (int) $counts['link_heavy_content'] / $total ) * 10 ) );
+		$score -= min( 8, (int) ceil( ( (int) $counts['thin_content'] / $total ) * 8 ) );
+		$score -= min( 20, (int) ( $counts['broken_internal_links'] ?? 0 ) * 6 );
+		$score -= min( 12, (int) ( $counts['stale_internal_links'] ?? 0 ) * 4 );
+		$score -= min( 8, (int) ( $counts['anchor_quality_warnings'] ?? 0 ) * 2 );
+
+		if ( 0 === (int) ( $counts['total_indexed_items'] ?? 0 ) ) {
+			$score = 0;
+		}
+
+		return max( 0, min( 100, $score ) );
+	}
+
+	/**
+	 * Convert a numeric health score into a compact status.
+	 *
+	 * @param array<string, mixed> $counts Health counts.
+	 */
+	private function internal_link_health_status( array $counts ): string {
+		if ( 0 === (int) ( $counts['total_indexed_items'] ?? 0 ) ) {
+			return 'empty_index';
+		}
+
+		$score = $this->internal_link_health_score( $counts );
+		if ( $score >= 85 ) {
+			return 'healthy';
+		}
+		if ( $score >= 65 ) {
+			return 'needs_attention';
+		}
+
+		return 'needs_work';
+	}
+
+	/**
+	 * Audit indexed outbound internal links for broken or stale targets.
+	 *
+	 * @param array<string, mixed> $args  Audit args.
+	 * @param string               $state Requested target state.
+	 * @return array<string, mixed>
+	 */
+	private function audit_internal_link_targets( array $args, string $state ): array {
+		$args['state'] = 'broken';
+		$result        = $this->repo()->internal_link_target_audit( $args );
+		$policy        = $this->internal_link_policy()->active();
+		$inspector     = new InternalLinkTargetInspector();
+		$items         = array();
+
+		foreach ( (array) ( $result['items'] ?? array() ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$source = (array) ( $item['source_post'] ?? array() );
+			if ( ! $this->can_read_post( (int) ( $source['post_id'] ?? 0 ) ) || ! $this->internal_link_policy()->allows_item( $source, $policy ) ) {
+				continue;
+			}
+
+			$inspection = $inspector->inspect( $item );
+			$item_state = (string) ( $inspection['state'] ?? '' );
+			if ( ! $inspector->is_reportable_state( $item_state ) ) {
+				continue;
+			}
+			if ( 'broken' !== $state && $state !== $item_state ) {
+				continue;
+			}
+
+			$items[] = array_merge(
+				$item,
+				array(
+					'state'                 => $item_state,
+					'suggested_next_action' => (string) ( $inspection['suggested_next_action'] ?? '' ),
+					'evidence'              => (array) ( $inspection['evidence'] ?? array() ),
+				)
+			);
+		}
+
+		$result['items']         = $items;
+		$result['visible_total'] = count( $items );
+		$result['filters']       = array_merge( (array) ( $result['filters'] ?? array() ), array( 'state' => $state ) );
+		if ( $this->can_view_global_index_summary() ) {
+			$result['filtered_by_access'] = false;
+			$result['total_is_estimated'] = false;
+		} else {
+			$result['total']              = count( $items );
+			$result['filtered_by_access'] = true;
+			$result['total_is_estimated'] = true;
+		}
+
+		$result['index']        = $this->index_summary_for_link_targets( $items );
+		$result['summary']      = array(
+			'returned_items' => count( $items ),
+			'state'          => $state,
+			'audit_type'     => 'internal_link_targets',
+		);
+		$result['policy']       = $policy;
+		$result['usage']        = array(
+			'read_only'       => 'This audit reports indexed internal links whose local targets appear missing, unreadable, unpublished, stale, or redirected; it does not rewrite links or create redirects.',
+			'freshness'       => 'Refresh source rows with content_index_refresh_batch before making large cleanup decisions from older index data.',
+			'large_site_note' => 'Use page, per_page, post_type, status, and state filters to scan the indexed link graph in bounded batches.',
+			'redirects'       => 'Redirect evidence is included only when local Rank Math redirect data is available to the current user.',
+		);
+		$result['next_actions'] = array(
+			'Review source_post and bounded evidence before editing content.',
+			'Use content_find_internal_links after cleanup when replacement targets are needed.',
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Return active internal-link policy defaults and limits.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function internal_link_policy_context(): array {
+		$policy = $this->internal_link_policy()->active();
+
+		return array(
+			'type'         => 'internal_link_policy',
+			'policy'       => $policy,
+			'limits'       => $policy['limits'],
+			'guidance'     => $this->internal_link_policy()->guidance(),
+			'capabilities' => array(
+				'reads_policy'           => true,
+				'filters_suggestions'    => true,
+				'filters_audit_rows'     => true,
+				'reviewable_suggestions' => true,
+				'dry_run_apply_plan'     => true,
+				'applies_content_links'  => true,
+			),
+		);
+	}
+
+	/**
+	 * Create reviewable internal-link suggestion records.
+	 *
+	 * @param array<string, mixed> $args Suggestion args.
+	 * @return array<string, mixed>
+	 */
+	public function create_internal_link_suggestions( array $args ): array {
+		$source_id = absint( $args['source_id'] ?? $args['post_id'] ?? 0 );
+		if ( $source_id <= 0 || ! $this->can_edit_post( $source_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to create suggestions for that source content item.' );
+		}
+
+		foreach ( $this->suggestion_target_ids( $args ) as $target_id ) {
+			if ( ! $this->can_read_post( $target_id ) ) {
+				return $this->error_response( 'forbidden', 'You do not have permission to read one of the target content items.' );
+			}
+		}
+
+		$result = ( new InternalLinkSuggestionRepository() )->create( $args );
+		if ( ! isset( $result['error'] ) ) {
+			$result['capabilities'] = array(
+				'execute_apply' => true,
+				'dry_run_apply' => true,
+			);
+			$result['usage']        = array(
+				'review_required' => 'Suggestions are review records only. Approve or reject each suggestion before dry-run or execute apply.',
+				'no_auto_apply'   => 'This tool never mutates post content.',
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * List reviewable internal-link suggestion records.
+	 *
+	 * @param array<string, mixed> $args Query args.
+	 * @return array<string, mixed>
+	 */
+	public function list_internal_link_suggestions( array $args ): array {
+		$result = ( new InternalLinkSuggestionRepository() )->list( $args );
+		$items  = array_values(
+			array_filter(
+				(array) ( $result['items'] ?? array() ),
+				fn ( mixed $item ): bool => is_array( $item )
+					&& $this->can_read_post( (int) ( $item['source_post']['id'] ?? 0 ) )
+					&& $this->can_read_post( (int) ( $item['target_post']['id'] ?? 0 ) )
+			)
+		);
+
+		$result['items']              = $items;
+		$result['visible_total']      = count( $items );
+		$result['filtered_by_access'] = true;
+		$result['usage']              = array(
+			'review_first'  => 'Approve or reject suggestions before asking for an apply plan.',
+			'execute_apply' => 'Approved suggestions can be applied one at a time through the targeted content.update_block path.',
+		);
+
+		return $result;
+	}
+
+	/**
+	 * Approve or reject one internal-link suggestion.
+	 *
+	 * @param array<string, mixed> $args Review args.
+	 * @return array<string, mixed>
+	 */
+	public function review_internal_link_suggestion( array $args ): array {
+		$id         = sanitize_key( (string) ( $args['id'] ?? $args['suggestion_id'] ?? '' ) );
+		$repository = new InternalLinkSuggestionRepository();
+		$suggestion = $repository->find( $id );
+		if ( array() === $suggestion ) {
+			return $this->error_response( 'suggestion_not_found', 'No internal-link suggestion was found for that ID.' );
+		}
+
+		if ( ! $this->can_edit_post( (int) ( $suggestion['source_post']['id'] ?? 0 ) ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to review suggestions for that source content item.' );
+		}
+
+		return $repository->review(
+			$id,
+			(string) ( $args['action'] ?? $args['status'] ?? '' ),
+			(string) ( $args['note'] ?? $args['review_note'] ?? '' )
+		);
+	}
+
+	/**
+	 * Apply or dry-run one approved internal-link suggestion.
+	 *
+	 * @param array<string, mixed> $args Apply args.
+	 * @return array<string, mixed>
+	 */
+	public function apply_internal_link_suggestion( array $args ): array {
+		$id         = sanitize_key( (string) ( $args['id'] ?? $args['suggestion_id'] ?? '' ) );
+		$repository = new InternalLinkSuggestionRepository();
+		$suggestion = $repository->find( $id );
+		if ( array() === $suggestion ) {
+			return $this->error_response( 'suggestion_not_found', 'No internal-link suggestion was found for that ID.' );
+		}
+
+		$source_id = (int) ( $suggestion['source_post']['id'] ?? 0 );
+		if ( ! $this->can_edit_post( $source_id ) ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to apply this source content item.' );
+		}
+
+		return $repository->apply_plan( $id, $this->is_dry_run( $args ) );
 	}
 
 	/**
@@ -1233,6 +1934,200 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Score one internal-link candidate for anchor quality and review safety.
+	 *
+	 * @param array<string, mixed> $source       Source indexed row.
+	 * @param array<string, mixed> $target       Target indexed row.
+	 * @param string               $anchor       Suggested anchor text.
+	 * @param string               $topic        Source topic/query.
+	 * @param array<string, mixed> $target_stats Target link stats.
+	 * @param array<string, mixed> $source_stats Source link stats.
+	 * @param array<string, mixed> $anchor_usage Existing anchor usage stats.
+	 * @param array<string>        $source_seo   Source SEO terms.
+	 * @param array<string>        $target_seo   Target SEO terms.
+	 * @return array{score: int, confidence: string, reasons: list<string>, warnings: list<string>, signals: array<string, mixed>}
+	 */
+	private function internal_link_quality( array $source, array $target, string $anchor, string $topic, array $target_stats, array $source_stats, array $anchor_usage, array $source_seo, array $target_seo ): array {
+		$source_terms = $this->metadata_terms( $source );
+		$target_terms = $this->metadata_terms( $target );
+		$shared_terms = array_values( array_intersect( $source_terms, $target_terms ) );
+		$shared_seo   = array_values( array_intersect( $source_seo, $target_seo ) );
+		$overlap      = count( array_intersect( $this->tokens( $topic ), $this->tokens( implode( ' ', array( $target['title'] ?? '', $target['summary'] ?? '', $target['excerpt'] ?? '' ) ) ) ) );
+		$score        = 55 + min( 20, max( 0, (int) ( $target['score'] ?? 0 ) ) );
+		$reasons      = array( 'Indexed content overlaps with the source topic and is not already linked from the source item.' );
+		$warnings     = array();
+		$anchor_total = (int) ( $anchor_usage['total'] ?? 0 );
+		$target_in    = (int) ( $target_stats['inbound_internal_links'] ?? 0 );
+		$target_out   = (int) ( $target_stats['outbound_internal_links'] ?? 0 );
+		$source_out   = (int) ( $source_stats['outbound_internal_links'] ?? 0 );
+
+		if ( $overlap > 0 ) {
+			$score    += min( 10, $overlap * 2 );
+			$reasons[] = 'Target title or summary shares query terms with the source context.';
+		} else {
+			$score     -= 10;
+			$warnings[] = 'low_context_match';
+		}
+
+		if ( array() !== $shared_terms ) {
+			$score    += 8;
+			$reasons[] = 'Source and target share indexed taxonomy context.';
+		}
+
+		if ( array() !== $shared_seo ) {
+			$score    += 6;
+			$reasons[] = 'Source and target share locally available SEO keyword context.';
+		}
+
+		if ( $target_in <= 1 ) {
+			$score    += 6;
+			$reasons[] = 'Target has low inbound internal-link coverage in the local index.';
+		}
+
+		if ( $anchor_total > 0 ) {
+			$score     -= min( 25, $anchor_total * 5 );
+			$warnings[] = 'duplicate_anchor';
+		}
+
+		if ( $anchor_total >= 3 || (int) ( $anchor_usage['target_total'] ?? 0 ) >= 3 ) {
+			$score     -= 12;
+			$warnings[] = 'repeated_exact_match_anchor';
+		}
+
+		if ( $this->is_over_optimized_anchor( $anchor, $target, $target_seo ) ) {
+			$score     -= 10;
+			$warnings[] = 'over_optimized_anchor';
+		}
+
+		if ( ! empty( $target['stale'] ) ) {
+			$score     -= 10;
+			$warnings[] = 'stale_index';
+		}
+
+		if ( (int) ( $target['word_count'] ?? 0 ) > 0 && (int) ( $target['word_count'] ?? 0 ) < 250 ) {
+			$score     -= 6;
+			$warnings[] = 'thin_target_context';
+		}
+
+		if ( $target_out > 25 ) {
+			$score     -= 5;
+			$warnings[] = 'target_link_heavy';
+		}
+
+		if ( $source_out > 25 ) {
+			$score     -= 5;
+			$warnings[] = 'source_link_heavy';
+		}
+
+		$score = max( 0, min( 100, $score ) );
+
+		return array(
+			'score'      => $score,
+			'confidence' => $score >= 75 && array() === $warnings ? 'high' : ( $score >= 50 ? 'medium' : 'low' ),
+			'reasons'    => array_values( array_unique( $reasons ) ),
+			'warnings'   => array_values( array_unique( $warnings ) ),
+			'signals'    => array(
+				'anchor_usage_count'    => $anchor_total,
+				'target_inbound_links'  => $target_in,
+				'target_outbound_links' => $target_out,
+				'source_outbound_links' => $source_out,
+				'shared_taxonomy_terms' => array_slice( $shared_terms, 0, 10 ),
+				'shared_seo_terms'      => array_slice( $shared_seo, 0, 10 ),
+				'topic_overlap_terms'   => $overlap,
+				'index_backed'          => true,
+			),
+		);
+	}
+
+	/**
+	 * Return normalized taxonomy term slugs/names from indexed metadata.
+	 *
+	 * @param array<string, mixed> $item Indexed item.
+	 * @return list<string>
+	 */
+	private function metadata_terms( array $item ): array {
+		$metadata = (array) ( $item['metadata'] ?? array() );
+		$terms    = array();
+		foreach ( (array) ( $metadata['terms'] ?? array() ) as $term ) {
+			if ( ! is_array( $term ) ) {
+				continue;
+			}
+
+			$value = (string) ( $term['slug'] ?? $term['name'] ?? '' );
+			$value = $this->anchor_key( $value );
+			if ( '' !== $value ) {
+				$terms[] = $value;
+			}
+		}
+
+		return array_values( array_unique( $terms ) );
+	}
+
+	/**
+	 * Return local SEO focus terms when common SEO plugins expose post meta.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return list<string>
+	 */
+	private function seo_terms_for_post( int $post_id ): array {
+		if ( $post_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
+			return array();
+		}
+
+		$terms = array();
+		foreach ( array( '_yoast_wpseo_focuskw', 'rank_math_focus_keyword' ) as $key ) {
+			$value = get_post_meta( $post_id, $key, true );
+			if ( ! is_scalar( $value ) ) {
+				continue;
+			}
+
+				$parts = preg_split( '/[,|]+/', (string) $value );
+			foreach ( false === $parts ? array() : $parts as $term ) {
+				$term = $this->anchor_key( sanitize_text_field( $term ) );
+				if ( '' !== $term ) {
+					$terms[] = $term;
+				}
+			}
+		}
+
+		return array_values( array_unique( $terms ) );
+	}
+
+	/**
+	 * Detect exact-match or keyword-stuffed anchors that should be reviewed.
+	 *
+	 * @param string               $anchor     Anchor text.
+	 * @param array<string, mixed> $target     Target item.
+	 * @param array<string>        $target_seo Target SEO terms.
+	 */
+	private function is_over_optimized_anchor( string $anchor, array $target, array $target_seo ): bool {
+		$key = $this->anchor_key( $anchor );
+		if ( '' === $key ) {
+			return true;
+		}
+
+		if ( $key === $this->anchor_key( (string) ( $target['title'] ?? '' ) ) ) {
+			return true;
+		}
+
+		if ( in_array( $key, $target_seo, true ) ) {
+			return true;
+		}
+
+		$tokens = $this->tokens( $anchor );
+		return count( $tokens ) >= 5 && count( $tokens ) === count( array_intersect( $tokens, $this->tokens( (string) ( $target['title'] ?? '' ) ) ) );
+	}
+
+	/**
+	 * Normalize anchor-like text for comparisons.
+	 *
+	 * @param string $anchor Anchor text.
+	 */
+	private function anchor_key( string $anchor ): string {
+		return trim( strtolower( preg_replace( '/\s+/', ' ', sanitize_text_field( $anchor ) ) ?? '' ) );
+	}
+
+	/**
 	 * Filter item results by current user's read capability.
 	 *
 	 * @param array<int, mixed> $items Raw items.
@@ -1469,12 +2364,68 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Build a permission-safe index summary for link target audit rows.
+	 *
+	 * @param list<array<string,mixed>> $items Visible link target rows.
+	 * @return array<string, mixed>
+	 */
+	private function index_summary_for_link_targets( array $items ): array {
+		if ( $this->can_view_global_index_summary() ) {
+			return $this->repo()->summary();
+		}
+
+		$source_items = array();
+		foreach ( $items as $item ) {
+			$source = (array) ( $item['source_post'] ?? array() );
+			if ( array() !== $source ) {
+				$source_items[] = array(
+					'id'         => (int) ( $source['post_id'] ?? 0 ),
+					'indexed_at' => (string) ( $source['indexed_at'] ?? '' ),
+					'stale'      => ! empty( $source['stale'] ),
+				);
+			}
+		}
+
+		return $this->index_summary_for_items( $source_items );
+	}
+
+	/**
 	 * Check read access for a post ID.
 	 *
 	 * @param int $post_id Post ID.
 	 */
 	private function can_read_post( int $post_id ): bool {
 		return $post_id > 0 && ( ! function_exists( 'current_user_can' ) || current_user_can( 'read_post', $post_id ) );
+	}
+
+	/**
+	 * Check edit access for a post ID.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function can_edit_post( int $post_id ): bool {
+		return $post_id > 0 && ( ! function_exists( 'current_user_can' ) || current_user_can( 'edit_post', $post_id ) );
+	}
+
+	/**
+	 * Return target IDs from a suggestion create payload.
+	 *
+	 * @param array<string, mixed> $args Tool args.
+	 * @return list<int>
+	 */
+	private function suggestion_target_ids( array $args ): array {
+		$items = isset( $args['items'] ) && is_array( $args['items'] ) ? $args['items'] : array( $args );
+		$ids   = array();
+		foreach ( array_slice( $items, 0, 20 ) as $item ) {
+			if ( is_array( $item ) ) {
+				$id = absint( $item['target_id'] ?? $item['post_id'] ?? 0 );
+				if ( $id > 0 ) {
+					$ids[] = $id;
+				}
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
 	}
 
 	/**
@@ -1542,5 +2493,12 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 */
 	private function repo(): ContentIndexRepository {
 		return new ContentIndexRepository();
+	}
+
+	/**
+	 * Return internal-link policy service.
+	 */
+	private function internal_link_policy(): InternalLinkPolicy {
+		return new InternalLinkPolicy();
 	}
 }

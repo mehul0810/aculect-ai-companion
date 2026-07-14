@@ -199,6 +199,21 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertContains( 'Block missing/block is not registered on this site.', $result['warnings'] );
 	}
 
+	public function test_create_item_rejects_broken_registered_block_structure(): void {
+		$result = ( new ContentAbilities() )->create_item(
+			array(
+				'title'   => 'Broken registered block',
+				'content' => '<!-- wp:group --><div class="wp-block-group"><!-- wp:paragraph --><p>Hello</p><!-- /wp:group --><!-- /wp:paragraph --></div>',
+			)
+		);
+
+		self::assertSame( 'invalid_block_content', $result['error'] );
+		self::assertFalse( $result['block_validation']['valid'] );
+		self::assertFalse( $result['block_validation']['structure']['valid'] );
+		self::assertSame( 'mismatched_closing_block', $result['block_validation']['structure']['issues'][0]['code'] );
+		self::assertStringContainsString( 'valid serialized block structure', $result['message'] );
+	}
+
 	public function test_create_item_dry_run_accepts_valid_serialized_block_content(): void {
 		$result = ( new ContentAbilities() )->create_item(
 			array(
@@ -274,6 +289,186 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( 'Public proposed title', $changes_by_field['title']['to'] );
 	}
 
+	public function test_get_item_includes_deterministic_block_locators(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"><!-- wp:heading {"level":3} --><h3>Intro</h3><!-- /wp:heading --><!-- wp:paragraph --><p>Nested copy.</p><!-- /wp:paragraph --></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->get_item( 123 );
+
+		self::assertSame( array( 0 ), $result['block_locators'][0]['path'] );
+		self::assertSame( 'core/group', $result['block_locators'][0]['block_name'] );
+		self::assertSame( array( 0, 0 ), $result['block_locators'][1]['path'] );
+		self::assertSame( 'core/heading', $result['block_locators'][1]['block_name'] );
+		self::assertSame( 'Intro', $result['block_locators'][1]['text'] );
+		self::assertSame( array( 0, 1 ), $result['block_locators'][2]['path'] );
+	}
+
+	public function test_update_block_dry_run_returns_field_level_diff_without_saving(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+				'dry_run' => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] );
+		self::assertSame( 'content.update_block', $result['action'] );
+		self::assertSame( 123, $result['post_id'] );
+		self::assertSame( array( 0 ), $result['block_locator']['path'] );
+		self::assertSame( array( 'block.text' ), $result['changed_fields'] );
+		self::assertSame( 'Existing content.', $result['diff']['fields'][0]['before']['value'] );
+		self::assertSame( 'Updated content.', $result['diff']['fields'][0]['after']['value'] );
+		self::assertStringContainsString( 'Attribute writes are deferred', $result['warnings'][0] );
+		self::assertStringContainsString( 'Existing content.', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_rejects_invalid_locator(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 3 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'invalid_block_locator', $result['error'] );
+	}
+
+	public function test_update_block_rejects_negative_locator_path_parts(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( -1 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'invalid_block_locator', $result['error'] );
+	}
+
+	public function test_update_block_rejects_unsupported_type(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'unsupported_block_type', $result['error'] );
+	}
+
+	public function test_update_block_rejects_attribute_writes_for_beta_slice(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'attrs'   => array( 'placeholder' => 'Deferred' ),
+			)
+		);
+
+		self::assertSame( 'unsupported_block_attribute_update', $result['error'] );
+	}
+
+	public function test_update_block_rejects_users_without_edit_post(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_post' );
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'forbidden', $result['error'] );
+	}
+
+	public function test_update_block_writes_serialized_paragraph_content(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0 ) ),
+				'text'    => 'Updated content.',
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertSame( 'content.update_block', $result['action'] );
+		self::assertSame( array( 'block.text' ), $result['changed_fields'] );
+		self::assertStringContainsString( '<p>Updated content.</p>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringNotContainsString( 'Existing content.', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_inserts_same_site_internal_link_into_targeted_paragraph(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:paragraph --><p>Existing content mentions Target Post once.</p><!-- /wp:paragraph -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Target Post',
+					'url'         => 'https://example.com/?p=456',
+				),
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertStringContainsString( '<a href="https://example.com/?p=456">Target Post</a>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringContainsString( '<!-- wp:paragraph -->', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_rejects_external_internal_link_url(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Existing content',
+					'url'         => 'https://evil.example/path',
+				),
+			)
+		);
+
+		self::assertSame( 'invalid_internal_link', $result['error'] );
+	}
+
+	public function test_update_block_rejects_internal_link_when_anchor_is_missing(): void {
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'            => 123,
+				'locator'       => array( 'path' => array( 0 ) ),
+				'internal_link' => array(
+					'anchor_text' => 'Missing Anchor',
+					'url'         => 'https://example.com/?p=456',
+				),
+			)
+		);
+
+		self::assertSame( 'internal_link_anchor_not_found', $result['error'] );
+		self::assertStringNotContainsString( '<a ', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
+	public function test_update_block_writes_nested_heading_content(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_content = '<!-- wp:group --><div class="wp-block-group"><!-- wp:heading {"level":3} --><h3>Intro</h3><!-- /wp:heading --></div><!-- /wp:group -->';
+
+		$result = ( new ContentAbilities() )->update_block(
+			array(
+				'id'      => 123,
+				'locator' => array( 'path' => array( 0, 0 ) ),
+				'text'    => 'Updated intro',
+			)
+		);
+
+		self::assertSame( 'updated', $result['status'] );
+		self::assertStringContainsString( '<h3>Updated intro</h3>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+		self::assertStringNotContainsString( '<h3>Intro</h3>', $GLOBALS['aculect_ai_companion_test_posts'][123]->post_content );
+	}
+
 	/**
 	 * Invoke the private date payload helper for focused validation.
 	 *
@@ -301,7 +496,7 @@ final class ContentAbilitiesTest extends TestCase {
 
 	private function registerTestBlocks(): void {
 		\WP_Block_Type_Registry::get_instance()->unregister_all();
-		foreach ( array( 'core/paragraph', 'core/html' ) as $name ) {
+		foreach ( array( 'core/paragraph', 'core/heading', 'core/group', 'core/html' ) as $name ) {
 			\WP_Block_Type_Registry::get_instance()->register(
 				$name,
 				array(

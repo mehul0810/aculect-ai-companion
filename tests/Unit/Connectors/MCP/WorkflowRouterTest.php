@@ -92,4 +92,20 @@ final class WorkflowRouterTest extends TestCase {
 		self::assertSame( 'admin_menu_get_context', $result['next_tool'] );
 		self::assertContains( 'admin_menu_get_navigation_target', $result['recommended_sequence'] );
 	}
+
+	public function test_routes_internal_link_requests_through_policy_audit_and_review_flow(): void {
+		$result = ( new WorkflowRouter() )->route(
+			array(
+				'request' => 'Audit internal links for this page, find safe candidates, and tell me what should be reviewed before any write.',
+			)
+		);
+
+		self::assertSame( 'ready', $result['status'] );
+		self::assertSame( 'internal_links', $result['intent'] );
+		self::assertSame( 'content_internal_link_policy', $result['next_tool'] );
+		self::assertContains( 'content_audit_internal_links', $result['recommended_sequence'] );
+		self::assertContains( 'content_find_internal_links', $result['recommended_sequence'] );
+		self::assertContains( 'content_internal_link_suggestion_review', $result['recommended_sequence'] );
+		self::assertContains( 'content_internal_link_suggestion_apply', $result['recommended_sequence'] );
+	}
 }

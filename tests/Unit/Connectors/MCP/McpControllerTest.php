@@ -20,6 +20,9 @@ use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use ReflectionMethod;
 use ReflectionProperty;
+use WP_REST_Request;
+
+require_once dirname( __DIR__, 3 ) . '/fixtures/mcp-request-stubs.php';
 
 /**
  * Verifies public MCP tool payloads remain compatible with assistant clients.
@@ -63,8 +66,10 @@ final class McpControllerTest extends TestCase {
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
 		self::assertFalse( $tools_by_name['intelligence_feedback_submit']['annotations']['readOnlyHint'] );
 		self::assertFalse( $tools_by_name['plugin_incident_report']['annotations']['readOnlyHint'] );
-		self::assertTrue( $tools_by_name['plugin_incident_report']['annotations']['openWorldHint'] );
+		self::assertFalse( $tools_by_name['plugin_incident_report']['annotations']['openWorldHint'] );
 		self::assertTrue( $tools_by_name['plugin_incident_list']['annotations']['readOnlyHint'] );
+		self::assertArrayHasKey( 'dry_run', $tools_by_name['plugin_incident_report']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $tools_by_name['plugin_incident_report']['inputSchema']['properties'] );
 	}
 
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
@@ -116,6 +121,15 @@ final class McpControllerTest extends TestCase {
 
 		self::assertLessThanOrEqual( McpController::tools_page_size(), count( $first_page['tools'] ) );
 		self::assertArrayHasKey( 'nextCursor', $first_page );
+		self::assertArrayHasKey( '_meta', $first_page );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $first_page['_meta']['aculect/toolListFingerprint'] );
+		self::assertSame( ACULECT_AI_COMPANION_VERSION, $first_page['_meta']['aculect/toolListVersion'] );
+		self::assertGreaterThan( McpController::tools_page_size(), $first_page['_meta']['aculect/totalTools'] );
+		self::assertSame( McpController::tools_page_size(), $first_page['_meta']['aculect/pageSize'] );
+		self::assertSame( 0, $first_page['_meta']['aculect/pageOffset'] );
+		self::assertSame( McpController::tools_page_size(), $first_page['_meta']['aculect/pageToolCount'] );
+		self::assertTrue( $first_page['_meta']['aculect/cursorValid'] );
+		self::assertTrue( $first_page['_meta']['aculect/nextCursorVersioned'] );
 
 		$manifest_names = array_column( $controller->tool_manifest_for_user( 1, array( 'content:read', 'content:draft' ) )['tools'], 'name' );
 		$paged_names    = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
@@ -123,6 +137,36 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( $manifest_names, $paged_names );
 		self::assertGreaterThan( McpController::tools_page_size(), count( $paged_names ) );
 		self::assertSame( count( $paged_names ), count( array_unique( $paged_names ) ) );
+	}
+
+	public function test_tools_list_rejects_stale_versioned_cursor_after_policy_change(): void {
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array_keys( $registry->configurable_definitions() ) );
+
+		$controller = new McpController();
+		$scopes     = array( 'content:read', 'content:draft' );
+		$first_page = $controller->tools_list_page_for_user( 1, $scopes );
+
+		self::assertArrayHasKey( 'nextCursor', $first_page );
+
+		$registry->save_enabled_ids( array( 'content.get_item' ) );
+		$stale_cursor_page = $controller->tools_list_page_for_user( 1, $scopes, (string) $first_page['nextCursor'] );
+		$fresh_first_page  = $controller->tools_list_page_for_user( 1, $scopes );
+
+		self::assertFalse( $stale_cursor_page['_meta']['aculect/cursorValid'] );
+		self::assertSame( 0, $stale_cursor_page['_meta']['aculect/pageOffset'] );
+		self::assertSame(
+			array_column( $fresh_first_page['tools'], 'name' ),
+			array_column( $stale_cursor_page['tools'], 'name' )
+		);
+		self::assertSame(
+			$fresh_first_page['_meta']['aculect/toolListFingerprint'],
+			$stale_cursor_page['_meta']['aculect/toolListFingerprint']
+		);
+		self::assertNotSame(
+			$first_page['_meta']['aculect/toolListFingerprint'],
+			$stale_cursor_page['_meta']['aculect/toolListFingerprint']
+		);
 	}
 
 	public function test_openai_chatgpt_codex_and_gemini_tool_descriptors_keep_mcp_security_contract(): void {
@@ -205,6 +249,9 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'content_search_items', $result['instructions'] );
 		self::assertStringContainsString( 'content_search_chunks', $result['instructions'] );
 		self::assertStringContainsString( 'content_find_internal_links', $result['instructions'] );
+		self::assertStringContainsString( 'content_internal_link_policy', $result['instructions'] );
+		self::assertStringContainsString( 'content_audit_internal_links', $result['instructions'] );
+		self::assertStringContainsString( 'confirmation_token', $result['instructions'] );
 		self::assertStringContainsString( 'memory_list', $result['instructions'] );
 		self::assertStringContainsString( 'site_workflow_audit', $result['instructions'] );
 		self::assertStringContainsString( 'memory_save', $result['instructions'] );
@@ -212,6 +259,8 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'admin review', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_prepare_post', $result['instructions'] );
 		self::assertStringContainsString( 'content_workflow_create_draft', $result['instructions'] );
+		self::assertStringContainsString( 'navigation_get_context', $result['instructions'] );
+		self::assertStringContainsString( 'navigation_list_items', $result['instructions'] );
 		self::assertStringContainsString( 'intelligence_feedback_submit', $result['instructions'] );
 		self::assertStringContainsString( 'plugin_incident_report', $result['instructions'] );
 		self::assertStringContainsString( 'mcp_learning_inspect_activity', $result['instructions'] );
@@ -265,7 +314,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'url', $tools_by_name['fetch']['outputSchema']['properties'] );
 		self::assertFalse( $tools_by_name['fetch']['outputSchema']['additionalProperties'] );
 
-		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
+		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_block', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
 			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
 			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 			self::assertArrayHasKey( 'post_id', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
@@ -283,6 +332,30 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'items', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'total', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'per_page', $tools_by_name['content_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_revisions_list'] );
+		self::assertArrayHasKey( 'post_id', $tools_by_name['content_revisions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'include_preview', $tools_by_name['content_revisions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_revisions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'has_more', $tools_by_name['content_revisions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_autosaves_inspect'] );
+		self::assertArrayHasKey( 'post_id', $tools_by_name['content_autosaves_inspect']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'has_autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'autosave', $tools_by_name['content_autosaves_inspect']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_current_access'] );
+		self::assertArrayHasKey( 'user_id', $tools_by_name['users_current_access']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'privacy', $tools_by_name['users_current_access']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_roles_summary'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['users_roles_summary']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['navigation_list_menus'] );
+		self::assertArrayHasKey( 'source_type', $tools_by_name['navigation_list_menus']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['navigation_list_menus']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['navigation_list_items'] );
+		self::assertArrayHasKey( 'menu_id', $tools_by_name['navigation_list_items']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'navigation_id', $tools_by_name['navigation_list_items']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['navigation_list_items']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'summary', $tools_by_name['navigation_get_context']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['users_list_safe'] );
+		self::assertArrayHasKey( 'per_page', $tools_by_name['users_list_safe']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_search_chunks'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_search_chunks']['outputSchema']['properties'] );
@@ -291,7 +364,25 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_audit_internal_links'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'index', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'health_summary', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'action_queue', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'filtered_by_access', $tools_by_name['content_audit_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_policy'] );
+		self::assertArrayHasKey( 'policy', $tools_by_name['content_internal_link_policy']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_find_internal_links'] );
+		self::assertArrayHasKey( 'quality_summary', $tools_by_name['content_find_internal_links']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestions_create'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_internal_link_suggestions_create']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'items', $tools_by_name['content_internal_link_suggestions_create']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestions_list'] );
+		self::assertArrayHasKey( 'visible_total', $tools_by_name['content_internal_link_suggestions_list']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'status', $tools_by_name['content_internal_link_suggestions_list']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestion_review'] );
+		self::assertArrayHasKey( 'suggestion', $tools_by_name['content_internal_link_suggestion_review']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'action', $tools_by_name['content_internal_link_suggestion_review']['inputSchema']['properties'] );
+		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_internal_link_suggestion_apply'] );
+		self::assertArrayHasKey( 'diff', $tools_by_name['content_internal_link_suggestion_apply']['outputSchema']['properties'] );
+		self::assertArrayHasKey( 'dry_run', $tools_by_name['content_internal_link_suggestion_apply']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'max_word_count', $tools_by_name['content_search_items']['inputSchema']['properties'] );
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_index_refresh_batch'] );
 		self::assertArrayHasKey( 'job', $tools_by_name['content_index_refresh_batch']['outputSchema']['properties'] );
@@ -350,12 +441,21 @@ final class McpControllerTest extends TestCase {
 			'content_workflow_update_post',
 			'seo_workflow_update_rankmath',
 			'site_workflow_audit',
+			'navigation_get_context',
+			'navigation_list_menus',
+			'navigation_list_locations',
+			'navigation_list_items',
 			'content_index_refresh_batch',
 			'content_search_items',
 			'content_search_chunks',
 			'content_find_related',
+			'content_internal_link_policy',
 			'content_find_internal_links',
 			'content_audit_internal_links',
+			'content_internal_link_suggestions_create',
+			'content_internal_link_suggestions_list',
+			'content_internal_link_suggestion_review',
+			'content_internal_link_suggestion_apply',
 			'memory_list',
 			'memory_save',
 			'memory_bootstrap',
@@ -426,6 +526,8 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'workflow_session_start', $site['operations']['workflow_guides']['session_start']['tool'] );
 		self::assertSame( 'workflow_session_get', $site['operations']['workflow_guides']['session_get']['tool'] );
 		self::assertSame( 'workflow_session_update', $site['operations']['workflow_guides']['session_update']['tool'] );
+		self::assertSame( 'navigation_get_context', $site['operations']['navigation']['get_context']['tool'] );
+		self::assertSame( 'navigation_list_items', $site['operations']['navigation']['list_items']['tool'] );
 		self::assertSame( 'content_find_internal_links', $site['operations']['intelligence_index']['internal_links']['tool'] );
 		self::assertSame( 'content_audit_internal_links', $site['operations']['intelligence_index']['internal_link_audit']['tool'] );
 		self::assertSame( 'memory_list', $site['operations']['intelligence_index']['memory_list']['tool'] );
@@ -517,6 +619,11 @@ final class McpControllerTest extends TestCase {
 		$update_schema = $this->schemaForTool( 'content_update_item' );
 		self::assertArrayHasKey( 'featured_media', $update_schema['properties'] );
 		self::assertArrayHasKey( 'clear_featured_media', $update_schema['properties'] );
+
+		$block_update_schema = $this->schemaForTool( 'content_update_block' );
+		self::assertSame( array( 'id', 'locator' ), $block_update_schema['required'] );
+		self::assertArrayHasKey( 'path', $block_update_schema['properties']['locator']['properties'] );
+		self::assertArrayHasKey( 'text', $block_update_schema['properties'] );
 
 		$seo_schema = $this->schemaForTool( 'content_update_seo' );
 		self::assertSame( array( 'id' ), $seo_schema['required'] );
@@ -630,6 +737,91 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'confirmation_token', $read_schema['properties'] );
 	}
 
+	public function test_plugin_incident_report_requires_confirmation_and_replays_without_duplicate_storage(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-test-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+		$args       = array(
+			'title'   => 'Incident confirmation is required',
+			'summary' => 'A report must be previewed before it is stored.',
+		);
+
+		$initial = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( 'confirmation_required', $initial['status'] );
+		self::assertTrue( $initial['confirmation_required'] );
+		self::assertSame( 'update', $initial['risk_level'] );
+		self::assertSame( 'preview', $initial['preview']['status'] );
+		self::assertTrue( $initial['preview']['dry_run'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
+
+		$args['dry_run']            = true;
+		$args['confirmation_token'] = $initial['confirmation_token'];
+		$confirmed                  = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( 'stored_ready_for_client_submission', $confirmed['status'] );
+		self::assertFalse( $confirmed['can_create_direct'] );
+		self::assertSame( $initial['preview']['incident']['correlation_id'], $confirmed['correlation_id'] );
+		self::assertSame( $initial['preview']['body'], $confirmed['body'] );
+		self::assertSame( $initial['preview']['issue_url'], $confirmed['issue_url'] );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+
+		$replay = $this->pluginIncidentToolCall( $controller, $args, 'plugin_incident_report', $auth );
+
+		self::assertSame( $confirmed['report_id'], $replay['report_id'] );
+		self::assertTrue( $replay['replayed'] );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
+	public function test_plugin_incident_report_rejects_invalid_confirmation_token(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-invalid-confirmation-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+		$result     = $this->pluginIncidentToolCall(
+			$controller,
+			array(
+				'title'              => 'Invalid incident confirmation',
+				'summary'            => 'An invalid confirmation token must not be treated as missing approval.',
+				'confirmation_token' => 'invalid-token',
+			),
+			'plugin_incident_report',
+			$auth
+		);
+
+		self::assertSame( 'blocked', $result['status'] );
+		self::assertSame( 'invalid_confirmation_token', $result['error'] );
+		self::assertTrue( $result['confirmation_required'] );
+		self::assertSame( 'update', $result['risk_level'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
+	public function test_plugin_incident_list_never_requires_confirmation(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-list-test-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+
+		$result = $this->pluginIncidentToolCall( $controller, array(), 'plugin_incident_list', $auth );
+
+		self::assertSame( 0, $result['total'] );
+		self::assertArrayNotHasKey( 'confirmation_required', $result );
+		self::assertArrayNotHasKey( 'confirmation_token', $result );
+	}
+
 	/**
 	 * Resolve a tool input schema from the module registry.
 	 *
@@ -709,6 +901,7 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_search_items', $names );
 		self::assertContains( 'content_search_chunks', $names );
 		self::assertContains( 'content_find_related', $names );
+		self::assertContains( 'content_internal_link_policy', $names );
 		self::assertContains( 'content_find_internal_links', $names );
 		self::assertContains( 'content_audit_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
@@ -731,6 +924,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.items', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.chunks', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
+		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_internal_link.policy', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_audit.internal_links', $registry ) ) );
 		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
@@ -916,6 +1110,41 @@ final class McpControllerTest extends TestCase {
 		} while ( '' !== $cursor );
 
 		return array( 'tools' => $tools );
+	}
+
+	/**
+	 * Exercise one plugin incident tool through the public JSON-RPC request path.
+	 *
+	 * @param McpController        $controller Controller under test.
+	 * @param array<string, mixed> $arguments Tool arguments.
+	 * @param string               $name      Public tool name.
+	 * @param array<string, mixed> $auth      OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function pluginIncidentToolCall( McpController $controller, array $arguments, string $name, array $auth ): array {
+		$this->setPrivateProperty( $controller, 'request_auth', $auth );
+		$response = $controller->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 376,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => $name,
+						'arguments' => $arguments,
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+
+		self::assertIsArray( $response );
+		self::assertIsArray( $response['result']['structuredContent'] ?? null );
+
+		return $response['result']['structuredContent'];
 	}
 
 	/**

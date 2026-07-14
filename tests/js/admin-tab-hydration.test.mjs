@@ -138,6 +138,49 @@ test( 'keeps learning payloads scoped to the learning tab', () => {
 	);
 } );
 
+test( 'admin app removes the retired internal links tab surface', () => {
+	assert.doesNotMatch(
+		ADMIN_APP_SOURCE,
+		/{ name: 'links-map', title: 'Internal Links', icon: category }/
+	);
+	assert.doesNotMatch(
+		ADMIN_APP_SOURCE,
+		/function InternalLinksDashboard\( \{ data, internalLinksMap \} \)/
+	);
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /name="links_state"/ );
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /name="links_post_type"/ );
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /name="links_min_inbound"/ );
+	assert.doesNotMatch(
+		ADMIN_APP_SOURCE,
+		/<InternalLinksTable items=\{ items \} \/>/
+	);
+} );
+
+test( 'activity admin view uses DataViews while preserving server filters and table fallback', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function ActivityDataViews\( \{ activity \} \)/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/if \( ! DataViewsComponent \|\| ! filterSortAndPaginateRows \) \{\s*return <ActivityTable activity=\{ activity \} \/>;\s*\}/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/defaultLayouts=\{\s*isConstrainedAdminWidth\s*\?\s*DATA_VIEW_CONNECTION_LIST_LAYOUTS\s*:\s*DATA_VIEW_TABLE_LAYOUTS\s*\}/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /name="activity_range"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_status"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_user"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_assistant"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_action"/ );
+	assert.match( ADMIN_APP_SOURCE, /name="activity_search"/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/<ActivityDataViews\s+activity=\{ activity \}\s*\/>/s
+	);
+} );
+
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
@@ -192,4 +235,38 @@ test( 'merges diagnostic updates without clearing loaded logs', () => {
 			},
 		}
 	);
+} );
+
+test( 'sample notice copy is explicit preview language', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/Preview data - these are examples, not real connections or activity\./
+	);
+} );
+
+test( 'sample connection rows render preview badges and hide real action controls', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/session\.isSample && <SampleBadge label="Preview" \/>/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/if \( session\.isSample \) \{\s*return renderUnavailableAction\( 'Preview only' \);\s*\}/s
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const canManage =\s*! session\.isSample &&\s*session\.status !== 'revoked'/s
+	);
+} );
+
+test( 'real connection state stays separate from sample rows in the connections dashboard', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const hasRealActiveConnections = activeSessionCount > 0;/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/let accessStatusLabel = 'No active AI access';[\s\S]*else if \( hasRealActiveConnections \) \{\s*accessStatusLabel = 'AI access is active';/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /\{ hasRealActiveConnections && \(/ );
 } );

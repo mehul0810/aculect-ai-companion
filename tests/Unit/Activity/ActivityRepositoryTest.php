@@ -106,7 +106,7 @@ final class ActivityRepositoryTest extends TestCase {
 	 *
 	 * @param object $object    Object instance.
 	 * @param string $method    Method name.
-	 * @param array  $arguments Method arguments.
+	 * @param array<int, mixed> $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

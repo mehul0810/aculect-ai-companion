@@ -43,7 +43,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertArrayHasKey( 'wp_abilities_api_init', $hooks );
 	}
 
-	public function test_registers_read_only_intelligence_abilities_only(): void {
+	public function test_registers_only_read_intelligence_with_read_only_metadata(): void {
 		$registrar = new WordPressAbilitiesRegistrar();
 
 		$registrar->register_categories();
@@ -80,8 +80,10 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 				'aculect-ai-companion/content-search-items',
 				'aculect-ai-companion/content-search-chunks',
 				'aculect-ai-companion/content-find-related',
+				'aculect-ai-companion/content-internal-link-policy',
 				'aculect-ai-companion/content-find-internal-links',
 				'aculect-ai-companion/memory-list',
+				'aculect-ai-companion/plugin-incident-list',
 			) as $expected_name
 		) {
 			self::assertContains( $expected_name, $names );
@@ -89,6 +91,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 
 		self::assertNotContains( 'aculect-ai-companion/intelligence-feedback-submit', $names );
 		self::assertNotContains( 'aculect-ai-companion/memory-save', $names );
+		self::assertNotContains( 'aculect-ai-companion/plugin-incident-report', $names );
 		self::assertNotContains( 'aculect-ai-companion/content-workflow-create-draft', $names );
 		self::assertNotContains( 'aculect-ai-companion/seo-workflow-update-rankmath', $names );
 
@@ -105,6 +108,19 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 			self::assertIsString( $ability['args']['meta']['mcp']['tool'] );
 			self::assertMatchesRegularExpression( '/^[a-zA-Z0-9_-]{1,64}$/', $ability['args']['meta']['mcp']['tool'] );
 		}
+
+		$abilities_by_name = array_column( $abilities, 'args', 'name' );
+		$list              = $abilities_by_name['aculect-ai-companion/plugin-incident-list'];
+
+		self::assertTrue( $list['meta']['annotations']['readonly'] );
+		self::assertTrue( $list['meta']['annotations']['idempotent'] );
+		self::assertSame( 'plugin_incident_list', $list['meta']['mcp']['tool'] );
+		self::assertArrayHasKey( 'items', $list['output_schema']['properties'] );
+		self::assertSame( 0, $list['execute_callback']( array() )['total'] );
+
+		self::assertSame( '', $registrar->ability_name_for_id( 'plugin_incident_report' ) );
+		self::assertTrue( $registrar->is_mcp_only_intelligence( 'plugin_issue_report' ) );
+		self::assertTrue( $registrar->is_mcp_only_intelligence( 'aculect-ai-companion/plugin-incident-report' ) );
 	}
 
 	public function test_permission_callback_requires_basic_read_capability(): void {
@@ -142,6 +158,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		$policy = new WordPressAbilitiesPolicy();
 
 		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
+		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
+		self::assertFalse( $policy->is_allowed( 'plugin_issue_report' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
 	}
 
@@ -160,11 +178,16 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertTrue( $metadata['public'] );
 		self::assertTrue( $metadata['allowed'] );
 		self::assertTrue( $metadata['schema_valid'] );
+		self::assertSame( 'registered', $metadata['registration_status'] );
+		self::assertSame( 'valid', $metadata['schema_status'] );
+		self::assertSame( 'allowed', $metadata['policy_status'] );
+		self::assertSame( 'allowed', $metadata['permission_status'] );
 		self::assertSame( 'available', $metadata['status'] );
 
 		$atomic = ( new WordPressAbilitiesDiagnostics() )->operation_metadata( 'content.get_item', new AbilitiesRegistry() );
 
 		self::assertFalse( $atomic['mirrored'] );
+		self::assertSame( 'not_applicable', $atomic['registration_status'] );
 		self::assertSame( 'not_mirrored', $atomic['status'] );
 	}
 
@@ -192,6 +215,8 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		$context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
 
 		self::assertTrue( $context['api_available'] );
+		self::assertSame( 'available', $context['runtime_status'] );
+		self::assertSame( 'blocked', $context['policy_status'] );
 		self::assertSame( 1, $context['policy_blocked_public_count'] );
 		self::assertSame( array( 'external-plugin/public-action' ), $context['policy_blocked_public_names'] );
 	}

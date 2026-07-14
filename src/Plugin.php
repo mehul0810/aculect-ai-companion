@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Aculect\AICompanion;
 
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
+use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
+use Aculect\AICompanion\Admin\LocalSampleData;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
@@ -31,6 +33,18 @@ final class Plugin {
 	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
+	/**
+	 * Tracks posts already handled during the current save cycle.
+	 *
+	 * @var array<int, bool>
+	 */
+	private array $content_index_saved_posts = array();
+	/**
+	 * Tracks posts queued for deferred content index refreshes.
+	 *
+	 * @var array<int, bool>
+	 */
+	private array $content_index_deferred_posts = array();
 
 	/**
 	 * Return the singleton plugin instance.
@@ -51,6 +65,7 @@ final class Plugin {
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
 		IntelligenceInstaller::activate();
+		LocalSampleData::ensure_first_installed_at();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
 		update_option( self::OPTION_REWRITE_VERSION, self::REWRITE_VERSION, false );
@@ -92,11 +107,13 @@ final class Plugin {
 		add_action( 'deleted_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		( new EditorInternalLinkSuggestions() )->register();
 
 		OAuthInstaller::install();
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();
+		LocalSampleData::ensure_first_installed_at();
 		OAuthStorageMaintenance::maybe_prune();
 	}
 
@@ -149,6 +166,7 @@ final class Plugin {
 		( new TokenController() )->register_routes();
 		( new McpController() )->register_routes();
 		( new SettingsPage() )->register_rest_routes();
+		( new EditorInternalLinkSuggestions() )->register_rest_routes();
 	}
 
 	/**
@@ -305,6 +323,7 @@ final class Plugin {
 			return;
 		}
 
+		$this->content_index_saved_posts[ $post_id ] = true;
 		( new ContentIndexer() )->index_post( $post_id );
 	}
 
@@ -356,7 +375,7 @@ final class Plugin {
 	public function handle_content_index_terms_changed( int $object_id, mixed ...$args ): void {
 		unset( $args );
 
-		$this->mark_post_stale_once( $object_id );
+		$this->refresh_post_index_after_mutation( $object_id );
 	}
 
 	/**
@@ -379,7 +398,7 @@ final class Plugin {
 			return;
 		}
 
-		$this->mark_post_stale_once( $object_id );
+		$this->refresh_post_index_after_mutation( $object_id );
 	}
 
 	/**
@@ -391,6 +410,34 @@ final class Plugin {
 		$keys = apply_filters( 'aculect_ai_companion_indexed_internal_meta_keys', array( '_thumbnail_id' ) );
 
 		return is_array( $keys ) && in_array( $meta_key, $keys, true );
+	}
+
+	/**
+	 * Queue one post-save refresh when editor term/meta updates settle.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function refresh_post_index_after_mutation( int $post_id ): void {
+		$post_id = absint( $post_id );
+		if ( 0 >= $post_id ) {
+			return;
+		}
+
+		if ( ! isset( $this->content_index_saved_posts[ $post_id ] ) ) {
+			$this->mark_post_stale_once( $post_id );
+			return;
+		}
+
+		if ( isset( $this->content_index_deferred_posts[ $post_id ] ) ) {
+			return;
+		}
+
+		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
+			return;
+		}
+
+		$this->content_index_deferred_posts[ $post_id ] = true;
+		( new ContentIndexer() )->defer_index_post( $post_id );
 	}
 
 	/**
@@ -406,13 +453,23 @@ final class Plugin {
 			return;
 		}
 
-		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
-		if ( in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true ) ) {
+		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
 			return;
 		}
 
 		$marked[ $post_id ] = true;
 		( new ContentIndexer() )->mark_post_stale( $post_id );
+	}
+
+	/**
+	 * Return whether one post is eligible for content index writes.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private function is_indexable_content_index_post( int $post_id ): bool {
+		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
+
+		return ! in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true );
 	}
 
 	/**

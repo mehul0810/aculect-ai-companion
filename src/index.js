@@ -14,11 +14,14 @@ import {
 } from './admin-tab-hydration.mjs';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionState,
+	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
 	preferredWizardProviderId,
 	shouldShowPendingRequests,
 	wizardStepsForProvider,
 } from './connect-wizard.mjs';
+import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
 	Card,
@@ -78,7 +81,9 @@ const SETTINGS_TABS = [
 ];
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
+const CONSTRAINED_ADMIN_MEDIA_QUERY = '(max-width: 782px)';
 const DATA_VIEW_TABLE_LAYOUTS = { table: true };
+const DATA_VIEW_CONNECTION_LIST_LAYOUTS = { list: true };
 const DIAGNOSTIC_FILTERS = [
 	{ name: 'all', label: 'All checks' },
 	{ name: 'pass', label: 'Passed' },
@@ -150,6 +155,41 @@ const LEARNING_REVIEW_SURFACES = [
 			'Inspect local sanitized workflow reports separately from learning review.',
 	},
 ];
+
+function useMediaQuery( query ) {
+	const getMatches = () =>
+		typeof window !== 'undefined' &&
+		typeof window.matchMedia === 'function' &&
+		window.matchMedia( query ).matches;
+	const [ matches, setMatches ] = useState( getMatches );
+
+	useEffect( () => {
+		if (
+			typeof window === 'undefined' ||
+			typeof window.matchMedia !== 'function'
+		) {
+			return undefined;
+		}
+
+		const mediaQueryList = window.matchMedia( query );
+		const handleChange = ( event ) => setMatches( event.matches );
+
+		setMatches( mediaQueryList.matches );
+
+		if ( typeof mediaQueryList.addEventListener === 'function' ) {
+			mediaQueryList.addEventListener( 'change', handleChange );
+
+			return () =>
+				mediaQueryList.removeEventListener( 'change', handleChange );
+		}
+
+		mediaQueryList.addListener( handleChange );
+
+		return () => mediaQueryList.removeListener( handleChange );
+	}, [ query ] );
+
+	return matches;
+}
 const CONNECTOR_LOGO_PATHS = {
 	chatgpt:
 		'M22.282 9.821a6 6 0 0 0-.516-4.91a6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9a6.05 6.05 0 0 0 .743 7.097a5.98 5.98 0 0 0 .51 4.911a6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206a6 6 0 0 0 3.997-2.9a6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081l4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085l4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354l-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023l-.141-.085l-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365l2.602-1.5l2.607 1.5v2.999l-2.597 1.5l-2.607-1.5Z',
@@ -1597,7 +1637,7 @@ function LearningSuggestionCard( { data, suggestion } ) {
 							Edit Brand Profile
 						</Button>
 					) }
-					{ isPending && (
+					{ isPending && ! isSampleRecord( suggestion ) && (
 						<>
 							<Button
 								type="button"
@@ -1622,6 +1662,9 @@ function LearningSuggestionCard( { data, suggestion } ) {
 								destructive
 							/>
 						</>
+					) }
+					{ isSampleRecord( suggestion ) && (
+						<SampleBadge label="Preview" />
 					) }
 				</div>
 			</div>
@@ -1895,7 +1938,12 @@ function LogsTable( { logs } ) {
 				<tbody>
 					{ items.map( ( item ) => (
 						<tr key={ item.id }>
-							<td>{ item.created_at }</td>
+							<td>
+								<strong>{ item.created_at }</strong>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
+								) }
+							</td>
 							<td>
 								<span
 									className={ `aculect-ai-companion-log-level is-${ item.level }` }
@@ -1969,6 +2017,32 @@ function ActivityStatusPill( { status } ) {
 	);
 }
 
+function activityStatusLabel( status ) {
+	return status === 'error' ? 'Failed' : 'Success';
+}
+
+function ActivityResultCell( { item } ) {
+	return (
+		<>
+			<ActivityStatusPill status={ item.status } />
+			{ item.error_code && (
+				<span className="aculect-ai-companion-activity-error-code">
+					{ item.error_code }
+				</span>
+			) }
+		</>
+	);
+}
+
+function ActivityDetailsCell( { item } ) {
+	return (
+		<div className="aculect-ai-companion-data-view__stack">
+			<span>{ item.message || '-' }</span>
+			<LogContext context={ item.context } />
+		</div>
+	);
+}
+
 function ActivityTable( { activity } ) {
 	const items = Array.isArray( activity?.items ) ? activity.items : [];
 
@@ -1997,33 +2071,404 @@ function ActivityTable( { activity } ) {
 				<tbody>
 					{ items.map( ( item ) => (
 						<tr key={ item.id }>
-							<td>
+							<td data-label="Time">
 								<strong className="aculect-ai-companion-activity-table__time">
 									{ item.created_at }
 								</strong>
-							</td>
-							<td>{ activityUserName( item ) }</td>
-							<td>{ activityAssistantName( item ) }</td>
-							<td>
-								<code>{ item.action }</code>
-							</td>
-							<td>{ activityTargetLabel( item ) }</td>
-							<td>
-								<ActivityStatusPill status={ item.status } />
-								{ item.error_code && (
-									<span className="aculect-ai-companion-activity-error-code">
-										{ item.error_code }
-									</span>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
 								) }
 							</td>
-							<td>
-								{ item.message || '-' }
-								<LogContext context={ item.context } />
+							<td data-label="User">
+								{ activityUserName( item ) }
+							</td>
+							<td data-label="Assistant">
+								{ activityAssistantName( item ) }
+							</td>
+							<td data-label="Action">
+								<code>{ item.action }</code>
+							</td>
+							<td data-label="Target">
+								{ activityTargetLabel( item ) }
+							</td>
+							<td data-label="Result">
+								<ActivityResultCell item={ item } />
+							</td>
+							<td data-label="Details">
+								<ActivityDetailsCell item={ item } />
 							</td>
 						</tr>
 					) ) }
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+function normalizeActivityView( currentView, itemCount, isConstrained ) {
+	const perPage = Math.max( 1, itemCount || 1 );
+	const baseView = {
+		...currentView,
+		search: '',
+		page: 1,
+		perPage,
+	};
+
+	if ( isConstrained ) {
+		return {
+			...baseView,
+			type: 'list',
+			titleField: 'summary',
+			descriptionField: 'timeSummary',
+			showTitle: true,
+			showDescription: true,
+			fields: [
+				'listUser',
+				'listAssistant',
+				'listTarget',
+				'listResult',
+				'listDetails',
+			],
+			layout: {
+				density: 'balanced',
+			},
+		};
+	}
+
+	return {
+		...baseView,
+		type: 'table',
+		titleField: undefined,
+		descriptionField: undefined,
+		showTitle: undefined,
+		showDescription: undefined,
+		fields: [
+			'time',
+			'user',
+			'assistant',
+			'action',
+			'target',
+			'result',
+			'details',
+		],
+		layout: {
+			density: 'balanced',
+			styles: {
+				time: {
+					width: '15%',
+				},
+				user: {
+					width: '14%',
+				},
+				assistant: {
+					width: '16%',
+				},
+				action: {
+					width: '12%',
+				},
+				target: {
+					width: '12%',
+				},
+				result: {
+					width: '12%',
+				},
+				details: {
+					width: '19%',
+				},
+			},
+		},
+	};
+}
+
+function ActivityDataViews( { activity } ) {
+	const items = useMemo(
+		() => ( Array.isArray( activity?.items ) ? activity.items : [] ),
+		[ activity ]
+	);
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const isConstrainedAdminWidth = useMediaQuery(
+		CONSTRAINED_ADMIN_MEDIA_QUERY
+	);
+	const [ view, setView ] = useState( () =>
+		normalizeActivityView( {}, items.length, isConstrainedAdminWidth )
+	);
+
+	useEffect( () => {
+		setView( ( currentView ) =>
+			normalizeActivityView(
+				currentView,
+				items.length,
+				isConstrainedAdminWidth
+			)
+		);
+	}, [ isConstrainedAdminWidth, items.length ] );
+
+	const fields = useMemo(
+		() => [
+			{
+				id: 'summary',
+				label: 'Activity',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ item.action, item.message, item.error_code ]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>
+							<code>{ item.action || 'ai.activity' }</code>
+						</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ item.message ||
+								'No additional details recorded.' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'timeSummary',
+				label: 'Time',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.created_at || '',
+				render: ( { item } ) => (
+					<span className="aculect-ai-companion-connections-table__secondary">
+						{ item.created_at || 'Unknown time' }
+					</span>
+				),
+			},
+			{
+				id: 'time',
+				label: 'Time',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.created_at || '',
+				render: ( { item } ) => (
+					<strong className="aculect-ai-companion-activity-table__time">
+						{ item.created_at || 'Unknown time' }
+					</strong>
+				),
+			},
+			{
+				id: 'user',
+				label: 'User',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ activityUserName( item ), item.user_id ].join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityUserName( item ) }</strong>
+						{ item.user_id ? (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								User ID { item.user_id }
+							</span>
+						) : null }
+					</div>
+				),
+			},
+			{
+				id: 'listUser',
+				label: 'User',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="User">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityUserName( item ) }</strong>
+							{ item.user_id ? (
+								<span className="aculect-ai-companion-connections-table__secondary">
+									User ID { item.user_id }
+								</span>
+							) : null }
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'assistant',
+				label: 'Assistant',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[
+						activityAssistantName( item ),
+						item.provider,
+						item.client_id,
+					]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityAssistantName( item ) }</strong>
+						<span className="aculect-ai-companion-connections-table__secondary">
+							{ item.provider ||
+								item.client_id ||
+								'Unknown provider' }
+						</span>
+					</div>
+				),
+			},
+			{
+				id: 'listAssistant',
+				label: 'Assistant',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Assistant">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityAssistantName( item ) }</strong>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ item.provider ||
+									item.client_id ||
+									'Unknown provider' }
+							</span>
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'action',
+				label: 'Action',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.action || '',
+				render: ( { item } ) => (
+					<code>{ item.action || 'ai.activity' }</code>
+				),
+			},
+			{
+				id: 'target',
+				label: 'Target',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[
+						item.target_type,
+						item.target_id,
+						activityTargetLabel( item ),
+					].join( ' ' ),
+				render: ( { item } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong>{ activityTargetLabel( item ) }</strong>
+						{ item.target_id ? (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								ID { item.target_id }
+							</span>
+						) : null }
+					</div>
+				),
+			},
+			{
+				id: 'listTarget',
+				label: 'Target',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Target">
+						<div className="aculect-ai-companion-data-view__stack">
+							<strong>{ activityTargetLabel( item ) }</strong>
+							{ item.target_id ? (
+								<span className="aculect-ai-companion-connections-table__secondary">
+									ID { item.target_id }
+								</span>
+							) : null }
+						</div>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'result',
+				label: 'Result',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) =>
+					[ activityStatusLabel( item.status ), item.error_code ]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item } ) => <ActivityResultCell item={ item } />,
+			},
+			{
+				id: 'listResult',
+				label: 'Result',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Result">
+						<ActivityResultCell item={ item } />
+					</ConnectionResponsiveField>
+				),
+			},
+			{
+				id: 'details',
+				label: 'Details',
+				enableSorting: false,
+				enableGlobalSearch: false,
+				getValue: ( { item } ) => item.message || '',
+				render: ( { item } ) => <ActivityDetailsCell item={ item } />,
+			},
+			{
+				id: 'listDetails',
+				label: 'Details',
+				enableSorting: false,
+				render: ( { item } ) => (
+					<ConnectionResponsiveField label="Details">
+						<ActivityDetailsCell item={ item } />
+					</ConnectionResponsiveField>
+				),
+			},
+		],
+		[]
+	);
+	const { data: visibleItems, paginationInfo } = useMemo(
+		() =>
+			filterSortAndPaginateRows
+				? filterSortAndPaginateRows( items, view, fields )
+				: {
+						data: items,
+						paginationInfo: {
+							totalItems: items.length,
+							totalPages: items.length > 0 ? 1 : 0,
+						},
+				  },
+		[ fields, filterSortAndPaginateRows, items, view ]
+	);
+
+	if ( ! DataViewsComponent || ! filterSortAndPaginateRows ) {
+		return <ActivityTable activity={ activity } />;
+	}
+
+	return (
+		<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--activity">
+			<DataViewsComponent
+				data={ visibleItems }
+				fields={ fields }
+				view={ view }
+				onChangeView={ setView }
+				defaultLayouts={
+					isConstrainedAdminWidth
+						? DATA_VIEW_CONNECTION_LIST_LAYOUTS
+						: DATA_VIEW_TABLE_LAYOUTS
+				}
+				paginationInfo={ paginationInfo }
+				getItemId={ ( item ) => String( item.id || '' ) }
+				config={ {
+					perPageSizes: [ Math.max( 1, items.length || 1 ) ],
+				} }
+				onReset={ () =>
+					setView(
+						normalizeActivityView(
+							{},
+							items.length,
+							isConstrainedAdminWidth
+						)
+					)
+				}
+				empty={
+					<EmptyState title="No connected AI activity">
+						No connected AI activity has been recorded yet.
+					</EmptyState>
+				}
+			/>
 		</div>
 	);
 }
@@ -2100,6 +2545,12 @@ function ActivityInsights( { activity } ) {
 
 function diagnosticItems( health ) {
 	return Array.isArray( health?.items ) ? health.items : [];
+}
+
+function diagnosticItemById( health, id ) {
+	return (
+		diagnosticItems( health ).find( ( item ) => item?.id === id ) || null
+	);
 }
 
 function diagnosticCounts( items ) {
@@ -2208,6 +2659,70 @@ function diagnosticSupportInfo( health ) {
 	return lines.join( '\n' );
 }
 
+function persistentMcpUrlStatus( mcpUrl, health ) {
+	const endpoint = String( mcpUrl || '' ).trim();
+
+	if ( endpoint === '' ) {
+		return {
+			status: 'fail',
+			title: 'Endpoint unavailable',
+			description:
+				'Aculect AI Companion could not determine the canonical MCP Server URL for this site.',
+			detail: 'Check the external site URL and rerun diagnostics before connecting an assistant.',
+		};
+	}
+
+	const httpsCheck = diagnosticItemById( health, 'https_url' );
+	const routeCheck = diagnosticItemById( health, 'rest_route_shape' );
+	const blockingCheck = [ httpsCheck, routeCheck ].find(
+		( item ) => item?.status === 'fail'
+	);
+
+	if ( blockingCheck ) {
+		return {
+			status: 'fail',
+			title: 'Not externally ready',
+			description:
+				blockingCheck.message ||
+				'The canonical MCP Server URL is available, but diagnostics found a blocking issue.',
+			detail: blockingCheck.remediation || '',
+		};
+	}
+
+	const warningCheck = [ httpsCheck, routeCheck ].find(
+		( item ) => item?.status === 'warn'
+	);
+
+	if ( warningCheck ) {
+		return {
+			status: 'warn',
+			title: 'Needs attention',
+			description:
+				warningCheck.message ||
+				'The canonical MCP Server URL is available, but external readiness needs review.',
+			detail: warningCheck.remediation || '',
+		};
+	}
+
+	if ( httpsCheck || routeCheck ) {
+		return {
+			status: 'pass',
+			title: 'Ready to copy',
+			description:
+				'The canonical MCP Server URL matches the expected secure REST endpoint.',
+			detail: '',
+		};
+	}
+
+	return {
+		status: 'warn',
+		title: 'Not yet verified',
+		description:
+			'The canonical MCP Server URL is available, but diagnostics have not confirmed external readiness yet.',
+		detail: 'Run Connection Diagnostics to verify HTTPS, route shape, and the authorization challenge.',
+	};
+}
+
 function StatusBadge( { status } ) {
 	const normalizedStatus = [ 'pass', 'warn', 'fail' ].includes( status )
 		? status
@@ -2290,6 +2805,9 @@ function ConnectionHealthChecks( { health, filter } ) {
 								<strong>
 									{ formatDiagnosticCheckLabel( item.id ) }
 								</strong>
+								{ isSampleRecord( item ) && (
+									<SampleBadge label="Preview" />
+								) }
 								<code>{ item.id }</code>
 							</td>
 							<td data-label="Status">
@@ -2354,6 +2872,7 @@ function normalizeConnectionSession( session, status ) {
 
 	return {
 		...session,
+		isSample: session.is_sample === true || session.isSample === true,
 		status: session.status || status,
 		writePermissionEnabled,
 		accessLevel: connectionAccessLevelKey( {
@@ -2365,6 +2884,14 @@ function normalizeConnectionSession( session, status ) {
 
 function isEnabledFlag( value ) {
 	return value === true || value === 1 || value === '1';
+}
+
+function isSampleRecord( value ) {
+	return value?.is_sample === true || value?.isSample === true;
+}
+
+function SampleBadge( { label = 'Sample' } ) {
+	return <span className="aculect-ai-companion-sample-badge">{ label }</span>;
 }
 
 function connectionAccessLevelKey( session ) {
@@ -2826,6 +3353,7 @@ function ConnectionEffectiveAbilitiesModal( {
 function ConnectionAccessControl( { session, data, onChange } ) {
 	const accessLevel = connectionAccessLevelDefinition( session );
 	const canManage =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.setSessionAccessLevelAction &&
 		data.actions?.setSessionAccessLevelNonce;
@@ -2852,7 +3380,7 @@ function ConnectionAccessControl( { session, data, onChange } ) {
 			</div>
 			{ ! canManage && session.status !== 'revoked' && (
 				<span className="aculect-ai-companion-connection-action-note">
-					Unavailable
+					{ session.isSample ? 'Preview' : 'Unavailable' }
 				</span>
 			) }
 			<span className="aculect-ai-companion-connection-access__meta">
@@ -2954,10 +3482,12 @@ function ConnectionAccessLevelModal( {
 
 function ConnectionActionsMenu( { session, data } ) {
 	const canRevoke =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.revokeSessionAction &&
 		data.actions?.revokeSessionNonce;
 	const canExportManifest =
+		! session.isSample &&
 		session.status !== 'revoked' &&
 		data.actions?.exportMcpToolManifestAction &&
 		data.actions?.exportMcpToolManifestNonce;
@@ -2974,6 +3504,10 @@ function ConnectionActionsMenu( { session, data } ) {
 
 	if ( session.status === 'revoked' ) {
 		return renderUnavailableAction( 'Reconnect required' );
+	}
+
+	if ( session.isSample ) {
+		return renderUnavailableAction( 'Preview only' );
 	}
 
 	if ( ! canRevoke ) {
@@ -3031,33 +3565,86 @@ function ConnectionActionsMenu( { session, data } ) {
 	);
 }
 
-function ConnectionsDataViews( {
-	sessions: connectionSessions,
-	data,
-	isAccessPaused,
-	currentUserId,
-	abilities,
-	enabledAbilityIds,
-} ) {
-	const dataViewsModule = useDataViewsModule();
-	const DataViewsComponent = dataViewsModule?.DataViews;
-	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
-	const connectorLogoUrls =
-		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
-			? data.connectorLogoUrls
-			: EMPTY_OBJECT;
-	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
-		useState( null );
-	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
-	const defaultView = {
-		type: 'table',
-		search: '',
-		page: 1,
-		perPage: 10,
-		sort: {
+function connectionAssistantName( session ) {
+	return (
+		session.client_name ||
+		connectionProviderLabel( session ) ||
+		session.client_id ||
+		'AI Assistant'
+	);
+}
+
+function connectionAssistantMeta( session ) {
+	const secondaryValues = [
+		connectionProviderLabel( session ),
+		session.client_id,
+	].filter( Boolean );
+
+	if ( session.client_name ) {
+		return secondaryValues.find(
+			( value ) => value !== session.client_name
+		);
+	}
+
+	return secondaryValues[ 1 ] || '';
+}
+
+function ConnectionResponsiveField( { label, children } ) {
+	return (
+		<div className="aculect-ai-companion-connection-list-field">
+			<span className="aculect-ai-companion-connection-list-field__label">
+				{ label }
+			</span>
+			<div className="aculect-ai-companion-connection-list-field__value">
+				{ children }
+			</div>
+		</div>
+	);
+}
+
+function normalizeConnectionsView( currentView, isConstrained ) {
+	const baseView = {
+		...currentView,
+		search: currentView.search || '',
+		page: currentView.page || 1,
+		perPage: currentView.perPage || 10,
+		sort: currentView.sort || {
 			field: 'status',
 			direction: 'desc',
 		},
+	};
+
+	if ( isConstrained ) {
+		return {
+			...baseView,
+			type: 'list',
+			titleField: 'assistantName',
+			descriptionField: 'user',
+			mediaField: 'assistant',
+			showTitle: true,
+			showDescription: true,
+			showMedia: true,
+			fields: [
+				'listStatus',
+				'listAccess',
+				'listAbilities',
+				'listActions',
+			],
+			layout: {
+				density: 'balanced',
+			},
+		};
+	}
+
+	return {
+		...baseView,
+		type: 'table',
+		titleField: undefined,
+		descriptionField: undefined,
+		mediaField: undefined,
+		showTitle: undefined,
+		showDescription: undefined,
+		showMedia: undefined,
 		fields: [
 			'assistant',
 			'user',
@@ -3094,7 +3681,38 @@ function ConnectionsDataViews( {
 			},
 		},
 	};
-	const [ view, setView ] = useState( defaultView );
+}
+
+function ConnectionsDataViews( {
+	sessions: connectionSessions,
+	data,
+	isAccessPaused,
+	currentUserId,
+	abilities,
+	enabledAbilityIds,
+} ) {
+	const dataViewsModule = useDataViewsModule();
+	const DataViewsComponent = dataViewsModule?.DataViews;
+	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
+	const isConstrainedAdminWidth = useMediaQuery(
+		CONSTRAINED_ADMIN_MEDIA_QUERY
+	);
+	const connectorLogoUrls =
+		data.connectorLogoUrls && typeof data.connectorLogoUrls === 'object'
+			? data.connectorLogoUrls
+			: EMPTY_OBJECT;
+	const [ effectiveAbilitiesSession, setEffectiveAbilitiesSession ] =
+		useState( null );
+	const [ accessLevelSession, setAccessLevelSession ] = useState( null );
+	const [ view, setView ] = useState( () =>
+		normalizeConnectionsView( {}, isConstrainedAdminWidth )
+	);
+
+	useEffect( () => {
+		setView( ( currentView ) =>
+			normalizeConnectionsView( currentView, isConstrainedAdminWidth )
+		);
+	}, [ isConstrainedAdminWidth ] );
 	const providerOptions = useMemo(
 		() =>
 			connectionOptionElements(
@@ -3133,6 +3751,31 @@ function ConnectionsDataViews( {
 				),
 			},
 			{
+				id: 'assistantName',
+				label: 'Assistant',
+				enableGlobalSearch: true,
+				getValue: ( { item } ) =>
+					[
+						connectionAssistantName( item ),
+						connectionAssistantMeta( item ),
+						item.provider,
+					]
+						.filter( Boolean )
+						.join( ' ' ),
+				render: ( { item: session } ) => (
+					<div className="aculect-ai-companion-data-view__stack">
+						<strong className="aculect-ai-companion-connections-table__primary">
+							{ connectionAssistantName( session ) }
+						</strong>
+						{ connectionAssistantMeta( session ) && (
+							<span className="aculect-ai-companion-connections-table__secondary">
+								{ connectionAssistantMeta( session ) }
+							</span>
+						) }
+					</div>
+				),
+			},
+			{
 				id: 'user',
 				label: 'User',
 				enableGlobalSearch: true,
@@ -3147,6 +3790,7 @@ function ConnectionsDataViews( {
 						<strong className="aculect-ai-companion-connections-table__primary">
 							{ session.user || 'Unknown user' }
 						</strong>
+						{ session.isSample && <SampleBadge label="Preview" /> }
 						<span className="aculect-ai-companion-connections-table__secondary">
 							{ connectionUserRolesLabel( session ) }
 						</span>
@@ -3175,6 +3819,21 @@ function ConnectionsDataViews( {
 				),
 			},
 			{
+				id: 'listAbilities',
+				label: 'Effective abilities',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Effective abilities">
+						<ConnectionEffectiveAbilitiesControl
+							session={ session }
+							abilities={ abilities }
+							enabledAbilityIds={ enabledAbilityIds }
+							onOpen={ setEffectiveAbilitiesSession }
+						/>
+					</ConnectionResponsiveField>
+				),
+			},
+			{
 				id: 'access',
 				label: 'Access',
 				elements: CONNECTION_ACCESS_LEVELS.map( ( level ) => ( {
@@ -3190,6 +3849,20 @@ function ConnectionsDataViews( {
 						data={ data }
 						onChange={ setAccessLevelSession }
 					/>
+				),
+			},
+			{
+				id: 'listAccess',
+				label: 'Access',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Access">
+						<ConnectionAccessControl
+							session={ session }
+							data={ data }
+							onChange={ setAccessLevelSession }
+						/>
+					</ConnectionResponsiveField>
 				),
 			},
 			{
@@ -3218,6 +3891,9 @@ function ConnectionsDataViews( {
 								session={ session }
 								isAccessPaused={ isAccessPaused }
 							/>
+							{ session.isSample && (
+								<SampleBadge label="Preview" />
+							) }
 							<span className="aculect-ai-companion-connections-table__secondary">
 								{ connectionRelativeExpiry(
 									session.expires_at
@@ -3239,6 +3915,42 @@ function ConnectionsDataViews( {
 							) }
 						</span>
 					</div>
+				),
+			},
+			{
+				id: 'listStatus',
+				label: 'Status',
+				enableSorting: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Status">
+						<div className="aculect-ai-companion-connection-status-cell">
+							<div className="aculect-ai-companion-connection-status-cell__summary">
+								<ConnectionStatusChip
+									session={ session }
+									isAccessPaused={ isAccessPaused }
+								/>
+								<span className="aculect-ai-companion-connections-table__secondary">
+									{ connectionRelativeExpiry(
+										session.expires_at
+									) }
+								</span>
+							</div>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								Last activity:{ ' ' }
+								{ connectionDateValue(
+									session.last_used_at,
+									'Never'
+								) }
+							</span>
+							<span className="aculect-ai-companion-connections-table__secondary">
+								Created:{ ' ' }
+								{ connectionDateValue(
+									session.created_at,
+									'Unknown'
+								) }
+							</span>
+						</div>
+					</ConnectionResponsiveField>
 				),
 			},
 			{
@@ -3271,6 +3983,20 @@ function ConnectionsDataViews( {
 				enableHiding: false,
 				render: ( { item: session } ) => (
 					<ConnectionActionsMenu session={ session } data={ data } />
+				),
+			},
+			{
+				id: 'listActions',
+				label: 'Actions',
+				enableSorting: false,
+				enableHiding: false,
+				render: ( { item: session } ) => (
+					<ConnectionResponsiveField label="Actions">
+						<ConnectionActionsMenu
+							session={ session }
+							data={ data }
+						/>
+					</ConnectionResponsiveField>
 				),
 			},
 		],
@@ -3322,13 +4048,24 @@ function ConnectionsDataViews( {
 					onChangeView={ setView }
 					search
 					searchLabel="Search connections"
-					defaultLayouts={ DATA_VIEW_TABLE_LAYOUTS }
+					defaultLayouts={
+						isConstrainedAdminWidth
+							? DATA_VIEW_CONNECTION_LIST_LAYOUTS
+							: DATA_VIEW_TABLE_LAYOUTS
+					}
 					paginationInfo={ paginationInfo }
 					getItemId={ ( session ) =>
 						`${ session.status || 'active' }-${ session.id }`
 					}
 					config={ { perPageSizes: [ 10, 20, 50 ] } }
-					onReset={ () => setView( defaultView ) }
+					onReset={ () =>
+						setView(
+							normalizeConnectionsView(
+								{},
+								isConstrainedAdminWidth
+							)
+						)
+					}
 					empty={
 						<EmptyState title={ emptyStateTitle }>
 							{ connectionSessions.length > 0
@@ -4132,17 +4869,22 @@ function WizardStepPanel( {
 	step,
 	stepIndex,
 	stepCount,
-	activeSessionCount,
+	sessions,
+	requests,
 	onCopy,
 	onNext,
 	onPrevious,
 	onViewConnection,
 	connectionUrl,
 	onConnectAnother,
+	onRecoverAuthorization,
 } ) {
 	const copyFields = Array.isArray( step.copyFields ) ? step.copyFields : [];
 	const isFirst = stepIndex === 0;
 	const isLast = stepIndex === stepCount - 1;
+	const completionState = isLast
+		? connectWizardCompletionState( provider, sessions, requests )
+		: null;
 
 	return (
 		<div className="aculect-ai-companion-wizard-step-panel">
@@ -4197,15 +4939,25 @@ function WizardStepPanel( {
 			) }
 			{ isLast && (
 				<div className="aculect-ai-companion-wizard-complete">
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Status: Connected after approval
-					</span>
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Active sessions: { activeSessionCount }
-					</span>
-					<span className="aculect-ai-companion-wizard-complete__item">
-						Last activity: after authorization
-					</span>
+					<strong>{ completionState.title }</strong>
+					<p>{ completionState.description }</p>
+					{ completionState.details.map( ( item ) => (
+						<span
+							key={ item.label }
+							className="aculect-ai-companion-wizard-complete__item"
+						>
+							{ item.label }: { item.value }
+						</span>
+					) ) }
+					{ completionState.actionLabel && (
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={ onRecoverAuthorization }
+						>
+							{ completionState.actionLabel }
+						</Button>
+					) }
 				</div>
 			) }
 			<div className="aculect-ai-companion-wizard-actions">
@@ -4239,16 +4991,22 @@ function WizardStepPanel( {
 				) }
 				{ isLast ? (
 					<>
-						<Button
-							href={ connectionUrl }
-							variant="primary"
-							onClick={ onViewConnection }
-						>
-							View connection
-						</Button>
+						{ completionState?.key === 'active' && (
+							<Button
+								href={ connectionUrl }
+								variant="primary"
+								onClick={ onViewConnection }
+							>
+								View connection
+							</Button>
+						) }
 						<Button
 							type="button"
-							variant="secondary"
+							variant={
+								completionState?.key === 'active'
+									? 'secondary'
+									: 'primary'
+							}
 							onClick={ onConnectAnother }
 						>
 							Connect another assistant
@@ -4269,7 +5027,8 @@ function SetupWizard( {
 	selectedProvider,
 	selectedProviderId,
 	stepIndex,
-	activeSessionCount,
+	sessions,
+	requests,
 	onSelectProvider,
 	onSelectStep,
 	onCopy,
@@ -4331,7 +5090,8 @@ function SetupWizard( {
 					step={ activeStep }
 					stepIndex={ activeStepIndex }
 					stepCount={ steps.length }
-					activeSessionCount={ activeSessionCount }
+					sessions={ sessions }
+					requests={ requests }
 					onCopy={ onCopy }
 					onPrevious={ () =>
 						onSelectStep( Math.max( 0, activeStepIndex - 1 ) )
@@ -4344,8 +5104,74 @@ function SetupWizard( {
 					onViewConnection={ onViewConnection }
 					connectionUrl={ connectionUrl }
 					onConnectAnother={ onConnectAnother }
+					onRecoverAuthorization={ () =>
+						onSelectStep(
+							connectWizardRecoveryStepIndex( selectedProvider )
+						)
+					}
 				/>
 			</div>
+		</section>
+	);
+}
+
+function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
+	const endpoint = String( mcpUrl || '' ).trim();
+	const hasEndpoint = endpoint !== '';
+	const status = persistentMcpUrlStatus( endpoint, health );
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
+			<div className="aculect-ai-companion-connect-section-heading aculect-ai-companion-connect-section-heading--status">
+				<div>
+					<h2>MCP Server URL</h2>
+					<p>
+						Keep the canonical endpoint visible here before, during,
+						and after setup.
+					</p>
+				</div>
+				<StatusBadge status={ status.status } />
+			</div>
+			<div className="aculect-ai-companion-connect-url-panel">
+				{ hasEndpoint ? (
+					<CopyField
+						label="MCP Server URL"
+						value={ endpoint }
+						onCopy={ ( value ) =>
+							onCopy( value, 'MCP Server URL copied.' )
+						}
+					/>
+				) : (
+					<p className="aculect-ai-companion-connect-url-panel__empty">
+						The canonical MCP Server URL is unavailable for this
+						site right now.
+					</p>
+				) }
+			</div>
+			<div
+				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
+			>
+				<span
+					aria-hidden="true"
+					className="aculect-ai-companion-connect-info-message__icon"
+				>
+					<Icon
+						icon={ status.status === 'fail' ? info : shield }
+						size={ 16 }
+					/>
+				</span>
+				<div>
+					<p>
+						<strong>{ status.title }</strong> { status.description }
+					</p>
+					{ status.detail && <p>{ status.detail }</p> }
+				</div>
+			</div>
+			<p className="aculect-ai-companion-connect-secure-note">
+				<Icon icon={ lock } size={ 16 } />
+				This endpoint never includes secrets, tokens, nonces, or
+				user-specific approval material.
+			</p>
 		</section>
 	);
 }
@@ -4615,6 +5441,9 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
+	const coreDefaultAbilities = Array.isArray( data.coreDefaultAbilities )
+		? data.coreDefaultAbilities
+		: EMPTY_ARRAY;
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
@@ -4987,6 +5816,17 @@ function AbilityDashboard( {
 							WordPress Ability API rows appear only when public
 							abilities are registered on this site.
 						</p>
+						{ coreDefaultAbilities.length > 0 && (
+							<p className="aculect-ai-companion-help-text">
+								{ coreDefaultAbilities.length } default core
+								read/discovery{ ' ' }
+								{ coreDefaultAbilities.length === 1
+									? 'ability is'
+									: 'abilities are' }{ ' ' }
+								always registered and stay outside the toggle
+								table.
+							</p>
+						) }
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>Quick actions</h3>
@@ -5987,6 +6827,9 @@ function SettingsApp() {
 		? sampleData.tabs
 		: EMPTY_ARRAY;
 	const activeSessionCount = Number( data.activeSessionCount || 0 );
+	const connectSessions = Array.isArray( data.connectSessions )
+		? data.connectSessions
+		: EMPTY_ARRAY;
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
 			? data.roleConnections
@@ -6006,6 +6849,7 @@ function SettingsApp() {
 		data.connectionHealth && typeof data.connectionHealth === 'object'
 			? data.connectionHealth
 			: {};
+	const mcpUrl = String( data.mcpUrl || '' );
 	const logs =
 		diagnostics.logs && typeof diagnostics.logs === 'object'
 			? diagnostics.logs
@@ -6077,7 +6921,11 @@ function SettingsApp() {
 	const [ roleAbilitiesModalOpen, setRoleAbilitiesModalOpen ] =
 		useState( false );
 	const adminNoticesRef = useRef( null );
+	const tabsNavRef = useRef( null );
 	const copyTimeoutRef = useRef( null );
+	const [ tabsOverflow, setTabsOverflow ] = useState( () =>
+		tabOverflowState()
+	);
 	const isAccessPaused = Boolean( data.accessPaused );
 	const currentUserId = Number( data.currentUserId || 0 );
 	const activeConnectionSessions = useMemo(
@@ -6106,6 +6954,19 @@ function SettingsApp() {
 	const shouldShowAccessControl = Boolean(
 		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
 	);
+	const hasRealActiveConnections = activeSessionCount > 0;
+	let accessStatusLabel = 'No active AI access';
+	let accessStatusDescription =
+		'Connect a real assistant to enable live connection controls. Preview rows do not change site access.';
+	if ( isAccessPaused ) {
+		accessStatusLabel = 'AI access is paused';
+		accessStatusDescription =
+			'Connected assistants keep their sessions, but cannot run actions until access is resumed.';
+	} else if ( hasRealActiveConnections ) {
+		accessStatusLabel = 'AI access is active';
+		accessStatusDescription =
+			'Pause access to stop active assistants from running actions without disconnecting their sessions.';
+	}
 	const setActivityFilterValue = ( key ) => ( value ) => {
 		setActivityFilterValues( ( current ) => ( {
 			...current,
@@ -6125,6 +6986,46 @@ function SettingsApp() {
 	useEffect( () => {
 		setActivityFilterValues( activityFilterDefaults );
 	}, [ activityFilterDefaults ] );
+
+	useEffect( () => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return undefined;
+		}
+
+		const updateTabsOverflow = () => {
+			setTabsOverflow(
+				tabOverflowState( {
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				} )
+			);
+		};
+
+		updateTabsOverflow();
+		tabsNav.addEventListener( 'scroll', updateTabsOverflow, {
+			passive: true,
+		} );
+
+		if ( typeof window.ResizeObserver === 'function' ) {
+			const observer = new window.ResizeObserver( updateTabsOverflow );
+			observer.observe( tabsNav );
+
+			return () => {
+				tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+				observer.disconnect();
+			};
+		}
+
+		window.addEventListener( 'resize', updateTabsOverflow );
+
+		return () => {
+			tabsNav.removeEventListener( 'scroll', updateTabsOverflow );
+			window.removeEventListener( 'resize', updateTabsOverflow );
+		};
+	}, [] );
 
 	useEffect( () => {
 		if ( providers.length === 0 ) {
@@ -6214,6 +7115,26 @@ function SettingsApp() {
 	useEffect( () => {
 		document.title = adminTabTitle( activeTab.title );
 	}, [ activeTab.title ] );
+
+	useEffect( () => {
+		if ( ! tabsOverflow.hasOverflow || ! tabsNavRef.current ) {
+			return;
+		}
+
+		const activeTabLink = tabsNavRef.current.querySelector(
+			'.aculect-ai-companion-tab.is-active'
+		);
+
+		if (
+			activeTabLink &&
+			typeof activeTabLink.scrollIntoView === 'function'
+		) {
+			activeTabLink.scrollIntoView( {
+				block: 'nearest',
+				inline: 'nearest',
+			} );
+		}
+	}, [ activeTab.name, tabsOverflow.hasOverflow ] );
 
 	useEffect( () => {
 		if ( activeTab.name !== 'abilities' || ! roleAbilitiesEnabled ) {
@@ -6314,6 +7235,26 @@ function SettingsApp() {
 		} );
 	};
 
+	const scrollTabs = ( direction ) => {
+		const tabsNav = tabsNavRef.current;
+
+		if ( ! tabsNav ) {
+			return;
+		}
+
+		tabsNav.scrollTo( {
+			left: tabScrollTarget(
+				{
+					clientWidth: tabsNav.clientWidth,
+					scrollLeft: tabsNav.scrollLeft,
+					scrollWidth: tabsNav.scrollWidth,
+				},
+				direction
+			),
+			behavior: 'smooth',
+		} );
+	};
+
 	return (
 		<div className="aculect-ai-companion-app-root">
 			<header className="aculect-ai-companion-app-header">
@@ -6374,30 +7315,61 @@ function SettingsApp() {
 				</div>
 			</header>
 
-			<nav
-				className="aculect-ai-companion-tabs"
-				aria-label="Aculect AI Companion settings"
-			>
-				{ visibleTabs.map( ( tab ) => {
-					const isActive = activeTab.name === tab.name;
+			<div className="aculect-ai-companion-tabs-shell">
+				<nav
+					id="aculect-ai-companion-primary-tabs"
+					ref={ tabsNavRef }
+					className="aculect-ai-companion-tabs"
+					data-overflowing={
+						tabsOverflow.hasOverflow ? 'true' : 'false'
+					}
+					aria-label="Aculect AI Companion settings"
+				>
+					{ visibleTabs.map( ( tab ) => {
+						const isActive = activeTab.name === tab.name;
 
-					return (
-						<a
-							key={ tab.name }
-							className={ `aculect-ai-companion-tab ${
-								isActive ? 'is-active' : ''
-							}` }
-							href={ tabUrl( tab.name, data.adminPageUrl ) }
-							aria-current={ isActive ? 'page' : undefined }
-							onClick={ ( event ) =>
-								maybeSelectTab( event, tab.name )
-							}
-						>
-							<span>{ tab.title }</span>
-						</a>
-					);
-				} ) }
-			</nav>
+						return (
+							<a
+								key={ tab.name }
+								className={ `aculect-ai-companion-tab ${
+									isActive ? 'is-active' : ''
+								}` }
+								href={ tabUrl( tab.name, data.adminPageUrl ) }
+								aria-current={ isActive ? 'page' : undefined }
+								onClick={ ( event ) =>
+									maybeSelectTab( event, tab.name )
+								}
+							>
+								<span>{ tab.title }</span>
+							</a>
+						);
+					} ) }
+				</nav>
+				{ tabsOverflow.hasOverflow && (
+					<div className="aculect-ai-companion-tabs-controls">
+						<div className="aculect-ai-companion-tabs-actions">
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollBackward }
+								onClick={ () => scrollTabs( 'backward' ) }
+							>
+								Earlier tabs
+							</Button>
+							<Button
+								variant="secondary"
+								className="aculect-ai-companion-tab-scroll-button"
+								aria-controls="aculect-ai-companion-primary-tabs"
+								disabled={ ! tabsOverflow.canScrollForward }
+								onClick={ () => scrollTabs( 'forward' ) }
+							>
+								More tabs
+							</Button>
+						</div>
+					</div>
+				) }
+			</div>
 
 			<div
 				className="aculect-ai-companion-admin-notices"
@@ -6417,7 +7389,7 @@ function SettingsApp() {
 				{ sampleDataActive && (
 					<Notice status="info" isDismissible={ false }>
 						{ sampleData.message ||
-							'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.' }
+							'Preview data - these are examples, not real connections or activity.' }
 					</Notice>
 				) }
 				{ data.status === 'abilities_saved' && (
@@ -6758,6 +7730,11 @@ function SettingsApp() {
 										</p>
 									</div>
 								</div>
+								<ConnectMcpUrlUtility
+									mcpUrl={ mcpUrl }
+									health={ connectionHealth }
+									onCopy={ copyValue }
+								/>
 								<SetupWizard
 									providers={ providers }
 									selectedProvider={ selectedConnectProvider }
@@ -6765,7 +7742,8 @@ function SettingsApp() {
 										selectedConnectProviderId
 									}
 									stepIndex={ connectWizardStep }
-									activeSessionCount={ activeSessionCount }
+									sessions={ connectSessions }
+									requests={ connectionRequests }
 									onSelectProvider={ ( providerId ) => {
 										setSelectedConnectProviderId(
 											providerId
@@ -6817,15 +7795,9 @@ function SettingsApp() {
 									>
 										<div className="aculect-ai-companion-lockdown__content">
 											<strong>
-												{ isAccessPaused
-													? 'AI access is paused'
-													: 'AI access is active' }
+												{ accessStatusLabel }
 											</strong>
-											<p>
-												{ isAccessPaused
-													? 'Connected assistants keep their sessions, but cannot run actions until access is resumed.'
-													: 'Pause access to stop active assistants from running actions without disconnecting their sessions.' }
-											</p>
+											<p>{ accessStatusDescription }</p>
 										</div>
 										<ActionForm
 											data={ data }
@@ -6872,8 +7844,7 @@ function SettingsApp() {
 											}
 										/>
 
-										{ activeConnectionSessions.length >
-											0 && (
+										{ hasRealActiveConnections && (
 											<div className="aculect-ai-companion-danger-zone aculect-ai-companion-danger-zone--connections">
 												<ActionForm
 													data={ data }
@@ -7180,7 +8151,9 @@ function SettingsApp() {
 												records
 											</strong>
 										</div>
-										<ActivityTable activity={ activity } />
+										<ActivityDataViews
+											activity={ activity }
+										/>
 										<div className="aculect-ai-companion-log-pagination">
 											<Button
 												href={

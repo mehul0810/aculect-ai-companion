@@ -55,6 +55,16 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new WorkflowRouter() )->route( $args )
 			),
 			$this->module(
+				'core_schema.discover',
+				'Discover WordPress Core Schema',
+				'Use this before planning WordPress core management work. It returns bounded read-only REST route, post type, taxonomy, status, revision, autosave, Site Editor, and capability hints without exposing callbacks, nonces, option values, or private internals.',
+				'Core Schema Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new CoreSchemaDiscovery() )->manifest()
+			),
+			$this->module(
 				'workflow_session.start',
 				'Start MCP Workflow Session',
 				'Start a bounded Aculect workflow session so ChatGPT, Claude, Codex, or another MCP client can resume multi-tool content, SEO, or site-management work without relying on chat memory.',
@@ -295,6 +305,56 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new SiteEditorAbilities() )->get_template_part( $args )
 			),
 			$this->module(
+				'site_structure.list_reusable_blocks',
+				'List Reusable Blocks and Synced Patterns',
+				'List reusable blocks/synced patterns with bounded metadata, status, modified date, local usage hints, and safe edit/view links. Full content bodies are not returned by default.',
+				'Site Structure Discovery',
+				'content:read',
+				true,
+				$this->reusable_blocks_schema(),
+				static fn ( array $args ): array => ( new SiteStructureDiscoveryAbilities() )->list_reusable_blocks( $args )
+			),
+			$this->module(
+				'site_structure.list_block_areas',
+				'List Widget and Block Areas',
+				'List registered sidebars/widget areas and block-theme template-part areas with active state and bounded counts. This never writes widgets, templates, or theme files.',
+				'Site Structure Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn ( array $args ): array => ( new SiteStructureDiscoveryAbilities() )->list_block_areas( $args )
+			),
+			$this->module(
+				'users.current_access',
+				'Read Current User Access Summary',
+				'Read the connected WordPress user ID, sanitized role slugs, curated site-level capability booleans relevant to Aculect operations, and blocked/unavailable reasons. This never returns email, raw caps, sessions, tokens, user meta, or password data.',
+				'User Access Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new UserRoleCapabilitiesDiscovery() )->current_access_summary()
+			),
+			$this->module(
+				'users.roles_summary',
+				'Read Role Capability Summary',
+				'Read a privileged, bounded summary of WordPress roles with translated labels, user counts, and curated capability category booleans. This requires promote_users and never returns raw capability maps.',
+				'User Access Discovery',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new UserRoleCapabilitiesDiscovery() )->roles_summary()
+			),
+			$this->module(
+				'users.list_safe',
+				'List Users Safely',
+				'List users only when the connected WordPress user has list_users. Results are capped at 50 per page and include only user ID, display name, and sanitized role slugs; private fields and raw caps are never returned.',
+				'User Access',
+				'content:read',
+				true,
+				$this->safe_users_list_schema(),
+				static fn ( array $args ): array => ( new UserRoleCapabilitiesDiscovery() )->list_safe_users( $args )
+			),
+			$this->module(
 				'admin_menu.get_context',
 				'Read Admin Menu Intelligence',
 				'Use this before planning WordPress core, plugin, or theme admin settings work. It returns visible admin menus, navigation targets, and registered settings metadata without exposing option values.',
@@ -345,6 +405,46 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_settings( $args )
 			),
 			$this->module(
+				'navigation.get_context',
+				'Read Navigation Intelligence',
+				'Use this before planning navigation or menu work. It detects block theme, hybrid, classic-menu, and unsupported navigation context and states clearly that writes are not implemented in this slice.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->context_only_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->get_context( $args )
+			),
+			$this->module(
+				'navigation.list_menus',
+				'List Navigation Menus',
+				'List readable classic menus and wp_navigation entities with clear source markers, bounded counts, and no write capability.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_menus_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_menus( $args )
+			),
+			$this->module(
+				'navigation.list_locations',
+				'List Navigation Locations',
+				'List registered classic menu locations and assignments for classic or hybrid themes. Future location reassignment must remain explicit-only and is not implemented here.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_locations_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_locations( $args )
+			),
+			$this->module(
+				'navigation.list_items',
+				'List Navigation Items',
+				'List readable classic menu items or bounded block-navigation items for one menu, location, or wp_navigation entity. This inventory is read-only and never rewrites serialized navigation markup.',
+				'Navigation Intelligence',
+				'content:read',
+				true,
+				$this->navigation_items_schema(),
+				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->list_items( $args )
+			),
+			$this->module(
 				'content_index.refresh_batch',
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',
@@ -385,9 +485,19 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->find_related( $args )
 			),
 			$this->module(
+				'content_internal_link.policy',
+				'Get Internal Link Policy',
+				'Read the active internal-linking exclusions, limits, and placement guardrails before auditing existing links, proposing candidates, or applying a reviewed update.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->empty_schema(),
+				static fn (): array => ( new IntelligenceIndexAbilities() )->internal_link_policy_context()
+			),
+			$this->module(
 				'content_find.internal_links',
 				'Find Internal Link Opportunities',
-				'Find internal link candidates and anchor suggestions from the local content index while avoiding links already present in the source item.',
+				'Find internal link candidates and anchor suggestions from the local content index after reviewing policy and existing-link health, while avoiding links already present in the source item.',
 				'Content Intelligence Index',
 				'content:read',
 				true,
@@ -397,12 +507,52 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'content_audit.internal_links',
 				'Audit Internal Link Health',
-				'List orphan, underlinked, thin, stale, or link-heavy indexed content using the local link graph without reading full post bodies or applying changes.',
+				'List orphan, underlinked, thin, stale, or link-heavy indexed content using the local link graph before planning new internal-link suggestions or requesting any write.',
 				'Content Intelligence Index',
 				'content:read',
 				true,
 				$this->internal_link_audit_schema(),
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->audit_internal_links( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestions_create',
+				'Create Internal Link Suggestions',
+				'Create bounded reviewable internal-link suggestion records from approved audit or discovery results. This stores source post, target post, proposed anchor, reason, score, confidence, status, and last checked time without full post content.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestions_create_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->create_internal_link_suggestions( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestions_list',
+				'List Internal Link Suggestions',
+				'List bounded internal-link suggestion records for review by source, target, or status. This does not mutate content.',
+				'Content Intelligence Index',
+				'content:read',
+				true,
+				$this->internal_link_suggestions_list_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->list_internal_link_suggestions( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestion_review',
+				'Review Internal Link Suggestion',
+				'Approve, reject, skip, or mark one internal-link suggestion stale before any apply planning. This does not edit post content.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestion_review_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->review_internal_link_suggestion( $args )
+			),
+			$this->module(
+				'content_internal_link.suggestion_apply',
+				'Apply Internal Link Suggestion',
+				'Dry-run or apply one approved internal-link suggestion through the targeted content.update_block path. Applies only one reviewed suggestion per call, never performs automatic site-wide mutation, and may require confirmation before writes.',
+				'Content Intelligence Index',
+				'content:draft',
+				false,
+				$this->internal_link_suggestion_apply_schema(),
+				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->apply_internal_link_suggestion( $args )
 			),
 			$this->module(
 				'memory.list',
@@ -494,6 +644,26 @@ final class FirstPartyAbilityModules {
 					array( 'id' )
 				),
 				static fn ( array $args ): array => ( new ContentAbilities() )->get_item( (int) ( $args['id'] ?? 0 ) )
+			),
+			$this->module(
+				'content_revisions.list',
+				'List Content Revisions',
+				'List safe, bounded revision metadata for an editable WordPress post, page, or supported custom post type. This read-only discovery tool does not restore, delete, or return full post bodies by default.',
+				'Content',
+				'content:read',
+				true,
+				$this->revision_discovery_schema( true ),
+				static fn ( array $args ): array => ( new RevisionsAutosavesAbilities() )->list_revisions( $args )
+			),
+			$this->module(
+				'content_autosaves.inspect',
+				'Inspect Content Autosave',
+				'Inspect whether WordPress has a current-user autosave for an editable post, page, or supported custom post type. This read-only discovery tool returns bounded metadata only unless a capped preview is explicitly requested.',
+				'Content',
+				'content:read',
+				true,
+				$this->revision_discovery_schema( false ),
+				static fn ( array $args ): array => ( new RevisionsAutosavesAbilities() )->inspect_autosaves( $args )
 			),
 			$this->module(
 				'content.get_seo',
@@ -590,6 +760,68 @@ final class FirstPartyAbilityModules {
 					array( 'id' )
 				),
 				static fn ( array $args ): array => ( new ContentAbilities() )->update_item( $args )
+			),
+			$this->module(
+				'content.update_block',
+				'Update One Content Block',
+				'Update one supported block inside an existing post by deterministic block path from a prior content read. Supports core paragraph and heading text replacement plus one allowlisted same-site internal-link insertion. Attribute writes are intentionally deferred unless a later allowlist is added.',
+				'Content',
+				'content:draft',
+				false,
+				$this->object_schema(
+					array(
+						'id'            => array( 'type' => 'integer' ),
+						'locator'       => array(
+							'type'        => 'object',
+							'description' => 'Server-side block locator from content_get_item block_locators. Path is a zero-based nested block index path.',
+							'properties'  => array(
+								'path' => array(
+									'type'        => 'array',
+									'description' => 'Zero-based nested block path, such as [0] or [1,0].',
+									'items'       => array(
+										'type'    => 'integer',
+										'minimum' => 0,
+									),
+									'minItems'    => 1,
+									'maxItems'    => 12,
+								),
+							),
+							'required'    => array( 'path' ),
+						),
+						'text'          => array(
+							'type'        => 'string',
+							'maxLength'   => 20000,
+							'description' => 'Replacement plain text for core/paragraph or core/heading. The tool serializes safe block markup; do not pass HTML.',
+						),
+						'internal_link' => array(
+							'type'        => 'object',
+							'description' => 'Allowlisted same-site internal-link insertion for one existing anchor text occurrence in the targeted core paragraph or heading block.',
+							'properties'  => array(
+								'anchor_text' => array(
+									'type'        => 'string',
+									'maxLength'   => 120,
+									'description' => 'Existing visible text in the targeted block to link.',
+								),
+								'url'         => array(
+									'type'        => 'string',
+									'description' => 'Same-site target URL resolved from the target post permalink.',
+								),
+							),
+							'required'    => array( 'anchor_text', 'url' ),
+						),
+						'attrs'         => array(
+							'type'                 => 'object',
+							'description'          => 'Reserved for future narrow allowlisted registered block attributes. This beta slice rejects attribute writes to avoid unsafe third-party settings edits.',
+							'additionalProperties' => true,
+						),
+						'dry_run'       => array(
+							'type'        => 'boolean',
+							'description' => 'When true, validate and return a field-level diff without saving.',
+						),
+					),
+					array( 'id', 'locator' )
+				),
+				static fn ( array $args ): array => ( new ContentAbilities() )->update_block( $args )
 			),
 			$this->module(
 				'content.update_seo',
@@ -794,6 +1026,39 @@ final class FirstPartyAbilityModules {
 				static fn ( array $args ): array => ( new MediaAbilities() )->get_media( (int) ( $args['id'] ?? 0 ) )
 			),
 			$this->module(
+				'media.audit_usage',
+				'Audit Media Usage',
+				'Return bounded read-only media usage intelligence for unused discovery, missing alt text, attached/unattached images, and likely content usage.',
+				'Media',
+				'content:read',
+				true,
+				$this->object_schema(
+					array(
+						'page'               => $this->page_schema(),
+						'per_page'           => $this->per_page_schema( 100, 'Media audit items per page. Defaults to 20.' ),
+						'type'               => array(
+							'type'        => 'string',
+							'description' => 'Attachment family such as image, audio, video, or application.',
+						),
+						'mime_type'          => array( 'type' => 'string' ),
+						'parent_id'          => array(
+							'type'        => 'integer',
+							'description' => 'Filter by attachment parent post ID. Use 0 for unattached media.',
+						),
+						'status_filter'      => array(
+							'type'        => 'string',
+							'enum'        => array( 'all', 'unused', 'missing_alt', 'attached', 'unattached', 'used' ),
+							'description' => 'Return all audited media or only a focused subset.',
+						),
+						'content_scan_limit' => array(
+							'type'        => 'integer',
+							'description' => 'Maximum readable content posts to scan for likely usage. Defaults to 100 and is capped at 250.',
+						),
+					)
+				),
+				static fn ( array $args ): array => ( new MediaAbilities() )->audit_usage( $args )
+			),
+			$this->module(
 				'media.update_item',
 				'Update Media Item',
 				'Update media title, alt text, caption, description, slug, or attachment parent.',
@@ -880,6 +1145,16 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new SiteAbilities() )->get_site_health()
 			),
 			$this->module(
+				'site.maintenance_report',
+				'View Site Maintenance Report',
+				'Read a compact, paginated, read-only maintenance report with severity, bounded evidence, and next steps. Reports never run arbitrary PHP, dump raw database data, scan files, write files, or expose option values.',
+				'Site Information',
+				'content:read',
+				true,
+				$this->site_maintenance_report_schema(),
+				static fn ( array $args ): array => ( new SiteMaintenanceReports() )->report( $args )
+			),
+			$this->module(
 				'site.list_plugins',
 				'List Plugins',
 				'List installed WordPress plugins and active state for users who can manage plugins.',
@@ -888,6 +1163,76 @@ final class FirstPartyAbilityModules {
 				true,
 				$this->empty_schema(),
 				static fn (): array => ( new SiteAbilities() )->list_plugins()
+			),
+			$this->module(
+				'plugin_lifecycle.list_plugins',
+				'List Plugin Lifecycle Status',
+				'List installed WordPress plugins with lifecycle-oriented status, active/network-active state, cached update availability, recovery pause state, multisite context, and capability blockers. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->list_plugins( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.get_plugin',
+				'Get Plugin Lifecycle Status',
+				'Read one installed WordPress plugin lifecycle status record with safe update and recovery metadata. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
+				'Plugin Lifecycle',
+				'content:read',
+				true,
+				$this->plugin_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.activate_plugin',
+				'Activate an Installed Plugin',
+				'Activate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not install plugins, update plugins, delete plugins, or perform network-wide activation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->activate_plugin( $args )
+			),
+			$this->module(
+				'plugin_lifecycle.deactivate_plugin',
+				'Deactivate an Installed Plugin',
+				'Deactivate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not delete plugins or perform network-wide deactivation.',
+				'Plugin Lifecycle',
+				'content:draft',
+				false,
+				$this->plugin_lifecycle_mutation_schema(),
+				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->deactivate_plugin( $args )
+			),
+			$this->module(
+				'theme_lifecycle.list_themes',
+				'List Theme Lifecycle Status',
+				'List installed WordPress themes with active state, parent and child relationships, cached update availability, block or classic or hybrid signals, multisite context, and capability blockers. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_list_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->list_themes( $args )
+			),
+			$this->module(
+				'theme_lifecycle.get_theme',
+				'Get Theme Lifecycle Status',
+				'Read one installed WordPress theme lifecycle status record with safe update metadata and presentation signals. This tool is read-only and never installs, updates, switches, deletes, edits, or deactivates themes.',
+				'Theme Lifecycle',
+				'content:read',
+				true,
+				$this->theme_lifecycle_get_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->get_theme( $args )
+			),
+			$this->module(
+				'theme_lifecycle.switch_theme',
+				'Switch to an Installed Theme',
+				'Switch the current site to one already-installed WordPress theme with dry-run preview, confirmation-token gating, capability checks, and structured rollback metadata. This first beta slice does not install themes, update themes, delete themes, deactivate themes, or perform network-wide theme management.',
+				'Theme Lifecycle',
+				'content:draft',
+				false,
+				$this->theme_lifecycle_switch_schema(),
+				static fn ( array $args ): array => ( new ThemeLifecycleAbilities() )->switch_theme( $args )
 			),
 			$this->module(
 				'site.list_themes',
@@ -1175,6 +1520,158 @@ final class FirstPartyAbilityModules {
 	}
 
 	/**
+	 * Build the site maintenance report schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function site_maintenance_report_schema(): array {
+		return $this->object_schema(
+			array(
+				'report_type' => array(
+					'type'        => 'string',
+					'enum'        => SiteMaintenanceReports::report_types(),
+					'description' => 'Report to return. Defaults to content_review.',
+				),
+				'page'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page'    => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 20,
+					'description' => 'Maximum findings to return. Defaults to 10 and caps at 20.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'network_active', 'update_available', 'paused' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum plugins to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the plugin lifecycle mutation schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function plugin_lifecycle_mutation_schema(): array {
+		return $this->object_schema(
+			array(
+				'plugin' => array(
+					'type'        => 'string',
+					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
+				),
+			),
+			array( 'plugin' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'active', 'inactive', 'child', 'parent', 'update_available', 'block', 'classic', 'hybrid' ),
+					'description' => 'Optional lifecycle status filter. Defaults to all.',
+				),
+				'page'     => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'One-based result page. Defaults to 1.',
+				),
+				'per_page' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 100,
+					'description' => 'Maximum themes to return. Defaults to 50 and caps at 100.',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle get schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_get_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
+		);
+	}
+
+	/**
+	 * Build the theme lifecycle switch schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function theme_lifecycle_switch_schema(): array {
+		return $this->object_schema(
+			array(
+				'stylesheet' => array(
+					'type'        => 'string',
+					'description' => 'Installed theme stylesheet slug to activate, for example twentytwentysix.',
+				),
+			),
+			array( 'stylesheet' )
+		);
+	}
+
+	/**
 	 * Build the canonical MCP search schema expected by ChatGPT company knowledge.
 	 *
 	 * @return array<string, mixed>
@@ -1268,6 +1765,61 @@ final class FirstPartyAbilityModules {
 			'type'        => 'string',
 			'enum'        => array( 'compact', 'full' ),
 			'description' => $description,
+		);
+	}
+
+	/**
+	 * Build revision/autosave discovery input schema.
+	 *
+	 * @param bool $include_pagination Whether this ability lists a collection.
+	 * @return array<string, mixed>
+	 */
+	private function revision_discovery_schema( bool $include_pagination ): array {
+		$properties = array(
+			'post_id'         => array(
+				'type'        => 'integer',
+				'description' => 'Parent post, page, or supported custom post type ID.',
+			),
+			'id'              => array(
+				'type'        => 'integer',
+				'description' => 'Alias for post_id.',
+			),
+			'context'         => $this->context_schema( 'Use compact for metadata only or full to add bounded text summaries. Defaults to compact.' ),
+			'include_preview' => array(
+				'type'        => 'boolean',
+				'description' => 'Explicitly request a bounded plain-text content preview. Defaults to false.',
+			),
+			'preview_chars'   => array(
+				'type'        => 'integer',
+				'minimum'     => 1,
+				'maximum'     => 500,
+				'description' => 'Maximum plain-text preview characters when include_preview is true. Defaults to 200.',
+			),
+		);
+
+		if ( $include_pagination ) {
+			$properties['page']     = $this->page_schema();
+			$properties['per_page'] = $this->per_page_schema( 50, 'Revisions per page. Defaults to 20.' );
+		}
+
+		return $this->object_schema( $properties );
+	}
+
+	/**
+	 * Build the capped safe user-list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function safe_users_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'page'     => $this->page_schema(),
+				'per_page' => $this->per_page_schema( 50, 'Users per page. Defaults to 20 and is capped at 50.' ),
+				'role'     => array(
+					'type'        => 'string',
+					'description' => 'Optional role slug filter.',
+				),
+			)
 		);
 	}
 
@@ -2198,8 +2750,8 @@ final class FirstPartyAbilityModules {
 			array(
 				'state'              => array(
 					'type'        => 'string',
-					'enum'        => array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy' ),
-					'description' => 'Audit state to list. Defaults to needs_review.',
+					'enum'        => array( 'all', 'needs_review', 'orphan', 'underlinked', 'thin', 'stale', 'link_heavy', 'broken', 'missing_target', 'unreadable_target', 'unpublished_target', 'stale_permalink', 'redirected' ),
+					'description' => 'Audit state to list. Defaults to needs_review. Use broken or a target-state value to audit stale and broken indexed internal-link targets.',
 				),
 				'post_type'          => array( 'type' => 'string' ),
 				'status'             => array( 'type' => 'string' ),
@@ -2223,7 +2775,196 @@ final class FirstPartyAbilityModules {
 				),
 				'page'               => $this->page_schema(),
 				'per_page'           => $this->per_page_schema( 50, 'Audit rows per page. Defaults to 10.' ),
+				'queue_limit'        => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 50,
+					'description' => 'Maximum prioritized action queue items to return. Defaults to per_page or 10.',
+				),
 			)
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion create schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestions_create_schema(): array {
+		$item_schema = $this->object_schema(
+			array(
+				'target_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Target post ID to link to.',
+				),
+				'post_id'              => array(
+					'type'        => 'integer',
+					'description' => 'Alias for target_id when using content_find_internal_links rows.',
+				),
+				'anchor_text'          => array( 'type' => 'string' ),
+				'proposed_anchor_text' => array(
+					'type'        => 'string',
+					'description' => 'Alias for anchor_text.',
+				),
+				'reason'               => array( 'type' => 'string' ),
+				'score'                => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'quality_score'        => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'confidence'           => array(
+					'type' => 'string',
+					'enum' => array( 'low', 'medium', 'high' ),
+				),
+				'warnings'             => $this->string_list_schema( 'Bounded internal-link quality warnings.', 10 ),
+				'quality_signals'      => array( 'type' => 'object' ),
+				'signals'              => array( 'type' => 'object' ),
+				'target_title'         => array( 'type' => 'string' ),
+				'target_permalink'     => array( 'type' => 'string' ),
+				'target_post_type'     => array( 'type' => 'string' ),
+				'target_status'        => array( 'type' => 'string' ),
+			),
+			array( 'target_id', 'anchor_text', 'reason' )
+		);
+
+		return $this->object_schema(
+			array(
+				'source_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Source post ID that may receive the internal link.',
+				),
+				'post_id'              => array(
+					'type'        => 'integer',
+					'description' => 'Alias for source_id.',
+				),
+				'target_id'            => array(
+					'type'        => 'integer',
+					'description' => 'Target post ID for single-record creation.',
+				),
+				'anchor_text'          => array(
+					'type'        => 'string',
+					'description' => 'Proposed anchor text for single-record creation.',
+				),
+				'proposed_anchor_text' => array(
+					'type'        => 'string',
+					'description' => 'Alias for anchor_text.',
+				),
+				'reason'               => array(
+					'type'        => 'string',
+					'description' => 'Reviewable reason for single-record creation.',
+				),
+				'score'                => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 100,
+				),
+				'confidence'           => array(
+					'type' => 'string',
+					'enum' => array( 'low', 'medium', 'high' ),
+				),
+				'items'                => array(
+					'type'        => 'array',
+					'description' => 'Suggestion items from content_find_internal_links or an approved audit workflow.',
+					'maxItems'    => 20,
+					'items'       => $item_schema,
+				),
+			),
+			array( 'source_id' )
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion list schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestions_list_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'    => $this->internal_link_suggestion_status_schema(),
+				'source_id' => array( 'type' => 'integer' ),
+				'post_id'   => array(
+					'type'        => 'integer',
+					'description' => 'Alias for source_id.',
+				),
+				'target_id' => array( 'type' => 'integer' ),
+				'page'      => $this->page_schema(),
+				'per_page'  => $this->per_page_schema( 50, 'Suggestion records per page. Defaults to 20.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion review schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_review_schema(): array {
+		return $this->object_schema(
+			array(
+				'id'            => array( 'type' => 'string' ),
+				'suggestion_id' => array(
+					'type'        => 'string',
+					'description' => 'Alias for id.',
+				),
+				'action'        => array(
+					'type'        => 'string',
+					'enum'        => array( 'approve', 'reject', 'skip', 'stale' ),
+					'description' => 'Review action.',
+				),
+				'status'        => $this->internal_link_suggestion_status_schema(),
+				'note'          => array(
+					'type'        => 'string',
+					'description' => 'Short review note. Do not include full post content.',
+				),
+				'review_note'   => array(
+					'type'        => 'string',
+					'description' => 'Alias for note.',
+				),
+			),
+			array( 'id', 'action' )
+		);
+	}
+
+	/**
+	 * Build the internal-link suggestion apply-plan schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_apply_schema(): array {
+		$schema = $this->object_schema(
+			array(
+				'id'            => array( 'type' => 'string' ),
+				'suggestion_id' => array(
+					'type'        => 'string',
+					'description' => 'Alias for id.',
+				),
+				'dry_run'       => array(
+					'type'        => 'boolean',
+					'description' => 'When true, validate and return a targeted block diff without saving. Defaults to false for approved suggestions.',
+				),
+			),
+			array( 'id' )
+		);
+
+		return $this->schema_with_safety_controls( $schema );
+	}
+
+	/**
+	 * Build the suggestion status schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function internal_link_suggestion_status_schema(): array {
+		return array(
+			'type'        => 'string',
+			'enum'        => array( 'suggested', 'approved', 'rejected', 'applied', 'skipped', 'stale' ),
+			'description' => 'Internal-link suggestion review status.',
 		);
 	}
 
@@ -2606,6 +3347,25 @@ final class FirstPartyAbilityModules {
 	}
 
 	/**
+	 * Build reusable block/synced pattern collection schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function reusable_blocks_schema(): array {
+		return $this->object_schema(
+			array(
+				'status'          => $this->status_filter_schema( 'Reusable block statuses to include. Defaults to publish, draft, pending, and private.' ),
+				'page'            => $this->page_schema(),
+				'per_page'        => $this->per_page_schema( 100, 'Items per page. Defaults to 20.' ),
+				'include_preview' => array(
+					'type'        => 'boolean',
+					'description' => 'Include a bounded plain-text preview up to 600 bytes. Full reusable-block content bodies are never returned by this list tool.',
+				),
+			)
+		);
+	}
+
+	/**
 	 * Build Admin Menu page listing schema.
 	 *
 	 * @return array<string, mixed>
@@ -2663,6 +3423,86 @@ final class FirstPartyAbilityModules {
 					'type'        => 'string',
 					'description' => 'Optional search term for registered setting name, group, or description.',
 				),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation menu listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_menus_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type' => array(
+					'type'        => 'string',
+					'enum'        => array( 'all', 'classic_menu', 'wp_navigation' ),
+					'description' => 'Optional navigation source filter. Defaults to all.',
+				),
+				'search'      => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for menu name, title, slug, or source marker.',
+				),
+				'page'        => $this->page_schema(),
+				'per_page'    => $this->per_page_schema( 100, 'Menus per page. Defaults to 20.' ),
+				'context'     => $this->context_schema( 'Use compact for inventory or full for bounded structure summaries. Defaults to compact.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation location listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_locations_schema(): array {
+		return $this->object_schema(
+			array(
+				'search'        => array(
+					'type'        => 'string',
+					'description' => 'Optional search term for location slug, label, or assigned menu name.',
+				),
+				'assigned_only' => array(
+					'type'        => 'boolean',
+					'description' => 'Return only assigned classic locations.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Locations per page. Defaults to 20.' ),
+			)
+		);
+	}
+
+	/**
+	 * Build navigation item listing schema.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function navigation_items_schema(): array {
+		return $this->object_schema(
+			array(
+				'source_type'   => array(
+					'type'        => 'string',
+					'enum'        => array( 'classic_menu', 'classic_location', 'wp_navigation' ),
+					'description' => 'Optional explicit source type for the requested target.',
+				),
+				'menu_id'       => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'Classic menu term ID.',
+				),
+				'navigation_id' => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'description' => 'wp_navigation post ID.',
+				),
+				'location'      => array(
+					'type'        => 'string',
+					'description' => 'Registered classic menu location slug.',
+				),
+				'page'          => $this->page_schema(),
+				'per_page'      => $this->per_page_schema( 100, 'Navigation items per page. Defaults to 20.' ),
+				'context'       => $this->context_schema( 'Use compact for item inventory or full for bounded block/link attrs and structure notes. Defaults to compact.' ),
 			)
 		);
 	}

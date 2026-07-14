@@ -236,11 +236,34 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
-				return $this->rpc_result( $id, $this->initialize_payload() );
+				$started_at = microtime( true );
+				$result     = $this->initialize_payload();
+				$this->record_timeline_event(
+					'initialize',
+					array(
+						'method'      => 'initialize',
+						'status'      => 'success',
+						'duration_ms' => $this->duration_ms( $started_at ),
+					),
+					$auth
+				);
+				return $this->rpc_result( $id, $result );
 
 			case 'tools/list':
-				$cursor = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
-				return $this->rpc_result( $id, $this->list_tools( $cursor ) );
+				$started_at = microtime( true );
+				$cursor     = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
+				$result     = $this->list_tools( $cursor );
+				$this->record_timeline_event(
+					'tools_list',
+					array(
+						'method'         => 'tools/list',
+						'status'         => 'success',
+						'duration_ms'    => $this->duration_ms( $started_at ),
+						'target_summary' => 'tools:' . count( $result['tools'] ),
+					),
+					$auth
+				);
+				return $this->rpc_result( $id, $result );
 
 			case 'resources/list':
 				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
@@ -259,8 +282,26 @@ final class McpController {
 				}
 
 				$args  = (array) ( $body['params']['arguments'] ?? array() );
-				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ) );
+				$risk  = $this->tool_risk_level( $tool, $args );
+				$timer = microtime( true );
+				$this->record_timeline_event(
+					'tool_call_start',
+					array(
+						'method'         => 'tools/call',
+						'tool'           => $tool,
+						'status'         => 'started',
+						'risk_level'     => $risk,
+						'target_summary' => $this->timeline_target_summary( $tool, $args ),
+					),
+					$auth
+				);
+				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
+				if ( $is_intelligence_tool && $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) ) ) {
+					$error = 'tool_hidden_by_profile';
+				}
+
 				if ( 'unknown_tool' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'unknown_tool', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -282,6 +323,7 @@ final class McpController {
 				}
 
 				if ( 'tool_disabled' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_disabled', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -303,6 +345,7 @@ final class McpController {
 				}
 
 				if ( 'tool_forbidden_for_role' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_for_role', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -323,7 +366,52 @@ final class McpController {
 					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress role.' );
 				}
 
+				if ( 'tool_hidden_by_profile' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_hidden_by_profile', $timer );
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_hidden_by_profile',
+							'message' => 'This ability is hidden by the selected MCP tool profile.',
+						),
+						$auth
+					);
+					( new Logger() )->warning(
+						'mcp.tool_hidden_by_profile',
+						'MCP tool call was blocked by the selected tool profile.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_hidden_by_profile', $tool ),
+						$request,
+						200
+					);
+					return $this->tool_error_result( $id, 'This ability is hidden by the selected MCP tool profile.' );
+				}
+
+				if ( 'tool_forbidden_by_capability' === $error ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_by_capability', $timer );
+					$this->record_tool_activity(
+						$tool,
+						$args,
+						array(
+							'status'  => 'error',
+							'error'   => 'tool_forbidden_by_capability',
+							'message' => 'This ability is not available for the connected WordPress capabilities.',
+						),
+						$auth
+					);
+					( new Logger() )->warning(
+						'mcp.tool_forbidden_by_capability',
+						'MCP tool call was blocked by WordPress capabilities.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_forbidden_by_capability', $tool ),
+						$request,
+						200
+					);
+					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress capabilities.' );
+				}
+
 				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'access_paused', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -346,6 +434,7 @@ final class McpController {
 
 				$required = $is_intelligence_tool ? $intelligence->required_scopes( $tool ) : $registry->required_scopes( $tool );
 				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
+					$this->record_blocked_timeline_event( $tool, $args, $auth, 'insufficient_scope', $timer );
 					$this->record_tool_activity(
 						$tool,
 						$args,
@@ -367,50 +456,10 @@ final class McpController {
 					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
 				}
 
-				$safety                     = new ToolSafety();
-				$is_write_tool              = ! $is_intelligence_tool && ! $registry->is_read_only( $tool );
-				$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args );
-				$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
-				$replay                     = $is_write_tool && ! $is_dry_run
-					? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
-					: null;
-				$trusted_write_executed     = false;
-				$needs_confirmation_gate    = $is_write_tool
-					&& ! $is_dry_run
-					&& null === $replay
-					&& ! $write_permission_unblocked
-					&& $safety->requires_confirmation( $tool, $args )
-					&& ! $safety->validate_confirmation_token( $tool, $args, $auth );
-				if ( null !== $replay ) {
-					$result = $replay;
-				} elseif ( $is_dry_run ) {
-					$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					if ( ! isset( $result['error'] ) ) {
-						if ( $write_permission_unblocked ) {
-							$result = $this->write_permission_preview_payload( $result );
-						} elseif ( $safety->requires_confirmation( $tool, $args ) ) {
-							$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
-						}
-					}
-				} elseif ( $needs_confirmation_gate ) {
-					$preview_args            = $safety->strip_control_args( $args );
-					$preview_args['dry_run'] = true;
-					$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					$result                  = isset( $preview['error'] )
-						? $preview
-						: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
-				} else {
-					$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-					$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-					if ( $is_write_tool && ! isset( $result['error'] ) ) {
-						$trusted_write_executed = $write_permission_unblocked;
-						if ( $trusted_write_executed ) {
-							$result = $this->trusted_write_result_payload( $result, $auth );
-						}
-						$safety->remember_write_result( $tool, $args, $auth, $result );
-					}
-					$args = $exec_args;
-				}
+				$execution              = $this->execute_tool_with_safety( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
+				$result                 = $execution['result'];
+				$args                   = $execution['args'];
+				$trusted_write_executed = $execution['trusted_write_executed'];
 
 				$activity_auth = $auth;
 				if ( $trusted_write_executed ) {
@@ -431,6 +480,19 @@ final class McpController {
 				}
 
 				$this->record_tool_activity( $tool, $args, $result, $activity_auth );
+				$this->record_timeline_event(
+					isset( $result['error'] ) ? 'error' : 'tool_call_end',
+					array(
+						'method'         => 'tools/call',
+						'tool'           => $tool,
+						'status'         => isset( $result['error'] ) ? 'error' : 'success',
+						'error_code'     => isset( $result['error'] ) && is_scalar( $result['error'] ) ? (string) $result['error'] : '',
+						'duration_ms'    => $this->duration_ms( $timer ),
+						'risk_level'     => $risk,
+						'target_summary' => $this->timeline_target_summary( $tool, $args, $result ),
+					),
+					$activity_auth
+				);
 
 				return $this->rpc_result(
 					$id,
@@ -516,12 +578,13 @@ final class McpController {
 	/**
 	 * Build the complete, unpaginated tool manifest for one user and scope set.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 * @return array{tools: list<array<string, mixed>>}
 	 */
-	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null ): array {
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+	public function tool_manifest_for_user( int $user_id, ?array $granted_scopes = null, array $profile_context = array() ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes, $profile_context );
 
 		return array(
 			'tools' => array_values( array_map( array( $this, 'tool_from_module' ), $modules ) ),
@@ -531,13 +594,14 @@ final class McpController {
 	/**
 	 * Build one paginated tools/list payload for diagnostics and deterministic smoke tests.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
-	 * @param string            $cursor         Opaque cursor from a previous page.
-	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param string               $cursor          Opaque cursor from a previous page.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
 	 */
-	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '' ): array {
-		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes ), $cursor );
+	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '', array $profile_context = array() ): array {
+		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes, $profile_context ), $cursor );
 	}
 
 	/**
@@ -569,24 +633,25 @@ final class McpController {
 	 * truncated by clients with payload limits.
 	 *
 	 * @param string $cursor Opaque cursor from a previous page.
-	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
 	 */
 	private function list_tools( string $cursor = '' ): array {
 		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
 
-		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor );
+		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor, $this->profile_context_from_auth( $this->request_auth ) );
 	}
 
 	/**
 	 * Build all tool descriptors for one user and scope set.
 	 *
-	 * @param int               $user_id        WordPress user ID.
-	 * @param array<mixed>|null $granted_scopes Granted OAuth scopes, or null when unknown.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<mixed>|null    $granted_scopes  Granted OAuth scopes, or null when unknown.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 * @return list<array<string, mixed>>
 	 */
-	private function tools_for_user( int $user_id, ?array $granted_scopes = null ): array {
-		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes );
+	private function tools_for_user( int $user_id, ?array $granted_scopes = null, array $profile_context = array() ): array {
+		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes, $profile_context );
 
 		return array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
 	}
@@ -596,35 +661,135 @@ final class McpController {
 	 *
 	 * @param list<array<string, mixed>> $tools  Complete tool descriptors.
 	 * @param string                     $cursor Opaque cursor from a previous page.
-	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string}
+	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
 	 */
 	private function tools_list_page( array $tools, string $cursor = '' ): array {
-		$offset = $this->tools_cursor_offset( $cursor );
-		$page   = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
-		$result = array( 'tools' => $page );
+		$fingerprint = $this->tools_list_fingerprint( $tools );
+		$cursor_data = $this->tools_cursor_data( $cursor, $fingerprint );
+		$offset      = $cursor_data['fingerprint_matches'] ? $cursor_data['offset'] : 0;
+		$page        = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
+		$result      = array(
+			'tools' => $page,
+			'_meta' => array(
+				'aculect/toolListFingerprint' => $fingerprint,
+				'aculect/toolListVersion'     => ACULECT_AI_COMPANION_VERSION,
+				'aculect/totalTools'          => count( $tools ),
+				'aculect/pageSize'            => self::TOOLS_PAGE_SIZE,
+				'aculect/pageOffset'          => $offset,
+				'aculect/pageToolCount'       => count( $page ),
+				'aculect/cursorValid'         => $cursor_data['fingerprint_matches'],
+			),
+		);
 
 		if ( $offset + count( $page ) < count( $tools ) ) {
-			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Opaque MCP pagination cursor, not obfuscation.
-			$result['nextCursor'] = base64_encode( (string) ( $offset + count( $page ) ) );
+			$result['nextCursor']                           = $this->tools_cursor_encode( $offset + count( $page ), $fingerprint );
+			$result['_meta']['aculect/nextCursorOffset']    = $offset + count( $page );
+			$result['_meta']['aculect/nextCursorVersioned'] = true;
 		}
 
 		return $result;
 	}
 
 	/**
-	 * Decode a tools/list cursor into a list offset.
+	 * Return deterministic, support-safe metadata fingerprint for a complete tools/list result.
+	 *
+	 * @param list<array<string, mixed>> $tools Complete tool descriptors.
+	 */
+	private function tools_list_fingerprint( array $tools ): string {
+		$json = wp_json_encode(
+			array(
+				'plugin_version' => ACULECT_AI_COMPANION_VERSION,
+				'tools'          => $this->canonicalize_tools_for_cursor( $tools ),
+			),
+			JSON_UNESCAPED_SLASHES
+		);
+
+		return hash( 'sha256', false === $json ? '' : $json );
+	}
+
+	/**
+	 * Keep cursor fingerprints stable without exposing request, token, or content data.
+	 *
+	 * @param list<array<string, mixed>> $tools Complete tool descriptors.
+	 * @return list<array<string, mixed>>
+	 */
+	private function canonicalize_tools_for_cursor( array $tools ): array {
+		return array_values(
+			array_map(
+				static function ( array $tool ): array {
+					return array(
+						'name'            => (string) ( $tool['name'] ?? '' ),
+						'title'           => (string) ( $tool['title'] ?? '' ),
+						'description'     => (string) ( $tool['description'] ?? '' ),
+						'inputSchema'     => $tool['inputSchema'] ?? array(),
+						'outputSchema'    => $tool['outputSchema'] ?? array(),
+						'annotations'     => $tool['annotations'] ?? array(),
+						'securitySchemes' => $tool['securitySchemes'] ?? array(),
+						'_meta'           => $tool['_meta'] ?? array(),
+					);
+				},
+				$tools
+			)
+		);
+	}
+
+	/**
+	 * Encode a tools/list cursor with the metadata fingerprint it belongs to.
+	 *
+	 * @param int    $offset      Next result offset.
+	 * @param string $fingerprint Current full tools/list fingerprint.
+	 */
+	private function tools_cursor_encode( int $offset, string $fingerprint ): string {
+		$json = wp_json_encode(
+			array(
+				'v'  => 2,
+				'o'  => max( 0, $offset ),
+				'fp' => $fingerprint,
+			),
+			JSON_UNESCAPED_SLASHES
+		);
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Opaque MCP pagination cursor, not obfuscation.
+		return base64_encode( false === $json ? (string) max( 0, $offset ) : $json );
+	}
+
+	/**
+	 * Decode a tools/list cursor into an offset plus fingerprint match status.
 	 *
 	 * @param string $cursor Opaque cursor value.
+	 * @param string $fingerprint Current full tools/list fingerprint.
+	 * @return array{offset:int, fingerprint_matches:bool}
 	 */
-	private function tools_cursor_offset( string $cursor ): int {
+	private function tools_cursor_data( string $cursor, string $fingerprint ): array {
 		if ( '' === $cursor ) {
-			return 0;
+			return array(
+				'offset'              => 0,
+				'fingerprint_matches' => true,
+			);
 		}
 
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Opaque MCP pagination cursor, not obfuscation.
 		$decoded = base64_decode( $cursor, true );
 
-		return false === $decoded ? 0 : max( 0, absint( $decoded ) );
+		if ( false === $decoded ) {
+			return array(
+				'offset'              => 0,
+				'fingerprint_matches' => false,
+			);
+		}
+
+		$payload = json_decode( $decoded, true );
+		if ( is_array( $payload ) ) {
+			return array(
+				'offset'              => absint( $payload['o'] ?? 0 ),
+				'fingerprint_matches' => hash_equals( $fingerprint, (string) ( $payload['fp'] ?? '' ) ),
+			);
+		}
+
+		return array(
+			'offset'              => max( 0, absint( $decoded ) ),
+			'fingerprint_matches' => true,
+		);
 	}
 
 	/**
@@ -643,11 +808,16 @@ final class McpController {
 			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
 		);
 
+		$input_schema = $module->input_schema();
+		if ( 'plugin.incident.report' === $module->id() ) {
+			$input_schema = $this->plugin_incident_report_input_schema( $input_schema );
+		}
+
 		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
 			'title'           => $module->title(),
 			'description'     => $module->description(),
-			'inputSchema'     => $module->input_schema(),
+			'inputSchema'     => $input_schema,
 			'securitySchemes' => $security,
 			'_meta'           => $meta,
 			'annotations'     => $this->tool_annotations( $module ),
@@ -668,7 +838,7 @@ final class McpController {
 	 * @return array<string, bool>
 	 */
 	private function tool_annotations( AbilityModuleInterface $module ): array {
-		$risk = ( new ToolSafety() )->risk_level( $module->id(), array() );
+		$risk = $this->tool_risk_level( $module->id(), array() );
 
 		return array(
 			'readOnlyHint'    => $module->is_read_only(),
@@ -679,6 +849,7 @@ final class McpController {
 				array(
 					'content.create_item',
 					'content.update_item',
+					'content.update_block',
 					'content_media.search_cc0_images',
 					'content_media.apply_image',
 					'comments.create_item',
@@ -686,12 +857,41 @@ final class McpController {
 					'comments.bulk_update',
 					'media.upload_item',
 					'media.upload_image_data',
-					'plugin.incident.report',
 					'wp_abilities.run',
 				),
 				true
 			),
 		);
+	}
+
+	/**
+	 * Add the standard write-safety controls to the incident report descriptor.
+	 *
+	 * The incident reporter is an always-on intelligence module, but it writes a
+	 * local option. Its public schema therefore needs the same controls as other
+	 * confirmation-gated write tools without changing its registry scope or
+	 * read-only metadata.
+	 *
+	 * @param array<string, mixed> $schema Incident report input schema.
+	 * @return array<string, mixed>
+	 */
+	private function plugin_incident_report_input_schema( array $schema ): array {
+		$properties                       = isset( $schema['properties'] ) && is_array( $schema['properties'] ) ? $schema['properties'] : array();
+		$properties['dry_run']            = array(
+			'type'        => 'boolean',
+			'description' => 'Preview the sanitized incident draft without storing it.',
+		);
+		$properties['confirmation_token'] = array(
+			'type'        => 'string',
+			'description' => 'Confirmation token from a previous preview of the same incident report.',
+		);
+		$properties['idempotency_key']    = array(
+			'type'        => 'string',
+			'description' => 'Optional stable key that makes retried report submissions replay-safe.',
+		);
+		$schema['properties']             = $properties;
+
+		return $schema;
 	}
 
 	/**
@@ -732,16 +932,20 @@ final class McpController {
 				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
 				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
 				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
+				'Before planning WordPress core management, route/schema-dependent content work, or Site Editor compatibility, call core_schema_discover for bounded REST route, post type, taxonomy, status, revision, autosave, and capability discovery.',
 				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
 				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
+				'For internal-link work, inspect content_internal_link_policy first, audit existing signals with content_audit_internal_links when the source or target state is unclear, then use content_find_internal_links and the reviewable suggestion flow before requesting any write.',
 				'For "do all" style collection work such as thin-page cleanup, create a workflow_loop after discovery, then use workflow_loop_run_next or workflow_loop_run_batch to process bounded items and report completion without resending the full item list.',
 				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. If memory_list is empty or missing obvious site guidance, call memory_bootstrap or memory_save with no key/value to prepare initial memory for admin review. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
 				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
 				'When repeated MCP errors or poor tool choices happen, call mcp_learning_inspect_activity and submit a bounded learning suggestion with intelligence_feedback_submit when the owner should review durable guidance.',
 				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
 				'For Appearance > Editor, full-site editing, template, template part, navigation, global style, or theme design-token work, call site_editor_get_context first, then inspect templates or template parts as needed. Site Editor work is admin-level only; do not request filesystem or theme-file changes.',
+				'For classic menus, registered menu locations, wp_navigation entities, or Navigation block inventory, call navigation_get_context first and then use navigation_list_menus, navigation_list_locations, or navigation_list_items. This slice is read-only and does not implement menu writes or raw serialized block edits.',
 				'For WordPress core, plugin, or theme admin settings work, call admin_menu_get_context or admin_menu_get_navigation_target first. Use registered settings metadata for discovery only; do not read or write arbitrary wp_options.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
+				'When an internal-link apply or other write preview returns confirmation_required, ask the user for confirmation and repeat the same tool call with confirmation_token before it expires.',
 				'For image workflows, use content_media_apply_image to import an existing attachment, public URL, externally generated image URL, direct image data, or Openverse CC0 result, then set featured media or insert core image/gallery/cover/media-text blocks without hand-stitching raw media and content calls.',
 				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
 				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
@@ -775,6 +979,44 @@ final class McpController {
 			return $this->workflow_guides_get_output_schema();
 		}
 
+		if ( 'core_schema.discover' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'schema_version' => array( 'type' => 'string' ),
+					'description'    => array( 'type' => 'string' ),
+					'wordpress'      => array( 'type' => 'object' ),
+					'capabilities'   => array( 'type' => 'object' ),
+					'post_types'     => array( 'type' => 'array' ),
+					'taxonomies'     => array( 'type' => 'array' ),
+					'statuses'       => array( 'type' => 'array' ),
+					'rest'           => array( 'type' => 'object' ),
+					'features'       => array( 'type' => 'object' ),
+					'diagnostics'    => array( 'type' => 'array' ),
+				),
+				array( 'schema_version', 'wordpress', 'capabilities', 'post_types', 'taxonomies', 'statuses', 'rest', 'features', 'diagnostics' )
+			);
+		}
+
+		if ( str_starts_with( $module->id(), 'users.' ) ) {
+			return $this->object_output_schema(
+				array(
+					'user_id'             => array( 'type' => 'integer' ),
+					'roles'               => array( 'type' => 'array' ),
+					'capabilities'        => array( 'type' => 'object' ),
+					'blocked_unavailable' => array( 'type' => 'array' ),
+					'items'               => array( 'type' => 'array' ),
+					'total'               => array( 'type' => 'integer' ),
+					'returned'            => array( 'type' => 'integer' ),
+					'page'                => array( 'type' => 'integer' ),
+					'per_page'            => array( 'type' => 'integer' ),
+					'bounded'             => array( 'type' => 'boolean' ),
+					'read_only'           => array( 'type' => 'boolean' ),
+					'required_capability' => array( 'type' => 'string' ),
+					'privacy'             => array( 'type' => 'object' ),
+				)
+			);
+		}
+
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
@@ -794,21 +1036,30 @@ final class McpController {
 		if ( 'plugin.incident.report' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
-					'status'            => array(
+					'status'                    => array(
 						'type'        => 'string',
 						'description' => 'stored_ready_for_client_submission when a local incident and public GitHub issue draft were prepared, or rejected when required fields are missing.',
 					),
-					'message'           => array( 'type' => 'string' ),
-					'error'             => array( 'type' => 'string' ),
-					'report_id'         => array( 'type' => 'string' ),
-					'correlation_id'    => array( 'type' => 'string' ),
-					'repository'        => array( 'type' => 'string' ),
-					'title'             => array( 'type' => 'string' ),
-					'body'              => array( 'type' => 'string' ),
-					'issue_url'         => array( 'type' => 'string' ),
-					'can_create_direct' => array( 'type' => 'boolean' ),
-					'incident'          => array( 'type' => 'object' ),
-					'next_actions'      => array( 'type' => 'array' ),
+					'message'                   => array( 'type' => 'string' ),
+					'error'                     => array( 'type' => 'string' ),
+					'report_id'                 => array( 'type' => 'string' ),
+					'correlation_id'            => array( 'type' => 'string' ),
+					'repository'                => array( 'type' => 'string' ),
+					'title'                     => array( 'type' => 'string' ),
+					'body'                      => array( 'type' => 'string' ),
+					'issue_url'                 => array( 'type' => 'string' ),
+					'can_create_direct'         => array( 'type' => 'boolean' ),
+					'incident'                  => array( 'type' => 'object' ),
+					'next_actions'              => array( 'type' => 'array' ),
+					'dry_run'                   => array( 'type' => 'boolean' ),
+					'confirmation_required'     => array( 'type' => 'boolean' ),
+					'confirmation_token'        => array( 'type' => 'string' ),
+					'confirmation_expires_in'   => array( 'type' => 'integer' ),
+					'confirmation_instructions' => array( 'type' => 'string' ),
+					'action'                    => array( 'type' => 'string' ),
+					'risk_level'                => array( 'type' => 'string' ),
+					'preview'                   => array( 'type' => 'object' ),
+					'replayed'                  => array( 'type' => 'boolean' ),
 				),
 				array( 'status' )
 			);
@@ -822,6 +1073,73 @@ final class McpController {
 					'page'     => array( 'type' => 'integer' ),
 					'per_page' => array( 'type' => 'integer' ),
 					'summary'  => array( 'type' => 'object' ),
+				)
+			);
+		}
+
+		if ( 'content_internal_link.policy' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'type'         => array( 'type' => 'string' ),
+					'policy'       => array( 'type' => 'object' ),
+					'limits'       => array( 'type' => 'object' ),
+					'guidance'     => array( 'type' => 'object' ),
+					'capabilities' => array( 'type' => 'object' ),
+				),
+				array( 'type', 'policy', 'limits' )
+			);
+		}
+
+		if ( 'content_audit.internal_links' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'              => array( 'type' => 'array' ),
+					'total'              => array( 'type' => 'integer' ),
+					'page'               => array( 'type' => 'integer' ),
+					'per_page'           => array( 'type' => 'integer' ),
+					'index'              => array( 'type' => 'object' ),
+					'summary'            => array( 'type' => 'object' ),
+					'health_summary'     => array( 'type' => 'object' ),
+					'action_queue'       => array( 'type' => 'object' ),
+					'filtered_by_access' => array( 'type' => 'boolean' ),
+					'next_actions'       => array( 'type' => 'array' ),
+				)
+			);
+		}
+
+		if ( 'content_internal_link.suggestions_list' === $module->id() ) {
+			return $this->object_output_schema(
+				array(
+					'items'              => array( 'type' => 'array' ),
+					'total'              => array( 'type' => 'integer' ),
+					'visible_total'      => array( 'type' => 'integer' ),
+					'page'               => array( 'type' => 'integer' ),
+					'per_page'           => array( 'type' => 'integer' ),
+					'status'             => array( 'type' => 'string' ),
+					'filtered_by_access' => array( 'type' => 'boolean' ),
+					'capabilities'       => array( 'type' => 'object' ),
+					'usage'              => array( 'type' => 'object' ),
+				)
+			);
+		}
+
+		if ( 'content_internal_link.suggestions_create' === $module->id() || str_starts_with( $module->id(), 'content_internal_link.suggestion' ) ) {
+			return $this->object_output_schema(
+				array(
+					'status'        => array( 'type' => 'string' ),
+					'error'         => array( 'type' => 'string' ),
+					'message'       => array( 'type' => 'string' ),
+					'items'         => array( 'type' => 'array' ),
+					'suggestion'    => array( 'type' => 'object' ),
+					'duplicates'    => array( 'type' => 'array' ),
+					'total_created' => array( 'type' => 'integer' ),
+					'dry_run'       => array( 'type' => 'boolean' ),
+					'target'        => array( 'type' => 'object' ),
+					'changes'       => array( 'type' => 'array' ),
+					'diff'          => array( 'type' => 'object' ),
+					'warnings'      => array( 'type' => 'array' ),
+					'capabilities'  => array( 'type' => 'object' ),
+					'next_actions'  => array( 'type' => 'array' ),
 				)
 			);
 		}
@@ -870,6 +1188,11 @@ final class McpController {
 				'content_find.related',
 				'content_find.internal_links',
 				'content_audit.internal_links',
+				'content_revisions.list',
+				'navigation.list_menus',
+				'navigation.list_locations',
+				'navigation.list_items',
+				'users.list_safe',
 				'memory.list',
 				'taxonomy.list_taxonomies',
 				'taxonomy.list_terms',
@@ -993,6 +1316,12 @@ final class McpController {
 				'visible_total'      => array( 'type' => 'integer' ),
 				'page'               => array( 'type' => 'integer' ),
 				'per_page'           => array( 'type' => 'integer' ),
+				'has_more'           => array( 'type' => 'boolean' ),
+				'post_id'            => array( 'type' => 'integer' ),
+				'parent'             => array( 'type' => 'object' ),
+				'preview'            => array( 'type' => 'object' ),
+				'read_only'          => array( 'type' => 'boolean' ),
+				'capabilities'       => array( 'type' => 'object' ),
 				'context'            => array( 'type' => 'string' ),
 				'index'              => array( 'type' => 'object' ),
 				'filtered_by_access' => array( 'type' => 'boolean' ),
@@ -1002,6 +1331,7 @@ final class McpController {
 					'description' => 'True when results came from a live WordPress query because the intelligence index could not answer. Queue content_index_refresh_batch and retry for indexed results.',
 				),
 				'degraded_reason'    => array( 'type' => 'string' ),
+				'quality_summary'    => array( 'type' => 'object' ),
 				'error'              => array( 'type' => 'string' ),
 				'message'            => array( 'type' => 'string' ),
 			)
@@ -1037,6 +1367,11 @@ final class McpController {
 				'required_operations'      => array( 'type' => 'array' ),
 				'blocked_operations'       => array( 'type' => 'array' ),
 				'post_id'                  => array( 'type' => 'integer' ),
+				'parent'                   => array( 'type' => 'object' ),
+				'has_autosave'             => array( 'type' => 'boolean' ),
+				'autosave'                 => array( 'type' => 'object' ),
+				'preview'                  => array( 'type' => 'object' ),
+				'read_only'                => array( 'type' => 'boolean' ),
 				'post_type'                => array( 'type' => 'string' ),
 				'intelligence_context'     => array( 'type' => 'object' ),
 				'edit_url'                 => array( 'type' => 'string' ),
@@ -1126,6 +1461,108 @@ final class McpController {
 	}
 
 	/**
+	 * Execute one MCP tool through the shared dry-run, confirmation, and replay controls.
+	 *
+	 * Plugin incident reporting is an always-on intelligence tool that writes a
+	 * local incident option. It is therefore the only intelligence tool treated as
+	 * a confirmation-gated write here; all other intelligence tools retain their
+	 * existing behavior.
+	 *
+	 * @param string               $tool                 Internal ability ID.
+	 * @param array<string, mixed> $args                 Tool arguments.
+	 * @param AbilitiesRegistry    $registry             Ability registry.
+	 * @param IntelligenceRegistry $intelligence         Intelligence registry.
+	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
+	 * @param array<string, mixed> $auth                 OAuth token context.
+	 * @return array{result: array<string, mixed>, args: array<string, mixed>, trusted_write_executed: bool}
+	 */
+	private function execute_tool_with_safety( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth ): array {
+		$safety                     = new ToolSafety();
+		$is_incident_report         = 'plugin.incident.report' === $tool;
+		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $registry->is_read_only( $tool ) );
+		$requires_confirmation      = $is_incident_report || $safety->requires_confirmation( $tool, $args );
+		$has_confirmation_token     = $is_write_tool && $safety->has_confirmation_token( $args );
+		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args ) && ! $has_confirmation_token;
+		$write_permission_unblocked = $is_write_tool && ! $is_incident_report && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
+		$replay                     = $is_write_tool && ! $is_dry_run
+			? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
+			: null;
+		$trusted_write_executed     = false;
+		$confirmation_validated     = $is_write_tool
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& $this->confirmation_token_validated( $tool, $args, $auth, $safety );
+		$invalid_confirmation       = $has_confirmation_token
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& ! $confirmation_validated;
+		$needs_confirmation_gate    = $is_write_tool
+			&& ! $is_dry_run
+			&& null === $replay
+			&& ! $write_permission_unblocked
+			&& $requires_confirmation
+			&& ! $has_confirmation_token
+			&& ! $confirmation_validated;
+
+		if ( null !== $replay ) {
+			$result = $replay;
+		} elseif ( $is_dry_run ) {
+			$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			if ( ! isset( $result['error'] ) ) {
+				if ( $write_permission_unblocked ) {
+					$result = $this->write_permission_preview_payload( $result );
+				} elseif ( $requires_confirmation ) {
+					$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
+				}
+			}
+		} elseif ( $invalid_confirmation ) {
+			$result = $this->invalid_confirmation_payload( $tool, $args, $auth );
+		} elseif ( $needs_confirmation_gate ) {
+			$preview_args            = $safety->strip_control_args( $args );
+			$preview_args['dry_run'] = true;
+			$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			$result                  = isset( $preview['error'] )
+				? $preview
+				: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
+		} else {
+			$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
+			$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
+			if ( $is_write_tool && ! isset( $result['error'] ) ) {
+				$trusted_write_executed = $write_permission_unblocked;
+				if ( $trusted_write_executed ) {
+					$result = $this->trusted_write_result_payload( $result, $auth );
+				}
+				$safety->remember_write_result( $tool, $args, $auth, $result );
+			}
+			$args = $exec_args;
+		}
+
+		return array(
+			'result'                 => $result,
+			'args'                   => $args,
+			'trusted_write_executed' => $trusted_write_executed,
+		);
+	}
+
+	/**
+	 * Return the risk level used in MCP protocol responses and activity telemetry.
+	 *
+	 * @param string               $tool Internal ability ID.
+	 * @param array<string, mixed> $args Tool arguments.
+	 */
+	private function tool_risk_level( string $tool, array $args ): string {
+		if ( 'plugin.incident.report' === $tool ) {
+			return 'update';
+		}
+
+		return ( new ToolSafety() )->risk_level( $tool, $args );
+	}
+
+	/**
 	 * Record one MCP tool event without making activity storage part of request success.
 	 *
 	 * @param string               $tool   Internal tool ID.
@@ -1139,6 +1576,75 @@ final class McpController {
 		} catch ( \Throwable $throwable ) {
 			unset( $throwable );
 		}
+	}
+
+	/**
+	 * Record one MCP session timeline event without affecting protocol success.
+	 *
+	 * @param string               $event    Timeline event type.
+	 * @param array<string, mixed> $metadata Support-safe metadata.
+	 * @param array<string, mixed> $auth     OAuth token context.
+	 */
+	private function record_timeline_event( string $event, array $metadata, array $auth ): void {
+		try {
+			( new ActivityLogger() )->record_timeline_event( $event, $metadata, $auth );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
+	}
+
+	/**
+	 * Record a policy or authorization block in the MCP session timeline.
+	 *
+	 * @param string               $tool       Internal ability ID.
+	 * @param array<string, mixed> $args       Tool arguments.
+	 * @param array<string, mixed> $auth       OAuth token context.
+	 * @param string               $blocked_by Block reason.
+	 * @param float                $started_at Request start time.
+	 */
+	private function record_blocked_timeline_event( string $tool, array $args, array $auth, string $blocked_by, float $started_at ): void {
+		$this->record_timeline_event(
+			'blocked_by',
+			array(
+				'method'         => 'tools/call',
+				'tool'           => $tool,
+				'status'         => 'blocked',
+				'blocked_by'     => $blocked_by,
+				'error_code'     => $blocked_by,
+				'duration_ms'    => $this->duration_ms( $started_at ),
+				'risk_level'     => $this->tool_risk_level( $tool, $args ),
+				'target_summary' => $this->timeline_target_summary( $tool, $args ),
+			),
+			$auth
+		);
+	}
+
+	/**
+	 * Validate a confirmation token and emit a support-safe timeline event.
+	 *
+	 * @param string               $tool   Internal ability ID.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $auth   OAuth token context.
+	 * @param ToolSafety           $safety Safety helper.
+	 */
+	private function confirmation_token_validated( string $tool, array $args, array $auth, ToolSafety $safety ): bool {
+		$validated = $safety->validate_confirmation_token( $tool, $args, $auth );
+		if ( $validated ) {
+			$this->record_timeline_event(
+				'confirmation_validated',
+				array(
+					'method'              => 'tools/call',
+					'tool'                => $tool,
+					'status'              => 'validated',
+					'confirmation_policy' => 'token',
+					'risk_level'          => $this->tool_risk_level( $tool, $args ),
+					'target_summary'      => $this->timeline_target_summary( $tool, $args ),
+				),
+				$auth
+			);
+		}
+
+		return $validated;
 	}
 
 	/**
@@ -1171,8 +1677,54 @@ final class McpController {
 		$result['confirmation_token']        = $safety->issue_confirmation_token( $tool, $args, $auth );
 		$result['confirmation_expires_in']   = $safety->confirmation_ttl();
 		$result['confirmation_instructions'] = 'Repeat the same tool call with confirmation_token before it expires to apply these changes.';
+		$this->record_timeline_event(
+			'confirmation_issued',
+			array(
+				'method'              => 'tools/call',
+				'tool'                => $tool,
+				'status'              => 'issued',
+				'confirmation_policy' => 'dry_run_preview',
+				'risk_level'          => $this->tool_risk_level( $tool, $args ),
+				'target_summary'      => $this->timeline_target_summary( $tool, $args, $result ),
+			),
+			$auth
+		);
 
 		return $result;
+	}
+
+	/**
+	 * Build a distinct response for an invalid, expired, or mismatched token.
+	 *
+	 * @param string               $tool Internal ability ID.
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @param array<string, mixed> $auth OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function invalid_confirmation_payload( string $tool, array $args, array $auth ): array {
+		$this->record_timeline_event(
+			'blocked_by',
+			array(
+				'method'         => 'tools/call',
+				'tool'           => $tool,
+				'status'         => 'blocked',
+				'blocked_by'     => 'invalid_confirmation_token',
+				'error_code'     => 'invalid_confirmation_token',
+				'risk_level'     => $this->tool_risk_level( $tool, $args ),
+				'target_summary' => $this->timeline_target_summary( $tool, $args ),
+			),
+			$auth
+		);
+
+		return array(
+			'status'                => 'blocked',
+			'error'                 => 'invalid_confirmation_token',
+			'message'               => 'The confirmation token is invalid, expired, or does not match this tool call.',
+			'confirmation_required' => true,
+			'action'                => $tool,
+			'risk_level'            => $this->tool_risk_level( $tool, $args ),
+			'next_actions'          => array( 'Repeat the call without confirmation_token to request a new preview and token.' ),
+		);
 	}
 
 	/**
@@ -1186,6 +1738,19 @@ final class McpController {
 	 * @return array<string,mixed>
 	 */
 	private function confirmation_required_payload( string $tool, array $args, array $auth, array $preview, ToolSafety $safety ): array {
+		$this->record_timeline_event(
+			'confirmation_issued',
+			array(
+				'method'              => 'tools/call',
+				'tool'                => $tool,
+				'status'              => 'issued',
+				'confirmation_policy' => 'required_before_write',
+				'risk_level'          => $this->tool_risk_level( $tool, $args ),
+				'target_summary'      => $this->timeline_target_summary( $tool, $args, $preview ),
+			),
+			$auth
+		);
+
 		return array(
 			'status'                    => 'confirmation_required',
 			'confirmation_required'     => true,
@@ -1193,7 +1758,7 @@ final class McpController {
 			'confirmation_expires_in'   => $safety->confirmation_ttl(),
 			'confirmation_instructions' => 'Repeat the same tool call with confirmation_token before it expires to apply these changes.',
 			'action'                    => $tool,
-			'risk_level'                => $safety->risk_level( $tool, $args ),
+			'risk_level'                => $this->tool_risk_level( $tool, $args ),
 			'preview'                   => $preview,
 		);
 	}
@@ -1265,18 +1830,48 @@ final class McpController {
 	}
 
 	/**
+	 * Return elapsed milliseconds from a monotonic-enough request timestamp.
+	 *
+	 * @param float $started_at Request start timestamp.
+	 */
+	private function duration_ms( float $started_at ): int {
+		return max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
+	}
+
+	/**
+	 * Build a bounded target summary from safe identifiers only.
+	 *
+	 * @param string               $tool   Internal ability ID.
+	 * @param array<string, mixed> $args   Tool arguments.
+	 * @param array<string, mixed> $result Optional result payload.
+	 */
+	private function timeline_target_summary( string $tool, array $args, array $result = array() ): string {
+		$parts = array( $tool );
+
+		foreach ( array( 'id', 'post_id', 'term_id', 'suggestion_id', 'type', 'post_type', 'taxonomy', 'status' ) as $key ) {
+			$value = $result[ $key ] ?? $args[ $key ] ?? null;
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				$parts[] = $key . ':' . ( is_numeric( $value ) ? (string) absint( $value ) : sanitize_key( (string) $value ) );
+			}
+		}
+
+		return substr( implode( ' ', array_filter( $parts ) ), 0, 160 );
+	}
+
+	/**
 	 * Return a tool-call block reason before dispatch, or an empty string if callable.
 	 *
-	 * @param string            $tool     Internal ability ID.
-	 * @param AbilitiesRegistry $registry Ability registry.
-	 * @param int               $user_id  WordPress user ID.
+	 * @param string               $tool     Internal ability ID.
+	 * @param AbilitiesRegistry    $registry Ability registry.
+	 * @param int                  $user_id  WordPress user ID.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
 	 */
-	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0 ): string {
+	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0, array $profile_context = array() ): string {
 		if ( ! $registry->is_known( $tool ) ) {
 			return 'unknown_tool';
 		}
 
-		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_always_on_read_intelligence( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
+		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_core_default( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
 		$role_policy       = new RoleAbilitiesPolicy();
 		$availability      = new McpToolAvailability();
 
@@ -1292,8 +1887,13 @@ final class McpController {
 			return 'tool_forbidden_by_capability';
 		}
 
+		$profile_resolution = ( new McpToolProfiles() )->resolve_for_user( $user_id, $registry, $profile_context );
+		if ( ! ( new McpToolProfiles() )->allows_ability( $tool, $profile_resolution['profile'], $registry ) ) {
+			return 'tool_hidden_by_profile';
+		}
+
 		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_always_on_read_intelligence( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
+			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_core_default( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
 
 			if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
 				return 'tool_disabled';
@@ -1306,9 +1906,53 @@ final class McpController {
 			if ( ! $availability->capabilities_available( $dependency_id ) ) {
 				return 'tool_forbidden_by_capability';
 			}
+
+			if ( ! ( new McpToolProfiles() )->allows_ability( $dependency_id, $profile_resolution['profile'], $registry ) ) {
+				return 'tool_hidden_by_profile';
+			}
 		}
 
 		return '';
+	}
+
+	/**
+	 * Check whether an intelligence tool is hidden by the selected profile.
+	 *
+	 * @param string               $tool            Internal intelligence ID.
+	 * @param IntelligenceRegistry $intelligence    Intelligence registry.
+	 * @param AbilitiesRegistry    $registry        Ability registry.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<string, mixed> $profile_context Profile selection context.
+	 */
+	private function intelligence_tool_hidden_by_profile( string $tool, IntelligenceRegistry $intelligence, AbilitiesRegistry $registry, int $user_id, array $profile_context ): bool {
+		$profiles = new McpToolProfiles();
+		$profile  = $profiles->resolve_for_user( $user_id, $registry, $profile_context )['profile'];
+		$module   = $intelligence->module( $tool );
+
+		return null !== $module && ! $profiles->allows_ability( $tool, $profile, $registry, $module );
+	}
+
+	/**
+	 * Return profile-selection context from OAuth token metadata.
+	 *
+	 * @param array<string, mixed> $auth OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function profile_context_from_auth( array $auth ): array {
+		$context = array();
+		foreach (
+			array(
+				'connection_profile'     => $auth['profile'] ?? $auth['provider_profile'] ?? '',
+				'role_default_profile'   => $auth['role_default_profile'] ?? '',
+				'global_default_profile' => $auth['global_default_profile'] ?? '',
+			) as $key => $value
+		) {
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				$context[ $key ] = (string) $value;
+			}
+		}
+
+		return $context;
 	}
 
 	/**

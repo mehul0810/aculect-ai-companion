@@ -94,9 +94,18 @@ The intelligence layer is divided into these context domains:
 - Site Intelligence: site identity, WordPress runtime, active theme, and connector context.
 - Site Editor Intelligence: active theme, Appearance > Editor availability, global settings/styles, templates, template parts, navigation, blocks, and patterns without theme-file writes.
 - Admin Menu Intelligence: visible admin menu pages, navigation targets, and registered setting metadata without raw option values.
+- Navigation Intelligence: active navigation mode plus read-only classic menu, classic location, and `wp_navigation` inventory with bounded Navigation block parsing and no serialized markup writes.
 - Content Intelligence: content types, taxonomies, registered block and pattern summaries, and generation constraints.
 - Developer Intelligence: safe implementation context for understanding the WordPress runtime and extension surfaces.
 - Brand Intelligence: saved and detected brand guidance for content, design, and media decisions.
+
+Internal-link intelligence is part of the MCP content workflow, not a dedicated
+WordPress admin destination. Assistants should read
+`content_internal_link_policy`, inspect existing health with
+`content_audit_internal_links` when needed, find candidates with
+`content_find_internal_links`, and only then move through the reviewed
+suggestion flow toward an apply call that still respects dry-run and
+confirmation safeguards.
 
 Block and pattern inspection helpers also live in this layer so assistant
 clients can understand the site's editable content surface without administrators
@@ -125,6 +134,28 @@ site health summaries, and plugin/theme inventory. New user-managed ability grou
 should stay deterministic, paginated where applicable, and capability-checked at
 execution time.
 
+`plugin_lifecycle.list_plugins` and `plugin_lifecycle.get_plugin` provide
+read-only installed-plugin lifecycle status: active/network-active state, cached
+update availability, recovery pause state, multisite context, and capability
+blockers. They must not install, update, activate, deactivate, delete,
+uninstall, edit, execute, or expose raw plugin code.
+
+`theme_lifecycle.list_themes` and `theme_lifecycle.get_theme` provide read-only
+installed-theme lifecycle status: active state, parent and child relationships,
+cached update availability, and block or classic or hybrid signals derived from
+safe WordPress core helpers. They must not install, update, switch, delete,
+edit, or expose filesystem paths, and they explicitly do not implement a
+standalone theme-deactivation action because WordPress switches themes instead.
+
+`navigation_get_context`, `navigation_list_menus`, `navigation_list_locations`,
+and `navigation_list_items` provide read-only navigation context and inventory.
+They cover classic menus and locations plus `wp_navigation` entities and bounded
+Navigation block inspection. This slice intentionally does not implement menu
+writes, location reassignment, `wp_navigation` mutation, theme-template edits,
+or raw serialized navigation string edits. Future writes must preserve
+unknown/custom blocks and attrs, validate parsed block structure before save,
+and fail closed with recovery guidance.
+
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`
@@ -147,6 +178,15 @@ site timezone, `YYYY-MM-DD HH:MM:SS`, or an ISO 8601 value with a timezone
 offset such as `2026-06-01T09:00:00+00:00`. Invalid or empty date values return
 a structured validation error instead of being silently converted by WordPress.
 Tool output includes both the stored local `date` and `date_gmt`.
+
+`content_update_block` provides a conservative targeted block-edit path for
+small text changes. Call `content_get_item` first and reuse a returned
+`block_locators[].path` value as the locator. The beta-1 slice supports
+plain-text replacement for registered `core/paragraph` and `core/heading`
+blocks, validates the reserialized block document, supports `dry_run`, and
+returns field-level diff metadata. Registered block attribute writes are
+deferred until a narrower allowlist can be tested against third-party block
+schemas.
 
 Media tools include `media_get_item` and `media_update_item` for reading and
 updating attachment title, alt text, caption, description, slug, and attachment

@@ -51,6 +51,7 @@ final class McpToolManifest {
 		$scopes               = $this->session_scopes( $session );
 		$operations_manifest  = ( new McpToolAvailability() )->operations_manifest_for_user( $this->current_user_id(), null, $scopes );
 		$wp_abilities_context = ( new WordPressAbilitiesDiagnostics() )->runtime_context();
+		$profile              = $this->profile_context( $session, $payload );
 
 		return array(
 			'generated_at'          => $generated_at,
@@ -58,6 +59,7 @@ final class McpToolManifest {
 			'metadata'              => $this->metadata_context( $payload, $initialize, $generated_at ),
 			'user'                  => $this->current_user_context(),
 			'session'               => $this->session_context( $session ),
+			'profile'               => $profile,
 			'summary'               => $this->summary( $payload, $initialize ),
 			'ability_policy'        => $this->ability_policy_context( $session ),
 			'operations_manifest'   => $operations_manifest,
@@ -356,7 +358,164 @@ final class McpToolManifest {
 			'resource'                 => esc_url_raw( (string) ( $session['resource'] ?? '' ) ),
 			'status'                   => sanitize_key( (string) ( $session['status'] ?? '' ) ),
 			'access_level'             => sanitize_key( (string) ( $session['access_level'] ?? '' ) ),
+			'profile'                  => sanitize_key( (string) ( $session['profile'] ?? $session['provider_profile'] ?? '' ) ),
 			'write_permission_enabled' => true === ( $session['write_permission_enabled'] ?? false ),
+		);
+	}
+
+	/**
+	 * Return profile-aware tool visibility diagnostics for an export.
+	 *
+	 * @param array<string, mixed> $session       Active connector session context.
+	 * @param array<string, mixed> $tools_payload Current MCP tools/list payload.
+	 * @return array<string, mixed>
+	 */
+	private function profile_context( array $session, array $tools_payload ): array {
+		$scopes       = $this->session_scopes( $session );
+		$profile_id   = $this->profile_id( $session, $scopes );
+		$profile      = $this->profile_definition( $profile_id );
+		$visible      = $this->tool_names_from_payload( $tools_payload );
+		$baseline     = $this->tool_names_from_payload( ( new McpController() )->tool_manifest_for_user( $this->current_user_id(), null ) );
+		$hidden       = array_values( array_diff( $baseline, $visible ) );
+		$hidden_by    = array();
+		$scope_aware  = null !== $scopes;
+		$registry     = new \Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry();
+		$active_scope = null === $scopes ? array() : $scopes;
+
+		foreach ( $hidden as $tool_name ) {
+			$ability_id      = $registry->internal_id( $tool_name );
+			$required_scopes = $registry->required_scopes( $ability_id );
+			$missing_scopes  = $scope_aware ? $this->missing_scopes( $required_scopes, $active_scope ) : array();
+			$hidden_by[]     = array(
+				'tool'            => $tool_name,
+				'ability_id'      => $ability_id,
+				'reason'          => array() === $missing_scopes ? 'profile_filtered' : 'oauth_scope',
+				'required_scopes' => array_values( $required_scopes ),
+				'missing_scopes'  => $missing_scopes,
+			);
+		}
+
+		return array(
+			'id'                => $profile_id,
+			'label'             => $profile['label'],
+			'description'       => $profile['description'],
+			'source'            => $this->profile_source( $session, $scopes ),
+			'scope_aware'       => $scope_aware,
+			'granted_scopes'    => $active_scope,
+			'visible_tools'     => $visible,
+			'visible_count'     => count( $visible ),
+			'hidden_tools'      => $hidden,
+			'hidden_count'      => count( $hidden ),
+			'hidden_by_profile' => $hidden_by,
+			'required_tools'    => $profile['required_tools'],
+		);
+	}
+
+	/**
+	 * Resolve the current diagnostics profile.
+	 *
+	 * @param array<string, mixed> $session Active connector session context.
+	 * @param list<string>|null    $scopes  Granted scopes.
+	 */
+	private function profile_id( array $session, ?array $scopes ): string {
+		$explicit = sanitize_key( (string) ( $session['profile'] ?? $session['provider_profile'] ?? '' ) );
+		if ( '' !== $explicit ) {
+			return $explicit;
+		}
+
+		if ( null === $scopes ) {
+			return 'unscoped';
+		}
+
+		return in_array( 'content:draft', $scopes, true ) ? 'content_management' : 'read_only_audit';
+	}
+
+	/**
+	 * Return how the diagnostics profile was selected.
+	 *
+	 * @param array<string, mixed> $session Active connector session context.
+	 * @param list<string>|null    $scopes  Granted scopes.
+	 */
+	private function profile_source( array $session, ?array $scopes ): string {
+		if ( '' !== sanitize_key( (string) ( $session['profile'] ?? $session['provider_profile'] ?? '' ) ) ) {
+			return 'session';
+		}
+
+		return null === $scopes ? 'default' : 'inferred_from_scopes';
+	}
+
+	/**
+	 * Return known provider/profile fixtures for diagnostics and tests.
+	 *
+	 * @param string $profile_id Profile ID.
+	 * @return array{label:string,description:string,required_tools:list<string>}
+	 */
+	private function profile_definition( string $profile_id ): array {
+		$profiles = array(
+			'read_only_audit'    => array(
+				'label'          => 'Read-only audit',
+				'description'    => 'Read-only discovery, diagnostics, retrieval, and site readiness workflows.',
+				'required_tools' => array( 'workflow_route_request', 'core_schema_discover', 'site_workflow_audit', 'workflow_guides_list', 'workflow_guides_get' ),
+			),
+			'content_management' => array(
+				'label'          => 'Content management',
+				'description'    => 'Content planning, draft creation, updates, media application, SEO, and review workflows.',
+				'required_tools' => array( 'workflow_route_request', 'content_workflow_prepare_post', 'content_workflow_create_draft', 'content_workflow_update_post', 'workflow_session_start' ),
+			),
+			'site_management'    => array(
+				'label'          => 'Site management',
+				'description'    => 'Site readiness, Site Editor, site navigation, admin navigation, and safe management discovery workflows.',
+				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'navigation_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
+			),
+			'unscoped'           => array(
+				'label'          => 'Unscoped diagnostics',
+				'description'    => 'Diagnostics generated without an active connector scope set.',
+				'required_tools' => array(),
+			),
+		);
+
+		return $profiles[ $profile_id ] ?? array(
+			'label'          => ucwords( str_replace( '_', ' ', $profile_id ) ),
+			'description'    => 'Custom connector profile supplied by the active session.',
+			'required_tools' => array(),
+		);
+	}
+
+	/**
+	 * Extract deterministic tool names from a tools/list payload.
+	 *
+	 * @param array<string, mixed> $payload MCP tools/list payload.
+	 * @return list<string>
+	 */
+	private function tool_names_from_payload( array $payload ): array {
+		$tools = isset( $payload['tools'] ) && is_array( $payload['tools'] ) ? $payload['tools'] : array();
+
+		return array_values(
+			array_filter(
+				array_map(
+					static fn ( mixed $tool ): string => is_array( $tool ) ? (string) ( $tool['name'] ?? '' ) : '',
+					$tools
+				),
+				static fn ( string $name ): bool => '' !== $name
+			)
+		);
+	}
+
+	/**
+	 * Return missing OAuth scopes for profile diagnostics.
+	 *
+	 * @param array $required Required scopes.
+	 * @param array $granted  Granted scopes.
+	 * @phpstan-param list<string> $required
+	 * @phpstan-param list<string> $granted
+	 * @return list<string>
+	 */
+	private function missing_scopes( array $required, array $granted ): array {
+		return array_values(
+			array_filter(
+				$required,
+				static fn ( string $scope ): bool => ! in_array( $scope, $granted, true )
+			)
 		);
 	}
 

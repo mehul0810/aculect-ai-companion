@@ -14,7 +14,49 @@ defined( 'ABSPATH' ) || exit;
  */
 final class LocalSampleData {
 
-	private const ENVIRONMENT_TYPE = 'local';
+	public const OPTION_FIRST_INSTALLED_AT = 'aculect_ai_companion_first_installed_at';
+
+	private const ENVIRONMENT_TYPE     = 'local';
+	private const HOUR_IN_SECONDS      = 3600;
+	private const DAY_IN_SECONDS       = 86400;
+	private const HISTORY_WINDOW       = 14 * self::DAY_IN_SECONDS;
+	private const ACTIVE_EXPIRY_WINDOW = 30 * self::DAY_IN_SECONDS;
+
+	private int $now_utc;
+
+	private int $installed_at;
+
+	public function __construct( ?int $now_utc = null, ?int $installed_at = null ) {
+		$this->now_utc      = max( 1, null !== $now_utc ? $now_utc : time() );
+		$this->installed_at = $this->resolve_installed_at( $installed_at );
+	}
+
+	/**
+	 * Persist and return the first-known install timestamp.
+	 *
+	 * @param int|null $timestamp Optional UTC timestamp to persist when missing.
+	 */
+	public static function ensure_first_installed_at( ?int $timestamp = null ): int {
+		$current = (int) get_option( self::OPTION_FIRST_INSTALLED_AT, 0 );
+		if ( $current > 0 ) {
+			return $current;
+		}
+
+		$timestamp = max( 1, null !== $timestamp ? $timestamp : time() );
+
+		if ( add_option( self::OPTION_FIRST_INSTALLED_AT, $timestamp, '', false ) ) {
+			return $timestamp;
+		}
+
+		$current = (int) get_option( self::OPTION_FIRST_INSTALLED_AT, 0 );
+		if ( $current > 0 ) {
+			return $current;
+		}
+
+		update_option( self::OPTION_FIRST_INSTALLED_AT, $timestamp, false );
+
+		return $timestamp;
+	}
 
 	/**
 	 * Determine whether local sample data may be shown.
@@ -22,22 +64,6 @@ final class LocalSampleData {
 	public function is_enabled(): bool {
 		return function_exists( 'wp_get_environment_type' )
 			&& self::ENVIRONMENT_TYPE === wp_get_environment_type();
-	}
-
-	/**
-	 * Return the local sample connection count for listing tabs with no real rows.
-	 *
-	 * @param int    $count       Real active connection count.
-	 * @param string $payload_tab Hydrated payload tab.
-	 */
-	public function active_session_count( int $count, string $payload_tab ): int {
-		if ( ! $this->is_enabled() || $count > 0 ) {
-			return $count;
-		}
-
-		return in_array( $payload_tab, array( 'connections', 'abilities' ), true )
-			? count( $this->active_sessions() )
-			: $count;
 	}
 
 	/**
@@ -156,45 +182,58 @@ final class LocalSampleData {
 	 * @return list<array<string, mixed>>
 	 */
 	private function active_sessions(): array {
+		$history_start = $this->history_start_timestamp();
+		$created_at    = array(
+			$this->bounded_timestamp( $history_start, $this->installed_at, $this->now_utc - ( 8 * self::HOUR_IN_SECONDS ) ),
+			$this->bounded_timestamp( $history_start + ( 3 * self::HOUR_IN_SECONDS ), $this->installed_at, $this->now_utc - ( 6 * self::HOUR_IN_SECONDS ) ),
+			$this->bounded_timestamp( $history_start + ( 7 * self::HOUR_IN_SECONDS ), $this->installed_at, $this->now_utc - ( 4 * self::HOUR_IN_SECONDS ) ),
+		);
+
 		return array(
 			$this->session(
-				9001,
+				'sample-session-chatgpt',
 				'local-chatgpt-demo',
 				'ChatGPT Local QA',
 				'chatgpt',
+				1,
 				'Local Administrator',
 				array( 'Administrator' ),
 				array( 'content:read', 'content:draft' ),
 				true,
 				ConnectionAccessLevel::WRITE,
-				'2026-06-03 09:25:00',
-				'2026-07-03 09:25:00'
+				$created_at[0],
+				$this->bounded_timestamp( $created_at[0] + ( 2 * self::DAY_IN_SECONDS ), $created_at[0], $this->now_utc - 5400 ),
+				$this->future_expiry_timestamp( $created_at[0] )
 			),
 			$this->session(
-				9002,
+				'sample-session-claude',
 				'local-claude-demo',
 				'Claude Content Review',
 				'claude',
+				2,
 				'Editorial Lead',
 				array( 'Editor' ),
 				array( 'content:read' ),
 				false,
 				ConnectionAccessLevel::READ,
-				'2026-06-03 08:40:00',
-				'2026-07-03 08:40:00'
+				$created_at[1],
+				$this->bounded_timestamp( $created_at[1] + self::DAY_IN_SECONDS, $created_at[1], $this->now_utc - 3600 ),
+				$this->future_expiry_timestamp( $created_at[1] + self::HOUR_IN_SECONDS )
 			),
 			$this->session(
-				9003,
+				'sample-session-codex',
 				'local-codex-demo',
 				'Codex Release Helper',
 				'codex',
+				3,
 				'Developer Admin',
 				array( 'Administrator', 'Editor' ),
 				array( 'content:read', 'content:draft' ),
 				true,
 				ConnectionAccessLevel::WRITE,
-				'2026-06-02 18:12:00',
-				'2026-07-02 18:12:00'
+				$created_at[2],
+				$this->bounded_timestamp( $created_at[2] + ( 12 * self::HOUR_IN_SECONDS ), $created_at[2], $this->now_utc - 1800 ),
+				$this->future_expiry_timestamp( $created_at[2] + ( 2 * self::HOUR_IN_SECONDS ) )
 			),
 		);
 	}
@@ -205,18 +244,36 @@ final class LocalSampleData {
 	 * @return list<array<string, mixed>>
 	 */
 	private function revoked_sessions(): array {
+		$created_at   = $this->bounded_timestamp(
+			$this->history_start_timestamp() - ( 4 * self::HOUR_IN_SECONDS ),
+			$this->installed_at,
+			$this->now_utc - ( 10 * self::HOUR_IN_SECONDS )
+		);
+		$last_used_at = $this->bounded_timestamp(
+			$created_at + ( 6 * self::HOUR_IN_SECONDS ),
+			$created_at,
+			$this->now_utc - ( 5 * self::HOUR_IN_SECONDS )
+		);
+		$expires_at   = $this->bounded_timestamp(
+			$last_used_at + ( 6 * self::HOUR_IN_SECONDS ),
+			$last_used_at,
+			$this->now_utc - self::HOUR_IN_SECONDS
+		);
+
 		$session = $this->session(
-			9090,
+			'sample-session-revoked',
 			'local-revoked-demo',
 			'Retired Test Assistant',
 			'chatgpt',
+			4,
 			'Former Reviewer',
 			array( 'Author' ),
 			array( 'content:read' ),
 			false,
 			ConnectionAccessLevel::READ,
-			'2026-05-30 11:05:00',
-			'2026-06-01 11:05:00'
+			$created_at,
+			$last_used_at,
+			$expires_at
 		);
 
 		$session['status'] = 'revoked';
@@ -227,50 +284,55 @@ final class LocalSampleData {
 	/**
 	 * Build one connector session sample.
 	 *
-	 * @param int    $id                       Sample row ID.
+	 * @param string $id                       Sample row ID.
 	 * @param string $client_id                OAuth client ID.
 	 * @param string $client_name              Client display name.
 	 * @param string $provider                 Provider key.
+	 * @param int    $user_id                  WordPress user ID.
 	 * @param string $user                     User display name.
 	 * @param array  $roles                    User roles.
 	 * @param array  $scopes                   Granted scopes.
 	 * @param bool   $write_permission_enabled Direct write permission flag.
 	 * @param string $access_level             Access level.
-	 * @param string $last_used_at             Last activity date.
-	 * @param string $expires_at               Connection expiry date.
+	 * @param int    $created_at               Created timestamp.
+	 * @param int    $last_used_at             Last activity timestamp.
+	 * @param int    $expires_at               Expiry timestamp.
 	 * @phpstan-param list<string> $roles
 	 * @phpstan-param list<string> $scopes
 	 * @return array<string, mixed>
 	 */
 	private function session(
-		int $id,
+		string $id,
 		string $client_id,
 		string $client_name,
 		string $provider,
+		int $user_id,
 		string $user,
 		array $roles,
 		array $scopes,
 		bool $write_permission_enabled,
 		string $access_level,
-		string $last_used_at,
-		string $expires_at
+		int $created_at,
+		int $last_used_at,
+		int $expires_at
 	): array {
 		return array(
 			'id'                       => $id,
 			'client_id'                => $client_id,
 			'client_name'              => $client_name,
 			'provider'                 => $provider,
-			'user_id'                  => $id - 9000,
+			'user_id'                  => $user_id,
 			'user'                     => $user,
 			'user_roles'               => $roles,
 			'scopes'                   => $scopes,
 			'resource'                 => Helpers::mcp_resource(),
 			'status'                   => 'active',
-			'created_at'               => '2026-05-28 10:00:00',
-			'last_used_at'             => $last_used_at,
-			'expires_at'               => $expires_at,
+			'created_at'               => $this->format_datetime( $created_at ),
+			'last_used_at'             => $this->format_datetime( $last_used_at ),
+			'expires_at'               => $this->format_datetime( $expires_at ),
 			'write_permission_enabled' => $write_permission_enabled,
 			'access_level'             => ConnectionAccessLevel::normalize( $access_level ),
+			'is_sample'                => true,
 		);
 	}
 
@@ -304,18 +366,19 @@ final class LocalSampleData {
 	 */
 	private function activity_items(): array {
 		return array(
-			$this->activity_item( 9101, 'chatgpt', 'ChatGPT Local QA', 'Local Administrator', 1, 'content.update_item', 'post', 42, 'success', '', 'Updated draft metadata.', array( 'risk_level' => 'publish' ) ),
-			$this->activity_item( 9102, 'claude', 'Claude Content Review', 'Editorial Lead', 2, 'comment.reply', 'comment', 118, 'success', '', 'Prepared a reply for moderation.', array( 'risk_level' => 'moderate' ) ),
-			$this->activity_item( 9103, 'codex', 'Codex Release Helper', 'Developer Admin', 3, 'media.upload', 'attachment', 77, 'success', '', 'Uploaded a placeholder image.', array( 'risk_level' => 'write' ) ),
-			$this->activity_item( 9104, 'chatgpt', 'ChatGPT Local QA', 'Local Administrator', 1, 'taxonomy.assign_terms', 'term', 12, 'success', '', 'Assigned editorial categories.', array( 'risk_level' => 'write' ) ),
-			$this->activity_item( 9105, 'claude', 'Claude Content Review', 'Editorial Lead', 2, 'content.publish_item', 'post', 43, 'error', 'capability_denied', 'WordPress denied publishing for this user.', array( 'risk_level' => 'publish' ) ),
+			$this->activity_item( 'sample-activity-1', 0, 'chatgpt', 'ChatGPT Local QA', 'Local Administrator', 1, 'content.update_item', 'post', 42, 'success', '', 'Updated draft metadata.', array( 'risk_level' => 'publish' ) ),
+			$this->activity_item( 'sample-activity-2', 1, 'claude', 'Claude Content Review', 'Editorial Lead', 2, 'comment.reply', 'comment', 118, 'success', '', 'Prepared a reply for moderation.', array( 'risk_level' => 'moderate' ) ),
+			$this->activity_item( 'sample-activity-3', 2, 'codex', 'Codex Release Helper', 'Developer Admin', 3, 'media.upload', 'attachment', 77, 'success', '', 'Uploaded a placeholder image.', array( 'risk_level' => 'write' ) ),
+			$this->activity_item( 'sample-activity-4', 3, 'chatgpt', 'ChatGPT Local QA', 'Local Administrator', 1, 'taxonomy.assign_terms', 'term', 12, 'success', '', 'Assigned editorial categories.', array( 'risk_level' => 'write' ) ),
+			$this->activity_item( 'sample-activity-5', 4, 'claude', 'Claude Content Review', 'Editorial Lead', 2, 'content.publish_item', 'post', 43, 'error', 'capability_denied', 'WordPress denied publishing for this user.', array( 'risk_level' => 'publish' ) ),
 		);
 	}
 
 	/**
 	 * Build one sample activity row.
 	 *
-	 * @param int                  $id          Row ID.
+	 * @param string               $id          Row ID.
+	 * @param int                  $sequence    Row sequence.
 	 * @param string               $provider    Provider key.
 	 * @param string               $client_name Client display name.
 	 * @param string               $user        User display name.
@@ -330,7 +393,8 @@ final class LocalSampleData {
 	 * @return array<string, mixed>
 	 */
 	private function activity_item(
-		int $id,
+		string $id,
+		int $sequence,
 		string $provider,
 		string $client_name,
 		string $user,
@@ -345,7 +409,13 @@ final class LocalSampleData {
 	): array {
 		return array(
 			'id'          => $id,
-			'created_at'  => gmdate( 'Y-m-d H:i:s', strtotime( '2026-06-03 09:30:00' ) - ( ( $id - 9101 ) * 2700 ) ),
+			'created_at'  => $this->format_datetime(
+				$this->bounded_timestamp(
+					$this->now_utc - ( 1800 + ( $sequence * 2700 ) ),
+					$this->installed_at,
+					$this->now_utc
+				)
+			),
 			'provider'    => $provider,
 			'client_id'   => 'sample-' . $provider,
 			'client_name' => $client_name,
@@ -359,6 +429,7 @@ final class LocalSampleData {
 			'message'     => $message,
 			'context'     => $context,
 			'risk_level'  => (string) ( $context['risk_level'] ?? '' ),
+			'is_sample'   => true,
 		);
 	}
 
@@ -440,10 +511,10 @@ final class LocalSampleData {
 	 */
 	private function logs_payload(): array {
 		$items = array(
-			$this->log_item( 9201, 'info', 'oauth.registered', 'chatgpt', 'POST', '/wp-json/aculect-ai-companion/v1/oauth/register', 201, '', 'Registered a local sample OAuth client.', array( 'client_id' => 'local-chatgpt-demo' ) ),
-			$this->log_item( 9202, 'warning', 'mcp.challenge_checked', 'claude', 'GET', '/wp-json/aculect-ai-companion/v1/mcp', 401, '', 'Connection URL returned an OAuth challenge.', array( 'expected' => 'bearer' ) ),
-			$this->log_item( 9203, 'error', 'mcp.tool_denied', 'claude', 'POST', '/wp-json/aculect-ai-companion/v1/mcp', 403, 'capability_denied', 'A sample write action was blocked by WordPress capabilities.', array( 'tool' => 'content.publish_item' ) ),
-			$this->log_item( 9204, 'info', 'oauth.token_refreshed', 'codex', 'POST', '/wp-json/aculect-ai-companion/v1/oauth/token', 200, '', 'Refreshed a local sample access token.', array( 'rotation' => 'refresh_token' ) ),
+			$this->log_item( 'sample-log-1', 0, 'info', 'oauth.registered', 'chatgpt', 'POST', '/wp-json/aculect-ai-companion/v1/oauth/register', 201, '', 'Registered a local sample OAuth client.', array( 'client_id' => 'local-chatgpt-demo' ) ),
+			$this->log_item( 'sample-log-2', 1, 'warning', 'mcp.challenge_checked', 'claude', 'GET', '/wp-json/aculect-ai-companion/v1/mcp', 401, '', 'Connection URL returned an OAuth challenge.', array( 'expected' => 'bearer' ) ),
+			$this->log_item( 'sample-log-3', 2, 'error', 'mcp.tool_denied', 'claude', 'POST', '/wp-json/aculect-ai-companion/v1/mcp', 403, 'capability_denied', 'A sample write action was blocked by WordPress capabilities.', array( 'tool' => 'content.publish_item' ) ),
+			$this->log_item( 'sample-log-4', 3, 'info', 'oauth.token_refreshed', 'codex', 'POST', '/wp-json/aculect-ai-companion/v1/oauth/token', 200, '', 'Refreshed a local sample access token.', array( 'rotation' => 'refresh_token' ) ),
 		);
 
 		return array(
@@ -466,6 +537,7 @@ final class LocalSampleData {
 		$items = array(
 			$this->learning_suggestion(
 				'learn_local_brand',
+				0,
 				'brand',
 				'The generated homepage copy sounded more casual than the saved brand profile.',
 				'Prioritize concise, enterprise-oriented language before making tone inferences.',
@@ -478,6 +550,7 @@ final class LocalSampleData {
 			),
 			$this->learning_suggestion(
 				'learn_local_content',
+				1,
 				'content',
 				'The assistant asked for custom HTML even though block markup is required.',
 				'Remind clients to use registered blocks, patterns, and validation before writing content.',
@@ -490,6 +563,7 @@ final class LocalSampleData {
 			),
 			$this->learning_suggestion(
 				'learn_local_developer',
+				2,
 				'developer',
 				'Runtime context did not mention that commands should not run from MCP.',
 				'Clarify that developer intelligence is read-only implementation context and not command execution.',
@@ -517,6 +591,7 @@ final class LocalSampleData {
 	 * Build one local learning suggestion row.
 	 *
 	 * @param string $id               Suggestion ID.
+	 * @param int    $sequence         Row sequence.
 	 * @param string $domain           Intelligence domain.
 	 * @param string $issue            Suggestion issue.
 	 * @param string $suggested_update Suggested improvement.
@@ -530,6 +605,7 @@ final class LocalSampleData {
 	 */
 	private function learning_suggestion(
 		string $id,
+		int $sequence,
 		string $domain,
 		string $issue,
 		string $suggested_update,
@@ -540,6 +616,17 @@ final class LocalSampleData {
 		string $provider,
 		int $user_id
 	): array {
+		$created_at = $this->bounded_timestamp(
+			$this->now_utc - ( ( 4 + $sequence ) * self::HOUR_IN_SECONDS ),
+			$this->installed_at,
+			$this->now_utc
+		);
+		$updated_at = $this->bounded_timestamp(
+			$created_at + ( 20 * 60 ),
+			$created_at,
+			$this->now_utc
+		);
+
 		return array(
 			'id'               => $id,
 			'domain'           => $domain,
@@ -548,8 +635,8 @@ final class LocalSampleData {
 			'suggested_update' => $suggested_update,
 			'confidence'       => $confidence,
 			'status'           => $status,
-			'created_at'       => '2026-06-03T09:00:00Z',
-			'updated_at'       => '2026-06-03T09:20:00Z',
+			'created_at'       => $this->format_iso8601( $created_at ),
+			'updated_at'       => $this->format_iso8601( $updated_at ),
 			'review_note'      => '',
 			'source'           => array(
 				'provider'    => $provider,
@@ -557,13 +644,15 @@ final class LocalSampleData {
 				'client_name' => $client_name,
 				'user_id'     => $user_id,
 			),
+			'is_sample'        => true,
 		);
 	}
 
 	/**
 	 * Build one sample diagnostic log row.
 	 *
-	 * @param int                  $id             Row ID.
+	 * @param string               $id             Row ID.
+	 * @param int                  $sequence       Row sequence.
 	 * @param string               $level          Log level.
 	 * @param string               $event          Event name.
 	 * @param string               $provider       Provider key.
@@ -576,7 +665,8 @@ final class LocalSampleData {
 	 * @return array<string, mixed>
 	 */
 	private function log_item(
-		int $id,
+		string $id,
+		int $sequence,
 		string $level,
 		string $event,
 		string $provider,
@@ -589,7 +679,13 @@ final class LocalSampleData {
 	): array {
 		return array(
 			'id'             => $id,
-			'created_at'     => gmdate( 'Y-m-d H:i:s', strtotime( '2026-06-03 09:20:00' ) - ( ( $id - 9201 ) * 1800 ) ),
+			'created_at'     => $this->format_datetime(
+				$this->bounded_timestamp(
+					$this->now_utc - ( 1200 + ( $sequence * 1800 ) ),
+					$this->installed_at,
+					$this->now_utc
+				)
+			),
 			'level'          => $level,
 			'event'          => $event,
 			'provider'       => $provider,
@@ -599,6 +695,7 @@ final class LocalSampleData {
 			'error_code'     => $error_code,
 			'message'        => $message,
 			'context'        => $context,
+			'is_sample'      => true,
 		);
 	}
 
@@ -609,7 +706,13 @@ final class LocalSampleData {
 	 */
 	private function connection_health_payload(): array {
 		return array(
-			'ranAt'   => '2026-06-03 09:35:00',
+			'ranAt'   => $this->format_datetime(
+				$this->bounded_timestamp(
+					$this->now_utc - 900,
+					$this->installed_at,
+					$this->now_utc
+				)
+			),
 			'summary' => 'warn',
 			'items'   => array(
 				$this->health_item( 'https_url', 'pass', 'Connection URL uses HTTPS.', 'No action needed.', array( 'host' => wp_parse_url( Helpers::mcp_resource(), PHP_URL_HOST ) ) ),
@@ -655,6 +758,7 @@ final class LocalSampleData {
 			'message'     => $message,
 			'remediation' => $remediation,
 			'details'     => $details,
+			'is_sample'   => true,
 		);
 	}
 
@@ -671,7 +775,41 @@ final class LocalSampleData {
 			'environmentType' => self::ENVIRONMENT_TYPE,
 			'tabs'            => array( 'connections', 'abilities', 'activity', 'learning', 'diagnostics', 'logs' ),
 			'appliedTabs'     => array_values( array_unique( $applied_tabs ) ),
-			'message'         => __( 'Local sample data is available because WP_ENVIRONMENT_TYPE is local. Empty listing views can show non-persistent sample rows.', 'aculect-ai-companion' ),
+			'message'         => __( 'Preview data - these are examples, not real connections or activity.', 'aculect-ai-companion' ),
 		);
+	}
+
+	private function resolve_installed_at( ?int $installed_at ): int {
+		$installed_at = null !== $installed_at ? $installed_at : self::ensure_first_installed_at( $this->now_utc );
+
+		if ( $installed_at <= 0 ) {
+			return $this->now_utc;
+		}
+
+		return min( $installed_at, $this->now_utc );
+	}
+
+	private function history_start_timestamp(): int {
+		return max( $this->installed_at, $this->now_utc - self::HISTORY_WINDOW );
+	}
+
+	private function future_expiry_timestamp( int $anchor_timestamp ): int {
+		return max( $anchor_timestamp, $this->now_utc ) + self::ACTIVE_EXPIRY_WINDOW;
+	}
+
+	private function bounded_timestamp( int $preferred, int $minimum, int $maximum ): int {
+		if ( $maximum < $minimum ) {
+			$maximum = $minimum;
+		}
+
+		return max( $minimum, min( $preferred, $maximum ) );
+	}
+
+	private function format_datetime( int $timestamp ): string {
+		return gmdate( 'Y-m-d H:i:s', $timestamp );
+	}
+
+	private function format_iso8601( int $timestamp ): string {
+		return gmdate( 'Y-m-d\TH:i:s\Z', $timestamp );
 	}
 }

@@ -60,6 +60,46 @@ final class AbilitiesRegistryTest extends TestCase {
 		}
 	}
 
+	public function test_core_default_definitions_are_default_active_and_not_user_configurable(): void {
+		$core_defaults = $this->registry->core_default_public_definitions();
+		$by_id         = array_column( $core_defaults, null, 'id' );
+
+		self::assertNotEmpty( $core_defaults );
+		self::assertArrayHasKey( 'workflow.route_request', $by_id );
+		self::assertArrayHasKey( 'core_schema.discover', $by_id );
+		self::assertArrayHasKey( 'site_editor.get_context', $by_id );
+		self::assertArrayHasKey( 'site_structure.list_reusable_blocks', $by_id );
+		self::assertArrayHasKey( 'site_structure.list_block_areas', $by_id );
+		self::assertArrayHasKey( 'users.current_access', $by_id );
+		self::assertArrayHasKey( 'users.roles_summary', $by_id );
+		self::assertArrayHasKey( 'admin_menu.get_context', $by_id );
+		self::assertArrayHasKey( 'navigation.get_context', $by_id );
+		self::assertArrayHasKey( 'search', $by_id );
+		self::assertArrayHasKey( 'content_revisions.list', $by_id );
+		self::assertArrayHasKey( 'content_autosaves.inspect', $by_id );
+		self::assertArrayNotHasKey( 'content.update_item', $by_id );
+		self::assertArrayNotHasKey( 'users.list_safe', $by_id );
+		self::assertTrue( $by_id['search']['enabled'] );
+		self::assertTrue( $by_id['search']['coreDefault'] );
+		self::assertFalse( $by_id['search']['configurable'] );
+		self::assertSame( 'read-only', $by_id['search']['riskLevel'] );
+		self::assertTrue( $this->registry->is_core_default( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_core_default( 'site_editor.get_context' ) );
+		self::assertFalse( $this->registry->is_core_default( 'memory.save' ) );
+
+		$public_by_id = array_column( $this->registry->public_definitions(), null, 'id' );
+		foreach ( array_keys( $by_id ) as $ability_id ) {
+			self::assertArrayNotHasKey( $ability_id, $public_by_id );
+		}
+
+		$this->registry->save_enabled_ids( array( 'content.update_item' ) );
+
+		self::assertSame( array( 'content.update_item' ), $this->registry->enabled_ids() );
+		self::assertContains( 'search', $this->registry->policy_enabled_ids() );
+		self::assertContains( 'content.update_item', $this->registry->policy_enabled_ids() );
+		self::assertTrue( $this->registry->is_enabled( 'search' ) );
+	}
+
 	public function test_public_definitions_surface_practical_permission_groups_and_risk(): void {
 		$definitions = $this->registry->public_definitions();
 		$groups      = array_values(
@@ -76,11 +116,16 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertContains( 'Comments', $groups );
 		self::assertContains( 'Media', $groups );
 		self::assertContains( 'Site Information', $groups );
+		self::assertContains( 'Plugin Lifecycle', $groups );
+		self::assertContains( 'Theme Lifecycle', $groups );
+		self::assertContains( 'User Access', $groups );
 		self::assertContains( 'WordPress Actions', $groups );
 		self::assertNotContains( 'Content Workflows', $groups );
 		self::assertNotContains( 'SEO Workflows', $groups );
 		self::assertNotContains( 'Site Workflows', $groups );
 		self::assertNotContains( 'Site Editor Intelligence', $groups );
+		self::assertNotContains( 'Site Structure Discovery', $groups );
+		self::assertNotContains( 'User Access Discovery', $groups );
 		self::assertNotContains( 'Admin Menu Intelligence', $groups );
 		self::assertNotContains( 'Workflow Guides', $groups );
 		self::assertNotContains( 'Brand', $groups );
@@ -94,8 +139,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $by_id['content.update_item']['changesSite'] );
 		self::assertArrayNotHasKey( 'content_search.items', $by_id );
 		self::assertArrayNotHasKey( 'content_search.chunks', $by_id );
+		self::assertArrayNotHasKey( 'content_internal_link.policy', $by_id );
 		self::assertArrayNotHasKey( 'content_find.internal_links', $by_id );
 		self::assertArrayNotHasKey( 'content_audit.internal_links', $by_id );
+		self::assertArrayNotHasKey( 'content_revisions.list', $by_id );
+		self::assertArrayNotHasKey( 'content_autosaves.inspect', $by_id );
+		self::assertArrayNotHasKey( 'users.current_access', $by_id );
+		self::assertArrayNotHasKey( 'users.roles_summary', $by_id );
+		self::assertArrayHasKey( 'users.list_safe', $by_id );
 		self::assertArrayNotHasKey( 'search', $by_id );
 		self::assertArrayNotHasKey( 'fetch', $by_id );
 		self::assertArrayNotHasKey( 'workflow_guides.list', $by_id );
@@ -111,6 +162,7 @@ final class AbilitiesRegistryTest extends TestCase {
 		foreach (
 			array(
 				'workflow.route_request',
+				'core_schema.discover',
 				'workflow_session.start',
 				'workflow_session.get',
 				'workflow_session.update',
@@ -139,26 +191,50 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site_editor.get_template',
 				'site_editor.list_template_parts',
 				'site_editor.get_template_part',
+				'site_structure.list_reusable_blocks',
+				'site_structure.list_block_areas',
+				'users.current_access',
+				'users.roles_summary',
+				'users.list_safe',
 				'admin_menu.get_context',
 				'admin_menu.refresh_context',
 				'admin_menu.list_pages',
 				'admin_menu.get_navigation_target',
 				'admin_menu.list_settings',
+				'navigation.get_context',
+				'navigation.list_menus',
+				'navigation.list_locations',
+				'navigation.list_items',
 				'workflow_guides.list',
 				'workflow_guides.get',
 				'content_index.refresh_batch',
 				'content_search.items',
 				'content_search.chunks',
 				'content_find.related',
+				'content_internal_link.policy',
 				'content_find.internal_links',
 				'content_audit.internal_links',
+				'content_internal_link.suggestions_create',
+				'content_internal_link.suggestions_list',
+				'content_internal_link.suggestion_review',
+				'content_internal_link.suggestion_apply',
+				'content_revisions.list',
+				'content_autosaves.inspect',
 				'memory.list',
 				'memory.save',
 				'memory.bootstrap',
 				'content_batch.status',
 				'site.get_info',
 				'site.get_health',
+				'site.maintenance_report',
 				'site.list_plugins',
+				'plugin_lifecycle.list_plugins',
+				'plugin_lifecycle.get_plugin',
+				'plugin_lifecycle.activate_plugin',
+				'plugin_lifecycle.deactivate_plugin',
+				'theme_lifecycle.list_themes',
+				'theme_lifecycle.get_theme',
+				'theme_lifecycle.switch_theme',
 				'site.list_themes',
 			) as $ability_id
 		) {
@@ -175,22 +251,33 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );
 		self::assertFalse( $this->registry->is_derived_workflow( 'content.create_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_search_chunks' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_internal_link_policy' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestions_create' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_internal_link_suggestions_list' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestion_review' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_internal_link_suggestion_apply' ) );
 		self::assertSame( 'search', $this->registry->tool_name( 'search' ) );
 		self::assertSame( 'fetch', $this->registry->tool_name( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'search' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'fetch' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_audit_internal_links' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_revisions_list' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_autosaves.inspect' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'search' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'fetch' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.policy' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_audit.internal_links' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_internal_link.suggestions_list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides.list' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_guides_get' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_route_request' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'core_schema_discover' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_start' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'workflow_session_get' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'workflow_session_update' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'mcp_learning_inspect_activity' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_route_request' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'core_schema.discover' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_start' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'workflow_session_get' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'workflow_session_update' ) );
@@ -200,21 +287,42 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_editor.list_templates' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'site_editor.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure.list_reusable_blocks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'site_structure_list_block_areas' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site_structure.list_reusable_blocks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.current_access' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'users.roles_summary' ) );
+		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'users.list_safe' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'users.current_access' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'navigation.list_items' ) );
+		self::assertArrayHasKey( 'per_page', $this->registry->input_schema( 'users_list_safe' )['properties'] );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_context' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'admin_menu.get_navigation_target' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'admin_menu.refresh_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation.get_context' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'navigation_list_items' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_search_chunks' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_revisions.list' ) );
+		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'content_autosaves_inspect' ) );
 		self::assertTrue( $this->registry->is_always_on_read_intelligence( 'memory.list' ) );
 		self::assertFalse( $this->registry->is_always_on_read_intelligence( 'memory.save' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.save' ) );
 		self::assertTrue( $this->registry->is_always_on_write_intelligence( 'memory.bootstrap' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_save' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'memory_bootstrap' ) );
+		self::assertArrayHasKey( 'include_preview', $this->registry->input_schema( 'site_structure_list_reusable_blocks' )['properties'] );
 		self::assertSame( array( 'content.create_item' ), $this->registry->dependency_ids( 'content_workflow_create_draft' ) );
 		self::assertSame( array( 'content.update_seo' ), $this->registry->dependency_ids( 'seo_workflow_update_rankmath' ) );
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.activate_plugin' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_deactivate_plugin' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
+		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle.switch_theme' ) );
 		self::assertArrayNotHasKey( 'brand.get_profile', $definitions );
 		self::assertArrayNotHasKey( 'blocks.list_available', $definitions );
 		self::assertArrayNotHasKey( 'patterns.get_info', $definitions );
@@ -254,6 +362,21 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertStringContainsString( 'never use the Custom HTML block', $schema['properties']['content']['description'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_item' ) );
 		self::assertFalse( $this->registry->is_read_only( 'content_update_item' ) );
+
+		$block_schema = $this->registry->input_schema( 'content.update_block' );
+		self::assertArrayHasKey( 'dry_run', $block_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $block_schema['properties'] );
+		self::assertSame( array( 'id', 'locator' ), $block_schema['required'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_update_block' ) );
+		self::assertFalse( $this->registry->is_read_only( 'content_update_block' ) );
+
+		$theme_schema = $this->registry->input_schema( 'theme_lifecycle.switch_theme' );
+		self::assertArrayHasKey( 'stylesheet', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $theme_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $theme_schema['properties'] );
+		self::assertSame( array( 'stylesheet' ), $theme_schema['required'] );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle_switch_theme' ) );
+		self::assertFalse( $this->registry->is_read_only( 'theme_lifecycle_switch_theme' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {

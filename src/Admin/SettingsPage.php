@@ -39,6 +39,7 @@ defined( 'ABSPATH' ) || exit;
 final class SettingsPage {
 
 	private const PAGE_SLUG            = 'aculect-ai-companion';
+	private const OAUTH_CONSENT_SLUG   = 'aculect-ai-companion-oauth-consent';
 	private const SETTINGS_PARENT_FILE = 'options-general.php';
 	private const ASSET_HANDLE         = 'aculect-ai-companion-settings-app';
 	private const STYLE_HANDLE         = 'aculect-ai-companion-settings-style';
@@ -80,6 +81,14 @@ final class SettingsPage {
 			__( 'AI Companion', 'aculect-ai-companion' ),
 			'manage_options',
 			self::PAGE_SLUG,
+			array( $this, 'render' )
+		);
+		add_submenu_page(
+			'',
+			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
+			__( 'Aculect AI Companion OAuth Consent', 'aculect-ai-companion' ),
+			'read',
+			self::OAUTH_CONSENT_SLUG,
 			array( $this, 'render' )
 		);
 
@@ -132,13 +141,13 @@ final class SettingsPage {
 	 * Render the settings page shell or the OAuth consent screen.
 	 */
 	public function render(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
-		}
-
 		if ( $this->is_oauth_consent_view() ) {
 			( new AuthorizationController() )->render_admin_consent();
 			return;
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
 		}
 
 		echo '<div class="wrap aculect-ai-companion-settings-wrap"><div id="aculect-ai-companion-settings-app-root" class="aculect-ai-companion-settings-app-root"></div></div>';
@@ -204,10 +213,10 @@ final class SettingsPage {
 		$sample_data      = new LocalSampleData();
 		$access_tokens->revoke_superseded_active_sessions();
 		$real_session_count   = $access_tokens->active_token_count();
-		$active_session_count = $sample_data->active_session_count( $real_session_count, $payload_tab );
+		$active_session_count = $real_session_count;
 
 		$payload = array_merge(
-			$this->base_payload( $payload_tab, $active_session_count ),
+			$this->base_payload( $payload_tab, $active_session_count, $access_tokens ),
 			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
@@ -222,11 +231,12 @@ final class SettingsPage {
 	/**
 	 * Return shared settings data that is cheap enough for every tab.
 	 *
-	 * @param string $payload_tab          Normalized payload tab.
-	 * @param int    $active_session_count Active OAuth session count.
+	 * @param string                $payload_tab          Normalized payload tab.
+	 * @param int                   $active_session_count Active OAuth session count.
+	 * @param AccessTokenRepository $access_tokens Access token repository.
 	 * @return array<string, mixed>
 	 */
-	private function base_payload( string $payload_tab, int $active_session_count ): array {
+	private function base_payload( string $payload_tab, int $active_session_count, AccessTokenRepository $access_tokens ): array {
 		return array(
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
@@ -244,6 +254,7 @@ final class SettingsPage {
 			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
+			'connectSessions'    => $access_tokens->list_active_sessions(),
 			'accessPaused'       => AccessLockdown::is_paused(),
 			'currentUserId'      => get_current_user_id(),
 			'mcpUrl'             => Helpers::mcp_resource(),
@@ -349,6 +360,7 @@ final class SettingsPage {
 			$tool_safety                 = new ToolSafety();
 			self::$ability_payload_cache = array(
 				'abilities'                => $ability_registry->public_definitions(),
+				'coreDefaultAbilities'     => $ability_registry->core_default_public_definitions(),
 				'enabledAbilities'         => $ability_registry->enabled_ids(),
 				'wpAbilities'              => $wp_abilities->public_definitions(),
 				'enabledWpAbilities'       => $wp_abilities->allowed_ids(),
@@ -706,9 +718,7 @@ final class SettingsPage {
 			);
 		}
 
-		$json = wp_json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-		echo is_string( $json ) ? $json : '{}'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON is encoded immediately above.
-		exit;
+		wp_send_json( $manifest, null, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
 	}
 
 	/**
@@ -1819,7 +1829,7 @@ final class SettingsPage {
 	 */
 	private function is_oauth_consent_view(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing flag for the settings page.
-		return isset( $_GET['view'] ) && 'oauth-consent' === sanitize_key( wp_unslash( (string) $_GET['view'] ) );
+		return isset( $_GET['page'] ) && self::OAUTH_CONSENT_SLUG === sanitize_key( wp_unslash( (string) $_GET['page'] ) );
 	}
 
 	/**

@@ -3796,10 +3796,6 @@ td:first-child
 	min-width: 980px;
 }
 
-.aculect-ai-companion-data-view--activity .dataviews-view-table td {
-	vertical-align: top;
-}
-
 .aculect-ai-companion-data-view--activity .dataviews-view-list {
 	padding: 0 16px 16px;
 }
@@ -4177,6 +4173,10 @@ td:first-child
 .aculect-ai-companion-log-table td,
 .aculect-ai-companion-health-table th,
 .aculect-ai-companion-health-table td {
+	vertical-align: top;
+}
+
+.aculect-ai-companion-data-view--activity .dataviews-view-table td {
 	vertical-align: top;
 }
 

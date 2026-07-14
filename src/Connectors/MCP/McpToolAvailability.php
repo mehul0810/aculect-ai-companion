@@ -51,7 +51,8 @@ final class McpToolAvailability {
 			$this->ability_modules_for_user( $user_id, $registry, $scopes, $profile_context ),
 			array_filter(
 				$this->scope_filtered_modules( $intelligence->modules(), $scopes ),
-				fn ( AbilityModuleInterface $module ): bool => $profiles->allows_ability( $module->id(), $profile, $registry, $module )
+				fn ( AbilityModuleInterface $module ): bool => $this->capabilities_available( $module->id() )
+					&& $profiles->allows_ability( $module->id(), $profile, $registry, $module )
 			)
 		);
 	}
@@ -674,6 +675,8 @@ final class McpToolAvailability {
 			'site_editor.get_template_part' => array( 'edit_theme_options' ),
 			'users.roles_summary' => array( 'promote_users' ),
 			'users.list_safe' => array( 'list_users' ),
+			'plugin.incident.report',
+			'plugin.incident.list' => array( 'read' ),
 			'admin_menu.get_context',
 			'admin_menu.refresh_context',
 			'admin_menu.list_pages',

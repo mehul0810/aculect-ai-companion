@@ -33,6 +33,8 @@ final class McpControllerTest extends TestCase {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_transients']      = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
 			1 => (object) array(
@@ -805,6 +807,36 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
+	public function test_plugin_incident_report_uses_trusted_write_approval_without_confirmation_token(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'                  => 1,
+			'client_id'                => 'incident-trusted-write-client',
+			'provider'                 => 'chatgpt',
+			'scopes'                   => array( 'content:read' ),
+			'profile'                  => 'full_access',
+			'access_level'             => ConnectionAccessLevel::WRITE,
+			'write_permission_enabled' => true,
+		);
+		$result     = $this->pluginIncidentToolCall(
+			$controller,
+			array(
+				'title'   => 'Trusted incident approval',
+				'summary' => 'A trusted Write connection should use the standard direct-write approval path.',
+			),
+			'plugin_incident_report',
+			$auth
+		);
+
+		self::assertSame( 'stored_ready_for_client_submission', $result['status'] );
+		self::assertSame( 'trusted_connection_direct_write', $result['confirmation_policy'] );
+		self::assertFalse( $result['confirmation_required'] );
+		self::assertTrue( $result['write_permission_enabled'] );
+		self::assertSame( ConnectionAccessLevel::WRITE, $result['access_level'] );
+		self::assertArrayNotHasKey( 'confirmation_token', $result );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
+	}
+
 	public function test_plugin_incident_list_never_requires_confirmation(): void {
 		$controller = new McpController();
 		$auth       = array(
@@ -820,6 +852,59 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 0, $result['total'] );
 		self::assertArrayNotHasKey( 'confirmation_required', $result );
 		self::assertArrayNotHasKey( 'confirmation_token', $result );
+	}
+
+	public function test_plugin_incident_tools_return_distinct_permission_policy_and_scope_errors(): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => 1,
+			'client_id' => 'incident-authorization-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'read' );
+		$this->setPrivateProperty( $controller, 'request_auth', $auth );
+		$tool_names = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
+		self::assertNotContains( 'plugin_incident_list', $tool_names );
+		self::assertNotContains( 'plugin_incident_report', $tool_names );
+
+		$permission = $this->pluginIncidentRpcResult( $controller, array(), 'plugin_incident_list', $auth );
+		self::assertTrue( $permission['isError'] );
+		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $permission['content'][0]['text'] );
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+
+		$policy_auth = array_merge( $auth, array( 'profile' => 'read_only_audit' ) );
+		$policy      = $this->pluginIncidentRpcResult(
+			$controller,
+			array(
+				'title'   => 'Profile policy block',
+				'summary' => 'A read-only profile must not expose the incident write tool.',
+			),
+			'plugin_incident_report',
+			$policy_auth
+		);
+		self::assertTrue( $policy['isError'] );
+		self::assertSame( 'This ability is hidden by the selected MCP tool profile.', $policy['content'][0]['text'] );
+
+		$list = $this->pluginIncidentToolCall( $controller, array(), 'plugin_incident_list', $policy_auth );
+		self::assertSame( 0, $list['total'] );
+
+		$scope = $this->pluginIncidentRpcResult(
+			$controller,
+			array(
+				'title'   => 'OAuth scope block',
+				'summary' => 'A missing OAuth scope must be reported before approval is requested.',
+			),
+			'plugin_incident_report',
+			array_merge( $auth, array( 'scopes' => array() ) )
+		);
+		self::assertTrue( $scope['isError'] );
+		self::assertSame( 'Authorization required.', $scope['content'][0]['text'] );
+		self::assertStringContainsString( 'insufficient_scope', $scope['_meta']['mcp/www_authenticate'][0] );
+		self::assertStringContainsString( 'content:read', $scope['_meta']['mcp/www_authenticate'][0] );
 	}
 
 	/**
@@ -953,8 +1038,9 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_connection_write_permission_unblocks_only_write_tools(): void {
-		$controller = new McpController();
-		$registry   = new AbilitiesRegistry();
+		$controller   = new McpController();
+		$registry     = new AbilitiesRegistry();
+		$intelligence = new IntelligenceRegistry();
 
 		self::assertTrue(
 			$this->invokePrivate(
@@ -1000,6 +1086,30 @@ final class McpControllerTest extends TestCase {
 					'content.get_item',
 					$registry,
 					array( 'write_permission_enabled' => true ),
+				)
+			)
+		);
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'plugin.incident.report',
+					$registry,
+					array( 'write_permission_enabled' => true ),
+					$intelligence,
+				)
+			)
+		);
+		self::assertFalse(
+			$this->invokePrivate(
+				$controller,
+				'write_permission_unblocks_tool',
+				array(
+					'plugin.incident.list',
+					$registry,
+					array( 'write_permission_enabled' => true ),
+					$intelligence,
 				)
 			)
 		);
@@ -1122,6 +1232,23 @@ final class McpControllerTest extends TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function pluginIncidentToolCall( McpController $controller, array $arguments, string $name, array $auth ): array {
+		$result = $this->pluginIncidentRpcResult( $controller, $arguments, $name, $auth );
+
+		self::assertIsArray( $result['structuredContent'] ?? null );
+
+		return $result['structuredContent'];
+	}
+
+	/**
+	 * Return one plugin incident JSON-RPC result, including authorization errors.
+	 *
+	 * @param McpController        $controller Controller under test.
+	 * @param array<string, mixed> $arguments Tool arguments.
+	 * @param string               $name      Public tool name.
+	 * @param array<string, mixed> $auth      OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function pluginIncidentRpcResult( McpController $controller, array $arguments, string $name, array $auth ): array {
 		$this->setPrivateProperty( $controller, 'request_auth', $auth );
 		$response = $controller->handle_rpc(
 			new WP_REST_Request(
@@ -1141,10 +1268,14 @@ final class McpControllerTest extends TestCase {
 			)
 		);
 
-		self::assertIsArray( $response );
-		self::assertIsArray( $response['result']['structuredContent'] ?? null );
+		if ( $response instanceof \WP_REST_Response ) {
+			$response = $response->get_data();
+		}
 
-		return $response['result']['structuredContent'];
+		self::assertIsArray( $response );
+		self::assertIsArray( $response['result'] ?? null );
+
+		return $response['result'];
 	}
 
 	/**

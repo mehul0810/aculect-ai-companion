@@ -295,10 +295,9 @@ final class McpController {
 					),
 					$auth
 				);
-				$error = $is_intelligence_tool ? '' : $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
-				if ( $is_intelligence_tool && $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) ) ) {
-					$error = 'tool_hidden_by_profile';
-				}
+				$error = $is_intelligence_tool
+					? $this->intelligence_tool_call_error( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) )
+					: $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
 
 				if ( 'unknown_tool' === $error ) {
 					$this->record_blocked_timeline_event( $tool, $args, $auth, 'unknown_tool', $timer );
@@ -1463,10 +1462,9 @@ final class McpController {
 	/**
 	 * Execute one MCP tool through the shared dry-run, confirmation, and replay controls.
 	 *
-	 * Plugin incident reporting is an always-on intelligence tool that writes a
-	 * local incident option. It is therefore the only intelligence tool treated as
-	 * a confirmation-gated write here; all other intelligence tools retain their
-	 * existing behavior.
+	 * Plugin incident reporting derives its write behavior from module metadata
+	 * and uses the same approval path as user-managed abilities. Other internal
+	 * intelligence tools retain their existing handling.
 	 *
 	 * @param string               $tool                 Internal ability ID.
 	 * @param array<string, mixed> $args                 Tool arguments.
@@ -1478,12 +1476,12 @@ final class McpController {
 	 */
 	private function execute_tool_with_safety( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth ): array {
 		$safety                     = new ToolSafety();
-		$is_incident_report         = 'plugin.incident.report' === $tool;
+		$is_incident_report         = $is_intelligence_tool && 'plugin.incident.report' === $tool && ! $intelligence->is_read_only( $tool );
 		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $registry->is_read_only( $tool ) );
-		$requires_confirmation      = $is_incident_report || $safety->requires_confirmation( $tool, $args );
+		$requires_confirmation      = $safety->requires_confirmation( $tool, $args );
 		$has_confirmation_token     = $is_write_tool && $safety->has_confirmation_token( $args );
 		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args ) && ! $has_confirmation_token;
-		$write_permission_unblocked = $is_write_tool && ! $is_incident_report && $this->write_permission_unblocks_tool( $tool, $registry, $auth );
+		$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth, $is_intelligence_tool ? $intelligence : null );
 		$replay                     = $is_write_tool && ! $is_dry_run
 			? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
 			: null;
@@ -1769,15 +1767,17 @@ final class McpController {
 	 * This does not bypass OAuth scopes, disabled abilities, role policy, global
 	 * pauses, or WordPress capability checks inside the tool implementation.
 	 *
-	 * @param string               $tool     Internal ability ID.
-	 * @param AbilitiesRegistry    $registry Ability registry.
-	 * @param array<string, mixed> $auth     OAuth context.
+	 * @param string                    $tool         Internal ability ID.
+	 * @param AbilitiesRegistry         $registry     Ability registry.
+	 * @param array<string, mixed>      $auth         OAuth context.
+	 * @param IntelligenceRegistry|null $intelligence Intelligence registry for internal intelligence tools.
 	 */
-	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth ): bool {
-		$enabled = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
+	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth, ?IntelligenceRegistry $intelligence = null ): bool {
+		$enabled   = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
 			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
+		$read_only = null === $intelligence ? $registry->is_read_only( $tool ) : $intelligence->is_read_only( $tool );
 
-		return ! $registry->is_read_only( $tool ) && $enabled;
+		return ! $read_only && $enabled;
 	}
 
 	/**
@@ -1910,6 +1910,27 @@ final class McpController {
 			if ( ! ( new McpToolProfiles() )->allows_ability( $dependency_id, $profile_resolution['profile'], $registry ) ) {
 				return 'tool_hidden_by_profile';
 			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Return an intelligence tool block reason before dispatch.
+	 *
+	 * @param string               $tool            Internal intelligence ID.
+	 * @param IntelligenceRegistry $intelligence    Intelligence registry.
+	 * @param AbilitiesRegistry    $registry        Ability registry.
+	 * @param int                  $user_id         WordPress user ID.
+	 * @param array<string, mixed> $profile_context Optional profile selection context.
+	 */
+	private function intelligence_tool_call_error( string $tool, IntelligenceRegistry $intelligence, AbilitiesRegistry $registry, int $user_id = 0, array $profile_context = array() ): string {
+		if ( ! ( new McpToolAvailability() )->capabilities_available( $tool ) ) {
+			return 'tool_forbidden_by_capability';
+		}
+
+		if ( $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, $user_id, $profile_context ) ) {
+			return 'tool_hidden_by_profile';
 		}
 
 		return '';

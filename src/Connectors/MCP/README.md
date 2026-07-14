@@ -241,6 +241,14 @@ capability checks pass. Tokens are bound to the connected user, OAuth client,
 provider, tool, and exact argument payload, and are consumed after one
 successful use.
 
+`plugin_incident_list` is read-only and never requires write approval.
+`plugin_incident_report` stores a local report, so it follows the same approval
+contract as other writes: a connection with Write access can submit directly,
+while a read-only connection receives a short-lived `confirmation_token` for
+the exact report payload. WordPress capability, selected tool-profile policy,
+OAuth scope, and confirmation failures are evaluated separately so clients can
+surface the actual blocker.
+
 Comment workflows support review filters for moderation status, post, author,
 author email, author user ID, search, and date ranges. Replies are created with
 `comments_create_item` by passing `parent_id`, and `comments_bulk_update`

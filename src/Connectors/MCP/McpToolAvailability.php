@@ -676,7 +676,7 @@ final class McpToolAvailability {
 			'users.roles_summary' => array( 'promote_users' ),
 			'users.list_safe' => array( 'list_users' ),
 			'plugin.incident.report',
-			'plugin.incident.list' => array( 'read' ),
+			'plugin.incident.list' => array( 'manage_options' ),
 			'admin_menu.get_context',
 			'admin_menu.refresh_context',
 			'admin_menu.list_pages',

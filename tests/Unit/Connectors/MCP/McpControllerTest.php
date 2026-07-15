@@ -43,6 +43,18 @@ final class McpControllerTest extends TestCase {
 				'display_name' => 'Ada Admin',
 				'user_login'   => 'ada',
 			),
+			2 => (object) array(
+				'ID'           => 2,
+				'roles'        => array( 'subscriber' ),
+				'display_name' => 'Sam Subscriber',
+				'user_login'   => 'sam',
+			),
+			3 => (object) array(
+				'ID'           => 3,
+				'roles'        => array( 'editor' ),
+				'display_name' => 'Ed Editor',
+				'user_login'   => 'ed',
+			),
 		);
 	}
 
@@ -739,7 +751,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'confirmation_token', $read_schema['properties'] );
 	}
 
-	public function test_plugin_incident_report_requires_confirmation_and_replays_without_duplicate_storage(): void {
+	public function test_administrator_incident_report_requires_confirmation_and_replays_without_duplicate_storage(): void {
 		$controller = new McpController();
 		$auth       = array(
 			'user_id'   => 1,
@@ -780,7 +792,7 @@ final class McpControllerTest extends TestCase {
 		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
-	public function test_plugin_incident_report_rejects_invalid_confirmation_token(): void {
+	public function test_administrator_incident_report_rejects_invalid_confirmation_token(): void {
 		$controller = new McpController();
 		$auth       = array(
 			'user_id'   => 1,
@@ -807,7 +819,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
-	public function test_plugin_incident_report_uses_trusted_write_approval_without_confirmation_token(): void {
+	public function test_administrator_incident_report_uses_trusted_write_approval_without_confirmation_token(): void {
 		$controller = new McpController();
 		$auth       = array(
 			'user_id'                  => 1,
@@ -837,7 +849,7 @@ final class McpControllerTest extends TestCase {
 		self::assertCount( 1, get_option( 'aculect_ai_companion_incident_reports', array() ) );
 	}
 
-	public function test_plugin_incident_list_never_requires_confirmation(): void {
+	public function test_administrator_discovers_incident_tools_and_lists_without_confirmation(): void {
 		$controller = new McpController();
 		$auth       = array(
 			'user_id'   => 1,
@@ -847,11 +859,26 @@ final class McpControllerTest extends TestCase {
 			'profile'   => 'full_access',
 		);
 
+		$this->setPrivateProperty( $controller, 'request_auth', $auth );
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
+		$tool_names = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
+
+		self::assertContains( 'plugin_incident_list', $tool_names );
+		self::assertContains( 'plugin_incident_report', $tool_names );
+
 		$result = $this->pluginIncidentToolCall( $controller, array(), 'plugin_incident_list', $auth );
 
 		self::assertSame( 0, $result['total'] );
 		self::assertArrayNotHasKey( 'confirmation_required', $result );
 		self::assertArrayNotHasKey( 'confirmation_token', $result );
+	}
+
+	public function test_subscriber_cannot_discover_or_execute_incident_tools(): void {
+		$this->assertNonAdminIncidentToolsFailClosed( 2, 'subscriber' );
+	}
+
+	public function test_editor_cannot_discover_or_execute_incident_tools(): void {
+		$this->assertNonAdminIncidentToolsFailClosed( 3, 'editor' );
 	}
 
 	public function test_plugin_incident_tools_return_distinct_permission_policy_and_scope_errors(): void {
@@ -864,7 +891,7 @@ final class McpControllerTest extends TestCase {
 			'profile'   => 'full_access',
 		);
 
-		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'read' );
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 		$this->setPrivateProperty( $controller, 'request_auth', $auth );
 		$tool_names = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
 		self::assertNotContains( 'plugin_incident_list', $tool_names );
@@ -1276,6 +1303,48 @@ final class McpControllerTest extends TestCase {
 		self::assertIsArray( $response['result'] ?? null );
 
 		return $response['result'];
+	}
+
+	/**
+	 * Assert a non-admin role cannot discover or execute either incident tool.
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param string $role    Role name for assertion context.
+	 */
+	private function assertNonAdminIncidentToolsFailClosed( int $user_id, string $role ): void {
+		$controller = new McpController();
+		$auth       = array(
+			'user_id'   => $user_id,
+			'client_id' => 'incident-' . $role . '-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = $user_id;
+		$this->setPrivateProperty( $controller, 'request_auth', $auth );
+		$tool_names = array_column( $this->list_tools_manifest( $controller )['tools'], 'name' );
+
+		self::assertNotContains( 'plugin_incident_list', $tool_names, $role );
+		self::assertNotContains( 'plugin_incident_report', $tool_names, $role );
+
+		$list = $this->pluginIncidentRpcResult( $controller, array(), 'plugin_incident_list', $auth );
+		self::assertTrue( $list['isError'], $role );
+		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $list['content'][0]['text'], $role );
+
+		$report = $this->pluginIncidentRpcResult(
+			$controller,
+			array(
+				'title'   => 'Unauthorized incident report',
+				'summary' => 'A non-admin connection must fail closed before approval handling.',
+			),
+			'plugin_incident_report',
+			$auth
+		);
+		self::assertTrue( $report['isError'], $role );
+		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $report['content'][0]['text'], $role );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ), $role );
 	}
 
 	/**

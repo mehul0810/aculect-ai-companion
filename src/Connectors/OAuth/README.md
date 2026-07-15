@@ -40,7 +40,10 @@ rejection time; it does not represent an authenticated unknown-user session.
 Support metadata may classify the hashed stored refresh-token record as
 `expired`, `revoked`, `not_found`, or `active_in_storage`, and may correlate the
 event with an existing provider, hashed client identifier, and numeric
-connection identifier. A revoked row does not preserve whether rotation,
+connection identifier. The presented encrypted token is decoded only in memory
+with the existing League OAuth encryption key; only its internal identifier is
+hashed for the storage lookup, and malformed tokens remain unclassified. A
+revoked row does not preserve whether rotation,
 disconnect, or another revocation path caused the state, so activity does not
 claim that the token was replaced. Client-facing OAuth responses remain
 unchanged, and the support action is to reconnect the assistant.

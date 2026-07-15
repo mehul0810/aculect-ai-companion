@@ -11,8 +11,10 @@ use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
+use Aculect\AICompanion\Connectors\OAuth\Server\KeyManager;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogSanitizer;
+use League\OAuth2\Server\CryptTrait;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -22,6 +24,11 @@ use WP_REST_Server;
  * Handles OAuth token exchange and refresh requests.
  */
 final class TokenController {
+
+	use CryptTrait {
+		decrypt as private;
+		setEncryptionKey as private;
+	}
 
 	/**
 	 * Register the OAuth token REST endpoint.
@@ -76,6 +83,8 @@ final class TokenController {
 		);
 
 		if ( Helpers::mcp_resource() !== $resource ) {
+			$refresh_context = $this->refresh_rejection_context( $request, 'invalid_target' );
+			$timeline_auth   = $this->correlate_timeline_auth( $timeline_auth, $refresh_context );
 			$logger->warning(
 				'token.invalid_resource',
 				'OAuth token request used an invalid resource.',
@@ -85,13 +94,16 @@ final class TokenController {
 			);
 			$this->record_timeline_event(
 				$timeline_event,
-				array(
-					'status'       => 'error',
-					'method'       => 'oauth/token',
-					'grant_type'   => (string) $request->get_param( 'grant_type' ),
-					'result_class' => 'invalid_target',
-					'error_code'   => 'invalid_target',
-					'duration_ms'  => $this->duration_ms( $started_at ),
+				array_merge(
+					array(
+						'status'       => 'error',
+						'method'       => 'oauth/token',
+						'grant_type'   => (string) $request->get_param( 'grant_type' ),
+						'result_class' => 'invalid_target',
+						'error_code'   => 'invalid_target',
+						'duration_ms'  => $this->duration_ms( $started_at ),
+					),
+					$refresh_context
 				),
 				$timeline_auth
 			);
@@ -294,18 +306,54 @@ final class TokenController {
 			return $context;
 		}
 
-		$token = (string) $request->get_param( 'refresh_token' );
-		if ( '' === $token ) {
+		$token_id = $this->refresh_token_id_from_presented_token( (string) $request->get_param( 'refresh_token' ) );
+		if ( '' === $token_id ) {
 			return $context;
 		}
 
 		try {
-			return array_merge( $context, ( new RefreshTokenRepository() )->support_context_from_token_id( $token ) );
+			return array_merge( $context, ( new RefreshTokenRepository() )->support_context_from_token_id( $token_id ) );
 		} catch ( \Throwable $throwable ) {
 			unset( $throwable );
 
 			return $context;
 		}
+	}
+
+	/**
+	 * Recover League's internal identifier from a presented refresh token.
+	 *
+	 * AuthorizationServerFactory supplies League with a string encryption key,
+	 * so League encrypts the JSON payload with Defuse password semantics. The
+	 * opaque token and decrypted payload remain request-local and are never
+	 * included in activity metadata.
+	 *
+	 * @param string $token Presented encrypted refresh token.
+	 */
+	private function refresh_token_id_from_presented_token( string $token ): string {
+		if ( '' === $token ) {
+			return '';
+		}
+
+		try {
+			$this->setEncryptionKey( KeyManager::encryption_key() );
+			$payload = json_decode(
+				$this->decrypt( $token ),
+				true,
+				512,
+				JSON_THROW_ON_ERROR
+			);
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		} finally {
+			$this->setEncryptionKey();
+		}
+
+		$token_id = is_array( $payload ) ? ( $payload['refresh_token_id'] ?? null ) : null;
+
+		return is_string( $token_id ) ? trim( $token_id ) : '';
 	}
 
 	/**

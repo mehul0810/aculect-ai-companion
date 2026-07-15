@@ -88,13 +88,13 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	}
 
 	/**
-	 * Return support-safe stored context for a presented refresh token.
+	 * Return support-safe stored context for an internal refresh-token ID.
 	 *
 	 * The raw identifier is used only to derive the existing storage hash. A
 	 * revoked row does not prove whether rotation, disconnect, or another
 	 * revocation path caused the state, so no revocation reason is inferred.
 	 *
-	 * @param string $tokenId Raw refresh token identifier.
+	 * @param string $tokenId Decrypted League refresh-token identifier.
 	 * @return array{}|array{refresh_token_state: string, connection_id?: int, connection_client_id?: string, provider?: string}
 	 */
 	public function support_context_from_token_id( string $tokenId ): array {

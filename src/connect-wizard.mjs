@@ -97,7 +97,7 @@ export function normalizeConnectionRequests( requests ) {
 export function shouldShowPendingRequests( requests ) {
 	const normalized = normalizeConnectionRequests( requests );
 
-	if ( ! normalized.queueAvailable ) {
+	if ( ! normalized.approvalModeEnabled || ! normalized.queueAvailable ) {
 		return false;
 	}
 

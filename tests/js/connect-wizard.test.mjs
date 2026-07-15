@@ -115,10 +115,25 @@ test( 'normalizes pending connection request payloads', () => {
 	);
 } );
 
-test( 'hides pending requests when the approval queue is unavailable', () => {
+test( 'hides pending requests when approval mode is disabled or the queue is unavailable', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
 			approvalModeEnabled: false,
+			queueAvailable: true,
+			status: 'ready',
+			items: [
+				{
+					id: 'request-1',
+					reviewUrl: 'https://example.com/review-1',
+				},
+			],
+		} ),
+		false
+	);
+
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: false,
 			pendingCount: 0,
 			items: [],
@@ -130,6 +145,7 @@ test( 'hides pending requests when the approval queue is unavailable', () => {
 test( 'hides empty pending requests without a working refresh action', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'empty',
 			pendingCount: 0,
@@ -142,6 +158,7 @@ test( 'hides empty pending requests without a working refresh action', () => {
 test( 'shows empty pending requests when the queue is live and refreshable', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'empty',
 			refreshUrl: 'https://example.com/refresh',
@@ -155,6 +172,7 @@ test( 'shows empty pending requests when the queue is live and refreshable', () 
 test( 'shows loading and error states only when the queue has a working refresh action', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'loading',
 			refreshUrl: 'https://example.com/refresh',
@@ -165,6 +183,7 @@ test( 'shows loading and error states only when the queue has a working refresh 
 
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'error',
 			refreshUrl: 'https://example.com/refresh',
@@ -176,6 +195,7 @@ test( 'shows loading and error states only when the queue has a working refresh 
 
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'error',
 			error: 'Request queue timed out.',
@@ -188,6 +208,7 @@ test( 'shows loading and error states only when the queue has a working refresh 
 test( 'shows populated pending requests only when review actions exist', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'ready',
 			items: [ { id: 'request-1' } ],
@@ -198,6 +219,7 @@ test( 'shows populated pending requests only when review actions exist', () => {
 
 	assert.equal(
 		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
 			queueAvailable: true,
 			status: 'ready',
 			items: [

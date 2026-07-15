@@ -185,7 +185,7 @@ final class ToolSafety {
 			return true;
 		}
 
-		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap' ), true ) ) {
+		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap', 'plugin.incident.report' ), true ) ) {
 			return true;
 		}
 

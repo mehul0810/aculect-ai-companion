@@ -106,12 +106,14 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( 'Custom denial.', $result['message'] );
 	}
 
-	public function test_read_capable_bridge_caller_can_execute_incident_list_alias(): void {
+	public function test_administrator_can_discover_and_execute_incident_list_alias(): void {
 		( new WordPressAbilitiesRegistrar() )->register_abilities();
 
 		$bridge = new WordPressAbilitiesBridge();
 		$list   = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
+		$names  = array_column( $bridge->discover()['items'], 'id' );
 
+		self::assertContains( 'aculect-ai-companion/plugin-incident-list', $names );
 		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $list['id'] );
 		self::assertTrue( $list['readOnly'] );
 		self::assertTrue( $list['allowed'] );
@@ -122,6 +124,14 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $result['ability'] );
 		self::assertSame( 0, $result['result']['total'] );
 		self::assertArrayNotHasKey( 'confirmation_required', $result['result'] );
+	}
+
+	public function test_subscriber_cannot_discover_or_execute_incident_list_ability(): void {
+		$this->assertNonAdminIncidentListAbilityFailsClosed( 'subscriber' );
+	}
+
+	public function test_editor_cannot_discover_or_execute_incident_list_ability(): void {
+		$this->assertNonAdminIncidentListAbilityFailsClosed( 'editor' );
 	}
 
 	public function test_read_capable_bridge_caller_cannot_execute_incident_report(): void {
@@ -205,5 +215,26 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		);
 
 		( new WordPressAbilitiesPolicy() )->save_allowed_ids( array( 'external-plugin/public-action' ) );
+	}
+
+	/**
+	 * Assert one non-admin role cannot discover or execute the incident list ability.
+	 *
+	 * @param string $role Role name for assertion context.
+	 */
+	private function assertNonAdminIncidentListAbilityFailsClosed( string $role ): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$bridge = new WordPressAbilitiesBridge();
+		$names  = array_column( $bridge->discover()['items'], 'id' );
+
+		self::assertNotContains( 'aculect-ai-companion/plugin-incident-list', $names, $role );
+
+		$info = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
+		self::assertSame( 'forbidden', $info['error'], $role );
+
+		$result = $bridge->run( array( 'id' => 'plugin_incident_list' ) );
+		self::assertSame( 'forbidden', $result['error'], $role );
 	}
 }

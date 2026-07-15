@@ -144,6 +144,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 
 		self::assertTrue( $abilities['aculect-ai-companion/site-editor-get-context']['permission_callback']( array() ) );
 		self::assertTrue( $abilities['aculect-ai-companion/admin-menu-get-context']['permission_callback']( array() ) );
+		self::assertTrue( $abilities['aculect-ai-companion/plugin-incident-list']['permission_callback']( array() ) );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_theme_options' );
 		self::assertFalse( $abilities['aculect-ai-companion/site-editor-get-context']['permission_callback']( array() ) );
@@ -152,6 +153,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 		self::assertTrue( $abilities['aculect-ai-companion/site-editor-get-context']['permission_callback']( array() ) );
 		self::assertFalse( $abilities['aculect-ai-companion/admin-menu-get-context']['permission_callback']( array() ) );
+		self::assertFalse( $abilities['aculect-ai-companion/plugin-incident-list']['permission_callback']( array() ) );
 	}
 
 	public function test_first_party_read_intelligence_is_allowed_without_external_policy_toggle(): void {

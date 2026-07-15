@@ -220,7 +220,7 @@ final class WordPressAbilitiesRegistrar {
 				return current_user_can( 'edit_theme_options' );
 			}
 
-			if ( str_starts_with( $id, 'admin_menu.' ) ) {
+			if ( 'plugin.incident.list' === $id || str_starts_with( $id, 'admin_menu.' ) ) {
 				return current_user_can( 'manage_options' );
 			}
 

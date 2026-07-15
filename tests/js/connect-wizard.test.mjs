@@ -86,45 +86,149 @@ test( 'normalizes pending connection request payloads', () => {
 		items: [],
 		pendingCount: 0,
 		approvalModeEnabled: false,
+		queueAvailable: false,
+		refreshUrl: '',
+		status: 'disabled',
 	} );
 
 	assert.deepEqual(
 		normalizeConnectionRequests( {
 			approvalMode: 'admin_review',
 			approvalModeEnabled: true,
-			items: [ { id: 'request-1' } ],
+			queueAvailable: true,
+			items: [
+				{ id: 'request-1', reviewUrl: 'https://example.com/review-1' },
+				{ id: 'request-2' },
+			],
 		} ),
 		{
 			approvalMode: 'admin_review',
 			approvalModeEnabled: true,
-			items: [ { id: 'request-1' } ],
+			queueAvailable: true,
+			items: [
+				{ id: 'request-1', reviewUrl: 'https://example.com/review-1' },
+			],
 			pendingCount: 1,
+			refreshUrl: '',
+			status: 'ready',
 		}
 	);
 } );
 
-test( 'hides pending requests until enabled or real requests exist', () => {
+test( 'hides pending requests when approval mode is disabled or the queue is unavailable', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
 			approvalModeEnabled: false,
+			queueAvailable: true,
+			status: 'ready',
+			items: [
+				{
+					id: 'request-1',
+					reviewUrl: 'https://example.com/review-1',
+				},
+			],
+		} ),
+		false
+	);
+
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: false,
 			pendingCount: 0,
 			items: [],
 		} ),
 		false
 	);
+} );
+
+test( 'hides empty pending requests without a working refresh action', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
 			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'empty',
+			pendingCount: 0,
+			items: [],
+		} ),
+		false
+	);
+} );
+
+test( 'shows empty pending requests when the queue is live and refreshable', () => {
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'empty',
+			refreshUrl: 'https://example.com/refresh',
 			pendingCount: 0,
 			items: [],
 		} ),
 		true
 	);
+} );
+
+test( 'shows loading and error states only when the queue has a working refresh action', () => {
 	assert.equal(
 		shouldShowPendingRequests( {
-			approvalModeEnabled: false,
-			pendingCount: 1,
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'loading',
+			refreshUrl: 'https://example.com/refresh',
 			items: [],
+		} ),
+		true
+	);
+
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'error',
+			refreshUrl: 'https://example.com/refresh',
+			error: 'Request queue timed out.',
+			items: [],
+		} ),
+		true
+	);
+
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'error',
+			error: 'Request queue timed out.',
+			items: [],
+		} ),
+		false
+	);
+} );
+
+test( 'shows populated pending requests only when review actions exist', () => {
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'ready',
+			items: [ { id: 'request-1' } ],
+			pendingCount: 1,
+		} ),
+		false
+	);
+
+	assert.equal(
+		shouldShowPendingRequests( {
+			approvalModeEnabled: true,
+			queueAvailable: true,
+			status: 'ready',
+			items: [
+				{
+					id: 'request-1',
+					reviewUrl: 'https://example.com/review-1',
+				},
+			],
+			pendingCount: 1,
 		} ),
 		true
 	);

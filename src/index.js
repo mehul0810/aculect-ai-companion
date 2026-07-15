@@ -5186,6 +5186,36 @@ function PendingConnectionRequests( { requests } ) {
 		return null;
 	}
 
+	if ( normalized.status === 'loading' ) {
+		return (
+			<section className="aculect-ai-companion-connect-card aculect-ai-companion-pending-requests">
+				<h2>Pending connection requests</h2>
+				<EmptyState title="Loading pending connection requests">
+					Check again if the approval queue does not refresh on its
+					own.
+				</EmptyState>
+				<Button href={ normalized.refreshUrl } variant="secondary">
+					Refresh requests
+				</Button>
+			</section>
+		);
+	}
+
+	if ( normalized.status === 'error' ) {
+		return (
+			<section className="aculect-ai-companion-connect-card aculect-ai-companion-pending-requests">
+				<h2>Pending connection requests</h2>
+				<EmptyState title="Unable to load pending connection requests">
+					{ normalized.error ||
+						'Refresh the approval queue and try again.' }
+				</EmptyState>
+				<Button href={ normalized.refreshUrl } variant="secondary">
+					Refresh requests
+				</Button>
+			</section>
+		);
+	}
+
 	if ( normalized.items.length === 0 ) {
 		return (
 			<section className="aculect-ai-companion-connect-card aculect-ai-companion-pending-requests">
@@ -5199,7 +5229,7 @@ function PendingConnectionRequests( { requests } ) {
 					{ normalized.emptyDescription ||
 						'Requests from AI assistants will appear here when approval is required.' }
 				</EmptyState>
-				<Button type="button" variant="secondary" disabled>
+				<Button href={ normalized.refreshUrl } variant="secondary">
 					Refresh requests
 				</Button>
 			</section>
@@ -5223,7 +5253,7 @@ function PendingConnectionRequests( { requests } ) {
 							{ item.description ||
 								'Requested through secure OAuth.' }
 						</p>
-						<Button type="button" variant="secondary">
+						<Button href={ item.reviewUrl } variant="secondary">
 							Review
 						</Button>
 					</div>

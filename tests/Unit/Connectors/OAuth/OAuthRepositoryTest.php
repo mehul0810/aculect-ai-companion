@@ -44,6 +44,56 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertNotSame( $raw, $access_hash );
 	}
 
+	public function test_refresh_token_support_context_uses_hashed_lookup_and_safe_connection_fields(): void {
+		$raw             = 'raw-refresh-token';
+		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->row       = array(
+			'revoked'       => '1',
+			'expires_at'    => '2099-01-01 00:00:00',
+			'connection_id' => '27',
+			'client_id'     => 'codex-client-27',
+			'provider'      => 'codex',
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$context = ( new RefreshTokenRepository() )->support_context_from_token_id( $raw );
+
+		self::assertSame( 'revoked', $context['refresh_token_state'] );
+		self::assertSame( 27, $context['connection_id'] );
+		self::assertSame( 'codex-client-27', $context['connection_client_id'] );
+		self::assertSame( 'codex', $context['provider'] );
+		self::assertArrayNotHasKey( 'user_id', $context );
+		self::assertArrayNotHasKey( 'refresh_token', $context );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][0] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][1] );
+		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][2] );
+		self::assertSame( hash( 'sha256', $raw ), $wpdb->prepared[0]['args'][3] );
+		self::assertNotContains( $raw, $wpdb->prepared[0]['args'] );
+		self::assertStringContainsString( 'access_tokens.token_hash = refresh_tokens.access_token_hash', $wpdb->prepared[0]['query'] );
+	}
+
+	public function test_refresh_token_support_context_distinguishes_only_stored_states(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$repository      = new RefreshTokenRepository();
+
+		$wpdb->row = array(
+			'revoked'    => '0',
+			'expires_at' => '2000-01-01 00:00:00',
+		);
+		self::assertSame( 'expired', $repository->support_context_from_token_id( 'expired-token' )['refresh_token_state'] );
+
+		$wpdb->row = array(
+			'revoked'    => '0',
+			'expires_at' => '2099-01-01 00:00:00',
+		);
+		self::assertSame( 'active_in_storage', $repository->support_context_from_token_id( 'active-token' )['refresh_token_state'] );
+
+		$wpdb->row = null;
+		self::assertSame( 'not_found', $repository->support_context_from_token_id( 'unknown-token' )['refresh_token_state'] );
+		self::assertSame( array(), $repository->support_context_from_token_id( '' ) );
+	}
+
 	public function test_active_session_counts_are_grouped_by_user(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$wpdb->results   = array(

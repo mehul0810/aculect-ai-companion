@@ -181,6 +181,14 @@ test( 'activity admin view uses DataViews while preserving server filters and ta
 	);
 } );
 
+test( 'activity labels pre-auth refresh rejections as identity unavailable', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/item\.context\?\.identity_status === 'unavailable_pre_auth'/
+	);
+	assert.match( ADMIN_APP_SOURCE, /return 'Identity unavailable';/ );
+} );
+
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

@@ -1977,6 +1977,9 @@ function activityUserName( item ) {
 	if ( item.user ) {
 		return item.user;
 	}
+	if ( item.context?.identity_status === 'unavailable_pre_auth' ) {
+		return 'Identity unavailable';
+	}
 
 	return item.user_id ? `User #${ item.user_id }` : 'Unknown user';
 }

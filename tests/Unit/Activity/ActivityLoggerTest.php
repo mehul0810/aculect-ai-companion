@@ -266,6 +266,48 @@ final class ActivityLoggerTest extends TestCase {
 		self::assertArrayNotHasKey( 'full_content_body', $context );
 	}
 
+	public function test_rejected_refresh_timeline_explains_pre_auth_identity_and_reconnect(): void {
+		$logger  = new ActivityLogger();
+		$context = $this->invokePrivate(
+			$logger,
+			'timeline_context',
+			array(
+				'token_refresh',
+				array(
+					'status'               => 'error',
+					'error_code'           => 'invalid_grant',
+					'identity_status'      => 'unavailable_pre_auth',
+					'refresh_token_state'  => 'revoked',
+					'recovery_action'      => 'reconnect_assistant',
+					'connection_id'        => 42,
+					'connection_client_id' => 'stored-client-id',
+					'refresh_token'        => 'do-not-store',
+					'full_request_body'    => array( 'refresh_token' => 'do-not-store' ),
+				),
+				array(
+					'provider'  => 'codex',
+					'client_id' => 'request-client-id',
+				),
+			)
+		);
+		$message = $this->invokePrivate( $logger, 'timeline_message', array( 'token_refresh', 'error', $context ) );
+
+		self::assertSame( 'unavailable_pre_auth', $context['identity_status'] );
+		self::assertSame( 'revoked', $context['refresh_token_state'] );
+		self::assertSame( 'reconnect_assistant', $context['recovery_action'] );
+		self::assertSame( 42, $context['connection_id'] );
+		self::assertStringStartsWith( 'sha256:', $context['connection_client_hash'] );
+		self::assertNotSame( 'stored-client-id', $context['connection_client_hash'] );
+		self::assertArrayNotHasKey( 'connection_client_id', $context );
+		self::assertArrayNotHasKey( 'refresh_token', $context );
+		self::assertArrayNotHasKey( 'full_request_body', $context );
+		self::assertSame(
+			'Refresh was rejected before a WordPress identity was available. This request did not authenticate a WordPress session. Reconnect the assistant to restore access.',
+			$message
+		);
+		self::assertStringNotContainsString( 'Unknown user', $message );
+	}
+
 	/**
 	 * Invoke a private method for focused unit coverage.
 	 *

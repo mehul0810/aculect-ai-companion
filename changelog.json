@@ -1,4 +1,10 @@
 {
+	"0.7.1": {
+		"date": "2026-07-16",
+		"Improved": [
+			"Prepared the 0.7.1 package metadata and release-proof baseline."
+		]
+	},
 	"0.7.0": {
 		"date": "2026-07-14",
 		"New": [

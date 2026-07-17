@@ -280,7 +280,8 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
-* Prepared the 0.7.1 package metadata and release-proof baseline.
+* Improved incident approval authorization and clarified rejected refresh-token activity.
+* Removed non-functional controls from pending request views.
 
 = 0.7.0 =
 
@@ -439,7 +440,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
-Updates package metadata and release-proof validation for the 0.7.1 train.
+Improves incident approval authorization, clarifies rejected refresh-token activity, and removes non-functional pending request controls.
 
 = 0.7.0 =
 

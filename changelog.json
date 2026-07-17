@@ -2,7 +2,8 @@
 	"0.7.1": {
 		"date": "2026-07-16",
 		"Improved": [
-			"Prepared the 0.7.1 package metadata and release-proof baseline."
+			"Improved incident approval authorization and clarified rejected refresh-token activity.",
+			"Removed non-functional controls from pending request views."
 		]
 	},
 	"0.7.0": {

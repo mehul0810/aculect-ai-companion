@@ -249,6 +249,41 @@ export function connectWizardCompletionState(
 	};
 }
 
+/**
+ * Keep the final wizard task truthful when provider metadata is optimistic.
+ * Provider metadata describes the normal flow, while completion state reflects
+ * the current verified OAuth session for the selected provider.
+ *
+ * @param {Object} step Provider-supplied completion step.
+ * @param {Object} completionState Current provider completion state.
+ * @return {Object} Step safe to render for the current connection state.
+ */
+export function connectWizardCompletionStep( step, completionState ) {
+	if ( ! completionState || completionState.key === 'active' ) {
+		return step;
+	}
+
+	const pending = completionState.key === 'pending';
+
+	return {
+		...step,
+		title: pending ? 'Authorization pending' : 'Verify connection',
+		subtitle: completionState.description,
+		description: pending
+			? 'Complete the pending authorization in WordPress, then return here to confirm the verified session.'
+			: 'Complete authorization in WordPress, then return here to confirm the verified session.',
+		instructions: [
+			{
+				title: pending
+					? 'Approval still required'
+					: 'Verified session required',
+				description:
+					'Connection status updates after a matching verified session is active.',
+			},
+		],
+	};
+}
+
 function fallbackStepTitle( id ) {
 	return {
 		add: 'Add connector',

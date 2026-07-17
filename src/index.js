@@ -14,6 +14,7 @@ import {
 } from './admin-tab-hydration.mjs';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionStep,
 	connectWizardCompletionState,
 	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
@@ -4888,9 +4889,13 @@ function WizardStepPanel( {
 	const completionState = isLast
 		? connectWizardCompletionState( provider, sessions, requests )
 		: null;
-	const primaryActionLabel = step.primaryActionLabel || 'Open assistant';
+	const presentedStep = isLast
+		? connectWizardCompletionStep( step, completionState )
+		: step;
+	const primaryActionLabel =
+		presentedStep.primaryActionLabel || 'Open assistant';
 	const documentationUrl = safeExternalUrl(
-		step.secondaryUrl || provider.primaryActionUrl || ''
+		presentedStep.secondaryUrl || provider.primaryActionUrl || ''
 	);
 
 	return (
@@ -4905,12 +4910,15 @@ function WizardStepPanel( {
 						<span className="aculect-ai-companion-wizard-current-task__label">
 							Current task
 						</span>
-						<h3>{ step.title }</h3>
-						<p>{ step.subtitle || step.description }</p>
+						<h3>{ presentedStep.title }</h3>
+						<p>
+							{ presentedStep.subtitle ||
+								presentedStep.description }
+						</p>
 					</div>
-					{ step.primaryActionUrl && (
+					{ presentedStep.primaryActionUrl && (
 						<Button
-							href={ step.primaryActionUrl }
+							href={ presentedStep.primaryActionUrl }
 							target="_blank"
 							rel="noreferrer noopener"
 							variant="primary"
@@ -4920,12 +4928,14 @@ function WizardStepPanel( {
 					) }
 				</div>
 			</div>
-			{ step.description && step.subtitle && (
+			{ presentedStep.description && presentedStep.subtitle && (
 				<p className="aculect-ai-companion-wizard-step-panel__copy">
-					{ step.description }
+					{ presentedStep.description }
 				</p>
 			) }
-			<WizardStepInstructions instructions={ step.instructions } />
+			<WizardStepInstructions
+				instructions={ presentedStep.instructions }
+			/>
 			{ copyFields.length > 0 && (
 				<div className="aculect-ai-companion-wizard-copy-fields">
 					{ copyFields.map( ( field ) => (

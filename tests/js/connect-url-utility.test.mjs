@@ -42,3 +42,21 @@ test( 'persistent MCP Server URL utility covers unavailable and diagnostic-backe
 		/This endpoint never includes secrets, tokens, nonces, or\s+user-specific approval material\./s
 	);
 } );
+
+test( 'connect wizard keeps one current task, help, documentation, and a continue action visible', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/className="aculect-ai-companion-wizard-current-task"/
+	);
+	assert.match( ADMIN_APP_SOURCE, /Current task/ );
+	assert.match( ADMIN_APP_SOURCE, /Need help\?/ );
+	assert.match( ADMIN_APP_SOURCE, /View documentation/ );
+	assert.match( ADMIN_APP_SOURCE, />\s*Continue\s*</ );
+} );
+
+test( 'wizard progress labels are rendered as wrapping text rather than ellipsized emphasis', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/<span className="aculect-ai-companion-wizard-progress__title">/
+	);
+} );

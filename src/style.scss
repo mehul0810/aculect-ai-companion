@@ -870,7 +870,7 @@
 
 .aculect-ai-companion-connect {
 	display: grid;
-	gap: 24px;
+	gap: 28px;
 }
 
 .aculect-ai-companion-connect-step-row {
@@ -893,7 +893,7 @@
 .aculect-ai-companion-connect-card--approval,
 .aculect-ai-companion-connect-card--url {
 	display: grid;
-	gap: 20px;
+	gap: 14px;
 }
 
 .aculect-ai-companion-connect-step-heading {
@@ -932,10 +932,7 @@
 }
 
 .aculect-ai-companion-connect-url-panel {
-	padding: 16px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: #fff;
+	min-width: 0;
 }
 
 .aculect-ai-companion-connect-secure-note {
@@ -1034,15 +1031,15 @@
 
 .aculect-ai-companion-connect-capability-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-	gap: 16px;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 12px;
 }
 
 .aculect-ai-companion-connect-capability-card {
 	display: grid;
 	gap: 12px;
 	min-width: 0;
-	padding: 16px;
+	padding: 14px;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
 	background: #fff;
@@ -1140,7 +1137,7 @@
 
 .aculect-ai-companion-connect__heading h1 {
 	margin: 0;
-	font-size: 28px;
+	font-size: 30px;
 	line-height: 1.18;
 }
 
@@ -1154,8 +1151,8 @@
 
 .aculect-ai-companion-setup-wizard {
 	display: grid;
-	grid-template-columns: minmax(220px, 310px) minmax(0, 1fr);
-	gap: 24px;
+	grid-template-columns: minmax(210px, 278px) minmax(0, 1fr);
+	gap: 28px;
 	align-items: start;
 }
 
@@ -1163,6 +1160,8 @@
 	display: grid;
 	gap: 14px;
 	min-width: 0;
+	padding-right: 24px;
+	border-right: 1px solid var(--aculect-ai-companion-border);
 }
 
 .aculect-ai-companion-assistant-selector h2,
@@ -1186,8 +1185,8 @@
 	gap: 4px 12px;
 	align-items: start;
 	width: 100%;
-	min-height: 72px;
-	padding: 12px;
+	min-height: 64px;
+	padding: 11px;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
 	background: #fff;
@@ -1260,7 +1259,7 @@
 
 .aculect-ai-companion-setup-wizard__main {
 	display: grid;
-	gap: 18px;
+	gap: 20px;
 	min-width: 0;
 }
 
@@ -1281,7 +1280,7 @@
 	flex: 0 0 auto;
 	padding: 5px 9px;
 	border: 1px solid #bfdbfe;
-	border-radius: 999px;
+	border-radius: 6px;
 	background: #eff6ff;
 	color: var(--aculect-ai-companion-primary);
 	font-size: 12px;
@@ -1291,16 +1290,16 @@
 .aculect-ai-companion-wizard-progress {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 8px;
+	gap: 6px;
 }
 
 .aculect-ai-companion-wizard-progress__step {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
-	gap: 8px;
+	gap: 7px;
 	align-items: center;
 	min-width: 0;
-	padding: 8px 10px;
+	padding: 8px;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
 	background: #fff;
@@ -1322,13 +1321,11 @@
 }
 
 .aculect-ai-companion-wizard-progress__title {
-	overflow: hidden;
+	display: block;
+	overflow-wrap: anywhere;
 	font-size: 12px;
-	font-style: normal;
 	font-weight: 700;
 	line-height: 1.25;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .aculect-ai-companion-wizard-progress__step.is-active {
@@ -1357,19 +1354,38 @@
 	min-width: 0;
 }
 
-.aculect-ai-companion-wizard-step-panel__heading {
+.aculect-ai-companion-wizard-current-task {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
+	grid-template-columns: auto minmax(0, 1fr) auto;
 	gap: 14px;
 	align-items: start;
+	padding: 18px;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	background: #f8fbff;
 }
 
-.aculect-ai-companion-wizard-step-panel__heading p,
+.aculect-ai-companion-wizard-current-task p,
 .aculect-ai-companion-wizard-step-panel__copy,
 .aculect-ai-companion-wizard-copy-field > p {
 	margin: 6px 0 0;
 	color: var(--aculect-ai-companion-muted);
 	line-height: 1.55;
+}
+
+.aculect-ai-companion-wizard-current-task__label {
+	display: block;
+	margin-bottom: 4px;
+	color: var(--aculect-ai-companion-primary);
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 1.3;
+	text-transform: uppercase;
+}
+
+.aculect-ai-companion-wizard-current-task .components-button {
+	align-self: center;
+	white-space: nowrap;
 }
 
 .aculect-ai-companion-wizard-instructions {
@@ -1440,8 +1456,9 @@
 	grid-template-columns: auto minmax(0, 1fr);
 	gap: 10px;
 	padding: 12px;
+	border: 1px solid #e5e7eb;
 	border-radius: 8px;
-	background: #f6f7f7;
+	background: #f8fafc;
 	color: var(--aculect-ai-companion-ink);
 }
 
@@ -1473,7 +1490,7 @@
 	flex-wrap: wrap;
 	gap: 10px;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: space-between;
 	padding-top: 4px;
 }
 
@@ -2352,6 +2369,22 @@ td:last-child
 	display: block;
 	overflow-wrap: anywhere;
 	white-space: pre-wrap;
+}
+
+.aculect-ai-companion-connect-card--url .aculect-ai-companion-copy-field {
+	margin: 0;
+}
+
+.aculect-ai-companion-connect-card--url .aculect-ai-companion-copy-field__control {
+	gap: 12px;
+}
+
+.aculect-ai-companion-connect-card--url .aculect-ai-companion-copy-field__display {
+	padding: 10px 12px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 6px;
+	background: #f8fafc;
+	overflow-wrap: anywhere;
 }
 
 .aculect-ai-companion-copy-field__display:focus-visible,
@@ -4487,6 +4520,13 @@ td:first-child
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
+	.aculect-ai-companion-assistant-selector {
+		padding-right: 0;
+		padding-bottom: 20px;
+		border-right: 0;
+		border-bottom: 1px solid var(--aculect-ai-companion-border);
+	}
+
 	.aculect-ai-companion-connections-sidebar {
 		position: static;
 	}
@@ -4650,6 +4690,16 @@ td:first-child
 
 	.aculect-ai-companion-wizard-progress {
 		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-wizard-current-task {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.aculect-ai-companion-wizard-current-task .components-button {
+		grid-column: 1 / -1;
+		justify-self: stretch;
+		width: 100%;
 	}
 
 	.aculect-ai-companion-assistant-card {

@@ -254,9 +254,9 @@ export function connectWizardCompletionState(
  * Provider metadata describes the normal flow, while completion state reflects
  * the current verified OAuth session for the selected provider.
  *
- * @param {Object} step Provider-supplied completion step.
+ * @param {Object} step            Provider-supplied completion step.
  * @param {Object} completionState Current provider completion state.
- * @return {Object} Step safe to render for the current connection state.
+ * @return {Object}                Step safe to render for the current connection state.
  */
 export function connectWizardCompletionStep( step, completionState ) {
 	if ( ! completionState || completionState.key === 'active' ) {

@@ -24,11 +24,21 @@ $required_paths = array(
 	'build/index.js',
 	'build/style-index.css',
 	'build/style-index-rtl.css',
+	'vendor/autoload.php',
 );
 
 foreach ( $required_paths as $path ) {
 	if ( ! file_exists( $release_dir . '/' . $path ) ) {
-		$failures[] = "Required production asset is missing: {$path}";
+		$failures[] = "Required production path is missing: {$path}";
+	}
+}
+
+$autoload_file = $release_dir . '/vendor/autoload.php';
+if ( file_exists( $autoload_file ) ) {
+	require_once $autoload_file;
+
+	if ( ! interface_exists( 'League\\OAuth2\\Server\\Repositories\\AccessTokenRepositoryInterface' ) ) {
+		$failures[] = 'Required OAuth2 Server runtime interface is not loadable from vendor/autoload.php.';
 	}
 }
 

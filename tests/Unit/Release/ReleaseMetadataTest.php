@@ -41,6 +41,8 @@ final class ReleaseMetadataTest extends TestCase {
 			self::assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $entry['date'] ?? '' ) );
 		}
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
+		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
+		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

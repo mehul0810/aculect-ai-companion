@@ -140,7 +140,7 @@ This internal module registry is the foundation for the broader third-party acti
 
 - MCP: `/wp-json/aculect-ai-companion/v1/mcp`
 - OAuth registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
-- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`
+- OAuth authorization: `/oauth/authorize`
 - OAuth token: `/wp-json/aculect-ai-companion/v1/oauth/token`
 - Protected resource metadata: `/.well-known/oauth-protected-resource`
 - Authorization server metadata: `/.well-known/oauth-authorization-server`

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Release;
 
+use Aculect\AICompanion\Connectors\Helpers;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -48,6 +49,18 @@ final class ReleaseMetadataTest extends TestCase {
 
 		self::assertStringContainsString( 'types: [published]', $workflow );
 		self::assertStringContainsString( 'if: github.event.release.prerelease', $workflow );
+	}
+
+	public function test_public_oauth_authorize_docs_match_discovery_contract(): void {
+		$root           = dirname( __DIR__, 3 );
+		$readme         = $this->file_contents( $root . '/README.md' );
+		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );
+		$endpoint       = Helpers::authorization_endpoint();
+
+		self::assertSame( 'https://example.com/oauth/authorize', $endpoint );
+		self::assertStringContainsString( '- OAuth authorization: `/oauth/authorize`', $readme );
+		self::assertStringContainsString( '- Authorization endpoint: `/oauth/authorize`', $chatgpt_readme );
+		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
 	}
 
 	/**

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionStep,
 	connectWizardCompletionState,
 	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
@@ -289,6 +290,20 @@ test( 'surfaces pending authorization with a recovery action', () => {
 		label: 'Status',
 		value: 'Awaiting approval',
 	} );
+
+	const step = connectWizardCompletionStep(
+		{
+			title: 'Complete',
+			subtitle: 'Your AI assistant is connected and ready to use.',
+			instructions: [ { title: 'Connection active' } ],
+		},
+		state
+	);
+
+	assert.equal( step.title, 'Authorization pending' );
+	assert.match( step.subtitle, /Waiting for a verified ChatGPT session\./ );
+	assert.doesNotMatch( step.subtitle, /connected and ready|active/i );
+	assert.equal( step.instructions[ 0 ].title, 'Approval still required' );
 } );
 
 test( 'surfaces failed authorization with retry guidance', () => {
@@ -365,6 +380,17 @@ test( 'reports matching verified sessions with the last verified activity', () =
 		label: 'Last verified activity',
 		value: '2026-07-10 09:55:00',
 	} );
+
+	const completeStep = {
+		title: 'Complete',
+		subtitle: 'Your AI assistant is connected and ready to use.',
+		instructions: [ { title: 'Connection active' } ],
+	};
+
+	assert.strictEqual(
+		connectWizardCompletionStep( completeStep, state ),
+		completeStep
+	);
 } );
 
 test( 'ignores expired sessions so stale payloads cannot keep success visible', () => {

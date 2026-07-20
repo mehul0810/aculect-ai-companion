@@ -14,6 +14,7 @@ import {
 } from './admin-tab-hydration.mjs';
 import {
 	clampWizardStepIndex,
+	connectWizardCompletionStep,
 	connectWizardCompletionState,
 	connectWizardRecoveryStepIndex,
 	normalizeConnectionRequests,
@@ -4838,9 +4839,9 @@ function WizardProgress( { steps, activeIndex, onSelectStep } ) {
 						<span className="aculect-ai-companion-wizard-progress__number">
 							{ index + 1 }
 						</span>
-						<em className="aculect-ai-companion-wizard-progress__title">
+						<span className="aculect-ai-companion-wizard-progress__title">
 							{ step.title }
-						</em>
+						</span>
 					</button>
 				);
 			} ) }
@@ -4888,6 +4889,14 @@ function WizardStepPanel( {
 	const completionState = isLast
 		? connectWizardCompletionState( provider, sessions, requests )
 		: null;
+	const presentedStep = isLast
+		? connectWizardCompletionStep( step, completionState )
+		: step;
+	const primaryActionLabel =
+		presentedStep.primaryActionLabel || 'Open assistant';
+	const documentationUrl = safeExternalUrl(
+		presentedStep.secondaryUrl || provider.primaryActionUrl || ''
+	);
 
 	return (
 		<div className="aculect-ai-companion-wizard-step-panel">
@@ -4895,20 +4904,38 @@ function WizardStepPanel( {
 				<span className="aculect-ai-companion-eyebrow">
 					Step { stepIndex + 1 } of { stepCount }
 				</span>
-				<div className="aculect-ai-companion-wizard-step-panel__heading">
+				<div className="aculect-ai-companion-wizard-current-task">
 					<ConnectProviderBadge provider={ provider } />
 					<div>
-						<h3>{ step.title }</h3>
-						<p>{ step.subtitle || step.description }</p>
+						<span className="aculect-ai-companion-wizard-current-task__label">
+							Current task
+						</span>
+						<h3>{ presentedStep.title }</h3>
+						<p>
+							{ presentedStep.subtitle ||
+								presentedStep.description }
+						</p>
 					</div>
+					{ presentedStep.primaryActionUrl && (
+						<Button
+							href={ presentedStep.primaryActionUrl }
+							target="_blank"
+							rel="noreferrer noopener"
+							variant="primary"
+						>
+							{ primaryActionLabel }
+						</Button>
+					) }
 				</div>
 			</div>
-			{ step.description && step.subtitle && (
+			{ presentedStep.description && presentedStep.subtitle && (
 				<p className="aculect-ai-companion-wizard-step-panel__copy">
-					{ step.description }
+					{ presentedStep.description }
 				</p>
 			) }
-			<WizardStepInstructions instructions={ step.instructions } />
+			<WizardStepInstructions
+				instructions={ presentedStep.instructions }
+			/>
 			{ copyFields.length > 0 && (
 				<div className="aculect-ai-companion-wizard-copy-fields">
 					{ copyFields.map( ( field ) => (
@@ -4931,15 +4958,16 @@ function WizardStepPanel( {
 					) ) }
 				</div>
 			) }
-			{ step.helpTitle && (
-				<div className="aculect-ai-companion-wizard-help">
-					<Icon icon={ help } size={ 18 } />
-					<div>
-						<strong>{ step.helpTitle }</strong>
-						<p>{ step.helpText }</p>
-					</div>
+			<div className="aculect-ai-companion-wizard-help">
+				<Icon icon={ help } size={ 18 } />
+				<div>
+					<strong>{ step.helpTitle || 'Need help?' }</strong>
+					<p>
+						{ step.helpText ||
+							'Use the provider documentation to confirm the correct connection settings before continuing.' }
+					</p>
 				</div>
-			) }
+			</div>
 			{ isLast && (
 				<div className="aculect-ai-companion-wizard-complete">
 					<strong>{ completionState.title }</strong>
@@ -4972,19 +5000,9 @@ function WizardStepPanel( {
 				>
 					Back
 				</Button>
-				{ step.primaryActionUrl && (
+				{ documentationUrl && (
 					<Button
-						href={ step.primaryActionUrl }
-						target="_blank"
-						rel="noreferrer noopener"
-						variant="secondary"
-					>
-						{ step.primaryActionLabel || 'Open assistant' }
-					</Button>
-				) }
-				{ step.secondaryUrl && (
-					<Button
-						href={ step.secondaryUrl }
+						href={ documentationUrl }
 						target="_blank"
 						rel="noreferrer noopener"
 						variant="tertiary"
@@ -5017,7 +5035,7 @@ function WizardStepPanel( {
 					</>
 				) : (
 					<Button type="button" variant="primary" onClick={ onNext }>
-						Next step
+						Continue
 					</Button>
 				) }
 			</div>
@@ -5072,9 +5090,9 @@ function SetupWizard( {
 						</span>
 						<h2>Connect { selectedProvider.label }</h2>
 						<p>
-							Add Aculect AI Companion to{ ' ' }
-							{ selectedProvider.label } in { steps.length } easy
-							steps.
+							Follow one focused task at a time. Your WordPress
+							consent screen confirms access before a verified
+							session is active.
 						</p>
 					</div>
 					{ wizard.estimatedTime && (
@@ -5129,7 +5147,7 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 				<div>
 					<h2>MCP Server URL</h2>
 					<p>
-						Keep the canonical endpoint visible here before, during,
+						Your canonical endpoint stays available before, during,
 						and after setup.
 					</p>
 				</div>

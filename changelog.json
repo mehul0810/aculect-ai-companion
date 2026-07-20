@@ -1,4 +1,17 @@
 {
+	"0.7.1": {
+		"date": "2026-07-20",
+		"New": [
+			"Redesigned the Connect workspace around provider selection, readiness checks, and a single copyable connection URL."
+		],
+		"Improved": [
+			"Improved incident approval authorization and clarified rejected refresh-token activity.",
+			"Removed non-functional controls from pending request views."
+		],
+		"Reliability": [
+			"Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces."
+		]
+	},
 	"0.7.0": {
 		"date": "2026-07-14",
 		"New": [

@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.0
+Stable tag: 0.7.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -278,6 +278,13 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.7.1 =
+
+* Redesigned the Connect workspace around provider selection, readiness checks, and a single copyable connection URL.
+* Improved incident approval authorization and clarified rejected refresh-token activity.
+* Removed non-functional controls from pending request views.
+* Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces.
+
 = 0.7.0 =
 
 * Added WordPress core management discovery for supported site, user, role, capability, revision, autosave, and REST schema surfaces.
@@ -432,6 +439,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.1 =
+
+Redesigns Connect setup, improves incident and refresh-token handling, removes non-functional pending request controls, and strengthens production-package dependency checks.
 
 = 0.7.0 =
 

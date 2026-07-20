@@ -280,8 +280,10 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
+* Redesigned the Connect workspace around provider selection, readiness checks, and a single copyable connection URL.
 * Improved incident approval authorization and clarified rejected refresh-token activity.
 * Removed non-functional controls from pending request views.
+* Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces.
 
 = 0.7.0 =
 
@@ -440,7 +442,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
-Improves incident approval authorization, clarifies rejected refresh-token activity, and removes non-functional pending request controls.
+Redesigns Connect setup, improves incident and refresh-token handling, removes non-functional pending request controls, and strengthens production-package dependency checks.
 
 = 0.7.0 =
 

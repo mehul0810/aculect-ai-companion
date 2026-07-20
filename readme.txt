@@ -249,7 +249,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.7.0 release notes.
+8. Changelog tab with the current 0.7.1 release notes.
 
 == Development ==
 

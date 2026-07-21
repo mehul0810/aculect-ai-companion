@@ -24,6 +24,7 @@ final class ReleaseMetadataTest extends TestCase {
 		$package  = $this->json_file( $root . '/package.json' );
 		$lockfile = $this->json_file( $root . '/package-lock.json' );
 		$log      = $this->json_file( $root . '/changelog.json' );
+		$governance = $this->file_contents( $root . '/RELEASE.md' );
 
 		self::assertSame( '0.7.1', $this->header( $plugin, 'Version' ) );
 		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.1' );", $plugin );
@@ -43,6 +44,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
 		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
 		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
+		self::assertStringContainsString( '`' . $release_version . '` is the active production target on `release/' . $release_version . '`.', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

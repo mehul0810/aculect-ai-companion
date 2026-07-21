@@ -2,7 +2,7 @@
 	"0.7.1": {
 		"date": "2026-07-20",
 		"New": [
-			"Redesigned the Connect workspace around provider selection, readiness checks, and a single copyable connection URL."
+			"Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance."
 		],
 		"Improved": [
 			"Improved incident approval authorization and clarified rejected refresh-token activity.",

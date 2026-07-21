@@ -22,11 +22,11 @@ Aculect AI Companion is an early release and is not intended for production webs
 
 ## User Setup
 
-Open `AI Companion > Connect` in WordPress and follow the setup flow:
+Open `AI Companion > Connect` in WordPress:
 
 1. Copy your connection URL.
-2. Open your AI tool and add a new connector.
-3. Paste the URL when prompted.
+2. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+3. Paste the URL when prompted by your AI app.
 4. Approve the connection on the screen that appears.
 
 ## Features
@@ -44,16 +44,10 @@ Open `AI Companion > Connect` in WordPress and follow the setup flow:
 
 ## Supported AI Tools
 
-Aculect AI Companion currently includes setup guidance for:
+Aculect AI Companion keeps the primary setup surface focused on:
 
-- ChatGPT app with Developer Mode connectors.
-- OpenAI API integrations that support remote connectors.
-- Claude app, Claude Desktop, Claude Cowork, and Claude mobile.
-- Claude Code.
-- Claude API integrations that support remote connectors.
-- Codex custom MCP and config.toml setups.
-- Cursor Agent through global or project mcp.json.
-- Gemini CLI and Gemini Code Assist agent mode.
+- ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
+- Claude custom connectors through `Customize > Connectors`.
 - Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.

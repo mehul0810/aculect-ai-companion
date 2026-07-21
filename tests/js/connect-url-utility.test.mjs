@@ -11,13 +11,14 @@ const ADMIN_STYLE_SOURCE = readFileSync(
 	'utf8'
 );
 
-test( 'connect tab renders a simplified persistent MCP endpoint utility outside the wizard', () => {
+test( 'connect tab renders a persistent connection link before the lean app picker', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/function ConnectMcpUrlUtility\( \{ mcpUrl, health, onCopy \} \)/
 	);
-	assert.match( ADMIN_APP_SOURCE, /<h2>Your MCP endpoint<\/h2>/ );
-	assert.match( ADMIN_APP_SOURCE, /<CopyField\s+label="MCP endpoint"/ );
+	assert.match( ADMIN_APP_SOURCE, /<h2>Connection link<\/h2>/ );
+	assert.match( ADMIN_APP_SOURCE, /<CopyField\s+label="Connection link"/ );
+	assert.match( ADMIN_APP_SOURCE, /copyButtonLabel="Copy link"/ );
 	assert.match( ADMIN_APP_SOURCE, /visuallyHiddenLabel=\{ true \}/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
@@ -25,7 +26,7 @@ test( 'connect tab renders a simplified persistent MCP endpoint utility outside 
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/<ConnectMcpUrlUtility[\s\S]*\/>\s*<SetupWizard/s
+		/<ConnectMcpUrlUtility[\s\S]*\/>\s*<ConnectAppPicker/s
 	);
 } );
 
@@ -54,10 +55,7 @@ test( 'persistent MCP endpoint utility presents local and verified states from e
 		/Your public HTTPS endpoint is available for hosted assistants\./
 	);
 	assert.match( ADMIN_APP_SOURCE, /label="Verified"/ );
-	assert.match(
-		ADMIN_APP_SOURCE,
-		/Safe to share — this link contains no secrets\./
-	);
+	assert.match( ADMIN_APP_SOURCE, /This link contains no secrets\./ );
 } );
 
 test( 'local endpoint warning keeps its icon and text vertically aligned in a compact row', () => {
@@ -78,20 +76,25 @@ test( 'MCP endpoint safety note does not add browser-default paragraph spacing',
 	);
 } );
 
-test( 'connect wizard keeps one current task, help, documentation, and a continue action visible', () => {
-	assert.match(
-		ADMIN_APP_SOURCE,
-		/className="aculect-ai-companion-wizard-current-task"/
-	);
-	assert.match( ADMIN_APP_SOURCE, /Current task/ );
-	assert.match( ADMIN_APP_SOURCE, /Need help\?/ );
-	assert.match( ADMIN_APP_SOURCE, /View documentation/ );
-	assert.match( ADMIN_APP_SOURCE, />\s*Continue\s*</ );
+test( 'connect picker shows ChatGPT, Claude, and a generic MCP-compatible choice', () => {
+	assert.match( ADMIN_APP_SOURCE, /const CONNECT_APP_OPTIONS = \[/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'ChatGPT'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'OpenAI'/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'Claude'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'Anthropic'/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'Other AI app'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
 } );
 
-test( 'wizard progress labels are rendered as wrapping text rather than ellipsized emphasis', () => {
+test( 'connect picker puts the setup guide before the provider action without rendering a step flow', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/<span className="aculect-ai-companion-wizard-progress__title">/
+		/<a[\s\S]*>\s*Setup guide\s*<\/a>[\s\S]*<Button[\s\S]*selectedOption\.actionLabel/s
 	);
+	const pickerSource = ADMIN_APP_SOURCE.slice(
+		ADMIN_APP_SOURCE.indexOf( 'function ConnectAppPicker' ),
+		ADMIN_APP_SOURCE.indexOf( 'function ConnectReadinessBadge' )
+	);
+	assert.doesNotMatch( pickerSource, /Step \{\s*stepIndex/ );
+	assert.doesNotMatch( pickerSource, /WizardProgress/ );
 } );

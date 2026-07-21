@@ -9,7 +9,7 @@ use Aculect\AICompanion\Connectors\Providers\ProviderMatcherInterface;
 use Aculect\AICompanion\Connectors\Providers\ProviderWizardInterface;
 
 /**
- * Provides ChatGPT-specific connector setup guidance.
+ * Provides ChatGPT-specific app setup guidance.
  */
 final class Provider implements ProviderInterface, ProviderMatcherInterface, ProviderWizardInterface {
 
@@ -35,17 +35,17 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	}
 
 	/**
-	 * Return the ChatGPT connector setup URL.
+	 * Return the ChatGPT app setup URL.
 	 */
 	public function primary_action_url(): string {
-		return 'https://chatgpt.com/#settings/Connectors';
+		return 'https://chatgpt.com/#settings/Apps';
 	}
 
 	/**
 	 * Return the primary action label.
 	 */
 	public function primary_action_label(): string {
-		return 'Open ChatGPT Connectors';
+		return 'Open ChatGPT Apps';
 	}
 
 	/**
@@ -59,14 +59,13 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 
 		return array(
 			array(
-				'title'       => 'ChatGPT developer mode connector',
-				'description' => 'Use this for a private ChatGPT connector. Your connection URL must be publicly reachable over HTTPS because ChatGPT connects from outside your WordPress site.',
+				'title'       => 'ChatGPT custom app',
+				'description' => 'Use this for a private ChatGPT app. Your connection URL must be publicly reachable over HTTPS because ChatGPT connects from outside your WordPress site.',
 				'steps'       => array(
-					'In ChatGPT, enable Developer Mode under Settings > Apps & Connectors > Advanced settings when your workspace allows it.',
-					'Open Settings > Connectors and click Create.',
-					'Enter a connector name and description, then paste your connection URL as the Connector URL.',
-					'Click Create. ChatGPT should read the MCP tool metadata and ask you to authenticate when authorization is required.',
-					'After WordPress approval, open a new chat and choose Aculect AI Companion from the + menu > More.',
+					'In ChatGPT, open Settings > Apps. If your workspace supports custom MCP apps, enable Developer Mode under Apps > Advanced settings.',
+					'Create a custom app and paste your connection URL when ChatGPT asks for the MCP server URL.',
+					'ChatGPT should read the MCP tool metadata and ask you to authenticate when authorization is required.',
+					'After WordPress approval, enable Aculect AI Companion for the conversation where you want to use it.',
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
@@ -99,7 +98,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'id'                 => 'open',
 					'title'              => 'Open ChatGPT',
 					'subtitle'           => 'Open ChatGPT and enable Developer Mode if needed.',
-					'description'        => 'Developer Mode shows the Create button for private connectors in ChatGPT.',
+					'description'        => 'Developer Mode shows the Create button for private apps in ChatGPT.',
 					'instructions'       => array(
 						array(
 							'title'       => 'Open ChatGPT',
@@ -107,11 +106,11 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 						),
 						array(
 							'title'       => 'Enable Developer Mode',
-							'description' => 'Go to Settings > Apps & Connectors > Advanced settings and toggle Developer Mode if your organization allows it.',
+							'description' => 'Go to Settings > Apps > Advanced settings and toggle Developer Mode if your organization allows it.',
 						),
 					),
 					'helpTitle'          => 'Where is Developer Mode?',
-					'helpText'           => 'It is under Settings > Apps & Connectors > Advanced settings.',
+					'helpText'           => 'It is under Settings > Apps > Advanced settings.',
 					'primaryActionLabel' => 'Open ChatGPT',
 					'primaryActionUrl'   => 'https://chatgpt.com/',
 					'secondaryLabel'     => 'View documentation',
@@ -119,17 +118,17 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				),
 				array(
 					'id'           => 'add',
-					'title'        => 'Add Connector',
-					'subtitle'     => 'Add Aculect AI Companion as a new connector.',
+					'title'        => 'Add app',
+					'subtitle'     => 'Add Aculect AI Companion as a custom app.',
 					'description'  => 'Use the connection URL below to add Aculect AI Companion.',
 					'instructions' => array(
 						array(
-							'title'       => 'Open Connectors',
-							'description' => 'In ChatGPT, open Settings > Connectors and click Create.',
+							'title'       => 'Open Apps',
+							'description' => 'In ChatGPT, open Settings > Apps and create a custom app.',
 						),
 						array(
 							'title'       => 'Paste the connection URL',
-							'description' => 'Enter a connector name and description, then paste the Aculect connection URL below as the Connector URL.',
+							'description' => 'Enter an app name and description, then paste the Aculect connection URL below as the MCP server URL.',
 						),
 						array(
 							'title'       => 'Continue to authorization',

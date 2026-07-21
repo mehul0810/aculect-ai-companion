@@ -6,6 +6,10 @@ const ADMIN_APP_SOURCE = readFileSync(
 	new URL( '../../src/index.js', import.meta.url ),
 	'utf8'
 );
+const ADMIN_STYLE_SOURCE = readFileSync(
+	new URL( '../../src/style.scss', import.meta.url ),
+	'utf8'
+);
 
 test( 'connect tab renders a simplified persistent MCP endpoint utility outside the wizard', () => {
 	assert.match(
@@ -53,6 +57,17 @@ test( 'persistent MCP endpoint utility presents local and verified states from e
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/Safe to share — this link contains no secrets\./
+	);
+} );
+
+test( 'local endpoint warning keeps its icon and text vertically aligned in a compact row', () => {
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/\.aculect-ai-companion-connect-info-message\.is-warn\s*\{[\s\S]*align-items:\s*center;[\s\S]*padding:\s*10px;/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/aculect-ai-companion-connect-info-message__icon/
 	);
 } );
 

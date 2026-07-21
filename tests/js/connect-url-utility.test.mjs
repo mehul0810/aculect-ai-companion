@@ -71,6 +71,13 @@ test( 'local endpoint warning keeps its icon and text vertically aligned in a co
 	);
 } );
 
+test( 'MCP endpoint safety note does not add browser-default paragraph spacing', () => {
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/\.aculect-ai-companion-connect-secure-note\s*\{\s*margin:\s*0;/
+	);
+} );
+
 test( 'connect wizard keeps one current task, help, documentation, and a continue action visible', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

@@ -2242,10 +2242,10 @@ td:last-child
 	grid-template-columns: auto minmax(0, 1fr);
 	gap: 12px;
 	align-items: start;
-	padding: 14px;
-	border: 1px solid #bfdbfe;
+	padding: 12px 14px;
+	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
-	background: #eff6ff;
+	background: #f8fafc;
 }
 
 .aculect-ai-companion-connect-info-message.is-pass {
@@ -2289,9 +2289,17 @@ td:last-child
 	color: #b91c1c;
 }
 
-.aculect-ai-companion-connect-info-message div {
+.aculect-ai-companion-connect-info-message__content {
 	display: grid;
 	gap: 6px;
+	min-width: 0;
+}
+
+.aculect-ai-companion-connect-info-message__summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 }
 
 .aculect-ai-companion-connect-info-message p {
@@ -2382,7 +2390,7 @@ td:last-child
 .aculect-ai-companion-connect-card--url .aculect-ai-companion-copy-field__display {
 	padding: 10px 12px;
 	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 6px;
+	border-radius: 6px 0 0 6px;
 	background: #f8fafc;
 	overflow-wrap: anywhere;
 }
@@ -4682,6 +4690,12 @@ td:first-child
 
 	.aculect-ai-companion-connect-section-heading--status {
 		justify-content: stretch;
+	}
+
+	.aculect-ai-companion-connect-info-message__summary {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 6px;
 	}
 
 	.aculect-ai-companion-connect__heading h1 {

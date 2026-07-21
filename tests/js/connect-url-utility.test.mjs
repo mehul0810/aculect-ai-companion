@@ -7,13 +7,14 @@ const ADMIN_APP_SOURCE = readFileSync(
 	'utf8'
 );
 
-test( 'connect tab renders a persistent MCP Server URL utility outside the wizard', () => {
+test( 'connect tab renders a simplified persistent MCP endpoint utility outside the wizard', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/function ConnectMcpUrlUtility\( \{ mcpUrl, health, onCopy \} \)/
 	);
-	assert.match( ADMIN_APP_SOURCE, /<h2>MCP Server URL<\/h2>/ );
-	assert.match( ADMIN_APP_SOURCE, /<CopyField\s+label="MCP Server URL"/ );
+	assert.match( ADMIN_APP_SOURCE, /<h2>Your MCP endpoint<\/h2>/ );
+	assert.match( ADMIN_APP_SOURCE, /<CopyField\s+label="MCP endpoint"/ );
+	assert.match( ADMIN_APP_SOURCE, /visuallyHiddenLabel=\{ true \}/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/<ConnectMcpUrlUtility\s+[\s\S]*mcpUrl=\{ mcpUrl \}[\s\S]*health=\{ connectionHealth \}[\s\S]*onCopy=\{ copyValue \}/
@@ -24,7 +25,7 @@ test( 'connect tab renders a persistent MCP Server URL utility outside the wizar
 	);
 } );
 
-test( 'persistent MCP Server URL utility covers unavailable and diagnostic-backed states', () => {
+test( 'persistent MCP endpoint utility presents local and verified states from endpoint diagnostics', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/function persistentMcpUrlStatus\( mcpUrl, health \)/
@@ -33,13 +34,25 @@ test( 'persistent MCP Server URL utility covers unavailable and diagnostic-backe
 		ADMIN_APP_SOURCE,
 		/The canonical MCP Server URL is unavailable for this\s+site right now\./s
 	);
+	assert.match( ADMIN_APP_SOURCE, /'mcp_auth_challenge'/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/'Run Connection Diagnostics to verify HTTPS, route shape, and the authorization challenge\.'/s
+		/endpointChecks\.every\( \( item \) => item\?\.status === 'pass' \)/
 	);
+	assert.match( ADMIN_APP_SOURCE, /Local site detected/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/This endpoint never includes secrets, tokens, nonces, or\s+user-specific approval material\./s
+		/Hosted assistants need a public HTTPS URL\./
+	);
+	assert.match( ADMIN_APP_SOURCE, /Ready to connect/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/Your public HTTPS endpoint is available for hosted assistants\./
+	);
+	assert.match( ADMIN_APP_SOURCE, /label="Verified"/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/Safe to share — this link contains no secrets\./
 	);
 } );
 

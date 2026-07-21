@@ -472,7 +472,13 @@ function relocateAdminNotices( target ) {
 	} );
 }
 
-function CopyField( { label, value, secret = false, onCopy } ) {
+function CopyField( {
+	label,
+	value,
+	secret = false,
+	visuallyHiddenLabel = false,
+	onCopy,
+} ) {
 	const inputId = useRef(
 		`aculect-ai-companion-copy-field-${ String( label )
 			.toLowerCase()
@@ -487,7 +493,9 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 		<div className="aculect-ai-companion-copy-field">
 			{ secret ? (
 				<label
-					className="aculect-ai-companion-copy-field__label"
+					className={ `aculect-ai-companion-copy-field__label${
+						visuallyHiddenLabel ? ' screen-reader-text' : ''
+					}` }
 					htmlFor={ inputId.current }
 					id={ labelId }
 				>
@@ -495,7 +503,9 @@ function CopyField( { label, value, secret = false, onCopy } ) {
 				</label>
 			) : (
 				<span
-					className="aculect-ai-companion-copy-field__label"
+					className={ `aculect-ai-companion-copy-field__label${
+						visuallyHiddenLabel ? ' screen-reader-text' : ''
+					}` }
 					id={ labelId }
 				>
 					{ label }
@@ -2678,7 +2688,12 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 
 	const httpsCheck = diagnosticItemById( health, 'https_url' );
 	const routeCheck = diagnosticItemById( health, 'rest_route_shape' );
-	const blockingCheck = [ httpsCheck, routeCheck ].find(
+	const authChallengeCheck = diagnosticItemById(
+		health,
+		'mcp_auth_challenge'
+	);
+	const endpointChecks = [ httpsCheck, routeCheck, authChallengeCheck ];
+	const blockingCheck = endpointChecks.find(
 		( item ) => item?.status === 'fail'
 	);
 
@@ -2693,11 +2708,20 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 		};
 	}
 
-	const warningCheck = [ httpsCheck, routeCheck ].find(
+	const warningCheck = endpointChecks.find(
 		( item ) => item?.status === 'warn'
 	);
 
 	if ( warningCheck ) {
+		if ( warningCheck === httpsCheck ) {
+			return {
+				status: 'warn',
+				title: 'Local site detected',
+				description: 'Hosted assistants need a public HTTPS URL.',
+				detail: '',
+			};
+		}
+
 		return {
 			status: 'warn',
 			title: 'Needs attention',
@@ -2708,13 +2732,14 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 		};
 	}
 
-	if ( httpsCheck || routeCheck ) {
+	if ( endpointChecks.every( ( item ) => item?.status === 'pass' ) ) {
 		return {
 			status: 'pass',
-			title: 'Ready to copy',
+			title: 'Ready to connect',
 			description:
-				'The canonical MCP Server URL matches the expected secure REST endpoint.',
+				'Your public HTTPS endpoint is available for hosted assistants.',
 			detail: '',
+			verified: true,
 		};
 	}
 
@@ -2727,7 +2752,7 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 	};
 }
 
-function StatusBadge( { status } ) {
+function StatusBadge( { status, label = '' } ) {
 	const normalizedStatus = [ 'pass', 'warn', 'fail' ].includes( status )
 		? status
 		: 'warn';
@@ -2736,7 +2761,7 @@ function StatusBadge( { status } ) {
 		<span
 			className={ `aculect-ai-companion-health-status is-${ normalizedStatus }` }
 		>
-			{ diagnosticStatusLabel( normalizedStatus ) }
+			{ label || diagnosticStatusLabel( normalizedStatus ) }
 		</span>
 	);
 }
@@ -5140,26 +5165,31 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 	const endpoint = String( mcpUrl || '' ).trim();
 	const hasEndpoint = endpoint !== '';
 	const status = persistentMcpUrlStatus( endpoint, health );
+	const statusIcon =
+		{
+			pass: check,
+			fail: info,
+		}[ status.status ] || shield;
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
-			<div className="aculect-ai-companion-connect-section-heading aculect-ai-companion-connect-section-heading--status">
+			<div className="aculect-ai-companion-connect-section-heading">
 				<div>
-					<h2>MCP Server URL</h2>
+					<h2>Your MCP endpoint</h2>
 					<p>
-						Your canonical endpoint stays available before, during,
-						and after setup.
+						Copy this address when your assistant asks for an MCP
+						server.
 					</p>
 				</div>
-				<StatusBadge status={ status.status } />
 			</div>
 			<div className="aculect-ai-companion-connect-url-panel">
 				{ hasEndpoint ? (
 					<CopyField
-						label="MCP Server URL"
+						label="MCP endpoint"
 						value={ endpoint }
+						visuallyHiddenLabel={ true }
 						onCopy={ ( value ) =>
-							onCopy( value, 'MCP Server URL copied.' )
+							onCopy( value, 'MCP endpoint copied.' )
 						}
 					/>
 				) : (
@@ -5171,27 +5201,30 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 			</div>
 			<div
 				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
+				role="status"
 			>
 				<span
 					aria-hidden="true"
 					className="aculect-ai-companion-connect-info-message__icon"
 				>
-					<Icon
-						icon={ status.status === 'fail' ? info : shield }
-						size={ 16 }
-					/>
+					<Icon icon={ statusIcon } size={ 16 } />
 				</span>
-				<div>
-					<p>
-						<strong>{ status.title }</strong> { status.description }
-					</p>
+				<div className="aculect-ai-companion-connect-info-message__content">
+					<div className="aculect-ai-companion-connect-info-message__summary">
+						<p>
+							<strong>{ status.title }</strong>{ ' ' }
+							{ status.description }
+						</p>
+						{ status.verified && (
+							<StatusBadge status="pass" label="Verified" />
+						) }
+					</div>
 					{ status.detail && <p>{ status.detail }</p> }
 				</div>
 			</div>
 			<p className="aculect-ai-companion-connect-secure-note">
 				<Icon icon={ lock } size={ 16 } />
-				This endpoint never includes secrets, tokens, nonces, or
-				user-specific approval material.
+				Safe to share — this link contains no secrets.
 			</p>
 		</section>
 	);

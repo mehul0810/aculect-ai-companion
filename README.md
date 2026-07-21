@@ -48,6 +48,7 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 - ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
 - Claude custom connectors through `Customize > Connectors`.
+- Cursor remote MCP servers.
 - Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.

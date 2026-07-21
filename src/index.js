@@ -4769,6 +4769,15 @@ const CONNECT_APP_OPTIONS = [
 			'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
 	},
 	{
+		id: 'cursor',
+		providerId: 'cursor',
+		label: 'Cursor',
+		brand: 'Anysphere',
+		description: 'Add this link in Cursor MCP settings.',
+		actionLabel: 'Open Cursor MCP guide',
+		guideUrl: 'https://docs.cursor.com/context/model-context-protocol',
+	},
+	{
 		id: 'other',
 		providerId: 'mcp',
 		label: 'Other AI app',
@@ -4794,7 +4803,9 @@ function connectAppOptionForProvider( providerId ) {
 	return (
 		CONNECT_APP_OPTIONS.find(
 			( option ) => option.providerId === providerId
-		) || CONNECT_APP_OPTIONS[ 2 ]
+		) ||
+		CONNECT_APP_OPTIONS.find( ( option ) => option.id === 'other' ) ||
+		CONNECT_APP_OPTIONS[ 0 ]
 	);
 }
 
@@ -4806,6 +4817,7 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
 	);
 	const guideUrl = safeExternalUrl( selectedOption.guideUrl );
+	const showSetupGuide = Boolean( guideUrl && guideUrl !== actionUrl );
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
@@ -4853,7 +4865,7 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				) }
 				<p>{ selectedOption.description }</p>
 				<div className="aculect-ai-companion-connect-app-picker__actions">
-					{ guideUrl && (
+					{ showSetupGuide && (
 						<a
 							href={ guideUrl }
 							target="_blank"

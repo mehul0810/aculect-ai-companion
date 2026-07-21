@@ -53,7 +53,7 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame( 'Cursor', $providers['cursor']['label'] );
 		self::assertSame( 'Cursor', $providers['cursor']['brandName'] );
 		self::assertSame( 'https://cursor.com/', $providers['cursor']['brandUrl'] );
-		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertSame( 'https://docs.cursor.com/context/model-context-protocol', $providers['cursor']['primaryActionUrl'] );
 		self::assertSame( 'Cursor mcp.json', $providers['cursor']['wizard']['steps'][1]['copyFields'][0]['label'] );
 		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( '"httpUrl":', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );

@@ -184,7 +184,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringContainsString( '[mcp_servers.aculect_ai_companion]', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( 'scopes =', $providers['codex']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertArrayHasKey( 'cursor', $providers );
-		self::assertSame( 'https://cursor.com/docs/mcp', $providers['cursor']['primaryActionUrl'] );
+		self::assertSame( 'https://docs.cursor.com/context/model-context-protocol', $providers['cursor']['primaryActionUrl'] );
 		self::assertSame( 'Add MCP server', $providers['cursor']['wizard']['steps'][1]['title'] );
 		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );

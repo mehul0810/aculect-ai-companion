@@ -76,12 +76,14 @@ test( 'MCP endpoint safety note does not add browser-default paragraph spacing',
 	);
 } );
 
-test( 'connect picker shows ChatGPT, Claude, and a generic MCP-compatible choice', () => {
+test( 'connect picker shows ChatGPT, Claude, Cursor, and a generic MCP-compatible choice', () => {
 	assert.match( ADMIN_APP_SOURCE, /const CONNECT_APP_OPTIONS = \[/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'ChatGPT'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'OpenAI'/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'Claude'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'Anthropic'/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'Cursor'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'Anysphere'/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'Other AI app'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
 } );

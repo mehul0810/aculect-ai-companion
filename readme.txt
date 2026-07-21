@@ -61,6 +61,7 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 * ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
 * Claude custom connectors through Customize > Connectors.
+* Cursor remote MCP servers.
 * Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to complete OAuth approval and send MCP requests.
@@ -274,7 +275,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
-* Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.
+* Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT, Claude, and Cursor setup guidance.
 * Improved incident approval authorization and clarified rejected refresh-token activity.
 * Removed non-functional controls from pending request views.
 * Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces.

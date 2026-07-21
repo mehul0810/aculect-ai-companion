@@ -162,6 +162,11 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['changelog'] );
 		self::assertIsArray( $payload['providers'] );
 		$providers = array_column( $payload['providers'], null, 'id' );
+		self::assertArrayHasKey( 'chatgpt', $providers );
+		self::assertSame( 'https://chatgpt.com/#settings/Apps', $providers['chatgpt']['primaryActionUrl'] );
+		self::assertSame( 'Open ChatGPT Apps', $providers['chatgpt']['primaryActionLabel'] );
+		self::assertStringContainsString( 'Settings > Apps', implode( ' ', $providers['chatgpt']['setupSections'][0]['steps'] ) );
+		self::assertStringNotContainsString( 'Settings > Connectors', implode( ' ', $providers['chatgpt']['setupSections'][0]['steps'] ) );
 		self::assertArrayHasKey( 'claude', $providers );
 		self::assertIsArray( $providers['claude'] );
 		self::assertSame( 'https://claude.ai/customize/connectors', $providers['claude']['primaryActionUrl'] );

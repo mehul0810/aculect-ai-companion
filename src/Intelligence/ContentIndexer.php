@@ -187,7 +187,18 @@ final class ContentIndexer {
 			}
 
 			$post_id = $claim['object_id'];
-			$result  = $this->index_post( $post_id );
+			if ( 'delete' === $claim['action'] ) {
+				if ( $this->repo()->delete_content_item( $post_id ) ) {
+					$queue->acknowledge( $post_id, $claim['queue_token'], $claim['lock_token'] );
+				} else {
+					++$errors;
+					$queue->retry( $post_id, $claim['queue_token'], $claim['lock_token'] );
+				}
+				++$processed;
+				continue;
+			}
+
+			$result = $this->index_post( $post_id );
 			if ( 'error' === ( $result['status'] ?? '' ) ) {
 				++$errors;
 				$queue->retry( $post_id, $claim['queue_token'], $claim['lock_token'] );
@@ -224,12 +235,16 @@ final class ContentIndexer {
 
 		$post = get_post( $post_id );
 		if ( ! $post instanceof \WP_Post ) {
-			$this->repo()->delete_content_item( $post_id );
+			if ( ! $this->repo()->delete_content_item( $post_id ) ) {
+				return $this->result( 'error', $post_id, 'delete_failed' );
+			}
 			return $this->result( 'deleted', $post_id, 'post_not_found' );
 		}
 
 		if ( ! $this->is_indexable_post( $post ) ) {
-			$this->repo()->delete_content_item( $post_id );
+			if ( ! $this->repo()->delete_content_item( $post_id ) ) {
+				return $this->result( 'error', $post_id, 'delete_failed' );
+			}
 			return $this->result( 'deleted', $post_id, 'post_not_indexable' );
 		}
 
@@ -297,8 +312,11 @@ final class ContentIndexer {
 	 * @param int $post_id Post ID.
 	 */
 	public function delete_post( int $post_id ): void {
-		( new ContentIndexQueue() )->invalidate_for_delete( $post_id );
+		$tombstone = ( new ContentIndexQueue() )->invalidate_for_delete( $post_id );
 		$this->repo()->delete_content_item( $post_id );
+		if ( '' !== $tombstone ) {
+			$this->schedule_stale_sweep( 5 );
+		}
 	}
 
 	/**
@@ -317,8 +335,12 @@ final class ContentIndexer {
 			return;
 		}
 
-		if ( $queue->is_delete_fenced( $post_id ) || ! $this->is_indexable_post_id( $post_id ) ) {
+		$current = $queue->current_generation( $post_id );
+		if ( 'delete' === $current['action'] || ! $this->is_indexable_post_id( $post_id ) ) {
 			$this->repo()->delete_content_item( $post_id );
+			if ( 'delete' === $current['action'] ) {
+				$queue->clear_generation( $post_id, $current['queue_token'] );
+			}
 			return;
 		}
 

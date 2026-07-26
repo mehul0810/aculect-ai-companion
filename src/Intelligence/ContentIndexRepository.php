@@ -158,18 +158,22 @@ final class ContentIndexRepository {
 	 *
 	 * @param int $object_id Content item ID.
 	 */
-	public function delete_content_item( int $object_id ): void {
+	public function delete_content_item( int $object_id ): bool {
 		global $wpdb;
 
 		$object_id = absint( $object_id );
 		if ( 0 >= $object_id ) {
-			return;
+			return false;
 		}
 
-		$wpdb->delete( Installer::content_index_table(), array( 'object_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::link_graph_table(), array( 'source_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::link_graph_table(), array( 'target_id' => $object_id ), array( '%d' ) );
+		$results = array(
+			$wpdb->delete( Installer::content_index_table(), array( 'object_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::link_graph_table(), array( 'source_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::link_graph_table(), array( 'target_id' => $object_id ), array( '%d' ) ),
+		);
+
+		return ! in_array( false, $results, true );
 	}
 
 	/**

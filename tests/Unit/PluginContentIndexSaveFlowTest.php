@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit;
 
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\ContentIndexQueue;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer;
 use Aculect\AICompanion\Plugin;
@@ -69,6 +70,11 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 					return false;
 				}
 
+				$before_callback = $GLOBALS['aculect_ai_companion_test_before_content_replace'] ?? null;
+				if ( is_callable( $before_callback ) ) {
+					$GLOBALS['aculect_ai_companion_test_before_content_replace'] = null;
+					$before_callback( (int) $data['object_id'] );
+				}
 				$this->content_rows[ (int) $data['object_id'] ] = $data;
 				$callback = $GLOBALS['aculect_ai_companion_test_after_content_replace'] ?? null;
 				if ( is_callable( $callback ) ) {
@@ -117,7 +123,13 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				unset( $where_formats );
 
 				if ( Installer::content_index_table() === $table ) {
-					unset( $this->content_rows[ (int) ( $where['object_id'] ?? 0 ) ] );
+					$object_id = (int) ( $where['object_id'] ?? 0 );
+					unset( $this->content_rows[ $object_id ] );
+					$callback = $GLOBALS['aculect_ai_companion_test_after_content_delete'] ?? null;
+					if ( is_callable( $callback ) ) {
+						$GLOBALS['aculect_ai_companion_test_after_content_delete'] = null;
+						$callback( $object_id );
+					}
 					return 1;
 				}
 
@@ -178,7 +190,9 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure']       = false;
+		$GLOBALS['aculect_ai_companion_test_before_content_replace'] = null;
 		$GLOBALS['aculect_ai_companion_test_after_content_replace']  = null;
+		$GLOBALS['aculect_ai_companion_test_after_content_delete']   = null;
 		$GLOBALS['aculect_ai_companion_test_taxonomies']       = array(
 			'category' => new WP_Taxonomy(
 				'category',
@@ -441,6 +455,89 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		);
 	}
 
+	public function test_delete_tombstone_recovers_after_worker_stops_before_finalize(): void {
+		$post_id = 34110;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Interrupted worker',
+				'post_content'      => '<!-- wp:paragraph --><p>A tombstone must remove this stale write.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 17:00:00',
+			)
+		);
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( $post_id ) );
+		$claim = $queue->claim( 1 );
+		self::assertCount( 1, $claim );
+		$GLOBALS['aculect_ai_companion_test_before_content_replace'] = static function ( int $replaced_post_id ): void {
+			( new ContentIndexer() )->delete_post( $replaced_post_id );
+			unset( $GLOBALS['aculect_ai_companion_test_posts'][ $replaced_post_id ] );
+		};
+
+		$result = ( new ContentIndexer() )->index_post( $post_id );
+
+		self::assertSame( 'indexed', $result['status'] );
+		self::assertArrayHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( 'delete', $queue->current_generation( $post_id )['action'] );
+
+		update_option( 'aculect_ai_companion_index_lock_' . $post_id, 'expired:' . ( time() - 1 ), false );
+		$recovered = ( new ContentIndexer() )->run_stale_sweep();
+
+		self::assertSame( 1, $recovered['processed_items'] );
+		self::assertSame( 0, $recovered['remaining_items'] );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+	}
+
+	public function test_save_crossing_delete_cleanup_preserves_the_last_queue_generation(): void {
+		$post_id = 34111;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Before restore',
+				'post_content'      => '<!-- wp:paragraph --><p>Content before restore.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 18:00:00',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_after_content_delete'] = static function ( int $deleted_post_id ): void {
+			$GLOBALS['aculect_ai_companion_test_posts'][ $deleted_post_id ] = new WP_Post(
+				array(
+					'ID'                => $deleted_post_id,
+					'post_type'         => 'post',
+					'post_status'       => 'publish',
+					'post_title'        => 'Restored after delete',
+					'post_content'      => '<!-- wp:paragraph --><p>The last queue generation wins.</p><!-- /wp:paragraph -->',
+					'post_modified_gmt' => '2026-07-10 18:01:00',
+				)
+			);
+			( new ContentIndexer() )->defer_index_post( $deleted_post_id );
+		};
+
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( $post_id ) );
+		self::assertCount( 1, $queue->claim( 1 ) );
+		$indexer = new ContentIndexer();
+		$indexer->delete_post( $post_id );
+
+		$queue_state = $queue->current_generation( $post_id );
+		self::assertSame( 'index', $queue_state['action'] );
+		self::assertSame( 1, $indexer->pending_index_count() );
+
+		update_option( 'aculect_ai_companion_index_lock_' . $post_id, 'expired:' . ( time() - 1 ), false );
+		$result = $indexer->run_stale_sweep();
+
+		self::assertSame( 1, $result['processed_items'] );
+		self::assertSame( 0, $result['remaining_items'] );
+		self::assertStringContainsString(
+			'Restored after delete',
+			(string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' )
+		);
+	}
+
 	public function test_non_indexable_attachment_save_does_not_enter_queue(): void {
 		$post_id = 34104;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
@@ -500,6 +597,11 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
 		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertSame( 1, $indexer->pending_index_count() );
+		self::assertSame( 'delete', ( new ContentIndexQueue() )->current_generation( $post_id )['action'] );
+
+		$result = $indexer->run_stale_sweep();
+		self::assertSame( 1, $result['processed_items'] );
 		self::assertSame( 0, $indexer->pending_index_count() );
 	}
 }

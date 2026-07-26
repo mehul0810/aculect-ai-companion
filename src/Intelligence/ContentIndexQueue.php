@@ -14,15 +14,13 @@ namespace Aculect\AICompanion\Intelligence;
  */
 final class ContentIndexQueue {
 
-	private const LEGACY_OPTION       = 'aculect_ai_companion_pending_index_ids';
-	private const QUEUE_PREFIX        = 'aculect_ai_companion_pending_index_';
-	private const LOCK_PREFIX         = 'aculect_ai_companion_index_lock_';
-	private const DELETE_FENCE_PREFIX = 'aculect_ai_companion_index_delete_';
-	private const CURSOR_OPTION       = 'aculect_ai_companion_index_queue_cursor';
-	private const DEFAULT_LEASE_TTL   = 300;
-	private const DELETE_FENCE_TTL    = 600;
-	private const MAX_CLAIM_LIMIT     = 100;
-	private const MAX_RETRY_DELAY     = 3600;
+	private const LEGACY_OPTION     = 'aculect_ai_companion_pending_index_ids';
+	private const QUEUE_PREFIX      = 'aculect_ai_companion_pending_index_';
+	private const LOCK_PREFIX       = 'aculect_ai_companion_index_lock_';
+	private const CURSOR_OPTION     = 'aculect_ai_companion_index_queue_cursor';
+	private const DEFAULT_LEASE_TTL = 300;
+	private const MAX_CLAIM_LIMIT   = 100;
+	private const MAX_RETRY_DELAY   = 3600;
 
 	/**
 	 * Add or refresh one pending object without a shared read/modify/write list.
@@ -50,8 +48,6 @@ final class ContentIndexQueue {
 			return '';
 		}
 
-		delete_transient( $this->delete_fence_key( $object_id ) );
-
 		return $generation;
 	}
 
@@ -59,7 +55,7 @@ final class ContentIndexQueue {
 	 * Claim a bounded batch with per-object expiring leases.
 	 *
 	 * @param int $limit Maximum rows to claim.
-	 * @return list<array{object_id: int, queue_token: string, lock_token: string}>
+	 * @return list<array{object_id: int, queue_token: string, lock_token: string, action: string}>
 	 */
 	public function claim( int $limit ): array {
 		$this->migrate_legacy_option();
@@ -85,6 +81,7 @@ final class ContentIndexQueue {
 				'object_id'   => $object_id,
 				'queue_token' => $queue_token,
 				'lock_token'  => $lock_token,
+				'action'      => $state['action'],
 			);
 		}
 
@@ -130,7 +127,7 @@ final class ContentIndexQueue {
 		$this->update_option_if_value(
 			$this->queue_key( $object_id ),
 			$queue_token,
-			$this->queue_state( $attempts, time() + $delay )
+			$this->queue_state( $attempts, time() + $delay, $state['action'] )
 		);
 		$this->delete_option_if_value( $this->lock_key( $object_id ), $lock_token );
 	}
@@ -146,27 +143,44 @@ final class ContentIndexQueue {
 	}
 
 	/**
-	 * Fence deletion before removing pending work while preserving any active lease.
+	 * Atomically replace pending work with a durable deletion tombstone.
 	 *
 	 * @param int $object_id WordPress object ID.
 	 */
-	public function invalidate_for_delete( int $object_id ): void {
+	public function invalidate_for_delete( int $object_id ): string {
 		$object_id = absint( $object_id );
 		if ( 0 >= $object_id ) {
-			return;
+			return '';
+		}
+		if (
+			'' === (string) get_option( $this->queue_key( $object_id ), '' )
+			&& '' === (string) get_option( $this->lock_key( $object_id ), '' )
+		) {
+			return '';
 		}
 
-		set_transient( $this->delete_fence_key( $object_id ), $this->token(), self::DELETE_FENCE_TTL );
-		delete_option( $this->queue_key( $object_id ) );
+		$tombstone = $this->queue_state( 0, 0, 'delete' );
+		if ( ! update_option( $this->queue_key( $object_id ), $tombstone, false ) ) {
+			return '';
+		}
+
+		return $tombstone;
 	}
 
 	/**
-	 * Check whether deletion invalidated work already in flight.
+	 * Return the current queue generation and action for one object.
 	 *
 	 * @param int $object_id WordPress object ID.
+	 * @return array{queue_token: string, action: string}
 	 */
-	public function is_delete_fenced( int $object_id ): bool {
-		return false !== get_transient( $this->delete_fence_key( absint( $object_id ) ) );
+	public function current_generation( int $object_id ): array {
+		$queue_token = (string) get_option( $this->queue_key( absint( $object_id ) ), '' );
+		$state       = $this->parse_queue_state( $queue_token );
+
+		return array(
+			'queue_token' => $queue_token,
+			'action'      => $state['action'],
+		);
 	}
 
 	/**
@@ -202,32 +216,38 @@ final class ContentIndexQueue {
 					unset( $GLOBALS['aculect_ai_companion_test_options'][ $option_name ] );
 				}
 			}
-			foreach ( array_keys( $GLOBALS['aculect_ai_companion_test_transients'] ?? array() ) as $transient_name ) {
-				if ( str_starts_with( (string) $transient_name, self::DELETE_FENCE_PREFIX ) ) {
-					unset( $GLOBALS['aculect_ai_companion_test_transients'][ $transient_name ] );
-				}
-			}
 			return;
 		}
 
 		global $wpdb;
 
-		$queue_like         = $wpdb->esc_like( self::QUEUE_PREFIX ) . '%';
-		$lock_like          = $wpdb->esc_like( self::LOCK_PREFIX ) . '%';
-		$fence_like         = $wpdb->esc_like( '_transient_' . self::DELETE_FENCE_PREFIX ) . '%';
-		$fence_timeout_like = $wpdb->esc_like( '_transient_timeout_' . self::DELETE_FENCE_PREFIX ) . '%';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Uninstall removes only plugin-owned queue options.
-		$wpdb->query(
+		$queue_like = $wpdb->esc_like( self::QUEUE_PREFIX ) . '%';
+		$lock_like  = $wpdb->esc_like( self::LOCK_PREFIX ) . '%';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Capture plugin-owned keys so persistent option-cache entries can be invalidated after uninstall.
+		$owned_option_names = (array) $wpdb->get_col(
 			$wpdb->prepare(
-				"DELETE FROM {$wpdb->options} WHERE option_name IN (%s, %s) OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name IN (%s, %s) OR option_name LIKE %s OR option_name LIKE %s",
 				self::LEGACY_OPTION,
 				self::CURSOR_OPTION,
 				$queue_like,
-				$lock_like,
-				$fence_like,
-				$fence_timeout_like
+				$lock_like
 			)
 		);
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Uninstall removes only plugin-owned queue options.
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name IN (%s, %s) OR option_name LIKE %s OR option_name LIKE %s",
+				self::LEGACY_OPTION,
+				self::CURSOR_OPTION,
+				$queue_like,
+				$lock_like
+			)
+		);
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			foreach ( $owned_option_names as $option_name ) {
+				wp_cache_delete( (string) $option_name, 'options' );
+			}
+		}
 	}
 
 	/**
@@ -479,15 +499,6 @@ final class ContentIndexQueue {
 	}
 
 	/**
-	 * Return a short-lived deletion fence key for one object.
-	 *
-	 * @param int $object_id WordPress object ID.
-	 */
-	private function delete_fence_key( int $object_id ): string {
-		return self::DELETE_FENCE_PREFIX . absint( $object_id );
-	}
-
-	/**
 	 * Return a unique generation token.
 	 */
 	private function token(): string {
@@ -497,15 +508,17 @@ final class ContentIndexQueue {
 	/**
 	 * Build one client-invisible queue state value.
 	 *
-	 * @param int $attempts     Consecutive failures.
-	 * @param int $available_at Earliest retry timestamp.
+	 * @param int    $attempts     Consecutive failures.
+	 * @param int    $available_at Earliest retry timestamp.
+	 * @param string $action       Queue action: index or delete.
 	 */
-	private function queue_state( int $attempts = 0, int $available_at = 0 ): string {
+	private function queue_state( int $attempts = 0, int $available_at = 0, string $action = 'index' ): string {
 		$state = wp_json_encode(
 			array(
 				'token'        => $this->token(),
 				'attempts'     => max( 0, $attempts ),
 				'available_at' => max( 0, $available_at ),
+				'action'       => 'delete' === $action ? 'delete' : 'index',
 			)
 		);
 
@@ -516,7 +529,7 @@ final class ContentIndexQueue {
 	 * Parse one queue state, including legacy raw tokens.
 	 *
 	 * @param string $value Stored queue value.
-	 * @return array{attempts: int, available_at: int}
+	 * @return array{attempts: int, available_at: int, action: string}
 	 */
 	private function parse_queue_state( string $value ): array {
 		$state = json_decode( $value, true );
@@ -524,6 +537,7 @@ final class ContentIndexQueue {
 		return array(
 			'attempts'     => is_array( $state ) ? absint( $state['attempts'] ?? 0 ) : 0,
 			'available_at' => is_array( $state ) ? absint( $state['available_at'] ?? 0 ) : 0,
+			'action'       => is_array( $state ) && 'delete' === ( $state['action'] ?? '' ) ? 'delete' : 'index',
 		);
 	}
 

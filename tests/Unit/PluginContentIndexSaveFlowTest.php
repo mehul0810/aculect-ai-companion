@@ -48,6 +48,8 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 			public int $insert_calls  = 0;
 			/** Force content-row replacement failures. */
 			public bool $fail_replacements = false;
+			/** Force index deletion failures. */
+			public bool $fail_deletions = false;
 
 			public function prepare( string $query, mixed ...$args ): string {
 				$this->last_prepare_args = $args;
@@ -121,6 +123,9 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 
 			public function delete( string $table, array $where, array $where_formats ): int|false {
 				unset( $where_formats );
+				if ( $this->fail_deletions ) {
+					return false;
+				}
 
 				if ( Installer::content_index_table() === $table ) {
 					$object_id = (int) ( $where['object_id'] ?? 0 );
@@ -538,6 +543,39 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		);
 	}
 
+	public function test_settled_post_delete_failure_keeps_a_retryable_tombstone(): void {
+		$post_id = 34112;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Settled delete retry',
+				'post_content'      => '<!-- wp:paragraph --><p>Retry deletion after a transient database failure.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 19:00:00',
+			)
+		);
+		$indexer = new ContentIndexer();
+		self::assertSame( 'indexed', $indexer->index_post( $post_id )['status'] );
+		self::assertSame( 0, $indexer->pending_index_count() );
+
+		$GLOBALS['wpdb']->fail_deletions = true;
+		$indexer->delete_post( $post_id );
+
+		$queue = new ContentIndexQueue();
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( 'delete', $queue->current_generation( $post_id )['action'] );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
+
+		$GLOBALS['wpdb']->fail_deletions = false;
+		$result                          = $indexer->run_stale_sweep();
+
+		self::assertSame( 1, $result['processed_items'] );
+		self::assertSame( 0, $result['error_count'] );
+		self::assertSame( 0, $queue->pending_count() );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+	}
+
 	public function test_non_indexable_attachment_save_does_not_enter_queue(): void {
 		$post_id = 34104;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
@@ -551,8 +589,13 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 
 		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
-		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+		$indexer = new ContentIndexer();
+		self::assertSame( 1, $indexer->pending_index_count() );
 		self::assertSame( 0, $GLOBALS['wpdb']->replace_calls );
+
+		$result = $indexer->run_stale_sweep();
+		self::assertSame( 1, $result['processed_items'] );
+		self::assertSame( 0, $indexer->pending_index_count() );
 	}
 
 	public function test_queue_persistence_failure_falls_back_to_inline_indexing(): void {

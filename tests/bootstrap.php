@@ -1025,6 +1025,23 @@ if ( ! function_exists( 'delete_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_cache_delete' ) ) {
+	/**
+	 * Record cache invalidation for tests.
+	 *
+	 * @param string $key   Cache key.
+	 * @param string $group Cache group.
+	 */
+	function wp_cache_delete( string $key, string $group = '' ): bool {
+		$GLOBALS['aculect_ai_companion_test_cache_deletes'][] = array(
+			'key'   => $key,
+			'group' => $group,
+		);
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'set_transient' ) ) {
 	/**
 	 * Store a test transient value.

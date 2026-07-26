@@ -123,4 +123,67 @@ final class ContentIndexerTest extends TestCase {
 		self::assertSame( 88, $claims[0]['object_id'] );
 		self::assertNotSame( $expired_token, $claims[0]['lock_token'] );
 	}
+
+	public function test_production_generation_replacement_uses_atomic_upsert_and_cache_invalidation(): void {
+		$original_options = $GLOBALS['aculect_ai_companion_test_options'];
+		$original_wpdb    = $GLOBALS['wpdb'] ?? null;
+		$wpdb             = new class() {
+			public string $options = 'wp_options';
+			/** @var list<array{query: string, args: array<int, mixed>}> */
+			public array $prepared = array();
+			public string $executed = '';
+
+			public function prepare( string $query, mixed ...$args ): string {
+				$this->prepared[] = array(
+					'query' => $query,
+					'args'  => $args,
+				);
+				return $query;
+			}
+
+			public function query( string $query ): int {
+				$this->executed = $query;
+				return 1;
+			}
+		};
+
+		try {
+			unset( $GLOBALS['aculect_ai_companion_test_options'] );
+			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+			$GLOBALS['wpdb']                                    = $wpdb;
+			$queue                                               = new ContentIndexQueue();
+			$method                                              = new \ReflectionMethod( $queue, 'replace_queue_generation' );
+
+			self::assertTrue( $method->invoke( $queue, 91, 'generation-91' ) );
+			self::assertStringContainsString( 'ON DUPLICATE KEY UPDATE', $wpdb->executed );
+			self::assertSame(
+				array(
+					'aculect_ai_companion_pending_index_91',
+					'generation-91',
+				),
+				$wpdb->prepared[0]['args']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'aculect_ai_companion_pending_index_91',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'notoptions',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+		} finally {
+			$GLOBALS['aculect_ai_companion_test_options'] = $original_options;
+			if ( null !== $original_wpdb ) {
+				$GLOBALS['wpdb'] = $original_wpdb;
+			} else {
+				unset( $GLOBALS['wpdb'] );
+			}
+		}
+	}
 }

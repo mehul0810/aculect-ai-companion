@@ -44,7 +44,7 @@ final class ContentIndexQueue {
 
 		$this->migrate_legacy_option();
 		$generation = $this->queue_state();
-		if ( ! update_option( $this->queue_key( $object_id ), $generation, false ) ) {
+		if ( ! $this->replace_queue_generation( $object_id, $generation ) ) {
 			return '';
 		}
 
@@ -152,15 +152,9 @@ final class ContentIndexQueue {
 		if ( 0 >= $object_id ) {
 			return '';
 		}
-		if (
-			'' === (string) get_option( $this->queue_key( $object_id ), '' )
-			&& '' === (string) get_option( $this->lock_key( $object_id ), '' )
-		) {
-			return '';
-		}
 
 		$tombstone = $this->queue_state( 0, 0, 'delete' );
-		if ( ! update_option( $this->queue_key( $object_id ), $tombstone, false ) ) {
+		if ( ! $this->replace_queue_generation( $object_id, $tombstone ) ) {
 			return '';
 		}
 
@@ -447,7 +441,7 @@ final class ContentIndexQueue {
 
 		$migrated = true;
 		foreach ( array_values( array_unique( array_filter( array_map( 'absint', $legacy ) ) ) ) as $object_id ) {
-			$migrated = update_option( $this->queue_key( $object_id ), $this->queue_state(), false ) && $migrated;
+			$migrated = $this->replace_queue_generation( $object_id, $this->queue_state() ) && $migrated;
 		}
 
 		if ( $migrated ) {
@@ -460,6 +454,40 @@ final class ContentIndexQueue {
 	 */
 	private function uses_test_options(): bool {
 		return isset( $GLOBALS['aculect_ai_companion_test_options'] ) && is_array( $GLOBALS['aculect_ai_companion_test_options'] );
+	}
+
+	/**
+	 * Atomically replace one generation without publishing a stale cache value.
+	 *
+	 * @param int    $object_id WordPress object ID.
+	 * @param string $generation New queue generation.
+	 */
+	private function replace_queue_generation( int $object_id, string $generation ): bool {
+		$option_name = $this->queue_key( $object_id );
+		if ( $this->uses_test_options() ) {
+			return update_option( $option_name, $generation, false );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- One atomic upsert makes the last queue generation authoritative; caches are invalidated below.
+		$replaced = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no') ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), autoload = VALUES(autoload)",
+				$option_name,
+				$generation
+			)
+		);
+		if ( false === $replaced ) {
+			return false;
+		}
+
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( $option_name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+
+		return true;
 	}
 
 	/**

@@ -106,6 +106,7 @@ final class Plugin {
 		add_action( 'updated_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'deleted_post_meta', array( $this, 'handle_content_index_meta_changed' ), 10, 4 );
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
+		add_action( 'aculect_ai_companion_content_index_refresh_recovery', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		( new EditorInternalLinkSuggestions() )->register();
 

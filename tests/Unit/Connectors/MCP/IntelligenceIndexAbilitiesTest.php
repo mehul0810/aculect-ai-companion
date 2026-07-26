@@ -35,6 +35,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_denied_post_ids']  = array();
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array();
 		$GLOBALS['aculect_ai_companion_test_options']          = array(
 			'blogname' => 'Aculect Demo',
 		);
@@ -252,6 +253,22 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 
 		self::assertSame( 'error', $result['status'] );
 		self::assertSame( 'forbidden', $result['error'] );
+	}
+
+	public function test_refresh_batch_requires_draft_capability_before_persisting_queued_work(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_posts' );
+
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'queued' => true,
+				'ids'    => array( 123 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'forbidden', $result['error'] );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
 	}
 
 	public function test_search_items_degraded_fallback_respects_thin_page_filters(): void {

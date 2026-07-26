@@ -296,6 +296,32 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
 	}
 
+	public function test_stale_sweep_processes_at_most_five_queued_posts_per_run(): void {
+		$indexer = new ContentIndexer();
+		for ( $post_id = 34201; $post_id <= 34207; ++$post_id ) {
+			$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+				array(
+					'ID'                => $post_id,
+					'post_type'         => 'post',
+					'post_status'       => 'publish',
+					'post_title'        => 'Bounded sweep ' . $post_id,
+					'post_content'      => '<!-- wp:paragraph --><p>Process this queued post in a bounded cron slice.</p><!-- /wp:paragraph -->',
+					'post_modified_gmt' => '2026-07-10 10:30:00',
+				)
+			);
+			self::assertTrue( $indexer->defer_index_post( $post_id ) );
+		}
+
+		$result = $indexer->run_stale_sweep();
+
+		self::assertSame( 'partial', $result['status'] );
+		self::assertSame( 5, $result['processed_items'] );
+		self::assertSame( 0, $result['error_count'] );
+		self::assertSame( 2, $result['remaining_items'] );
+		self::assertSame( 2, $indexer->pending_index_count() );
+		self::assertCount( 5, $GLOBALS['wpdb']->content_rows );
+	}
+
 	public function test_schedule_failure_falls_back_to_inline_indexing_without_orphaning_queue_state(): void {
 		$post_id = 34103;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(

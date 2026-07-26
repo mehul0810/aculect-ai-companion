@@ -108,6 +108,16 @@ final class ContentIndexQueue {
 	}
 
 	/**
+	 * Release an unstarted claim while preserving its queued generation.
+	 *
+	 * @param int    $object_id  WordPress object ID.
+	 * @param string $lock_token Claimed lease token.
+	 */
+	public function release_claim( int $object_id, string $lock_token ): void {
+		$this->delete_option_if_value( $this->lock_key( $object_id ), $lock_token );
+	}
+
+	/**
 	 * Remove all deferred state for one deleted object.
 	 *
 	 * @param int $object_id WordPress object ID.

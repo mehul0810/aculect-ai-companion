@@ -1534,6 +1534,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			if ( 1 !== count( $ids ) ) {
 				return $this->error_response( 'sync_refresh_requires_id', 'Synchronous content index refresh requires exactly one explicit content ID. Use queued mode for queries or larger refreshes.' );
 			}
+
 			$args['limit'] = 1;
 			$result        = ( new ContentIndexer() )->refresh_batch( $args );
 		} else {

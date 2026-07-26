@@ -337,9 +337,11 @@ final class ContentIndexer {
 
 		$current = $queue->current_generation( $post_id );
 		if ( 'delete' === $current['action'] || ! $this->is_indexable_post_id( $post_id ) ) {
-			$this->repo()->delete_content_item( $post_id );
-			if ( 'delete' === $current['action'] ) {
+			$deleted = $this->repo()->delete_content_item( $post_id );
+			if ( $deleted && 'delete' === $current['action'] ) {
 				$queue->clear_generation( $post_id, $current['queue_token'] );
+			} elseif ( ! $deleted ) {
+				$this->schedule_stale_sweep( 30 );
 			}
 			return;
 		}

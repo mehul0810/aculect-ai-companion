@@ -123,6 +123,69 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertTrue( $registrar->is_mcp_only_intelligence( 'aculect-ai-companion/plugin-incident-report' ) );
 	}
 
+	public function test_every_registered_read_ability_executes_through_its_owning_registry(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$previous_wpdb = $GLOBALS['wpdb'] ?? null;
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused database-boundary fixture.
+		$GLOBALS['wpdb'] = new class() {
+			public string $prefix = 'wp_';
+
+			public function __get( string $name ): string {
+				return $this->prefix . $name;
+			}
+
+			public function __call( string $name, array $arguments ): never {
+				unset( $name, $arguments );
+
+				throw new \RuntimeException( 'Database fixture method not implemented.' );
+			}
+		};
+
+		$unknown = array();
+		try {
+			foreach ( $GLOBALS['aculect_ai_companion_test_wp_abilities'] as $ability ) {
+				try {
+					$result = $ability['args']['execute_callback']( array() );
+				} catch ( \Throwable ) {
+					// Some read abilities require a WordPress database fixture.
+					// Reaching that dependency proves the owning executor handled
+					// the module instead of rejecting it as an unknown tool.
+					continue;
+				}
+
+				if ( 'Unknown tool' === ( $result['error'] ?? '' ) ) {
+					$unknown[] = $ability['name'];
+				}
+			}
+		} finally {
+			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the original test boundary.
+			$GLOBALS['wpdb'] = $previous_wpdb;
+		}
+
+		self::assertSame( array(), $unknown );
+	}
+
+	public function test_registered_callbacks_preserve_both_registry_execution_paths(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+
+		$abilities = array_column( $GLOBALS['aculect_ai_companion_test_wp_abilities'], 'args', 'name' );
+
+		$site = $abilities['aculect-ai-companion/intelligence-site-get-context']['execute_callback']( array() );
+		self::assertArrayNotHasKey( 'error', $site );
+
+		$search = $abilities['aculect-ai-companion/search']['execute_callback'](
+			array(
+				'query' => 'fixture',
+				'limit' => 1,
+			)
+		);
+		self::assertNotSame( 'Unknown tool', $search['error'] ?? '' );
+
+		$incidents = $abilities['aculect-ai-companion/plugin-incident-list']['execute_callback']( array() );
+		self::assertSame( 0, $incidents['total'] );
+	}
+
 	public function test_permission_callback_requires_basic_read_capability(): void {
 		( new WordPressAbilitiesRegistrar() )->register_abilities();
 

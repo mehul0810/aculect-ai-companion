@@ -1462,9 +1462,18 @@ if ( ! function_exists( 'wp_schedule_single_event' ) ) {
 	 * @param int          $timestamp Unix timestamp.
 	 * @param string       $hook      Hook name.
 	 * @param array<mixed> $args      Event args.
+	 * @param bool         $wp_error  Whether to return a WP_Error on failure.
 	 */
-	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array() ): bool {
+	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array(), bool $wp_error = false ): bool|WP_Error {
 		unset( $args );
+
+		if ( ! empty( $GLOBALS['aculect_ai_companion_test_schedule_failure'] ) ) {
+			return $wp_error ? new WP_Error( 'schedule_failed', 'Test event scheduling failed.' ) : false;
+		}
+		$failed_hooks = $GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] ?? array();
+		if ( is_array( $failed_hooks ) && in_array( $hook, $failed_hooks, true ) ) {
+			return $wp_error ? new WP_Error( 'schedule_failed', 'Test event scheduling failed.' ) : false;
+		}
 
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] = $timestamp;
 
@@ -1485,6 +1494,28 @@ if ( ! function_exists( 'wp_next_scheduled' ) ) {
 		$scheduled = $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ?? false;
 
 		return is_numeric( $scheduled ) ? (int) $scheduled : false;
+	}
+}
+
+if ( ! function_exists( 'wp_unschedule_event' ) ) {
+	/**
+	 * Remove one scheduled test event.
+	 *
+	 * @param int          $timestamp Event timestamp.
+	 * @param string       $hook      Event hook.
+	 * @param array<mixed> $args      Event args.
+	 * @param bool         $wp_error  Whether to return a WP_Error on failure.
+	 */
+	function wp_unschedule_event( int $timestamp, string $hook, array $args = array(), bool $wp_error = false ): bool|WP_Error {
+		unset( $timestamp, $args, $wp_error );
+
+		if ( ! isset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ) ) {
+			return false;
+		}
+
+		unset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] );
+
+		return true;
 	}
 }
 

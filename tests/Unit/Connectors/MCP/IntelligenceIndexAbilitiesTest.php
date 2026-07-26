@@ -29,11 +29,14 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new IntelligenceIndexMemoryWpdb();
 
-		$GLOBALS['wpdb']                                      = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_posts']           = array();
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
-		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
-		$GLOBALS['aculect_ai_companion_test_options']         = array(
+		$GLOBALS['wpdb']                                       = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_posts']            = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
+		$GLOBALS['aculect_ai_companion_test_denied_post_ids']  = array();
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']          = array(
 			'blogname' => 'Aculect Demo',
 		);
 
@@ -159,6 +162,70 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 
 		self::assertSame( 'error', $result['status'] );
 		self::assertSame( 'forbidden', $result['error'] );
+	}
+
+	public function test_refresh_batch_requires_draft_capability_before_persisting_queued_work(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_posts' );
+
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'queued' => true,
+				'ids'    => array( 123 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'forbidden', $result['error'] );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
+	}
+
+	public function test_refresh_batch_defaults_to_queued_execution(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'ids' => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'queued', $result['status'] );
+		self::assertSame( 2, $result['total_items'] );
+		self::assertNotEmpty( $result['job']['job_key'] ?? '' );
+		self::assertSame( 'content_index_refresh_batch', $result['workflow'] );
+	}
+
+	public function test_refresh_batch_rejects_multi_item_synchronous_execution(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'mode' => 'sync',
+				'ids'  => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
+	}
+
+	public function test_refresh_batch_preserves_legacy_queued_false_as_bounded_sync_request(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'queued' => false,
+				'ids'    => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
+	}
+
+	public function test_refresh_batch_requires_explicit_id_for_sync_mode(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'mode' => 'sync',
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
 	}
 
 	public function test_search_items_degraded_fallback_respects_thin_page_filters(): void {
@@ -922,8 +989,10 @@ final class IntelligenceIndexMemoryWpdb {
 	public function insert( string $table, array $data, array $formats ): int {
 		unset( $table, $formats );
 
-		$data['id']                                 = count( $this->rows ) + 1;
-		$this->rows[ (string) $data['memory_key'] ] = $data;
+		$data['id'] = count( $this->rows ) + 1;
+		$key        = (string) ( $data['memory_key'] ?? $data['job_key'] ?? 'row-' . $data['id'] );
+
+		$this->rows[ $key ] = $data;
 
 		return 1;
 	}
@@ -940,7 +1009,7 @@ final class IntelligenceIndexMemoryWpdb {
 	public function update( string $table, array $data, array $where, array $formats, array $where_formats ): int {
 		unset( $table, $formats, $where_formats );
 
-		$key = (string) ( $where['memory_key'] ?? '' );
+		$key = (string) ( $where['memory_key'] ?? $where['job_key'] ?? '' );
 		if ( isset( $this->rows[ $key ] ) ) {
 			$this->rows[ $key ] = array_merge( $this->rows[ $key ], $data );
 		}

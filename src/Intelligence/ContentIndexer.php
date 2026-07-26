@@ -18,13 +18,18 @@ final class ContentIndexer {
 
 	public const STALE_SWEEP_HOOK = 'aculect_ai_companion_content_index_stale_sweep';
 
-	private const DEFAULT_BATCH_LIMIT = 25;
-	private const MAX_BATCH_LIMIT     = 100;
-	private const MAX_CHUNK_WORDS     = 750;
-	private const MAX_RESOLVED_LINKS  = 50;
-	private const MAX_PENDING_IDS     = 1000;
-	private const PENDING_IDS_OPTION  = 'aculect_ai_companion_pending_index_ids';
-	private const INDEXABLE_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
+	private const DEFAULT_BATCH_LIMIT   = 25;
+	private const MAX_BATCH_LIMIT       = 100;
+	private const MAX_CHUNK_WORDS       = 750;
+	private const MAX_RESOLVED_LINKS    = 50;
+	private const MAX_PENDING_IDS       = 1000;
+	private const PENDING_IDS_OPTION    = 'aculect_ai_companion_pending_index_ids';
+	private const INDEXABLE_STATUSES    = array( 'publish', 'future', 'draft', 'pending', 'private' );
+	private const REFRESH_JOB_HOOK      = 'aculect_ai_companion_content_index_refresh_job';
+	private const REFRESH_RECOVERY_HOOK = 'aculect_ai_companion_content_index_refresh_recovery';
+	private const REFRESH_SLICE_SIZE    = 5;
+	private const REFRESH_TIME_BUDGET   = 10.0;
+	private const REFRESH_LEASE_TTL     = ContentIndexRepository::DEFAULT_JOB_LEASE_TTL;
 
 	/**
 	 * Per-request URL to post ID resolution cache.
@@ -49,7 +54,8 @@ final class ContentIndexer {
 
 		if ( function_exists( 'wp_unschedule_hook' ) ) {
 			wp_unschedule_hook( self::STALE_SWEEP_HOOK );
-			wp_unschedule_hook( 'aculect_ai_companion_content_index_refresh_job' );
+			wp_unschedule_hook( self::REFRESH_JOB_HOOK );
+			wp_unschedule_hook( self::REFRESH_RECOVERY_HOOK );
 		}
 	}
 
@@ -276,13 +282,56 @@ final class ContentIndexer {
 		$public_args['ids'] = $post_ids;
 		$job                = $this->repo()->create_job( 'content_index_refresh', $public_args, count( $post_ids ), 'queued' );
 		$job_key            = (string) ( $job['job_key'] ?? '' );
+		if ( '' === $job_key ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_create_failed',
+				'message' => 'The queued content index refresh job could not be created.',
+			);
+		}
 
-		if (
-			'' !== $job_key
-			&& function_exists( 'wp_schedule_single_event' )
-			&& ( ! function_exists( 'wp_next_scheduled' ) || false === wp_next_scheduled( 'aculect_ai_companion_content_index_refresh_job', array( $job_key ) ) )
-		) {
-			wp_schedule_single_event( time() + 5, 'aculect_ai_companion_content_index_refresh_job', array( $job_key ) );
+		if ( ! $this->schedule_refresh_worker( $job_key ) ) {
+			$failed_job = $this->repo()->update_job(
+				$job_key,
+				array(
+					'status'          => 'failed',
+					'processed_items' => 0,
+					'error_count'     => 1,
+					'result'          => array(
+						'error'           => 'job_schedule_failed',
+						'recovery_action' => 'Restore WP-Cron or a system cron runner, then submit a new queued refresh.',
+					),
+				)
+			);
+
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_schedule_failed',
+				'message' => 'The content index refresh job was created but could not be scheduled.',
+				'job'     => array() === $failed_job ? $job : $failed_job,
+			);
+		}
+		if ( ! $this->schedule_refresh_recovery( $job_key ) ) {
+			$this->clear_refresh_worker( $job_key );
+			$failed_job = $this->repo()->update_job(
+				$job_key,
+				array(
+					'status'          => 'failed',
+					'processed_items' => 0,
+					'error_count'     => 1,
+					'result'          => array(
+						'error'           => 'job_recovery_schedule_failed',
+						'recovery_action' => 'Restore WP-Cron or a system cron runner, then submit a new queued refresh.',
+					),
+				)
+			);
+
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_recovery_schedule_failed',
+				'message' => 'The content index refresh job could not create its recovery watchdog.',
+				'job'     => array() === $failed_job ? $job : $failed_job,
+			);
 		}
 
 		return array(
@@ -310,8 +359,49 @@ final class ContentIndexer {
 				'message' => 'No queued content index refresh job exists for that key.',
 			);
 		}
+		if ( in_array( (string) ( $job['status'] ?? '' ), array( 'complete', 'partial', 'failed' ), true ) ) {
+			return array(
+				'status'  => 'skipped',
+				'job'     => $job,
+				'message' => 'The queued content index refresh job has already finished.',
+				'index'   => $this->job_index_summary( (int) ( $job['total_items'] ?? 0 ), (int) ( $job['processed_items'] ?? 0 ), (int) ( $job['error_count'] ?? 0 ) ),
+			);
+		}
+		if ( ! $this->ensure_refresh_recovery( $job_key ) ) {
+			$failed_job = $job;
+			if ( in_array( (string) ( $job['status'] ?? '' ), array( 'queued', 'stale' ), true ) ) {
+				$unprotected_claim = $this->repo()->claim_job( $job_key, self::REFRESH_LEASE_TTL );
+				$lease_token       = (string) ( $unprotected_claim['_lease_token'] ?? '' );
+				if ( '' !== $lease_token ) {
+					$failed_job = $this->repo()->update_claimed_job(
+						$job_key,
+						$lease_token,
+						array(
+							'status'          => 'failed',
+							'processed_items' => (int) ( $unprotected_claim['processed_items'] ?? 0 ),
+							'error_count'     => (int) ( $unprotected_claim['error_count'] ?? 0 ) + 1,
+							'result'          => array_merge(
+								is_array( $unprotected_claim['result'] ?? null ) ? $unprotected_claim['result'] : array(),
+								array(
+									'error'           => 'job_recovery_schedule_failed',
+									'recovery_action' => 'Restore WP-Cron or a system cron runner, then submit a new queued refresh.',
+								)
+							),
+						),
+						true
+					);
+				}
+			}
 
-		$claimed = $this->repo()->claim_job( $job_key );
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_recovery_schedule_failed',
+				'message' => 'The worker stopped before claiming the job because no recovery watchdog could be scheduled.',
+				'job'     => $failed_job,
+			);
+		}
+
+		$claimed = $this->repo()->claim_job( $job_key, self::REFRESH_LEASE_TTL );
 		if ( array() === $claimed ) {
 			return array(
 				'status'  => 'skipped',
@@ -320,13 +410,351 @@ final class ContentIndexer {
 				'index'   => $this->job_index_summary( (int) ( $job['total_items'] ?? 0 ), (int) ( $job['processed_items'] ?? 0 ), (int) ( $job['error_count'] ?? 0 ) ),
 			);
 		}
+		$lease_token = (string) ( $claimed['_lease_token'] ?? '' );
 
-		$args     = is_array( $job['args'] ?? null ) ? (array) $job['args'] : array();
+		if ( ! $this->schedule_refresh_recovery( $job_key ) ) {
+			$failed_job = $this->repo()->update_claimed_job(
+				$job_key,
+				$lease_token,
+				array(
+					'status'          => 'failed',
+					'processed_items' => (int) ( $claimed['processed_items'] ?? 0 ),
+					'error_count'     => (int) ( $claimed['error_count'] ?? 0 ) + 1,
+					'result'          => array_merge(
+						is_array( $claimed['result'] ?? null ) ? $claimed['result'] : array(),
+						array(
+							'error'           => 'job_recovery_schedule_failed',
+							'recovery_action' => 'Restore WP-Cron or a system cron runner, then submit a new queued refresh.',
+						)
+					),
+				),
+				true
+			);
+
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_recovery_schedule_failed',
+				'message' => 'The worker could not schedule its recovery event, so no new items were processed.',
+				'job'     => $failed_job,
+			);
+		}
+
+		$args     = is_array( $claimed['args'] ?? null ) ? (array) $claimed['args'] : array();
 		$post_ids = isset( $args['ids'] ) && is_array( $args['ids'] )
 			? array_values( array_filter( array_map( 'absint', $args['ids'] ) ) )
 			: $this->post_ids_for_batch( $args );
 
-		return $this->run_refresh_job( $job_key, $post_ids );
+		return $this->run_queued_refresh_slice( $claimed, $post_ids );
+	}
+
+	/**
+	 * Process one bounded, resumable queued-job slice.
+	 *
+	 * @param array<string, mixed> $job      Claimed job row.
+	 * @param array                $post_ids Complete stable work list.
+	 * @phpstan-param list<int> $post_ids
+	 * @return array<string, mixed>
+	 */
+	private function run_queued_refresh_slice( array $job, array $post_ids ): array {
+		$job_key     = (string) ( $job['job_key'] ?? '' );
+		$lease_token = (string) ( $job['_lease_token'] ?? '' );
+		$total       = count( $post_ids );
+		$processed   = min( $total, max( 0, (int) ( $job['processed_items'] ?? 0 ) ) );
+		$job_result  = is_array( $job['result'] ?? null ) ? $job['result'] : array();
+		$errors      = isset( $job_result['errors'] ) && is_array( $job_result['errors'] ) ? array_values( $job_result['errors'] ) : array();
+		$indexed_ids = isset( $job_result['indexed_ids'] ) && is_array( $job_result['indexed_ids'] )
+			? array_values( array_filter( array_map( 'absint', $job_result['indexed_ids'] ) ) )
+			: array();
+		$deadline    = microtime( true ) + self::REFRESH_TIME_BUDGET;
+		$slice       = array_slice( $post_ids, $processed, self::REFRESH_SLICE_SIZE );
+
+		foreach ( $slice as $post_id ) {
+			if ( 0 < $processed && microtime( true ) >= $deadline ) {
+				break;
+			}
+
+			$result = $this->index_post( $post_id );
+			if ( 'error' === ( $result['status'] ?? '' ) ) {
+				$errors[] = $result;
+			} else {
+				$indexed_ids[] = $post_id;
+			}
+			++$processed;
+
+			$checkpoint = $this->repo()->update_claimed_job(
+				$job_key,
+				$lease_token,
+				array(
+					'status'          => 'running',
+					'processed_items' => $processed,
+					'error_count'     => count( $errors ),
+					'result'          => $this->refresh_job_result( $indexed_ids, $errors, $total, $processed ),
+				)
+			);
+			if ( array() === $checkpoint ) {
+				return array(
+					'status'          => 'error',
+					'error'           => 'job_lease_lost',
+					'message'         => 'The refresh worker stopped because its lease was reclaimed before the progress checkpoint.',
+					'total_items'     => $total,
+					'processed_items' => $processed,
+					'errors'          => $errors,
+				);
+			}
+		}
+
+		if ( $processed < $total ) {
+			if ( ! $this->schedule_refresh_worker( $job_key ) ) {
+				$failed_job = $this->repo()->update_claimed_job(
+					$job_key,
+					$lease_token,
+					array(
+						'status'          => 'failed',
+						'processed_items' => $processed,
+						'error_count'     => count( $errors ) + 1,
+						'result'          => array_merge(
+							$this->refresh_job_result( $indexed_ids, $errors, $total, $processed ),
+							array(
+								'error'           => 'job_continuation_schedule_failed',
+								'recovery_action' => 'Restore WP-Cron or a system cron runner, then submit a new queued refresh.',
+							)
+						),
+					),
+					true
+				);
+				if ( array() !== $failed_job ) {
+					$this->clear_refresh_recovery( $job_key );
+				}
+
+				return array(
+					'status'          => 'error',
+					'error'           => 'job_continuation_schedule_failed',
+					'message'         => 'The refresh slice completed, but its continuation could not be scheduled.',
+					'job'             => $failed_job,
+					'total_items'     => $total,
+					'processed_items' => $processed,
+					'errors'          => $errors,
+				);
+			}
+
+			$queued_job = $this->repo()->update_claimed_job(
+				$job_key,
+				$lease_token,
+				array(
+					'status'          => 'queued',
+					'processed_items' => $processed,
+					'error_count'     => count( $errors ),
+					'result'          => array_merge(
+						$this->refresh_job_result( $indexed_ids, $errors, $total, $processed ),
+						array( 'continuation_pending' => true )
+					),
+				),
+				true
+			);
+			if ( array() === $queued_job ) {
+				return array(
+					'status'          => 'error',
+					'error'           => 'job_lease_lost',
+					'message'         => 'The refresh worker stopped because its lease was reclaimed before queuing the continuation.',
+					'total_items'     => $total,
+					'processed_items' => $processed,
+					'errors'          => $errors,
+				);
+			}
+
+			return array(
+				'status'          => 'queued',
+				'job'             => $queued_job,
+				'total_items'     => $total,
+				'processed_items' => $processed,
+				'errors'          => $errors,
+				'index'           => $this->job_index_summary( $total, $processed, count( $errors ) ),
+			);
+		}
+
+		$this->refresh_detected_memories();
+
+		$status = array() === $errors ? 'complete' : 'partial';
+		$job    = $this->repo()->update_claimed_job(
+			$job_key,
+			$lease_token,
+			array(
+				'status'          => $status,
+				'processed_items' => $processed,
+				'error_count'     => count( $errors ),
+				'result'          => $this->refresh_job_result( $indexed_ids, $errors, $total, $processed ),
+			),
+			true
+		);
+		if ( array() === $job ) {
+			return array(
+				'status'          => 'error',
+				'error'           => 'job_lease_lost',
+				'message'         => 'The refresh worker stopped because its lease was reclaimed before the terminal checkpoint.',
+				'total_items'     => $total,
+				'processed_items' => $processed,
+				'errors'          => $errors,
+			);
+		}
+		$this->clear_refresh_recovery( $job_key );
+
+		return array(
+			'status'          => $status,
+			'job'             => $job,
+			'total_items'     => $total,
+			'processed_items' => $processed,
+			'errors'          => $errors,
+			'index'           => $this->job_index_summary( $total, $processed, count( $errors ) ),
+		);
+	}
+
+	/**
+	 * Build the bounded durable result stored at each checkpoint.
+	 *
+	 * @param array $indexed_ids Processed IDs without index-write errors.
+	 * @param array $errors      Bounded per-item errors.
+	 * @param int   $total       Total work items.
+	 * @param int   $processed   Completed work items.
+	 * @phpstan-param list<int> $indexed_ids
+	 * @phpstan-param list<array<string, mixed>> $errors
+	 * @return array<string, mixed>
+	 */
+	private function refresh_job_result( array $indexed_ids, array $errors, int $total, int $processed ): array {
+		return array(
+			'indexed_ids' => array_values( array_unique( $indexed_ids ) ),
+			'errors'      => array_slice( $errors, 0, self::MAX_BATCH_LIMIT ),
+			'summary'     => $this->job_index_summary( $total, $processed, count( $errors ) ),
+		);
+	}
+
+	/**
+	 * Schedule one worker or replace a later recovery event with an earlier continuation.
+	 *
+	 * @param string $job_key Job key.
+	 * @param int    $delay   Seconds before execution.
+	 */
+	private function schedule_refresh_worker( string $job_key, int $delay = 5 ): bool {
+		if ( '' === $job_key || ! function_exists( 'wp_schedule_single_event' ) ) {
+			return false;
+		}
+
+		$args      = array( $job_key );
+		$timestamp = time() + max( 5, $delay );
+		if ( function_exists( 'wp_next_scheduled' ) ) {
+			$scheduled = wp_next_scheduled( self::REFRESH_JOB_HOOK, $args );
+			if ( false !== $scheduled && (int) $scheduled <= $timestamp ) {
+				return true;
+			}
+			if ( false !== $scheduled ) {
+				if ( ! function_exists( 'wp_unschedule_event' ) ) {
+					return false;
+				}
+				$unscheduled = wp_unschedule_event( (int) $scheduled, self::REFRESH_JOB_HOOK, $args, true );
+				if ( is_wp_error( $unscheduled ) ) {
+					return false;
+				}
+			}
+		}
+
+		$scheduled = wp_schedule_single_event( $timestamp, self::REFRESH_JOB_HOOK, $args, true );
+
+		return ! is_wp_error( $scheduled );
+	}
+
+	/**
+	 * Replace any older watchdog with a fresh post-lease recovery event.
+	 *
+	 * @param string $job_key Job key.
+	 */
+	private function schedule_refresh_recovery( string $job_key ): bool {
+		if ( '' === $job_key || ! function_exists( 'wp_schedule_single_event' ) ) {
+			return false;
+		}
+
+		$args = array( $job_key );
+		if ( function_exists( 'wp_next_scheduled' ) ) {
+			$scheduled = wp_next_scheduled( self::REFRESH_RECOVERY_HOOK, $args );
+			if ( false !== $scheduled ) {
+				if ( ! function_exists( 'wp_unschedule_event' ) ) {
+					return false;
+				}
+				$unscheduled = wp_unschedule_event( (int) $scheduled, self::REFRESH_RECOVERY_HOOK, $args, true );
+				if ( is_wp_error( $unscheduled ) ) {
+					return false;
+				}
+			}
+		}
+
+		$scheduled = wp_schedule_single_event(
+			time() + self::REFRESH_LEASE_TTL + 5,
+			self::REFRESH_RECOVERY_HOOK,
+			$args,
+			true
+		);
+
+		return ! is_wp_error( $scheduled );
+	}
+
+	/**
+	 * Ensure a watchdog exists before attempting an atomic claim.
+	 *
+	 * @param string $job_key Job key.
+	 */
+	private function ensure_refresh_recovery( string $job_key ): bool {
+		if ( '' === $job_key || ! function_exists( 'wp_schedule_single_event' ) ) {
+			return false;
+		}
+
+		$args = array( $job_key );
+		if (
+			function_exists( 'wp_next_scheduled' )
+			&& false !== wp_next_scheduled( self::REFRESH_RECOVERY_HOOK, $args )
+		) {
+			return true;
+		}
+
+		$scheduled = wp_schedule_single_event(
+			time() + self::REFRESH_LEASE_TTL + 5,
+			self::REFRESH_RECOVERY_HOOK,
+			$args,
+			true
+		);
+
+		return ! is_wp_error( $scheduled );
+	}
+
+	/**
+	 * Remove an initial worker event when its watchdog cannot be created.
+	 *
+	 * @param string $job_key Job key.
+	 */
+	private function clear_refresh_worker( string $job_key ): void {
+		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_unschedule_event' ) ) {
+			return;
+		}
+
+		$args      = array( $job_key );
+		$scheduled = wp_next_scheduled( self::REFRESH_JOB_HOOK, $args );
+		if ( false !== $scheduled ) {
+			wp_unschedule_event( (int) $scheduled, self::REFRESH_JOB_HOOK, $args );
+		}
+	}
+
+	/**
+	 * Remove the watchdog after a terminal job transition.
+	 *
+	 * @param string $job_key Job key.
+	 */
+	private function clear_refresh_recovery( string $job_key ): void {
+		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_unschedule_event' ) ) {
+			return;
+		}
+
+		$args      = array( $job_key );
+		$scheduled = wp_next_scheduled( self::REFRESH_RECOVERY_HOOK, $args );
+		if ( false !== $scheduled ) {
+			wp_unschedule_event( (int) $scheduled, self::REFRESH_RECOVERY_HOOK, $args );
+		}
 	}
 
 	/**

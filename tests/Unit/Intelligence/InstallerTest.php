@@ -39,7 +39,7 @@ final class InstallerTest extends TestCase {
 	public function test_install_skips_table_probes_when_version_is_current(): void {
 		$wpdb            = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
-		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.06.08.2', false );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.07.26.1', false );
 
 		Installer::install();
 
@@ -49,7 +49,7 @@ final class InstallerTest extends TestCase {
 	public function test_activate_verifies_tables_when_version_is_current(): void {
 		$wpdb            = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
-		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.06.08.2', false );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.07.26.1', false );
 
 		Installer::activate();
 

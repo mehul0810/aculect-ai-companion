@@ -132,6 +132,8 @@ final class ContentIndexerTest extends TestCase {
 			/** @var list<array{query: string, args: array<int, mixed>}> */
 			public array $prepared = array();
 			public string $executed = '';
+			public string $selected = '';
+			public int $query_result = 1;
 
 			public function prepare( string $query, mixed ...$args ): string {
 				$this->prepared[] = array(
@@ -143,7 +145,17 @@ final class ContentIndexerTest extends TestCase {
 
 			public function query( string $query ): int {
 				$this->executed = $query;
-				return 1;
+				return $this->query_result;
+			}
+
+			public function get_var( string $query ): string {
+				$this->executed = $query;
+				return $this->selected;
+			}
+
+			public function delete( string $table, array $where, array $formats ): int {
+				unset( $table, $where, $formats );
+				return $this->query_result;
 			}
 		};
 
@@ -162,6 +174,35 @@ final class ContentIndexerTest extends TestCase {
 					'generation-91',
 				),
 				$wpdb->prepared[0]['args']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'aculect_ai_companion_pending_index_91',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'notoptions',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+
+			$wpdb->selected = '{"token":"delete-91","attempts":0,"available_at":0,"action":"delete"}';
+			self::assertSame( 'delete', $queue->current_generation( 91 )['action'] );
+			self::assertStringContainsString( 'SELECT option_value', $wpdb->executed );
+
+			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+			$wpdb->query_result                                 = 0;
+			$delete_method                                      = new \ReflectionMethod( $queue, 'delete_option_if_value' );
+			self::assertFalse(
+				$delete_method->invoke(
+					$queue,
+					'aculect_ai_companion_pending_index_91',
+					'stale-reader-generation'
+				)
 			);
 			self::assertContains(
 				array(

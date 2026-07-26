@@ -63,7 +63,7 @@ final class ContentIndexQueue {
 		$limit   = max( 1, min( self::MAX_CLAIM_LIMIT, $limit ) );
 		$claimed = array();
 		foreach ( $this->pending_object_ids( $limit ) as $object_id ) {
-			$queue_token = (string) get_option( $this->queue_key( $object_id ), '' );
+			$queue_token = $this->read_queue_generation( $object_id );
 			if ( '' === $queue_token ) {
 				continue;
 			}
@@ -168,7 +168,7 @@ final class ContentIndexQueue {
 	 * @return array{queue_token: string, action: string}
 	 */
 	public function current_generation( int $object_id ): array {
-		$queue_token = (string) get_option( $this->queue_key( absint( $object_id ) ), '' );
+		$queue_token = $this->read_queue_generation( $object_id );
 		$state       = $this->parse_queue_state( $queue_token );
 
 		return array(
@@ -387,8 +387,9 @@ final class ContentIndexQueue {
 			array( '%s', '%s' )
 		);
 
-		if ( 1 === (int) $deleted && function_exists( 'wp_cache_delete' ) ) {
+		if ( function_exists( 'wp_cache_delete' ) ) {
 			wp_cache_delete( $option_name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
 		}
 
 		return 1 === (int) $deleted;
@@ -423,8 +424,9 @@ final class ContentIndexQueue {
 			)
 		);
 
-		if ( 1 === (int) $updated && function_exists( 'wp_cache_delete' ) ) {
+		if ( function_exists( 'wp_cache_delete' ) ) {
 			wp_cache_delete( $option_name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
 		}
 
 		return 1 === (int) $updated;
@@ -454,6 +456,30 @@ final class ContentIndexQueue {
 	 */
 	private function uses_test_options(): bool {
 		return isset( $GLOBALS['aculect_ai_companion_test_options'] ) && is_array( $GLOBALS['aculect_ai_companion_test_options'] );
+	}
+
+	/**
+	 * Read the authoritative generation without allowing a stale cache republish.
+	 *
+	 * @param int $object_id WordPress object ID.
+	 */
+	private function read_queue_generation( int $object_id ): string {
+		$option_name = $this->queue_key( $object_id );
+		if ( $this->uses_test_options() ) {
+			return (string) get_option( $option_name, '' );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Queue correctness requires the current database generation; claims are bounded to five rows per sweep.
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				$option_name
+			)
+		);
+
+		return is_string( $value ) ? $value : '';
 	}
 
 	/**

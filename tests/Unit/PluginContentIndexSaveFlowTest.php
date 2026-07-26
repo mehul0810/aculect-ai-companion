@@ -70,6 +70,11 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				}
 
 				$this->content_rows[ (int) $data['object_id'] ] = $data;
+				$callback = $GLOBALS['aculect_ai_companion_test_after_content_replace'] ?? null;
+				if ( is_callable( $callback ) ) {
+					$GLOBALS['aculect_ai_companion_test_after_content_replace'] = null;
+					$callback( (int) $data['object_id'] );
+				}
 
 				return 1;
 			}
@@ -173,6 +178,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure']       = false;
+		$GLOBALS['aculect_ai_companion_test_after_content_replace']  = null;
 		$GLOBALS['aculect_ai_companion_test_taxonomies']       = array(
 			'category' => new WP_Taxonomy(
 				'category',
@@ -341,6 +347,98 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertGreaterThan( 0, $GLOBALS['wpdb']->replace_calls );
 		self::assertArrayHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+	}
+
+	public function test_inline_fallback_does_not_delete_a_newer_queue_generation(): void {
+		$post_id = 34107;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Concurrent fallback generation',
+				'post_content'      => '<!-- wp:paragraph --><p>Preserve the newer queued generation.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 14:00:00',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_schedule_failure']      = true;
+		$GLOBALS['aculect_ai_companion_test_after_content_replace'] = static function ( int $replaced_post_id ): void {
+			$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
+			( new ContentIndexer() )->defer_index_post( $replaced_post_id );
+		};
+
+		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
+
+		self::assertSame( 1, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
+	}
+
+	public function test_delete_during_claimed_index_cannot_reintroduce_content(): void {
+		$post_id = 34108;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Delete during index',
+				'post_content'      => '<!-- wp:paragraph --><p>This content must not survive deletion.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 15:00:00',
+			)
+		);
+		$indexer = new ContentIndexer();
+		self::assertTrue( $indexer->defer_index_post( $post_id ) );
+		$GLOBALS['aculect_ai_companion_test_after_content_replace'] = static function ( int $replaced_post_id ): void {
+			( new ContentIndexer() )->delete_post( $replaced_post_id );
+			unset( $GLOBALS['aculect_ai_companion_test_posts'][ $replaced_post_id ] );
+		};
+
+		$result = $indexer->run_stale_sweep();
+
+		self::assertSame( 1, $result['processed_items'] );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertSame( 0, $indexer->pending_index_count() );
+	}
+
+	public function test_new_save_after_delete_fence_is_reindexed_without_being_removed(): void {
+		$post_id = 34109;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Old generation',
+				'post_content'      => '<!-- wp:paragraph --><p>Old indexed generation.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 16:00:00',
+			)
+		);
+		$indexer = new ContentIndexer();
+		self::assertTrue( $indexer->defer_index_post( $post_id ) );
+		$GLOBALS['aculect_ai_companion_test_after_content_replace'] = static function ( int $replaced_post_id ): void {
+			( new ContentIndexer() )->delete_post( $replaced_post_id );
+			$GLOBALS['aculect_ai_companion_test_posts'][ $replaced_post_id ] = new WP_Post(
+				array(
+					'ID'                => $replaced_post_id,
+					'post_type'         => 'post',
+					'post_status'       => 'publish',
+					'post_title'        => 'New generation',
+					'post_content'      => '<!-- wp:paragraph --><p>New indexed generation.</p><!-- /wp:paragraph -->',
+					'post_modified_gmt' => '2026-07-10 16:01:00',
+				)
+			);
+			( new ContentIndexer() )->defer_index_post( $replaced_post_id );
+		};
+
+		$first = $indexer->run_stale_sweep();
+		self::assertSame( 1, $first['remaining_items'] );
+
+		$second = $indexer->run_stale_sweep();
+
+		self::assertSame( 1, $second['processed_items'] );
+		self::assertSame( 0, $second['remaining_items'] );
+		self::assertStringContainsString(
+			'New generation',
+			(string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' )
+		);
 	}
 
 	public function test_non_indexable_attachment_save_does_not_enter_queue(): void {

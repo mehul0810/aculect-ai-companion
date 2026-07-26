@@ -68,18 +68,43 @@ final class ContentIndexer {
 	 * @param int $post_id Post ID.
 	 */
 	public function defer_index_post( int $post_id ): bool {
+		$result = $this->defer_index_post_result( $post_id );
+
+		return $result['scheduled'];
+	}
+
+	/**
+	 * Defer one post and retain the exact queue generation for safe fallback.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array{queued: bool, scheduled: bool, queue_token: string}
+	 */
+	public function defer_index_post_result( int $post_id ): array {
 		$post_id = absint( $post_id );
 		if ( 0 >= $post_id ) {
-			return false;
+			return array(
+				'queued'      => false,
+				'scheduled'   => false,
+				'queue_token' => '',
+			);
 		}
 
-		if ( ! ( new ContentIndexQueue() )->enqueue( $post_id ) ) {
-			return false;
+		$queue_token = ( new ContentIndexQueue() )->enqueue_generation( $post_id );
+		if ( '' === $queue_token ) {
+			return array(
+				'queued'      => false,
+				'scheduled'   => false,
+				'queue_token' => '',
+			);
 		}
 
 		$this->mark_post_stale( $post_id );
 
-		return $this->schedule_stale_sweep();
+		return array(
+			'queued'      => true,
+			'scheduled'   => $this->schedule_stale_sweep(),
+			'queue_token' => $queue_token,
+		);
 	}
 
 	/**
@@ -167,7 +192,7 @@ final class ContentIndexer {
 				++$errors;
 				$queue->retry( $post_id, $claim['queue_token'], $claim['lock_token'] );
 			} else {
-				$queue->acknowledge( $post_id, $claim['queue_token'], $claim['lock_token'] );
+				$this->finalize_deferred_index( $post_id, $claim['queue_token'], $claim['lock_token'] );
 			}
 			++$processed;
 		}
@@ -272,17 +297,32 @@ final class ContentIndexer {
 	 * @param int $post_id Post ID.
 	 */
 	public function delete_post( int $post_id ): void {
-		( new ContentIndexQueue() )->remove( $post_id );
+		( new ContentIndexQueue() )->invalidate_for_delete( $post_id );
 		$this->repo()->delete_content_item( $post_id );
 	}
 
 	/**
-	 * Clear only deferred queue state after a synchronous fallback succeeds.
+	 * Finalize one indexed generation without erasing newer work.
 	 *
-	 * @param int $post_id WordPress post ID.
+	 * @param int    $post_id    WordPress post ID.
+	 * @param string $queue_token Indexed queue generation, when one was persisted.
+	 * @param string $lock_token  Optional claimed lease token.
 	 */
-	public function clear_deferred_post( int $post_id ): void {
-		( new ContentIndexQueue() )->remove( $post_id );
+	public function finalize_deferred_index( int $post_id, string $queue_token = '', string $lock_token = '' ): void {
+		$queue        = new ContentIndexQueue();
+		$acknowledged = '' !== $lock_token
+			? $queue->acknowledge( $post_id, $queue_token, $lock_token )
+			: $queue->clear_generation( $post_id, $queue_token );
+		if ( $acknowledged ) {
+			return;
+		}
+
+		if ( $queue->is_delete_fenced( $post_id ) || ! $this->is_indexable_post_id( $post_id ) ) {
+			$this->repo()->delete_content_item( $post_id );
+			return;
+		}
+
+		$this->defer_index_post( $post_id );
 	}
 
 	/**

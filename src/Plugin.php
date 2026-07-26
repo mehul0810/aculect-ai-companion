@@ -326,14 +326,15 @@ final class Plugin {
 		}
 
 		$this->content_index_saved_posts[ $post_id ] = true;
-		if ( $indexer->defer_index_post( $post_id ) ) {
+		$deferred                                    = $indexer->defer_index_post_result( $post_id );
+		if ( $deferred['scheduled'] ) {
 			$this->content_index_deferred_posts[ $post_id ] = true;
 			return;
 		}
 
 		$result = $indexer->index_post( $post_id );
 		if ( 'error' !== ( $result['status'] ?? '' ) ) {
-			$indexer->clear_deferred_post( $post_id );
+			$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
 		}
 	}
 
@@ -425,10 +426,11 @@ final class Plugin {
 		}
 
 		$this->content_index_deferred_posts[ $post_id ] = true;
-		if ( ! $indexer->defer_index_post( $post_id ) ) {
+		$deferred                                       = $indexer->defer_index_post_result( $post_id );
+		if ( ! $deferred['scheduled'] ) {
 			$result = $indexer->index_post( $post_id );
 			if ( 'error' !== ( $result['status'] ?? '' ) ) {
-				$indexer->clear_deferred_post( $post_id );
+				$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
 			}
 		}
 	}

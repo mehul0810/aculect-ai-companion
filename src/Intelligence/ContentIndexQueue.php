@@ -14,13 +14,15 @@ namespace Aculect\AICompanion\Intelligence;
  */
 final class ContentIndexQueue {
 
-	private const LEGACY_OPTION     = 'aculect_ai_companion_pending_index_ids';
-	private const QUEUE_PREFIX      = 'aculect_ai_companion_pending_index_';
-	private const LOCK_PREFIX       = 'aculect_ai_companion_index_lock_';
-	private const CURSOR_OPTION     = 'aculect_ai_companion_index_queue_cursor';
-	private const DEFAULT_LEASE_TTL = 300;
-	private const MAX_CLAIM_LIMIT   = 100;
-	private const MAX_RETRY_DELAY   = 3600;
+	private const LEGACY_OPTION       = 'aculect_ai_companion_pending_index_ids';
+	private const QUEUE_PREFIX        = 'aculect_ai_companion_pending_index_';
+	private const LOCK_PREFIX         = 'aculect_ai_companion_index_lock_';
+	private const DELETE_FENCE_PREFIX = 'aculect_ai_companion_index_delete_';
+	private const CURSOR_OPTION       = 'aculect_ai_companion_index_queue_cursor';
+	private const DEFAULT_LEASE_TTL   = 300;
+	private const DELETE_FENCE_TTL    = 600;
+	private const MAX_CLAIM_LIMIT     = 100;
+	private const MAX_RETRY_DELAY     = 3600;
 
 	/**
 	 * Add or refresh one pending object without a shared read/modify/write list.
@@ -28,14 +30,29 @@ final class ContentIndexQueue {
 	 * @param int $object_id WordPress object ID.
 	 */
 	public function enqueue( int $object_id ): bool {
+		return '' !== $this->enqueue_generation( $object_id );
+	}
+
+	/**
+	 * Add or refresh one pending object and return its generation token.
+	 *
+	 * @param int $object_id WordPress object ID.
+	 */
+	public function enqueue_generation( int $object_id ): string {
 		$object_id = absint( $object_id );
 		if ( 0 >= $object_id ) {
-			return false;
+			return '';
 		}
 
 		$this->migrate_legacy_option();
+		$generation = $this->queue_state();
+		if ( ! update_option( $this->queue_key( $object_id ), $generation, false ) ) {
+			return '';
+		}
 
-		return update_option( $this->queue_key( $object_id ), $this->queue_state(), false );
+		delete_transient( $this->delete_fence_key( $object_id ) );
+
+		return $generation;
 	}
 
 	/**
@@ -82,10 +99,21 @@ final class ContentIndexQueue {
 	 * @param string $lock_token  Claimed lease token.
 	 */
 	public function acknowledge( int $object_id, string $queue_token, string $lock_token ): bool {
-		$deleted = $this->delete_option_if_value( $this->queue_key( $object_id ), $queue_token );
+		$deleted = $this->clear_generation( $object_id, $queue_token );
 		$this->delete_option_if_value( $this->lock_key( $object_id ), $lock_token );
 
 		return $deleted;
+	}
+
+	/**
+	 * Remove exactly one unclaimed queue generation.
+	 *
+	 * @param int    $object_id   WordPress object ID.
+	 * @param string $queue_token Expected queue generation.
+	 */
+	public function clear_generation( int $object_id, string $queue_token ): bool {
+		return '' !== $queue_token
+			&& $this->delete_option_if_value( $this->queue_key( $object_id ), $queue_token );
 	}
 
 	/**
@@ -118,13 +146,27 @@ final class ContentIndexQueue {
 	}
 
 	/**
-	 * Remove all deferred state for one deleted object.
+	 * Fence deletion before removing pending work while preserving any active lease.
 	 *
 	 * @param int $object_id WordPress object ID.
 	 */
-	public function remove( int $object_id ): void {
+	public function invalidate_for_delete( int $object_id ): void {
+		$object_id = absint( $object_id );
+		if ( 0 >= $object_id ) {
+			return;
+		}
+
+		set_transient( $this->delete_fence_key( $object_id ), $this->token(), self::DELETE_FENCE_TTL );
 		delete_option( $this->queue_key( $object_id ) );
-		delete_option( $this->lock_key( $object_id ) );
+	}
+
+	/**
+	 * Check whether deletion invalidated work already in flight.
+	 *
+	 * @param int $object_id WordPress object ID.
+	 */
+	public function is_delete_fenced( int $object_id ): bool {
+		return false !== get_transient( $this->delete_fence_key( absint( $object_id ) ) );
 	}
 
 	/**
@@ -160,21 +202,30 @@ final class ContentIndexQueue {
 					unset( $GLOBALS['aculect_ai_companion_test_options'][ $option_name ] );
 				}
 			}
+			foreach ( array_keys( $GLOBALS['aculect_ai_companion_test_transients'] ?? array() ) as $transient_name ) {
+				if ( str_starts_with( (string) $transient_name, self::DELETE_FENCE_PREFIX ) ) {
+					unset( $GLOBALS['aculect_ai_companion_test_transients'][ $transient_name ] );
+				}
+			}
 			return;
 		}
 
 		global $wpdb;
 
-		$queue_like = $wpdb->esc_like( self::QUEUE_PREFIX ) . '%';
-		$lock_like  = $wpdb->esc_like( self::LOCK_PREFIX ) . '%';
+		$queue_like         = $wpdb->esc_like( self::QUEUE_PREFIX ) . '%';
+		$lock_like          = $wpdb->esc_like( self::LOCK_PREFIX ) . '%';
+		$fence_like         = $wpdb->esc_like( '_transient_' . self::DELETE_FENCE_PREFIX ) . '%';
+		$fence_timeout_like = $wpdb->esc_like( '_transient_timeout_' . self::DELETE_FENCE_PREFIX ) . '%';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Uninstall removes only plugin-owned queue options.
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM {$wpdb->options} WHERE option_name IN (%s, %s) OR option_name LIKE %s OR option_name LIKE %s",
+				"DELETE FROM {$wpdb->options} WHERE option_name IN (%s, %s) OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 				self::LEGACY_OPTION,
 				self::CURSOR_OPTION,
 				$queue_like,
-				$lock_like
+				$lock_like,
+				$fence_like,
+				$fence_timeout_like
 			)
 		);
 	}
@@ -425,6 +476,15 @@ final class ContentIndexQueue {
 	 */
 	private function lock_key( int $object_id ): string {
 		return self::LOCK_PREFIX . absint( $object_id );
+	}
+
+	/**
+	 * Return a short-lived deletion fence key for one object.
+	 *
+	 * @param int $object_id WordPress object ID.
+	 */
+	private function delete_fence_key( int $object_id ): string {
+		return self::DELETE_FENCE_PREFIX . absint( $object_id );
 	}
 
 	/**

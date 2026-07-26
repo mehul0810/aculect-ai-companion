@@ -86,6 +86,84 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'confirmation_token', $tools_by_name['plugin_incident_report']['inputSchema']['properties'] );
 	}
 
+	public function test_handle_rpc_rejects_oversized_body_before_json_dispatch(): void {
+		$response = ( new McpController() )->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array( 'content-length' => '16000001' ),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'tools/list',
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 413, $response->get_status() );
+		self::assertSame( 'request_body_too_large', $response->get_data()['error']['data']['code'] ?? '' );
+	}
+
+	public function test_permission_check_rejects_oversized_auth_exempt_notification(): void {
+		$request = new WP_REST_Request(
+			array(),
+			array( 'content-length' => '16000001' ),
+			array(
+				'jsonrpc' => '2.0',
+				'method'  => 'notifications/initialized',
+			),
+			'POST',
+			'/aculect-ai-companion/v1/mcp'
+		);
+
+		$result = ( new McpController() )->check_mcp_permission( $request );
+
+		self::assertInstanceOf( \WP_Error::class, $result );
+		self::assertSame( 'request_body_too_large', $result->get_error_code() );
+	}
+
+	public function test_tool_call_rejects_oversized_schema_argument_before_execution(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'user_id'   => 1,
+				'client_id' => 'bounded-input-client',
+				'provider'  => 'chatgpt',
+				'scopes'    => array( 'content:read', 'content:draft' ),
+				'profile'   => 'full_access',
+			)
+		);
+
+		$response = $controller->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 2,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => 'content_create_item',
+						'arguments' => array(
+							'title'   => 'Bounded content',
+							'content' => str_repeat( 'x', 300001 ),
+						),
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+
+		self::assertIsArray( $response );
+		self::assertSame( -32602, $response['error']['code'] ?? null );
+		self::assertSame( 'argument_string_too_large', $response['error']['data']['code'] ?? '' );
+	}
+
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {
 		$result = $this->list_tools_manifest();
 		$names  = array_column( $result['tools'], 'name' );

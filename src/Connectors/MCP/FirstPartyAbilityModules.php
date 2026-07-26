@@ -449,7 +449,7 @@ final class FirstPartyAbilityModules {
 				'Refresh Content Intelligence Index',
 				'Refresh a bounded local Aculect Intelligence index batch so MCP clients can search content, sections, and link candidates quickly without reading full posts repeatedly.',
 				'Content Intelligence Index',
-				'content:read',
+				'content:draft',
 				false,
 				$this->index_refresh_schema(),
 				static fn ( array $args ): array => ( new IntelligenceIndexAbilities() )->refresh_batch( $args )
@@ -2614,11 +2614,11 @@ final class FirstPartyAbilityModules {
 				'mode'      => array(
 					'type'        => 'string',
 					'enum'        => array( 'sync', 'queued' ),
-					'description' => 'Use queued for faster MCP responses on larger refreshes. Defaults to sync for backward compatibility.',
+					'description' => 'Defaults to queued. Use sync only for one explicitly requested item when an immediate result is required.',
 				),
 				'queued'    => array(
 					'type'        => 'boolean',
-					'description' => 'When true, create a queued WordPress cron job and return a job_key immediately.',
+					'description' => 'When true, create a queued WordPress cron job and return a job_key immediately. Legacy false requests synchronous mode and therefore requires exactly one explicit ID.',
 				),
 			)
 		);

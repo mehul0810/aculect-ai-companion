@@ -29,11 +29,13 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new IntelligenceIndexMemoryWpdb();
 
-		$GLOBALS['wpdb']                                      = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_posts']           = array();
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
-		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
-		$GLOBALS['aculect_ai_companion_test_options']         = array(
+		$GLOBALS['wpdb']                                       = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_posts']            = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
+		$GLOBALS['aculect_ai_companion_test_denied_post_ids']  = array();
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
+		$GLOBALS['aculect_ai_companion_test_options']          = array(
 			'blogname' => 'Aculect Demo',
 		);
 
@@ -117,6 +119,97 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$result = ( new IntelligenceIndexAbilities() )->canonical_search( array( 'query' => '' ) );
 
 		self::assertSame( array(), $result['results'] );
+	}
+
+	public function test_refresh_batch_defaults_to_queued_execution(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'ids' => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'queued', $result['status'] );
+		self::assertSame( 2, $result['total_items'] );
+		self::assertNotEmpty( $result['job']['job_key'] ?? '' );
+		self::assertSame( 'content_index_refresh_batch', $result['workflow'] );
+	}
+
+	public function test_refresh_batch_rejects_users_without_draft_capability_before_persisting_work(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_posts' );
+
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'ids' => array( 101 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'forbidden', $result['error'] );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
+	}
+
+	public function test_refresh_batch_rejects_multi_item_synchronous_execution(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'mode' => 'sync',
+				'ids'  => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
+	}
+
+	public function test_refresh_batch_preserves_legacy_queued_false_as_bounded_sync_request(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'queued' => false,
+				'ids'    => array( 101, 102 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
+	}
+
+	public function test_refresh_batch_requires_explicit_id_for_sync_mode(): void {
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'mode'  => 'sync',
+				'limit' => 1,
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'sync_refresh_requires_id', $result['error'] );
+	}
+
+	public function test_refresh_batch_reports_job_schedule_failure(): void {
+		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'ids' => array( 101 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'job_schedule_failed', $result['error'] );
+		self::assertSame( 'failed', $result['job']['status'] ?? '' );
+	}
+
+	public function test_refresh_batch_reports_job_create_failure(): void {
+		$this->wpdb->fail_job_inserts = true;
+
+		$result = ( new IntelligenceIndexAbilities() )->refresh_batch(
+			array(
+				'ids' => array( 101 ),
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'job_create_failed', $result['error'] );
 	}
 
 	public function test_canonical_fetch_returns_readable_post_document(): void {
@@ -784,6 +877,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 final class IntelligenceIndexMemoryWpdb {
 
 	public string $prefix = 'wp_';
+	public bool $fail_job_inserts = false;
 
 	/**
 	 * Stored table rows.
@@ -919,11 +1013,16 @@ final class IntelligenceIndexMemoryWpdb {
 	 * @param array<string, mixed> $data    Row data.
 	 * @param array<int, string>   $formats Insert formats.
 	 */
-	public function insert( string $table, array $data, array $formats ): int {
-		unset( $table, $formats );
+	public function insert( string $table, array $data, array $formats ): int|false {
+		unset( $formats );
+		if ( $this->fail_job_inserts && str_ends_with( $table, 'aculect_ai_jobs' ) ) {
+			return false;
+		}
 
-		$data['id']                                 = count( $this->rows ) + 1;
-		$this->rows[ (string) $data['memory_key'] ] = $data;
+		$data['id'] = count( $this->rows ) + 1;
+		$key        = (string) ( $data['memory_key'] ?? $data['job_key'] ?? 'row-' . $data['id'] );
+
+		$this->rows[ $key ] = $data;
 
 		return 1;
 	}
@@ -940,7 +1039,7 @@ final class IntelligenceIndexMemoryWpdb {
 	public function update( string $table, array $data, array $where, array $formats, array $where_formats ): int {
 		unset( $table, $formats, $where_formats );
 
-		$key = (string) ( $where['memory_key'] ?? '' );
+		$key = (string) ( $where['memory_key'] ?? $where['job_key'] ?? '' );
 		if ( isset( $this->rows[ $key ] ) ) {
 			$this->rows[ $key ] = array_merge( $this->rows[ $key ], $data );
 		}

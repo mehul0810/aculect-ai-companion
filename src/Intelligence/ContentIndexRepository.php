@@ -875,7 +875,7 @@ final class ContentIndexRepository {
 		$key       = sanitize_key( $type ) . '_' . gmdate( 'YmdHis' ) . '_' . substr( hash( 'sha256', false === $args_json ? '' : $args_json ), 0, 8 );
 		$now       = gmdate( 'Y-m-d H:i:s' );
 
-		$wpdb->insert(
+		$inserted = $wpdb->insert(
 			Installer::jobs_table(),
 			array(
 				'job_key'         => $key,
@@ -891,6 +891,9 @@ final class ContentIndexRepository {
 			),
 			array( '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s' )
 		);
+		if ( false === $inserted ) {
+			return array();
+		}
 
 		return $this->job_by_key( $key );
 	}

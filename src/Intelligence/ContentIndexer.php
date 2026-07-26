@@ -22,8 +22,6 @@ final class ContentIndexer {
 	private const MAX_BATCH_LIMIT     = 100;
 	private const MAX_CHUNK_WORDS     = 750;
 	private const MAX_RESOLVED_LINKS  = 50;
-	private const MAX_PENDING_IDS     = 1000;
-	private const PENDING_IDS_OPTION  = 'aculect_ai_companion_pending_index_ids';
 	private const INDEXABLE_STATUSES  = array( 'publish', 'future', 'draft', 'pending', 'private' );
 
 	/**
@@ -45,7 +43,7 @@ final class ContentIndexer {
 	 * Delete queued indexing state and scheduled index jobs.
 	 */
 	public static function delete_options(): void {
-		delete_option( self::PENDING_IDS_OPTION );
+		ContentIndexQueue::delete_all();
 
 		if ( function_exists( 'wp_unschedule_hook' ) ) {
 			wp_unschedule_hook( self::STALE_SWEEP_HOOK );
@@ -61,22 +59,19 @@ final class ContentIndexer {
 	 *
 	 * @param int $post_id Post ID.
 	 */
-	public function defer_index_post( int $post_id ): void {
+	public function defer_index_post( int $post_id ): bool {
 		$post_id = absint( $post_id );
 		if ( 0 >= $post_id ) {
-			return;
+			return false;
 		}
 
-		$pending = get_option( self::PENDING_IDS_OPTION, array() );
-		$pending = is_array( $pending ) ? array_values( array_filter( array_map( 'absint', $pending ) ) ) : array();
-
-		if ( ! in_array( $post_id, $pending, true ) ) {
-			$pending[] = $post_id;
-			update_option( self::PENDING_IDS_OPTION, array_slice( $pending, -self::MAX_PENDING_IDS ), false );
+		if ( ! ( new ContentIndexQueue() )->enqueue( $post_id ) ) {
+			return false;
 		}
 
 		$this->mark_post_stale( $post_id );
-		$this->schedule_stale_sweep();
+
+		return $this->schedule_stale_sweep();
 	}
 
 	/**
@@ -84,26 +79,35 @@ final class ContentIndexer {
 	 *
 	 * @param int $delay Seconds before the sweep runs.
 	 */
-	public function schedule_stale_sweep( int $delay = 60 ): void {
+	public function schedule_stale_sweep( int $delay = 60 ): bool {
 		if ( ! function_exists( 'wp_schedule_single_event' ) ) {
-			return;
+			return false;
 		}
 
-		if ( function_exists( 'wp_next_scheduled' ) && false !== wp_next_scheduled( self::STALE_SWEEP_HOOK ) ) {
-			return;
+		$timestamp = time() + max( 5, $delay );
+		if ( function_exists( 'wp_next_scheduled' ) ) {
+			$scheduled = wp_next_scheduled( self::STALE_SWEEP_HOOK );
+			if ( false !== $scheduled && (int) $scheduled <= $timestamp ) {
+				return true;
+			}
+			if (
+				false !== $scheduled
+				&& ( ! function_exists( 'wp_unschedule_event' ) || ! wp_unschedule_event( (int) $scheduled, self::STALE_SWEEP_HOOK ) )
+			) {
+				return false;
+			}
 		}
 
-		wp_schedule_single_event( time() + max( 5, $delay ), self::STALE_SWEEP_HOOK );
+		$scheduled = wp_schedule_single_event( $timestamp, self::STALE_SWEEP_HOOK, array(), true );
+
+		return ! is_wp_error( $scheduled );
 	}
 
 	/**
 	 * Return the number of pending object IDs waiting for a stale sweep.
 	 */
 	public function pending_index_count(): int {
-		$pending = get_option( self::PENDING_IDS_OPTION, array() );
-		$pending = is_array( $pending ) ? array_values( array_unique( array_filter( array_map( 'absint', $pending ) ) ) ) : array();
-
-		return count( $pending );
+		return ( new ContentIndexQueue() )->pending_count();
 	}
 
 	/**
@@ -125,33 +129,35 @@ final class ContentIndexer {
 	 * @return array<string, mixed>
 	 */
 	public function run_stale_sweep(): array {
-		$pending = get_option( self::PENDING_IDS_OPTION, array() );
-		$pending = is_array( $pending ) ? array_values( array_unique( array_filter( array_map( 'absint', $pending ) ) ) ) : array();
-
-		$ids = array_slice( $pending, 0, self::MAX_BATCH_LIMIT );
-		if ( count( $ids ) < self::MAX_BATCH_LIMIT ) {
-			$stale = $this->repo()->stale_object_ids( self::MAX_BATCH_LIMIT - count( $ids ) );
-			$ids   = array_values( array_unique( array_merge( $ids, $stale ) ) );
+		$queue = new ContentIndexQueue();
+		$room  = max( 0, self::MAX_BATCH_LIMIT - $queue->pending_count() );
+		if ( 0 < $room ) {
+			foreach ( $this->repo()->stale_object_ids( $room ) as $stale_id ) {
+				$queue->enqueue( $stale_id );
+			}
 		}
 
-		$remaining = array_values( array_diff( $pending, $ids ) );
-		if ( array() === $remaining ) {
-			delete_option( self::PENDING_IDS_OPTION );
-		} else {
-			update_option( self::PENDING_IDS_OPTION, $remaining, false );
+		$claims = $queue->claim( self::MAX_BATCH_LIMIT );
+		if ( array() !== $claims ) {
+			$this->schedule_stale_sweep( 360 );
 		}
 
 		$processed = 0;
 		$errors    = 0;
-		foreach ( $ids as $post_id ) {
-			$result = $this->index_post( $post_id );
+		foreach ( $claims as $claim ) {
+			$post_id = $claim['object_id'];
+			$result  = $this->index_post( $post_id );
 			if ( 'error' === ( $result['status'] ?? '' ) ) {
 				++$errors;
+				$queue->retry( $post_id, $claim['queue_token'], $claim['lock_token'] );
+			} else {
+				$queue->acknowledge( $post_id, $claim['queue_token'], $claim['lock_token'] );
 			}
 			++$processed;
 		}
 
-		if ( array() !== $remaining || count( $ids ) >= self::MAX_BATCH_LIMIT ) {
+		$remaining = $queue->pending_count();
+		if ( 0 < $remaining ) {
 			$this->schedule_stale_sweep( 30 );
 		}
 
@@ -159,7 +165,7 @@ final class ContentIndexer {
 			'status'          => 'complete',
 			'processed_items' => $processed,
 			'error_count'     => $errors,
-			'remaining_items' => count( $remaining ),
+			'remaining_items' => $remaining,
 		);
 	}
 
@@ -234,12 +240,33 @@ final class ContentIndexer {
 	}
 
 	/**
+	 * Check whether a WordPress post is eligible for content indexing.
+	 *
+	 * @param int $post_id WordPress post ID.
+	 */
+	public function is_indexable_post_id( int $post_id ): bool {
+		$post = function_exists( 'get_post' ) ? get_post( absint( $post_id ) ) : null;
+
+		return $post instanceof \WP_Post && $this->is_indexable_post( $post );
+	}
+
+	/**
 	 * Delete all index rows for one post.
 	 *
 	 * @param int $post_id Post ID.
 	 */
 	public function delete_post( int $post_id ): void {
+		( new ContentIndexQueue() )->remove( $post_id );
 		$this->repo()->delete_content_item( $post_id );
+	}
+
+	/**
+	 * Clear only deferred queue state after a synchronous fallback succeeds.
+	 *
+	 * @param int $post_id WordPress post ID.
+	 */
+	public function clear_deferred_post( int $post_id ): void {
+		( new ContentIndexQueue() )->remove( $post_id );
 	}
 
 	/**
@@ -260,6 +287,13 @@ final class ContentIndexer {
 	public function refresh_batch( array $args ): array {
 		$post_ids = $this->post_ids_for_batch( $args );
 		$job      = $this->repo()->create_job( 'content_index_refresh', $this->batch_public_args( $args ), count( $post_ids ) );
+		if ( '' === (string) ( $job['job_key'] ?? '' ) ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_create_failed',
+				'message' => 'The content index refresh job could not be created.',
+			);
+		}
 
 		return $this->run_refresh_job( (string) ( $job['job_key'] ?? '' ), $post_ids );
 	}
@@ -276,13 +310,37 @@ final class ContentIndexer {
 		$public_args['ids'] = $post_ids;
 		$job                = $this->repo()->create_job( 'content_index_refresh', $public_args, count( $post_ids ), 'queued' );
 		$job_key            = (string) ( $job['job_key'] ?? '' );
+		if ( '' === $job_key ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_create_failed',
+				'message' => 'The queued content index refresh job could not be created.',
+			);
+		}
 
-		if (
-			'' !== $job_key
-			&& function_exists( 'wp_schedule_single_event' )
-			&& ( ! function_exists( 'wp_next_scheduled' ) || false === wp_next_scheduled( 'aculect_ai_companion_content_index_refresh_job', array( $job_key ) ) )
-		) {
-			wp_schedule_single_event( time() + 5, 'aculect_ai_companion_content_index_refresh_job', array( $job_key ) );
+		$scheduled = function_exists( 'wp_next_scheduled' )
+			&& false !== wp_next_scheduled( 'aculect_ai_companion_content_index_refresh_job', array( $job_key ) );
+		if ( ! $scheduled && function_exists( 'wp_schedule_single_event' ) ) {
+			$result    = wp_schedule_single_event( time() + 5, 'aculect_ai_companion_content_index_refresh_job', array( $job_key ), true );
+			$scheduled = ! is_wp_error( $result );
+		}
+		if ( ! $scheduled ) {
+			$failed_job = $this->repo()->update_job(
+				$job_key,
+				array(
+					'status'          => 'failed',
+					'processed_items' => 0,
+					'error_count'     => 1,
+					'result'          => array( 'error' => 'job_schedule_failed' ),
+				)
+			);
+
+			return array(
+				'status'  => 'error',
+				'error'   => 'job_schedule_failed',
+				'message' => 'The content index refresh job was created but could not be scheduled.',
+				'job'     => array() === $failed_job ? $job : $failed_job,
+			);
 		}
 
 		return array(

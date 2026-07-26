@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Intelligence;
 
+use Aculect\AICompanion\Intelligence\ContentIndexQueue;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use PHPUnit\Framework\TestCase;
 
@@ -16,6 +17,19 @@ use PHPUnit\Framework\TestCase;
  * Verifies long-form block content is chunked for fast MCP retrieval.
  */
 final class ContentIndexerTest extends TestCase {
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
+	}
+
+	protected function tearDown(): void {
+		ContentIndexer::delete_options();
+
+		parent::tearDown();
+	}
 
 	public function test_chunks_from_content_uses_heading_sections_and_keeps_block_markup(): void {
 		$indexer = new ContentIndexer();
@@ -45,5 +59,68 @@ final class ContentIndexerTest extends TestCase {
 		self::assertSame( 'https://example.com/internal-post/', $links[0]['target_url'] );
 		self::assertSame( 'internal guide', $links[0]['anchor_text'] );
 		self::assertSame( 0, $links[0]['target_id'] );
+	}
+
+	public function test_queue_preserves_more_than_one_thousand_unique_posts(): void {
+		$queue = new ContentIndexQueue();
+		for ( $post_id = 1; $post_id <= 1001; ++$post_id ) {
+			self::assertTrue( $queue->enqueue( $post_id ) );
+		}
+
+		self::assertSame( 1001, $queue->pending_count() );
+	}
+
+	public function test_new_enqueue_is_not_deleted_by_older_claim_acknowledgement(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 77 ) );
+
+		$claims = $queue->claim( 1 );
+		self::assertCount( 1, $claims );
+		self::assertTrue( $queue->enqueue( 77 ) );
+
+		self::assertFalse(
+			$queue->acknowledge(
+				77,
+				$claims[0]['queue_token'],
+				$claims[0]['lock_token']
+			)
+		);
+		self::assertSame( 1, $queue->pending_count() );
+	}
+
+	public function test_legacy_shared_queue_migrates_without_losing_ids(): void {
+		update_option( 'aculect_ai_companion_pending_index_ids', array( 5, 9, 5 ), false );
+
+		$queue = new ContentIndexQueue();
+
+		self::assertSame( 2, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
+	}
+
+	public function test_failed_item_backoff_does_not_starve_later_queue_rows(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 1 ) );
+		self::assertTrue( $queue->enqueue( 2 ) );
+
+		$first = $queue->claim( 1 );
+		self::assertSame( 1, $first[0]['object_id'] ?? 0 );
+		$queue->retry( 1, $first[0]['queue_token'], $first[0]['lock_token'] );
+
+		$second = $queue->claim( 1 );
+		self::assertSame( 2, $second[0]['object_id'] ?? 0 );
+		self::assertSame( 2, $queue->pending_count() );
+	}
+
+	public function test_expired_lease_is_replaced_and_work_can_be_reclaimed(): void {
+		$queue         = new ContentIndexQueue();
+		$expired_token = 'expired-worker:' . ( time() - 1 );
+		self::assertTrue( $queue->enqueue( 88 ) );
+		update_option( 'aculect_ai_companion_index_lock_88', $expired_token, false );
+
+		$claims = $queue->claim( 1 );
+
+		self::assertCount( 1, $claims );
+		self::assertSame( 88, $claims[0]['object_id'] );
+		self::assertNotSame( $expired_token, $claims[0]['lock_token'] );
 	}
 }

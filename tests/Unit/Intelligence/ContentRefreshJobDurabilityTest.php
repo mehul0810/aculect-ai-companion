@@ -21,11 +21,29 @@ use PHPUnit\Framework\TestCase;
  */
 final class ContentRefreshJobDurabilityTest extends TestCase {
 
+	private const SCHEDULER_FAULT_GLOBALS = array(
+		'aculect_ai_companion_test_schedule_failure',
+		'aculect_ai_companion_test_schedule_failure_hooks',
+		'aculect_ai_companion_test_schedule_literal_false_hooks',
+	);
+
 	private object|null $original_wpdb = null;
 	private RefreshJobWpdb $wpdb;
 
+	/**
+	 * @var array<string, mixed>
+	 */
+	private array $original_scheduler_fault_globals = array();
+
 	protected function setUp(): void {
 		parent::setUp();
+
+		$this->original_scheduler_fault_globals = array();
+		foreach ( self::SCHEDULER_FAULT_GLOBALS as $global_name ) {
+			if ( array_key_exists( $global_name, $GLOBALS ) ) {
+				$this->original_scheduler_fault_globals[ $global_name ] = $GLOBALS[ $global_name ];
+			}
+		}
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new RefreshJobWpdb();
@@ -40,7 +58,13 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
-		unset( $GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] );
+		foreach ( self::SCHEDULER_FAULT_GLOBALS as $global_name ) {
+			if ( array_key_exists( $global_name, $this->original_scheduler_fault_globals ) ) {
+				$GLOBALS[ $global_name ] = $this->original_scheduler_fault_globals[ $global_name ];
+			} else {
+				unset( $GLOBALS[ $global_name ] );
+			}
+		}
 
 		if ( null === $this->original_wpdb ) {
 			unset( $GLOBALS['wpdb'] );

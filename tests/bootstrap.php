@@ -110,6 +110,11 @@ if ( ! function_exists( 'update_option' ) ) {
 	function update_option( string $option, mixed $value, mixed $autoload = null ): bool {
 		unset( $autoload );
 
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_updates'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
+
 		$GLOBALS['aculect_ai_companion_test_options'][ $option ] = $value;
 
 		return true;
@@ -232,6 +237,11 @@ if ( ! function_exists( 'add_option' ) ) {
 	 */
 	function add_option( string $option, mixed $value = '', mixed $deprecated = '', mixed $autoload = null ): bool {
 		unset( $deprecated, $autoload );
+
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_adds'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
 
 		if ( array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_options'] ) ) {
 			return false;
@@ -1014,7 +1024,29 @@ if ( ! function_exists( 'delete_option' ) ) {
 	 * @return bool
 	 */
 	function delete_option( string $option ): bool {
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_deletes'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
+
 		unset( $GLOBALS['aculect_ai_companion_test_options'][ $option ] );
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_cache_delete' ) ) {
+	/**
+	 * Record cache invalidation for tests.
+	 *
+	 * @param string $key   Cache key.
+	 * @param string $group Cache group.
+	 */
+	function wp_cache_delete( string $key, string $group = '' ): bool {
+		$GLOBALS['aculect_ai_companion_test_cache_deletes'][] = array(
+			'key'   => $key,
+			'group' => $group,
+		);
 
 		return true;
 	}

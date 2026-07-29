@@ -108,6 +108,7 @@ final class Plugin {
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( 'aculect_ai_companion_content_index_refresh_recovery', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		add_action( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		( new EditorInternalLinkSuggestions() )->register();
 
 		OAuthInstaller::install();
@@ -315,40 +316,27 @@ final class Plugin {
 	public function handle_content_index_save( int $post_id, mixed $post = null, bool $update = false ): void {
 		unset( $post, $update );
 
+		$indexer = new ContentIndexer();
 		if ( $this->is_skipped_content_index_post( $post_id ) ) {
 			return;
 		}
-
-		if ( $this->is_bulk_content_context() ) {
-			( new ContentIndexer() )->defer_index_post( $post_id );
+		if ( ! $indexer->is_indexable_post_id( $post_id ) ) {
+			unset( $this->content_index_saved_posts[ $post_id ], $this->content_index_deferred_posts[ $post_id ] );
+			$indexer->delete_post( $post_id );
 			return;
 		}
 
 		$this->content_index_saved_posts[ $post_id ] = true;
-		( new ContentIndexer() )->index_post( $post_id );
-	}
-
-	/**
-	 * Detect bulk write contexts where inline indexing would multiply runtime.
-	 *
-	 * WP-CLI imports, WordPress importers, and cron-driven writes run the
-	 * save_post hook once per post; deferring to the queued stale sweep keeps
-	 * those flows fast while the index catches up within a minute.
-	 */
-	private function is_bulk_content_context(): bool {
-		if ( defined( 'WP_IMPORTING' ) && WP_IMPORTING ) {
-			return true;
+		$deferred                                    = $indexer->defer_index_post_result( $post_id );
+		if ( $deferred['scheduled'] ) {
+			$this->content_index_deferred_posts[ $post_id ] = true;
+			return;
 		}
 
-		if ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() && ! doing_action( ContentIndexer::STALE_SWEEP_HOOK ) ) {
-			return true;
+		$result = $indexer->index_post( $post_id );
+		if ( 'error' !== ( $result['status'] ?? '' ) ) {
+			$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
 		}
-
-		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			return true;
-		}
-
-		return (bool) apply_filters( 'aculect_ai_companion_defer_content_indexing', false );
 	}
 
 	/**
@@ -433,12 +421,29 @@ final class Plugin {
 			return;
 		}
 
-		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
+		$indexer = new ContentIndexer();
+		if ( ! $indexer->is_indexable_post_id( $post_id ) ) {
 			return;
 		}
 
 		$this->content_index_deferred_posts[ $post_id ] = true;
-		( new ContentIndexer() )->defer_index_post( $post_id );
+		$keep_deferred_guard                            = false;
+		try {
+			$deferred = $indexer->defer_index_post_result( $post_id );
+			if ( $deferred['scheduled'] ) {
+				$keep_deferred_guard = true;
+				return;
+			}
+
+			$result = $indexer->index_post( $post_id );
+			if ( 'error' !== ( $result['status'] ?? '' ) ) {
+				$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
+			}
+		} finally {
+			if ( ! $keep_deferred_guard ) {
+				unset( $this->content_index_deferred_posts[ $post_id ] );
+			}
+		}
 	}
 
 	/**
@@ -454,23 +459,12 @@ final class Plugin {
 			return;
 		}
 
-		if ( ! $this->is_indexable_content_index_post( $post_id ) ) {
+		if ( ! ( new ContentIndexer() )->is_indexable_post_id( $post_id ) ) {
 			return;
 		}
 
 		$marked[ $post_id ] = true;
 		( new ContentIndexer() )->mark_post_stale( $post_id );
-	}
-
-	/**
-	 * Return whether one post is eligible for content index writes.
-	 *
-	 * @param int $post_id Post ID.
-	 */
-	private function is_indexable_content_index_post( int $post_id ): bool {
-		$post_type = function_exists( 'get_post_type' ) ? (string) get_post_type( $post_id ) : '';
-
-		return ! in_array( $post_type, array( '', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request' ), true );
 	}
 
 	/**

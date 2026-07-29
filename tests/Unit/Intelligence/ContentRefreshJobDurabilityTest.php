@@ -40,6 +40,8 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		unset( $GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] );
+
 		if ( null === $this->original_wpdb ) {
 			unset( $GLOBALS['wpdb'] );
 		} else {

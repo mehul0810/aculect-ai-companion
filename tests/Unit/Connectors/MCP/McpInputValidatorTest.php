@@ -122,6 +122,50 @@ final class McpInputValidatorTest extends TestCase {
 		self::assertNull( $validator->arguments_error( array( 'limit' => 5 ), $schema ) );
 	}
 
+	public function test_accepts_documented_tool_aliases_without_weakening_canonical_requirements(): void {
+		$validator = new McpInputValidator();
+		$schema    = array(
+			'type'       => 'object',
+			'properties' => array(
+				'id'            => array( 'type' => 'string' ),
+				'suggestion_id' => array( 'type' => 'string' ),
+				'action'        => array(
+					'type' => 'string',
+					'enum' => array( 'approve', 'reject', 'skip', 'stale' ),
+				),
+				'status'        => array( 'type' => 'string' ),
+			),
+			'required'   => array( 'id', 'action' ),
+		);
+
+		self::assertNull(
+			$validator->arguments_error(
+				array(
+					'suggestion_id' => 'suggestion-1',
+					'status'        => 'approved',
+				),
+				$schema,
+				'content_internal_link.suggestion_review'
+			)
+		);
+		self::assertSame(
+			'missing_required_argument',
+			$validator->arguments_error(
+				array( 'suggestion_id' => 'suggestion-1' ),
+				$schema,
+				'content_internal_link.suggestion_review'
+			)['code'] ?? ''
+		);
+		self::assertSame(
+			'missing_required_argument',
+			$validator->arguments_error(
+				array( 'status' => 'approved' ),
+				$schema,
+				'content_internal_link.suggestion_review'
+			)['code'] ?? ''
+		);
+	}
+
 	public function test_rejects_excessive_argument_depth(): void {
 		$value = 'leaf';
 		for ( $depth = 0; $depth < 18; ++$depth ) {

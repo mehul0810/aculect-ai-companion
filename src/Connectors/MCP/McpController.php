@@ -318,7 +318,7 @@ final class McpController {
 				$args         = $raw_arguments;
 				$module       = $is_intelligence_tool ? $intelligence->module( $tool ) : $registry->module( $tool );
 				$input_schema = null === $module ? array() : $this->input_schema_for_module( $module );
-				$input_error  = ( new McpInputValidator() )->arguments_error( $args, $input_schema );
+				$input_error  = ( new McpInputValidator() )->arguments_error( $args, $input_schema, $tool );
 				if ( null !== $input_error ) {
 					return $this->rpc_error(
 						$id,

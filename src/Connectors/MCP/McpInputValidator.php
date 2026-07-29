@@ -51,16 +51,17 @@ final class McpInputValidator {
 	 *
 	 * @param array<string, mixed> $arguments Tool arguments.
 	 * @param array<string, mixed> $schema    Tool input schema.
+	 * @param string               $tool      Internal tool ID.
 	 * @return array{code: string, message: string}|null
 	 */
-	public function arguments_error( array $arguments, array $schema ): ?array {
+	public function arguments_error( array $arguments, array $schema, string $tool = '' ): ?array {
 		$nodes = 0;
 		$error = $this->budget_error( $arguments, 0, $nodes );
 		if ( null !== $error ) {
 			return $error;
 		}
 
-		return $this->schema_error( $arguments, $schema, 'arguments' );
+		return $this->schema_error( $this->canonical_arguments( $tool, $arguments ), $schema, 'arguments' );
 	}
 
 	/**
@@ -204,6 +205,65 @@ final class McpInputValidator {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Copy advertised aliases to canonical fields for pre-execution validation.
+	 *
+	 * Public MCP schemas intentionally avoid composition keywords that some
+	 * clients drop. Callbacks still accept the documented aliases, so the
+	 * validation view must mirror the same canonical precedence without
+	 * changing the arguments supplied to the callback.
+	 *
+	 * @param string               $tool      Internal tool ID.
+	 * @param array<string, mixed> $arguments Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	private function canonical_arguments( string $tool, array $arguments ): array {
+		if ( 'content_internal_link.suggestions_create' === $tool ) {
+			$this->copy_alias( $arguments, 'source_id', 'post_id' );
+
+			if ( isset( $arguments['items'] ) && is_array( $arguments['items'] ) ) {
+				foreach ( $arguments['items'] as $index => $item ) {
+					if ( ! is_array( $item ) ) {
+						continue;
+					}
+
+					$this->copy_alias( $item, 'target_id', 'post_id' );
+					$this->copy_alias( $item, 'anchor_text', 'proposed_anchor_text' );
+					$arguments['items'][ $index ] = $item;
+				}
+			}
+		} elseif ( 'content_internal_link.suggestion_review' === $tool ) {
+			$this->copy_alias( $arguments, 'id', 'suggestion_id' );
+			$this->copy_alias( $arguments, 'action', 'status' );
+
+			if ( isset( $arguments['action'] ) && is_string( $arguments['action'] ) ) {
+				$arguments['action'] = match ( $arguments['action'] ) {
+					'approved' => 'approve',
+					'rejected' => 'reject',
+					'skipped' => 'skip',
+					default => $arguments['action'],
+				};
+			}
+		} elseif ( 'content_internal_link.suggestion_apply' === $tool ) {
+			$this->copy_alias( $arguments, 'id', 'suggestion_id' );
+		}
+
+		return $arguments;
+	}
+
+	/**
+	 * Copy an alias only when its canonical field is absent.
+	 *
+	 * @param array<string, mixed> $arguments Arguments to normalize.
+	 * @param string               $canonical Canonical property.
+	 * @param string               $alias     Advertised alias.
+	 */
+	private function copy_alias( array &$arguments, string $canonical, string $alias ): void {
+		if ( ! array_key_exists( $canonical, $arguments ) && array_key_exists( $alias, $arguments ) ) {
+			$arguments[ $canonical ] = $arguments[ $alias ];
+		}
 	}
 
 	/**

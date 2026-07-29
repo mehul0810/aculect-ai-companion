@@ -16,6 +16,7 @@ use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceContext;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\McpInputValidator;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use ReflectionMethod;
@@ -162,6 +163,45 @@ final class McpControllerTest extends TestCase {
 		self::assertIsArray( $response );
 		self::assertSame( -32602, $response['error']['code'] ?? null );
 		self::assertSame( 'argument_string_too_large', $response['error']['data']['code'] ?? '' );
+	}
+
+	public function test_advertised_internal_link_aliases_pass_pre_execution_validation(): void {
+		$tools_by_name = array_column( $this->list_tools_manifest()['tools'], null, 'name' );
+		$validator     = new McpInputValidator();
+
+		self::assertNull(
+			$validator->arguments_error(
+				array(
+					'post_id' => 10,
+					'items'   => array(
+						array(
+							'post_id'              => 20,
+							'proposed_anchor_text' => 'Related guide',
+							'reason'               => 'The target expands on this topic.',
+						),
+					),
+				),
+				$tools_by_name['content_internal_link_suggestions_create']['inputSchema'],
+				'content_internal_link.suggestions_create'
+			)
+		);
+		self::assertNull(
+			$validator->arguments_error(
+				array(
+					'suggestion_id' => 'suggestion-1',
+					'status'        => 'approved',
+				),
+				$tools_by_name['content_internal_link_suggestion_review']['inputSchema'],
+				'content_internal_link.suggestion_review'
+			)
+		);
+		self::assertNull(
+			$validator->arguments_error(
+				array( 'suggestion_id' => 'suggestion-1' ),
+				$tools_by_name['content_internal_link_suggestion_apply']['inputSchema'],
+				'content_internal_link.suggestion_apply'
+			)
+		);
 	}
 
 	public function test_claude_tools_list_uses_claude_safe_tool_names(): void {

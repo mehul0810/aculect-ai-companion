@@ -427,11 +427,21 @@ final class Plugin {
 		}
 
 		$this->content_index_deferred_posts[ $post_id ] = true;
-		$deferred                                       = $indexer->defer_index_post_result( $post_id );
-		if ( ! $deferred['scheduled'] ) {
+		$keep_deferred_guard                            = false;
+		try {
+			$deferred = $indexer->defer_index_post_result( $post_id );
+			if ( $deferred['scheduled'] ) {
+				$keep_deferred_guard = true;
+				return;
+			}
+
 			$result = $indexer->index_post( $post_id );
 			if ( 'error' !== ( $result['status'] ?? '' ) ) {
 				$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
+			}
+		} finally {
+			if ( ! $keep_deferred_guard ) {
+				unset( $this->content_index_deferred_posts[ $post_id ] );
 			}
 		}
 	}

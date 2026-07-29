@@ -115,10 +115,43 @@ final class ContentIndexQueue {
 	 * @param string $lock_token  Claimed lease token.
 	 */
 	public function acknowledge( int $object_id, string $queue_token, string $lock_token ): bool {
-		$deleted = $this->clear_generation( $object_id, $queue_token );
-		$this->delete_option_if_value( $this->lock_key( $object_id ), $lock_token );
+		if ( '' === $queue_token || ! $this->is_active_lock_token( $lock_token ) ) {
+			return false;
+		}
 
-		return $deleted;
+		$queue_key = $this->queue_key( $object_id );
+		$lock_key  = $this->lock_key( $object_id );
+		if ( $this->uses_test_options() ) {
+			if (
+				! hash_equals( $queue_token, (string) get_option( $queue_key, '' ) )
+				|| ! hash_equals( $lock_token, (string) get_option( $lock_key, '' ) )
+			) {
+				$this->delete_option_if_value( $lock_key, $lock_token );
+				return false;
+			}
+
+			return delete_option( $queue_key ) && delete_option( $lock_key );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- One conditional multi-row delete requires the current generation and its still-active lease owner.
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE queue_row, lock_row FROM {$wpdb->options} AS queue_row INNER JOIN {$wpdb->options} AS lock_row ON lock_row.option_name = %s AND lock_row.option_value = %s AND CAST(SUBSTRING_INDEX(lock_row.option_value, ':', -1) AS UNSIGNED) >= UNIX_TIMESTAMP() WHERE queue_row.option_name = %s AND queue_row.option_value = %s",
+				$lock_key,
+				$lock_token,
+				$queue_key,
+				$queue_token
+			)
+		);
+		$this->invalidate_option_caches( array( $queue_key, $lock_key ) );
+		if ( 2 !== (int) $deleted ) {
+			$this->delete_option_if_value( $lock_key, $lock_token );
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -139,16 +172,57 @@ final class ContentIndexQueue {
 	 * @param string $queue_token Claimed queue generation.
 	 * @param string $lock_token  Claimed lease token.
 	 */
-	public function retry( int $object_id, string $queue_token, string $lock_token ): void {
-		$state    = $this->parse_queue_state( $queue_token );
-		$attempts = $state['attempts'] + 1;
-		$delay    = min( self::MAX_RETRY_DELAY, 30 * ( 2 ** min( 6, $attempts - 1 ) ) );
-		$this->update_option_if_value(
-			$this->queue_key( $object_id ),
-			$queue_token,
-			$this->queue_state( $attempts, time() + $delay, $state['action'] )
+	public function retry( int $object_id, string $queue_token, string $lock_token ): bool {
+		if ( '' === $queue_token || ! $this->is_active_lock_token( $lock_token ) ) {
+			return false;
+		}
+
+		$state     = $this->parse_queue_state( $queue_token );
+		$attempts  = $state['attempts'] + 1;
+		$delay     = min( self::MAX_RETRY_DELAY, 30 * ( 2 ** min( 6, $attempts - 1 ) ) );
+		$new_state = $this->queue_state( $attempts, time() + $delay, $state['action'] );
+		$queue_key = $this->queue_key( $object_id );
+		$lock_key  = $this->lock_key( $object_id );
+
+		if ( $this->uses_test_options() ) {
+			if (
+				! hash_equals( $queue_token, (string) get_option( $queue_key, '' ) )
+				|| ! hash_equals( $lock_token, (string) get_option( $lock_key, '' ) )
+			) {
+				$this->delete_option_if_value( $lock_key, $lock_token );
+				return false;
+			}
+
+			$updated = update_option( $queue_key, $new_state, false );
+			if ( $updated ) {
+				delete_option( $lock_key );
+			}
+
+			return $updated;
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The retry CAS is conditional on both the claimed generation and its still-current lease owner.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} AS queue_row INNER JOIN {$wpdb->options} AS lock_row ON lock_row.option_name = %s AND lock_row.option_value = %s AND CAST(SUBSTRING_INDEX(lock_row.option_value, ':', -1) AS UNSIGNED) >= UNIX_TIMESTAMP() SET queue_row.option_value = %s WHERE queue_row.option_name = %s AND queue_row.option_value = %s",
+				$lock_key,
+				$lock_token,
+				$new_state,
+				$queue_key,
+				$queue_token
+			)
 		);
-		$this->delete_option_if_value( $this->lock_key( $object_id ), $lock_token );
+		$this->invalidate_option_caches( array( $queue_key, $lock_key ) );
+		if ( 1 !== (int) $updated ) {
+			$this->delete_option_if_value( $lock_key, $lock_token );
+			return false;
+		}
+
+		$this->delete_option_if_value( $lock_key, $lock_token );
+
+		return true;
 	}
 
 	/**
@@ -203,7 +277,12 @@ final class ContentIndexQueue {
 		$this->migrate_legacy_option();
 
 		if ( $this->uses_test_options() ) {
-			return count( $this->test_option_names( self::QUEUE_PREFIX ) );
+			return count(
+				array_filter(
+					$this->test_option_names( self::QUEUE_PREFIX ),
+					static fn ( string $name ): bool => self::LEGACY_OPTION !== $name
+				)
+			);
 		}
 
 		global $wpdb;
@@ -213,8 +292,9 @@ final class ContentIndexQueue {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Bounded count over non-autoloaded plugin-owned queue options.
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s",
-				$like
+				"SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s",
+				$like,
+				self::LEGACY_OPTION
 			)
 		);
 	}
@@ -309,7 +389,9 @@ final class ContentIndexQueue {
 				array_values(
 					array_filter(
 						$this->test_option_names( self::QUEUE_PREFIX ),
-						static fn ( string $name ): bool => $name > $cursor && ( '' === $upper_bound || $name <= $upper_bound )
+						static fn ( string $name ): bool => self::LEGACY_OPTION !== $name
+							&& $name > $cursor
+							&& ( '' === $upper_bound || $name <= $upper_bound )
 					)
 				),
 				0,
@@ -324,8 +406,9 @@ final class ContentIndexQueue {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Core options table is trusted; values are prepared and keyset pagination is bounded.
 			$names = $wpdb->get_col(
 				$wpdb->prepare(
-					"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name > %s ORDER BY option_name ASC LIMIT %d",
+					"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s AND option_name > %s ORDER BY option_name ASC LIMIT %d",
 					$like,
+					self::LEGACY_OPTION,
 					$cursor,
 					$limit
 				)
@@ -334,8 +417,9 @@ final class ContentIndexQueue {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Core options table is trusted; values are prepared and keyset pagination is bounded.
 			$names = $wpdb->get_col(
 				$wpdb->prepare(
-					"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name > %s AND option_name <= %s ORDER BY option_name ASC LIMIT %d",
+					"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name <> %s AND option_name > %s AND option_name <= %s ORDER BY option_name ASC LIMIT %d",
 					$like,
+					self::LEGACY_OPTION,
 					$cursor,
 					$upper_bound,
 					$limit
@@ -452,6 +536,39 @@ final class ContentIndexQueue {
 	}
 
 	/**
+	 * Check whether a lease token has not expired.
+	 *
+	 * @param string $lock_token Lease token.
+	 */
+	private function is_active_lock_token( string $lock_token ): bool {
+		if ( '' === $lock_token ) {
+			return false;
+		}
+
+		$parts   = explode( ':', $lock_token );
+		$expires = absint( end( $parts ) );
+
+		return 0 < $expires && $expires >= time();
+	}
+
+	/**
+	 * Invalidate authoritative option and negative-cache entries.
+	 *
+	 * @param array $option_names Option names.
+	 * @phpstan-param list<string> $option_names
+	 */
+	private function invalidate_option_caches( array $option_names ): void {
+		if ( ! function_exists( 'wp_cache_delete' ) ) {
+			return;
+		}
+
+		foreach ( $option_names as $option_name ) {
+			wp_cache_delete( $option_name, 'options' );
+		}
+		wp_cache_delete( 'notoptions', 'options' );
+	}
+
+	/**
 	 * Migrate the former shared pending-ID list without dropping queued work.
 	 */
 	private function migrate_legacy_option(): void {
@@ -462,7 +579,14 @@ final class ContentIndexQueue {
 
 		$migrated = true;
 		foreach ( array_values( array_unique( array_filter( array_map( 'absint', $legacy ) ) ) ) as $object_id ) {
-			$migrated = $this->replace_queue_generation( $object_id, $this->queue_state() ) && $migrated;
+			if ( '' !== $this->read_queue_generation( $object_id ) ) {
+				continue;
+			}
+
+			$added = $this->add_queue_generation_if_absent( $object_id, $this->queue_state() );
+			if ( ! $added && '' === $this->read_queue_generation( $object_id ) ) {
+				$migrated = false;
+			}
 		}
 
 		if ( $migrated ) {

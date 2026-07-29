@@ -194,6 +194,8 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_post_terms']       = array();
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates']        = array();
+		$GLOBALS['aculect_ai_companion_test_failed_option_adds']           = array();
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes']        = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure']             = false;
 		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks']       = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
@@ -437,6 +439,63 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 
 		self::assertGreaterThan( 0, $GLOBALS['wpdb']->replace_calls );
 		self::assertArrayHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+	}
+
+	public function test_inline_fallback_allows_a_later_same_request_mutation(): void {
+		$post_id = 34909;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Sequential inline mutations',
+				'post_content'      => '<!-- wp:paragraph --><p>Initial content.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 11:15:00',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+		$plugin = Plugin::instance();
+		$plugin->handle_content_index_save( $post_id, get_post( $post_id ), true );
+
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>First mutation.</p><!-- /wp:paragraph -->';
+		$plugin->handle_content_index_meta_changed( 1, $post_id, '_thumbnail_id', 1 );
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Second mutation.</p><!-- /wp:paragraph -->';
+		$plugin->handle_content_index_meta_changed( 2, $post_id, '_thumbnail_id', 2 );
+
+		$search_text = (string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' );
+		self::assertStringContainsString( 'Second mutation', $search_text );
+		self::assertStringNotContainsString( 'First mutation', $search_text );
+		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+	}
+
+	public function test_inline_error_clears_guard_for_a_later_same_request_mutation(): void {
+		$post_id = 34910;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Inline error recovery',
+				'post_content'      => '<!-- wp:paragraph --><p>Initial content.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 11:30:00',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+		$plugin = Plugin::instance();
+		$plugin->handle_content_index_save( $post_id, get_post( $post_id ), true );
+
+		$GLOBALS['wpdb']->fail_replacements = true;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Failed mutation.</p><!-- /wp:paragraph -->';
+		$plugin->handle_content_index_meta_changed( 1, $post_id, '_thumbnail_id', 1 );
+
+		$GLOBALS['wpdb']->fail_replacements = false;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Recovered mutation.</p><!-- /wp:paragraph -->';
+		$plugin->handle_content_index_meta_changed( 2, $post_id, '_thumbnail_id', 2 );
+
+		$search_text = (string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' );
+		self::assertStringContainsString( 'Recovered mutation', $search_text );
+		self::assertStringNotContainsString( 'Failed mutation', $search_text );
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
 	}
 

@@ -25,13 +25,17 @@ final class ContentIndexerTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_scheduled_events']             = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks']       = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
+		$GLOBALS['aculect_ai_companion_test_failed_option_adds']           = array();
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes']        = array();
 	}
 
 	protected function tearDown(): void {
 		ContentIndexer::delete_options();
 		unset(
 			$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'],
-			$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks']
+			$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'],
+			$GLOBALS['aculect_ai_companion_test_failed_option_adds'],
+			$GLOBALS['aculect_ai_companion_test_failed_option_deletes']
 		);
 
 		parent::tearDown();
@@ -94,12 +98,88 @@ final class ContentIndexerTest extends TestCase {
 		self::assertSame( 1, $queue->pending_count() );
 	}
 
+	public function test_expired_lease_owner_cannot_acknowledge_after_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 78 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$expired_token = explode( ':', $first[0]['lock_token'] )[0] . ':' . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_78', $expired_token, false );
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+
+		self::assertFalse( $queue->acknowledge( 78, $first[0]['queue_token'], $expired_token ) );
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_78', '' ) );
+	}
+
+	public function test_expired_lease_owner_cannot_retry_after_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 79 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$expired_token = explode( ':', $first[0]['lock_token'] )[0] . ':' . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_79', $expired_token, false );
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+
+		self::assertFalse( $queue->retry( 79, $first[0]['queue_token'], $expired_token ) );
+		self::assertSame( $first[0]['queue_token'], $queue->current_generation( 79 )['queue_token'] );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_79', '' ) );
+	}
+
 	public function test_legacy_shared_queue_migrates_without_losing_ids(): void {
 		update_option( 'aculect_ai_companion_pending_index_ids', array( 5, 9, 5 ), false );
 
 		$queue = new ContentIndexQueue();
 
 		self::assertSame( 2, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
+	}
+
+	public function test_legacy_migration_preserves_a_newer_deletion_tombstone(): void {
+		update_option( 'aculect_ai_companion_pending_index_ids', array( 5 ), false );
+		$queue     = new ContentIndexQueue();
+		$tombstone = $queue->invalidate_for_delete( 5 );
+
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( $tombstone, $queue->current_generation( 5 )['queue_token'] );
+		self::assertSame( 'delete', $queue->current_generation( 5 )['action'] );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
+	}
+
+	public function test_partial_legacy_migration_retries_only_missing_ids(): void {
+		update_option( 'aculect_ai_companion_pending_index_ids', array( 5, 9 ), false );
+		$GLOBALS['aculect_ai_companion_test_failed_option_adds'] = array( 'aculect_ai_companion_pending_index_9' );
+		$queue = new ContentIndexQueue();
+
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( array( 5, 9 ), get_option( 'aculect_ai_companion_pending_index_ids', array() ) );
+		$first_generation = $queue->current_generation( 5 )['queue_token'];
+
+		$GLOBALS['aculect_ai_companion_test_failed_option_adds'] = array();
+		$tombstone = $queue->invalidate_for_delete( 9 );
+		self::assertSame( 2, $queue->pending_count() );
+		self::assertSame( $first_generation, $queue->current_generation( 5 )['queue_token'] );
+		self::assertSame( $tombstone, $queue->current_generation( 9 )['queue_token'] );
+		self::assertSame( 'delete', $queue->current_generation( 9 )['action'] );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
+	}
+
+	public function test_legacy_delete_failure_does_not_replace_durable_generations(): void {
+		update_option( 'aculect_ai_companion_pending_index_ids', array( 5 ), false );
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes'] = array( 'aculect_ai_companion_pending_index_ids' );
+		$queue = new ContentIndexQueue();
+
+		self::assertSame( 1, $queue->pending_count() );
+		$generation = $queue->current_generation( 5 )['queue_token'];
+		self::assertSame( array( 5 ), get_option( 'aculect_ai_companion_pending_index_ids', array() ) );
+
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes'] = array();
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( $generation, $queue->current_generation( 5 )['queue_token'] );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
 	}
 
@@ -272,6 +352,32 @@ final class ContentIndexerTest extends TestCase {
 				),
 				$GLOBALS['aculect_ai_companion_test_cache_deletes']
 			);
+
+			$active_lock        = 'worker-a:' . ( time() + 300 );
+			$wpdb->query_result = 2;
+			self::assertTrue( $queue->acknowledge( 93, 'generation-93', $active_lock ) );
+			self::assertStringContainsString( 'DELETE queue_row, lock_row', $wpdb->executed );
+			self::assertStringContainsString( '>= UNIX_TIMESTAMP()', $wpdb->executed );
+			$last_prepare = end( $wpdb->prepared );
+			self::assertSame(
+				array(
+					'aculect_ai_companion_index_lock_93',
+					$active_lock,
+					'aculect_ai_companion_pending_index_93',
+					'generation-93',
+				),
+				is_array( $last_prepare ) ? $last_prepare['args'] : array()
+			);
+
+			$wpdb->query_result = 1;
+			self::assertTrue( $queue->retry( 94, 'generation-94', $active_lock ) );
+			self::assertStringContainsString( 'UPDATE wp_options AS queue_row INNER JOIN wp_options AS lock_row', $wpdb->executed );
+			self::assertStringContainsString( '>= UNIX_TIMESTAMP()', $wpdb->executed );
+			$retry_prepare = end( $wpdb->prepared );
+			self::assertSame( 'aculect_ai_companion_index_lock_94', $retry_prepare['args'][0] ?? '' );
+			self::assertSame( $active_lock, $retry_prepare['args'][1] ?? '' );
+			self::assertSame( 'aculect_ai_companion_pending_index_94', $retry_prepare['args'][3] ?? '' );
+			self::assertSame( 'generation-94', $retry_prepare['args'][4] ?? '' );
 
 			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
 			$wpdb->query_result                                 = 0;

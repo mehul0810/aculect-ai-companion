@@ -193,8 +193,10 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_post_meta']        = array();
 		$GLOBALS['aculect_ai_companion_test_post_terms']       = array();
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
-		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
-		$GLOBALS['aculect_ai_companion_test_schedule_failure']       = false;
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates']        = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_failure']             = false;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks']       = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
 		$GLOBALS['aculect_ai_companion_test_before_content_replace'] = null;
 		$GLOBALS['aculect_ai_companion_test_after_content_replace']  = null;
 		$GLOBALS['aculect_ai_companion_test_after_content_delete']   = null;
@@ -211,6 +213,11 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		unset(
+			$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'],
+			$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks']
+		);
+
 		if ( null !== $this->original_wpdb ) {
 			$GLOBALS['wpdb'] = $this->original_wpdb;
 		} else {
@@ -321,6 +328,43 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
 	}
 
+	public function test_stale_import_preserves_failed_item_backoff(): void {
+		$post_id = 34104;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Preserve retry backoff',
+				'post_content'      => '<!-- wp:paragraph --><p>Initial indexed content.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 10:15:00',
+			)
+		);
+
+		$indexer = new ContentIndexer();
+		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
+		self::assertSame( 'complete', $indexer->run_stale_sweep()['status'] );
+
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Updated content awaiting retry.</p><!-- /wp:paragraph -->';
+		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
+		$GLOBALS['wpdb']->fail_replacements = true;
+
+		$failed = $indexer->run_stale_sweep();
+		self::assertSame( 1, $failed['processed_items'] );
+		self::assertSame( 1, $failed['error_count'] );
+
+		$option_name      = 'aculect_ai_companion_pending_index_' . $post_id;
+		$retry_generation = (string) get_option( $option_name, '' );
+		$retry_state      = json_decode( $retry_generation, true );
+		self::assertSame( 1, $retry_state['attempts'] ?? 0 );
+		self::assertGreaterThan( time(), $retry_state['available_at'] ?? 0 );
+
+		$deferred_retry = $indexer->run_stale_sweep();
+		self::assertSame( 0, $deferred_retry['processed_items'] );
+		self::assertSame( 0, $deferred_retry['error_count'] );
+		self::assertSame( $retry_generation, get_option( $option_name, '' ) );
+	}
+
 	public function test_stale_sweep_processes_at_most_five_queued_posts_per_run(): void {
 		$indexer = new ContentIndexer();
 		for ( $post_id = 34201; $post_id <= 34207; ++$post_id ) {
@@ -336,6 +380,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 			);
 			self::assertTrue( $indexer->defer_index_post( $post_id ) );
 		}
+		unset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ ContentIndexer::STALE_SWEEP_HOOK ] );
 
 		$result = $indexer->run_stale_sweep();
 
@@ -345,6 +390,33 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertSame( 2, $result['remaining_items'] );
 		self::assertSame( 2, $indexer->pending_index_count() );
 		self::assertCount( 5, $GLOBALS['wpdb']->content_rows );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
+		self::assertFalse( wp_next_scheduled( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK ) );
+	}
+
+	public function test_failed_continuation_keeps_the_independent_recovery_watchdog(): void {
+		$queue = new ContentIndexQueue();
+		for ( $post_id = 34211; $post_id <= 34216; ++$post_id ) {
+			$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+				array(
+					'ID'                => $post_id,
+					'post_type'         => 'post',
+					'post_status'       => 'publish',
+					'post_title'        => 'Recovery watchdog ' . $post_id,
+					'post_content'      => '<!-- wp:paragraph --><p>Keep recovery until continuation is safe.</p><!-- /wp:paragraph -->',
+					'post_modified_gmt' => '2026-07-10 10:45:00',
+				)
+			);
+			self::assertTrue( $queue->enqueue( $post_id ) );
+		}
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array( ContentIndexer::STALE_SWEEP_HOOK );
+
+		$result = ( new ContentIndexer() )->run_stale_sweep();
+
+		self::assertSame( 5, $result['processed_items'] );
+		self::assertSame( 1, $result['remaining_items'] );
+		self::assertFalse( wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK ) );
 	}
 
 	public function test_schedule_failure_falls_back_to_inline_indexing_without_orphaning_queue_state(): void {

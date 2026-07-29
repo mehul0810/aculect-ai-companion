@@ -108,6 +108,7 @@ final class Plugin {
 		add_action( 'aculect_ai_companion_content_index_refresh_job', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( 'aculect_ai_companion_content_index_refresh_recovery', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		add_action( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		( new EditorInternalLinkSuggestions() )->register();
 
 		OAuthInstaller::install();

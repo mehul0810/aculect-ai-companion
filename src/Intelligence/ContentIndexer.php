@@ -16,7 +16,8 @@ use Aculect\AICompanion\Brand\BrandProfile;
  */
 final class ContentIndexer {
 
-	public const STALE_SWEEP_HOOK = 'aculect_ai_companion_content_index_stale_sweep';
+	public const STALE_SWEEP_HOOK          = 'aculect_ai_companion_content_index_stale_sweep';
+	public const STALE_SWEEP_RECOVERY_HOOK = 'aculect_ai_companion_content_index_stale_sweep_recovery';
 
 	private const DEFAULT_BATCH_LIMIT     = 25;
 	private const MAX_BATCH_LIMIT         = 100;
@@ -54,6 +55,7 @@ final class ContentIndexer {
 
 		if ( function_exists( 'wp_unschedule_hook' ) ) {
 			wp_unschedule_hook( self::STALE_SWEEP_HOOK );
+			wp_unschedule_hook( self::STALE_SWEEP_RECOVERY_HOOK );
 			wp_unschedule_hook( self::REFRESH_JOB_HOOK );
 			wp_unschedule_hook( self::REFRESH_RECOVERY_HOOK );
 		}
@@ -120,20 +122,14 @@ final class ContentIndexer {
 		$timestamp = time() + max( 5, $delay );
 		if ( function_exists( 'wp_next_scheduled' ) ) {
 			$scheduled = wp_next_scheduled( self::STALE_SWEEP_HOOK );
-			if ( false !== $scheduled && (int) $scheduled <= $timestamp ) {
+			if ( false !== $scheduled ) {
 				return true;
-			}
-			if (
-				false !== $scheduled
-				&& ( ! function_exists( 'wp_unschedule_event' ) || ! wp_unschedule_event( (int) $scheduled, self::STALE_SWEEP_HOOK ) )
-			) {
-				return false;
 			}
 		}
 
 		$scheduled = wp_schedule_single_event( $timestamp, self::STALE_SWEEP_HOOK, array(), true );
 
-		return ! is_wp_error( $scheduled );
+		return false !== $scheduled && ! is_wp_error( $scheduled );
 	}
 
 	/**
@@ -163,17 +159,26 @@ final class ContentIndexer {
 	 */
 	public function run_stale_sweep(): array {
 		$queue = new ContentIndexQueue();
-		$room  = max( 0, self::MAX_BATCH_LIMIT - $queue->pending_count() );
+		if ( ! $this->schedule_stale_sweep_recovery() ) {
+			$remaining = $queue->pending_count();
+			$this->schedule_stale_sweep( 30 );
+
+			return array(
+				'status'          => 0 < $remaining ? 'partial' : 'complete',
+				'processed_items' => 0,
+				'error_count'     => 0 < $remaining ? 1 : 0,
+				'remaining_items' => $remaining,
+			);
+		}
+
+		$room = max( 0, self::MAX_BATCH_LIMIT - $queue->pending_count() );
 		if ( 0 < $room ) {
 			foreach ( $this->repo()->stale_object_ids( $room ) as $stale_id ) {
-				$queue->enqueue( $stale_id );
+				$queue->enqueue_if_absent( $stale_id );
 			}
 		}
 
 		$claims = $queue->claim( self::STALE_SWEEP_SLICE_SIZE );
-		if ( array() !== $claims ) {
-			$this->schedule_stale_sweep( 360 );
-		}
 
 		$started_at = microtime( true );
 		$processed  = 0;
@@ -210,7 +215,11 @@ final class ContentIndexer {
 
 		$remaining = $queue->pending_count();
 		if ( 0 < $remaining ) {
-			$this->schedule_stale_sweep( 30 );
+			if ( $this->schedule_stale_sweep( 30 ) ) {
+				$this->clear_stale_sweep_recovery();
+			}
+		} else {
+			$this->clear_stale_sweep_recovery();
 		}
 
 		return array(
@@ -219,6 +228,44 @@ final class ContentIndexer {
 			'error_count'     => $errors,
 			'remaining_items' => $remaining,
 		);
+	}
+
+	/**
+	 * Keep an independent post-lease recovery event while a sweep owns claims.
+	 */
+	private function schedule_stale_sweep_recovery(): bool {
+		if ( ! function_exists( 'wp_schedule_single_event' ) ) {
+			return false;
+		}
+		if (
+			function_exists( 'wp_next_scheduled' )
+			&& false !== wp_next_scheduled( self::STALE_SWEEP_RECOVERY_HOOK )
+		) {
+			return true;
+		}
+
+		$scheduled = wp_schedule_single_event(
+			time() + ContentIndexRepository::DEFAULT_JOB_LEASE_TTL + 5,
+			self::STALE_SWEEP_RECOVERY_HOOK,
+			array(),
+			true
+		);
+
+		return false !== $scheduled && ! is_wp_error( $scheduled );
+	}
+
+	/**
+	 * Remove the recovery event only after continuation or completion is durable.
+	 */
+	private function clear_stale_sweep_recovery(): void {
+		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_unschedule_event' ) ) {
+			return;
+		}
+
+		$scheduled = wp_next_scheduled( self::STALE_SWEEP_RECOVERY_HOOK );
+		if ( false !== $scheduled ) {
+			wp_unschedule_event( (int) $scheduled, self::STALE_SWEEP_RECOVERY_HOOK );
+		}
 	}
 
 	/**

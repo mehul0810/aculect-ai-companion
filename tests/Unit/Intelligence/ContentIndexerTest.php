@@ -21,12 +21,18 @@ final class ContentIndexerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options']          = array();
-		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']                      = array();
+		$GLOBALS['aculect_ai_companion_test_scheduled_events']             = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks']       = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
 	}
 
 	protected function tearDown(): void {
 		ContentIndexer::delete_options();
+		unset(
+			$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'],
+			$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks']
+		);
 
 		parent::tearDown();
 	}
@@ -111,6 +117,55 @@ final class ContentIndexerTest extends TestCase {
 		self::assertSame( 2, $queue->pending_count() );
 	}
 
+	public function test_stale_import_does_not_replace_an_existing_retry_generation(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 41 ) );
+
+		$claim = $queue->claim( 1 );
+		self::assertCount( 1, $claim );
+		$queue->retry( 41, $claim[0]['queue_token'], $claim[0]['lock_token'] );
+		$retry_generation = $queue->current_generation( 41 )['queue_token'];
+
+		self::assertFalse( $queue->enqueue_if_absent( 41 ) );
+		self::assertSame( $retry_generation, $queue->current_generation( 41 )['queue_token'] );
+		self::assertTrue( $queue->enqueue_if_absent( 42 ) );
+		self::assertSame( 2, $queue->pending_count() );
+	}
+
+	public function test_stale_sweep_keeps_an_existing_later_watchdog(): void {
+		$indexer  = new ContentIndexer();
+		$watchdog = time() + 360;
+		$GLOBALS['aculect_ai_companion_test_scheduled_events'][ ContentIndexer::STALE_SWEEP_HOOK ] = $watchdog;
+
+		self::assertTrue( $indexer->schedule_stale_sweep( 30 ) );
+		self::assertSame(
+			$watchdog,
+			$GLOBALS['aculect_ai_companion_test_scheduled_events'][ ContentIndexer::STALE_SWEEP_HOOK ]
+		);
+	}
+
+	public function test_stale_sweep_treats_literal_false_as_schedule_failure(): void {
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array( ContentIndexer::STALE_SWEEP_HOOK );
+
+		self::assertFalse( ( new ContentIndexer() )->schedule_stale_sweep( 30 ) );
+	}
+
+	public function test_stale_sweep_does_not_claim_when_recovery_schedule_returns_false(): void {
+		$queue = new ContentIndexQueue();
+		for ( $object_id = 43; $object_id < 143; ++$object_id ) {
+			self::assertTrue( $queue->enqueue( $object_id ) );
+		}
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK );
+
+		$result = ( new ContentIndexer() )->run_stale_sweep();
+
+		self::assertSame( 0, $result['processed_items'] );
+		self::assertSame( 1, $result['error_count'] );
+		self::assertSame( 100, $result['remaining_items'] );
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
+		self::assertCount( 1, $queue->claim( 1 ) );
+	}
+
 	public function test_expired_lease_is_replaced_and_work_can_be_reclaimed(): void {
 		$queue         = new ContentIndexQueue();
 		$expired_token = 'expired-worker:' . ( time() - 1 );
@@ -178,6 +233,52 @@ final class ContentIndexerTest extends TestCase {
 			self::assertContains(
 				array(
 					'key'   => 'aculect_ai_companion_pending_index_91',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'notoptions',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+
+			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+			$wpdb->query_result                                 = 1;
+			$add_method                                         = new \ReflectionMethod( $queue, 'add_queue_generation_if_absent' );
+			self::assertTrue( $add_method->invoke( $queue, 92, 'generation-92' ) );
+			self::assertStringContainsString( 'INSERT IGNORE', $wpdb->executed );
+			$last_prepare = end( $wpdb->prepared );
+			self::assertSame(
+				array(
+					'aculect_ai_companion_pending_index_92',
+					'generation-92',
+				),
+				is_array( $last_prepare ) ? $last_prepare['args'] : array()
+			);
+			self::assertContains(
+				array(
+					'key'   => 'aculect_ai_companion_pending_index_92',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'notoptions',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+
+			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+			$wpdb->query_result                                 = 0;
+			self::assertFalse( $add_method->invoke( $queue, 92, 'newer-generation-must-not-replace' ) );
+			self::assertContains(
+				array(
+					'key'   => 'aculect_ai_companion_pending_index_92',
 					'group' => 'options',
 				),
 				$GLOBALS['aculect_ai_companion_test_cache_deletes']

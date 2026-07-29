@@ -52,6 +52,25 @@ final class ContentIndexQueue {
 	}
 
 	/**
+	 * Add one pending object only when no queued generation already exists.
+	 *
+	 * Stale-row discovery uses this path so it cannot replace a failed item's
+	 * retry state or a newer save/delete generation.
+	 *
+	 * @param int $object_id WordPress object ID.
+	 */
+	public function enqueue_if_absent( int $object_id ): bool {
+		$object_id = absint( $object_id );
+		if ( 0 >= $object_id ) {
+			return false;
+		}
+
+		$this->migrate_legacy_option();
+
+		return $this->add_queue_generation_if_absent( $object_id, $this->queue_state() );
+	}
+
+	/**
 	 * Claim a bounded batch with per-object expiring leases.
 	 *
 	 * @param int $limit Maximum rows to claim.
@@ -480,6 +499,37 @@ final class ContentIndexQueue {
 		);
 
 		return is_string( $value ) ? $value : '';
+	}
+
+	/**
+	 * Atomically add one queue generation without replacing existing work.
+	 *
+	 * @param int    $object_id Object ID.
+	 * @param string $generation Queue generation.
+	 */
+	private function add_queue_generation_if_absent( int $object_id, string $generation ): bool {
+		$option_name = $this->queue_key( $object_id );
+		if ( $this->uses_test_options() ) {
+			return add_option( $option_name, $generation, '', false );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Atomic insert preserves an existing retry, save generation, or deletion tombstone.
+		$added = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				$option_name,
+				$generation
+			)
+		);
+
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( $option_name, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+
+		return 1 === (int) $added;
 	}
 
 	/**

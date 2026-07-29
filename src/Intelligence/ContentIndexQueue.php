@@ -19,6 +19,7 @@ final class ContentIndexQueue {
 	private const LOCK_PREFIX       = 'aculect_ai_companion_index_lock_';
 	private const CURSOR_OPTION     = 'aculect_ai_companion_index_queue_cursor';
 	private const DEFAULT_LEASE_TTL = 300;
+	private const TRANSITION_TTL    = 30;
 	private const MAX_CLAIM_LIMIT   = 100;
 	private const MAX_RETRY_DELAY   = 3600;
 
@@ -115,43 +116,19 @@ final class ContentIndexQueue {
 	 * @param string $lock_token  Claimed lease token.
 	 */
 	public function acknowledge( int $object_id, string $queue_token, string $lock_token ): bool {
-		if ( '' === $queue_token || ! $this->is_active_lock_token( $lock_token ) ) {
+		if ( '' === $queue_token ) {
 			return false;
 		}
 
-		$queue_key = $this->queue_key( $object_id );
-		$lock_key  = $this->lock_key( $object_id );
-		if ( $this->uses_test_options() ) {
-			if (
-				! hash_equals( $queue_token, (string) get_option( $queue_key, '' ) )
-				|| ! hash_equals( $lock_token, (string) get_option( $lock_key, '' ) )
-			) {
-				$this->delete_option_if_value( $lock_key, $lock_token );
-				return false;
-			}
-
-			return delete_option( $queue_key ) && delete_option( $lock_key );
-		}
-
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- One conditional multi-row delete requires the current generation and its still-active lease owner.
-		$deleted = $wpdb->query(
-			$wpdb->prepare(
-				"DELETE queue_row, lock_row FROM {$wpdb->options} AS queue_row INNER JOIN {$wpdb->options} AS lock_row ON lock_row.option_name = %s AND lock_row.option_value = %s AND CAST(SUBSTRING_INDEX(lock_row.option_value, ':', -1) AS UNSIGNED) >= UNIX_TIMESTAMP() WHERE queue_row.option_name = %s AND queue_row.option_value = %s",
-				$lock_key,
-				$lock_token,
-				$queue_key,
-				$queue_token
-			)
-		);
-		$this->invalidate_option_caches( array( $queue_key, $lock_key ) );
-		if ( 2 !== (int) $deleted ) {
-			$this->delete_option_if_value( $lock_key, $lock_token );
+		$transition_token = $this->begin_owned_transition( $object_id, $lock_token );
+		if ( '' === $transition_token ) {
 			return false;
 		}
 
-		return true;
+		$deleted = $this->clear_generation( $object_id, $queue_token );
+		$this->delete_option_if_value( $this->lock_key( $object_id ), $transition_token );
+
+		return $deleted;
 	}
 
 	/**
@@ -173,7 +150,12 @@ final class ContentIndexQueue {
 	 * @param string $lock_token  Claimed lease token.
 	 */
 	public function retry( int $object_id, string $queue_token, string $lock_token ): bool {
-		if ( '' === $queue_token || ! $this->is_active_lock_token( $lock_token ) ) {
+		if ( '' === $queue_token ) {
+			return false;
+		}
+
+		$transition_token = $this->begin_owned_transition( $object_id, $lock_token );
+		if ( '' === $transition_token ) {
 			return false;
 		}
 
@@ -184,45 +166,10 @@ final class ContentIndexQueue {
 		$queue_key = $this->queue_key( $object_id );
 		$lock_key  = $this->lock_key( $object_id );
 
-		if ( $this->uses_test_options() ) {
-			if (
-				! hash_equals( $queue_token, (string) get_option( $queue_key, '' ) )
-				|| ! hash_equals( $lock_token, (string) get_option( $lock_key, '' ) )
-			) {
-				$this->delete_option_if_value( $lock_key, $lock_token );
-				return false;
-			}
+		$updated = $this->update_option_if_value( $queue_key, $queue_token, $new_state );
+		$this->delete_option_if_value( $lock_key, $transition_token );
 
-			$updated = update_option( $queue_key, $new_state, false );
-			if ( $updated ) {
-				delete_option( $lock_key );
-			}
-
-			return $updated;
-		}
-
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The retry CAS is conditional on both the claimed generation and its still-current lease owner.
-		$updated = $wpdb->query(
-			$wpdb->prepare(
-				"UPDATE {$wpdb->options} AS queue_row INNER JOIN {$wpdb->options} AS lock_row ON lock_row.option_name = %s AND lock_row.option_value = %s AND CAST(SUBSTRING_INDEX(lock_row.option_value, ':', -1) AS UNSIGNED) >= UNIX_TIMESTAMP() SET queue_row.option_value = %s WHERE queue_row.option_name = %s AND queue_row.option_value = %s",
-				$lock_key,
-				$lock_token,
-				$new_state,
-				$queue_key,
-				$queue_token
-			)
-		);
-		$this->invalidate_option_caches( array( $queue_key, $lock_key ) );
-		if ( 1 !== (int) $updated ) {
-			$this->delete_option_if_value( $lock_key, $lock_token );
-			return false;
-		}
-
-		$this->delete_option_if_value( $lock_key, $lock_token );
-
-		return true;
+		return $updated;
 	}
 
 	/**
@@ -450,6 +397,30 @@ final class ContentIndexQueue {
 		}
 
 		return $this->update_option_if_value( $key, $current, $lock_token ) ? $lock_token : '';
+	}
+
+	/**
+	 * Fence a still-active lease owner before changing its queue generation.
+	 *
+	 * Replacing the worker token with a short-lived transition token is a
+	 * database-portable compare-and-swap. It prevents a reclaimed worker from
+	 * acknowledging or retrying after another owner wins the same lease, while
+	 * preserving a newer queue generation that arrives during finalization.
+	 *
+	 * @param int    $object_id  WordPress object ID.
+	 * @param string $lock_token Claimed lease token.
+	 */
+	private function begin_owned_transition( int $object_id, string $lock_token ): string {
+		if ( ! $this->is_active_lock_token( $lock_token ) ) {
+			return '';
+		}
+
+		$transition_token = $this->token() . ':' . ( time() + self::TRANSITION_TTL );
+		if ( ! $this->update_option_if_value( $this->lock_key( $object_id ), $lock_token, $transition_token ) ) {
+			return '';
+		}
+
+		return $transition_token;
 	}
 
 	/**

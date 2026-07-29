@@ -347,6 +347,91 @@ final class ContentIndexerTest extends TestCase {
 		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_91', '' ) );
 	}
 
+	public function test_losing_reclaimer_cannot_rotate_the_winners_generation(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 92 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 92, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_92', $expired_token, false );
+
+		// A losing reclaimer has already observed the expired token when the
+		// winner reserves recovery, rotates the generation, and acquires it.
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+
+		$recover = new \ReflectionMethod( $queue, 'recover_finalization_lock' );
+		self::assertSame(
+			'',
+			$recover->invoke(
+				$queue,
+				92,
+				'aculect_ai_companion_index_lock_92',
+				$expired_token,
+				'loser-worker:' . ( time() + 300 )
+			)
+		);
+		self::assertSame( $winner[0]['queue_token'], $queue->current_generation( 92 )['queue_token'] );
+		self::assertSame( $winner[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_92', '' ) );
+		self::assertTrue( $queue->acknowledge( 92, $winner[0]['queue_token'], $winner[0]['lock_token'] ) );
+		self::assertSame( 0, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_92', 'missing' ) );
+	}
+
+	public function test_losing_reclaimer_cannot_break_the_winners_retry(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 94 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 94, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_94', $expired_token, false );
+
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+
+		$recover = new \ReflectionMethod( $queue, 'recover_finalization_lock' );
+		self::assertSame(
+			'',
+			$recover->invoke(
+				$queue,
+				94,
+				'aculect_ai_companion_index_lock_94',
+				$expired_token,
+				'loser-worker:' . ( time() + 300 )
+			)
+		);
+		self::assertTrue( $queue->retry( 94, $winner[0]['queue_token'], $winner[0]['lock_token'] ) );
+		self::assertNotSame( $winner[0]['queue_token'], $queue->current_generation( 94 )['queue_token'] );
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_94', 'missing' ) );
+	}
+
+	public function test_expired_recovery_owner_cannot_rotate_after_successor_reclaims(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 93 ) );
+		$stale_generation = $queue->current_generation( 93 )['queue_token'];
+		update_option(
+			'aculect_ai_companion_index_lock_93',
+			'recovery:paused-worker:' . ( time() - 1 ),
+			false
+		);
+
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+		self::assertNotSame( $stale_generation, $winner[0]['queue_token'] );
+
+		$rotate = new \ReflectionMethod( $queue, 'rotate_transition_generation' );
+		self::assertFalse( $rotate->invoke( $queue, 93, $stale_generation ) );
+		self::assertSame( $winner[0]['queue_token'], $queue->current_generation( 93 )['queue_token'] );
+		self::assertSame( $winner[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_93', '' ) );
+	}
+
 	public function test_production_competing_claimers_cannot_both_acquire_the_lease(): void {
 		$original_options = $GLOBALS['aculect_ai_companion_test_options'];
 		$original_wpdb    = $GLOBALS['wpdb'] ?? null;

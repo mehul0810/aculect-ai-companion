@@ -407,11 +407,48 @@ final class ContentIndexQueue {
 			return '';
 		}
 
-		if ( $this->is_transition_lock_token( $current ) && ! $this->rotate_transition_generation( $object_id, $current ) ) {
-			return '';
+		if ( $this->is_finalization_lock_token( $current ) ) {
+			return $this->recover_finalization_lock( $object_id, $key, $current, $lock_token );
 		}
 
 		return $this->update_option_if_value( $key, $current, $lock_token ) ? $lock_token : '';
+	}
+
+	/**
+	 * Reserve, rotate, and reclaim one expired finalization lease.
+	 *
+	 * The recovery reservation is acquired before the queue is rotated. Only
+	 * that reservation owner may invalidate the old generation, and a worker
+	 * lease is not exposed until the rotation is durable.
+	 *
+	 * @param int    $object_id     WordPress object ID.
+	 * @param string $lock_key      Lease option key.
+	 * @param string $expired_token Exact expired finalization token.
+	 * @param string $lock_token    New worker lease token.
+	 */
+	private function recover_finalization_lock(
+		int $object_id,
+		string $lock_key,
+		string $expired_token,
+		string $lock_token
+	): string {
+		$queue_token = $this->read_queue_generation( $object_id );
+		if ( '' === $queue_token ) {
+			$this->delete_option_if_value( $lock_key, $expired_token );
+			return '';
+		}
+
+		$recovery_token = 'recovery:' . $this->token() . ':' . ( time() + self::TRANSITION_TTL );
+		if ( ! $this->update_option_if_value( $lock_key, $expired_token, $recovery_token ) ) {
+			return '';
+		}
+
+		if ( ! $this->rotate_transition_generation( $object_id, $queue_token ) ) {
+			$this->delete_option_if_value( $lock_key, $recovery_token );
+			return '';
+		}
+
+		return $this->update_option_if_value( $lock_key, $recovery_token, $lock_token ) ? $lock_token : '';
 	}
 
 	/**
@@ -421,16 +458,10 @@ final class ContentIndexQueue {
 	 * that exact generation before the transition lease can be reclaimed makes
 	 * every later acknowledge or retry from the paused owner fail closed.
 	 *
-	 * @param int    $object_id       WordPress object ID.
-	 * @param string $transition_token Expired transition token.
+	 * @param int    $object_id  WordPress object ID.
+	 * @param string $queue_token Queue generation observed before recovery was reserved.
 	 */
-	private function rotate_transition_generation( int $object_id, string $transition_token ): bool {
-		$queue_token = $this->read_queue_generation( $object_id );
-		if ( '' === $queue_token ) {
-			$this->delete_option_if_value( $this->lock_key( $object_id ), $transition_token );
-			return false;
-		}
-
+	private function rotate_transition_generation( int $object_id, string $queue_token ): bool {
 		$state       = $this->parse_queue_state( $queue_token );
 		$replacement = $this->queue_state( $state['attempts'], $state['available_at'], $state['action'] );
 
@@ -600,12 +631,13 @@ final class ContentIndexQueue {
 	}
 
 	/**
-	 * Check whether a lease token belongs to an in-progress finalization.
+	 * Check whether a lease token belongs to finalization or its recovery.
 	 *
 	 * @param string $lock_token Lease token.
 	 */
-	private function is_transition_lock_token( string $lock_token ): bool {
-		return str_starts_with( $lock_token, 'transition:' );
+	private function is_finalization_lock_token( string $lock_token ): bool {
+		return str_starts_with( $lock_token, 'transition:' )
+			|| str_starts_with( $lock_token, 'recovery:' );
 	}
 
 	/**

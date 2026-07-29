@@ -259,6 +259,81 @@ final class ContentIndexerTest extends TestCase {
 		self::assertNotSame( $expired_token, $claims[0]['lock_token'] );
 	}
 
+	public function test_production_competing_claimers_cannot_both_acquire_the_lease(): void {
+		$original_options = $GLOBALS['aculect_ai_companion_test_options'];
+		$original_wpdb    = $GLOBALS['wpdb'] ?? null;
+		$wpdb             = new class() {
+			public string $options = 'wp_options';
+			/** @var array<string, string> */
+			public array $rows = array();
+			/** @var array<int, mixed> */
+			private array $prepared_args = array();
+			public int $insert_attempts = 0;
+
+			public function prepare( string $query, mixed ...$args ): string {
+				$this->prepared_args = $args;
+				return $query;
+			}
+
+			public function query( string $query ): int {
+				if ( str_contains( $query, 'INSERT IGNORE' ) ) {
+					++$this->insert_attempts;
+					$key = (string) ( $this->prepared_args[0] ?? '' );
+					if ( isset( $this->rows[ $key ] ) ) {
+						return 0;
+					}
+
+					$this->rows[ $key ] = (string) ( $this->prepared_args[1] ?? '' );
+					return 1;
+				}
+
+				return 0;
+			}
+
+			public function get_var( string $query ): string|null {
+				unset( $query );
+				return $this->rows[ (string) ( $this->prepared_args[0] ?? '' ) ] ?? null;
+			}
+		};
+
+		try {
+			unset( $GLOBALS['aculect_ai_companion_test_options'] );
+			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+			$GLOBALS['wpdb']                                    = $wpdb;
+			$queue                                               = new ContentIndexQueue();
+			$claim_lock                                         = new \ReflectionMethod( $queue, 'claim_lock' );
+
+			$first_owner  = (string) $claim_lock->invoke( $queue, 95 );
+			$second_owner = (string) $claim_lock->invoke( $queue, 95 );
+
+			self::assertNotSame( '', $first_owner );
+			self::assertSame( '', $second_owner );
+			self::assertSame( 2, $wpdb->insert_attempts );
+			self::assertSame( $first_owner, $wpdb->rows['aculect_ai_companion_index_lock_95'] ?? '' );
+			self::assertContains(
+				array(
+					'key'   => 'aculect_ai_companion_index_lock_95',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+			self::assertContains(
+				array(
+					'key'   => 'notoptions',
+					'group' => 'options',
+				),
+				$GLOBALS['aculect_ai_companion_test_cache_deletes']
+			);
+		} finally {
+			$GLOBALS['aculect_ai_companion_test_options'] = $original_options;
+			if ( null !== $original_wpdb ) {
+				$GLOBALS['wpdb'] = $original_wpdb;
+			} else {
+				unset( $GLOBALS['wpdb'] );
+			}
+		}
+	}
+
 	public function test_production_generation_replacement_uses_atomic_upsert_and_cache_invalidation(): void {
 		$original_options = $GLOBALS['aculect_ai_companion_test_options'];
 		$original_wpdb    = $GLOBALS['wpdb'] ?? null;

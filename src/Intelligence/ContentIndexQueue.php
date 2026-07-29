@@ -442,7 +442,7 @@ final class ContentIndexQueue {
 			return $lock_token;
 		}
 
-		$current = (string) get_option( $key, '' );
+		$current = $this->read_lock_token( $key );
 		$parts   = explode( ':', $current );
 		$expires = absint( end( $parts ) );
 		if ( 0 < $expires && $expires >= time() ) {
@@ -459,7 +459,46 @@ final class ContentIndexQueue {
 	 * @param string $lock_token  Unique expiring lock token.
 	 */
 	private function add_lock_option( string $option_name, string $lock_token ): bool {
-		return add_option( $option_name, $lock_token, '', false );
+		if ( $this->uses_test_options() ) {
+			return add_option( $option_name, $lock_token, '', false );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- INSERT IGNORE is the lease acquisition CAS; Core add_option() can overwrite on a duplicate-key race.
+		$added = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				$option_name,
+				$lock_token
+			)
+		);
+		$this->invalidate_option_caches( array( $option_name ) );
+
+		return 1 === (int) $added;
+	}
+
+	/**
+	 * Read the authoritative lease token without a stale option-cache value.
+	 *
+	 * @param string $option_name Lock option name.
+	 */
+	private function read_lock_token( string $option_name ): string {
+		if ( $this->uses_test_options() ) {
+			return (string) get_option( $option_name, '' );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lease reclaim must compare against the current database owner.
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				$option_name
+			)
+		);
+
+		return is_string( $value ) ? $value : '';
 	}
 
 	/**

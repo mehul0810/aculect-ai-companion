@@ -16,6 +16,7 @@ use Closure;
  * Registry of always-on intelligence tools exposed through MCP.
  */
 final class IntelligenceRegistry {
+	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
 
 	/**
 	 * Cached intelligence modules.
@@ -315,6 +316,7 @@ final class IntelligenceRegistry {
 					array(
 						'content'                  => array(
 							'type'        => 'string',
+							'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 							'description' => 'Serialized WordPress block content to validate before create or update operations.',
 						),
 						'content_mode'             => array(

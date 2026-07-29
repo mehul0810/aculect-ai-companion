@@ -97,6 +97,17 @@ final class ContentIndexQueue {
 				continue;
 			}
 
+			$queue_token = $this->read_queue_generation( $object_id );
+			if ( '' === $queue_token ) {
+				$this->release_claim( $object_id, $lock_token );
+				continue;
+			}
+			$state = $this->parse_queue_state( $queue_token );
+			if ( $state['available_at'] > time() ) {
+				$this->release_claim( $object_id, $lock_token );
+				continue;
+			}
+
 			$claimed[] = array(
 				'object_id'   => $object_id,
 				'queue_token' => $queue_token,
@@ -396,7 +407,34 @@ final class ContentIndexQueue {
 			return '';
 		}
 
+		if ( $this->is_transition_lock_token( $current ) && ! $this->rotate_transition_generation( $object_id, $current ) ) {
+			return '';
+		}
+
 		return $this->update_option_if_value( $key, $current, $lock_token ) ? $lock_token : '';
+	}
+
+	/**
+	 * Rotate the queue generation before reclaiming an expired finalizer.
+	 *
+	 * A paused finalizer remains bound to its original queue token. Rotating
+	 * that exact generation before the transition lease can be reclaimed makes
+	 * every later acknowledge or retry from the paused owner fail closed.
+	 *
+	 * @param int    $object_id       WordPress object ID.
+	 * @param string $transition_token Expired transition token.
+	 */
+	private function rotate_transition_generation( int $object_id, string $transition_token ): bool {
+		$queue_token = $this->read_queue_generation( $object_id );
+		if ( '' === $queue_token ) {
+			$this->delete_option_if_value( $this->lock_key( $object_id ), $transition_token );
+			return false;
+		}
+
+		$state       = $this->parse_queue_state( $queue_token );
+		$replacement = $this->queue_state( $state['attempts'], $state['available_at'], $state['action'] );
+
+		return $this->update_option_if_value( $this->queue_key( $object_id ), $queue_token, $replacement );
 	}
 
 	/**
@@ -415,7 +453,7 @@ final class ContentIndexQueue {
 			return '';
 		}
 
-		$transition_token = $this->token() . ':' . ( time() + self::TRANSITION_TTL );
+		$transition_token = 'transition:' . $this->token() . ':' . ( time() + self::TRANSITION_TTL );
 		if ( ! $this->update_option_if_value( $this->lock_key( $object_id ), $lock_token, $transition_token ) ) {
 			return '';
 		}
@@ -559,6 +597,15 @@ final class ContentIndexQueue {
 		$expires = absint( end( $parts ) );
 
 		return 0 < $expires && $expires >= time();
+	}
+
+	/**
+	 * Check whether a lease token belongs to an in-progress finalization.
+	 *
+	 * @param string $lock_token Lease token.
+	 */
+	private function is_transition_lock_token( string $lock_token ): bool {
+		return str_starts_with( $lock_token, 'transition:' );
 	}
 
 	/**

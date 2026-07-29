@@ -290,13 +290,61 @@ final class ContentIndexerTest extends TestCase {
 		$transition_token = (string) $begin_transition->invoke( $queue, 89, $claim[0]['lock_token'] );
 		self::assertNotSame( '', $transition_token );
 
-		$expired_transition = explode( ':', $transition_token )[0] . ':' . ( time() - 1 );
+		$expired_transition = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
 		update_option( 'aculect_ai_companion_index_lock_89', $expired_transition, false );
 		$reclaimed = $queue->claim( 1 );
 
 		self::assertCount( 1, $reclaimed );
 		self::assertSame( 89, $reclaimed[0]['object_id'] );
+		self::assertNotSame( $claim[0]['queue_token'], $reclaimed[0]['queue_token'] );
 		self::assertNotSame( $expired_transition, $reclaimed[0]['lock_token'] );
+	}
+
+	public function test_expired_finalizer_cannot_acknowledge_after_transition_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 90 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 90, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_90', $expired_token, false );
+
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+		self::assertNotSame( $first[0]['queue_token'], $second[0]['queue_token'] );
+		self::assertFalse( $queue->clear_generation( 90, $first[0]['queue_token'] ) );
+		self::assertSame( $second[0]['queue_token'], $queue->current_generation( 90 )['queue_token'] );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_90', '' ) );
+	}
+
+	public function test_expired_finalizer_cannot_retry_after_transition_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 91 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 91, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_91', $expired_token, false );
+
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+		self::assertNotSame( $first[0]['queue_token'], $second[0]['queue_token'] );
+
+		$update_generation = new \ReflectionMethod( $queue, 'update_option_if_value' );
+		self::assertFalse(
+			$update_generation->invoke(
+				$queue,
+				'aculect_ai_companion_pending_index_91',
+				$first[0]['queue_token'],
+				'stale-finalizer-retry'
+			)
+		);
+		self::assertSame( $second[0]['queue_token'], $queue->current_generation( 91 )['queue_token'] );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_91', '' ) );
 	}
 
 	public function test_production_competing_claimers_cannot_both_acquire_the_lease(): void {

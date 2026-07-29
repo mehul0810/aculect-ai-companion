@@ -65,6 +65,11 @@ final class McpController {
 		$this->request_auth = array();
 		McpToolAvailability::set_current_granted_scopes( null );
 
+		$request_error = ( new McpInputValidator() )->request_error( $request );
+		if ( null !== $request_error ) {
+			return new \WP_Error( $request_error['code'], $request_error['message'], array( 'status' => 413 ) );
+		}
+
 		if ( $this->is_auth_exempt_notification( $request ) ) {
 			return true;
 		}
@@ -205,6 +210,22 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
+		$request_error = ( new McpInputValidator() )->request_error( $request );
+		if ( null !== $request_error ) {
+			return new WP_REST_Response(
+				$this->rpc_error(
+					null,
+					-32600,
+					'Invalid Request',
+					array(
+						'code'    => $request_error['code'],
+						'message' => $request_error['message'],
+					)
+				),
+				413
+			);
+		}
+
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
 			( new Logger() )->warning(
@@ -281,7 +302,35 @@ final class McpController {
 					$tool = $registry->internal_id( $requested_tool );
 				}
 
-				$args  = (array) ( $body['params']['arguments'] ?? array() );
+				$raw_arguments = $body['params']['arguments'] ?? array();
+				if ( ! is_array( $raw_arguments ) ) {
+					return $this->rpc_error(
+						$id,
+						-32602,
+						'Invalid params',
+						array(
+							'code'    => 'invalid_argument_type',
+							'message' => 'Tool arguments must be a JSON object.',
+						)
+					);
+				}
+
+				$args         = $raw_arguments;
+				$module       = $is_intelligence_tool ? $intelligence->module( $tool ) : $registry->module( $tool );
+				$input_schema = null === $module ? array() : $this->input_schema_for_module( $module );
+				$input_error  = ( new McpInputValidator() )->arguments_error( $args, $input_schema, $tool );
+				if ( null !== $input_error ) {
+					return $this->rpc_error(
+						$id,
+						-32602,
+						'Invalid params',
+						array(
+							'code'    => $input_error['code'],
+							'message' => $input_error['message'],
+						)
+					);
+				}
+
 				$risk  = $this->tool_risk_level( $tool, $args );
 				$timer = microtime( true );
 				$this->record_timeline_event(
@@ -807,10 +856,7 @@ final class McpController {
 			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
 		);
 
-		$input_schema = $module->input_schema();
-		if ( 'plugin.incident.report' === $module->id() ) {
-			$input_schema = $this->plugin_incident_report_input_schema( $input_schema );
-		}
+		$input_schema = $this->input_schema_for_module( $module );
 
 		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
@@ -828,6 +874,20 @@ final class McpController {
 		}
 
 		return $descriptor;
+	}
+
+	/**
+	 * Return the effective public input schema for a module.
+	 *
+	 * @param AbilityModuleInterface $module Ability module.
+	 * @return array<string, mixed>
+	 */
+	private function input_schema_for_module( AbilityModuleInterface $module ): array {
+		$schema = $module->input_schema();
+
+		return 'plugin.incident.report' === $module->id()
+			? $this->plugin_incident_report_input_schema( $schema )
+			: $schema;
 	}
 
 	/**

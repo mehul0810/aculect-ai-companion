@@ -2453,13 +2453,17 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 * @param array<string, mixed>  $params  Request params.
 		 * @param array<string, string> $headers Request headers.
 		 * @param array<string, mixed>  $json    JSON params.
+		 * @param string                $method  HTTP method.
+		 * @param string                $route   REST route.
+		 * @param string                $body    Raw request body.
 		 */
 		public function __construct(
 			private array $params = array(),
 			private array $headers = array(),
 			private array $json = array(),
 			private string $method = 'GET',
-			private string $route = ''
+			private string $route = '',
+			private string $body = ''
 		) {}
 
 		/**
@@ -2488,6 +2492,13 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 */
 		public function get_json_params(): array {
 			return $this->json;
+		}
+
+		/**
+		 * Return the raw request body.
+		 */
+		public function get_body(): string {
+			return $this->body;
 		}
 
 		/**

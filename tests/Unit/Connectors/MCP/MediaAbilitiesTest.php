@@ -22,11 +22,12 @@ final class MediaAbilitiesTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
-		$GLOBALS['aculect_ai_companion_test_denied_post_ids'] = array();
-		$GLOBALS['aculect_ai_companion_test_posts']           = array();
-		$GLOBALS['aculect_ai_companion_test_post_meta']       = array();
-		$GLOBALS['aculect_ai_companion_test_post_statuses']   = array(
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
+		$GLOBALS['aculect_ai_companion_test_denied_post_ids']  = array();
+		$GLOBALS['aculect_ai_companion_test_posts']            = array();
+		$GLOBALS['aculect_ai_companion_test_post_meta']        = array();
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array();
+		$GLOBALS['aculect_ai_companion_test_post_statuses']    = array(
 			'inherit' => (object) array( 'name' => 'inherit' ),
 			'publish' => (object) array( 'name' => 'publish' ),
 			'draft'   => (object) array( 'name' => 'draft' ),
@@ -128,6 +129,38 @@ final class MediaAbilitiesTest extends TestCase {
 
 		self::assertSame( 'media_audit_usage', $operations['media']['audit_usage']['tool'] );
 		self::assertTrue( $operations['media']['audit_usage']['available'] );
+	}
+
+	public function test_image_data_rejects_oversized_base64_before_decoding(): void {
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_media_upload_max_bytes'] = static fn (): int => 1024;
+
+		$result = ( new MediaAbilities() )->upload_image_data(
+			array(
+				'mime_type'   => 'image/png',
+				'data_base64' => str_repeat( 'A', 1500 ),
+				'dry_run'     => true,
+			)
+		);
+
+		self::assertSame( 'file_too_large', $result['error'] ?? '' );
+	}
+
+	public function test_image_data_accepts_standard_line_wrapped_base64_within_limit(): void {
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_media_upload_max_bytes'] = static fn (): int => 100000;
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Unit test fixture for line-wrapped image data.
+		$encoded = chunk_split( base64_encode( str_repeat( 'x', 100000 ) ), 76, "\r\n" );
+
+		$result = ( new MediaAbilities() )->upload_image_data(
+			array(
+				'mime_type'   => 'image/png',
+				'data_base64' => $encoded,
+				'dry_run'     => true,
+			)
+		);
+
+		self::assertSame( 'preview', $result['status'] ?? '' );
+		$changes = array_column( $result['changes'] ?? array(), null, 'field' );
+		self::assertSame( 100000, $changes['bytes']['to'] ?? null );
 	}
 
 	private function post( int $id, string $type, string $status, string $title, string $content ): void {

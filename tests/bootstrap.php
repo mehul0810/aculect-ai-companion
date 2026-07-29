@@ -1467,6 +1467,11 @@ if ( ! function_exists( 'wp_schedule_single_event' ) ) {
 	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array(), bool $wp_error = false ): bool|WP_Error {
 		unset( $args );
 
+		$literal_false_hooks = $GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] ?? array();
+		if ( is_array( $literal_false_hooks ) && in_array( $hook, $literal_false_hooks, true ) ) {
+			return false;
+		}
+
 		if ( ! empty( $GLOBALS['aculect_ai_companion_test_schedule_failure'] ) ) {
 			return $wp_error ? new WP_Error( 'schedule_failed', 'Test event scheduling failed.' ) : false;
 		}

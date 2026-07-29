@@ -31,11 +31,12 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 		$this->wpdb          = new RefreshJobWpdb();
 		$GLOBALS['wpdb']     = $this->wpdb;
 
-		$GLOBALS['aculect_ai_companion_test_options']                = array();
-		$GLOBALS['aculect_ai_companion_test_posts']                  = array();
-		$GLOBALS['aculect_ai_companion_test_scheduled_events']       = array();
-		$GLOBALS['aculect_ai_companion_test_schedule_failure']       = false;
-		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']                      = array();
+		$GLOBALS['aculect_ai_companion_test_posts']                        = array();
+		$GLOBALS['aculect_ai_companion_test_scheduled_events']             = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_failure']             = false;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks']       = array();
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array();
 	}
 
 	protected function tearDown(): void {
@@ -59,6 +60,42 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 		self::assertSame( 0, $result['job']['processed_items'] ?? -1 );
 	}
 
+	public function test_literal_false_worker_schedule_is_reported_and_job_is_failed(): void {
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array( 'aculect_ai_companion_content_index_refresh_job' );
+
+		$result = ( new ContentIndexer() )->queue_refresh_batch( array( 'ids' => array( 1, 2 ) ) );
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'job_schedule_failed', $result['error'] );
+		self::assertSame( 'failed', $result['job']['status'] ?? '' );
+	}
+
+	public function test_literal_false_watchdog_schedule_is_reported_and_worker_is_removed(): void {
+		$GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] = array( 'aculect_ai_companion_content_index_refresh_recovery' );
+
+		$result = ( new ContentIndexer() )->queue_refresh_batch( array( 'ids' => array( 1 ) ) );
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'job_recovery_schedule_failed', $result['error'] );
+		self::assertSame( 'failed', $result['job']['status'] ?? '' );
+		self::assertArrayNotHasKey( 'aculect_ai_companion_content_index_refresh_job', $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
+	}
+
+	public function test_identical_jobs_use_distinct_random_key_suffixes(): void {
+		$repository = new ContentIndexRepository();
+
+		$first  = $repository->create_job( 'content_index_refresh', array( 'ids' => array( 1, 2 ) ), 2, 'queued' );
+		$second = $repository->create_job( 'content_index_refresh', array( 'ids' => array( 1, 2 ) ), 2, 'queued' );
+
+		self::assertMatchesRegularExpression( '/_[a-f0-9]{16}$/', (string) ( $first['job_key'] ?? '' ) );
+		self::assertMatchesRegularExpression( '/_[a-f0-9]{16}$/', (string) ( $second['job_key'] ?? '' ) );
+		self::assertNotSame(
+			substr( (string) ( $first['job_key'] ?? '' ), -16 ),
+			substr( (string) ( $second['job_key'] ?? '' ), -16 )
+		);
+		self::assertCount( 2, $this->wpdb->jobs );
+	}
+
 	public function test_job_insert_failure_is_reported_without_scheduling_work(): void {
 		$this->wpdb->fail_job_inserts = true;
 
@@ -80,7 +117,7 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 		self::assertArrayNotHasKey( 'aculect_ai_companion_content_index_refresh_job', $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
 	}
 
-	public function test_recovery_schedule_failure_stops_before_processing_and_releases_lease(): void {
+	public function test_existing_watchdog_is_retained_instead_of_destructively_replaced(): void {
 		$indexer = new ContentIndexer();
 		$queued  = $indexer->queue_refresh_batch( array( 'ids' => array( 1, 2 ) ) );
 		$job_key = (string) ( $queued['job']['job_key'] ?? '' );
@@ -89,10 +126,8 @@ final class ContentRefreshJobDurabilityTest extends TestCase {
 		$this->startScheduledWorker();
 		$result = $indexer->run_queued_refresh_job( $job_key );
 
-		self::assertSame( 'error', $result['status'] );
-		self::assertSame( 'job_recovery_schedule_failed', $result['error'] );
-		self::assertSame( 'failed', $result['job']['status'] ?? '' );
-		self::assertSame( array(), $this->wpdb->deleted_content_ids );
+		self::assertSame( 'complete', $result['status'] );
+		self::assertSame( array( 1, 2 ), $this->wpdb->deleted_content_ids );
 		self::assertSame( '', $this->wpdb->jobs[ $job_key ]['lease_token'] ?? 'missing' );
 	}
 

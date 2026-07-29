@@ -878,7 +878,7 @@ final class ContentIndexRepository {
 		global $wpdb;
 
 		$args_json = wp_json_encode( $args );
-		$key       = sanitize_key( $type ) . '_' . gmdate( 'YmdHis' ) . '_' . substr( hash( 'sha256', false === $args_json ? '' : $args_json ), 0, 8 );
+		$key       = sanitize_key( $type ) . '_' . gmdate( 'YmdHis' ) . '_' . substr( hash( 'sha256', false === $args_json ? '' : $args_json ), 0, 8 ) . '_' . substr( bin2hex( random_bytes( 8 ) ), 0, 16 );
 		$now       = gmdate( 'Y-m-d H:i:s' );
 
 		$inserted = $wpdb->insert(

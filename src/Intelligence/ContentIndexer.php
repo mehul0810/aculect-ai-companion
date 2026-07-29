@@ -658,11 +658,11 @@ final class ContentIndexer {
 
 		$scheduled = wp_schedule_single_event( $timestamp, self::REFRESH_JOB_HOOK, $args, true );
 
-		return ! is_wp_error( $scheduled );
+		return false !== $scheduled && ! is_wp_error( $scheduled );
 	}
 
 	/**
-	 * Replace any older watchdog with a fresh post-lease recovery event.
+	 * Ensure at least one post-lease recovery event remains scheduled.
 	 *
 	 * @param string $job_key Job key.
 	 */
@@ -672,17 +672,11 @@ final class ContentIndexer {
 		}
 
 		$args = array( $job_key );
-		if ( function_exists( 'wp_next_scheduled' ) ) {
-			$scheduled = wp_next_scheduled( self::REFRESH_RECOVERY_HOOK, $args );
-			if ( false !== $scheduled ) {
-				if ( ! function_exists( 'wp_unschedule_event' ) ) {
-					return false;
-				}
-				$unscheduled = wp_unschedule_event( (int) $scheduled, self::REFRESH_RECOVERY_HOOK, $args, true );
-				if ( is_wp_error( $unscheduled ) ) {
-					return false;
-				}
-			}
+		if (
+			function_exists( 'wp_next_scheduled' )
+			&& false !== wp_next_scheduled( self::REFRESH_RECOVERY_HOOK, $args )
+		) {
+			return true;
 		}
 
 		$scheduled = wp_schedule_single_event(
@@ -692,7 +686,7 @@ final class ContentIndexer {
 			true
 		);
 
-		return ! is_wp_error( $scheduled );
+		return false !== $scheduled && ! is_wp_error( $scheduled );
 	}
 
 	/**
@@ -720,7 +714,7 @@ final class ContentIndexer {
 			true
 		);
 
-		return ! is_wp_error( $scheduled );
+		return false !== $scheduled && ! is_wp_error( $scheduled );
 	}
 
 	/**

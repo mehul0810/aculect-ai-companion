@@ -51,7 +51,10 @@ final class IntelligenceIndexHealthTest extends TestCase {
 		self::assertFalse( $status['is_empty'] );
 		self::assertSame( 2, $status['pending_object_count'] );
 		self::assertSame( 1, $status['job_status_counts']['queued'] );
+		self::assertSame( 1, $status['job_status_counts']['stale'] );
 		self::assertSame( 1, $status['job_status_counts']['complete'] );
+		self::assertSame( 'available', $status['scheduler_status'] );
+		self::assertSame( '', $status['scheduler_recovery_action'] );
 		self::assertCount( 1, $status['recent_refresh_jobs'] );
 		self::assertSame( 'job-1', $status['recent_refresh_jobs'][0]['job_key'] );
 		self::assertArrayNotHasKey( 'args', $status['recent_refresh_jobs'][0] );
@@ -115,7 +118,7 @@ final class FakeIntelligenceIndexWpdb {
 	public function get_results( string $query, string $output ): array {
 		unset( $output );
 
-		if ( str_contains( $query, 'GROUP BY status' ) ) {
+		if ( str_contains( $query, 'COUNT(*) AS total' ) && str_contains( $query, 'GROUP BY' ) ) {
 			return array(
 				array(
 					'status' => 'queued',
@@ -123,6 +126,10 @@ final class FakeIntelligenceIndexWpdb {
 				),
 				array(
 					'status' => 'complete',
+					'total'  => '1',
+				),
+				array(
+					'status' => 'stale',
 					'total'  => '1',
 				),
 			);

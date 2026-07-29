@@ -18,7 +18,7 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned intelligence index tables require controlled schema changes.
 
-	private const DB_VERSION        = '2026.06.08.2';
+	private const DB_VERSION        = '2026.07.26.1';
 	private const OPTION_DB_VERSION = 'aculect_ai_companion_intelligence_db_version';
 
 	/**
@@ -228,6 +228,7 @@ final class Installer {
             total_items int(10) unsigned NOT NULL DEFAULT 0,
             processed_items int(10) unsigned NOT NULL DEFAULT 0,
             error_count int(10) unsigned NOT NULL DEFAULT 0,
+            lease_token varchar(64) NOT NULL DEFAULT '',
             args longtext DEFAULT NULL,
             result longtext DEFAULT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

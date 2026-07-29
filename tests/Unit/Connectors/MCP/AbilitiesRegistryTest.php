@@ -39,6 +39,14 @@ final class AbilitiesRegistryTest extends TestCase {
 		}
 	}
 
+	public function test_content_index_refresh_schema_describes_queued_default_and_bounded_sync_mode(): void {
+		$schema = $this->registry->input_schema( 'content_index.refresh_batch' );
+
+		self::assertStringContainsString( 'Defaults to queued', $schema['properties']['mode']['description'] ?? '' );
+		self::assertStringContainsString( 'one explicitly requested item', $schema['properties']['mode']['description'] ?? '' );
+		self::assertSame( 100, $schema['properties']['ids']['maxItems'] ?? null );
+	}
+
 	public function test_legacy_create_draft_aliases_map_to_create_item(): void {
 		self::assertSame( 'content.create_item', $this->registry->internal_id( 'content.create_draft' ) );
 		self::assertSame( 'content.create_item', $this->registry->internal_id( 'content_create_draft' ) );
@@ -246,6 +254,8 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'media.upload_item' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'content_workflow.prepare_post' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_workflow.create_draft' ) );
+		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'content_index.refresh_batch' ) );
+		self::assertFalse( $this->registry->is_read_only( 'content_index.refresh_batch' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'content_workflow_create_draft' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'seo_workflow.update_rankmath' ) );
 		self::assertTrue( $this->registry->is_derived_workflow( 'site_workflow.audit' ) );

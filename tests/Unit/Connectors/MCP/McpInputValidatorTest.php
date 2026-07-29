@@ -138,16 +138,29 @@ final class McpInputValidatorTest extends TestCase {
 			'required'   => array( 'id', 'action' ),
 		);
 
-		self::assertNull(
-			$validator->arguments_error(
-				array(
-					'suggestion_id' => 'suggestion-1',
-					'status'        => 'approved',
-				),
-				$schema,
-				'content_internal_link.suggestion_review'
-			)
-		);
+		foreach ( array( 'approved', 'rejected', 'skipped' ) as $legacy_status ) {
+			self::assertNull(
+				$validator->arguments_error(
+					array(
+						'suggestion_id' => 'suggestion-1',
+						'status'        => $legacy_status,
+					),
+					$schema,
+					'content_internal_link.suggestion_review'
+				)
+			);
+			self::assertSame(
+				'invalid_argument_value',
+				$validator->arguments_error(
+					array(
+						'id'     => 'suggestion-1',
+						'action' => $legacy_status,
+					),
+					$schema,
+					'content_internal_link.suggestion_review'
+				)['code'] ?? ''
+			);
+		}
 		self::assertSame(
 			'missing_required_argument',
 			$validator->arguments_error(

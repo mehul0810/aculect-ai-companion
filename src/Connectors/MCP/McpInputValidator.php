@@ -236,9 +236,10 @@ final class McpInputValidator {
 			}
 		} elseif ( 'content_internal_link.suggestion_review' === $tool ) {
 			$this->copy_alias( $arguments, 'id', 'suggestion_id' );
+			$action_was_aliased = ! array_key_exists( 'action', $arguments ) && array_key_exists( 'status', $arguments );
 			$this->copy_alias( $arguments, 'action', 'status' );
 
-			if ( isset( $arguments['action'] ) && is_string( $arguments['action'] ) ) {
+			if ( $action_was_aliased && isset( $arguments['action'] ) && is_string( $arguments['action'] ) ) {
 				$arguments['action'] = match ( $arguments['action'] ) {
 					'approved' => 'approve',
 					'rejected' => 'reject',

@@ -63,24 +63,72 @@ export function clampWizardStepIndex( provider, index ) {
 
 export function normalizeConnectionRequests( requests ) {
 	const payload = requests && typeof requests === 'object' ? requests : {};
-	const items = Array.isArray( payload.items ) ? payload.items : [];
+	const items = connectionRequestItems( payload );
+	const reviewableItems = items.filter(
+		( item ) => item && typeof item.reviewUrl === 'string' && item.reviewUrl
+	);
+	const refreshUrl =
+		typeof payload.refreshUrl === 'string' && payload.refreshUrl
+			? payload.refreshUrl
+			: '';
+	const queueAvailable = Boolean( payload.queueAvailable );
+	const status =
+		typeof payload.status === 'string' && payload.status
+			? payload.status
+			: deriveConnectionRequestStatus(
+					queueAvailable,
+					reviewableItems.length,
+					payload
+			  );
 
 	return {
 		...payload,
-		items,
-		pendingCount: Number( payload.pendingCount || items.length || 0 ),
+		items: reviewableItems,
+		pendingCount: Number(
+			payload.pendingCount || reviewableItems.length || 0
+		),
 		approvalModeEnabled: Boolean( payload.approvalModeEnabled ),
+		queueAvailable,
+		refreshUrl,
+		status,
 	};
 }
 
 export function shouldShowPendingRequests( requests ) {
 	const normalized = normalizeConnectionRequests( requests );
 
+	if ( ! normalized.approvalModeEnabled || ! normalized.queueAvailable ) {
+		return false;
+	}
+
+	if ( normalized.status === 'ready' ) {
+		return normalized.items.length > 0;
+	}
+
 	return (
-		normalized.approvalModeEnabled ||
-		normalized.pendingCount > 0 ||
-		normalized.items.length > 0
+		[ 'empty', 'loading', 'error' ].includes( normalized.status ) &&
+		Boolean( normalized.refreshUrl )
 	);
+}
+
+function deriveConnectionRequestStatus( queueAvailable, itemCount, payload ) {
+	if ( ! queueAvailable ) {
+		return 'disabled';
+	}
+
+	if ( payload.loading ) {
+		return 'loading';
+	}
+
+	if ( payload.error ) {
+		return 'error';
+	}
+
+	if ( itemCount > 0 || Number( payload.pendingCount || 0 ) > 0 ) {
+		return 'ready';
+	}
+
+	return 'empty';
 }
 
 export function connectWizardRecoveryStepIndex( provider ) {
@@ -201,6 +249,41 @@ export function connectWizardCompletionState(
 	};
 }
 
+/**
+ * Keep the final wizard task truthful when provider metadata is optimistic.
+ * Provider metadata describes the normal flow, while completion state reflects
+ * the current verified OAuth session for the selected provider.
+ *
+ * @param {Object} step            Provider-supplied completion step.
+ * @param {Object} completionState Current provider completion state.
+ * @return {Object}                Step safe to render for the current connection state.
+ */
+export function connectWizardCompletionStep( step, completionState ) {
+	if ( ! completionState || completionState.key === 'active' ) {
+		return step;
+	}
+
+	const pending = completionState.key === 'pending';
+
+	return {
+		...step,
+		title: pending ? 'Authorization pending' : 'Verify connection',
+		subtitle: completionState.description,
+		description: pending
+			? 'Complete the pending authorization in WordPress, then return here to confirm the verified session.'
+			: 'Complete authorization in WordPress, then return here to confirm the verified session.',
+		instructions: [
+			{
+				title: pending
+					? 'Approval still required'
+					: 'Verified session required',
+				description:
+					'Connection status updates after a matching verified session is active.',
+			},
+		],
+	};
+}
+
 function fallbackStepTitle( id ) {
 	return {
 		add: 'Add connector',
@@ -302,8 +385,8 @@ function sessionLastVerifiedLabel( session ) {
 
 function latestMatchingRequest( provider, requests ) {
 	const normalizedProvider = normalizeProviderKey( provider );
-	const normalizedRequests = normalizeConnectionRequests( requests );
-	const items = normalizedRequests.items
+	const payload = requests && typeof requests === 'object' ? requests : {};
+	const items = connectionRequestItems( payload )
 		.filter( Boolean )
 		.filter( ( item ) =>
 			requestMatchesProvider( item, normalizedProvider )
@@ -322,6 +405,10 @@ function requestMatchesProvider( request, normalizedProvider ) {
 		normalizeProviderKey( request.provider || request.providerId ) ===
 		normalizedProvider
 	);
+}
+
+function connectionRequestItems( payload ) {
+	return Array.isArray( payload.items ) ? payload.items : [];
 }
 
 function compareRequestsByRecency( left, right ) {

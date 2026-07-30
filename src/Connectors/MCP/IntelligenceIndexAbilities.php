@@ -1516,7 +1516,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function refresh_batch( array $args ): array {
-		if ( function_exists( 'current_user_can' ) && ! current_user_can( 'read' ) ) {
+		if ( function_exists( 'current_user_can' ) && ! current_user_can( 'edit_posts' ) ) {
 			return $this->error_response( 'forbidden', 'You do not have permission to refresh the content intelligence index.' );
 		}
 
@@ -1524,9 +1524,22 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 			return ( new ContentIndexer() )->preview_refresh_batch( $args );
 		}
 
-		$mode   = sanitize_key( (string) ( $args['mode'] ?? '' ) );
-		$queued = true === ( $args['queued'] ?? false ) || true === ( $args['async'] ?? false ) || 'queued' === $mode || 'async' === $mode;
-		$result = $queued ? ( new ContentIndexer() )->queue_refresh_batch( $args ) : ( new ContentIndexer() )->refresh_batch( $args );
+		$mode          = sanitize_key( (string) ( $args['mode'] ?? '' ) );
+		$legacy_sync   = '' === $mode && array_key_exists( 'queued', $args ) && false === $args['queued'];
+		$explicit_sync = 'sync' === $mode || $legacy_sync;
+		if ( $explicit_sync ) {
+			$ids = isset( $args['ids'] ) && is_array( $args['ids'] )
+				? array_values( array_unique( array_filter( array_map( 'absint', $args['ids'] ) ) ) )
+				: array();
+			if ( 1 !== count( $ids ) ) {
+				return $this->error_response( 'sync_refresh_requires_id', 'Synchronous content index refresh requires exactly one explicit content ID. Use queued mode for queries or larger refreshes.' );
+			}
+
+			$args['limit'] = 1;
+			$result        = ( new ContentIndexer() )->refresh_batch( $args );
+		} else {
+			$result = ( new ContentIndexer() )->queue_refresh_batch( $args );
+		}
 
 		$result['workflow']     = 'content_index_refresh_batch';
 		$result['next_actions'] = 'queued' === ( $result['status'] ?? '' )

@@ -56,8 +56,12 @@ final class WordPressAbilitiesRegistrar {
 			return;
 		}
 
-		foreach ( $this->read_only_modules() as $module ) {
-			call_user_func( 'wp_register_ability', $this->ability_name( $module ), $this->ability_args( $module ) );
+		foreach ( $this->read_only_module_registrations() as $registration ) {
+			call_user_func(
+				'wp_register_ability',
+				$this->ability_name( $registration['module'] ),
+				$this->ability_args( $registration['module'], $registration['execute'] )
+			);
 		}
 	}
 
@@ -145,21 +149,51 @@ final class WordPressAbilitiesRegistrar {
 	 * @return array<string, AbilityModuleInterface>
 	 */
 	private function read_only_modules(): array {
-		$modules = array();
+		return array_map(
+			static fn( array $registration ): AbilityModuleInterface => $registration['module'],
+			$this->read_only_module_registrations()
+		);
+	}
 
-		foreach ( ( new IntelligenceRegistry() )->modules() as $module ) {
+	/**
+	 * Return read-only modules together with their owning registry executor.
+	 *
+	 * Registry ownership is part of the execution contract. Keeping the
+	 * executor beside the module prevents WordPress Abilities from routing a
+	 * module through a different registry that happens to use the same module
+	 * interface.
+	 *
+	 * @return array<string, array{module: AbilityModuleInterface, execute: callable(array<string, mixed>): array<string, mixed>}>
+	 * @throws \LogicException When two internal registries claim the same module ID.
+	 */
+	private function read_only_module_registrations(): array {
+		$registrations = array();
+		$intelligence  = new IntelligenceRegistry();
+
+		foreach ( $intelligence->modules() as $module ) {
 			if ( $module->is_read_only() ) {
-				$modules[ $module->id() ] = $module;
+				$registrations[ $module->id() ] = array(
+					'module'  => $module,
+					'execute' => static fn( array $input ): array => $intelligence->execute( $module->id(), $input ),
+				);
 			}
 		}
 
-		foreach ( ( new AbilitiesRegistry() )->always_on_read_intelligence_modules() as $module ) {
+		$abilities = new AbilitiesRegistry();
+		foreach ( $abilities->always_on_read_intelligence_modules() as $module ) {
 			if ( $module->is_read_only() ) {
-				$modules[ $module->id() ] = $module;
+				if ( isset( $registrations[ $module->id() ] ) ) {
+					throw new \LogicException( sprintf( 'Duplicate read-only ability module ID: %s', esc_html( $module->id() ) ) );
+				}
+
+				$registrations[ $module->id() ] = array(
+					'module'  => $module,
+					'execute' => static fn( array $input ): array => $abilities->execute( $module->id(), $input ),
+				);
 			}
 		}
 
-		return $modules;
+		return $registrations;
 	}
 
 	/**
@@ -178,16 +212,18 @@ final class WordPressAbilitiesRegistrar {
 	 * Build registration arguments for one ability module.
 	 *
 	 * @param AbilityModuleInterface $module Ability module.
+	 * @param callable               $execute Owning registry executor.
+	 * @phpstan-param callable(array<string, mixed>): array<string, mixed> $execute
 	 * @return array<string, mixed>
 	 */
-	private function ability_args( AbilityModuleInterface $module ): array {
+	private function ability_args( AbilityModuleInterface $module, callable $execute ): array {
 		return array(
 			'label'               => $module->title(),
 			'description'         => $module->description(),
 			'category'            => self::CATEGORY,
 			'input_schema'        => $module->input_schema(),
 			'output_schema'       => $this->output_schema_for_module( $module ),
-			'execute_callback'    => fn( mixed $input = array() ): array => ( new IntelligenceRegistry() )->execute( $module->id(), is_array( $input ) ? $input : array() ),
+			'execute_callback'    => static fn( mixed $input = array() ): array => $execute( is_array( $input ) ? $input : array() ),
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
 				'show_in_rest' => true,
@@ -220,7 +256,7 @@ final class WordPressAbilitiesRegistrar {
 				return current_user_can( 'edit_theme_options' );
 			}
 
-			if ( str_starts_with( $id, 'admin_menu.' ) ) {
+			if ( 'plugin.incident.list' === $id || str_starts_with( $id, 'admin_menu.' ) ) {
 				return current_user_can( 'manage_options' );
 			}
 

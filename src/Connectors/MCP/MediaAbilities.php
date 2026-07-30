@@ -10,6 +10,7 @@ namespace Aculect\AICompanion\Connectors\MCP;
 final class MediaAbilities extends AbstractAbilityService {
 	private const MEDIA_AUDIT_MAX_PER_PAGE           = 100;
 	private const MEDIA_AUDIT_MAX_CONTENT_SCAN_LIMIT = 250;
+	private const MAX_ENCODED_WHITESPACE_BYTES       = 1048576;
 
 	/**
 	 * List media attachments.
@@ -487,8 +488,20 @@ final class MediaAbilities extends AbstractAbilityService {
 	 * @return array{bytes: string, mime_type: string}|array<string, mixed>
 	 */
 	private function decoded_image_data( array $data ): array {
-		$data_url = trim( (string) ( $data['data_url'] ?? '' ) );
-		if ( '' !== $data_url ) {
+		$guard              = new MediaUploadGuard();
+		$max_encoded_length = 4 * (int) ceil( $guard->max_bytes() / 3 );
+		$raw_data_url       = (string) ( $data['data_url'] ?? '' );
+		if ( '' !== $raw_data_url ) {
+			$comma_position = strpos( $raw_data_url, ',' );
+			if ( false === $comma_position || $comma_position > 128 ) {
+				return $this->error( 'invalid_image_data', 'Data URL must be a base64-encoded image data URL.' );
+			}
+
+			if ( $this->encoded_payload_too_large( $raw_data_url, $max_encoded_length, $comma_position + 1 ) ) {
+				return $this->error( 'file_too_large', sprintf( 'The media file must be %d bytes or smaller.', $guard->max_bytes() ) );
+			}
+
+			$data_url = trim( $raw_data_url );
 			if ( ! preg_match( '#^data:(image/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$#i', $data_url, $matches ) ) {
 				return $this->error( 'invalid_image_data', 'Data URL must be a base64-encoded image data URL.' );
 			}
@@ -496,12 +509,21 @@ final class MediaAbilities extends AbstractAbilityService {
 			$mime_type = strtolower( sanitize_text_field( (string) $matches[1] ) );
 			$base64    = (string) preg_replace( '/\s+/', '', (string) $matches[2] );
 		} else {
-			$mime_type = strtolower( sanitize_text_field( (string) ( $data['mime_type'] ?? '' ) ) );
-			$base64    = (string) preg_replace( '/\s+/', '', (string) ( $data['data_base64'] ?? $data['image_base64'] ?? '' ) );
+			$mime_type  = strtolower( sanitize_text_field( (string) ( $data['mime_type'] ?? '' ) ) );
+			$raw_base64 = (string) ( $data['data_base64'] ?? $data['image_base64'] ?? '' );
+			if ( $this->encoded_payload_too_large( $raw_base64, $max_encoded_length ) ) {
+				return $this->error( 'file_too_large', sprintf( 'The media file must be %d bytes or smaller.', $guard->max_bytes() ) );
+			}
+
+			$base64 = (string) preg_replace( '/\s+/', '', $raw_base64 );
 		}
 
 		if ( '' === $base64 || '' === $mime_type || ! str_starts_with( $mime_type, 'image/' ) ) {
 			return $this->error( 'invalid_image_data', 'Provide image data as data_url or data_base64 with an image MIME type.' );
+		}
+
+		if ( strlen( $base64 ) > $max_encoded_length ) {
+			return $this->error( 'file_too_large', sprintf( 'The media file must be %d bytes or smaller.', $guard->max_bytes() ) );
 		}
 
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decoding explicit assistant-supplied image payload.
@@ -514,6 +536,35 @@ final class MediaAbilities extends AbstractAbilityService {
 			'bytes'     => $bytes,
 			'mime_type' => $mime_type,
 		);
+	}
+
+	/**
+	 * Count encoded bytes without allocating a normalized payload copy.
+	 *
+	 * @param string $payload            Encoded value or complete data URL.
+	 * @param int    $max_encoded_length Maximum non-whitespace bytes.
+	 * @param int    $offset             Byte offset where base64 begins.
+	 */
+	private function encoded_payload_too_large( string $payload, int $max_encoded_length, int $offset = 0 ): bool {
+		$encoded_bytes    = 0;
+		$whitespace_bytes = 0;
+		$length           = strlen( $payload );
+		for ( $index = $offset; $index < $length; ++$index ) {
+			if ( str_contains( " \t\r\n\f\v", $payload[ $index ] ) ) {
+				++$whitespace_bytes;
+				if ( $whitespace_bytes > self::MAX_ENCODED_WHITESPACE_BYTES ) {
+					return true;
+				}
+				continue;
+			}
+
+			++$encoded_bytes;
+			if ( $encoded_bytes > $max_encoded_length ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

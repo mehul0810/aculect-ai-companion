@@ -164,7 +164,7 @@ final class ActivityLogger {
 				'target_id'   => null,
 				'status'      => in_array( $status, array( 'error', 'blocked' ), true ) ? 'error' : 'success',
 				'error_code'  => (string) ( $context['error_code'] ?? '' ),
-				'message'     => $this->timeline_message( $event, $status ),
+				'message'     => $this->timeline_message( $event, $status, $context ),
 				'context'     => $context,
 			)
 		);
@@ -385,10 +385,18 @@ final class ActivityLogger {
 			'status'         => $this->timeline_status( (string) ( $metadata['status'] ?? 'success' ) ),
 		);
 
-		foreach ( array( 'method', 'grant_type', 'result_class', 'blocked_by', 'confirmation_policy' ) as $key ) {
+		foreach ( array( 'method', 'grant_type', 'result_class', 'blocked_by', 'confirmation_policy', 'identity_status', 'refresh_token_state', 'recovery_action' ) as $key ) {
 			if ( isset( $metadata[ $key ] ) && is_scalar( $metadata[ $key ] ) ) {
 				$context[ $key ] = sanitize_key( (string) $metadata[ $key ] );
 			}
+		}
+
+		if ( isset( $metadata['connection_id'] ) && is_numeric( $metadata['connection_id'] ) ) {
+			$context['connection_id'] = max( 0, (int) $metadata['connection_id'] );
+		}
+
+		if ( isset( $metadata['connection_client_id'] ) && is_scalar( $metadata['connection_client_id'] ) ) {
+			$context['connection_client_hash'] = $this->hashed_identifier( (string) $metadata['connection_client_id'] );
 		}
 
 		if ( '' !== $tool ) {
@@ -428,10 +436,15 @@ final class ActivityLogger {
 	/**
 	 * Build a compact admin-safe activity message.
 	 *
-	 * @param string $event  Timeline event type.
-	 * @param string $status Timeline event status.
+	 * @param string               $event   Timeline event type.
+	 * @param string               $status  Timeline event status.
+	 * @param array<string, mixed> $context Sanitized timeline context.
 	 */
-	private function timeline_message( string $event, string $status ): string {
+	private function timeline_message( string $event, string $status, array $context = array() ): string {
+		if ( 'token_refresh' === $event && 'error' === $status && 'unavailable_pre_auth' === ( $context['identity_status'] ?? '' ) ) {
+			return __( 'Refresh was rejected before a WordPress identity was available. This request did not authenticate a WordPress session. Reconnect the assistant to restore access.', 'aculect-ai-companion' );
+		}
+
 		return sprintf(
 			/* translators: 1: timeline event, 2: event status. */
 			__( 'MCP session timeline event %1$s recorded with %2$s status.', 'aculect-ai-companion' ),

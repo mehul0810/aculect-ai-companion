@@ -28,9 +28,13 @@ final class WordPressAbilitiesBridge {
 		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
 		$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 50 ) ) );
 
-		$items = array_values(
+		$abilities = array_filter(
+			$this->abilities(),
+			fn ( object $ability ): bool => $this->incident_list_discovery_allowed( $ability )
+		);
+		$items     = array_values(
 			array_filter(
-				array_map( array( $this, 'map_ability' ), $this->abilities() ),
+				array_map( array( $this, 'map_ability' ), $abilities ),
 				static function ( array $ability ) use ( $search, $category ): bool {
 					if ( empty( $ability['public'] ) ) {
 						return false;
@@ -87,6 +91,10 @@ final class WordPressAbilitiesBridge {
 
 		if ( ! ( new WordPressAbilitiesPolicy() )->is_allowed( $this->ability_name( $ability ) ) ) {
 			return $this->error( 'blocked_by_policy', 'This WordPress ability is blocked by Aculect AI Companion policy.' );
+		}
+
+		if ( ! $this->incident_list_discovery_allowed( $ability ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to discover this WordPress ability.' );
 		}
 
 		return $this->map_ability( $ability, true );
@@ -185,6 +193,19 @@ final class WordPressAbilitiesBridge {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Apply the registered administrator permission when discovering incidents.
+	 *
+	 * @param object $ability Ability object.
+	 */
+	private function incident_list_discovery_allowed( object $ability ): bool {
+		if ( 'aculect-ai-companion/plugin-incident-list' !== $this->ability_name( $ability ) ) {
+			return true;
+		}
+
+		return true === $this->permission_result( $ability, array() );
 	}
 
 	/**

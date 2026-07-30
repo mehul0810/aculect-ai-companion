@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Release;
 
+use Aculect\AICompanion\Connectors\Helpers;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -23,16 +24,17 @@ final class ReleaseMetadataTest extends TestCase {
 		$package  = $this->json_file( $root . '/package.json' );
 		$lockfile = $this->json_file( $root . '/package-lock.json' );
 		$log      = $this->json_file( $root . '/changelog.json' );
+		$governance = $this->file_contents( $root . '/RELEASE.md' );
 
-		self::assertSame( '0.7.0', $this->header( $plugin, 'Version' ) );
-		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.0' );", $plugin );
-		self::assertSame( '0.7.0', $this->header( $readme, 'Stable tag' ) );
-		self::assertSame( '0.7.0', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.0', (string) ( $lockfile['version'] ?? '' ) );
-		self::assertSame( '0.7.0', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertSame( '0.7.1', $this->header( $plugin, 'Version' ) );
+		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.1' );", $plugin );
+		self::assertSame( '0.7.1', $this->header( $readme, 'Stable tag' ) );
+		self::assertSame( '0.7.1', (string) ( $package['version'] ?? '' ) );
+		self::assertSame( '0.7.1', (string) ( $lockfile['version'] ?? '' ) );
+		self::assertSame( '0.7.1', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.0', $release_version );
+		self::assertSame( '0.7.1', $release_version );
 		self::assertArrayHasKey( $release_version, $log );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
@@ -40,6 +42,9 @@ final class ReleaseMetadataTest extends TestCase {
 			self::assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $entry['date'] ?? '' ) );
 		}
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
+		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
+		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
+		self::assertStringContainsString( '`' . $release_version . '` is the active production target on `release/' . $release_version . '`.', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {
@@ -48,6 +53,18 @@ final class ReleaseMetadataTest extends TestCase {
 
 		self::assertStringContainsString( 'types: [published]', $workflow );
 		self::assertStringContainsString( 'if: github.event.release.prerelease', $workflow );
+	}
+
+	public function test_public_oauth_authorize_docs_match_discovery_contract(): void {
+		$root           = dirname( __DIR__, 3 );
+		$readme         = $this->file_contents( $root . '/README.md' );
+		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );
+		$endpoint       = Helpers::authorization_endpoint();
+
+		self::assertSame( 'https://example.com/oauth/authorize', $endpoint );
+		self::assertStringContainsString( '- OAuth authorization: `/oauth/authorize`', $readme );
+		self::assertStringContainsString( '- Authorization endpoint: `/oauth/authorize`', $chatgpt_readme );
+		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
 	}
 
 	/**

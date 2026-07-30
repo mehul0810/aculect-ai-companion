@@ -4,15 +4,15 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.0
+Stable tag: 0.7.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Use ChatGPT, Claude, Codex, Cursor, Gemini, and other MCP AI assistants to manage WordPress content, internal linking, media, comments, and site workflows.
+Use ChatGPT, Claude, and other MCP-compatible AI apps to manage WordPress content, internal linking, media, comments, and site workflows.
 
 == Description ==
 
-Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI assistants such as ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible tools work with your WordPress content, media, comments, and site information through permission-aware workflows.
+Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI apps such as ChatGPT, Claude, and other compatible clients work with your WordPress content, media, comments, and site information through permission-aware workflows.
 
 Instead of switching between WordPress admin screens, you can ask your AI assistant in plain English to draft a post, update a page, review comments, upload media, inspect safe site details, or prepare long-form content using WordPress blocks.
 
@@ -24,7 +24,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 
 = Why use Aculect AI Companion? =
 
-* Connect WordPress to ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible MCP clients
+* Connect WordPress to ChatGPT, Claude, and other MCP-compatible AI apps
 * Create, update, and organize WordPress content through controlled AI workflows
 * Audit internal linking, review link opportunities, and apply approved suggestions through MCP
 * Work with posts, pages, custom post types, categories, tags, comments, and media
@@ -37,8 +37,8 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 Setup is designed to be simple:
 
 1. Copy your connection URL from AI Companion > Connect.
-2. Open your AI tool and add a new connector.
-3. Paste the URL when prompted.
+2. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+3. Paste the URL when prompted by your AI app.
 4. Approve the connection on the screen that appears.
 
 After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI assistant can do and disconnect assistants at any time.
@@ -57,17 +57,11 @@ After approval, Aculect AI Companion checks the connected WordPress user's permi
 
 = Supported AI Tools =
 
-Aculect AI Companion includes setup guidance for popular AI assistants and MCP clients:
+Aculect AI Companion keeps the primary setup surface focused on:
 
-* ChatGPT app with Developer Mode connectors
-* OpenAI API integrations that support remote connectors
-* Claude app, Claude Desktop, Claude Cowork, and Claude mobile
-* Claude Code
-* Claude API integrations that support remote connectors
-* Codex custom MCP and config.toml setups
-* Cursor Agent through global or project mcp.json
-* Gemini CLI and Gemini Code Assist agent mode
-* Standards-compatible remote MCP clients
+* ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
+* Claude custom connectors through Customize > Connectors.
+* Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to complete OAuth approval and send MCP requests.
 
@@ -166,8 +160,8 @@ Administrators should review the terms and privacy policy for the AI assistant t
 3. For stronger production hardening, define `ACULECT_AI_COMPANION_ENCRYPTION_KEY` in `wp-config.php` with a unique random value of at least 32 characters. If the constant is not defined, Aculect AI Companion generates a database-managed encryption key automatically.
 4. Open AI Companion > Connect.
 5. Copy your connection URL.
-6. Open your AI tool and add a new connector.
-7. Paste the URL when prompted.
+6. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+7. Paste the URL when prompted by your AI app.
 8. Approve the connection on the screen that appears.
 
 == Frequently Asked Questions ==
@@ -243,13 +237,13 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 == Screenshots ==
 
 1. Overview tab showing the 0.7.0 AI Companion experience.
-2. Connect tab with the MCP connection URL and guided setup for ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI.
+2. Connect tab with a copyable connection link, app chooser, and provider setup guide.
 3. Connections tab for reviewing connected AI assistants, read/write access, pause controls, and disconnect actions.
 4. Abilities tab for controlling global MCP abilities, role policies, and confirmation gates.
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.7.0 release notes.
+8. Changelog tab with the current 0.7.1 release notes.
 
 == Development ==
 
@@ -277,6 +271,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.7.1 =
+
+* Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.
+* Improved incident approval authorization and clarified rejected refresh-token activity.
+* Removed non-functional controls from pending request views.
+* Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces.
 
 = 0.7.0 =
 
@@ -432,6 +433,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.1 =
+
+Redesigns Connect setup, improves incident and refresh-token handling, removes non-functional pending request controls, and strengthens production-package dependency checks.
 
 = 0.7.0 =
 

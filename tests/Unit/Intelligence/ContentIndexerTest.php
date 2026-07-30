@@ -96,6 +96,27 @@ final class ContentIndexerTest extends TestCase {
 			)
 		);
 		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_77', 'missing' ) );
+	}
+
+	public function test_new_enqueue_is_not_replaced_by_older_claim_retry(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 76 ) );
+
+		$claims = $queue->claim( 1 );
+		self::assertCount( 1, $claims );
+		$new_generation = $queue->enqueue_generation( 76 );
+		self::assertNotSame( '', $new_generation );
+
+		self::assertFalse(
+			$queue->retry(
+				76,
+				$claims[0]['queue_token'],
+				$claims[0]['lock_token']
+			)
+		);
+		self::assertSame( $new_generation, $queue->current_generation( 76 )['queue_token'] );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_76', 'missing' ) );
 	}
 
 	public function test_expired_lease_owner_cannot_acknowledge_after_reclaim(): void {
@@ -257,6 +278,158 @@ final class ContentIndexerTest extends TestCase {
 		self::assertCount( 1, $claims );
 		self::assertSame( 88, $claims[0]['object_id'] );
 		self::assertNotSame( $expired_token, $claims[0]['lock_token'] );
+	}
+
+	public function test_expired_finalization_fence_can_be_reclaimed_after_interruption(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 89 ) );
+		$claim = $queue->claim( 1 );
+		self::assertCount( 1, $claim );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 89, $claim[0]['lock_token'] );
+		self::assertNotSame( '', $transition_token );
+
+		$expired_transition = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_89', $expired_transition, false );
+		$reclaimed = $queue->claim( 1 );
+
+		self::assertCount( 1, $reclaimed );
+		self::assertSame( 89, $reclaimed[0]['object_id'] );
+		self::assertNotSame( $claim[0]['queue_token'], $reclaimed[0]['queue_token'] );
+		self::assertNotSame( $expired_transition, $reclaimed[0]['lock_token'] );
+	}
+
+	public function test_expired_finalizer_cannot_acknowledge_after_transition_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 90 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 90, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_90', $expired_token, false );
+
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+		self::assertNotSame( $first[0]['queue_token'], $second[0]['queue_token'] );
+		self::assertFalse( $queue->clear_generation( 90, $first[0]['queue_token'] ) );
+		self::assertSame( $second[0]['queue_token'], $queue->current_generation( 90 )['queue_token'] );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_90', '' ) );
+	}
+
+	public function test_expired_finalizer_cannot_retry_after_transition_reclaim(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 91 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 91, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_91', $expired_token, false );
+
+		$second = $queue->claim( 1 );
+		self::assertCount( 1, $second );
+		self::assertNotSame( $first[0]['queue_token'], $second[0]['queue_token'] );
+
+		$update_generation = new \ReflectionMethod( $queue, 'update_option_if_value' );
+		self::assertFalse(
+			$update_generation->invoke(
+				$queue,
+				'aculect_ai_companion_pending_index_91',
+				$first[0]['queue_token'],
+				'stale-finalizer-retry'
+			)
+		);
+		self::assertSame( $second[0]['queue_token'], $queue->current_generation( 91 )['queue_token'] );
+		self::assertSame( $second[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_91', '' ) );
+	}
+
+	public function test_losing_reclaimer_cannot_rotate_the_winners_generation(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 92 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 92, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_92', $expired_token, false );
+
+		// A losing reclaimer has already observed the expired token when the
+		// winner reserves recovery, rotates the generation, and acquires it.
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+
+		$recover = new \ReflectionMethod( $queue, 'recover_finalization_lock' );
+		self::assertSame(
+			'',
+			$recover->invoke(
+				$queue,
+				92,
+				'aculect_ai_companion_index_lock_92',
+				$expired_token,
+				'loser-worker:' . ( time() + 300 )
+			)
+		);
+		self::assertSame( $winner[0]['queue_token'], $queue->current_generation( 92 )['queue_token'] );
+		self::assertSame( $winner[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_92', '' ) );
+		self::assertTrue( $queue->acknowledge( 92, $winner[0]['queue_token'], $winner[0]['lock_token'] ) );
+		self::assertSame( 0, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_92', 'missing' ) );
+	}
+
+	public function test_losing_reclaimer_cannot_break_the_winners_retry(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 94 ) );
+		$first = $queue->claim( 1 );
+		self::assertCount( 1, $first );
+
+		$begin_transition = new \ReflectionMethod( $queue, 'begin_owned_transition' );
+		$transition_token = (string) $begin_transition->invoke( $queue, 94, $first[0]['lock_token'] );
+		$expired_token    = substr( $transition_token, 0, (int) strrpos( $transition_token, ':' ) + 1 ) . ( time() - 1 );
+		update_option( 'aculect_ai_companion_index_lock_94', $expired_token, false );
+
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+
+		$recover = new \ReflectionMethod( $queue, 'recover_finalization_lock' );
+		self::assertSame(
+			'',
+			$recover->invoke(
+				$queue,
+				94,
+				'aculect_ai_companion_index_lock_94',
+				$expired_token,
+				'loser-worker:' . ( time() + 300 )
+			)
+		);
+		self::assertTrue( $queue->retry( 94, $winner[0]['queue_token'], $winner[0]['lock_token'] ) );
+		self::assertNotSame( $winner[0]['queue_token'], $queue->current_generation( 94 )['queue_token'] );
+		self::assertSame( 1, $queue->pending_count() );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_index_lock_94', 'missing' ) );
+	}
+
+	public function test_expired_recovery_owner_cannot_rotate_after_successor_reclaims(): void {
+		$queue = new ContentIndexQueue();
+		self::assertTrue( $queue->enqueue( 93 ) );
+		$stale_generation = $queue->current_generation( 93 )['queue_token'];
+		update_option(
+			'aculect_ai_companion_index_lock_93',
+			'recovery:paused-worker:' . ( time() - 1 ),
+			false
+		);
+
+		$winner = $queue->claim( 1 );
+		self::assertCount( 1, $winner );
+		self::assertNotSame( $stale_generation, $winner[0]['queue_token'] );
+
+		$rotate = new \ReflectionMethod( $queue, 'rotate_transition_generation' );
+		self::assertFalse( $rotate->invoke( $queue, 93, $stale_generation ) );
+		self::assertSame( $winner[0]['queue_token'], $queue->current_generation( 93 )['queue_token'] );
+		self::assertSame( $winner[0]['lock_token'], get_option( 'aculect_ai_companion_index_lock_93', '' ) );
 	}
 
 	public function test_production_competing_claimers_cannot_both_acquire_the_lease(): void {
@@ -429,30 +602,27 @@ final class ContentIndexerTest extends TestCase {
 			);
 
 			$active_lock        = 'worker-a:' . ( time() + 300 );
-			$wpdb->query_result = 2;
+			$wpdb->query_result = 1;
 			self::assertTrue( $queue->acknowledge( 93, 'generation-93', $active_lock ) );
-			self::assertStringContainsString( 'DELETE queue_row, lock_row', $wpdb->executed );
-			self::assertStringContainsString( '>= UNIX_TIMESTAMP()', $wpdb->executed );
-			$last_prepare = end( $wpdb->prepared );
+			$transition_prepare = $wpdb->prepared[ count( $wpdb->prepared ) - 1 ] ?? array();
+			self::assertStringContainsString( 'UPDATE wp_options SET option_value', $transition_prepare['query'] ?? '' );
 			self::assertSame(
-				array(
-					'aculect_ai_companion_index_lock_93',
-					$active_lock,
-					'aculect_ai_companion_pending_index_93',
-					'generation-93',
-				),
-				is_array( $last_prepare ) ? $last_prepare['args'] : array()
+				'aculect_ai_companion_index_lock_93',
+				$transition_prepare['args'][1] ?? ''
 			);
+			self::assertSame( $active_lock, $transition_prepare['args'][2] ?? '' );
 
 			$wpdb->query_result = 1;
 			self::assertTrue( $queue->retry( 94, 'generation-94', $active_lock ) );
-			self::assertStringContainsString( 'UPDATE wp_options AS queue_row INNER JOIN wp_options AS lock_row', $wpdb->executed );
-			self::assertStringContainsString( '>= UNIX_TIMESTAMP()', $wpdb->executed );
 			$retry_prepare = end( $wpdb->prepared );
-			self::assertSame( 'aculect_ai_companion_index_lock_94', $retry_prepare['args'][0] ?? '' );
-			self::assertSame( $active_lock, $retry_prepare['args'][1] ?? '' );
-			self::assertSame( 'aculect_ai_companion_pending_index_94', $retry_prepare['args'][3] ?? '' );
-			self::assertSame( 'generation-94', $retry_prepare['args'][4] ?? '' );
+			self::assertStringContainsString( 'UPDATE wp_options SET option_value', $retry_prepare['query'] ?? '' );
+			self::assertSame( 'aculect_ai_companion_pending_index_94', $retry_prepare['args'][1] ?? '' );
+			self::assertSame( 'generation-94', $retry_prepare['args'][2] ?? '' );
+			foreach ( $wpdb->prepared as $prepared_query ) {
+				self::assertStringNotContainsString( 'SUBSTRING_INDEX', $prepared_query['query'] );
+				self::assertStringNotContainsString( 'UNIX_TIMESTAMP', $prepared_query['query'] );
+				self::assertStringNotContainsString( 'INNER JOIN', $prepared_query['query'] );
+			}
 
 			$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
 			$wpdb->query_result                                 = 0;

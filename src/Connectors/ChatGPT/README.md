@@ -89,11 +89,13 @@ Current rule: valid DCR requests must not return a plugin-level `429`. Invalid r
 
 ### Registration Capacity Is Recoverable
 
-Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. An identical retry first removes prior registrations only when they have no live authorization code, access token, or refresh token, so successful retries replace unused rows instead of accumulating them. When the active-client cap is reached, the repository also revokes registrations older than the configured stale window under the same live-credential guards.
+Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. An identical retry first removes prior registrations only when they have the same provider and exact registration fingerprint and have no live authorization code, access token, or refresh token. Successful retries therefore replace only their own unused rows instead of accumulating them. Public DCR never revokes unrelated dormant registrations.
 
-If capacity is still exhausted, DCR returns HTTP `503` with the stable `registration_capacity_exceeded` code and a non-sensitive recovery message. It never includes other client registrations, credentials, or capacity counts.
+If capacity remains exhausted after that exact-fingerprint cleanup, DCR returns HTTP `503` with the stable `registration_capacity_exceeded` code and a non-sensitive recovery message. It never includes other client registrations, credentials, or capacity counts.
 
-Administrators can review the sanitized capacity summary and eligible stale registrations under **Settings > AI Companion > Diagnostics**. The recovery action rechecks that the selected registration is still stale and unused before revoking it.
+Administrators can review the sanitized capacity summary and eligible stale registrations under **Settings > AI Companion > Diagnostics**. Only this `manage_options`- and nonce-protected recovery action may revoke an unrelated stale registration, and it atomically rechecks that the selected registration is still stale and unused before revoking it.
+
+The active-client count and client insert remain separate database operations. Simultaneous new registrations can therefore briefly overshoot the configured cap; this accepted residual is separate from exact-fingerprint retry cleanup and administrator recovery.
 
 ### Login Must Return To Consent, Not REST Authorize
 
@@ -121,11 +123,11 @@ Regression check: run repeated valid DCR requests and confirm every request retu
 
 ### `registration_capacity_exceeded`
 
-Cause: the active DCR client cap is full after eligible stale registrations have already been pruned.
+Cause: the active DCR client cap remains full after public DCR has removed only unused retries with the same provider and exact registration fingerprint.
 
-Fix: open **Settings > AI Companion > Diagnostics**, review the OAuth client capacity panel, and revoke only an unused stale registration. Active codes, access tokens, and refreshable connections are not eligible for this recovery action.
+Fix: open **Settings > AI Companion > Diagnostics** as an administrator, review the OAuth client capacity panel, and use the protected recovery action to revoke one unrelated stale registration. Active codes, access tokens, and refreshable connections are not eligible for this recovery action.
 
-Regression check: force a low cap in a fixture, verify the response is sanitized HTTP `503`, then recover one stale unused client and confirm a valid retry can return `201`.
+Regression check: force a low cap in a fixture, verify the response is sanitized HTTP `503`, then use the protected administrator action to recover one stale unused client and confirm a valid retry can return `201`.
 
 ### Redirects To Login Even When Already Logged In
 

@@ -28,17 +28,22 @@ final class StorageMaintenance {
 	 * Run pruning if the throttled maintenance window has elapsed.
 	 */
 	public static function maybe_prune(): void {
+		$now          = time();
+		$current_lock = self::read_prune_lock();
+		if ( '' !== $current_lock && self::prune_lock_expires_at( $current_lock ) >= $now ) {
+			return;
+		}
+
 		$interval = (int) apply_filters( 'aculect_ai_companion_oauth_prune_interval', self::DEFAULT_PRUNE_INTERVAL );
 		$interval = max( 0, $interval );
 		$last_run = (int) get_option( self::OPTION_LAST_PRUNED_AT, 0 );
-		$now      = time();
 
-		if ( $last_run > 0 && ( $now - $last_run ) < $interval ) {
+		if ( '' === $current_lock && $last_run > 0 && ( $now - $last_run ) < $interval ) {
 			return;
 		}
 
 		$failure_retry_after = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 );
-		if ( $failure_retry_after > $now ) {
+		if ( '' === $current_lock && $failure_retry_after > $now ) {
 			return;
 		}
 
@@ -61,28 +66,54 @@ final class StorageMaintenance {
 	 * @param string                                                                              $lock_token Claimed lease token.
 	 */
 	private static function finalize_prune( array|false $result, string $lock_token ): void {
-		$finalization_token = self::begin_owned_finalization( $lock_token );
+		$finalized_at       = time();
+		$finalization_token = self::begin_owned_finalization( $lock_token, $finalized_at );
 		if ( '' === $finalization_token ) {
 			return;
 		}
 
-		$finalized_at = time();
-		$stored       = false;
+		self::publish_prune_outcome( $result, $finalization_token, $finalized_at );
+	}
 
+	/**
+	 * Publish one throttle outcome through an exact-owner lock CAS.
+	 *
+	 * The outcome token remains the authoritative throttle until its expiry.
+	 * Compatibility timestamp options are updated only after that durable
+	 * single-row transition succeeds.
+	 *
+	 * @param array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}|false $result Prune result.
+	 * @param string                                                                              $finalization_token Exact finalization owner.
+	 * @param int                                                                                 $finalized_at Finalization timestamp.
+	 */
+	private static function publish_prune_outcome(
+		array|false $result,
+		string $finalization_token,
+		int $finalized_at
+	): void {
 		if ( false !== $result ) {
-			update_option( self::OPTION_LAST_PRUNED_AT, $finalized_at, false );
-			$stored = (int) get_option( self::OPTION_LAST_PRUNED_AT, 0 ) === $finalized_at;
-			if ( $stored ) {
-				delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
-			}
-		} else {
-			$retry_after = $finalized_at + self::prune_failure_retry_interval();
-			update_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, $retry_after, false );
-			$stored = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 ) === $retry_after;
-		}
+			$interval       = (int) apply_filters(
+				'aculect_ai_companion_oauth_prune_interval',
+				self::DEFAULT_PRUNE_INTERVAL
+			);
+			$outcome_expiry = $finalized_at + max( 0, $interval );
+			$outcome_token  = 'outcome:success:' . self::prune_lock_token( $outcome_expiry );
 
-		if ( $stored ) {
-			self::delete_prune_lock_if_value( $finalization_token );
+			if ( ! self::update_prune_lock_if_value( $finalization_token, $outcome_token ) ) {
+				return;
+			}
+
+			update_option( self::OPTION_LAST_PRUNED_AT, $finalized_at, false );
+			delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+		} else {
+			$retry_after   = $finalized_at + self::prune_failure_retry_interval();
+			$outcome_token = 'outcome:failure:' . self::prune_lock_token( $retry_after );
+
+			if ( ! self::update_prune_lock_if_value( $finalization_token, $outcome_token ) ) {
+				return;
+			}
+
+			update_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, $retry_after, false );
 		}
 	}
 
@@ -203,14 +234,16 @@ final class StorageMaintenance {
 	/**
 	 * Fence an active owner before publishing its throttle state.
 	 *
-	 * @param string $lock_token Claimed lease token.
+	 * @param string   $lock_token Claimed lease token.
+	 * @param int|null $now      Controlled timestamp for deterministic tests.
 	 */
-	private static function begin_owned_finalization( string $lock_token ): string {
-		if ( self::prune_lock_expires_at( $lock_token ) < time() ) {
+	private static function begin_owned_finalization( string $lock_token, ?int $now = null ): string {
+		$now = $now ?? time();
+		if ( self::prune_lock_expires_at( $lock_token ) < $now ) {
 			return '';
 		}
 
-		$finalization_token = 'finalize:' . self::prune_lock_token( time() + self::DEFAULT_PRUNE_LOCK_TTL );
+		$finalization_token = 'finalize:' . self::prune_lock_token( $now + self::DEFAULT_PRUNE_LOCK_TTL );
 
 		return self::update_prune_lock_if_value( $lock_token, $finalization_token ) ? $finalization_token : '';
 	}

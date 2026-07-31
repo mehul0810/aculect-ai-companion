@@ -127,7 +127,10 @@ final class StorageMaintenanceTest extends TestCase {
 		StorageMaintenance::maybe_prune();
 
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertStringStartsWith(
+			'outcome:failure:',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
 		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 0 ) );
 		self::assertCount( 4, $this->wpdb->queries );
 	}
@@ -142,6 +145,7 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 
 		update_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', time() - 1, false );
+		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() - 1, false );
 		$this->wpdb->query_result = 3;
 
 		StorageMaintenance::maybe_prune();
@@ -149,6 +153,10 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertCount( 8, $this->wpdb->queries );
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
+		self::assertStringStartsWith(
+			'outcome:success:',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
 	}
 
 	public function test_maybe_prune_retains_lock_when_failure_backoff_cannot_be_stored(): void {
@@ -173,7 +181,10 @@ final class StorageMaintenanceTest extends TestCase {
 
 		self::assertCount( 8, $this->wpdb->queries );
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertStringStartsWith(
+			'outcome:success:',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
 	}
 
 	public function test_maybe_prune_retains_lock_when_success_timestamp_cannot_be_stored(): void {
@@ -195,7 +206,10 @@ final class StorageMaintenanceTest extends TestCase {
 
 		self::assertCount( 8, $this->wpdb->queries );
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertStringStartsWith(
+			'outcome:success:',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
 	}
 
 	public function test_stale_failure_owner_cannot_publish_or_release_reclaimed_lock(): void {
@@ -242,6 +256,50 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertSame( array(), $this->wpdb->queries );
 	}
 
+	public function test_expired_finalizer_cannot_overwrite_newer_failure_with_stale_success(): void {
+		$base             = time();
+		$stale_worker     = $this->acquireLock( $base );
+		$stale_finalizer  = $this->beginFinalization( $stale_worker, $base );
+		$active_worker    = $this->acquireLock( $base + 301 );
+		$active_finalizer = $this->beginFinalization( $active_worker, $base + 301 );
+
+		$this->publishOutcome( false, $active_finalizer, $base + 301 );
+		$active_outcome = (string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' );
+		$active_retry   = (int) get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 0 );
+
+		$this->publishOutcome( $this->successfulPruneResult(), $stale_finalizer, $base + 302 );
+		self::assertFalse( $this->deleteLock( $stale_finalizer ) );
+		StorageMaintenance::maybe_prune();
+
+		self::assertStringStartsWith( 'outcome:failure:', $active_outcome );
+		self::assertSame( $active_outcome, get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' ) );
+		self::assertSame( $base + 601, $active_retry );
+		self::assertSame( $active_retry, (int) get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 0 ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertSame( array(), $this->wpdb->queries );
+	}
+
+	public function test_expired_finalizer_cannot_overwrite_newer_success_with_stale_failure(): void {
+		$base             = time();
+		$stale_worker     = $this->acquireLock( $base );
+		$stale_finalizer  = $this->beginFinalization( $stale_worker, $base );
+		$active_worker    = $this->acquireLock( $base + 301 );
+		$active_finalizer = $this->beginFinalization( $active_worker, $base + 301 );
+
+		$this->publishOutcome( $this->successfulPruneResult(), $active_finalizer, $base + 301 );
+		$active_outcome = (string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' );
+
+		$this->publishOutcome( false, $stale_finalizer, $base + 302 );
+		self::assertFalse( $this->deleteLock( $stale_finalizer ) );
+		StorageMaintenance::maybe_prune();
+
+		self::assertStringStartsWith( 'outcome:success:', $active_outcome );
+		self::assertSame( $active_outcome, get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' ) );
+		self::assertSame( $base + 301, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
+		self::assertSame( array(), $this->wpdb->queries );
+	}
+
 	public function test_failure_retry_deadline_uses_finalization_time(): void {
 		$lock_token = $this->acquireLock( time() - 299 );
 
@@ -257,7 +315,10 @@ final class StorageMaintenanceTest extends TestCase {
 		StorageMaintenance::maybe_prune();
 
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertStringStartsWith(
+			'outcome:success:',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
 	}
 
 	public function test_last_used_updates_are_throttled(): void {
@@ -330,6 +391,44 @@ final class StorageMaintenanceTest extends TestCase {
 	private function finalizePrune( array|false $result, string $lock_token ): void {
 		$reflection = new ReflectionMethod( StorageMaintenance::class, 'finalize_prune' );
 		$reflection->invoke( null, $result, $lock_token );
+	}
+
+	/**
+	 * Begin finalization at a controlled timestamp.
+	 *
+	 * @param string $lock_token Expected worker token.
+	 * @param int    $now        Simulated finalization timestamp.
+	 */
+	private function beginFinalization( string $lock_token, int $now ): string {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'begin_owned_finalization' );
+
+		return (string) $reflection->invoke( null, $lock_token, $now );
+	}
+
+	/**
+	 * Publish an outcome at a controlled timestamp.
+	 *
+	 * @param array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}|false $result Prune result.
+	 * @param string                                                                              $finalization_token Exact finalization token.
+	 * @param int                                                                                 $now Simulated publication timestamp.
+	 */
+	private function publishOutcome( array|false $result, string $finalization_token, int $now ): void {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'publish_prune_outcome' );
+		$reflection->invoke( null, $result, $finalization_token, $now );
+	}
+
+	/**
+	 * Return a zero-deletion successful prune result.
+	 *
+	 * @return array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}
+	 */
+	private function successfulPruneResult(): array {
+		return array(
+			'auth_codes'     => 0,
+			'access_tokens'  => 0,
+			'refresh_tokens' => 0,
+			'clients'        => 0,
+		);
 	}
 
 	/**

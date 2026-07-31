@@ -223,10 +223,27 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	 * @param string[] $redirect_uris Redirect URIs.
 	 */
 	public function matches_client( string $client_name, array $redirect_uris ): bool {
-		$haystack = strtolower( $client_name . ' ' . implode( ' ', $redirect_uris ) );
+		$normalized_name = strtolower( $client_name );
 
-		return str_contains( $haystack, 'grok' )
-			|| str_contains( $haystack, 'x.ai' )
-			|| str_contains( $haystack, 'xai' );
+		if (
+			str_contains( $normalized_name, 'grok' )
+			|| 1 === preg_match( '/(?:^|[^a-z0-9])xai(?:$|[^a-z0-9])/', $normalized_name )
+		) {
+			return true;
+		}
+
+		foreach ( $redirect_uris as $redirect_uri ) {
+			$host = wp_parse_url( $redirect_uri, PHP_URL_HOST );
+			if ( ! is_string( $host ) ) {
+				continue;
+			}
+
+			$host = strtolower( rtrim( $host, '.' ) );
+			if ( 'x.ai' === $host || str_ends_with( $host, '.x.ai' ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

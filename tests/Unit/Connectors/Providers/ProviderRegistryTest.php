@@ -190,6 +190,18 @@ final class ProviderRegistryTest extends TestCase {
 			$registry->detect_provider_id( 'Remote MCP Client', array( 'https://console.x.ai/oauth/callback' ) )
 		);
 		self::assertSame(
+			'grok',
+			$registry->detect_provider_id( 'xAI Remote MCP Client', array( 'https://example.org/callback' ) )
+		);
+		self::assertSame(
+			'mcp',
+			$registry->detect_provider_id( 'FluxAI Connector', array( 'https://example.org/callback' ) )
+		);
+		self::assertSame(
+			'mcp',
+			$registry->detect_provider_id( 'Remote MCP Client', array( 'https://example.org/oauth/x.ai/callback' ) )
+		);
+		self::assertSame(
 			'mcp',
 			$registry->detect_provider_id( 'Custom MCP Client', array( 'https://example.org/callback' ) )
 		);

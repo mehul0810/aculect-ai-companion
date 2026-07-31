@@ -72,6 +72,25 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( 'Prefer concise enterprise copy.', $payload['items'][0]['suggested_update'] );
 	}
 
+	public function test_submit_preserves_known_grok_provider_attribution(): void {
+		$repository = new LearningSuggestionRepository();
+		$result     = $repository->submit(
+			array(
+				'domain'           => 'developer',
+				'issue'            => 'Connector setup needs clarification.',
+				'suggested_update' => 'Show the supported connection path.',
+			),
+			array(
+				'provider'    => 'grok',
+				'client_id'   => 'client-grok',
+				'client_name' => 'Grok Connector',
+				'user_id'     => 7,
+			)
+		);
+
+		self::assertSame( 'grok', $result['suggestion']['source']['provider'] );
+	}
+
 	public function test_submit_rejects_incomplete_suggestions_without_writing(): void {
 		$repository = new LearningSuggestionRepository();
 		$result     = $repository->submit(

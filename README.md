@@ -25,7 +25,7 @@ Aculect AI Companion is an early release and is not intended for production webs
 Open `AI Companion > Connect` in WordPress:
 
 1. Copy your connection URL.
-2. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+2. Choose ChatGPT, Claude, Grok, or another AI app for the right setup guide.
 3. Paste the URL when prompted by your AI app.
 4. Approve the connection on the screen that appears.
 
@@ -48,6 +48,7 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 - ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
 - Claude custom connectors through `Customize > Connectors`.
+- Grok custom MCP connectors through [Grok Connectors](https://grok.com/connectors). Grok must be able to reach your WordPress MCP endpoint over public HTTPS.
 - Cursor remote MCP servers.
 - Standards-compatible remote MCP clients.
 

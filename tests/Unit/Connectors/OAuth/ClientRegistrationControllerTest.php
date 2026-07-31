@@ -265,6 +265,11 @@ final class ClientRegistrationControllerTest extends TestCase {
 		self::assertSame( 'claude', Helpers::provider_from_client( 'Claude Desktop', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Gemini CLI MCP Client', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Google Code Assist Agent', array( 'http://localhost/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'Grok Connector', array( 'https://grok.com/oauth/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'Remote MCP Client', array( 'https://console.x.ai/oauth/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'xAI Remote MCP Client', array( 'https://example.org/callback' ) ) );
+		self::assertSame( 'mcp', Helpers::provider_from_client( 'FluxAI Connector', array( 'https://example.org/callback' ) ) );
+		self::assertSame( 'mcp', Helpers::provider_from_client( 'Remote MCP Client', array( 'https://example.org/oauth/x.ai/callback' ) ) );
 		self::assertSame( 'mcp', Helpers::provider_from_client( 'Local MCP Client', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'mcp', Helpers::provider_from_client( 'Custom Client', array( 'https://example.org/callback' ) ) );
 	}

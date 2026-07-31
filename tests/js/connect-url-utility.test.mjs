@@ -76,12 +76,15 @@ test( 'MCP endpoint safety note does not add browser-default paragraph spacing',
 	);
 } );
 
-test( 'connect picker shows ChatGPT, Claude, Cursor, and a generic MCP-compatible choice', () => {
+test( 'connect picker shows ChatGPT, Claude, Grok, Cursor, and a generic MCP-compatible choice', () => {
 	assert.match( ADMIN_APP_SOURCE, /const CONNECT_APP_OPTIONS = \[/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'ChatGPT'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'OpenAI'/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'Claude'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'Anthropic'/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'Grok'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'xAI'/ );
+	assert.match( ADMIN_APP_SOURCE, /https:\/\/docs\.x\.ai\/grok\/connectors/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'Cursor'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'Anysphere'/ );
 	assert.match(
@@ -92,10 +95,14 @@ test( 'connect picker shows ChatGPT, Claude, Cursor, and a generic MCP-compatibl
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
 } );
 
-test( 'two-column connect picker keeps complete separators between choices', () => {
+test( 'five-option connect picker keeps complete responsive separators', () => {
 	assert.match(
 		ADMIN_STYLE_SOURCE,
-		/@media \(max-width: 900px\)[\s\S]*\.aculect-ai-companion-connect-app-option,\s*\.aculect-ai-companion-connect-app-option:last-child\s*\{[\s\S]*border-right:\s*0;[\s\S]*border-bottom:\s*0;[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(odd\)\s*\{[\s\S]*border-right:\s*1px solid[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(-n \+ 2\)\s*\{[\s\S]*border-bottom:\s*1px solid/
+		/\.aculect-ai-companion-connect-app-picker__options\s*\{[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);/
+	);
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/@media \(max-width: 900px\)[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(-n \+ 4\)\s*\{[\s\S]*border-bottom:\s*1px solid[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(odd\):not\(:last-child\)\s*\{[\s\S]*border-right:\s*1px solid/
 	);
 } );
 

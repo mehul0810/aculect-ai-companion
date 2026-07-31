@@ -13,6 +13,7 @@ import {
 	tabNameIsHydrated,
 } from './admin-tab-hydration.mjs';
 import {
+	connectAppOptionForProvider,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
@@ -557,6 +558,7 @@ function providerBadgeLabel( provider ) {
 		codex: 'Cx',
 		cursor: 'Cu',
 		gemini: 'G',
+		grok: 'Gk',
 	};
 
 	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
@@ -621,6 +623,7 @@ function connectionProviderLabel( session ) {
 		codex: 'Codex',
 		cursor: 'Cursor',
 		gemini: 'Gemini',
+		grok: 'Grok',
 	};
 
 	return labels[ provider ] || session.provider || 'AI';
@@ -4900,6 +4903,15 @@ const CONNECT_APP_OPTIONS = [
 			'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
 	},
 	{
+		id: 'grok',
+		providerId: 'grok',
+		label: 'Grok',
+		brand: 'xAI',
+		description: 'Add this link as a custom MCP connector in Grok.',
+		actionLabel: 'Open Grok Connectors',
+		guideUrl: 'https://docs.x.ai/grok/connectors',
+	},
+	{
 		id: 'cursor',
 		providerId: 'cursor',
 		label: 'Cursor',
@@ -4930,19 +4942,10 @@ function preferredConnectProviderId( providers ) {
 	);
 }
 
-function connectAppOptionForProvider( providerId ) {
-	return (
-		CONNECT_APP_OPTIONS.find(
-			( option ) => option.providerId === providerId
-		) ||
-		CONNECT_APP_OPTIONS.find( ( option ) => option.id === 'other' ) ||
-		CONNECT_APP_OPTIONS[ 0 ]
-	);
-}
-
 function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 	const selectedOption = connectAppOptionForProvider(
-		selectedProvider?.id || ''
+		selectedProvider?.id || '',
+		CONNECT_APP_OPTIONS
 	);
 	const actionUrl = safeExternalUrl(
 		selectedProvider?.primaryActionUrl || selectedOption.guideUrl

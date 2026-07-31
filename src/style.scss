@@ -1218,7 +1218,7 @@
 
 .aculect-ai-companion-connect-app-picker__options {
 	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
+	grid-template-columns: repeat(5, minmax(0, 1fr));
 	overflow: hidden;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
@@ -2359,6 +2359,11 @@ td:last-child
 .aculect-ai-companion-provider-badge.is-gemini {
 	background: #eef5ff;
 	color: #1a73e8;
+}
+
+.aculect-ai-companion-provider-badge.is-grok {
+	background: #f3f4f6;
+	color: #111827;
 }
 
 .aculect-ai-companion-provider-badge.is-mcp {
@@ -4757,12 +4762,12 @@ td:first-child
 		border-bottom: 0;
 	}
 
-	.aculect-ai-companion-connect-app-option:nth-child(odd) {
-		border-right: 1px solid var(--aculect-ai-companion-border);
+	.aculect-ai-companion-connect-app-option:nth-child(-n + 4) {
+		border-bottom: 1px solid var(--aculect-ai-companion-border);
 	}
 
-	.aculect-ai-companion-connect-app-option:nth-child(-n + 2) {
-		border-bottom: 1px solid var(--aculect-ai-companion-border);
+	.aculect-ai-companion-connect-app-option:nth-child(odd):not(:last-child) {
+		border-right: 1px solid var(--aculect-ai-companion-border);
 	}
 
 	.aculect-ai-companion-connect-app-picker__actions {

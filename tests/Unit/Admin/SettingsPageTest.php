@@ -194,6 +194,11 @@ final class SettingsPageTest extends TestCase {
 		self::assertStringContainsString( '"httpUrl": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['gemini']['setupSections'][0]['copyFields'][1]['value'] );
 		self::assertStringContainsString( 'Gemini web does not currently provide', $providers['gemini']['wizard']['steps'][0]['description'] );
 		self::assertStringContainsString( 'gemini.google.com', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
+		self::assertArrayHasKey( 'grok', $providers );
+		self::assertSame( 'xAI', $providers['grok']['brandName'] );
+		self::assertSame( 'https://grok.com/connectors', $providers['grok']['primaryActionUrl'] );
+		self::assertSame( 'Open Grok Connectors', $providers['grok']['wizard']['steps'][0]['title'] );
+		self::assertStringContainsString( 'allowed_tools', implode( ' ', $providers['grok']['setupSections'][1]['steps'] ) );
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Diagnostics;
 
+use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
 use WP_Error;
 
 /**
@@ -26,6 +28,7 @@ final class ConnectionHealth {
 	 */
 	public function run(): array {
 		$items = array(
+			$this->check_required_storage(),
 			$this->check_https_url(),
 			$this->check_rest_route_shape(),
 			$this->check_protected_resource_metadata(),
@@ -61,6 +64,64 @@ final class ConnectionHealth {
 		update_option( self::OPTION_LAST_RESULT, $result, false );
 
 		return $result;
+	}
+
+	/**
+	 * Verify and, when needed, repair the plugin-owned OAuth and activity tables.
+	 *
+	 * The check runs only from the explicit admin diagnostics flow. Normal plugin
+	 * boot remains version-gated and does not add table probes to every request.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function check_required_storage(): array {
+		$missing = array_filter(
+			array(
+				'oauth'    => OAuthInstaller::missing_table_keys(),
+				'activity' => ActivityInstaller::missing_table_keys(),
+			)
+		);
+
+		if ( array() === $missing ) {
+			return $this->item( 'required_storage', 'pass', 'Required OAuth and activity storage is available.' );
+		}
+
+		OAuthInstaller::install( true );
+		ActivityInstaller::install( true );
+
+		$remaining       = array_filter(
+			array(
+				'oauth'    => OAuthInstaller::missing_table_keys(),
+				'activity' => ActivityInstaller::missing_table_keys(),
+			)
+		);
+		$repaired_stores = array_values( array_diff( array_keys( $missing ), array_keys( $remaining ) ) );
+		$details         = array(
+			'checked_stores' => array( 'oauth', 'activity' ),
+		);
+		if ( array() !== $repaired_stores ) {
+			$details['repaired_stores'] = $repaired_stores;
+		}
+
+		if ( array() === $remaining ) {
+			return $this->item(
+				'required_storage',
+				'warn',
+				'Required OAuth or activity storage was repaired without removing existing data.',
+				'Run diagnostics once more to confirm the repaired storage remains available.',
+				$details
+			);
+		}
+
+		$details['unavailable_stores'] = array_values( array_keys( $remaining ) );
+
+		return $this->item(
+			'required_storage',
+			'fail',
+			'One or more required OAuth or activity storage tables could not be repaired.',
+			'Confirm the database user can create and alter plugin tables, then reactivate Aculect AI Companion or contact your host.',
+			$details
+		);
 	}
 
 	/**

@@ -44,7 +44,8 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
 		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
 		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
-		self::assertStringContainsString( '`' . $release_version . '` is the active production target on `release/' . $release_version . '`.', $governance );
+		self::assertStringContainsString( '`0.7.1` is the current production release.', $governance );
+		self::assertStringContainsString( '`0.7.2` is the active patch train on `release/0.7.2`', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

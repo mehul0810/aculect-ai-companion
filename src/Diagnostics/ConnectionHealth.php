@@ -89,16 +89,19 @@ final class ConnectionHealth {
 		OAuthInstaller::install( true );
 		ActivityInstaller::install( true );
 
-		$remaining = array_filter(
+		$remaining       = array_filter(
 			array(
 				'oauth'    => OAuthInstaller::missing_table_keys(),
 				'activity' => ActivityInstaller::missing_table_keys(),
 			)
 		);
-		$details   = array(
-			'checked_stores'  => array( 'oauth', 'activity' ),
-			'repaired_stores' => array_values( array_keys( $missing ) ),
+		$repaired_stores = array_values( array_diff( array_keys( $missing ), array_keys( $remaining ) ) );
+		$details         = array(
+			'checked_stores' => array( 'oauth', 'activity' ),
 		);
+		if ( array() !== $repaired_stores ) {
+			$details['repaired_stores'] = $repaired_stores;
+		}
 
 		if ( array() === $remaining ) {
 			return $this->item(

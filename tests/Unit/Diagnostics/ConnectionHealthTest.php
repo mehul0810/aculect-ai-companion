@@ -87,7 +87,32 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( 'fail', $result['status'] );
 		self::assertSame( array( 'oauth', 'activity' ), $result['details']['checked_stores'] );
 		self::assertSame( array( 'oauth', 'activity' ), $result['details']['unavailable_stores'] );
+		self::assertArrayNotHasKey( 'repaired_stores', $result['details'] );
 		self::assertStringContainsString( 'database user', $result['remediation'] );
+	}
+
+	public function test_required_storage_check_reports_only_the_store_that_was_actually_repaired(): void {
+		$wpdb            = new ConnectionHealthStorageWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+			if ( str_contains( $sql, 'aculect_ai_companion_oauth_clients' ) ) {
+				$wpdb->available_tables = array(
+					'wp_42_aculect_ai_companion_oauth_clients',
+					'wp_42_aculect_ai_companion_oauth_access_tokens',
+					'wp_42_aculect_ai_companion_oauth_refresh_tokens',
+					'wp_42_aculect_ai_companion_oauth_auth_codes',
+				);
+			}
+
+			return array();
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_required_storage' );
+
+		self::assertSame( 'fail', $result['status'] );
+		self::assertSame( array( 'oauth' ), $result['details']['repaired_stores'] );
+		self::assertSame( array( 'activity' ), $result['details']['unavailable_stores'] );
+		self::assertNotContains( 'activity', $result['details']['repaired_stores'] );
 	}
 
 	public function test_required_storage_check_records_a_successful_repair_without_physical_table_names(): void {
@@ -338,6 +363,9 @@ final class ConnectionHealthStorageWpdb {
 	public string $prefix             = 'wp_42_';
 	public bool $all_tables_available = false;
 
+	/** @var list<string> */
+	public array $available_tables = array();
+
 	/** @var array<int, mixed> */
 	private array $last_args = array();
 
@@ -354,7 +382,9 @@ final class ConnectionHealthStorageWpdb {
 	public function get_var( string $query ): string {
 		unset( $query );
 
-		return $this->all_tables_available ? (string) ( $this->last_args[0] ?? '' ) : '';
+		$table = (string) ( $this->last_args[0] ?? '' );
+
+		return $this->all_tables_available || in_array( $table, $this->available_tables, true ) ? $table : '';
 	}
 
 	public function get_charset_collate(): string {

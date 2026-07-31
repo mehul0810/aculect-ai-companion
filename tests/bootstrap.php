@@ -121,6 +121,31 @@ if ( ! function_exists( 'update_option' ) ) {
 	}
 }
 
+if ( ! function_exists( 'dbDelta' ) ) {
+	/**
+	 * Run the focused schema callback configured by installer tests.
+	 *
+	 * Real database migration coverage belongs in the WordPress integration
+	 * suite. This lightweight stub lets unit tests verify installer decisions
+	 * without loading a partial WordPress runtime.
+	 *
+	 * @param string $queries Schema SQL passed to dbDelta().
+	 * @return array<int, string>
+	 */
+	// phpcs:ignore WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid -- WordPress core function test stub.
+	function dbDelta( string $queries ): array {
+		$callback = $GLOBALS['aculect_ai_companion_test_db_delta_callback'] ?? null;
+
+		if ( is_callable( $callback ) ) {
+			$result = $callback( $queries );
+
+			return is_array( $result ) ? array_values( array_map( 'strval', $result ) ) : array();
+		}
+
+		return array();
+	}
+}
+
 if ( ! function_exists( 'get_site_option' ) ) {
 	/**
 	 * Return a test network option value.

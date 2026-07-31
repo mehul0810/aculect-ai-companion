@@ -33,6 +33,24 @@ use ReflectionMethod;
  */
 final class OAuthRepositoryTest extends TestCase {
 
+	private mixed $previous_wpdb;
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$this->previous_wpdb = $GLOBALS['wpdb'] ?? null;
+	}
+
+	protected function tearDown(): void {
+		if ( null === $this->previous_wpdb ) {
+			unset( $GLOBALS['wpdb'] );
+		} else {
+			$GLOBALS['wpdb'] = $this->previous_wpdb;
+		}
+
+		parent::tearDown();
+	}
+
 	public function test_access_refresh_and_auth_code_identifiers_are_hashed_consistently(): void {
 		$raw = 'raw-token-material';
 
@@ -545,6 +563,7 @@ final class OAuthRepositoryTest extends TestCase {
 
 	public function test_prune_revoked_clients_deletes_only_old_revoked_rows(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->results   = array( array( 'id' => 42 ) );
 		$GLOBALS['wpdb'] = $wpdb;
 
 		$deleted = ( new ClientRepository() )->prune_revoked_clients( '2026-05-01 00:00:00', 37 );
@@ -553,10 +572,14 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( '2026-05-01 00:00:00', $wpdb->prepared[0]['args'][1] );
 		self::assertSame( 37, $wpdb->prepared[0]['args'][2] );
-		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'SELECT id FROM %i', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'updated_at < %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'LIMIT %d', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[1]['query'] );
+		self::assertSame( 42, $wpdb->prepared[1]['args'][1] );
+		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[1]['query'] );
+		self::assertStringNotContainsString( 'LIMIT', $wpdb->prepared[1]['query'] );
 	}
 
 	public function test_create_client_runs_duplicate_cleanup_before_insert(): void {
@@ -784,7 +807,8 @@ final class OAuthRepositoryTest extends TestCase {
  */
 final class FakeAccessTokenWpdb {
 
-	public string $prefix = 'wp_';
+	public string $prefix     = 'wp_';
+	public string $last_error = '';
 
 	/**
 	 * Prepared SQL calls.

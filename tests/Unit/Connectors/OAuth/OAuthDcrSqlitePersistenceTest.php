@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationResult;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use PDO;
@@ -36,6 +37,8 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		unset( $GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] );
+
 		if ( null === $this->original_wpdb ) {
 			unset( $GLOBALS['wpdb'] );
 		} else {
@@ -68,6 +71,195 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
 		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients' ) );
 		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+	}
+
+	public function test_capacity_full_does_not_remove_unrelated_dormant_clients_or_hash_secret(): void {
+		$wpdb = $this->wpdb();
+
+		for ( $index = 0; $index < 100; ++$index ) {
+			$this->seed_client(
+				$wpdb,
+				'unrelated-' . $index,
+				hash( 'sha256', 'unrelated-' . $index )
+			);
+		}
+
+		$GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] = 0;
+
+		$result = ( new ClientRepository() )->create_client_result(
+			'Capacity MCP Client',
+			array( 'http://localhost/capacity/callback' )
+		);
+
+		self::assertSame( ClientRegistrationResult::CAPACITY_EXCEEDED, $result->status() );
+		self::assertNull( $result->client() );
+		self::assertSame( 100, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients' ) );
+		self::assertSame( 100, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+		self::assertSame( 0, $GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] );
+	}
+
+	public function test_capacity_retry_replaces_only_its_same_fingerprint_unused_client(): void {
+		$wpdb         = $this->wpdb();
+		$redirect_uri = 'http://localhost/retry/callback';
+		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
+
+		self::assertNotNull( $fingerprint );
+
+		for ( $index = 0; $index < 99; ++$index ) {
+			$this->seed_client(
+				$wpdb,
+				'unrelated-' . $index,
+				hash( 'sha256', 'unrelated-' . $index )
+			);
+		}
+		$this->seed_client( $wpdb, 'same-fingerprint-unused', $fingerprint );
+
+		$result = ( new ClientRepository() )->create_client_result(
+			'Retry MCP Client',
+			array( $redirect_uri ),
+			false
+		);
+
+		self::assertSame( ClientRegistrationResult::CREATED, $result->status() );
+		self::assertNotNull( $result->client() );
+		self::assertSame( 100, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients' ) );
+		self::assertSame(
+			1,
+			$wpdb->prepared_scalar(
+				'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE registration_fingerprint = %s',
+				$fingerprint
+			)
+		);
+		self::assertSame(
+			0,
+			$wpdb->prepared_scalar(
+				'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s',
+				'same-fingerprint-unused'
+			)
+		);
+		self::assertSame(
+			99,
+			$wpdb->scalar( "SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id LIKE 'unrelated-%'" )
+		);
+	}
+
+	public function test_same_fingerprint_cleanup_preserves_live_access_code_and_refresh_clients(): void {
+		$wpdb         = $this->wpdb();
+		$redirect_uri = 'http://localhost/live/callback';
+		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
+
+		self::assertNotNull( $fingerprint );
+
+		foreach ( array( 'live-access', 'live-code', 'live-refresh', 'unused' ) as $client_id ) {
+			$this->seed_client( $wpdb, $client_id, $fingerprint );
+		}
+
+		$future = gmdate( 'Y-m-d H:i:s', time() + HOUR_IN_SECONDS );
+		$past   = gmdate( 'Y-m-d H:i:s', time() - HOUR_IN_SECONDS );
+		$wpdb->insert(
+			'wp_aculect_ai_companion_oauth_access_tokens',
+			array(
+				'token_hash' => 'access-live',
+				'client_id'  => 'live-access',
+				'revoked'    => 0,
+				'expires_at' => $future,
+			),
+			array()
+		);
+		$wpdb->insert(
+			'wp_aculect_ai_companion_oauth_auth_codes',
+			array(
+				'token_hash' => 'code-live',
+				'client_id'  => 'live-code',
+				'revoked'    => 0,
+				'expires_at' => $future,
+			),
+			array()
+		);
+		$wpdb->insert(
+			'wp_aculect_ai_companion_oauth_access_tokens',
+			array(
+				'token_hash' => 'access-for-refresh',
+				'client_id'  => 'live-refresh',
+				'revoked'    => 1,
+				'expires_at' => $past,
+			),
+			array()
+		);
+		$wpdb->insert(
+			'wp_aculect_ai_companion_oauth_refresh_tokens',
+			array(
+				'token_hash'        => 'refresh-live',
+				'access_token_hash' => 'access-for-refresh',
+				'revoked'           => 0,
+				'expires_at'        => $future,
+			),
+			array()
+		);
+
+		$result = ( new ClientRepository() )->create_client_result(
+			'Live MCP Client',
+			array( $redirect_uri ),
+			false
+		);
+
+		self::assertSame( ClientRegistrationResult::CREATED, $result->status() );
+		self::assertSame(
+			4,
+			$wpdb->prepared_scalar(
+				'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE registration_fingerprint = %s',
+				$fingerprint
+			)
+		);
+		foreach ( array( 'live-access', 'live-code', 'live-refresh' ) as $client_id ) {
+			self::assertSame(
+				1,
+				$wpdb->prepared_scalar(
+					'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s',
+					$client_id
+				)
+			);
+		}
+		self::assertSame(
+			0,
+			$wpdb->prepared_scalar(
+				'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s',
+				'unused'
+			)
+		);
+	}
+
+	private function wpdb(): OAuthDcrSqliteWpdb {
+		/**
+		 * SQLite adapter used by this test.
+		 *
+		 * @var OAuthDcrSqliteWpdb $wpdb
+		 */
+		$wpdb = $GLOBALS['wpdb'];
+
+		return $wpdb;
+	}
+
+	private function seed_client( OAuthDcrSqliteWpdb $wpdb, string $client_id, string $fingerprint ): void {
+		$result = $wpdb->insert(
+			'wp_aculect_ai_companion_oauth_clients',
+			array(
+				'client_id'                => $client_id,
+				'client_secret_hash'       => null,
+				'client_name'              => 'Dormant MCP Client',
+				'provider'                 => 'mcp',
+				'redirect_uris'            => '["http:\/\/localhost\/callback"]',
+				'registration_fingerprint' => $fingerprint,
+				'user_id'                  => null,
+				'is_confidential'          => 0,
+				'revoked'                  => 0,
+				'created_at'               => '2020-01-01 00:00:00',
+				'updated_at'               => '2020-01-01 00:00:00',
+			),
+			array()
+		);
+
+		self::assertSame( 1, $result );
 	}
 }
 
@@ -191,5 +383,9 @@ final class OAuthDcrSqliteWpdb {
 
 	public function scalar( string $query ): int {
 		return (int) $this->pdo->query( $query )->fetchColumn();
+	}
+
+	public function prepared_scalar( string $query, mixed ...$args ): int {
+		return $this->scalar( $this->prepare( $query, ...$args ) );
 	}
 }

@@ -25,7 +25,6 @@ final class ClientRepository implements ClientRepositoryInterface {
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
 
 	private const DUPLICATE_CLEANUP_BATCH_SIZE = 25;
-	private const STALE_CLEANUP_BATCH_SIZE     = 25;
 	private const STALE_CLIENT_MIN_AGE_HOURS   = 24;
 	private const DEFAULT_PRUNE_BATCH_SIZE     = 500;
 	private const RECOVERY_LIST_LIMIT          = 20;
@@ -117,10 +116,7 @@ final class ClientRepository implements ClientRepositoryInterface {
 		);
 
 		if ( $this->count_active_clients() >= $this->max_active_clients() ) {
-			$this->revoke_stale_unused_clients( null, $now, self::STALE_CLEANUP_BATCH_SIZE );
-			if ( $this->count_active_clients() >= $this->max_active_clients() ) {
-				return ClientRegistrationResult::capacity_exceeded();
-			}
+			return ClientRegistrationResult::capacity_exceeded();
 		}
 
 		$client_id     = $this->generate_client_id();
@@ -405,72 +401,6 @@ final class ClientRepository implements ClientRepositoryInterface {
 			'revoked = 1 AND updated_at < %s',
 			array( $cutoff )
 		);
-	}
-
-	/**
-	 * Revoke old registrations that never reached a live code or token.
-	 *
-	 * @param string|null $cutoff Optional stale-client cutoff.
-	 * @param string|null $now    Optional current UTC timestamp for tests.
-	 * @param int         $limit  Maximum rows to revoke.
-	 */
-	public function revoke_stale_unused_clients( ?string $cutoff = null, ?string $now = null, int $limit = self::STALE_CLEANUP_BATCH_SIZE ): int {
-		global $wpdb;
-
-		$tables = Installer::table_names();
-		$cutoff = null === $cutoff ? $this->stale_client_cutoff() : $this->normalized_cutoff( $cutoff );
-		$now    = $this->normalized_cutoff( $now );
-		$limit  = $this->normalized_batch_limit( $limit );
-		$result = $wpdb->query(
-			$wpdb->prepare(
-				'UPDATE %i clients
-				SET clients.revoked = 1
-				WHERE clients.client_id IN (
-					SELECT recoverable_clients.client_id
-					FROM (
-						SELECT stale_clients.client_id
-						FROM %i stale_clients
-						WHERE stale_clients.revoked = 0
-						AND stale_clients.created_at < %s
-						AND stale_clients.client_id NOT IN (
-							SELECT active_tokens.client_id
-							FROM %i active_tokens
-							WHERE active_tokens.revoked = 0
-							AND active_tokens.expires_at >= %s
-						)
-						AND stale_clients.client_id NOT IN (
-							SELECT refreshable_tokens.client_id
-							FROM %i refreshable_tokens
-							INNER JOIN %i active_refresh
-								ON active_refresh.access_token_hash = refreshable_tokens.token_hash
-							WHERE active_refresh.revoked = 0
-							AND active_refresh.expires_at >= %s
-						)
-						AND stale_clients.client_id NOT IN (
-							SELECT active_codes.client_id
-							FROM %i active_codes
-							WHERE active_codes.revoked = 0
-							AND active_codes.expires_at >= %s
-						)
-						ORDER BY stale_clients.created_at ASC
-						LIMIT %d
-					) recoverable_clients
-				)',
-				$tables['clients'],
-				$tables['clients'],
-				$cutoff,
-				$tables['access_tokens'],
-				$now,
-				$tables['access_tokens'],
-				$tables['refresh_tokens'],
-				$now,
-				$tables['auth_codes'],
-				$now,
-				$limit
-			)
-		);
-
-		return false === $result ? 0 : (int) $result;
 	}
 
 	/**

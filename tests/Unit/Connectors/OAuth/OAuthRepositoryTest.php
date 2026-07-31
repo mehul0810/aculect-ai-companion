@@ -618,7 +618,7 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 0, $wpdb->inserts[0]['data']['revoked'] );
 	}
 
-	public function test_create_client_prunes_stale_unused_registrations_before_capacity_check(): void {
+	public function test_capacity_full_does_not_prune_unrelated_clients_or_hash_secret(): void {
 		$wpdb             = new FakeAccessTokenWpdb();
 		$wpdb->var_result = 100;
 		$GLOBALS['wpdb']  = $wpdb;
@@ -632,21 +632,25 @@ final class OAuthRepositoryTest extends TestCase {
 
 		self::assertSame( ClientRegistrationResult::CAPACITY_EXCEEDED, $result->status() );
 		self::assertNull( $result->client() );
-		self::assertSame( array( 'query', 'query' ), $wpdb->operations );
-		self::assertStringContainsString( 'UPDATE %i clients', $wpdb->prepared[2]['query'] );
-		self::assertStringContainsString( 'SET clients.revoked = 1', $wpdb->prepared[2]['query'] );
-		self::assertStringNotContainsString( 'SET clients.revoked = 1 FROM', $wpdb->prepared[2]['query'] );
-		self::assertStringContainsString( 'stale_clients.created_at < %s', $wpdb->prepared[2]['query'] );
-		self::assertStringContainsString( 'active_refresh.expires_at >= %s', $wpdb->prepared[2]['query'] );
-		self::assertStringContainsString( 'recoverable_clients.client_id', $wpdb->prepared[2]['query'] );
+		self::assertSame( array( 'query' ), $wpdb->operations );
+		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'clients.registration_fingerprint = %s', $wpdb->prepared[0]['query'] );
+		self::assertStringNotContainsString(
+			'stale_clients',
+			implode( "\n", array_column( $wpdb->prepared, 'query' ) )
+		);
+		self::assertStringNotContainsString(
+			'recoverable_clients',
+			implode( "\n", array_column( $wpdb->prepared, 'query' ) )
+		);
 		self::assertSame( array(), $wpdb->inserts );
 		self::assertSame( 0, $GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] );
 	}
 
-	public function test_create_client_retries_capacity_after_stale_cleanup(): void {
-		$wpdb              = new FakeAccessTokenWpdb();
-		$wpdb->var_results = array( 100, 99 );
-		$GLOBALS['wpdb']   = $wpdb;
+	public function test_create_client_below_capacity_runs_only_fingerprint_cleanup_before_insert(): void {
+		$wpdb             = new FakeAccessTokenWpdb();
+		$wpdb->var_result = 99;
+		$GLOBALS['wpdb']  = $wpdb;
 
 		$result = ( new ClientRepository() )->create_client_result(
 			'Recovered MCP Client',
@@ -655,7 +659,7 @@ final class OAuthRepositoryTest extends TestCase {
 
 		self::assertSame( ClientRegistrationResult::CREATED, $result->status() );
 		self::assertIsArray( $result->client() );
-		self::assertSame( array( 'query', 'query', 'insert' ), $wpdb->operations );
+		self::assertSame( array( 'query', 'insert' ), $wpdb->operations );
 		self::assertCount( 1, $wpdb->inserts );
 	}
 

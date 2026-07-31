@@ -28,7 +28,12 @@ final class StorageMaintenance {
 	 * Run pruning if the throttled maintenance window has elapsed.
 	 */
 	public static function maybe_prune(): void {
-		$now          = time();
+		$now         = time();
+		$cached_lock = (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
+		if ( self::is_active_cached_prune_lock( $cached_lock, $now ) ) {
+			return;
+		}
+
 		$current_lock = self::read_prune_lock();
 		if ( '' !== $current_lock && self::prune_lock_expires_at( $current_lock ) >= $now ) {
 			return;
@@ -255,7 +260,10 @@ final class StorageMaintenance {
 	 */
 	private static function add_prune_lock( string $lock_token ): bool {
 		if ( self::uses_test_options() ) {
-			return add_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $lock_token, '', false );
+			$added = add_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $lock_token, '', false );
+			self::invalidate_prune_lock_cache();
+
+			return $added;
 		}
 
 		global $wpdb;
@@ -304,10 +312,14 @@ final class StorageMaintenance {
 		if ( self::uses_test_options() ) {
 			$current = (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
 			if ( ! hash_equals( $old_value, $current ) ) {
+				self::invalidate_prune_lock_cache();
 				return false;
 			}
 
-			return update_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $new_value, false );
+			$updated = update_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $new_value, false );
+			self::invalidate_prune_lock_cache();
+
+			return $updated;
 		}
 
 		global $wpdb;
@@ -335,10 +347,14 @@ final class StorageMaintenance {
 		if ( self::uses_test_options() ) {
 			$current = (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
 			if ( ! hash_equals( $lock_token, $current ) ) {
+				self::invalidate_prune_lock_cache();
 				return false;
 			}
 
-			return delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+			$deleted = delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+			self::invalidate_prune_lock_cache();
+
+			return $deleted;
 		}
 
 		global $wpdb;
@@ -366,6 +382,37 @@ final class StorageMaintenance {
 		$parts = explode( ':', $lock_token );
 
 		return absint( end( $parts ) );
+	}
+
+	/**
+	 * Check whether a cached lock has a valid owned shape and active expiry.
+	 *
+	 * Missing, malformed, or expired cache values must fall through to the
+	 * authoritative database read and exact-value acquisition/reclaim path.
+	 *
+	 * @param string $lock_token Cached lock value.
+	 * @param int    $now        Current timestamp.
+	 */
+	private static function is_active_cached_prune_lock( string $lock_token, int $now ): bool {
+		$parts = explode( ':', $lock_token );
+		$valid = 2 === count( $parts )
+			&& 1 === preg_match( '/^[a-f0-9]{32}$/', $parts[0] )
+			&& ctype_digit( $parts[1] );
+
+		if ( 3 === count( $parts ) ) {
+			$valid = 'finalize' === $parts[0]
+				&& 1 === preg_match( '/^[a-f0-9]{32}$/', $parts[1] )
+				&& ctype_digit( $parts[2] );
+		}
+
+		if ( 4 === count( $parts ) ) {
+			$valid = 'outcome' === $parts[0]
+				&& in_array( $parts[1], array( 'success', 'failure' ), true )
+				&& 1 === preg_match( '/^[a-f0-9]{32}$/', $parts[2] )
+				&& ctype_digit( $parts[3] );
+		}
+
+		return $valid && self::prune_lock_expires_at( $lock_token ) >= $now;
 	}
 
 	/**

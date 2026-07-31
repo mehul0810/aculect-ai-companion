@@ -33,6 +33,7 @@ final class StorageMaintenanceTest extends TestCase {
 		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
+		$GLOBALS['aculect_ai_companion_test_cache_deletes']         = array();
 	}
 
 	public function test_prunes_expired_auth_codes(): void {
@@ -318,6 +319,81 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertStringStartsWith(
 			'outcome:success:',
 			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
+	}
+
+	public function test_cached_active_success_outcome_skips_twenty_five_boot_queries(): void {
+		update_option(
+			'aculect_ai_companion_oauth_prune_lock_expires_at',
+			'outcome:success:' . str_repeat( 'a', 32 ) . ':' . ( time() + 300 ),
+			false
+		);
+
+		for ( $request = 0; $request < 25; ++$request ) {
+			StorageMaintenance::maybe_prune();
+		}
+
+		self::assertSame( array(), $this->wpdb->queries );
+		self::assertSame( array(), $this->wpdb->selections );
+	}
+
+	public function test_cached_active_failure_outcome_skips_twenty_five_boot_queries(): void {
+		update_option(
+			'aculect_ai_companion_oauth_prune_lock_expires_at',
+			'outcome:failure:' . str_repeat( 'b', 32 ) . ':' . ( time() + 300 ),
+			false
+		);
+
+		for ( $request = 0; $request < 25; ++$request ) {
+			StorageMaintenance::maybe_prune();
+		}
+
+		self::assertSame( array(), $this->wpdb->queries );
+		self::assertSame( array(), $this->wpdb->selections );
+	}
+
+	public function test_cached_lock_fast_path_rejects_absent_malformed_and_expired_values(): void {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'is_active_cached_prune_lock' );
+		$now        = time();
+
+		self::assertFalse( $reflection->invoke( null, '', $now ) );
+		self::assertFalse( $reflection->invoke( null, 'outcome:success:not-a-token:' . ( $now + 300 ), $now ) );
+		self::assertFalse(
+			$reflection->invoke(
+				null,
+				'outcome:success:' . str_repeat( 'c', 32 ) . ':' . ( $now - 1 ),
+				$now
+			)
+		);
+		self::assertTrue(
+			$reflection->invoke(
+				null,
+				'finalize:' . str_repeat( 'd', 32 ) . ':' . ( $now + 300 ),
+				$now
+			)
+		);
+	}
+
+	public function test_lock_reclaim_invalidates_option_and_notoptions_caches(): void {
+		$this->acquireLock( time() - 301 );
+		$GLOBALS['aculect_ai_companion_test_cache_deletes'] = array();
+
+		$active_token = $this->acquireLock( time() );
+
+		self::assertNotSame( '', $active_token );
+		self::assertContains(
+			array(
+				'key'   => 'aculect_ai_companion_oauth_prune_lock_expires_at',
+				'group' => 'options',
+			),
+			$GLOBALS['aculect_ai_companion_test_cache_deletes']
+		);
+		self::assertContains(
+			array(
+				'key'   => 'notoptions',
+				'group' => 'options',
+			),
+			$GLOBALS['aculect_ai_companion_test_cache_deletes']
 		);
 	}
 

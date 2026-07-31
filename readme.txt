@@ -8,11 +8,11 @@ Stable tag: 0.7.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Use ChatGPT, Claude, and other MCP-compatible AI apps to manage WordPress content, internal linking, media, comments, and site workflows.
+Use ChatGPT, Claude, Grok, and other MCP-compatible AI apps to manage WordPress content, internal linking, media, comments, and site workflows.
 
 == Description ==
 
-Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI apps such as ChatGPT, Claude, and other compatible clients work with your WordPress content, media, comments, and site information through permission-aware workflows.
+Aculect AI Companion is a secure MCP connector for WordPress. It lets approved AI apps such as ChatGPT, Claude, Grok, and other compatible clients work with your WordPress content, media, comments, and site information through permission-aware workflows.
 
 Instead of switching between WordPress admin screens, you can ask your AI assistant in plain English to draft a post, update a page, review comments, upload media, inspect safe site details, or prepare long-form content using WordPress blocks.
 
@@ -24,7 +24,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 
 = Why use Aculect AI Companion? =
 
-* Connect WordPress to ChatGPT, Claude, and other MCP-compatible AI apps
+* Connect WordPress to ChatGPT, Claude, Grok, and other MCP-compatible AI apps
 * Create, update, and organize WordPress content through controlled AI workflows
 * Audit internal linking, review link opportunities, and apply approved suggestions through MCP
 * Work with posts, pages, custom post types, categories, tags, comments, and media
@@ -37,7 +37,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 Setup is designed to be simple:
 
 1. Copy your connection URL from AI Companion > Connect.
-2. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+2. Choose ChatGPT, Claude, Grok, or another AI app for the right setup guide.
 3. Paste the URL when prompted by your AI app.
 4. Approve the connection on the screen that appears.
 
@@ -61,6 +61,7 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 * ChatGPT custom apps. Developer Mode availability depends on your plan and workspace settings.
 * Claude custom connectors through Customize > Connectors.
+* Grok custom MCP connectors through https://grok.com/connectors. Grok must be able to reach your WordPress MCP endpoint over public HTTPS.
 * Standards-compatible remote MCP clients.
 
 Your AI tool must be able to reach your WordPress site over HTTPS to complete OAuth approval and send MCP requests.
@@ -150,6 +151,7 @@ The external service that receives this data is the AI assistant selected and co
 * Claude by Anthropic: https://claude.ai/, terms at https://www.anthropic.com/legal/consumer-terms, and privacy policy at https://www.anthropic.com/legal/privacy
 * Cursor by Anysphere: https://cursor.com/, terms at https://cursor.com/terms-of-service, and privacy policy at https://cursor.com/privacy
 * Gemini by Google: https://gemini.google.com/, terms at https://policies.google.com/terms, and privacy policy at https://policies.google.com/privacy
+* Grok by xAI: https://grok.com/, terms at https://x.ai/legal/terms-of-service, and privacy policy at https://x.ai/legal/privacy-policy
 
 Administrators should review the terms and privacy policy for the AI assistant they connect. Aculect AI Companion controls the WordPress-side approval and permissions checks; it does not control how a connected external assistant processes data after the administrator authorizes access.
 
@@ -160,7 +162,7 @@ Administrators should review the terms and privacy policy for the AI assistant t
 3. For stronger production hardening, define `ACULECT_AI_COMPANION_ENCRYPTION_KEY` in `wp-config.php` with a unique random value of at least 32 characters. If the constant is not defined, Aculect AI Companion generates a database-managed encryption key automatically.
 4. Open AI Companion > Connect.
 5. Copy your connection URL.
-6. Choose ChatGPT, Claude, or another AI app for the right setup guide.
+6. Choose ChatGPT, Claude, Grok, or another AI app for the right setup guide.
 7. Paste the URL when prompted by your AI app.
 8. Approve the connection on the screen that appears.
 
@@ -172,7 +174,7 @@ No. Aculect AI Companion does not send site data on activation or admin page loa
 
 = What is Aculect AI Companion used for? =
 
-Aculect AI Companion is used to connect WordPress with AI assistants through MCP. Site owners can use it to draft and update content, manage comments, upload media, review safe site information, and run controlled WordPress workflows from tools such as ChatGPT, Claude, Codex, Cursor, Gemini, and OpenAI-compatible MCP clients.
+Aculect AI Companion is used to connect WordPress with AI assistants through MCP. Site owners can use it to draft and update content, manage comments, upload media, review safe site information, and run controlled WordPress workflows from tools such as ChatGPT, Claude, Codex, Cursor, Gemini, Grok, and OpenAI-compatible MCP clients.
 
 = Does Aculect AI Companion give AI assistants direct database access? =
 
@@ -180,7 +182,7 @@ No. Aculect AI Companion exposes structured MCP tools through WordPress. Connect
 
 = Can ChatGPT or Claude create WordPress posts with Aculect AI Companion? =
 
-Yes. After an administrator connects and approves the assistant, ChatGPT, Claude, Codex, Cursor, Gemini, or another supported MCP client can create WordPress drafts or update content when the required abilities and WordPress permissions are available.
+Yes. After an administrator connects and approves the assistant, ChatGPT, Claude, Codex, Cursor, Gemini, Grok, or another supported MCP client can create WordPress drafts or update content when the required abilities and WordPress permissions are available.
 
 = Can Aculect AI Companion help with long-form WordPress content? =
 
@@ -220,7 +222,7 @@ Aculect AI Companion does not require a separate product account. To use it with
 
 = Can I try Aculect AI Companion in the WordPress.org preview? =
 
-Yes. The WordPress.org preview opens a temporary WordPress Playground site with Aculect AI Companion active and takes you to the plugin settings screen. The preview is useful for reviewing the setup flow, supported abilities, diagnostics, and activity screens. For a full ChatGPT or Claude connection test, use your own HTTPS WordPress site because external AI assistants must be able to reach the WordPress site during OAuth and MCP requests.
+Yes. The WordPress.org preview opens a temporary WordPress Playground site with Aculect AI Companion active and takes you to the plugin settings screen. The preview is useful for reviewing the setup flow, supported abilities, diagnostics, and activity screens. For a full ChatGPT, Claude, or Grok connection test, use your own HTTPS WordPress site because external AI assistants must be able to reach the WordPress site during OAuth and MCP requests.
 
 = I use Cloudflare. Can Bot Fight Mode block the connection? =
 

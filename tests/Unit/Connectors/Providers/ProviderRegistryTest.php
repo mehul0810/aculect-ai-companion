@@ -24,7 +24,7 @@ final class ProviderRegistryTest extends TestCase {
 		$providers   = array_column( $definitions, null, 'id' );
 
 		self::assertSame(
-			array( 'chatgpt', 'codex', 'claude', 'gemini', 'cursor', 'mcp' ),
+			array( 'chatgpt', 'codex', 'claude', 'gemini', 'cursor', 'grok', 'mcp' ),
 			array_column( $definitions, 'id' )
 		);
 		self::assertArrayHasKey( 'claude', $providers );
@@ -32,6 +32,7 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertArrayHasKey( 'codex', $providers );
 		self::assertArrayHasKey( 'cursor', $providers );
 		self::assertArrayHasKey( 'gemini', $providers );
+		self::assertArrayHasKey( 'grok', $providers );
 		self::assertArrayHasKey( 'mcp', $providers );
 		self::assertSame( 'OpenAI', $providers['chatgpt']['brandName'] );
 		self::assertSame( 'https://openai.com/', $providers['chatgpt']['brandUrl'] );
@@ -76,6 +77,19 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertStringContainsString( 'gemini.google.com', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
 		self::assertStringContainsString( 'Deep Research Agent can connect to remote MCP servers', implode( ' ', $providers['gemini']['setupSections'][2]['steps'] ) );
 		self::assertSame( 'https://ai.google.dev/gemini-api/docs/interactions/deep-research', $providers['gemini']['setupSections'][2]['actionUrl'] );
+		self::assertSame( 'Grok', $providers['grok']['label'] );
+		self::assertSame( 'xAI', $providers['grok']['brandName'] );
+		self::assertSame( 'https://x.ai/', $providers['grok']['brandUrl'] );
+		self::assertSame( 'https://grok.com/connectors', $providers['grok']['primaryActionUrl'] );
+		self::assertSame( 'Open Grok Connectors', $providers['grok']['primaryActionLabel'] );
+		self::assertArrayHasKey( 'wizard', $providers['grok'] );
+		self::assertSame( 'Open Grok Connectors', $providers['grok']['wizard']['steps'][0]['title'] );
+		self::assertStringContainsString( 'publicly reachable over HTTPS', $providers['grok']['setupSections'][0]['description'] );
+		self::assertStringContainsString( 'New Connector', implode( ' ', $providers['grok']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( 'allowed_tools', implode( ' ', $providers['grok']['setupSections'][1]['steps'] ) );
+		self::assertStringContainsString( 'require_approval', implode( ' ', $providers['grok']['setupSections'][1]['steps'] ) );
+		self::assertStringContainsString( 'site_get_info', $providers['grok']['setupSections'][1]['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( 'XAI_API_KEY', $providers['grok']['setupSections'][1]['copyFields'][0]['value'] );
 		self::assertSame( 'MCP Client', $providers['mcp']['label'] );
 		self::assertSame( '', $providers['mcp']['brandName'] );
 		self::assertSame( '', $providers['mcp']['brandUrl'] );
@@ -166,6 +180,14 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertSame(
 			'gemini',
 			$registry->detect_provider_id( 'Google Code Assist Agent', array( 'http://localhost:7777/oauth/callback' ) )
+		);
+		self::assertSame(
+			'grok',
+			$registry->detect_provider_id( 'Grok Connector', array( 'https://grok.com/oauth/callback' ) )
+		);
+		self::assertSame(
+			'grok',
+			$registry->detect_provider_id( 'Remote MCP Client', array( 'https://console.x.ai/oauth/callback' ) )
 		);
 		self::assertSame(
 			'mcp',

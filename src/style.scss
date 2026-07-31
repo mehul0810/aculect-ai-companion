@@ -1218,7 +1218,7 @@
 
 .aculect-ai-companion-connect-app-picker__options {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	overflow: hidden;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
@@ -2359,6 +2359,11 @@ td:last-child
 .aculect-ai-companion-provider-badge.is-gemini {
 	background: #eef5ff;
 	color: #1a73e8;
+}
+
+.aculect-ai-companion-provider-badge.is-grok {
+	background: #f3f4f6;
+	color: #111827;
 }
 
 .aculect-ai-companion-provider-badge.is-mcp {

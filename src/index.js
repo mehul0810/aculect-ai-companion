@@ -557,6 +557,7 @@ function providerBadgeLabel( provider ) {
 		codex: 'Cx',
 		cursor: 'Cu',
 		gemini: 'G',
+		grok: 'Gk',
 	};
 
 	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
@@ -621,6 +622,7 @@ function connectionProviderLabel( session ) {
 		codex: 'Codex',
 		cursor: 'Cursor',
 		gemini: 'Gemini',
+		grok: 'Grok',
 	};
 
 	return labels[ provider ] || session.provider || 'AI';
@@ -4767,6 +4769,15 @@ const CONNECT_APP_OPTIONS = [
 		actionLabel: 'Open Claude Customize',
 		guideUrl:
 			'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
+	},
+	{
+		id: 'grok',
+		providerId: 'grok',
+		label: 'Grok',
+		brand: 'xAI',
+		description: 'Add this link as a custom MCP connector in Grok.',
+		actionLabel: 'Open Grok Connectors',
+		guideUrl: 'https://docs.x.ai/grok/connectors',
 	},
 	{
 		id: 'other',

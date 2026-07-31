@@ -110,6 +110,11 @@ if ( ! function_exists( 'update_option' ) ) {
 	function update_option( string $option, mixed $value, mixed $autoload = null ): bool {
 		unset( $autoload );
 
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_updates'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
+
 		$GLOBALS['aculect_ai_companion_test_options'][ $option ] = $value;
 
 		return true;
@@ -232,6 +237,11 @@ if ( ! function_exists( 'add_option' ) ) {
 	 */
 	function add_option( string $option, mixed $value = '', mixed $deprecated = '', mixed $autoload = null ): bool {
 		unset( $deprecated, $autoload );
+
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_adds'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
 
 		if ( array_key_exists( $option, $GLOBALS['aculect_ai_companion_test_options'] ) ) {
 			return false;
@@ -1014,7 +1024,29 @@ if ( ! function_exists( 'delete_option' ) ) {
 	 * @return bool
 	 */
 	function delete_option( string $option ): bool {
+		$failed_options = $GLOBALS['aculect_ai_companion_test_failed_option_deletes'] ?? array();
+		if ( is_array( $failed_options ) && in_array( $option, $failed_options, true ) ) {
+			return false;
+		}
+
 		unset( $GLOBALS['aculect_ai_companion_test_options'][ $option ] );
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_cache_delete' ) ) {
+	/**
+	 * Record cache invalidation for tests.
+	 *
+	 * @param string $key   Cache key.
+	 * @param string $group Cache group.
+	 */
+	function wp_cache_delete( string $key, string $group = '' ): bool {
+		$GLOBALS['aculect_ai_companion_test_cache_deletes'][] = array(
+			'key'   => $key,
+			'group' => $group,
+		);
 
 		return true;
 	}
@@ -1462,9 +1494,23 @@ if ( ! function_exists( 'wp_schedule_single_event' ) ) {
 	 * @param int          $timestamp Unix timestamp.
 	 * @param string       $hook      Hook name.
 	 * @param array<mixed> $args      Event args.
+	 * @param bool         $wp_error  Whether to return a WP_Error on failure.
 	 */
-	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array() ): bool {
+	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array(), bool $wp_error = false ): bool|WP_Error {
 		unset( $args );
+
+		$literal_false_hooks = $GLOBALS['aculect_ai_companion_test_schedule_literal_false_hooks'] ?? array();
+		if ( is_array( $literal_false_hooks ) && in_array( $hook, $literal_false_hooks, true ) ) {
+			return false;
+		}
+
+		if ( ! empty( $GLOBALS['aculect_ai_companion_test_schedule_failure'] ) ) {
+			return $wp_error ? new WP_Error( 'schedule_failed', 'Test event scheduling failed.' ) : false;
+		}
+		$failed_hooks = $GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] ?? array();
+		if ( is_array( $failed_hooks ) && in_array( $hook, $failed_hooks, true ) ) {
+			return $wp_error ? new WP_Error( 'schedule_failed', 'Test event scheduling failed.' ) : false;
+		}
 
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] = $timestamp;
 
@@ -1485,6 +1531,28 @@ if ( ! function_exists( 'wp_next_scheduled' ) ) {
 		$scheduled = $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ?? false;
 
 		return is_numeric( $scheduled ) ? (int) $scheduled : false;
+	}
+}
+
+if ( ! function_exists( 'wp_unschedule_event' ) ) {
+	/**
+	 * Remove one scheduled test event.
+	 *
+	 * @param int          $timestamp Event timestamp.
+	 * @param string       $hook      Event hook.
+	 * @param array<mixed> $args      Event args.
+	 * @param bool         $wp_error  Whether to return a WP_Error on failure.
+	 */
+	function wp_unschedule_event( int $timestamp, string $hook, array $args = array(), bool $wp_error = false ): bool|WP_Error {
+		unset( $timestamp, $args, $wp_error );
+
+		if ( ! isset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] ) ) {
+			return false;
+		}
+
+		unset( $GLOBALS['aculect_ai_companion_test_scheduled_events'][ $hook ] );
+
+		return true;
 	}
 }
 
@@ -2453,13 +2521,17 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 * @param array<string, mixed>  $params  Request params.
 		 * @param array<string, string> $headers Request headers.
 		 * @param array<string, mixed>  $json    JSON params.
+		 * @param string                $method  HTTP method.
+		 * @param string                $route   REST route.
+		 * @param string                $body    Raw request body.
 		 */
 		public function __construct(
 			private array $params = array(),
 			private array $headers = array(),
 			private array $json = array(),
 			private string $method = 'GET',
-			private string $route = ''
+			private string $route = '',
+			private string $body = ''
 		) {}
 
 		/**
@@ -2488,6 +2560,13 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 */
 		public function get_json_params(): array {
 			return $this->json;
+		}
+
+		/**
+		 * Return the raw request body.
+		 */
+		public function get_body(): string {
+			return $this->body;
 		}
 
 		/**

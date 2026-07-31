@@ -16,6 +16,8 @@ use Aculect\AICompanion\Intelligence\Database\Installer;
  */
 final class ContentIndexRepository {
 
+	public const DEFAULT_JOB_LEASE_TTL = 300;
+
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned intelligence index tables are the canonical cache for MCP search and workflow acceleration.
 
 	private const DEFAULT_LIMIT = 10;
@@ -156,18 +158,22 @@ final class ContentIndexRepository {
 	 *
 	 * @param int $object_id Content item ID.
 	 */
-	public function delete_content_item( int $object_id ): void {
+	public function delete_content_item( int $object_id ): bool {
 		global $wpdb;
 
 		$object_id = absint( $object_id );
 		if ( 0 >= $object_id ) {
-			return;
+			return false;
 		}
 
-		$wpdb->delete( Installer::content_index_table(), array( 'object_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::link_graph_table(), array( 'source_id' => $object_id ), array( '%d' ) );
-		$wpdb->delete( Installer::link_graph_table(), array( 'target_id' => $object_id ), array( '%d' ) );
+		$results = array(
+			$wpdb->delete( Installer::content_index_table(), array( 'object_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::link_graph_table(), array( 'source_id' => $object_id ), array( '%d' ) ),
+			$wpdb->delete( Installer::link_graph_table(), array( 'target_id' => $object_id ), array( '%d' ) ),
+		);
+
+		return ! in_array( false, $results, true );
 	}
 
 	/**
@@ -648,11 +654,14 @@ final class ContentIndexRepository {
 	public function job_status_counts( string $type = 'content_index_refresh' ): array {
 		global $wpdb;
 
-		$rows = $wpdb->get_results(
+		$stale_time = gmdate( 'Y-m-d H:i:s', time() - self::DEFAULT_JOB_LEASE_TTL );
+		$rows       = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT status, COUNT(*) AS total FROM %i WHERE job_type = %s GROUP BY status',
+				"SELECT CASE WHEN status = 'running' AND updated_at < %s THEN 'stale' ELSE status END AS status, COUNT(*) AS total FROM %i WHERE job_type = %s GROUP BY CASE WHEN status = 'running' AND updated_at < %s THEN 'stale' ELSE status END",
+				$stale_time,
 				Installer::jobs_table(),
-				$this->key( $type, 60 )
+				$this->key( $type, 60 ),
+				$stale_time
 			),
 			ARRAY_A
 		);
@@ -660,6 +669,7 @@ final class ContentIndexRepository {
 		$counts = array(
 			'queued'   => 0,
 			'running'  => 0,
+			'stale'    => 0,
 			'partial'  => 0,
 			'complete' => 0,
 			'failed'   => 0,
@@ -872,10 +882,10 @@ final class ContentIndexRepository {
 		global $wpdb;
 
 		$args_json = wp_json_encode( $args );
-		$key       = sanitize_key( $type ) . '_' . gmdate( 'YmdHis' ) . '_' . substr( hash( 'sha256', false === $args_json ? '' : $args_json ), 0, 8 );
+		$key       = sanitize_key( $type ) . '_' . gmdate( 'YmdHis' ) . '_' . substr( hash( 'sha256', false === $args_json ? '' : $args_json ), 0, 8 ) . '_' . substr( bin2hex( random_bytes( 8 ) ), 0, 16 );
 		$now       = gmdate( 'Y-m-d H:i:s' );
 
-		$wpdb->insert(
+		$inserted = $wpdb->insert(
 			Installer::jobs_table(),
 			array(
 				'job_key'         => $key,
@@ -891,6 +901,9 @@ final class ContentIndexRepository {
 			),
 			array( '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s' )
 		);
+		if ( false === $inserted ) {
+			return array();
+		}
 
 		return $this->job_by_key( $key );
 	}
@@ -905,23 +918,59 @@ final class ContentIndexRepository {
 	public function update_job( string $key, array $data ): array {
 		global $wpdb;
 
-		$key    = $this->key( $key, 120 );
-		$result = isset( $data['result'] ) && is_array( $data['result'] ) ? $data['result'] : array();
-		$json   = wp_json_encode( $result );
-
-		$wpdb->update(
+		$key     = $this->key( $key, 120 );
+		$update  = $this->job_update_values( $data );
+		$updated = $wpdb->update(
 			Installer::jobs_table(),
-			array(
-				'status'          => $this->job_status( $data['status'] ?? 'complete' ),
-				'processed_items' => absint( $data['processed_items'] ?? 0 ),
-				'error_count'     => absint( $data['error_count'] ?? 0 ),
-				'result'          => false === $json ? '{}' : $json,
-				'updated_at'      => gmdate( 'Y-m-d H:i:s' ),
-			),
+			$update['data'],
 			array( 'job_key' => $key ),
-			array( '%s', '%d', '%d', '%s', '%s' ),
+			$update['formats'],
 			array( '%s' )
 		);
+		if ( false === $updated ) {
+			return array();
+		}
+
+		return $this->job_by_key( $key );
+	}
+
+	/**
+	 * Update a job only while the caller still owns its current lease.
+	 *
+	 * @param string               $key           Job key.
+	 * @param string               $lease_token   Private claim token.
+	 * @param array<string, mixed> $data          Job data.
+	 * @param bool                 $release_lease Whether this is a queued or terminal transition.
+	 * @return array<string, mixed>
+	 */
+	public function update_claimed_job( string $key, string $lease_token, array $data, bool $release_lease = false ): array {
+		global $wpdb;
+
+		$key         = $this->key( $key, 120 );
+		$lease_token = $this->lease_token( $lease_token );
+		if ( '' === $key || '' === $lease_token ) {
+			return array();
+		}
+
+		$update = $this->job_update_values( $data );
+		if ( $release_lease ) {
+			$update['data']['lease_token'] = '';
+			$update['formats'][]           = '%s';
+		}
+
+		$updated = $wpdb->update(
+			Installer::jobs_table(),
+			$update['data'],
+			array(
+				'job_key'     => $key,
+				'lease_token' => $lease_token,
+			),
+			$update['formats'],
+			array( '%s', '%s' )
+		);
+		if ( 1 !== (int) $updated ) {
+			return array();
+		}
 
 		return $this->job_by_key( $key );
 	}
@@ -929,24 +978,38 @@ final class ContentIndexRepository {
 	/**
 	 * Atomically claim a queued job before a worker starts processing.
 	 *
-	 * @param string $key Job key.
+	 * @param string $key       Job key.
+	 * @param int    $lease_ttl Seconds before an interrupted running job is reclaimable.
 	 * @return array<string, mixed>
 	 */
-	public function claim_job( string $key ): array {
+	public function claim_job( string $key, int $lease_ttl = self::DEFAULT_JOB_LEASE_TTL ): array {
 		global $wpdb;
 
-		$key    = $this->key( $key, 120 );
-		$result = $wpdb->query(
+		$key         = $this->key( $key, 120 );
+		$lease_token = bin2hex( random_bytes( 16 ) );
+		$now         = gmdate( 'Y-m-d H:i:s' );
+		$stale_time  = gmdate( 'Y-m-d H:i:s', time() - max( 30, $lease_ttl ) );
+		$result      = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE %i SET status = 'running', processed_items = 0, error_count = 0, result = %s, updated_at = %s WHERE job_key = %s AND status IN ('queued', 'partial')",
+				"UPDATE %i SET status = 'running', lease_token = %s, updated_at = %s WHERE job_key = %s AND (status = 'queued' OR (status = 'running' AND updated_at < %s))",
 				Installer::jobs_table(),
-				'{}',
-				gmdate( 'Y-m-d H:i:s' ),
-				$key
+				$lease_token,
+				$now,
+				$key,
+				$stale_time
 			)
 		);
 
-		return 1 === (int) $result ? $this->job_by_key( $key ) : array();
+		if ( 1 !== (int) $result ) {
+			return array();
+		}
+
+		$job = $this->job_by_key( $key );
+		if ( array() !== $job ) {
+			$job['_lease_token'] = $lease_token;
+		}
+
+		return $job;
 	}
 
 	/**
@@ -1204,7 +1267,7 @@ final class ContentIndexRepository {
 			'id'              => (int) ( $row['id'] ?? 0 ),
 			'job_key'         => (string) ( $row['job_key'] ?? '' ),
 			'job_type'        => (string) ( $row['job_type'] ?? '' ),
-			'status'          => (string) ( $row['status'] ?? '' ),
+			'status'          => $this->public_job_status( $row ),
 			'total_items'     => (int) ( $row['total_items'] ?? 0 ),
 			'processed_items' => (int) ( $row['processed_items'] ?? 0 ),
 			'error_count'     => (int) ( $row['error_count'] ?? 0 ),
@@ -1226,7 +1289,7 @@ final class ContentIndexRepository {
 			'id'              => (int) ( $row['id'] ?? 0 ),
 			'job_key'         => (string) ( $row['job_key'] ?? '' ),
 			'job_type'        => (string) ( $row['job_type'] ?? '' ),
-			'status'          => $this->job_status( $row['status'] ?? '' ),
+			'status'          => $this->public_job_status( $row ),
 			'total_items'     => (int) ( $row['total_items'] ?? 0 ),
 			'processed_items' => (int) ( $row['processed_items'] ?? 0 ),
 			'error_count'     => (int) ( $row['error_count'] ?? 0 ),
@@ -1759,6 +1822,37 @@ final class ContentIndexRepository {
 	}
 
 	/**
+	 * Build normalized fields for one job progress update.
+	 *
+	 * @param array<string, mixed> $data Job data.
+	 * @return array{data: array<string, int|string>, formats: list<string>}
+	 */
+	private function job_update_values( array $data ): array {
+		$result = isset( $data['result'] ) && is_array( $data['result'] ) ? $data['result'] : array();
+		$json   = wp_json_encode( $result );
+
+		return array(
+			'data'    => array(
+				'status'          => $this->job_status( $data['status'] ?? 'complete' ),
+				'processed_items' => absint( $data['processed_items'] ?? 0 ),
+				'error_count'     => absint( $data['error_count'] ?? 0 ),
+				'result'          => false === $json ? '{}' : $json,
+				'updated_at'      => gmdate( 'Y-m-d H:i:s' ),
+			),
+			'formats' => array( '%s', '%d', '%d', '%s', '%s' ),
+		);
+	}
+
+	/**
+	 * Normalize a private lease token.
+	 *
+	 * @param string $value Raw token.
+	 */
+	private function lease_token( string $value ): string {
+		return 1 === preg_match( '/^[a-f0-9]{32}$/', $value ) ? $value : '';
+	}
+
+	/**
 	 * Normalize job status.
 	 *
 	 * @param mixed $value Raw value.
@@ -1766,7 +1860,23 @@ final class ContentIndexRepository {
 	private function job_status( mixed $value ): string {
 		$value = $this->key( $value, 20 );
 
-		return in_array( $value, array( 'queued', 'running', 'complete', 'failed', 'partial' ), true ) ? $value : 'complete';
+		return in_array( $value, array( 'queued', 'running', 'stale', 'complete', 'failed', 'partial' ), true ) ? $value : 'complete';
+	}
+
+	/**
+	 * Convert an expired running row to a public stale status.
+	 *
+	 * @param array<string, mixed> $row Job row.
+	 */
+	private function public_job_status( array $row ): string {
+		$status = $this->job_status( $row['status'] ?? '' );
+		if ( 'running' !== $status ) {
+			return $status;
+		}
+
+		$updated_at = strtotime( (string) ( $row['updated_at'] ?? '' ) . ' UTC' );
+
+		return false !== $updated_at && $updated_at < time() - self::DEFAULT_JOB_LEASE_TTL ? 'stale' : 'running';
 	}
 
 	/**

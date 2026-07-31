@@ -83,6 +83,12 @@ final class IntelligenceRegistryTest extends TestCase {
 		self::assertSame( 'intelligence.content.validate_blocks', $this->registry->internal_id( 'content_validate_blocks' ) );
 	}
 
+	public function test_block_validation_schema_bounds_serialized_content(): void {
+		$schema = $this->registry->input_schema( 'intelligence.content.validate_blocks' );
+
+		self::assertSame( 300000, $schema['properties']['content']['maxLength'] ?? null );
+	}
+
 	public function test_intelligence_tools_are_not_user_managed_abilities(): void {
 		$abilities = new AbilitiesRegistry();
 

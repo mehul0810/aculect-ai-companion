@@ -163,7 +163,7 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertCount( 4, $this->wpdb->queries );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
-		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 0 ) );
+		self::assertGreaterThan( time(), $this->lockExpiresAt() );
 
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
 		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() - 1, false );
@@ -186,7 +186,7 @@ final class StorageMaintenanceTest extends TestCase {
 
 		self::assertCount( 4, $this->wpdb->queries );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
-		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 0 ) );
+		self::assertGreaterThan( time(), $this->lockExpiresAt() );
 
 		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
 		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() - 1, false );
@@ -196,6 +196,61 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertCount( 8, $this->wpdb->queries );
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+	}
+
+	public function test_stale_failure_owner_cannot_publish_or_release_reclaimed_lock(): void {
+		$now          = time();
+		$stale_token  = $this->acquireLock( $now - 301 );
+		$active_token = $this->acquireLock( $now );
+
+		self::assertNotSame( '', $stale_token );
+		self::assertNotSame( '', $active_token );
+		self::assertNotSame( $stale_token, $active_token );
+
+		$this->finalizePrune( false, $stale_token );
+		self::assertFalse( $this->deleteLock( $stale_token ) );
+		StorageMaintenance::maybe_prune();
+
+		self::assertSame( $active_token, get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
+		self::assertSame( array(), $this->wpdb->queries );
+	}
+
+	public function test_stale_success_owner_cannot_publish_or_release_reclaimed_lock(): void {
+		$now          = time();
+		$stale_token  = $this->acquireLock( $now - 301 );
+		$active_token = $this->acquireLock( $now );
+
+		self::assertNotSame( '', $stale_token );
+		self::assertNotSame( '', $active_token );
+		self::assertNotSame( $stale_token, $active_token );
+
+		$this->finalizePrune(
+			array(
+				'auth_codes'     => 0,
+				'access_tokens'  => 0,
+				'refresh_tokens' => 0,
+				'clients'        => 0,
+			),
+			$stale_token
+		);
+		self::assertFalse( $this->deleteLock( $stale_token ) );
+		StorageMaintenance::maybe_prune();
+
+		self::assertSame( $active_token, get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertSame( array(), $this->wpdb->queries );
+	}
+
+	public function test_failure_retry_deadline_uses_finalization_time(): void {
+		$lock_token = $this->acquireLock( time() - 299 );
+
+		$this->finalizePrune( false, $lock_token );
+
+		self::assertGreaterThan(
+			time() + 290,
+			(int) get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 0 )
+		);
 	}
 
 	public function test_maybe_prune_records_success_after_all_stores_succeed(): void {
@@ -253,6 +308,51 @@ final class StorageMaintenanceTest extends TestCase {
 		$reflection = new ReflectionMethod( $repository, 'should_touch' );
 
 		return (bool) $reflection->invokeArgs( $repository, array( $last_used_at, $now ) );
+	}
+
+	/**
+	 * Acquire a prune lock at a controlled timestamp.
+	 *
+	 * @param int $now Simulated acquisition timestamp.
+	 */
+	private function acquireLock( int $now ): string {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'acquire_prune_lock' );
+
+		return (string) $reflection->invoke( null, $now );
+	}
+
+	/**
+	 * Invoke fenced prune finalization.
+	 *
+	 * @param array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}|false $result Prune result.
+	 * @param string                                                                              $lock_token Claimed lease token.
+	 */
+	private function finalizePrune( array|false $result, string $lock_token ): void {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'finalize_prune' );
+		$reflection->invoke( null, $result, $lock_token );
+	}
+
+	/**
+	 * Attempt an exact-owner lock deletion.
+	 *
+	 * @param string $lock_token Expected owner token.
+	 */
+	private function deleteLock( string $lock_token ): bool {
+		$reflection = new ReflectionMethod( StorageMaintenance::class, 'delete_prune_lock_if_value' );
+
+		return (bool) $reflection->invoke( null, $lock_token );
+	}
+
+	/**
+	 * Return the expiry suffix from the currently stored lock token.
+	 */
+	private function lockExpiresAt(): int {
+		$parts = explode(
+			':',
+			(string) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', '' )
+		);
+
+		return absint( end( $parts ) );
 	}
 }
 

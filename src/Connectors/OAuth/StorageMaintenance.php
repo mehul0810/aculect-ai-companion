@@ -42,36 +42,47 @@ final class StorageMaintenance {
 			return;
 		}
 
-		if ( $failure_retry_after > 0 ) {
-			delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
-		}
-
-		if ( ! self::acquire_prune_lock( $now ) ) {
+		$lock_token = self::acquire_prune_lock( $now );
+		if ( '' === $lock_token ) {
 			return;
 		}
 
-		$release_lock = false;
-
 		try {
-			if ( false !== self::prune() ) {
-				update_option( self::OPTION_LAST_PRUNED_AT, $now, false );
-				$release_lock = (int) get_option( self::OPTION_LAST_PRUNED_AT, 0 ) === $now;
-				if ( $release_lock ) {
-					delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
-				}
-			} else {
-				$retry_after = $now + self::prune_failure_retry_interval();
-				update_option(
-					self::OPTION_PRUNE_FAILURE_RETRY_AFTER,
-					$retry_after,
-					false
-				);
-				$release_lock = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 ) === $retry_after;
-			}
+			self::finalize_prune( self::prune(), $lock_token );
 		} finally {
-			if ( $release_lock ) {
-				self::release_prune_lock();
+			self::delete_prune_lock_if_value( $lock_token );
+		}
+	}
+
+	/**
+	 * Publish a prune outcome only while the exact lease is still owned.
+	 *
+	 * @param array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}|false $result Prune result.
+	 * @param string                                                                              $lock_token Claimed lease token.
+	 */
+	private static function finalize_prune( array|false $result, string $lock_token ): void {
+		$finalization_token = self::begin_owned_finalization( $lock_token );
+		if ( '' === $finalization_token ) {
+			return;
+		}
+
+		$finalized_at = time();
+		$stored       = false;
+
+		if ( false !== $result ) {
+			update_option( self::OPTION_LAST_PRUNED_AT, $finalized_at, false );
+			$stored = (int) get_option( self::OPTION_LAST_PRUNED_AT, 0 ) === $finalized_at;
+			if ( $stored ) {
+				delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
 			}
+		} else {
+			$retry_after = $finalized_at + self::prune_failure_retry_interval();
+			update_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, $retry_after, false );
+			$stored = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 ) === $retry_after;
+		}
+
+		if ( $stored ) {
+			self::delete_prune_lock_if_value( $finalization_token );
 		}
 	}
 
@@ -175,28 +186,179 @@ final class StorageMaintenance {
 	 *
 	 * @param int $now Current Unix timestamp.
 	 */
-	private static function acquire_prune_lock( int $now ): bool {
-		$expires_at = (int) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, 0 );
-		if ( $expires_at > $now ) {
-			return false;
+	private static function acquire_prune_lock( int $now ): string {
+		$lock_token = self::prune_lock_token( $now + self::DEFAULT_PRUNE_LOCK_TTL );
+		if ( self::add_prune_lock( $lock_token ) ) {
+			return $lock_token;
 		}
 
-		if ( $expires_at > 0 ) {
-			delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+		$current = self::read_prune_lock();
+		if ( self::prune_lock_expires_at( $current ) >= $now ) {
+			return '';
 		}
 
-		return add_option(
-			self::OPTION_PRUNE_LOCK_EXPIRES_AT,
-			$now + self::DEFAULT_PRUNE_LOCK_TTL,
-			'',
-			false
-		);
+		return self::update_prune_lock_if_value( $current, $lock_token ) ? $lock_token : '';
 	}
 
 	/**
-	 * Release the pruning lock after this request completes.
+	 * Fence an active owner before publishing its throttle state.
+	 *
+	 * @param string $lock_token Claimed lease token.
 	 */
-	private static function release_prune_lock(): void {
-		delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+	private static function begin_owned_finalization( string $lock_token ): string {
+		if ( self::prune_lock_expires_at( $lock_token ) < time() ) {
+			return '';
+		}
+
+		$finalization_token = 'finalize:' . self::prune_lock_token( time() + self::DEFAULT_PRUNE_LOCK_TTL );
+
+		return self::update_prune_lock_if_value( $lock_token, $finalization_token ) ? $finalization_token : '';
+	}
+
+	/**
+	 * Add a unique lock only when no lock row exists.
+	 *
+	 * @param string $lock_token Unique expiring token.
+	 */
+	private static function add_prune_lock( string $lock_token ): bool {
+		if ( self::uses_test_options() ) {
+			return add_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $lock_token, '', false );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- INSERT IGNORE is the lease acquisition CAS; Core add_option() can overwrite on a duplicate-key race.
+		$added = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				self::OPTION_PRUNE_LOCK_EXPIRES_AT,
+				$lock_token
+			)
+		);
+		self::invalidate_prune_lock_cache();
+
+		return 1 === (int) $added;
+	}
+
+	/**
+	 * Read the authoritative current lock value.
+	 */
+	private static function read_prune_lock(): string {
+		if ( self::uses_test_options() ) {
+			return (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Lease reclaim requires the authoritative database owner.
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				self::OPTION_PRUNE_LOCK_EXPIRES_AT
+			)
+		);
+
+		return is_string( $value ) ? $value : '';
+	}
+
+	/**
+	 * Replace the lock only when the exact expected owner still holds it.
+	 *
+	 * @param string $old_value Expected owner token.
+	 * @param string $new_value Replacement owner token.
+	 */
+	private static function update_prune_lock_if_value( string $old_value, string $new_value ): bool {
+		if ( self::uses_test_options() ) {
+			$current = (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
+			if ( ! hash_equals( $old_value, $current ) ) {
+				return false;
+			}
+
+			return update_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, $new_value, false );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Conditional update is the lease-owner CAS.
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+				$new_value,
+				self::OPTION_PRUNE_LOCK_EXPIRES_AT,
+				$old_value
+			)
+		);
+		self::invalidate_prune_lock_cache();
+
+		return 1 === (int) $updated;
+	}
+
+	/**
+	 * Delete the lock only when the exact expected owner still holds it.
+	 *
+	 * @param string $lock_token Expected owner token.
+	 */
+	private static function delete_prune_lock_if_value( string $lock_token ): bool {
+		if ( self::uses_test_options() ) {
+			$current = (string) get_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT, '' );
+			if ( ! hash_equals( $lock_token, $current ) ) {
+				return false;
+			}
+
+			return delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+		}
+
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Conditional delete prevents a stale worker from releasing a successor lease.
+		$deleted = $wpdb->delete(
+			$wpdb->options,
+			array(
+				'option_name'  => self::OPTION_PRUNE_LOCK_EXPIRES_AT,
+				'option_value' => $lock_token,
+			),
+			array( '%s', '%s' )
+		);
+		self::invalidate_prune_lock_cache();
+
+		return 1 === (int) $deleted;
+	}
+
+	/**
+	 * Return the expiry suffix of a lock token, including legacy integer values.
+	 *
+	 * @param string $lock_token Lock token.
+	 */
+	private static function prune_lock_expires_at( string $lock_token ): int {
+		$parts = explode( ':', $lock_token );
+
+		return absint( end( $parts ) );
+	}
+
+	/**
+	 * Create a unique expiring lock token.
+	 *
+	 * @param int $expires_at Expiry timestamp.
+	 */
+	private static function prune_lock_token( int $expires_at ): string {
+		return bin2hex( random_bytes( 16 ) ) . ':' . $expires_at;
+	}
+
+	/**
+	 * Check whether the lightweight PHPUnit option store is active.
+	 */
+	private static function uses_test_options(): bool {
+		return isset( $GLOBALS['aculect_ai_companion_test_options'] )
+			&& is_array( $GLOBALS['aculect_ai_companion_test_options'] );
+	}
+
+	/**
+	 * Invalidate both positive and negative option-cache entries.
+	 */
+	private static function invalidate_prune_lock_cache(): void {
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( self::OPTION_PRUNE_LOCK_EXPIRES_AT, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
 	}
 }

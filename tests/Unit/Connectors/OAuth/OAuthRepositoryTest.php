@@ -11,15 +11,18 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationResult;
+use Aculect\AICompanion\Connectors\OAuth\Psr7Bridge;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ContextAwareClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ScopeEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
+use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -31,21 +34,21 @@ use ReflectionMethod;
  */
 final class OAuthRepositoryTest extends TestCase {
 
-	private mixed $original_wpdb = null;
+	private mixed $previous_wpdb;
 
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
+		$this->previous_wpdb = $GLOBALS['wpdb'] ?? null;
 	}
 
 	protected function tearDown(): void {
 		unset( $GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] );
 
-		if ( null === $this->original_wpdb ) {
+		if ( null === $this->previous_wpdb ) {
 			unset( $GLOBALS['wpdb'] );
 		} else {
-			$GLOBALS['wpdb'] = $this->original_wpdb;
+			$GLOBALS['wpdb'] = $this->previous_wpdb;
 		}
 
 		parent::tearDown();
@@ -571,6 +574,7 @@ final class OAuthRepositoryTest extends TestCase {
 
 	public function test_prune_revoked_clients_deletes_only_old_revoked_rows(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
+		$wpdb->results   = array( array( 'id' => 42 ) );
 		$GLOBALS['wpdb'] = $wpdb;
 
 		$deleted = ( new ClientRepository() )->prune_revoked_clients( '2026-05-01 00:00:00', 37 );
@@ -579,10 +583,14 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_clients', $wpdb->prepared[0]['args'][0] );
 		self::assertSame( '2026-05-01 00:00:00', $wpdb->prepared[0]['args'][1] );
 		self::assertSame( 37, $wpdb->prepared[0]['args'][2] );
-		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'SELECT id FROM %i', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'updated_at < %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'LIMIT %d', $wpdb->prepared[0]['query'] );
+		self::assertStringContainsString( 'DELETE FROM %i', $wpdb->prepared[1]['query'] );
+		self::assertSame( 42, $wpdb->prepared[1]['args'][1] );
+		self::assertStringContainsString( 'revoked = 1', $wpdb->prepared[1]['query'] );
+		self::assertStringNotContainsString( 'LIMIT', $wpdb->prepared[1]['query'] );
 	}
 
 	public function test_create_client_runs_duplicate_cleanup_before_insert(): void {
@@ -727,6 +735,89 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertTrue( ( new ClientRepository() )->validateClient( 'public-client', null, 'authorization_code' ) );
 	}
 
+	public function test_authorization_context_adds_only_an_approved_loopback_port_variant(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+
+		RequestContext::set_approved_redirect_uri( 'http://localhost:3118/callback' );
+		try {
+			$client = ( new ContextAwareClientRepository() )->getClientEntity( 'native-client' );
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertInstanceOf( ClientEntity::class, $client );
+		self::assertSame(
+			array( 'http://localhost/callback', 'http://localhost:3118/callback' ),
+			$client->getRedirectUri()
+		);
+	}
+
+	public function test_league_authorization_accepts_the_approved_loopback_port_variant(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+		$redirect_uri    = 'http://localhost:3118/callback';
+
+		RequestContext::set_approved_redirect_uri( $redirect_uri );
+		try {
+			$authorization_request = AuthorizationServerFactory::create()->validateAuthorizationRequest(
+				Psr7Bridge::server_request(
+					'GET',
+					'https://example.com/oauth/authorize',
+					array(
+						'response_type'         => 'code',
+						'client_id'             => 'native-client',
+						'redirect_uri'          => $redirect_uri,
+						'scope'                 => 'content:read',
+						'code_challenge'        => str_repeat( 'a', 43 ),
+						'code_challenge_method' => 'S256',
+					)
+				)
+			);
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertSame( $redirect_uri, $authorization_request->getRedirectUri() );
+		self::assertSame( 'native-client', $authorization_request->getClient()->getIdentifier() );
+	}
+
+	public function test_authorization_context_does_not_add_a_mismatched_loopback_redirect(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+
+		RequestContext::set_approved_redirect_uri( 'http://localhost:3118/other' );
+		try {
+			$client = ( new ContextAwareClientRepository() )->getClientEntity( 'native-client' );
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertInstanceOf( ClientEntity::class, $client );
+		self::assertSame( array( 'http://localhost/callback' ), $client->getRedirectUri() );
+	}
+
 	public function test_validate_client_rejects_confidential_client_without_secret(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
@@ -812,7 +903,8 @@ final class OAuthRepositoryTest extends TestCase {
  */
 final class FakeAccessTokenWpdb {
 
-	public string $prefix = 'wp_';
+	public string $prefix     = 'wp_';
+	public string $last_error = '';
 
 	/**
 	 * Prepared SQL calls.

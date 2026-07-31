@@ -63,6 +63,8 @@ final class ClientRegistrationControllerTest extends TestCase {
 					'http://localhost/oauth/callback',
 					'http://example.com/insecure',
 					'https://example.com/with-fragment#token',
+					'https://user@example.com/oauth/callback',
+					'http://user@localhost/oauth/callback',
 					array( 'not-scalar' ),
 				),
 			)

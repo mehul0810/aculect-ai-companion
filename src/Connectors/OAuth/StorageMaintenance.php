@@ -40,8 +40,9 @@ final class StorageMaintenance {
 		}
 
 		try {
-			self::prune();
-			update_option( self::OPTION_LAST_PRUNED_AT, $now, false );
+			if ( false !== self::prune() ) {
+				update_option( self::OPTION_LAST_PRUNED_AT, $now, false );
+			}
 		} finally {
 			self::release_prune_lock();
 		}
@@ -50,18 +51,29 @@ final class StorageMaintenance {
 	/**
 	 * Prune expired OAuth rows immediately.
 	 *
-	 * @return array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}
+	 * @return array{auth_codes: int, access_tokens: int, refresh_tokens: int, clients: int}|false
 	 */
-	public static function prune(): array {
+	public static function prune(): array|false {
 		$expired_cutoff        = gmdate( 'Y-m-d H:i:s', self::expired_rows_cutoff_timestamp() );
 		$revoked_client_cutoff = gmdate( 'Y-m-d H:i:s', self::revoked_client_cutoff_timestamp() );
 		$batch_size            = self::prune_batch_size();
 
-		return array(
+		$results = array(
 			'auth_codes'     => ( new AuthCodeRepository() )->prune_expired( $expired_cutoff, $batch_size ),
 			'access_tokens'  => ( new AccessTokenRepository() )->prune_expired( $expired_cutoff, $batch_size ),
 			'refresh_tokens' => ( new RefreshTokenRepository() )->prune_expired( $expired_cutoff, $batch_size ),
 			'clients'        => ( new ClientRepository() )->prune_revoked_clients( $revoked_client_cutoff, $batch_size ),
+		);
+
+		if ( in_array( false, $results, true ) ) {
+			return false;
+		}
+
+		return array(
+			'auth_codes'     => (int) $results['auth_codes'],
+			'access_tokens'  => (int) $results['access_tokens'],
+			'refresh_tokens' => (int) $results['refresh_tokens'],
+			'clients'        => (int) $results['clients'],
 		);
 	}
 

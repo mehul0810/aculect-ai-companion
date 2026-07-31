@@ -4942,16 +4942,6 @@ function preferredConnectProviderId( providers ) {
 	);
 }
 
-function connectAppOptionForProvider( providerId ) {
-	return (
-		CONNECT_APP_OPTIONS.find(
-			( option ) => option.providerId === providerId
-		) ||
-		CONNECT_APP_OPTIONS.find( ( option ) => option.id === 'other' ) ||
-		CONNECT_APP_OPTIONS[ 0 ]
-	);
-}
-
 function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 	const selectedOption = connectAppOptionForProvider(
 		selectedProvider?.id || '',

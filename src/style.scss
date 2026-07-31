@@ -1360,6 +1360,10 @@
 	margin: 18px 0 0;
 }
 
+.aculect-ai-companion-tool-filtering__provider {
+	min-width: 0;
+}
+
 .aculect-ai-companion-tool-filtering__sets {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));

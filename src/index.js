@@ -16,6 +16,10 @@ import {
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
+import {
+	connectToolFilteringViewModel,
+	copyToolFilteringField,
+} from './connect-tool-filtering.mjs';
 import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
@@ -4879,94 +4883,73 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 	);
 }
 
-function ConnectToolFilteringGuidance( { providers, onCopy } ) {
-	const providerGuidance = providers.filter(
-		( provider ) =>
-			provider?.toolFiltering &&
-			Array.isArray( provider.toolFiltering.toolSets )
-	);
+function ConnectToolFilteringGuidance( { provider, onCopy } ) {
+	const viewModel = connectToolFilteringViewModel( provider );
 
-	if ( providerGuidance.length === 0 ) {
+	if ( ! viewModel ) {
 		return null;
 	}
+
+	const { provider: selectedProvider, guidance, copyFields } = viewModel;
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-tool-filtering">
 			<details>
 				<summary>
-					<span>Optional tool filtering</span>
+					<span>{ guidance.title }</span>
 					<span className="aculect-ai-companion-tool-filtering__summary-note">
-						Advanced
+						{ guidance.advancedLabel }
 					</span>
 				</summary>
 				<div className="aculect-ai-companion-tool-filtering__content">
-					{ providerGuidance.map( ( provider ) => {
-						const guidance = provider.toolFiltering;
-						const copyFields = Array.isArray( guidance.copyFields )
-							? guidance.copyFields
-							: [];
-
-						return (
-							<section
-								key={ provider.id }
-								className="aculect-ai-companion-tool-filtering__provider"
-							>
-								<h3>{ provider.label }</h3>
-								<p>{ guidance.description }</p>
-								{ guidance.providerNote && (
-									<p className="aculect-ai-companion-help-text">
-										{ guidance.providerNote }
-									</p>
-								) }
-								<div className="aculect-ai-companion-tool-filtering__sets">
-									{ guidance.toolSets.map( ( toolSet ) => (
-										<article
-											key={ toolSet.id }
-											className="aculect-ai-companion-tool-filtering__set"
-										>
-											<strong>{ toolSet.label }</strong>
-											<p>{ toolSet.description }</p>
-											{ toolSet.readOnlyDefault && (
-												<p>
-													Recommended start: read-only
-													audit.
-												</p>
-											) }
-											{ toolSet.requiresExplicitApproval && (
-												<p>
-													Explicit approval required
-													before using write-capable
-													tools.
-												</p>
-											) }
-											<code>
-												{ (
-													toolSet.toolNames || []
-												).join( ', ' ) }
-											</code>
-										</article>
-									) ) }
-								</div>
-								{ copyFields.map( ( field ) => (
-									<CopyField
-										key={ field.label }
-										label={ field.label }
-										value={ field.value }
-										copyButtonLabel="Copy"
-										onCopy={ ( value ) =>
-											onCopy(
-												value,
-												`${ field.label } copied.`
-											)
-										}
-									/>
-								) ) }
-								<p className="aculect-ai-companion-tool-filtering__warning">
-									{ guidance.warning }
-								</p>
-							</section>
-						);
-					} ) }
+					<section className="aculect-ai-companion-tool-filtering__provider">
+						<h3>{ selectedProvider.label }</h3>
+						<p>{ guidance.description }</p>
+						{ guidance.providerNote && (
+							<p className="aculect-ai-companion-help-text">
+								{ guidance.providerNote }
+							</p>
+						) }
+						<div className="aculect-ai-companion-tool-filtering__sets">
+							{ guidance.toolSets.map( ( toolSet ) => (
+								<article
+									key={ toolSet.id }
+									className="aculect-ai-companion-tool-filtering__set"
+								>
+									<strong>{ toolSet.label }</strong>
+									<p>{ toolSet.description }</p>
+									{ toolSet.readOnlyDefault && (
+										<p>{ guidance.readOnlyLabel }</p>
+									) }
+									{ toolSet.requiresExplicitApproval && (
+										<p>{ guidance.approvalLabel }</p>
+									) }
+									<code>
+										{ ( toolSet.toolNames || [] ).join(
+											', '
+										) }
+									</code>
+								</article>
+							) ) }
+						</div>
+						{ copyFields.map( ( field ) => (
+							<CopyField
+								key={ field.label }
+								label={ field.label }
+								value={ field.value }
+								copyButtonLabel={ guidance.copyButtonLabel }
+								onCopy={ ( value ) =>
+									copyToolFilteringField(
+										{ ...field, value },
+										onCopy
+									)
+								}
+							/>
+						) ) }
+						<p className="aculect-ai-companion-tool-filtering__warning">
+							{ guidance.warning }
+						</p>
+					</section>
 				</div>
 			</details>
 		</section>
@@ -7650,7 +7633,7 @@ function SettingsApp() {
 									} }
 								/>
 								<ConnectToolFilteringGuidance
-									providers={ providers }
+									provider={ selectedConnectProvider }
 									onCopy={ copyValue }
 								/>
 								<PendingConnectionRequests

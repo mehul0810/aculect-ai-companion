@@ -87,7 +87,8 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertStringContainsString( 'full exposed tool catalog', $providers['chatgpt']['toolFiltering']['warning'] );
 		self::assertStringContainsString( 'allowed_tools', $providers['chatgpt']['toolFiltering']['copyFields'][0]['value'] );
 		self::assertStringContainsString( 'includeTools', $providers['gemini']['toolFiltering']['copyFields'][0]['value'] );
-		self::assertStringContainsString( 'allowed_tools', $providers['claude']['toolFiltering']['copyFields'][0]['value'] );
+		self::assertStringContainsString( 'mcp_toolset', $providers['claude']['toolFiltering']['copyFields'][0]['value'] );
+		self::assertStringNotContainsString( 'allowed_tools', $providers['claude']['toolFiltering']['copyFields'][0]['value'] );
 		self::assertStringContainsString( 'cursor-agent mcp list-tools', $providers['cursor']['toolFiltering']['copyFields'][0]['value'] );
 		self::assertSame( 'MCP Client', $providers['mcp']['label'] );
 		self::assertSame( '', $providers['mcp']['brandName'] );

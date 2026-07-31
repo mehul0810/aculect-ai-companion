@@ -59,4 +59,23 @@ final class ClientToolFilterGuidanceTest extends TestCase {
 		self::assertStringNotContainsString( 'https://', $example );
 		self::assertStringNotContainsString( 'token', strtolower( $example ) );
 	}
+
+	public function test_claude_example_uses_disabled_by_default_mcp_toolset_contract(): void {
+		$guidance = new ClientToolFilterGuidance();
+		$section  = $guidance->section_for_provider( 'claude' );
+		$snippet  = json_decode( $section['copyFields'][0]['value'], true, 512, JSON_THROW_ON_ERROR );
+		$expected = $guidance->recommended_tool_sets()['read_only_content_audit']['toolNames'];
+
+		self::assertSame( 'mcp_toolset', $snippet['type'] );
+		self::assertSame( 'aculect-ai-companion', $snippet['mcp_server_name'] );
+		self::assertFalse( $snippet['default_config']['enabled'] );
+		self::assertNotEmpty( $snippet['configs'] );
+		self::assertSame( $expected, array_keys( $snippet['configs'] ) );
+
+		foreach ( $snippet['configs'] as $config ) {
+			self::assertSame( array( 'enabled' => true ), $config );
+		}
+
+		self::assertStringNotContainsString( 'allowed_tools', $section['copyFields'][0]['value'] );
+	}
 }

@@ -13,9 +13,10 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.7.1` is the active production target on `release/0.7.1`.
-- Beta-readiness work should stay focused on proof, metadata, docs, package validation, hardening, and small reliability fixes.
-- Do not pull `0.8.0` custom workflow planning scope into the `0.7.1` train.
+- `0.7.1` is the current production release.
+- `0.7.2` is the active patch train on `release/0.7.2`, based on the post-0.7.1 `main`.
+- Keep 0.7.2 focused on deferred connector compatibility, diagnostics, bounded release hardening, metadata, documentation, and proof.
+- Do not pull `0.8.0` custom workflow planning or breaking public-contract scope into the `0.7.2` train.
 
 ## Quality Gates
 - Security/privacy

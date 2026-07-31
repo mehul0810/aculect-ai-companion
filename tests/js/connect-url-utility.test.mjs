@@ -86,6 +86,16 @@ test( 'connect picker shows ChatGPT, Claude, and a generic MCP-compatible choice
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
 } );
 
+test( 'connect tab keeps client tool filtering advanced and provider-driven', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function ConnectToolFilteringGuidance\( \{ providers, onCopy \} \)/
+	);
+	assert.match( ADMIN_APP_SOURCE, /provider\.toolFiltering/ );
+	assert.match( ADMIN_APP_SOURCE, /<details>/ );
+	assert.match( ADMIN_APP_SOURCE, /Explicit approval required/ );
+} );
+
 test( 'connect picker puts the setup guide before the provider action without rendering a step flow', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

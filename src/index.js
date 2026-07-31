@@ -4879,6 +4879,100 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 	);
 }
 
+function ConnectToolFilteringGuidance( { providers, onCopy } ) {
+	const providerGuidance = providers.filter(
+		( provider ) =>
+			provider?.toolFiltering &&
+			Array.isArray( provider.toolFiltering.toolSets )
+	);
+
+	if ( providerGuidance.length === 0 ) {
+		return null;
+	}
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-tool-filtering">
+			<details>
+				<summary>
+					<span>Optional tool filtering</span>
+					<span className="aculect-ai-companion-tool-filtering__summary-note">
+						Advanced
+					</span>
+				</summary>
+				<div className="aculect-ai-companion-tool-filtering__content">
+					{ providerGuidance.map( ( provider ) => {
+						const guidance = provider.toolFiltering;
+						const copyFields = Array.isArray( guidance.copyFields )
+							? guidance.copyFields
+							: [];
+
+						return (
+							<section
+								key={ provider.id }
+								className="aculect-ai-companion-tool-filtering__provider"
+							>
+								<h3>{ provider.label }</h3>
+								<p>{ guidance.description }</p>
+								{ guidance.providerNote && (
+									<p className="aculect-ai-companion-help-text">
+										{ guidance.providerNote }
+									</p>
+								) }
+								<div className="aculect-ai-companion-tool-filtering__sets">
+									{ guidance.toolSets.map( ( toolSet ) => (
+										<article
+											key={ toolSet.id }
+											className="aculect-ai-companion-tool-filtering__set"
+										>
+											<strong>{ toolSet.label }</strong>
+											<p>{ toolSet.description }</p>
+											{ toolSet.readOnlyDefault && (
+												<p>
+													Recommended start: read-only
+													audit.
+												</p>
+											) }
+											{ toolSet.requiresExplicitApproval && (
+												<p>
+													Explicit approval required
+													before using write-capable
+													tools.
+												</p>
+											) }
+											<code>
+												{ (
+													toolSet.toolNames || []
+												).join( ', ' ) }
+											</code>
+										</article>
+									) ) }
+								</div>
+								{ copyFields.map( ( field ) => (
+									<CopyField
+										key={ field.label }
+										label={ field.label }
+										value={ field.value }
+										copyButtonLabel="Copy"
+										onCopy={ ( value ) =>
+											onCopy(
+												value,
+												`${ field.label } copied.`
+											)
+										}
+									/>
+								) ) }
+								<p className="aculect-ai-companion-tool-filtering__warning">
+									{ guidance.warning }
+								</p>
+							</section>
+						);
+					} ) }
+				</div>
+			</details>
+		</section>
+	);
+}
+
 function ConnectReadinessBadge( { status } ) {
 	const ready = status.status === 'pass';
 
@@ -7554,6 +7648,10 @@ function SettingsApp() {
 											providerId
 										);
 									} }
+								/>
+								<ConnectToolFilteringGuidance
+									providers={ providers }
+									onCopy={ copyValue }
 								/>
 								<PendingConnectionRequests
 									requests={ connectionRequests }

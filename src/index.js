@@ -4775,7 +4775,7 @@ const CONNECT_APP_OPTIONS = [
 		brand: 'Anysphere',
 		description: 'Add this link in Cursor MCP settings.',
 		actionLabel: 'Open Cursor MCP guide',
-		guideUrl: 'https://docs.cursor.com/context/model-context-protocol',
+		guideUrl: 'https://cursor.com/docs/mcp',
 	},
 	{
 		id: 'other',

@@ -275,7 +275,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.7.1 =
 
-* Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT, Claude, and Cursor setup guidance.
+* Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.
 * Improved incident approval authorization and clarified rejected refresh-token activity.
 * Removed non-functional controls from pending request views.
 * Added production-package checks that require Composer autoloading and the OAuth2 server runtime interfaces.

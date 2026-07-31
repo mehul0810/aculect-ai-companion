@@ -43,7 +43,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 	 * Return the Cursor MCP documentation URL.
 	 */
 	public function primary_action_url(): string {
-		return 'https://docs.cursor.com/context/model-context-protocol';
+		return 'https://cursor.com/docs/mcp';
 	}
 
 	/**

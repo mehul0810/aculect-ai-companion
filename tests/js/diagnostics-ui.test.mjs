@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
 	diagnosticCounts,
@@ -7,9 +8,15 @@ import {
 	diagnosticGuidanceSteps,
 	diagnosticOverallStatus,
 	diagnosticResultText,
+	diagnosticResultsStatusText,
 	filteredDiagnosticItems,
 	safeDiagnosticEvidence,
 } from '../../src/diagnostics-ui.mjs';
+
+const ADMIN_STYLE_SOURCE = readFileSync(
+	new URL( '../../src/style.scss', import.meta.url ),
+	'utf8'
+);
 
 const checks = [
 	{
@@ -29,6 +36,32 @@ const checks = [
 		message: 'Authorization challenge failed.',
 	},
 ];
+
+function relativeLuminance( hexColor ) {
+	const channels = hexColor
+		.replace( '#', '' )
+		.match( /[a-f\d]{2}/gi )
+		.map( ( channel ) => Number.parseInt( channel, 16 ) / 255 )
+		.map( ( channel ) =>
+			channel <= 0.04045
+				? channel / 12.92
+				: ( ( channel + 0.055 ) / 1.055 ) ** 2.4
+		);
+
+	return (
+		0.2126 * channels[ 0 ] + 0.7152 * channels[ 1 ] + 0.0722 * channels[ 2 ]
+	);
+}
+
+function contrastRatio( firstColor, secondColor ) {
+	const first = relativeLuminance( firstColor );
+	const second = relativeLuminance( secondColor );
+
+	return (
+		( Math.max( first, second ) + 0.05 ) /
+		( Math.min( first, second ) + 0.05 )
+	);
+}
 
 test( 'counts diagnostic states and derives an honest overall status', () => {
 	const counts = diagnosticCounts( checks );
@@ -64,6 +97,21 @@ test( 'counts diagnostic states and derives an honest overall status', () => {
 	);
 } );
 
+test( 'keeps diagnostics action text at WCAG AA contrast on changed surfaces', () => {
+	const colorMatch = ADMIN_STYLE_SOURCE.match(
+		/\.aculect-ai-companion-diagnostics \.components-button\.is-secondary,[\s\S]*?\{\s*color:\s*(#[a-f\d]{6});/i
+	);
+
+	assert.ok( colorMatch, 'Expected a diagnostics-scoped action color.' );
+
+	for ( const background of [ '#ffffff', '#fffaf0', '#fff7f7', '#f0f6fc' ] ) {
+		assert.ok(
+			contrastRatio( colorMatch[ 1 ], background ) >= 4.5,
+			`Expected ${ colorMatch[ 1 ] } to pass AA on ${ background }.`
+		);
+	}
+} );
+
 test( 'prioritizes errors and warnings while filtering and searching', () => {
 	assert.deepEqual(
 		filteredDiagnosticItems( checks, 'all', '' ).map( ( item ) => item.id ),
@@ -91,6 +139,25 @@ test( 'classifies fresh, stale, missing, and invalid saved runs', () => {
 	assert.equal( diagnosticFreshness( '2026-07-29 11:30:00', now ), 'stale' );
 	assert.equal( diagnosticFreshness( '', now ), 'never' );
 	assert.equal( diagnosticFreshness( 'not-a-date', now ), 'stale' );
+} );
+
+test( 'builds a concise result announcement without making the list live', () => {
+	assert.equal(
+		diagnosticResultsStatusText( 5, 5 ),
+		'5 of 5 diagnostic checks shown.'
+	);
+	assert.equal(
+		diagnosticResultsStatusText( 5, 1, 'warn', 'storage' ),
+		'1 of 5 diagnostic checks shown for the current filter and search.'
+	);
+	assert.equal(
+		diagnosticResultsStatusText( 5, 0, 'warn', 'missing' ),
+		'No diagnostic checks match the current filter and search.'
+	);
+	assert.equal(
+		diagnosticResultsStatusText( 0, 0 ),
+		'No diagnostic checks are available. Run all checks to create a saved result.'
+	);
 } );
 
 test( 'redacts sensitive evidence and bounds copied diagnostic results', () => {

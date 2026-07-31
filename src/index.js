@@ -21,6 +21,7 @@ import {
 	diagnosticItems,
 	diagnosticOverallStatus,
 	diagnosticResultText,
+	diagnosticResultsStatusText,
 	diagnosticStatusLabel,
 	diagnosticWhyItMatters,
 	filteredDiagnosticItems,
@@ -2823,40 +2824,56 @@ function ConnectionHealthChecks( {
 } ) {
 	const items = diagnosticItems( health );
 	const visibleItems = filteredDiagnosticItems( items, filter, searchQuery );
+	const resultStatus = diagnosticResultsStatusText(
+		items.length,
+		visibleItems.length,
+		filter,
+		searchQuery
+	);
+	let content;
 
 	if ( items.length === 0 ) {
-		return (
+		content = (
 			<EmptyState title="No diagnostics run">
 				Run all checks to verify the connection URL, metadata endpoints,
 				authorization challenge, and approval screen.
 			</EmptyState>
 		);
-	}
-
-	if ( visibleItems.length === 0 ) {
-		return (
+	} else if ( visibleItems.length === 0 ) {
+		content = (
 			<EmptyState title="No checks in this view">
 				Try another status or clear the check search to review the saved
 				results.
 			</EmptyState>
 		);
+	} else {
+		content = (
+			<div className="aculect-ai-companion-diagnostic-check-list">
+				{ visibleItems.map( ( item ) => (
+					<DiagnosticCheckRow
+						key={ item.id }
+						item={ item }
+						isRunning={ isRunning }
+						onOpenDetails={ onOpenDetails }
+						onOpenGuidance={ onOpenGuidance }
+					/>
+				) ) }
+			</div>
+		);
 	}
 
 	return (
-		<div
-			className="aculect-ai-companion-diagnostic-check-list"
-			aria-live="polite"
-		>
-			{ visibleItems.map( ( item ) => (
-				<DiagnosticCheckRow
-					key={ item.id }
-					item={ item }
-					isRunning={ isRunning }
-					onOpenDetails={ onOpenDetails }
-					onOpenGuidance={ onOpenGuidance }
-				/>
-			) ) }
-		</div>
+		<>
+			<p
+				className="screen-reader-text"
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				{ resultStatus }
+			</p>
+			{ content }
+		</>
 	);
 }
 

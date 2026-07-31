@@ -138,6 +138,28 @@ export function diagnosticOverallStatus( counts ) {
 	return 'pass';
 }
 
+export function diagnosticResultsStatusText(
+	totalCount,
+	visibleCount,
+	filterName = 'all',
+	searchQuery = ''
+) {
+	if ( totalCount === 0 ) {
+		return 'No diagnostic checks are available. Run all checks to create a saved result.';
+	}
+
+	if ( visibleCount === 0 ) {
+		return 'No diagnostic checks match the current filter and search.';
+	}
+
+	const context =
+		filterName === 'all' && String( searchQuery || '' ).trim() === ''
+			? ''
+			: ' for the current filter and search';
+
+	return `${ visibleCount } of ${ totalCount } diagnostic checks shown${ context }.`;
+}
+
 export function diagnosticFreshness(
 	ranAt,
 	now = Date.now(),

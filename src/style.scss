@@ -4511,6 +4511,18 @@ td:first-child
 	white-space: nowrap;
 }
 
+.aculect-ai-companion-diagnostics .components-button.is-secondary,
+.aculect-ai-companion-diagnostics .components-button.is-tertiary {
+	color: #1746a2;
+}
+
+.aculect-ai-companion-diagnostics .components-button.is-secondary:hover,
+.aculect-ai-companion-diagnostics .components-button.is-secondary:focus,
+.aculect-ai-companion-diagnostics .components-button.is-tertiary:hover,
+.aculect-ai-companion-diagnostics .components-button.is-tertiary:focus {
+	color: #0b326f;
+}
+
 .aculect-ai-companion-diagnostic-panel .components-button {
 	justify-content: center;
 	gap: 8px;

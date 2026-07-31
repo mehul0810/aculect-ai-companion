@@ -137,6 +137,7 @@ final class Plugin {
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
 		'review_memory_item'           => 'handle_review_memory_item',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
+		'revoke_stale_oauth_client'    => 'handle_revoke_stale_oauth_client',
 		'run_content_index_sweep'      => 'handle_run_content_index_sweep',
 		'clear_logs'                   => 'handle_clear_logs',
 		'set_lockdown'                 => 'handle_set_lockdown',

@@ -197,6 +197,25 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 0, $payload['activity']['total'] );
 		self::assertSame( 0, $payload['diagnostics']['logs']['total'] );
 		self::assertSame(
+			array(
+				'active'      => 0,
+				'maximum'     => 100,
+				'available'   => 100,
+				'recoverable' => 0,
+				'status'      => 'available',
+			),
+			$payload['diagnostics']['oauthClients']['capacity']
+		);
+		self::assertSame( array(), $payload['diagnostics']['oauthClients']['recoverable'] );
+		self::assertSame(
+			'aculect_ai_companion_revoke_stale_oauth_client',
+			$payload['actions']['revokeStaleOAuthClientAction']
+		);
+		self::assertSame(
+			'nonce-aculect_ai_companion_revoke_stale_oauth_client',
+			$payload['actions']['revokeStaleOAuthClientNonce']
+		);
+		self::assertSame(
 			'aculect_ai_companion_set_session_access_level',
 			$payload['actions']['setSessionAccessLevelAction']
 		);
@@ -683,6 +702,10 @@ final class FakeSettingsPageWpdb {
 			}
 
 			return str_contains( $query, 'audit_rows' ) ? 80 : 12;
+		}
+
+		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_clients' ) ) {
+			return 0;
 		}
 
 		if ( str_contains( $query, 'wp_aculect_ai_companion_oauth_access_tokens' ) ) {

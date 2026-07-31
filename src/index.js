@@ -4665,6 +4665,128 @@ function DiagnosticsHelpPanel( { links } ) {
 	);
 }
 
+function DiagnosticsOAuthCapacityPanel( { data, oauthClients } ) {
+	const capacity =
+		oauthClients?.capacity && typeof oauthClients.capacity === 'object'
+			? oauthClients.capacity
+			: {};
+	const recoverable = Array.isArray( oauthClients?.recoverable )
+		? oauthClients.recoverable
+		: [];
+	let status = 'pass';
+	if ( capacity.status === 'exhausted' ) {
+		status = 'fail';
+	} else if ( capacity.status === 'warning' ) {
+		status = 'warn';
+	}
+
+	return (
+		<div className="aculect-ai-companion-side-panel aculect-ai-companion-diagnostic-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ link } size={ 20 } />
+				</span>
+				<h3>OAuth client capacity</h3>
+			</div>
+			<div className="aculect-ai-companion-diagnostic-environment">
+				<StatusBadge status={ status } />
+				<p>
+					{ capacity.status === 'exhausted'
+						? 'New assistant registration is paused until capacity is recovered.'
+						: 'OAuth client registration capacity is available.' }
+				</p>
+			</div>
+			<DiagnosticMetaList
+				rows={ [
+					{ label: 'Active', value: Number( capacity.active || 0 ) },
+					{
+						label: 'Maximum',
+						value: Number( capacity.maximum || 0 ),
+					},
+					{
+						label: 'Available',
+						value: Number( capacity.available || 0 ),
+					},
+					{
+						label: 'Recoverable',
+						value: Number( capacity.recoverable || 0 ),
+					},
+				] }
+			/>
+			{ recoverable.length > 0 ? (
+				<div className="aculect-ai-companion-oauth-recovery-list">
+					<h4>Unused stale registrations</h4>
+					<p>
+						These registrations have no live authorization code,
+						access token, or refresh token.
+					</p>
+					<ul>
+						{ recoverable.map( ( client ) => {
+							const clientName =
+								String( client.client_name || '' ) ||
+								'Unnamed MCP client';
+							const provider =
+								String( client.provider || '' ) || 'mcp';
+							const hosts = Array.isArray( client.redirect_hosts )
+								? client.redirect_hosts
+										.map( String )
+										.filter( Boolean )
+										.join( ', ' )
+								: '';
+
+							return (
+								<li key={ String( client.client_id || '' ) }>
+									<div className="aculect-ai-companion-oauth-recovery-list__item-details">
+										<strong>{ clientName }</strong>
+										<span>
+											{ provider }
+											{ hosts ? ` · ${ hosts }` : '' }
+											{ client.created_at
+												? ` · ${ String(
+														client.created_at
+												  ) }`
+												: '' }
+										</span>
+									</div>
+									<ActionForm
+										data={ data }
+										action={
+											data.actions
+												?.revokeStaleOAuthClientAction
+										}
+										nonce={
+											data.actions
+												?.revokeStaleOAuthClientNonce
+										}
+										label="Revoke"
+										destructive
+										confirmTitle="Revoke stale OAuth client?"
+										confirmMessage="This removes an unused registration. The AI app can register again during its next connection attempt."
+										accessibleLabel={ `Revoke stale OAuth client ${ clientName }` }
+									>
+										<input
+											type="hidden"
+											name="oauth_client_id"
+											value={ String(
+												client.client_id || ''
+											) }
+										/>
+									</ActionForm>
+								</li>
+							);
+						} ) }
+					</ul>
+				</div>
+			) : (
+				<p>
+					No unused stale registrations are currently eligible for
+					recovery.
+				</p>
+			) }
+		</div>
+	);
+}
+
 function DiagnosticsDashboard( {
 	data,
 	health,
@@ -4677,6 +4799,11 @@ function DiagnosticsDashboard( {
 } ) {
 	const items = diagnosticItems( health );
 	const counts = diagnosticCounts( items );
+	const oauthClients =
+		data.diagnostics?.oauthClients &&
+		typeof data.diagnostics.oauthClients === 'object'
+			? data.diagnostics.oauthClients
+			: {};
 
 	return (
 		<div className="aculect-ai-companion-diagnostics">
@@ -4740,6 +4867,10 @@ function DiagnosticsDashboard( {
 						onCopy={ onCopy }
 					/>
 					<DiagnosticsEnvironmentPanel health={ health } />
+					<DiagnosticsOAuthCapacityPanel
+						data={ data }
+						oauthClients={ oauthClients }
+					/>
 					<DiagnosticsHelpPanel links={ links } />
 				</aside>
 			</div>
@@ -7351,6 +7482,17 @@ function SettingsApp() {
 				{ data.status === 'diagnostics_run' && (
 					<Notice status="success" isDismissible={ false }>
 						Connection diagnostics updated.
+					</Notice>
+				) }
+				{ data.status === 'oauth_client_recovery_succeeded' && (
+					<Notice status="success" isDismissible={ false }>
+						Unused OAuth client registration revoked.
+					</Notice>
+				) }
+				{ data.status === 'oauth_client_recovery_not_eligible' && (
+					<Notice status="warning" isDismissible={ false }>
+						The OAuth client was not changed because it is active or
+						no longer eligible for recovery.
 					</Notice>
 				) }
 				{ data.status === 'index_sweep_run' && (

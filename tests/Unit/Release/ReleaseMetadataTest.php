@@ -79,6 +79,36 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringNotContainsString( 'current ChatGPT, Claude, and Cursor setup guidance', $readme );
 	}
 
+	public function test_chatgpt_dcr_capacity_docs_preserve_public_and_admin_cleanup_boundary(): void {
+		$root           = dirname( __DIR__, 3 );
+		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );
+
+		self::assertStringContainsString(
+			'same provider and exact registration fingerprint',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Public DCR never revokes unrelated dormant registrations.',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Only this `manage_options`- and nonce-protected recovery action may revoke an unrelated stale registration',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Simultaneous new registrations can therefore briefly overshoot the configured cap',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'HTTP `503` with the stable `registration_capacity_exceeded` code',
+			$chatgpt_readme
+		);
+		self::assertStringNotContainsString(
+			'repository also revokes registrations older than the configured stale window',
+			$chatgpt_readme
+		);
+	}
+
 	/**
 	 * Return file contents or fail.
 	 *

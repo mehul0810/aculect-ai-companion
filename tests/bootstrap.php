@@ -1992,6 +1992,10 @@ if ( ! function_exists( 'wp_hash_password' ) ) {
 	 * @param string $password Raw password.
 	 */
 	function wp_hash_password( string $password ): string {
+		if ( isset( $GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'] ) ) {
+			++$GLOBALS['aculect_ai_companion_test_wp_hash_password_calls'];
+		}
+
 		return password_hash( $password, PASSWORD_BCRYPT );
 	}
 }

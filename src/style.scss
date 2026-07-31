@@ -4269,6 +4269,45 @@ td:first-child
 	top: 44px;
 }
 
+.aculect-ai-companion-oauth-recovery-list {
+	display: grid;
+	gap: 12px;
+
+	h4,
+	p {
+		margin: 0;
+	}
+
+	ul {
+		display: grid;
+		gap: 10px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding-block: 10px;
+		border-block-start: 1px solid var(--aculect-ai-companion-border);
+	}
+
+	&__item-details {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	li span {
+		color: var(--aculect-ai-companion-muted);
+		font-size: 12px;
+		overflow-wrap: anywhere;
+	}
+}
+
 .aculect-ai-companion-diagnostics-checks {
 	display: grid;
 	gap: 16px;

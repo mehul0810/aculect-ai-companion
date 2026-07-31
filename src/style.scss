@@ -1218,7 +1218,7 @@
 
 .aculect-ai-companion-connect-app-picker__options {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	overflow: hidden;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
@@ -4745,6 +4745,24 @@ td:first-child
 
 	.aculect-ai-companion-connect-app-picker__action {
 		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.aculect-ai-companion-connect-app-picker__options {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.aculect-ai-companion-connect-app-option,
+	.aculect-ai-companion-connect-app-option:last-child {
+		border-right: 0;
+		border-bottom: 0;
+	}
+
+	.aculect-ai-companion-connect-app-option:nth-child(odd) {
+		border-right: 1px solid var(--aculect-ai-companion-border);
+	}
+
+	.aculect-ai-companion-connect-app-option:nth-child(-n + 2) {
+		border-bottom: 1px solid var(--aculect-ai-companion-border);
 	}
 
 	.aculect-ai-companion-connect-app-picker__actions {

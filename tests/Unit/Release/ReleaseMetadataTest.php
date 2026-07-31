@@ -68,6 +68,17 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
 	}
 
+	public function test_published_071_connect_changelog_remains_immutable(): void {
+		$root    = dirname( __DIR__, 3 );
+		$readme = $this->file_contents( $root . '/readme.txt' );
+		$log     = $this->json_file( $root . '/changelog.json' );
+		$note    = 'Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.';
+
+		self::assertContains( $note, $log['0.7.1']['New'] ?? array() );
+		self::assertStringContainsString( '* ' . $note, $readme );
+		self::assertStringNotContainsString( 'current ChatGPT, Claude, and Cursor setup guidance', $readme );
+	}
+
 	public function test_chatgpt_dcr_capacity_docs_preserve_public_and_admin_cleanup_boundary(): void {
 		$root           = dirname( __DIR__, 3 );
 		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );

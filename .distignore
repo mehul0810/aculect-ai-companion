@@ -2,6 +2,7 @@
 .git
 .github/
 .wordpress-org/
+artifacts/
 .codex/
 .claude/
 .phpunit.cache/

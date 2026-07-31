@@ -113,7 +113,45 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
-		$client = ( new ClientRepository() )->create_client( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null );
+		$result = ( new ClientRepository() )->create_client_result( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null );
+		$client = $result->client();
+
+		if ( ClientRegistrationResult::CAPACITY_EXCEEDED === $result->status() ) {
+			$logger->warning(
+				'dcr.capacity_exceeded',
+				'Dynamic client registration capacity is exhausted.',
+				array(
+					'provider'           => $provider,
+					'error_code'         => 'registration_capacity_exceeded',
+					'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
+					'redirect_uri_count' => count( $redirect_uris ),
+				),
+				$request,
+				503
+			);
+			return new WP_Error(
+				'registration_capacity_exceeded',
+				'OAuth client registration capacity is currently unavailable. Ask a site administrator to review stale connections.',
+				array( 'status' => 503 )
+			);
+		}
+
+		if ( ClientRegistrationResult::INVALID_METADATA === $result->status() ) {
+			$logger->warning(
+				'dcr.invalid_client_metadata',
+				'Dynamic client registration metadata could not be stored safely.',
+				array(
+					'provider'           => $provider,
+					'error_code'         => 'invalid_client_metadata',
+					'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
+					'redirect_uri_count' => count( $redirect_uris ),
+				),
+				$request,
+				400
+			);
+			return new WP_Error( 'invalid_client_metadata', 'OAuth client metadata could not be registered.', array( 'status' => 400 ) );
+		}
+
 		if ( ! is_array( $client ) ) {
 			$logger->error(
 				'dcr.registration_failed',

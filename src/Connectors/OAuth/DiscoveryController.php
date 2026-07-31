@@ -174,6 +174,7 @@ final class DiscoveryController {
 				'grant_types_supported'                 => array( 'authorization_code', 'refresh_token' ),
 				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 				'code_challenge_methods_supported'      => array( 'S256' ),
+				'client_id_metadata_document_supported' => false,
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_indicators_supported'         => true,
 				'protected_resources'                   => array( Helpers::mcp_resource() ),
@@ -236,6 +237,8 @@ final class DiscoveryController {
 			'authorization_endpoint'            => Helpers::authorization_endpoint(),
 			'token_endpoint'                    => Helpers::token_endpoint(),
 			'registration_endpoint'             => Helpers::registration_endpoint(),
+			'client_registration_profile'       => 'dynamic_client_registration',
+			'client_id_metadata_documents'      => 'not_supported',
 			'scopes'                            => implode( ' ', Helpers::supported_scopes() ),
 			'registered_clients'                => ( new ClientRepository() )->list_clients(),
 		);

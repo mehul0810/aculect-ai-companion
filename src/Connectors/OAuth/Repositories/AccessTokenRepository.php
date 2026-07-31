@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
+use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
@@ -796,17 +797,14 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
 	 * @param int         $limit  Maximum rows to delete in this pass.
-	 * @return int Number of deleted rows.
+	 * @return int|false Number of deleted rows, or false on database failure.
 	 */
-	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
-		global $wpdb;
-
+	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int|false {
 		$tables = Installer::table_names();
 		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
 		$limit  = $this->normalized_batch_limit( $limit );
-		$result = $wpdb->query(
-			$wpdb->prepare(
-				'DELETE FROM %i
+		$ids    = BoundedPruner::candidate_ids(
+			'SELECT id FROM %i
 				WHERE expires_at < %s
 				AND token_hash NOT IN (
 					SELECT access_token_hash
@@ -816,15 +814,36 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 				)
 				ORDER BY expires_at ASC
 				LIMIT %d',
+			array(
 				$tables['access_tokens'],
 				$cutoff,
 				$tables['refresh_tokens'],
 				$cutoff,
-				$limit
-			)
+				$limit,
+			),
+			$limit
 		);
 
-		return false === $result ? 0 : (int) $result;
+		if ( false === $ids ) {
+			return false;
+		}
+
+		return BoundedPruner::delete_ids(
+			$tables['access_tokens'],
+			$ids,
+			'expires_at < %s
+				AND token_hash NOT IN (
+					SELECT access_token_hash
+					FROM %i
+					WHERE revoked = 0
+					AND expires_at >= %s
+				)',
+			array(
+				$cutoff,
+				$tables['refresh_tokens'],
+				$cutoff,
+			)
+		);
 	}
 
 	/**

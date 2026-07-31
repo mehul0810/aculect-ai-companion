@@ -76,7 +76,7 @@ test( 'MCP endpoint safety note does not add browser-default paragraph spacing',
 	);
 } );
 
-test( 'connect picker shows ChatGPT, Claude, Grok, and a generic MCP-compatible choice', () => {
+test( 'connect picker shows ChatGPT, Claude, Grok, Cursor, and a generic MCP-compatible choice', () => {
 	assert.match( ADMIN_APP_SOURCE, /const CONNECT_APP_OPTIONS = \[/ );
 	assert.match( ADMIN_APP_SOURCE, /label: 'ChatGPT'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'OpenAI'/ );
@@ -85,8 +85,21 @@ test( 'connect picker shows ChatGPT, Claude, Grok, and a generic MCP-compatible 
 	assert.match( ADMIN_APP_SOURCE, /label: 'Grok'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'xAI'/ );
 	assert.match( ADMIN_APP_SOURCE, /https:\/\/docs\.x\.ai\/grok\/connectors/ );
+	assert.match( ADMIN_APP_SOURCE, /label: 'Cursor'/ );
+	assert.match( ADMIN_APP_SOURCE, /brand: 'Anysphere'/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/guideUrl: 'https:\/\/cursor\.com\/docs\/mcp'/
+	);
 	assert.match( ADMIN_APP_SOURCE, /label: 'Other AI app'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
+} );
+
+test( 'two-column connect picker keeps complete separators between choices', () => {
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/@media \(max-width: 900px\)[\s\S]*\.aculect-ai-companion-connect-app-option,\s*\.aculect-ai-companion-connect-app-option:last-child\s*\{[\s\S]*border-right:\s*0;[\s\S]*border-bottom:\s*0;[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(odd\)\s*\{[\s\S]*border-right:\s*1px solid[\s\S]*\.aculect-ai-companion-connect-app-option:nth-child\(-n \+ 2\)\s*\{[\s\S]*border-bottom:\s*1px solid/
+	);
 } );
 
 test( 'connect picker puts the setup guide before the provider action without rendering a step flow', () => {

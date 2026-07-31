@@ -127,7 +127,27 @@ final class StorageMaintenanceTest extends TestCase {
 
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 0 ) );
 		self::assertCount( 4, $this->wpdb->queries );
+	}
+
+	public function test_maybe_prune_backs_off_after_failure_and_retries_after_expiry(): void {
+		$this->wpdb->query_result = false;
+
+		StorageMaintenance::maybe_prune();
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 4, $this->wpdb->queries );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+
+		update_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', time() - 1, false );
+		$this->wpdb->query_result = 3;
+
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 8, $this->wpdb->queries );
+		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
 	}
 
 	public function test_maybe_prune_records_success_after_all_stores_succeed(): void {
@@ -165,11 +185,13 @@ final class StorageMaintenanceTest extends TestCase {
 	public function test_delete_options_removes_oauth_prune_timestamp(): void {
 		update_option( 'aculect_ai_companion_oauth_last_pruned_at', 123, false );
 		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() + 300, false );
+		update_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', time() + 300, false );
 
 		StorageMaintenance::delete_options();
 
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
 	}
 
 	/**
@@ -199,7 +221,7 @@ final class FakeOAuthWpdb {
 	/**
 	 * Prepared SQL calls.
 	 *
-	 * @var array<int, array{query: string, args: array<int, mixed>}>
+	 * @var array<int, array{query: string, args: array<array-key, mixed>}>
 	 */
 	public array $prepared = array();
 

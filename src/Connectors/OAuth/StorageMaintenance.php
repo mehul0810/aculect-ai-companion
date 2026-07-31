@@ -14,13 +14,15 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
  */
 final class StorageMaintenance {
 
-	private const OPTION_LAST_PRUNED_AT               = 'aculect_ai_companion_oauth_last_pruned_at';
-	private const OPTION_PRUNE_LOCK_EXPIRES_AT        = 'aculect_ai_companion_oauth_prune_lock_expires_at';
-	private const DEFAULT_PRUNE_INTERVAL              = 12 * 3600;
-	private const DEFAULT_PRUNE_LOCK_TTL              = 5 * 60;
-	private const DEFAULT_PRUNE_BATCH_SIZE            = 500;
-	private const DEFAULT_PRUNE_BATCH_CUTOFF          = 'now';
-	private const DEFAULT_REVOKED_CLIENT_PRUNE_CUTOFF = '-30 days';
+	private const OPTION_LAST_PRUNED_AT                = 'aculect_ai_companion_oauth_last_pruned_at';
+	private const OPTION_PRUNE_LOCK_EXPIRES_AT         = 'aculect_ai_companion_oauth_prune_lock_expires_at';
+	private const OPTION_PRUNE_FAILURE_RETRY_AFTER     = 'aculect_ai_companion_oauth_prune_failure_retry_after';
+	private const DEFAULT_PRUNE_INTERVAL               = 12 * 3600;
+	private const DEFAULT_PRUNE_LOCK_TTL               = 5 * 60;
+	private const DEFAULT_PRUNE_FAILURE_RETRY_INTERVAL = 5 * 60;
+	private const DEFAULT_PRUNE_BATCH_SIZE             = 500;
+	private const DEFAULT_PRUNE_BATCH_CUTOFF           = 'now';
+	private const DEFAULT_REVOKED_CLIENT_PRUNE_CUTOFF  = '-30 days';
 
 	/**
 	 * Run pruning if the throttled maintenance window has elapsed.
@@ -35,6 +37,15 @@ final class StorageMaintenance {
 			return;
 		}
 
+		$failure_retry_after = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 );
+		if ( $failure_retry_after > $now ) {
+			return;
+		}
+
+		if ( $failure_retry_after > 0 ) {
+			delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+		}
+
 		if ( ! self::acquire_prune_lock( $now ) ) {
 			return;
 		}
@@ -42,6 +53,13 @@ final class StorageMaintenance {
 		try {
 			if ( false !== self::prune() ) {
 				update_option( self::OPTION_LAST_PRUNED_AT, $now, false );
+				delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+			} else {
+				update_option(
+					self::OPTION_PRUNE_FAILURE_RETRY_AFTER,
+					$now + self::prune_failure_retry_interval(),
+					false
+				);
 			}
 		} finally {
 			self::release_prune_lock();
@@ -83,6 +101,19 @@ final class StorageMaintenance {
 	public static function delete_options(): void {
 		delete_option( self::OPTION_LAST_PRUNED_AT );
 		delete_option( self::OPTION_PRUNE_LOCK_EXPIRES_AT );
+		delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+	}
+
+	/**
+	 * Return the bounded delay before retrying a failed prune.
+	 */
+	private static function prune_failure_retry_interval(): int {
+		$interval = (int) apply_filters(
+			'aculect_ai_companion_oauth_prune_failure_retry_interval',
+			self::DEFAULT_PRUNE_FAILURE_RETRY_INTERVAL
+		);
+
+		return min( self::DEFAULT_PRUNE_INTERVAL, max( 1, $interval ) );
 	}
 
 	/**

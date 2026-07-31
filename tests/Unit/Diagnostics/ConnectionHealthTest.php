@@ -194,6 +194,36 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertArrayNotHasKey( 'wp_salt', $result['system'] );
 	}
 
+	public function test_empty_admin_result_exposes_only_support_safe_ui_context(): void {
+		$result = $this->invokePrivate( new ConnectionHealth(), 'empty_result' );
+
+		self::assertSame( '', $result['ranAt'] );
+		self::assertSame( '', $result['summary'] );
+		self::assertSame( array(), $result['items'] );
+		self::assertSame(
+			array(
+				'site_url',
+				'rest_url',
+				'connection_url',
+				'wordpress_version',
+				'php_version',
+				'environment_type',
+				'debug_mode',
+			),
+			array_keys( $result['system'] )
+		);
+		self::assertSame(
+			array(
+				'connectionUrl',
+				'protectedResourceMetadataUrl',
+				'authorizationServerMetadataUrl',
+			),
+			array_keys( $result['details'] )
+		);
+		self::assertArrayNotHasKey( 'access_token', $result['system'] );
+		self::assertArrayNotHasKey( 'client_secret', $result['details'] );
+	}
+
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
 		$result = $this->invokePrivate( new ConnectionHealth(), 'check_mcp_tool_manifest' );
 

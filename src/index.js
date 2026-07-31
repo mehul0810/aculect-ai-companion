@@ -13,6 +13,23 @@ import {
 	tabNameIsHydrated,
 } from './admin-tab-hydration.mjs';
 import {
+	diagnosticCounts,
+	diagnosticFilterCount,
+	diagnosticFreshness,
+	diagnosticGuidanceSteps,
+	diagnosticItemById,
+	diagnosticItems,
+	diagnosticOverallStatus,
+	diagnosticResultText,
+	diagnosticResultsStatusText,
+	diagnosticStatusLabel,
+	diagnosticWhyItMatters,
+	filteredDiagnosticItems,
+	formatDiagnosticCheckLabel,
+	normalizeDiagnosticStatus,
+	safeDiagnosticEvidence,
+} from './diagnostics-ui.mjs';
+import {
 	connectAppOptionForProvider,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
@@ -85,16 +102,11 @@ const CONSTRAINED_ADMIN_MEDIA_QUERY = '(max-width: 782px)';
 const DATA_VIEW_TABLE_LAYOUTS = { table: true };
 const DATA_VIEW_CONNECTION_LIST_LAYOUTS = { list: true };
 const DIAGNOSTIC_FILTERS = [
-	{ name: 'all', label: 'All checks' },
+	{ name: 'all', label: 'All' },
 	{ name: 'pass', label: 'Passed' },
-	{ name: 'warn', label: 'Warnings' },
+	{ name: 'warn', label: 'Needs review' },
 	{ name: 'fail', label: 'Errors' },
 ];
-const DIAGNOSTIC_STATUS_LABELS = {
-	pass: 'Pass',
-	warn: 'Warning',
-	fail: 'Error',
-};
 const CHANGELOG_METADATA_KEYS = new Set( [
 	'date',
 	'releaseDate',
@@ -562,7 +574,6 @@ function providerBadgeLabel( provider ) {
 		codex: 'Cx',
 		cursor: 'Cu',
 		gemini: 'G',
-		grok: 'Gk',
 	};
 
 	return labels[ provider.id ] || provider.label?.charAt( 0 ) || 'AI';
@@ -627,7 +638,6 @@ function connectionProviderLabel( session ) {
 		codex: 'Codex',
 		cursor: 'Cursor',
 		gemini: 'Gemini',
-		grok: 'Grok',
 	};
 
 	return labels[ provider ] || session.provider || 'AI';
@@ -2546,54 +2556,6 @@ function ActivityInsights( { activity } ) {
 	);
 }
 
-function diagnosticItems( health ) {
-	return Array.isArray( health?.items ) ? health.items : [];
-}
-
-function diagnosticItemById( health, id ) {
-	return (
-		diagnosticItems( health ).find( ( item ) => item?.id === id ) || null
-	);
-}
-
-function diagnosticCounts( items ) {
-	return items.reduce(
-		( counts, item ) => {
-			if ( item.status === 'pass' ) {
-				counts.pass += 1;
-			} else if ( item.status === 'fail' ) {
-				counts.fail += 1;
-			} else {
-				counts.warn += 1;
-			}
-
-			counts.total += 1;
-			return counts;
-		},
-		{ total: 0, pass: 0, warn: 0, fail: 0 }
-	);
-}
-
-function diagnosticFilterCount( counts, filterName ) {
-	return filterName === 'all' ? counts.total : counts[ filterName ] || 0;
-}
-
-function filteredDiagnosticItems( items, filterName ) {
-	return filterName === 'all'
-		? items
-		: items.filter( ( item ) => item.status === filterName );
-}
-
-function diagnosticStatusLabel( status ) {
-	return DIAGNOSTIC_STATUS_LABELS[ status ] || 'Not run';
-}
-
-function formatDiagnosticCheckLabel( id ) {
-	return String( id || 'connection_check' )
-		.replace( /[_-]+/g, ' ' )
-		.replace( /\b\w/g, ( character ) => character.toUpperCase() );
-}
-
 function diagnosticObject( value ) {
 	return value && typeof value === 'object' && ! Array.isArray( value )
 		? value
@@ -2742,15 +2704,17 @@ function persistentMcpUrlStatus( mcpUrl, health ) {
 }
 
 function StatusBadge( { status, label = '' } ) {
-	const normalizedStatus = [ 'pass', 'warn', 'fail' ].includes( status )
-		? status
-		: 'warn';
+	const normalizedStatus =
+		status === 'unavailable' ? status : normalizeDiagnosticStatus( status );
 
 	return (
 		<span
 			className={ `aculect-ai-companion-health-status is-${ normalizedStatus }` }
 		>
-			{ label || diagnosticStatusLabel( normalizedStatus ) }
+			{ label ||
+				( normalizedStatus === 'unavailable'
+					? 'Not run'
+					: diagnosticStatusLabel( normalizedStatus ) ) }
 		</span>
 	);
 }
@@ -2760,6 +2724,7 @@ function DiagnosticsFilterTabs( { counts, activeFilter, onChange } ) {
 		<div
 			className="aculect-ai-companion-diagnostic-filters"
 			aria-label="Diagnostic check filters"
+			role="group"
 		>
 			{ DIAGNOSTIC_FILTERS.map( ( filter ) => {
 				const isActive = activeFilter === filter.name;
@@ -2783,72 +2748,165 @@ function DiagnosticsFilterTabs( { counts, activeFilter, onChange } ) {
 	);
 }
 
-function ConnectionHealthChecks( { health, filter } ) {
+function DiagnosticStatusIcon( { status } ) {
+	const normalizedStatus = normalizeDiagnosticStatus( status );
+	const icon = normalizedStatus === 'pass' ? check : info;
+
+	return (
+		<span
+			className={ `aculect-ai-companion-diagnostic-check__status-icon is-${ normalizedStatus }` }
+			aria-hidden="true"
+		>
+			<Icon icon={ icon } size={ 20 } />
+		</span>
+	);
+}
+
+function DiagnosticCheckRow( {
+	item,
+	onOpenDetails,
+	onOpenGuidance,
+	isRunning,
+} ) {
+	const status = normalizeDiagnosticStatus( item.status );
+	const label = formatDiagnosticCheckLabel( item.id );
+	const titleId = `aculect-ai-companion-diagnostic-${ String(
+		item.id || 'connection-check'
+	).replace( /[^a-z0-9_-]+/gi, '-' ) }`;
+	const needsReview = status !== 'pass';
+
+	return (
+		<article
+			className={ `aculect-ai-companion-diagnostic-check is-${ status }` }
+			aria-labelledby={ titleId }
+		>
+			<DiagnosticStatusIcon status={ status } />
+			<div className="aculect-ai-companion-diagnostic-check__identity">
+				<div className="aculect-ai-companion-diagnostic-check__title-row">
+					<strong id={ titleId }>{ label }</strong>
+					{ isSampleRecord( item ) && (
+						<SampleBadge label="Preview" />
+					) }
+				</div>
+				<code>{ item.id }</code>
+			</div>
+			<div className="aculect-ai-companion-diagnostic-check__result">
+				<StatusBadge status={ status } />
+				<p>{ item.message || 'No result message is available.' }</p>
+			</div>
+			<div className="aculect-ai-companion-diagnostic-check__actions">
+				{ needsReview && (
+					<Button
+						type="button"
+						variant="secondary"
+						disabled={ isRunning }
+						onClick={ () => onOpenGuidance( item ) }
+					>
+						Review guidance
+					</Button>
+				) }
+				<Button
+					type="button"
+					variant={ needsReview ? 'tertiary' : 'secondary' }
+					disabled={ isRunning }
+					onClick={ () => onOpenDetails( item ) }
+					aria-label={ `View details for ${ label }` }
+				>
+					Details
+					<Icon icon={ arrowRight } size={ 16 } />
+				</Button>
+			</div>
+		</article>
+	);
+}
+
+function ConnectionHealthChecks( {
+	health,
+	filter,
+	searchQuery,
+	onOpenDetails,
+	onOpenGuidance,
+	isRunning,
+} ) {
 	const items = diagnosticItems( health );
-	const visibleItems = filteredDiagnosticItems( items, filter );
+	const visibleItems = filteredDiagnosticItems( items, filter, searchQuery );
+	const resultStatus = diagnosticResultsStatusText(
+		items.length,
+		visibleItems.length,
+		filter,
+		searchQuery
+	);
+	let content;
 
 	if ( items.length === 0 ) {
-		return (
+		content = (
 			<EmptyState title="No diagnostics run">
 				Run all checks to verify the connection URL, metadata endpoints,
 				authorization challenge, and approval screen.
 			</EmptyState>
 		);
-	}
-
-	if ( visibleItems.length === 0 ) {
-		return (
+	} else if ( visibleItems.length === 0 ) {
+		content = (
 			<EmptyState title="No checks in this view">
-				Choose another diagnostic status to review the saved results.
+				Try another status or clear the check search to review the saved
+				results.
 			</EmptyState>
+		);
+	} else {
+		content = (
+			<div className="aculect-ai-companion-diagnostic-check-list">
+				{ visibleItems.map( ( item ) => (
+					<DiagnosticCheckRow
+						key={ item.id }
+						item={ item }
+						isRunning={ isRunning }
+						onOpenDetails={ onOpenDetails }
+						onOpenGuidance={ onOpenGuidance }
+					/>
+				) ) }
+			</div>
 		);
 	}
 
 	return (
-		<div className="aculect-ai-companion-health-table-wrap">
-			<table className="widefat striped aculect-ai-companion-health-table">
-				<thead>
-					<tr>
-						<th>Check</th>
-						<th>Status</th>
-						<th>Result</th>
-						<th>Next Action</th>
-						<th>Details</th>
-					</tr>
-				</thead>
-				<tbody>
-					{ visibleItems.map( ( item ) => (
-						<tr key={ item.id }>
-							<td data-label="Check">
-								<strong>
-									{ formatDiagnosticCheckLabel( item.id ) }
-								</strong>
-								{ isSampleRecord( item ) && (
-									<SampleBadge label="Preview" />
-								) }
-								<code>{ item.id }</code>
-							</td>
-							<td data-label="Status">
-								<StatusBadge status={ item.status } />
-							</td>
-							<td data-label="Result">{ item.message || '-' }</td>
-							<td data-label="Next Action">
-								{ item.remediation || '-' }
-							</td>
-							<td data-label="Details">
-								<LogContext context={ item.details } />
-							</td>
-						</tr>
-					) ) }
-				</tbody>
-			</table>
-		</div>
+		<>
+			<p
+				className="screen-reader-text"
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				{ resultStatus }
+			</p>
+			{ content }
+		</>
 	);
 }
 
-function uniqueHelpLinks( providers ) {
+function uniqueHelpLinks( providers, pluginMetadata = EMPTY_OBJECT ) {
 	const links = [];
 	const seenUrls = new Set();
+
+	[
+		{
+			url: safeExternalUrl(
+				pluginMetadata.documentationUrl ||
+					pluginMetadata.wordpressOrgUrl
+			),
+			label: 'Plugin documentation',
+			description: 'Installation, setup, and release information.',
+		},
+		{
+			url: safeExternalUrl( pluginMetadata.supportUrl ),
+			label: 'Contact support',
+			description: 'Get help with a connection or diagnostics result.',
+		},
+	].forEach( ( linkItem ) => {
+		if ( linkItem.url && ! seenUrls.has( linkItem.url ) ) {
+			seenUrls.add( linkItem.url );
+			links.push( linkItem );
+		}
+	} );
 
 	providers.forEach( ( provider ) => {
 		if (
@@ -2859,6 +2917,7 @@ function uniqueHelpLinks( providers ) {
 			links.push( {
 				url: provider.primaryActionUrl,
 				label: provider.primaryActionLabel || provider.label,
+				description: `Open ${ provider.label } connection guidance.`,
 			} );
 		}
 
@@ -2874,6 +2933,9 @@ function uniqueHelpLinks( providers ) {
 			links.push( {
 				url: section.actionUrl,
 				label: section.actionLabel || section.title || provider.label,
+				description:
+					section.description ||
+					`Review ${ provider.label } setup instructions.`,
 			} );
 		} );
 	} );
@@ -4572,7 +4634,7 @@ function DiagnosticsSystemPanel( { health, onCopy } ) {
 				<span className="aculect-ai-companion-side-panel__icon">
 					<Icon icon={ info } size={ 20 } />
 				</span>
-				<h3>System summary</h3>
+				<h3>System snapshot</h3>
 			</div>
 			{ rows.length > 0 ? (
 				<DiagnosticMetaList rows={ rows } />
@@ -4634,40 +4696,6 @@ function DiagnosticsEnvironmentPanel( { health } ) {
 					{ label: 'Errors', value: counts.fail },
 				] }
 			/>
-		</div>
-	);
-}
-
-function DiagnosticsHelpPanel( { links } ) {
-	return (
-		<div className="aculect-ai-companion-side-panel aculect-ai-companion-diagnostic-panel">
-			<div className="aculect-ai-companion-side-panel__heading">
-				<span className="aculect-ai-companion-side-panel__icon">
-					<Icon icon={ help } size={ 20 } />
-				</span>
-				<h3>Help links</h3>
-			</div>
-			{ links.length > 0 ? (
-				<ul className="aculect-ai-companion-help-link-list">
-					{ links.map( ( item ) => (
-						<li key={ item.url }>
-							<a
-								href={ item.url }
-								target="_blank"
-								rel="noreferrer noopener"
-							>
-								<span>{ item.label }</span>
-								<Icon icon={ external } size={ 16 } />
-							</a>
-						</li>
-					) ) }
-				</ul>
-			) : (
-				<p>
-					Provider-specific setup links appear here when they are
-					configured.
-				</p>
-			) }
 		</div>
 	);
 }
@@ -4794,6 +4822,307 @@ function DiagnosticsOAuthCapacityPanel( { data, oauthClients } ) {
 	);
 }
 
+function DiagnosticsHelpPanel( { links, onOpen } ) {
+	const visibleLinks = links.slice( 0, 3 );
+
+	return (
+		<div className="aculect-ai-companion-side-panel aculect-ai-companion-diagnostic-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ help } size={ 20 } />
+				</span>
+				<h3>Helpful links</h3>
+			</div>
+			{ visibleLinks.length > 0 ? (
+				<ul className="aculect-ai-companion-help-link-list">
+					{ visibleLinks.map( ( item ) => (
+						<li key={ item.url }>
+							<a
+								href={ item.url }
+								target="_blank"
+								rel="noreferrer noopener"
+							>
+								<span>{ item.label }</span>
+								<Icon icon={ external } size={ 16 } />
+							</a>
+						</li>
+					) ) }
+				</ul>
+			) : (
+				<p>
+					Provider-specific setup links appear here when they are
+					configured.
+				</p>
+			) }
+			<Button type="button" variant="tertiary" onClick={ onOpen }>
+				View all resources
+				<Icon icon={ arrowRight } size={ 16 } />
+			</Button>
+		</div>
+	);
+}
+
+function DiagnosticsHealthSummary( { data, health, counts } ) {
+	const status = diagnosticOverallStatus( counts );
+	const freshness = diagnosticFreshness( health?.ranAt );
+	const statusCopy = {
+		pass: {
+			title: 'Connection healthy',
+			description: 'All saved checks are passing.',
+		},
+		warn: {
+			title: 'Connection needs review',
+			description:
+				'Review the highlighted checks before relying on every connection workflow.',
+		},
+		fail: {
+			title: 'Connection has errors',
+			description:
+				'Resolve the highlighted errors before reconnecting an assistant.',
+		},
+		unavailable: {
+			title: 'Connection health not checked',
+			description: 'Run all checks to establish a saved health baseline.',
+		},
+	}[ status ];
+
+	return (
+		<section
+			className={ `aculect-ai-companion-diagnostic-summary is-${ status }` }
+			aria-live="polite"
+		>
+			<DiagnosticStatusIcon
+				status={ status === 'unavailable' ? 'warn' : status }
+			/>
+			<div className="aculect-ai-companion-diagnostic-summary__content">
+				<div className="aculect-ai-companion-diagnostic-summary__heading">
+					<h3>{ statusCopy.title }</h3>
+					<StatusBadge status={ status } />
+				</div>
+				<p>{ statusCopy.description }</p>
+				<div className="aculect-ai-companion-diagnostic-summary__meta">
+					<span>
+						<strong>{ counts.pass }</strong> of{ ' ' }
+						<strong>{ counts.total }</strong> checks passing
+					</span>
+					<span aria-hidden="true">•</span>
+					<span>
+						{ health?.ranAt
+							? `Last checked ${ health.ranAt }`
+							: 'No saved run' }
+					</span>
+					{ counts.warn > 0 && (
+						<StatusBadge
+							status="warn"
+							label={ `${ counts.warn } to review` }
+						/>
+					) }
+					{ counts.fail > 0 && (
+						<StatusBadge
+							status="fail"
+							label={ `${ counts.fail } error${
+								counts.fail === 1 ? '' : 's'
+							}` }
+						/>
+					) }
+					{ freshness === 'stale' && (
+						<StatusBadge
+							status="warn"
+							label="Saved result is stale"
+						/>
+					) }
+				</div>
+			</div>
+			<Button
+				href={ tabUrl( 'logs', data.adminPageUrl ) }
+				variant="tertiary"
+				onClick={ ( event ) => maybeSelectTab( event, 'logs' ) }
+			>
+				View diagnostic logs
+				<Icon icon={ arrowRight } size={ 16 } />
+			</Button>
+		</section>
+	);
+}
+
+function DiagnosticEvidence( { item } ) {
+	const evidence = safeDiagnosticEvidence( item?.details || {} );
+	const hasEvidence =
+		evidence &&
+		typeof evidence === 'object' &&
+		Object.keys( evidence ).length > 0;
+
+	return (
+		<div className="aculect-ai-companion-diagnostic-drawer__evidence">
+			<strong>Technical evidence</strong>
+			{ hasEvidence ? (
+				<pre>{ JSON.stringify( evidence, null, 2 ) }</pre>
+			) : (
+				<p>No additional technical evidence was recorded.</p>
+			) }
+			<p>
+				Evidence is bounded and excludes tokens, secrets, authorization
+				codes, raw request bodies, and unrestricted payloads.
+			</p>
+		</div>
+	);
+}
+
+function DiagnosticGuidanceDrawer( { data, item, isRunning, onRun, onClose } ) {
+	if ( ! item ) {
+		return null;
+	}
+
+	const label = formatDiagnosticCheckLabel( item.id );
+	const steps = diagnosticGuidanceSteps( item );
+	const connectionRelated =
+		/secret|storage|auth|approval|metadata|route|https/.test(
+			String( item.id || '' )
+		);
+	const indexRelated = /index|intelligence/.test( String( item.id || '' ) );
+
+	return (
+		<Modal
+			title={ `Review ${ label }` }
+			className="aculect-ai-companion-diagnostic-drawer"
+			onRequestClose={ onClose }
+		>
+			<div className="aculect-ai-companion-diagnostic-drawer__body">
+				<StatusBadge status={ item.status } />
+				<p>
+					{ item.message || 'This check needs administrator review.' }
+				</p>
+				<p>{ diagnosticWhyItMatters( item ) }</p>
+				<ol className="aculect-ai-companion-diagnostic-guidance">
+					{ steps.map( ( step, index ) => (
+						<li key={ step.title }>
+							<span aria-hidden="true">{ index + 1 }</span>
+							<div>
+								<strong>{ step.title }</strong>
+								<p>{ step.description }</p>
+							</div>
+						</li>
+					) ) }
+				</ol>
+				<div className="aculect-ai-companion-diagnostic-drawer__actions">
+					{ connectionRelated && (
+						<Button
+							href={ tabUrl( 'connections', data.adminPageUrl ) }
+							variant="secondary"
+							onClick={ ( event ) => {
+								onClose();
+								maybeSelectTab( event, 'connections' );
+							} }
+						>
+							Open connections
+						</Button>
+					) }
+					{ indexRelated && (
+						<ActionForm
+							data={ data }
+							action={ data.actions?.runContentIndexSweepAction }
+							nonce={ data.actions?.runContentIndexSweepNonce }
+							label="Run index sweep"
+							busyLabel="Running sweep"
+							variant="secondary"
+						/>
+					) }
+					<ActionForm
+						data={ data }
+						action={ data.actions?.runDiagnosticsAction }
+						nonce={ data.actions?.runDiagnosticsNonce }
+						label="Run all checks"
+						busyLabel="Running checks"
+						isBusy={ isRunning }
+						onSubmit={ onRun }
+					/>
+				</div>
+				<p className="aculect-ai-companion-diagnostic-drawer__privacy">
+					<Icon icon={ lock } size={ 16 } />
+					No secret values are displayed here.
+				</p>
+			</div>
+		</Modal>
+	);
+}
+
+function DiagnosticDetailsDrawer( { item, onCopy, onClose } ) {
+	if ( ! item ) {
+		return null;
+	}
+
+	const label = formatDiagnosticCheckLabel( item.id );
+
+	return (
+		<Modal
+			title="Check details"
+			className="aculect-ai-companion-diagnostic-drawer"
+			onRequestClose={ onClose }
+		>
+			<div className="aculect-ai-companion-diagnostic-drawer__body">
+				<StatusBadge status={ item.status } />
+				<div className="aculect-ai-companion-diagnostic-drawer__identity">
+					<h3>{ label }</h3>
+					<code>{ item.id }</code>
+				</div>
+				<p>{ item.message || 'No result message is available.' }</p>
+				<div className="aculect-ai-companion-diagnostic-drawer__section">
+					<strong>Why this matters</strong>
+					<p>{ diagnosticWhyItMatters( item ) }</p>
+				</div>
+				<DiagnosticEvidence item={ item } />
+				<Button
+					type="button"
+					variant="secondary"
+					onClick={ () =>
+						onCopy(
+							diagnosticResultText( item ),
+							'Diagnostic result copied.'
+						)
+					}
+				>
+					<Icon icon={ copy } size={ 16 } />
+					Copy result
+				</Button>
+			</div>
+		</Modal>
+	);
+}
+
+function DiagnosticsResourcesDrawer( { links, onClose } ) {
+	return (
+		<Modal
+			title="Helpful resources"
+			className="aculect-ai-companion-diagnostic-drawer"
+			onRequestClose={ onClose }
+		>
+			<div className="aculect-ai-companion-diagnostic-drawer__body">
+				{ links.length > 0 ? (
+					<ul className="aculect-ai-companion-diagnostic-resource-list">
+						{ links.map( ( item ) => (
+							<li key={ item.url }>
+								<a
+									href={ item.url }
+									target="_blank"
+									rel="noreferrer noopener"
+								>
+									<strong>{ item.label }</strong>
+									<Icon icon={ external } size={ 16 } />
+								</a>
+								{ item.description && (
+									<p>{ item.description }</p>
+								) }
+							</li>
+						) ) }
+					</ul>
+				) : (
+					<p>No support resources are currently configured.</p>
+				) }
+			</div>
+		</Modal>
+	);
+}
+
 function DiagnosticsDashboard( {
 	data,
 	health,
@@ -4806,6 +5135,11 @@ function DiagnosticsDashboard( {
 } ) {
 	const items = diagnosticItems( health );
 	const counts = diagnosticCounts( items );
+	const [ searchQuery, setSearchQuery ] = useState( '' );
+	const [ drawer, setDrawer ] = useState( null );
+	const selectedItem =
+		drawer?.itemId && diagnosticItemById( health, drawer.itemId );
+	const freshness = diagnosticFreshness( health?.ranAt );
 	const oauthClients =
 		data.diagnostics?.oauthClients &&
 		typeof data.diagnostics.oauthClients === 'object'
@@ -4813,33 +5147,64 @@ function DiagnosticsDashboard( {
 			: {};
 
 	return (
-		<div className="aculect-ai-companion-diagnostics">
-			<div className="aculect-ai-companion-tab-actions">
-				<ActionForm
-					data={ data }
-					action={ data.actions?.runDiagnosticsAction }
-					nonce={ data.actions?.runDiagnosticsNonce }
-					label="Run all checks"
-					busyLabel="Running checks"
-					isBusy={ isRunning }
-					onSubmit={ onRun }
-				/>
-				<ActionForm
-					data={ data }
-					action={ data.actions?.exportMcpToolManifestAction }
-					nonce={ data.actions?.exportMcpToolManifestNonce }
-					label="Export Tool Manifest"
-					variant="secondary"
-				/>
-				<ActionForm
-					data={ data }
-					action={ data.actions?.runContentIndexSweepAction }
-					nonce={ data.actions?.runContentIndexSweepNonce }
-					label="Run index sweep"
-					busyLabel="Running sweep"
-					variant="secondary"
-				/>
+		<div
+			className="aculect-ai-companion-diagnostics"
+			aria-busy={ isRunning }
+		>
+			<div className="aculect-ai-companion-diagnostics-header">
+				<div>
+					<h2>Diagnostics</h2>
+					<p>
+						Monitor the MCP connection and resolve issues before
+						they affect assistants.
+					</p>
+				</div>
+				<div className="aculect-ai-companion-tab-actions">
+					<ActionForm
+						data={ data }
+						action={ data.actions?.runDiagnosticsAction }
+						nonce={ data.actions?.runDiagnosticsNonce }
+						label="Run all checks"
+						busyLabel="Running checks"
+						isBusy={ isRunning }
+						onSubmit={ onRun }
+					/>
+					<ActionForm
+						data={ data }
+						action={ data.actions?.exportMcpToolManifestAction }
+						nonce={ data.actions?.exportMcpToolManifestNonce }
+						label="Export manifest"
+						variant="secondary"
+					/>
+					<ActionForm
+						data={ data }
+						action={ data.actions?.runContentIndexSweepAction }
+						nonce={ data.actions?.runContentIndexSweepNonce }
+						label="Run index sweep"
+						busyLabel="Running sweep"
+						variant="secondary"
+					/>
+				</div>
 			</div>
+
+			<DiagnosticsHealthSummary
+				data={ data }
+				health={ health }
+				counts={ counts }
+			/>
+
+			{ isRunning && (
+				<Notice status="info" isDismissible={ false }>
+					Checks are running. Saved results remain visible until the
+					new run completes.
+				</Notice>
+			) }
+			{ freshness === 'stale' && ! isRunning && (
+				<Notice status="warning" isDismissible={ false }>
+					These saved results are more than 24 hours old. Run all
+					checks to refresh the connection health.
+				</Notice>
+			) }
 
 			<div className="aculect-ai-companion-diagnostics-layout">
 				<div className="aculect-ai-companion-diagnostics-main">
@@ -4856,14 +5221,37 @@ function DiagnosticsDashboard( {
 								</p>
 							</div>
 						</div>
-						<DiagnosticsFilterTabs
-							counts={ counts }
-							activeFilter={ activeFilter }
-							onChange={ onFilterChange }
-						/>
+						<div className="aculect-ai-companion-diagnostics-toolbar">
+							<DiagnosticsFilterTabs
+								counts={ counts }
+								activeFilter={ activeFilter }
+								onChange={ onFilterChange }
+							/>
+							<SearchControl
+								label="Search diagnostic checks"
+								placeholder="Filter checks…"
+								value={ searchQuery }
+								onChange={ setSearchQuery }
+								__nextHasNoMarginBottom
+							/>
+						</div>
 						<ConnectionHealthChecks
 							health={ health }
 							filter={ activeFilter }
+							searchQuery={ searchQuery }
+							isRunning={ isRunning }
+							onOpenDetails={ ( item ) =>
+								setDrawer( {
+									type: 'details',
+									itemId: item.id,
+								} )
+							}
+							onOpenGuidance={ ( item ) =>
+								setDrawer( {
+									type: 'guidance',
+									itemId: item.id,
+								} )
+							}
 						/>
 					</div>
 				</div>
@@ -4878,9 +5266,35 @@ function DiagnosticsDashboard( {
 						data={ data }
 						oauthClients={ oauthClients }
 					/>
-					<DiagnosticsHelpPanel links={ links } />
+					<DiagnosticsHelpPanel
+						links={ links }
+						onOpen={ () => setDrawer( { type: 'resources' } ) }
+					/>
 				</aside>
 			</div>
+
+			{ drawer?.type === 'guidance' && (
+				<DiagnosticGuidanceDrawer
+					data={ data }
+					item={ selectedItem }
+					isRunning={ isRunning }
+					onRun={ onRun }
+					onClose={ () => setDrawer( null ) }
+				/>
+			) }
+			{ drawer?.type === 'details' && (
+				<DiagnosticDetailsDrawer
+					item={ selectedItem }
+					onCopy={ onCopy }
+					onClose={ () => setDrawer( null ) }
+				/>
+			) }
+			{ drawer?.type === 'resources' && (
+				<DiagnosticsResourcesDrawer
+					links={ links }
+					onClose={ () => setDrawer( null ) }
+				/>
+			) }
 		</div>
 	);
 }
@@ -4955,7 +5369,6 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
 	);
 	const guideUrl = safeExternalUrl( selectedOption.guideUrl );
-	const showSetupGuide = Boolean( guideUrl && guideUrl !== actionUrl );
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
@@ -5003,7 +5416,7 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				) }
 				<p>{ selectedOption.description }</p>
 				<div className="aculect-ai-companion-connect-app-picker__actions">
-					{ showSetupGuide && (
+					{ guideUrl && (
 						<a
 							href={ guideUrl }
 							target="_blank"
@@ -5026,6 +5439,19 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				</div>
 			</div>
 		</section>
+	);
+}
+
+function ConnectReadinessBadge( { status } ) {
+	const ready = status.status === 'pass';
+
+	return (
+		<span
+			className={ `aculect-ai-companion-connect-readiness is-${ status.status }` }
+		>
+			<Icon icon={ ready ? check : info } size={ 16 } />
+			<span>{ ready ? 'Ready' : 'Needs attention' }</span>
+		</span>
 	);
 }
 
@@ -5099,19 +5525,6 @@ function ConnectToolFilteringGuidance( { provider, onCopy } ) {
 				</div>
 			</details>
 		</section>
-	);
-}
-
-function ConnectReadinessBadge( { status } ) {
-	const ready = status.status === 'pass';
-
-	return (
-		<span
-			className={ `aculect-ai-companion-connect-readiness is-${ status.status }` }
-		>
-			<Icon icon={ ready ? check : info } size={ 16 } />
-			<span>{ ready ? 'Ready' : 'Needs attention' }</span>
-		</span>
 	);
 }
 
@@ -6988,7 +7401,7 @@ function SettingsApp() {
 		! sameStringSet( enabledAbilities, originalEnabledAbilities ) ||
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
 		! sameStringSet( confirmationGroups, originalConfirmationGroups );
-	const helpLinks = uniqueHelpLinks( providers );
+	const helpLinks = uniqueHelpLinks( providers, pluginMetadata );
 	const shouldShowAccessControl = Boolean(
 		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
 	);
@@ -7562,17 +7975,6 @@ function SettingsApp() {
 				{ data.status === 'diagnostics_run' && (
 					<Notice status="success" isDismissible={ false }>
 						Connection diagnostics updated.
-					</Notice>
-				) }
-				{ data.status === 'oauth_client_recovery_succeeded' && (
-					<Notice status="success" isDismissible={ false }>
-						Unused OAuth client registration revoked.
-					</Notice>
-				) }
-				{ data.status === 'oauth_client_recovery_not_eligible' && (
-					<Notice status="warning" isDismissible={ false }>
-						The OAuth client was not changed because it is active or
-						no longer eligible for recovery.
 					</Notice>
 				) }
 				{ data.status === 'index_sweep_run' && (

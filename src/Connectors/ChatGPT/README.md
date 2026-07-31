@@ -87,6 +87,14 @@ The DCR endpoint previously returned plugin-level `429` responses after repeated
 
 Current rule: valid DCR requests must not return a plugin-level `429`. Invalid redirect URIs should still return `400`.
 
+### Registration Capacity Is Recoverable
+
+Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. Before the cap is applied, the repository revokes registrations older than the configured stale window when they have no live authorization code, access token, or refresh token.
+
+If capacity is still exhausted, DCR returns HTTP `503` with the stable `registration_capacity_exceeded` code and a non-sensitive recovery message. It never includes other client registrations, credentials, or capacity counts.
+
+Administrators can review the sanitized capacity summary and eligible stale registrations under **Settings > AI Companion > Diagnostics**. The recovery action rechecks that the selected registration is still stale and unused before revoking it.
+
 ### Login Must Return To Consent, Not REST Authorize
 
 The authorize endpoint previously sent logged-out users to `wp-login.php` with `redirect_to` pointing back to the REST authorize URL. That caused login loops or an admin login page stall.
@@ -110,6 +118,14 @@ Cause: plugin-level DCR rate limiting.
 Fix: remove hard local rate limiting for valid DCR registration. Validate redirect URIs and create the client instead.
 
 Regression check: run repeated valid DCR requests and confirm every request returns `201`, not `429`.
+
+### `registration_capacity_exceeded`
+
+Cause: the active DCR client cap is full after eligible stale registrations have already been pruned.
+
+Fix: open **Settings > AI Companion > Diagnostics**, review the OAuth client capacity panel, and revoke only an unused stale registration. Active codes, access tokens, and refreshable connections are not eligible for this recovery action.
+
+Regression check: force a low cap in a fixture, verify the response is sanitized HTTP `503`, then recover one stale unused client and confirm a valid retry can return `201`.
 
 ### Redirects To Login Even When Already Logged In
 

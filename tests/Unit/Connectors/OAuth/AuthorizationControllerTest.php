@@ -106,6 +106,46 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertFalse( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'options:write' ) ) ) );
 	}
 
+	public function test_redirect_validation_allows_only_the_registered_loopback_port_to_vary(): void {
+		$controller = new AuthorizationController();
+		$client     = new ClientEntity();
+		$client->setRedirectUri(
+			array(
+				'https://claude.ai/api/mcp/auth_callback',
+				'http://localhost/callback',
+			)
+		);
+
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'redirect_uri_allowed',
+				array( $client, 'https://claude.ai/api/mcp/auth_callback' )
+			)
+		);
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'redirect_uri_allowed',
+				array( $client, 'http://localhost:3118/callback' )
+			)
+		);
+		self::assertFalse(
+			$this->invokePrivate(
+				$controller,
+				'redirect_uri_allowed',
+				array( $client, 'http://localhost:3118/other' )
+			)
+		);
+		self::assertFalse(
+			$this->invokePrivate(
+				$controller,
+				'redirect_uri_allowed',
+				array( $client, 'https://claude.ai:8443/api/mcp/auth_callback' )
+			)
+		);
+	}
+
 	public function test_admin_consent_url_uses_wordpress_settings_page(): void {
 		$url = $this->invokePrivate(
 			new AuthorizationController(),

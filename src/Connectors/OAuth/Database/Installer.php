@@ -25,24 +25,40 @@ final class Installer {
 
 	/**
 	 * Create or update the OAuth tables and migrate option-backed legacy state.
+	 *
+	 * @param bool $verify_tables Whether to verify required OAuth tables even when the stored version is current.
+	 * @return bool Whether all required OAuth tables are available after installation.
 	 */
-	public static function install(): void {
+	public static function install( bool $verify_tables = false ): bool {
 		$installed           = (string) get_option( self::OPTION_DB_VERSION, '0' );
 		$needs_schema_update = version_compare( $installed, self::DB_VERSION, '<' );
-		if ( $needs_schema_update ) {
-			self::create_tables();
+		$missing_tables      = $verify_tables ? self::missing_table_keys() : array();
+
+		if ( $needs_schema_update || array() !== $missing_tables ) {
+			try {
+				self::create_tables();
+			} catch ( \Throwable ) {
+				return false;
+			}
+
+			if ( array() !== self::missing_table_keys() ) {
+				return false;
+			}
+
 			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 			self::backfill_client_registration_fingerprints();
 		}
 
 		self::migrate_legacy_option_tokens();
+
+		return true;
 	}
 
 	/**
 	 * Activation entry point for OAuth storage setup.
 	 */
 	public static function activate(): void {
-		self::install();
+		self::install( true );
 	}
 
 	/**
@@ -59,6 +75,27 @@ final class Installer {
 			'refresh_tokens' => $wpdb->prefix . 'aculect_ai_companion_oauth_refresh_tokens',
 			'auth_codes'     => $wpdb->prefix . 'aculect_ai_companion_oauth_auth_codes',
 		);
+	}
+
+	/**
+	 * Return logical OAuth stores whose tables are unavailable.
+	 *
+	 * Logical names keep diagnostics useful without exposing site-specific table
+	 * prefixes or any protocol data.
+	 *
+	 * @return list<string>
+	 */
+	public static function missing_table_keys(): array {
+		global $wpdb;
+
+		$missing = array();
+		foreach ( self::table_names() as $key => $table ) {
+			if ( $table !== (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
+				$missing[] = $key;
+			}
+		}
+
+		return $missing;
 	}
 
 	/**
@@ -84,7 +121,9 @@ final class Installer {
 		$charset = $wpdb->get_charset_collate();
 		$tables  = self::table_names();
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 		dbDelta( self::schema_sql( $tables, $charset ) );
 	}
 

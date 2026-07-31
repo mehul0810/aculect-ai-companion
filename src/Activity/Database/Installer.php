@@ -16,20 +16,37 @@ final class Installer {
 
 	/**
 	 * Create or update the activity log table.
+	 *
+	 * @param bool $verify_tables Whether to verify the required activity table when the stored version is current.
+	 * @return bool Whether the activity table is available after installation.
 	 */
-	public static function install(): void {
-		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
-			self::create_table();
+	public static function install( bool $verify_tables = false ): bool {
+		$installed       = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$schema_is_stale = version_compare( $installed, self::DB_VERSION, '<' );
+		$missing_tables  = $verify_tables ? self::missing_table_keys() : array();
+
+		if ( $schema_is_stale || array() !== $missing_tables ) {
+			try {
+				self::create_table();
+			} catch ( \Throwable ) {
+				return false;
+			}
+
+			if ( array() !== self::missing_table_keys() ) {
+				return false;
+			}
+
 			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 		}
+
+		return true;
 	}
 
 	/**
 	 * Activation entry point.
 	 */
 	public static function activate(): void {
-		self::install();
+		self::install( true );
 	}
 
 	/**
@@ -39,6 +56,21 @@ final class Installer {
 		global $wpdb;
 
 		return $wpdb->prefix . 'aculect_ai_companion_activity';
+	}
+
+	/**
+	 * Return the logical activity store when its table is unavailable.
+	 *
+	 * @return list<string>
+	 */
+	public static function missing_table_keys(): array {
+		global $wpdb;
+
+		$table = self::table_name();
+
+		return $table === (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) )
+			? array()
+			: array( 'activity' );
 	}
 
 	/**
@@ -86,7 +118,9 @@ final class Installer {
             KEY error_code (error_code)
         ) {$charset};\n";
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 		dbDelta( $sql );
 	}
 }

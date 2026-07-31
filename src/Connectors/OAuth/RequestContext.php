@@ -11,7 +11,8 @@ use Aculect\AICompanion\Connectors\Helpers;
  */
 final class RequestContext {
 
-	private static string $resource = '';
+	private static string $resource              = '';
+	private static string $approved_redirect_uri = '';
 
 	/**
 	 * Set the resource currently being processed.
@@ -30,9 +31,26 @@ final class RequestContext {
 	}
 
 	/**
-	 * Reset request-local resource state after OAuth processing.
+	 * Set a redirect URI already approved against the registered client policy.
+	 *
+	 * @param string $redirect_uri Approved authorization-request redirect URI.
+	 */
+	public static function set_approved_redirect_uri( string $redirect_uri ): void {
+		self::$approved_redirect_uri = $redirect_uri;
+	}
+
+	/**
+	 * Return the request-local redirect URI approved by the authorization layer.
+	 */
+	public static function approved_redirect_uri(): string {
+		return self::$approved_redirect_uri;
+	}
+
+	/**
+	 * Reset request-local OAuth state after processing.
 	 */
 	public static function reset(): void {
-		self::$resource = '';
+		self::$resource              = '';
+		self::$approved_redirect_uri = '';
 	}
 }

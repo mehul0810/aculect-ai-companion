@@ -46,13 +46,60 @@ final class ProductionPackageVerifierTest extends TestCase {
 		}
 	}
 
+	public function test_verifier_rejects_generated_smoke_artifacts(): void {
+		$package = $this->package_fixture();
+		$this->write_file(
+			$package . '/vendor/autoload.php',
+			"<?php\nnamespace League\\OAuth2\\Server\\Repositories;\ninterface AccessTokenRepositoryInterface {}\n"
+		);
+		$this->write_file(
+			$package . '/artifacts/smoke/release-fixture/latest/summary.json',
+			"{\"status\":\"pass\"}\n"
+		);
+
+		try {
+			$result = $this->run_verifier( $package );
+
+			self::assertSame( 1, $result['status'] );
+			self::assertStringContainsString( 'Development-only path is present: artifacts', $result['output'] );
+		} finally {
+			$this->remove_directory( dirname( $package ) );
+		}
+	}
+
+	public function test_distignore_excludes_generated_smoke_artifacts_from_package_staging(): void {
+		$parent  = sys_get_temp_dir() . '/aculect-package-staging-' . bin2hex( random_bytes( 8 ) );
+		$source  = $parent . '/source';
+		$package = $parent . '/aculect-ai-companion';
+		$root    = dirname( __DIR__, 3 );
+
+		self::assertTrue( mkdir( $source, 0755, true ) );
+		self::assertTrue( mkdir( $package, 0755, true ) );
+		self::assertTrue( copy( $root . '/.distignore', $source . '/.distignore' ) );
+		$this->write_file(
+			$source . '/artifacts/smoke/release-fixture/latest/summary.json',
+			"{\"status\":\"pass\"}\n"
+		);
+		$this->write_file( $source . '/aculect-ai-companion.php', "<?php\n" );
+
+		try {
+			$result = $this->run_package_staging( $source, $package );
+
+			self::assertSame( 0, $result['status'], $result['output'] );
+			self::assertFileExists( $package . '/aculect-ai-companion.php' );
+			self::assertFileDoesNotExist( $package . '/artifacts' );
+		} finally {
+			$this->remove_directory( $parent );
+		}
+	}
+
 	/**
 	 * Create the minimal production package fixture.
 	 *
 	 * @return string
 	 */
 	private function package_fixture(): string {
-		$parent = sys_get_temp_dir() . '/aculect-package-' . bin2hex( random_bytes( 8 ) );
+		$parent  = sys_get_temp_dir() . '/aculect-package-' . bin2hex( random_bytes( 8 ) );
 		$package = $parent . '/aculect-ai-companion';
 
 		self::assertTrue( mkdir( $package . '/build', 0755, true ) );
@@ -75,6 +122,31 @@ final class ProductionPackageVerifierTest extends TestCase {
 			'%s %s %s 2>&1',
 			escapeshellarg( PHP_BINARY ),
 			escapeshellarg( $root . '/bin/verify-production-package.php' ),
+			escapeshellarg( $package )
+		);
+		$output  = array();
+		$status  = 0;
+
+		exec( $command, $output, $status );
+
+		return array(
+			'status' => $status,
+			'output' => implode( "\n", $output ),
+		);
+	}
+
+	/**
+	 * Assemble a package fixture with the same exclusion mechanism used by CI.
+	 *
+	 * @param string $source Source fixture directory.
+	 * @param string $package Package fixture directory.
+	 * @return array{status: int, output: string}
+	 */
+	private function run_package_staging( string $source, string $package ): array {
+		$command = sprintf(
+			'rsync -rc --exclude-from=%s %s/ %s/ --delete --delete-excluded 2>&1',
+			escapeshellarg( $source . '/.distignore' ),
+			escapeshellarg( $source ),
 			escapeshellarg( $package )
 		);
 		$output  = array();

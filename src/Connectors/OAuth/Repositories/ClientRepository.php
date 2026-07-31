@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
-use DateTimeImmutable;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
+use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationResult;
+use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use DateTimeImmutable;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
 
@@ -23,7 +25,9 @@ final class ClientRepository implements ClientRepositoryInterface {
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- OAuth clients use a dedicated custom table and need immediate revocation/registration state.
 
 	private const DUPLICATE_CLEANUP_BATCH_SIZE = 25;
+	private const STALE_CLIENT_MIN_AGE_HOURS   = 24;
 	private const DEFAULT_PRUNE_BATCH_SIZE     = 500;
+	private const RECOVERY_LIST_LIMIT          = 20;
 
 	/**
 	 * Load a non-revoked OAuth client entity by client ID.
@@ -81,29 +85,43 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * @return array<string, string|null>|null
 	 */
 	public function create_client( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ?array {
+		return $this->create_client_result( $name, $redirect_uris, $confidential, $user_id )->client();
+	}
+
+	/**
+	 * Create a DCR client and preserve the reason a registration was rejected.
+	 *
+	 * @param string   $name          Client display name.
+	 * @param string[] $redirect_uris Valid redirect URIs.
+	 * @param bool     $confidential  Whether the client receives a secret.
+	 * @param int|null $user_id       Optional owning WordPress user.
+	 */
+	public function create_client_result( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ClientRegistrationResult {
 		global $wpdb;
 
 		$table                    = Installer::table_names()['clients'];
-		$client_id                = $this->generate_client_id();
-		$client_secret            = $confidential ? $this->generate_client_secret() : null;
-		$secret_hash              = $client_secret ? wp_hash_password( $client_secret ) : null;
 		$provider                 = Helpers::provider_from_client( $name, $redirect_uris );
 		$encoded_uris             = ClientRegistrationFingerprint::encoded_redirect_uris( $redirect_uris );
 		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
 
 		if ( null === $encoded_uris || null === $registration_fingerprint ) {
-			return null;
+			return ClientRegistrationResult::invalid_metadata();
 		}
 
+		$now = gmdate( 'Y-m-d H:i:s' );
 		$this->revoke_unused_duplicate_clients_by_fingerprint(
 			$provider,
 			$registration_fingerprint,
-			gmdate( 'Y-m-d H:i:s' )
+			$now
 		);
 
 		if ( $this->count_active_clients() >= $this->max_active_clients() ) {
-			return null;
+			return ClientRegistrationResult::capacity_exceeded();
 		}
+
+		$client_id     = $this->generate_client_id();
+		$client_secret = $confidential ? $this->generate_client_secret() : null;
+		$secret_hash   = $client_secret ? wp_hash_password( $client_secret ) : null;
 
 		$result = $wpdb->insert(
 			$table,
@@ -122,13 +140,15 @@ final class ClientRepository implements ClientRepositoryInterface {
 		);
 
 		if ( false === $result ) {
-			return null;
+			return ClientRegistrationResult::storage_failure();
 		}
 
-		return array(
-			'client_id'     => $client_id,
-			'client_secret' => $client_secret,
-			'provider'      => $provider,
+		return ClientRegistrationResult::created(
+			array(
+				'client_id'     => $client_id,
+				'client_secret' => $client_secret,
+				'provider'      => $provider,
+			)
 		);
 	}
 
@@ -156,6 +176,25 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
+	 * Return a sanitized registration-capacity summary for administrators.
+	 *
+	 * @return array{active:int,maximum:int,available:int,recoverable:int,status:string}
+	 */
+	public function capacity_status(): array {
+		$active      = $this->count_active_clients();
+		$maximum     = $this->max_active_clients();
+		$recoverable = $this->count_stale_unused_clients();
+
+		return array(
+			'active'      => $active,
+			'maximum'     => $maximum,
+			'available'   => max( 0, $maximum - $active ),
+			'recoverable' => $recoverable,
+			'status'      => $active >= $maximum ? 'exhausted' : ( $active >= (int) ceil( $maximum * 0.8 ) ? 'warning' : 'available' ),
+		);
+	}
+
+	/**
 	 * Return registered, non-revoked clients for diagnostics.
 	 *
 	 * @return array<int, array<string, mixed>>
@@ -173,6 +212,74 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
+	 * Return bounded, sanitized stale registrations eligible for admin recovery.
+	 *
+	 * @return array<int, array{client_id:string,client_name:string,provider:string,redirect_hosts:string[],created_at:string}>
+	 */
+	public function list_recoverable_clients(): array {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$now    = gmdate( 'Y-m-d H:i:s' );
+		$rows   = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT clients.client_id, clients.client_name, clients.provider, clients.redirect_uris, clients.created_at
+				FROM %i clients
+				WHERE clients.revoked = 0
+				AND clients.created_at < %s
+				AND clients.client_id NOT IN (
+					SELECT active_tokens.client_id
+					FROM %i active_tokens
+					WHERE active_tokens.revoked = 0
+					AND active_tokens.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT refreshable_tokens.client_id
+					FROM %i refreshable_tokens
+					INNER JOIN %i active_refresh
+						ON active_refresh.access_token_hash = refreshable_tokens.token_hash
+					WHERE active_refresh.revoked = 0
+					AND active_refresh.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT active_codes.client_id
+					FROM %i active_codes
+					WHERE active_codes.revoked = 0
+					AND active_codes.expires_at >= %s
+				)
+				ORDER BY clients.created_at ASC
+				LIMIT %d',
+				$tables['clients'],
+				$this->stale_client_cutoff(),
+				$tables['access_tokens'],
+				$now,
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$now,
+				$tables['auth_codes'],
+				$now,
+				self::RECOVERY_LIST_LIMIT
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		return array_map(
+			fn( array $row ): array => array(
+				'client_id'      => (string) ( $row['client_id'] ?? '' ),
+				'client_name'    => sanitize_text_field( (string) ( $row['client_name'] ?? '' ) ),
+				'provider'       => sanitize_key( (string) ( $row['provider'] ?? 'mcp' ) ),
+				'redirect_hosts' => $this->redirect_hosts_from_row( $row ),
+				'created_at'     => sanitize_text_field( (string) ( $row['created_at'] ?? '' ) ),
+			),
+			$rows
+		);
+	}
+
+	/**
 	 * Revoke one OAuth client.
 	 *
 	 * @param string $client_id OAuth client ID.
@@ -185,16 +292,74 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Revoke unused active clients that match a new DCR registration fingerprint.
+	 * Revoke one client only when it still satisfies the stale recovery policy.
+	 *
+	 * @param string $client_id OAuth client ID.
+	 */
+	public function revoke_stale_client( string $client_id ): bool {
+		global $wpdb;
+
+		$client_id = sanitize_text_field( $client_id );
+		if ( '' === $client_id ) {
+			return false;
+		}
+
+		$tables = Installer::table_names();
+		$now    = gmdate( 'Y-m-d H:i:s' );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i clients
+				SET clients.revoked = 1
+				WHERE clients.client_id = %s
+				AND clients.revoked = 0
+				AND clients.created_at < %s
+				AND clients.client_id NOT IN (
+					SELECT active_tokens.client_id
+					FROM %i active_tokens
+					WHERE active_tokens.revoked = 0
+					AND active_tokens.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT refreshable_tokens.client_id
+					FROM %i refreshable_tokens
+					INNER JOIN %i active_refresh
+						ON active_refresh.access_token_hash = refreshable_tokens.token_hash
+					WHERE active_refresh.revoked = 0
+					AND active_refresh.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT active_codes.client_id
+					FROM %i active_codes
+					WHERE active_codes.revoked = 0
+					AND active_codes.expires_at >= %s
+				)',
+				$tables['clients'],
+				$client_id,
+				$this->stale_client_cutoff(),
+				$tables['access_tokens'],
+				$now,
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$now,
+				$tables['auth_codes'],
+				$now
+			)
+		);
+
+		return false !== $result && $result > 0;
+	}
+
+	/**
+	 * Remove unused clients that match a new DCR registration fingerprint.
 	 *
 	 * This bounds repeated connector retries without rejecting valid Dynamic Client
-	 * Registration requests. Clients with live access tokens or authorization codes
-	 * remain active so in-flight and approved connections are not broken.
+	 * Registration requests. Clients with live access tokens, refresh tokens, or
+	 * authorization codes remain so in-flight and approved connections are not broken.
 	 *
 	 * @param string      $provider      Provider slug.
 	 * @param string[]    $redirect_uris Valid redirect URIs.
 	 * @param string|null $now           Optional UTC timestamp for tests.
-	 * @return int Number of client rows revoked.
+	 * @return int Number of client rows removed.
 	 */
 	public function revoke_unused_duplicate_clients( string $provider, array $redirect_uris, ?string $now = null ): int {
 		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
@@ -214,24 +379,76 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
 	 * @param int         $limit  Maximum rows to delete in this pass.
-	 * @return int Number of deleted rows.
+	 * @return int|false Number of deleted rows, or false on database failure.
 	 */
-	public function prune_revoked_clients( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
-		global $wpdb;
-
+	public function prune_revoked_clients( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int|false {
 		$table  = Installer::table_names()['clients'];
 		$cutoff = $this->normalized_cutoff( $cutoff );
 		$limit  = $this->normalized_batch_limit( $limit );
-		$result = $wpdb->query(
-			$wpdb->prepare(
-				'DELETE FROM %i WHERE revoked = 1 AND updated_at < %s LIMIT %d',
-				$table,
-				$cutoff,
-				$limit
-			)
+		$ids    = BoundedPruner::candidate_ids(
+			'SELECT id FROM %i WHERE revoked = 1 AND updated_at < %s ORDER BY updated_at ASC, id ASC LIMIT %d',
+			array( $table, $cutoff, $limit ),
+			$limit
 		);
 
-		return false === $result ? 0 : (int) $result;
+		if ( false === $ids ) {
+			return false;
+		}
+
+		return BoundedPruner::delete_ids(
+			$table,
+			$ids,
+			'revoked = 1 AND updated_at < %s',
+			array( $cutoff )
+		);
+	}
+
+	/**
+	 * Count active registrations eligible for stale-client recovery.
+	 */
+	public function count_stale_unused_clients(): int {
+		global $wpdb;
+
+		$tables = Installer::table_names();
+		$now    = gmdate( 'Y-m-d H:i:s' );
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COUNT(*)
+				FROM %i clients
+				WHERE clients.revoked = 0
+				AND clients.created_at < %s
+				AND clients.client_id NOT IN (
+					SELECT active_tokens.client_id
+					FROM %i active_tokens
+					WHERE active_tokens.revoked = 0
+					AND active_tokens.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT refreshable_tokens.client_id
+					FROM %i refreshable_tokens
+					INNER JOIN %i active_refresh
+						ON active_refresh.access_token_hash = refreshable_tokens.token_hash
+					WHERE active_refresh.revoked = 0
+					AND active_refresh.expires_at >= %s
+				)
+				AND clients.client_id NOT IN (
+					SELECT active_codes.client_id
+					FROM %i active_codes
+					WHERE active_codes.revoked = 0
+					AND active_codes.expires_at >= %s
+				)',
+				$tables['clients'],
+				$this->stale_client_cutoff(),
+				$tables['access_tokens'],
+				$now,
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$now,
+				$tables['auth_codes'],
+				$now
+			)
+		);
 	}
 
 	/**
@@ -295,12 +512,30 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Revoke matching duplicate clients that have no live token or auth code.
+	 * Return only redirect hosts for safe admin diagnostics.
+	 *
+	 * @param array<string, mixed> $row Client row.
+	 * @return string[]
+	 */
+	private function redirect_hosts_from_row( array $row ): array {
+		$hosts = array();
+		foreach ( $this->redirect_uris_from_row( $row ) as $uri ) {
+			$host = wp_parse_url( $uri, PHP_URL_HOST );
+			if ( is_string( $host ) && '' !== $host ) {
+				$hosts[] = strtolower( $host );
+			}
+		}
+
+		return array_values( array_unique( $hosts ) );
+	}
+
+	/**
+	 * Remove matching duplicate clients that have no live credential.
 	 *
 	 * @param string $provider                 Provider slug.
 	 * @param string $registration_fingerprint Canonical registration fingerprint.
 	 * @param string $now                      UTC timestamp in Y-m-d H:i:s format.
-	 * @return int Number of client rows revoked.
+	 * @return int Number of client rows removed.
 	 */
 	private function revoke_unused_duplicate_clients_by_fingerprint( string $provider, string $registration_fingerprint, string $now ): int {
 		global $wpdb;
@@ -309,25 +544,39 @@ final class ClientRepository implements ClientRepositoryInterface {
 		$limit  = $this->normalized_batch_limit( self::DUPLICATE_CLEANUP_BATCH_SIZE );
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				'UPDATE %i clients
-				SET clients.revoked = 1
-				WHERE clients.revoked = 0
-				AND clients.provider = %s
-				AND clients.registration_fingerprint = %s
-				AND clients.client_id NOT IN (
-					SELECT active_tokens.client_id
-					FROM %i active_tokens
-					WHERE active_tokens.revoked = 0
-					AND active_tokens.expires_at >= %s
-				)
-				AND clients.client_id NOT IN (
-					SELECT active_codes.client_id
-					FROM %i active_codes
-					WHERE active_codes.revoked = 0
-					AND active_codes.expires_at >= %s
-				)
-				ORDER BY clients.created_at ASC
-				LIMIT %d',
+				'DELETE FROM %i
+				WHERE client_id IN (
+					SELECT duplicate_clients.client_id
+					FROM (
+						SELECT clients.client_id
+						FROM %i clients
+						WHERE clients.provider = %s
+						AND clients.registration_fingerprint = %s
+						AND clients.client_id NOT IN (
+							SELECT active_tokens.client_id
+							FROM %i active_tokens
+							WHERE active_tokens.revoked = 0
+							AND active_tokens.expires_at >= %s
+						)
+						AND clients.client_id NOT IN (
+							SELECT active_codes.client_id
+							FROM %i active_codes
+							WHERE active_codes.revoked = 0
+							AND active_codes.expires_at >= %s
+						)
+						AND clients.client_id NOT IN (
+							SELECT refreshable_tokens.client_id
+							FROM %i refreshable_tokens
+							INNER JOIN %i active_refresh
+								ON active_refresh.access_token_hash = refreshable_tokens.token_hash
+							WHERE active_refresh.revoked = 0
+							AND active_refresh.expires_at >= %s
+						)
+						ORDER BY clients.created_at ASC
+						LIMIT %d
+					) duplicate_clients
+				)',
+				$tables['clients'],
 				$tables['clients'],
 				$provider,
 				$registration_fingerprint,
@@ -335,11 +584,24 @@ final class ClientRepository implements ClientRepositoryInterface {
 				$now,
 				$tables['auth_codes'],
 				$now,
+				$tables['access_tokens'],
+				$tables['refresh_tokens'],
+				$now,
 				$limit
 			)
 		);
 
 		return false === $result ? 0 : (int) $result;
+	}
+
+	/**
+	 * Return the UTC cutoff before which an unused registration is stale.
+	 */
+	private function stale_client_cutoff(): string {
+		$hours = (int) apply_filters( 'aculect_ai_companion_stale_oauth_client_hours', self::STALE_CLIENT_MIN_AGE_HOURS );
+		$hours = min( 24 * 30, max( 1, $hours ) );
+
+		return gmdate( 'Y-m-d H:i:s', time() - ( $hours * HOUR_IN_SECONDS ) );
 	}
 
 	/**

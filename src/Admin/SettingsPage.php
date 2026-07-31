@@ -20,8 +20,10 @@ use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
+use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
@@ -516,6 +518,7 @@ final class SettingsPage {
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
 			'reviewMemoryAction'              => 'aculect_ai_companion_review_memory_item',
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
+			'revokeStaleOAuthClientAction'    => 'aculect_ai_companion_revoke_stale_oauth_client',
 			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
 			'clearLogsAction'                 => 'aculect_ai_companion_clear_logs',
 			'setLockdownAction'               => 'aculect_ai_companion_set_lockdown',
@@ -534,6 +537,7 @@ final class SettingsPage {
 			'reviewLearningSuggestionNonce'   => wp_create_nonce( 'aculect_ai_companion_review_learning_suggestion' ),
 			'reviewMemoryNonce'               => wp_create_nonce( 'aculect_ai_companion_review_memory_item' ),
 			'runDiagnosticsNonce'             => wp_create_nonce( 'aculect_ai_companion_run_connection_diagnostics' ),
+			'revokeStaleOAuthClientNonce'     => wp_create_nonce( 'aculect_ai_companion_revoke_stale_oauth_client' ),
 			'runContentIndexSweepNonce'       => wp_create_nonce( 'aculect_ai_companion_run_content_index_sweep' ),
 			'clearLogsNonce'                  => wp_create_nonce( 'aculect_ai_companion_clear_logs' ),
 			'setLockdownNonce'                => wp_create_nonce( 'aculect_ai_companion_set_lockdown' ),
@@ -1124,6 +1128,39 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Revoke one unused stale OAuth registration from the diagnostics screen.
+	 */
+	public function handle_revoke_stale_oauth_client(): void {
+		$this->guard_action( 'aculect_ai_companion_revoke_stale_oauth_client' );
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
+		$client_id = isset( $_POST['oauth_client_id'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['oauth_client_id'] ) ) : '';
+		$revoked   = ( new ClientRepository() )->revoke_stale_client( $client_id );
+
+		( new Logger() )->info(
+			'dcr.admin_recovery',
+			$revoked
+				? 'An administrator revoked one unused stale OAuth client.'
+				: 'An administrator requested stale OAuth client recovery, but the registration was no longer eligible.',
+			array(
+				'status' => $revoked ? 'revoked' : 'not_eligible',
+			)
+		);
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'                  => 'aculect-ai-companion',
+					'tab'                   => 'diagnostics',
+					'oauth_client_recovery' => $revoked ? 'revoked' : 'not_eligible',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/**
 	 * Run one bounded stale index sweep and refresh diagnostics.
 	 */
 	public function handle_run_content_index_sweep(): void {
@@ -1233,11 +1270,19 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function diagnostics( bool $include_logs = false ): array {
-		$enabled = LogSettings::is_enabled();
+		$enabled  = LogSettings::is_enabled();
+		$oauth    = new ClientRepository();
+		$capacity = $oauth->capacity_status();
 
 		return array(
 			'loggingEnabled' => $enabled,
 			'retentionDays'  => LogSettings::retention_days(),
+			'oauthClients'   => array(
+				'capacity'    => $capacity,
+				'recoverable' => $capacity['recoverable'] > 0
+					? $oauth->list_recoverable_clients()
+					: array(),
+			),
 			'logs'           => $enabled && $include_logs
 				? $this->logs_payload()
 				: $this->empty_logs_payload(),
@@ -1678,6 +1723,13 @@ final class SettingsPage {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['diagnostics_run'] ) ) {
 			return 'diagnostics_run';
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+		if ( isset( $_GET['oauth_client_recovery'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
+			return 'revoked' === sanitize_key( wp_unslash( (string) $_GET['oauth_client_recovery'] ) )
+				? 'oauth_client_recovery_succeeded'
+				: 'oauth_client_recovery_not_eligible';
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin notice flag.
 		if ( isset( $_GET['index_sweep_run'] ) ) {

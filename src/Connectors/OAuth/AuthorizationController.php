@@ -240,6 +240,7 @@ final class AuthorizationController {
 
 		try {
 			RequestContext::set_resource( $resource );
+			RequestContext::set_approved_redirect_uri( $redirect_uri );
 			$query = array(
 				'response_type'         => 'code',
 				'client_id'             => $client->getIdentifier(),
@@ -838,13 +839,7 @@ final class AuthorizationController {
 	 * @return bool
 	 */
 	private function redirect_uri_allowed( ClientEntity $client, string $redirect_uri ): bool {
-		if ( '' === $redirect_uri || ! Helpers::is_allowed_redirect_uri( $redirect_uri ) ) {
-			return false;
-		}
-
-		$allowed = $client->getRedirectUri();
-		$allowed = is_array( $allowed ) ? $allowed : array( $allowed );
-		return in_array( $redirect_uri, $allowed, true );
+		return RedirectUriPolicy::allows( $client->getRedirectUri(), $redirect_uri );
 	}
 
 	/**

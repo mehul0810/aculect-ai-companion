@@ -30,9 +30,14 @@ import {
 	safeDiagnosticEvidence,
 } from './diagnostics-ui.mjs';
 import {
+	connectAppOptionForProvider,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
+import {
+	connectToolFilteringViewModel,
+	copyToolFilteringField,
+} from './connect-tool-filtering.mjs';
 import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
@@ -60,6 +65,7 @@ import {
 	copy,
 	download,
 	external,
+	globe,
 	help,
 	home,
 	info,
@@ -4654,6 +4660,168 @@ function DiagnosticsSystemPanel( { health, onCopy } ) {
 	);
 }
 
+function DiagnosticsEnvironmentPanel( { health } ) {
+	const items = diagnosticItems( health );
+	const counts = diagnosticCounts( items );
+	const httpsCheck = items.find( ( item ) => item.id === 'https_url' );
+
+	return (
+		<div className="aculect-ai-companion-side-panel aculect-ai-companion-diagnostic-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ globe } size={ 20 } />
+				</span>
+				<h3>Environment</h3>
+			</div>
+			{ httpsCheck ? (
+				<div className="aculect-ai-companion-diagnostic-environment">
+					<StatusBadge status={ httpsCheck.status } />
+					<p>{ httpsCheck.message }</p>
+					{ httpsCheck.remediation && (
+						<strong className="aculect-ai-companion-diagnostic-environment__remediation">
+							{ httpsCheck.remediation }
+						</strong>
+					) }
+				</div>
+			) : (
+				<p>
+					Run checks to confirm whether this site is ready for hosted
+					AI tools.
+				</p>
+			) }
+			<DiagnosticMetaList
+				rows={ [
+					{ label: 'Total checks', value: counts.total },
+					{ label: 'Warnings', value: counts.warn },
+					{ label: 'Errors', value: counts.fail },
+				] }
+			/>
+		</div>
+	);
+}
+
+function DiagnosticsOAuthCapacityPanel( { data, oauthClients } ) {
+	const capacity =
+		oauthClients?.capacity && typeof oauthClients.capacity === 'object'
+			? oauthClients.capacity
+			: {};
+	const recoverable = Array.isArray( oauthClients?.recoverable )
+		? oauthClients.recoverable
+		: [];
+	let status = 'pass';
+	if ( capacity.status === 'exhausted' ) {
+		status = 'fail';
+	} else if ( capacity.status === 'warning' ) {
+		status = 'warn';
+	}
+
+	return (
+		<div className="aculect-ai-companion-side-panel aculect-ai-companion-diagnostic-panel">
+			<div className="aculect-ai-companion-side-panel__heading">
+				<span className="aculect-ai-companion-side-panel__icon">
+					<Icon icon={ link } size={ 20 } />
+				</span>
+				<h3>OAuth client capacity</h3>
+			</div>
+			<div className="aculect-ai-companion-diagnostic-environment">
+				<StatusBadge status={ status } />
+				<p>
+					{ capacity.status === 'exhausted'
+						? 'New assistant registration is paused until capacity is recovered.'
+						: 'OAuth client registration capacity is available.' }
+				</p>
+			</div>
+			<DiagnosticMetaList
+				rows={ [
+					{ label: 'Active', value: Number( capacity.active || 0 ) },
+					{
+						label: 'Maximum',
+						value: Number( capacity.maximum || 0 ),
+					},
+					{
+						label: 'Available',
+						value: Number( capacity.available || 0 ),
+					},
+					{
+						label: 'Recoverable',
+						value: Number( capacity.recoverable || 0 ),
+					},
+				] }
+			/>
+			{ recoverable.length > 0 ? (
+				<div className="aculect-ai-companion-oauth-recovery-list">
+					<h4>Unused stale registrations</h4>
+					<p>
+						These registrations have no live authorization code,
+						access token, or refresh token.
+					</p>
+					<ul>
+						{ recoverable.map( ( client ) => {
+							const clientName =
+								String( client.client_name || '' ) ||
+								'Unnamed MCP client';
+							const provider =
+								String( client.provider || '' ) || 'mcp';
+							const hosts = Array.isArray( client.redirect_hosts )
+								? client.redirect_hosts
+										.map( String )
+										.filter( Boolean )
+										.join( ', ' )
+								: '';
+
+							return (
+								<li key={ String( client.client_id || '' ) }>
+									<div className="aculect-ai-companion-oauth-recovery-list__item-details">
+										<strong>{ clientName }</strong>
+										<span>
+											{ provider }
+											{ hosts ? ` · ${ hosts }` : '' }
+											{ client.created_at
+												? ` · ${ String(
+														client.created_at
+												  ) }`
+												: '' }
+										</span>
+									</div>
+									<ActionForm
+										data={ data }
+										action={
+											data.actions
+												?.revokeStaleOAuthClientAction
+										}
+										nonce={
+											data.actions
+												?.revokeStaleOAuthClientNonce
+										}
+										label="Revoke"
+										destructive
+										confirmTitle="Revoke stale OAuth client?"
+										confirmMessage="This removes an unused registration. The AI app can register again during its next connection attempt."
+										accessibleLabel={ `Revoke stale OAuth client ${ clientName }` }
+									>
+										<input
+											type="hidden"
+											name="oauth_client_id"
+											value={ String(
+												client.client_id || ''
+											) }
+										/>
+									</ActionForm>
+								</li>
+							);
+						} ) }
+					</ul>
+				</div>
+			) : (
+				<p>
+					No unused stale registrations are currently eligible for
+					recovery.
+				</p>
+			) }
+		</div>
+	);
+}
+
 function DiagnosticsHelpPanel( { links, onOpen } ) {
 	const visibleLinks = links.slice( 0, 3 );
 
@@ -4972,6 +5140,11 @@ function DiagnosticsDashboard( {
 	const selectedItem =
 		drawer?.itemId && diagnosticItemById( health, drawer.itemId );
 	const freshness = diagnosticFreshness( health?.ranAt );
+	const oauthClients =
+		data.diagnostics?.oauthClients &&
+		typeof data.diagnostics.oauthClients === 'object'
+			? data.diagnostics.oauthClients
+			: {};
 
 	return (
 		<div
@@ -5088,6 +5261,11 @@ function DiagnosticsDashboard( {
 						health={ health }
 						onCopy={ onCopy }
 					/>
+					<DiagnosticsEnvironmentPanel health={ health } />
+					<DiagnosticsOAuthCapacityPanel
+						data={ data }
+						oauthClients={ oauthClients }
+					/>
 					<DiagnosticsHelpPanel
 						links={ links }
 						onOpen={ () => setDrawer( { type: 'resources' } ) }
@@ -5143,6 +5321,24 @@ const CONNECT_APP_OPTIONS = [
 			'https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp',
 	},
 	{
+		id: 'grok',
+		providerId: 'grok',
+		label: 'Grok',
+		brand: 'xAI',
+		description: 'Add this link as a custom MCP connector in Grok.',
+		actionLabel: 'Open Grok Connectors',
+		guideUrl: 'https://docs.x.ai/grok/connectors',
+	},
+	{
+		id: 'cursor',
+		providerId: 'cursor',
+		label: 'Cursor',
+		brand: 'Anysphere',
+		description: 'Add this link in Cursor MCP settings.',
+		actionLabel: 'Open Cursor MCP guide',
+		guideUrl: 'https://cursor.com/docs/mcp',
+	},
+	{
 		id: 'other',
 		providerId: 'mcp',
 		label: 'Other AI app',
@@ -5164,17 +5360,10 @@ function preferredConnectProviderId( providers ) {
 	);
 }
 
-function connectAppOptionForProvider( providerId ) {
-	return (
-		CONNECT_APP_OPTIONS.find(
-			( option ) => option.providerId === providerId
-		) || CONNECT_APP_OPTIONS[ 2 ]
-	);
-}
-
 function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 	const selectedOption = connectAppOptionForProvider(
-		selectedProvider?.id || ''
+		selectedProvider?.id || '',
+		CONNECT_APP_OPTIONS
 	);
 	const actionUrl = safeExternalUrl(
 		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
@@ -5263,6 +5452,79 @@ function ConnectReadinessBadge( { status } ) {
 			<Icon icon={ ready ? check : info } size={ 16 } />
 			<span>{ ready ? 'Ready' : 'Needs attention' }</span>
 		</span>
+	);
+}
+
+function ConnectToolFilteringGuidance( { provider, onCopy } ) {
+	const viewModel = connectToolFilteringViewModel( provider );
+
+	if ( ! viewModel ) {
+		return null;
+	}
+
+	const { provider: selectedProvider, guidance, copyFields } = viewModel;
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-tool-filtering">
+			<details>
+				<summary>
+					<span>{ guidance.title }</span>
+					<span className="aculect-ai-companion-tool-filtering__summary-note">
+						{ guidance.advancedLabel }
+					</span>
+				</summary>
+				<div className="aculect-ai-companion-tool-filtering__content">
+					<section className="aculect-ai-companion-tool-filtering__provider">
+						<h3>{ selectedProvider.label }</h3>
+						<p>{ guidance.description }</p>
+						{ guidance.providerNote && (
+							<p className="aculect-ai-companion-help-text">
+								{ guidance.providerNote }
+							</p>
+						) }
+						<div className="aculect-ai-companion-tool-filtering__sets">
+							{ guidance.toolSets.map( ( toolSet ) => (
+								<article
+									key={ toolSet.id }
+									className="aculect-ai-companion-tool-filtering__set"
+								>
+									<strong>{ toolSet.label }</strong>
+									<p>{ toolSet.description }</p>
+									{ toolSet.readOnlyDefault && (
+										<p>{ guidance.readOnlyLabel }</p>
+									) }
+									{ toolSet.requiresExplicitApproval && (
+										<p>{ guidance.approvalLabel }</p>
+									) }
+									<code>
+										{ ( toolSet.toolNames || [] ).join(
+											', '
+										) }
+									</code>
+								</article>
+							) ) }
+						</div>
+						{ copyFields.map( ( field ) => (
+							<CopyField
+								key={ field.label }
+								label={ field.label }
+								value={ field.value }
+								copyButtonLabel={ guidance.copyButtonLabel }
+								onCopy={ ( value ) =>
+									copyToolFilteringField(
+										{ ...field, value },
+										onCopy
+									)
+								}
+							/>
+						) ) }
+						<p className="aculect-ai-companion-tool-filtering__warning">
+							{ guidance.warning }
+						</p>
+					</section>
+				</div>
+			</details>
+		</section>
 	);
 }
 
@@ -7928,6 +8190,10 @@ function SettingsApp() {
 											providerId
 										);
 									} }
+								/>
+								<ConnectToolFilteringGuidance
+									provider={ selectedConnectProvider }
+									onCopy={ copyValue }
 								/>
 								<PendingConnectionRequests
 									requests={ connectionRequests }

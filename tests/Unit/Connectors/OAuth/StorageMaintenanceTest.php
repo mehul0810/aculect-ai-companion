@@ -32,6 +32,7 @@ final class StorageMaintenanceTest extends TestCase {
 		$this->wpdb                                   = new FakeOAuthWpdb();
 		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
 	}
 
 	public function test_prunes_expired_auth_codes(): void {
@@ -148,6 +149,53 @@ final class StorageMaintenanceTest extends TestCase {
 		self::assertCount( 8, $this->wpdb->queries );
 		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
+	}
+
+	public function test_maybe_prune_retains_lock_when_failure_backoff_cannot_be_stored(): void {
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array(
+			'aculect_ai_companion_oauth_prune_failure_retry_after',
+		);
+		$this->wpdb->query_result                                   = false;
+
+		StorageMaintenance::maybe_prune();
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 4, $this->wpdb->queries );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
+		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 0 ) );
+
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
+		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() - 1, false );
+		$this->wpdb->query_result = 3;
+
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 8, $this->wpdb->queries );
+		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+	}
+
+	public function test_maybe_prune_retains_lock_when_success_timestamp_cannot_be_stored(): void {
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array(
+			'aculect_ai_companion_oauth_last_pruned_at',
+		);
+
+		StorageMaintenance::maybe_prune();
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 4, $this->wpdb->queries );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertGreaterThan( time(), (int) get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 0 ) );
+
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
+		update_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', time() - 1, false );
+
+		StorageMaintenance::maybe_prune();
+
+		self::assertCount( 8, $this->wpdb->queries );
+		self::assertGreaterThan( 0, (int) get_option( 'aculect_ai_companion_oauth_last_pruned_at', 0 ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
 	}
 
 	public function test_maybe_prune_records_success_after_all_stores_succeed(): void {

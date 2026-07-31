@@ -50,19 +50,28 @@ final class StorageMaintenance {
 			return;
 		}
 
+		$release_lock = false;
+
 		try {
 			if ( false !== self::prune() ) {
 				update_option( self::OPTION_LAST_PRUNED_AT, $now, false );
-				delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+				$release_lock = (int) get_option( self::OPTION_LAST_PRUNED_AT, 0 ) === $now;
+				if ( $release_lock ) {
+					delete_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER );
+				}
 			} else {
+				$retry_after = $now + self::prune_failure_retry_interval();
 				update_option(
 					self::OPTION_PRUNE_FAILURE_RETRY_AFTER,
-					$now + self::prune_failure_retry_interval(),
+					$retry_after,
 					false
 				);
+				$release_lock = (int) get_option( self::OPTION_PRUNE_FAILURE_RETRY_AFTER, 0 ) === $retry_after;
 			}
 		} finally {
-			self::release_prune_lock();
+			if ( $release_lock ) {
+				self::release_prune_lock();
+			}
 		}
 	}
 

@@ -100,9 +100,6 @@ final class ClientRepository implements ClientRepositoryInterface {
 		global $wpdb;
 
 		$table                    = Installer::table_names()['clients'];
-		$client_id                = $this->generate_client_id();
-		$client_secret            = $confidential ? $this->generate_client_secret() : null;
-		$secret_hash              = $client_secret ? wp_hash_password( $client_secret ) : null;
 		$provider                 = Helpers::provider_from_client( $name, $redirect_uris );
 		$encoded_uris             = ClientRegistrationFingerprint::encoded_redirect_uris( $redirect_uris );
 		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
@@ -124,6 +121,10 @@ final class ClientRepository implements ClientRepositoryInterface {
 				return ClientRegistrationResult::capacity_exceeded();
 			}
 		}
+
+		$client_id     = $this->generate_client_id();
+		$client_secret = $confidential ? $this->generate_client_secret() : null;
+		$secret_hash   = $client_secret ? wp_hash_password( $client_secret ) : null;
 
 		$result = $wpdb->insert(
 			$table,
@@ -352,16 +353,16 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Revoke unused active clients that match a new DCR registration fingerprint.
+	 * Remove unused clients that match a new DCR registration fingerprint.
 	 *
 	 * This bounds repeated connector retries without rejecting valid Dynamic Client
-	 * Registration requests. Clients with live access tokens or authorization codes
-	 * remain active so in-flight and approved connections are not broken.
+	 * Registration requests. Clients with live access tokens, refresh tokens, or
+	 * authorization codes remain so in-flight and approved connections are not broken.
 	 *
 	 * @param string      $provider      Provider slug.
 	 * @param string[]    $redirect_uris Valid redirect URIs.
 	 * @param string|null $now           Optional UTC timestamp for tests.
-	 * @return int Number of client rows revoked.
+	 * @return int Number of client rows removed.
 	 */
 	public function revoke_unused_duplicate_clients( string $provider, array $redirect_uris, ?string $now = null ): int {
 		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
@@ -594,12 +595,12 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Revoke matching duplicate clients that have no live token or auth code.
+	 * Remove matching duplicate clients that have no live credential.
 	 *
 	 * @param string $provider                 Provider slug.
 	 * @param string $registration_fingerprint Canonical registration fingerprint.
 	 * @param string $now                      UTC timestamp in Y-m-d H:i:s format.
-	 * @return int Number of client rows revoked.
+	 * @return int Number of client rows removed.
 	 */
 	private function revoke_unused_duplicate_clients_by_fingerprint( string $provider, string $registration_fingerprint, string $now ): int {
 		global $wpdb;
@@ -608,33 +609,39 @@ final class ClientRepository implements ClientRepositoryInterface {
 		$limit  = $this->normalized_batch_limit( self::DUPLICATE_CLEANUP_BATCH_SIZE );
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				'UPDATE %i clients
-				SET clients.revoked = 1
-				WHERE clients.revoked = 0
-				AND clients.provider = %s
-				AND clients.registration_fingerprint = %s
-				AND clients.client_id NOT IN (
-					SELECT active_tokens.client_id
-					FROM %i active_tokens
-					WHERE active_tokens.revoked = 0
-					AND active_tokens.expires_at >= %s
-				)
-				AND clients.client_id NOT IN (
-					SELECT active_codes.client_id
-					FROM %i active_codes
-					WHERE active_codes.revoked = 0
-					AND active_codes.expires_at >= %s
-				)
-				AND clients.client_id NOT IN (
-					SELECT refreshable_tokens.client_id
-					FROM %i refreshable_tokens
-					INNER JOIN %i active_refresh
-						ON active_refresh.access_token_hash = refreshable_tokens.token_hash
-					WHERE active_refresh.revoked = 0
-					AND active_refresh.expires_at >= %s
-				)
-				ORDER BY clients.created_at ASC
-				LIMIT %d',
+				'DELETE FROM %i
+				WHERE client_id IN (
+					SELECT duplicate_clients.client_id
+					FROM (
+						SELECT clients.client_id
+						FROM %i clients
+						WHERE clients.provider = %s
+						AND clients.registration_fingerprint = %s
+						AND clients.client_id NOT IN (
+							SELECT active_tokens.client_id
+							FROM %i active_tokens
+							WHERE active_tokens.revoked = 0
+							AND active_tokens.expires_at >= %s
+						)
+						AND clients.client_id NOT IN (
+							SELECT active_codes.client_id
+							FROM %i active_codes
+							WHERE active_codes.revoked = 0
+							AND active_codes.expires_at >= %s
+						)
+						AND clients.client_id NOT IN (
+							SELECT refreshable_tokens.client_id
+							FROM %i refreshable_tokens
+							INNER JOIN %i active_refresh
+								ON active_refresh.access_token_hash = refreshable_tokens.token_hash
+							WHERE active_refresh.revoked = 0
+							AND active_refresh.expires_at >= %s
+						)
+						ORDER BY clients.created_at ASC
+						LIMIT %d
+					) duplicate_clients
+				)',
+				$tables['clients'],
 				$tables['clients'],
 				$provider,
 				$registration_fingerprint,

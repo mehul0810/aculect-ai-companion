@@ -89,7 +89,7 @@ Current rule: valid DCR requests must not return a plugin-level `429`. Invalid r
 
 ### Registration Capacity Is Recoverable
 
-Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. Before the cap is applied, the repository revokes registrations older than the configured stale window when they have no live authorization code, access token, or refresh token.
+Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. An identical retry first removes prior registrations only when they have no live authorization code, access token, or refresh token, so successful retries replace unused rows instead of accumulating them. When the active-client cap is reached, the repository also revokes registrations older than the configured stale window under the same live-credential guards.
 
 If capacity is still exhausted, DCR returns HTTP `503` with the stable `registration_capacity_exceeded` code and a non-sensitive recovery message. It never includes other client registrations, credentials, or capacity counts.
 

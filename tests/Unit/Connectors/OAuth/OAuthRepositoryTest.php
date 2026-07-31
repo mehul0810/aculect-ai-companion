@@ -10,15 +10,18 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
+use Aculect\AICompanion\Connectors\OAuth\Psr7Bridge;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ContextAwareClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ScopeEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
+use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -634,6 +637,89 @@ final class OAuthRepositoryTest extends TestCase {
 		);
 
 		self::assertTrue( ( new ClientRepository() )->validateClient( 'public-client', null, 'authorization_code' ) );
+	}
+
+	public function test_authorization_context_adds_only_an_approved_loopback_port_variant(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+
+		RequestContext::set_approved_redirect_uri( 'http://localhost:3118/callback' );
+		try {
+			$client = ( new ContextAwareClientRepository() )->getClientEntity( 'native-client' );
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertInstanceOf( ClientEntity::class, $client );
+		self::assertSame(
+			array( 'http://localhost/callback', 'http://localhost:3118/callback' ),
+			$client->getRedirectUri()
+		);
+	}
+
+	public function test_league_authorization_accepts_the_approved_loopback_port_variant(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+		$redirect_uri    = 'http://localhost:3118/callback';
+
+		RequestContext::set_approved_redirect_uri( $redirect_uri );
+		try {
+			$authorization_request = AuthorizationServerFactory::create()->validateAuthorizationRequest(
+				Psr7Bridge::server_request(
+					'GET',
+					'https://example.com/oauth/authorize',
+					array(
+						'response_type'         => 'code',
+						'client_id'             => 'native-client',
+						'redirect_uri'          => $redirect_uri,
+						'scope'                 => 'content:read',
+						'code_challenge'        => str_repeat( 'a', 43 ),
+						'code_challenge_method' => 'S256',
+					)
+				)
+			);
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertSame( $redirect_uri, $authorization_request->getRedirectUri() );
+		self::assertSame( 'native-client', $authorization_request->getClient()->getIdentifier() );
+	}
+
+	public function test_authorization_context_does_not_add_a_mismatched_loopback_redirect(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$wpdb->row       = $this->client_row(
+			array(
+				'client_id'       => 'native-client',
+				'is_confidential' => '0',
+				'redirect_uris'   => '["http:\/\/localhost\/callback"]',
+			)
+		);
+
+		RequestContext::set_approved_redirect_uri( 'http://localhost:3118/other' );
+		try {
+			$client = ( new ContextAwareClientRepository() )->getClientEntity( 'native-client' );
+		} finally {
+			RequestContext::reset();
+		}
+
+		self::assertInstanceOf( ClientEntity::class, $client );
+		self::assertSame( array( 'http://localhost/callback' ), $client->getRedirectUri() );
 	}
 
 	public function test_validate_client_rejects_confidential_client_without_secret(): void {

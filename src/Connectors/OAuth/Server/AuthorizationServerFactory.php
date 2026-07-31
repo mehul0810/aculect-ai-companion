@@ -7,7 +7,7 @@ namespace Aculect\AICompanion\Connectors\OAuth\Server;
 use DateInterval;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AuthCodeRepository;
-use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Repositories\ContextAwareClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ScopeRepository;
 use League\OAuth2\Server\AuthorizationServer;
@@ -30,7 +30,7 @@ final class AuthorizationServerFactory {
 			return self::$instance;
 		}
 
-		$client_repository    = new ClientRepository();
+		$client_repository    = new ContextAwareClientRepository();
 		$access_repository    = new AccessTokenRepository();
 		$scope_repository     = new ScopeRepository();
 		$auth_code_repository = new AuthCodeRepository();

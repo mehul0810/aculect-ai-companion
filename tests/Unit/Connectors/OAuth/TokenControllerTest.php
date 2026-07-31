@@ -108,6 +108,39 @@ final class TokenControllerTest extends TestCase {
 		self::assertStringNotContainsString( 'Exception', $description );
 	}
 
+	public function test_removed_dcr_client_receives_401_invalid_client_for_reregistration(): void {
+		$wpdb            = new FakeTokenTimelineWpdb( null );
+		$GLOBALS['wpdb'] = $wpdb;
+		update_option( 'aculect_ai_companion_activity_last_pruned_at', time(), false );
+
+		$response = ( new TokenController() )->token(
+			new WP_REST_Request(
+				array(
+					'grant_type' => 'authorization_code',
+					'client_id'  => 'removed-dcr-client',
+					'code'       => 'not-inspected-before-client-validation',
+					'resource'   => Helpers::mcp_resource(),
+				)
+			)
+		);
+
+		self::assertSame( 401, $response->get_status() );
+		self::assertSame(
+			array(
+				'error'             => 'invalid_client',
+				'error_description' => 'Client authentication failed. Register the client again.',
+			),
+			$response->get_data()
+		);
+		self::assertSame( 'no-store', $response->header( 'Cache-Control' ) );
+		self::assertSame( 'no-cache', $response->header( 'Pragma' ) );
+		self::assertStringNotContainsString( 'removed-dcr-client', (string) wp_json_encode( $response->get_data() ) );
+
+		$activity = $wpdb->last_insert_for_table( 'wp_aculect_ai_companion_activity' );
+		self::assertSame( 'invalid_client', $activity['data']['error_code'] );
+		self::assertStringNotContainsString( 'removed-dcr-client', (string) wp_json_encode( $activity ) );
+	}
+
 	public function test_token_timeline_event_classifies_exchange_and_refresh_grants(): void {
 		$controller = new TokenController();
 

@@ -52,6 +52,7 @@ $forbidden_paths = array(
 	'.nvmrc',
 	'.wordpress-org',
 	'AGENTS.md',
+	'artifacts',
 	'CONTRIBUTING.md',
 	'README.md',
 	'SECURITY.md',

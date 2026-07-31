@@ -32,6 +32,30 @@ Expired access-token rows are retained only while they anchor an active refresh
 token, keeping admin revocation available for the full connection window without
 extending bearer-token validity.
 
+## Client Registration And Redirect Profile
+
+Aculect advertises RFC 7591 Dynamic Client Registration (DCR) for public and
+confidential OAuth clients. It requires S256 PKCE and binds authorization codes
+and tokens to the canonical MCP resource. The DCR path is the supported
+registration profile for MCP authorization revisions 2025-03-26, 2025-06-18,
+and 2025-11-25; this does not claim support for every optional feature added by
+those protocol revisions.
+
+Client ID Metadata Documents (CIMD) are intentionally not advertised or fetched
+in 0.7.2. Fetching a URL supplied as a client identifier from a WordPress origin
+would require a separately reviewed SSRF, redirect-chain, response-size, cache,
+and client-identity trust boundary. Authorization metadata therefore reports
+`client_id_metadata_document_supported: false`, and URL-shaped unknown client
+identifiers receive the same stable `invalid_client` behavior as other unknown
+clients. Compatible clients should use the advertised DCR endpoint.
+
+Hosted HTTPS redirects remain exact matches. Native clients may vary only the
+port of a registered `http://localhost/...` or `http://127.0.0.1/...` loopback
+redirect. Scheme, host, path, and query must match the registered URI; user
+information and fragments are rejected. A removed or revoked DCR client receives
+HTTP `401` with OAuth `invalid_client` from the token endpoint so it can register
+again without weakening any grant, scope, or redirect policy.
+
 ## Rejected Refresh Activity
 
 An `invalid_grant` refresh rejection happens before OAuth establishes a

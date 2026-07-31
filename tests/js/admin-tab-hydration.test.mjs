@@ -252,6 +252,22 @@ test( 'sample notice copy is explicit preview language', () => {
 	);
 } );
 
+test( 'diagnostics expose bounded OAuth capacity recovery without rendering client secrets', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function DiagnosticsOAuthCapacityPanel\( \{ data, oauthClients \} \)/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/revokeStaleOAuthClientAction[\s\S]*name="oauth_client_id"/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/These registrations have no live authorization code,[\s\S]*access token, or refresh token\./
+	);
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /client_secret_hash/ );
+} );
+
 test( 'sample connection rows render preview badges and hide real action controls', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,

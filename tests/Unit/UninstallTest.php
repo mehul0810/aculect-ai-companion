@@ -38,6 +38,7 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_role_abilities_enabled' => '1',
 			'aculect_ai_companion_paused_user_access'     => array( 7 ),
 			'aculect_ai_companion_oauth_last_pruned_at'   => 123,
+			'aculect_ai_companion_oauth_prune_failure_retry_after' => 456,
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 456,
 			'aculect_ai_companion_secret_storage_key'     => 'delete-secret-storage-key',
 			'aculect_ai_companion_logging_enabled'        => '1',
@@ -72,6 +73,7 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_role_abilities_enabled', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_paused_user_access', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_secret_storage_key', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );

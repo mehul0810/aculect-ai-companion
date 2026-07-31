@@ -87,6 +87,16 @@ The DCR endpoint previously returned plugin-level `429` responses after repeated
 
 Current rule: valid DCR requests must not return a plugin-level `429`. Invalid redirect URIs should still return `400`.
 
+### Registration Capacity Is Recoverable
+
+Dynamic Client Registration remains bounded to protect the plugin-owned OAuth table from unauthenticated storage exhaustion. An identical retry first removes prior registrations only when they have the same provider and exact registration fingerprint and have no live authorization code, access token, or refresh token. Successful retries therefore replace only their own unused rows instead of accumulating them. Public DCR never revokes unrelated dormant registrations.
+
+If capacity remains exhausted after that exact-fingerprint cleanup, DCR returns HTTP `503` with the stable `registration_capacity_exceeded` code and a non-sensitive recovery message. It never includes other client registrations, credentials, or capacity counts.
+
+Administrators can review the sanitized capacity summary and eligible stale registrations under **Settings > AI Companion > Diagnostics**. Only this `manage_options`- and nonce-protected recovery action may revoke an unrelated stale registration, and it atomically rechecks that the selected registration is still stale and unused before revoking it.
+
+The active-client count and client insert remain separate database operations. Simultaneous new registrations can therefore briefly overshoot the configured cap; this accepted residual is separate from exact-fingerprint retry cleanup and administrator recovery.
+
 ### Login Must Return To Consent, Not REST Authorize
 
 The authorize endpoint previously sent logged-out users to `wp-login.php` with `redirect_to` pointing back to the REST authorize URL. That caused login loops or an admin login page stall.
@@ -110,6 +120,14 @@ Cause: plugin-level DCR rate limiting.
 Fix: remove hard local rate limiting for valid DCR registration. Validate redirect URIs and create the client instead.
 
 Regression check: run repeated valid DCR requests and confirm every request returns `201`, not `429`.
+
+### `registration_capacity_exceeded`
+
+Cause: the active DCR client cap remains full after public DCR has removed only unused retries with the same provider and exact registration fingerprint.
+
+Fix: open **Settings > AI Companion > Diagnostics** as an administrator, review the OAuth client capacity panel, and use the protected recovery action to revoke one unrelated stale registration. Active codes, access tokens, and refreshable connections are not eligible for this recovery action.
+
+Regression check: force a low cap in a fixture, verify the response is sanitized HTTP `503`, then use the protected administrator action to recover one stale unused client and confirm a valid retry can return `201`.
 
 ### Redirects To Login Even When Already Logged In
 

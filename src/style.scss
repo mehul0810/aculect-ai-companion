@@ -1218,7 +1218,7 @@
 
 .aculect-ai-companion-connect-app-picker__options {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(5, minmax(0, 1fr));
 	overflow: hidden;
 	border: 1px solid var(--aculect-ai-companion-border);
 	border-radius: 8px;
@@ -2448,6 +2448,11 @@ td:last-child
 .aculect-ai-companion-provider-badge.is-gemini {
 	background: #eef5ff;
 	color: #1a73e8;
+}
+
+.aculect-ai-companion-provider-badge.is-grok {
+	background: #f3f4f6;
+	color: #111827;
 }
 
 .aculect-ai-companion-provider-badge.is-mcp {
@@ -4358,6 +4363,45 @@ td:first-child
 	top: 44px;
 }
 
+.aculect-ai-companion-oauth-recovery-list {
+	display: grid;
+	gap: 12px;
+
+	h4,
+	p {
+		margin: 0;
+	}
+
+	ul {
+		display: grid;
+		gap: 10px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding-block: 10px;
+		border-block-start: 1px solid var(--aculect-ai-companion-border);
+	}
+
+	&__item-details {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	li span {
+		color: var(--aculect-ai-companion-muted);
+		font-size: 12px;
+		overflow-wrap: anywhere;
+	}
+}
+
 .aculect-ai-companion-diagnostics-checks {
 	display: grid;
 	gap: 16px;
@@ -4795,6 +4839,24 @@ td:first-child
 
 	.aculect-ai-companion-connect-app-picker__action {
 		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.aculect-ai-companion-connect-app-picker__options {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.aculect-ai-companion-connect-app-option,
+	.aculect-ai-companion-connect-app-option:last-child {
+		border-right: 0;
+		border-bottom: 0;
+	}
+
+	.aculect-ai-companion-connect-app-option:nth-child(-n + 4) {
+		border-bottom: 1px solid var(--aculect-ai-companion-border);
+	}
+
+	.aculect-ai-companion-connect-app-option:nth-child(odd):not(:last-child) {
+		border-right: 1px solid var(--aculect-ai-companion-border);
 	}
 
 	.aculect-ai-companion-connect-app-picker__actions {

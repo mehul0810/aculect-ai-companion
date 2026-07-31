@@ -218,7 +218,7 @@ final class Helpers {
 		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
 		$path   = (string) ( $parts['path'] ?? '' );
 
-		if ( '' !== (string) ( $parts['fragment'] ?? '' ) ) {
+		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) || array_key_exists( 'fragment', $parts ) ) {
 			return false;
 		}
 

@@ -82,6 +82,31 @@ final class TokenController {
 			$request
 		);
 
+		$invalid_client_response = $this->unknown_client_response( $request );
+		if ( $invalid_client_response instanceof WP_REST_Response ) {
+			$logger->warning(
+				'token.invalid_client',
+				'OAuth token request referenced an unknown or revoked client.',
+				array_merge( $context, array( 'error_code' => 'invalid_client' ) ),
+				$request,
+				401
+			);
+			$this->record_timeline_event(
+				$timeline_event,
+				array(
+					'status'       => 'error',
+					'method'       => 'oauth/token',
+					'grant_type'   => (string) $request->get_param( 'grant_type' ),
+					'result_class' => 'oauth_error',
+					'error_code'   => 'invalid_client',
+					'duration_ms'  => $this->duration_ms( $started_at ),
+				),
+				$timeline_auth
+			);
+
+			return $invalid_client_response;
+		}
+
 		if ( Helpers::mcp_resource() !== $resource ) {
 			$refresh_context = $this->refresh_rejection_context( $request, 'invalid_target' );
 			$timeline_auth   = $this->correlate_timeline_auth( $timeline_auth, $refresh_context );
@@ -195,6 +220,29 @@ final class TokenController {
 	 */
 	private function server_error_description(): string {
 		return 'The OAuth token request failed. Try again or reconnect the client.';
+	}
+
+	/**
+	 * Return the stable re-registration signal for a removed DCR client.
+	 *
+	 * The explicit check covers public and client_secret_post registrations,
+	 * whose client_id is presented in the form body. HTTP Basic authentication
+	 * remains delegated to league/oauth2-server.
+	 *
+	 * @param WP_REST_Request $request Token request.
+	 */
+	private function unknown_client_response( WP_REST_Request $request ): ?WP_REST_Response {
+		$client_id = $request->get_param( 'client_id' );
+		if ( ! is_scalar( $client_id ) ) {
+			return null;
+		}
+
+		$client_id = substr( sanitize_text_field( (string) $client_id ), 0, 160 );
+		if ( '' === $client_id || ( new ClientRepository() )->getClientEntity( $client_id ) instanceof ClientEntity ) {
+			return null;
+		}
+
+		return $this->error( 'invalid_client', 'Client authentication failed. Register the client again.', 401 );
 	}
 
 	/**

@@ -27,6 +27,7 @@ final class OAuthInstallerTest extends TestCase {
 		parent::setUp();
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
+		unset( $GLOBALS['aculect_ai_companion_test_db_delta_callback'] );
 	}
 
 	protected function tearDown(): void {
@@ -35,6 +36,8 @@ final class OAuthInstallerTest extends TestCase {
 		} else {
 			unset( $GLOBALS['wpdb'] );
 		}
+
+		unset( $GLOBALS['aculect_ai_companion_test_db_delta_callback'] );
 
 		parent::tearDown();
 	}
@@ -96,6 +99,63 @@ final class OAuthInstallerTest extends TestCase {
 		self::assertSame( array( 'id' => 12 ), $wpdb->updates[0]['where'] );
 	}
 
+	public function test_current_schema_repairs_one_missing_table_without_replacing_existing_stores(): void {
+		$wpdb                  = new FakeOAuthInstallerWpdb();
+		$wpdb->existing_tables = array(
+			'wp_7_aculect_ai_companion_oauth_clients',
+			'wp_7_aculect_ai_companion_oauth_access_tokens',
+			'wp_7_aculect_ai_companion_oauth_refresh_tokens',
+		);
+		$wpdb->prefix          = 'wp_7_';
+		$wpdb->client_rows     = array( 'existing-client-row' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+			$wpdb->db_delta_queries[] = $sql;
+			$wpdb->existing_tables[]  = 'wp_7_aculect_ai_companion_oauth_auth_codes';
+
+			return array( 'created auth codes table' );
+		};
+
+		self::assertTrue( Installer::install( true ) );
+		self::assertSame( array( 'existing-client-row' ), $wpdb->client_rows );
+		self::assertSame( array(), Installer::missing_table_keys() );
+		self::assertCount( 1, $wpdb->db_delta_queries );
+		self::assertStringContainsString( 'wp_7_aculect_ai_companion_oauth_auth_codes', $wpdb->db_delta_queries[0] );
+	}
+
+	public function test_current_schema_reports_failed_repair_when_a_required_table_remains_missing(): void {
+		$wpdb                  = new FakeOAuthInstallerWpdb();
+		$wpdb->existing_tables = array(
+			'wp_aculect_ai_companion_oauth_clients',
+			'wp_aculect_ai_companion_oauth_access_tokens',
+			'wp_aculect_ai_companion_oauth_refresh_tokens',
+		);
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+
+		self::assertFalse( Installer::install( true ) );
+		self::assertSame( array( 'auth_codes' ), Installer::missing_table_keys() );
+	}
+
+	public function test_activation_verifies_all_current_multisite_oauth_tables(): void {
+		$wpdb                  = new FakeOAuthInstallerWpdb();
+		$wpdb->prefix          = 'wp_7_';
+		$wpdb->existing_tables = array(
+			'wp_7_aculect_ai_companion_oauth_clients',
+			'wp_7_aculect_ai_companion_oauth_access_tokens',
+			'wp_7_aculect_ai_companion_oauth_refresh_tokens',
+			'wp_7_aculect_ai_companion_oauth_auth_codes',
+		);
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+
+		Installer::activate();
+
+		self::assertSame( 4, $wpdb->get_var_calls );
+		self::assertSame( array(), Installer::missing_table_keys() );
+	}
+
 	/**
 	 * Invoke a private static method for focused unit coverage.
 	 *
@@ -118,6 +178,17 @@ final class OAuthInstallerTest extends TestCase {
 final class FakeOAuthInstallerWpdb {
 
 	public string $prefix = 'wp_';
+
+	/** @var list<string> */
+	public array $existing_tables = array();
+
+	/** @var list<string> */
+	public array $client_rows = array();
+
+	/** @var list<string> */
+	public array $db_delta_queries = array();
+
+	public int $get_var_calls = 0;
 
 	/**
 	 * Prepared SQL calls.
@@ -166,6 +237,23 @@ final class FakeOAuthInstallerWpdb {
 		unset( $query, $output );
 
 		return $this->results;
+	}
+
+	public function get_var( string $query ): string {
+		unset( $query );
+
+		++$this->get_var_calls;
+		$table = (string) ( $this->prepared[ array_key_last( $this->prepared ) ]['args'][0] ?? '' );
+
+		return in_array( $table, $this->existing_tables, true ) ? $table : '';
+	}
+
+	public function esc_like( string $text ): string {
+		return $text;
+	}
+
+	public function get_charset_collate(): string {
+		return 'DEFAULT CHARSET=utf8mb4';
 	}
 
 	/**

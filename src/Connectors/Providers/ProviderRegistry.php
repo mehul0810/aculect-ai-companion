@@ -10,6 +10,7 @@ use Aculect\AICompanion\Connectors\Providers\Codex\Provider as CodexProvider;
 use Aculect\AICompanion\Connectors\Providers\Cursor\Provider as CursorProvider;
 use Aculect\AICompanion\Connectors\Providers\Generic\Provider as GenericProvider;
 use Aculect\AICompanion\Connectors\Providers\Gemini\Provider as GeminiProvider;
+use Aculect\AICompanion\Connectors\Providers\Grok\Provider as GrokProvider;
 
 /**
  * Central registry for supported AI client providers.
@@ -30,6 +31,7 @@ final class ProviderRegistry {
 			new ClaudeProvider(),
 			new GeminiProvider(),
 			new CursorProvider(),
+			new GrokProvider(),
 			new GenericProvider(),
 		);
 
@@ -116,6 +118,11 @@ final class ProviderRegistry {
 				return array(
 					'name' => 'Cursor',
 					'url'  => 'https://cursor.com/',
+				);
+			case 'grok':
+				return array(
+					'name' => 'xAI',
+					'url'  => 'https://x.ai/',
 				);
 			case self::FALLBACK_PROVIDER_ID:
 				return array(

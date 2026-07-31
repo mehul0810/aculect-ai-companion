@@ -23,10 +23,27 @@ use WP_REST_Response;
  */
 final class ClientRegistrationControllerTest extends TestCase {
 
+	private mixed $original_wpdb = null;
+
 	protected function setUp(): void {
 		parent::setUp();
 
+		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_hooks']   = array(
+			'actions' => array(),
+			'filters' => array(),
+		);
+	}
+
+	protected function tearDown(): void {
+		if ( null === $this->original_wpdb ) {
+			unset( $GLOBALS['wpdb'] );
+		} else {
+			$GLOBALS['wpdb'] = $this->original_wpdb;
+		}
+
+		parent::tearDown();
 	}
 
 	public function test_registration_permission_does_not_rate_limit_valid_dcr_retries(): void {
@@ -46,6 +63,8 @@ final class ClientRegistrationControllerTest extends TestCase {
 					'http://localhost/oauth/callback',
 					'http://example.com/insecure',
 					'https://example.com/with-fragment#token',
+					'https://user@example.com/oauth/callback',
+					'http://user@localhost/oauth/callback',
 					array( 'not-scalar' ),
 				),
 			)
@@ -185,6 +204,60 @@ final class ClientRegistrationControllerTest extends TestCase {
 		self::assertSame( array(), $wpdb->inserts );
 	}
 
+	public function test_valid_registration_retries_remain_successful_without_plugin_rate_limiting(): void {
+		$wpdb            = new FakeDcrWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$controller      = new ClientRegistrationController();
+		$request         = new WP_REST_Request(
+			array(),
+			array(),
+			array(
+				'client_name'   => 'Retrying MCP Client',
+				'redirect_uris' => array( 'http://localhost/callback' ),
+			)
+		);
+
+		$first  = $controller->register_client( $request );
+		$second = $controller->register_client( $request );
+
+		self::assertInstanceOf( WP_REST_Response::class, $first );
+		self::assertInstanceOf( WP_REST_Response::class, $second );
+		self::assertSame( 201, $first->get_status() );
+		self::assertSame( 201, $second->get_status() );
+		self::assertCount( 2, $wpdb->inserts );
+	}
+
+	public function test_capacity_exhaustion_matches_the_sanitized_dcr_contract_fixture(): void {
+		$wpdb                      = new FakeDcrWpdb();
+		$wpdb->active_client_count = 100;
+		$GLOBALS['wpdb']           = $wpdb;
+
+		$response = ( new ClientRegistrationController() )->register_client(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'client_name'   => 'Capacity MCP Client',
+					'redirect_uris' => array( 'http://localhost/callback' ),
+				)
+			)
+		);
+
+		$fixture = json_decode(
+			(string) file_get_contents( dirname( __DIR__, 3 ) . '/fixtures/oauth-dcr-capacity-error.json' ),
+			true,
+			512,
+			JSON_THROW_ON_ERROR
+		);
+
+		self::assertInstanceOf( WP_Error::class, $response );
+		self::assertSame( $fixture['code'], $response->get_error_code() );
+		self::assertSame( $fixture['message'], $response->get_error_message() );
+		self::assertSame( array( 'status' => $fixture['status'] ), $response->get_error_data() );
+		self::assertNotSame( 429, $fixture['status'] );
+		self::assertSame( array(), $wpdb->inserts );
+	}
+
 	public function test_provider_attribution_identifies_common_ai_clients(): void {
 		self::assertSame( 'chatgpt', Helpers::provider_from_client( 'ChatGPT Connector', array( 'https://chatgpt.com/oauth/callback' ) ) );
 		self::assertSame( 'codex', Helpers::provider_from_client( 'Codex MCP Client', array( 'http://127.0.0.1:1455/callback' ) ) );
@@ -192,6 +265,11 @@ final class ClientRegistrationControllerTest extends TestCase {
 		self::assertSame( 'claude', Helpers::provider_from_client( 'Claude Desktop', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Gemini CLI MCP Client', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'gemini', Helpers::provider_from_client( 'Google Code Assist Agent', array( 'http://localhost/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'Grok Connector', array( 'https://grok.com/oauth/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'Remote MCP Client', array( 'https://console.x.ai/oauth/callback' ) ) );
+		self::assertSame( 'grok', Helpers::provider_from_client( 'xAI Remote MCP Client', array( 'https://example.org/callback' ) ) );
+		self::assertSame( 'mcp', Helpers::provider_from_client( 'FluxAI Connector', array( 'https://example.org/callback' ) ) );
+		self::assertSame( 'mcp', Helpers::provider_from_client( 'Remote MCP Client', array( 'https://example.org/oauth/x.ai/callback' ) ) );
 		self::assertSame( 'mcp', Helpers::provider_from_client( 'Local MCP Client', array( 'http://localhost/callback' ) ) );
 		self::assertSame( 'mcp', Helpers::provider_from_client( 'Custom Client', array( 'https://example.org/callback' ) ) );
 	}
@@ -217,6 +295,8 @@ final class ClientRegistrationControllerTest extends TestCase {
 final class FakeDcrWpdb {
 
 	public string $prefix = 'wp_';
+
+	public int $active_client_count = 0;
 
 	/**
 	 * Insert calls.
@@ -245,7 +325,7 @@ final class FakeDcrWpdb {
 	public function get_var( string $query ): int {
 		unset( $query );
 
-		return 0;
+		return $this->active_client_count;
 	}
 
 	/**

@@ -44,7 +44,8 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
 		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
 		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
-		self::assertStringContainsString( '`' . $release_version . '` is the active production target on `release/' . $release_version . '`.', $governance );
+		self::assertStringContainsString( '`0.7.1` is the current production release.', $governance );
+		self::assertStringContainsString( '`0.7.2` is the active patch train on `release/0.7.2`', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {
@@ -65,6 +66,47 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '- OAuth authorization: `/oauth/authorize`', $readme );
 		self::assertStringContainsString( '- Authorization endpoint: `/oauth/authorize`', $chatgpt_readme );
 		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
+	}
+
+	public function test_published_071_connect_changelog_remains_immutable(): void {
+		$root    = dirname( __DIR__, 3 );
+		$readme = $this->file_contents( $root . '/readme.txt' );
+		$log     = $this->json_file( $root . '/changelog.json' );
+		$note    = 'Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.';
+
+		self::assertContains( $note, $log['0.7.1']['New'] ?? array() );
+		self::assertStringContainsString( '* ' . $note, $readme );
+		self::assertStringNotContainsString( 'current ChatGPT, Claude, and Cursor setup guidance', $readme );
+	}
+
+	public function test_chatgpt_dcr_capacity_docs_preserve_public_and_admin_cleanup_boundary(): void {
+		$root           = dirname( __DIR__, 3 );
+		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );
+
+		self::assertStringContainsString(
+			'same provider and exact registration fingerprint',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Public DCR never revokes unrelated dormant registrations.',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Only this `manage_options`- and nonce-protected recovery action may revoke an unrelated stale registration',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'Simultaneous new registrations can therefore briefly overshoot the configured cap',
+			$chatgpt_readme
+		);
+		self::assertStringContainsString(
+			'HTTP `503` with the stable `registration_capacity_exceeded` code',
+			$chatgpt_readme
+		);
+		self::assertStringNotContainsString(
+			'repository also revokes registrations older than the configured stale window',
+			$chatgpt_readme
+		);
 	}
 
 	/**

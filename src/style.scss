@@ -1318,6 +1318,95 @@
 	white-space: nowrap;
 }
 
+.aculect-ai-companion-tool-filtering {
+	padding: 0;
+}
+
+.aculect-ai-companion-tool-filtering details {
+	min-width: 0;
+}
+
+.aculect-ai-companion-tool-filtering summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 20px 24px;
+	font-size: 16px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.aculect-ai-companion-tool-filtering__summary-note {
+	display: inline-flex;
+	align-items: center;
+	padding: 3px 7px;
+	border-radius: 999px;
+	background: #e0f2fe;
+	color: #075985;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1.3;
+}
+
+.aculect-ai-companion-tool-filtering__content {
+	display: grid;
+	gap: 16px;
+	padding: 0 24px 24px;
+	border-top: 1px solid var(--aculect-ai-companion-border);
+}
+
+.aculect-ai-companion-tool-filtering__content > p {
+	margin: 18px 0 0;
+}
+
+.aculect-ai-companion-tool-filtering__provider {
+	min-width: 0;
+}
+
+.aculect-ai-companion-tool-filtering__sets {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.aculect-ai-companion-tool-filtering__set {
+	min-width: 0;
+	padding: 14px;
+	border: 1px solid var(--aculect-ai-companion-border);
+	border-radius: 8px;
+	background: #f8fafc;
+}
+
+.aculect-ai-companion-tool-filtering__set strong {
+	margin-right: 8px;
+}
+
+.aculect-ai-companion-tool-filtering__set p {
+	margin: 8px 0;
+	color: var(--aculect-ai-companion-muted);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-tool-filtering__set code {
+	display: block;
+	overflow-wrap: anywhere;
+	color: var(--aculect-ai-companion-ink);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.aculect-ai-companion-tool-filtering__warning {
+	padding: 12px 14px;
+	border-left: 3px solid #f59e0b;
+	border-radius: 4px;
+	background: #fffbeb;
+	color: #78350f;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
 .aculect-ai-companion-setup-wizard {
 	display: grid;
 	grid-template-columns: minmax(210px, 278px) minmax(0, 1fr);
@@ -4954,6 +5043,10 @@ td:first-child
 	}
 
 	.aculect-ai-companion-connect-app-picker__options {
+		grid-template-columns: 1fr;
+	}
+
+	.aculect-ai-companion-tool-filtering__sets {
 		grid-template-columns: 1fr;
 	}
 

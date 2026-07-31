@@ -59,8 +59,10 @@ final class ProviderRegistry {
 	 * @return list<array<string, mixed>>
 	 */
 	public function setup_definitions( string $mcp_url ): array {
+		$tool_filtering = new ClientToolFilterGuidance();
+
 		return array_map(
-			static function ( ProviderInterface $provider ) use ( $mcp_url ): array {
+			static function ( ProviderInterface $provider ) use ( $mcp_url, $tool_filtering ): array {
 				$brand = self::brand_for_provider( $provider );
 
 				$definition = array(
@@ -76,6 +78,10 @@ final class ProviderRegistry {
 
 				if ( $provider instanceof ProviderWizardInterface ) {
 					$definition['wizard'] = $provider->setup_wizard( $mcp_url );
+				}
+
+				if ( $tool_filtering->supports_provider( $provider->id() ) ) {
+					$definition['toolFiltering'] = $tool_filtering->section_for_provider( $provider->id() );
 				}
 
 				return $definition;

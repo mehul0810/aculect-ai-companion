@@ -95,6 +95,20 @@ test( 'connect picker shows ChatGPT, Claude, Grok, Cursor, and a generic MCP-com
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
 } );
 
+test( 'connect tab keeps client tool filtering advanced and provider-driven', () => {
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/function ConnectToolFilteringGuidance\( \{ provider, onCopy \} \)/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/connectToolFilteringViewModel\( provider \)/
+	);
+	assert.match( ADMIN_APP_SOURCE, /provider=\{ selectedConnectProvider \}/ );
+	assert.match( ADMIN_APP_SOURCE, /<details>/ );
+	assert.match( ADMIN_APP_SOURCE, /guidance\.approvalLabel/ );
+} );
+
 test( 'five-option connect picker keeps complete responsive separators', () => {
 	assert.match(
 		ADMIN_STYLE_SOURCE,

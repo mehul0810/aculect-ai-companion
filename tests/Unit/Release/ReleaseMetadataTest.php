@@ -26,15 +26,15 @@ final class ReleaseMetadataTest extends TestCase {
 		$log      = $this->json_file( $root . '/changelog.json' );
 		$governance = $this->file_contents( $root . '/RELEASE.md' );
 
-		self::assertSame( '0.7.1', $this->header( $plugin, 'Version' ) );
-		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.1' );", $plugin );
-		self::assertSame( '0.7.1', $this->header( $readme, 'Stable tag' ) );
-		self::assertSame( '0.7.1', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.1', (string) ( $lockfile['version'] ?? '' ) );
-		self::assertSame( '0.7.1', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertSame( '0.7.2', $this->header( $plugin, 'Version' ) );
+		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.2' );", $plugin );
+		self::assertSame( '0.7.2', $this->header( $readme, 'Stable tag' ) );
+		self::assertSame( '0.7.2', (string) ( $package['version'] ?? '' ) );
+		self::assertSame( '0.7.2', (string) ( $lockfile['version'] ?? '' ) );
+		self::assertSame( '0.7.2', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.1', $release_version );
+		self::assertSame( '0.7.2', $release_version );
 		self::assertArrayHasKey( $release_version, $log );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );

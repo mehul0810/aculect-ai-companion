@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.7.1
+Stable tag: 0.7.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -246,7 +246,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.7.1 release notes.
+8. Changelog tab with the current 0.7.2 release notes.
 
 == Development ==
 
@@ -274,6 +274,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.7.2 =
+
+* Added current setup guidance for Grok, Cursor, and other MCP-compatible AI apps, including optional client-side tool-selection guidance that does not change server authorization.
+* Improved OAuth dynamic client registration, redirect validation, bounded stale-client recovery, and low-overhead storage maintenance.
+* Redesigned diagnostics with clearer health summaries, safe evidence, recovery guidance, and public-safe OAuth capacity status.
+* Hardened production package verification so generated smoke artifacts are excluded from release ZIPs.
 
 = 0.7.1 =
 
@@ -436,6 +443,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.7.2 =
+
+Adds current AI-client guidance, safer OAuth client handling, clearer connection diagnostics, and stricter production-package hygiene.
 
 = 0.7.1 =
 

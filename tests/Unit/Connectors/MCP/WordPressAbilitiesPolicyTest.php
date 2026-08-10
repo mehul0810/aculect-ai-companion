@@ -149,6 +149,27 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				)
 			);
 		}
+		foreach ( array(
+			'infinite-minimum' => array( 'minimum' => INF ),
+			'nan-maximum'      => array( 'maximum' => NAN ),
+			'infinite-default' => array( 'default' => INF ),
+			'nan-const'        => array( 'const' => NAN ),
+			'infinite-example' => array( 'examples' => array( INF ) ),
+		) as $suffix => $invalid_keywords ) {
+			$this->register_ability(
+				'example/' . $suffix,
+				true,
+				false,
+				true,
+				'object',
+				array(
+					'type'       => 'object',
+					'properties' => array(
+						'value' => array_merge( array( 'type' => 'number' ), $invalid_keywords ),
+					),
+				)
+			);
+		}
 		$this->register_ability(
 			'example/invalid-pattern',
 			true,
@@ -256,6 +277,11 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/infinite-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/negative-infinite-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/not-a-number-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/infinite-minimum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/nan-maximum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/infinite-default' ) );
+		self::assertFalse( $policy->is_allowed( 'example/nan-const' ) );
+		self::assertFalse( $policy->is_allowed( 'example/infinite-example' ) );
 		self::assertFalse( $policy->is_allowed( 'example/invalid-pattern' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-required' ) );
 		self::assertFalse( $policy->is_allowed( 'example/null-enum' ) );

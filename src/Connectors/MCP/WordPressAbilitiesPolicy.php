@@ -256,6 +256,10 @@ final class WordPressAbilitiesPolicy {
 	 * @param array<string, mixed> $schema Ability schema.
 	 */
 	private function valid_schema( array $schema ): bool {
+		if ( ! is_string( wp_json_encode( $schema, JSON_PRESERVE_ZERO_FRACTION ) ) ) {
+			return false;
+		}
+
 		$nodes = 0;
 		return $this->valid_schema_node( $schema, 0, $nodes );
 	}

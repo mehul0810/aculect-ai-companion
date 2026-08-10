@@ -320,8 +320,23 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		if ( isset( $schema['enum'] ) && ( ! is_array( $schema['enum'] ) || ! array_is_list( $schema['enum'] ) || array() === $schema['enum'] ) ) {
-			return false;
+		if ( isset( $schema['enum'] ) ) {
+			if ( ! is_array( $schema['enum'] ) || ! array_is_list( $schema['enum'] ) || array() === $schema['enum'] ) {
+				return false;
+			}
+
+			$enum_values = array();
+			foreach ( $schema['enum'] as $enum_value ) {
+				if ( ! is_scalar( $enum_value ) && null !== $enum_value ) {
+					return false;
+				}
+
+				$encoded = wp_json_encode( $enum_value, JSON_PRESERVE_ZERO_FRACTION );
+				if ( ! is_string( $encoded ) || isset( $enum_values[ $encoded ] ) ) {
+					return false;
+				}
+				$enum_values[ $encoded ] = true;
+			}
 		}
 
 		if ( isset( $schema['examples'] ) && ( ! is_array( $schema['examples'] ) || ! array_is_list( $schema['examples'] ) ) ) {
@@ -347,6 +362,10 @@ final class WordPressAbilitiesPolicy {
 			return false;
 		}
 
+		if ( isset( $schema['pattern'] ) && ! $this->valid_schema_pattern( $schema['pattern'] ) ) {
+			return false;
+		}
+
 		if ( isset( $schema['properties'] ) ) {
 			if ( ! is_array( $schema['properties'] ) ) {
 				return false;
@@ -369,6 +388,10 @@ final class WordPressAbilitiesPolicy {
 					return false;
 				}
 			}
+
+			if ( count( $schema['required'] ) !== count( array_unique( $schema['required'] ) ) ) {
+				return false;
+			}
 		}
 
 		if ( isset( $schema['patternProperties'] ) ) {
@@ -377,7 +400,7 @@ final class WordPressAbilitiesPolicy {
 			}
 
 			foreach ( $schema['patternProperties'] as $pattern => $property ) {
-				if ( ! is_string( $pattern ) || '' === $pattern || ! is_array( $property ) || ! $this->valid_schema_node( $property, $depth + 1, $nodes ) ) {
+				if ( ! is_string( $pattern ) || '' === $pattern || ! $this->valid_schema_pattern( $pattern ) || ! is_array( $property ) || ! $this->valid_schema_node( $property, $depth + 1, $nodes ) ) {
 					return false;
 				}
 			}
@@ -414,6 +437,17 @@ final class WordPressAbilitiesPolicy {
 		}
 
 		return ! isset( $schema['not'] ) || ( is_array( $schema['not'] ) && $this->valid_schema_node( $schema['not'], $depth + 1, $nodes ) );
+	}
+
+	/**
+	 * Conservatively accept regex patterns supported by the PHP runtime.
+	 *
+	 * @param string $pattern JSON Schema pattern.
+	 */
+	private function valid_schema_pattern( string $pattern ): bool {
+		$pattern = str_replace( '~', '\\~', $pattern );
+
+		return false !== @preg_match( '~' . $pattern . '~u', '' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Invalid third-party patterns must fail closed without emitting warnings.
 	}
 
 	/**

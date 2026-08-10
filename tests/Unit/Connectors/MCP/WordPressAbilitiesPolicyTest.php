@@ -95,6 +95,50 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				'allOf' => array( 'not-a-schema-list' => array( 'type' => 'object' ) ),
 			)
 		);
+		$this->register_ability(
+			'example/duplicate-enum',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type' => 'string',
+						'enum' => array( 'same', 'same' ),
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/invalid-pattern',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type'    => 'string',
+						'pattern' => '[',
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/duplicate-required',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array( 'query' => array( 'type' => 'string' ) ),
+				'required'   => array( 'query', 'query' ),
+			)
+		);
 
 		$policy = new WordPressAbilitiesPolicy();
 
@@ -109,6 +153,9 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/malformed-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/malformed-constraint' ) );
 		self::assertFalse( $policy->is_allowed( 'example/malformed-composition' ) );
+		self::assertFalse( $policy->is_allowed( 'example/duplicate-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/invalid-pattern' ) );
+		self::assertFalse( $policy->is_allowed( 'example/duplicate-required' ) );
 
 		$definitions = array_column( $policy->public_definitions(), null, 'id' );
 		self::assertTrue( $definitions['example/read']['defaultEnabled'] );

@@ -371,7 +371,7 @@ final class LearningSuggestionRepository {
 	 */
 	private function sanitize_source( array $source ): array {
 		return array(
-			'provider'    => $this->sanitize_enum( $source['provider'] ?? '', array( 'chatgpt', 'claude', 'codex', 'gemini', 'mcp' ), 'mcp' ),
+			'provider'    => $this->sanitize_enum( $source['provider'] ?? '', array( 'chatgpt', 'claude', 'codex', 'gemini', 'grok', 'mcp' ), 'mcp' ),
 			'client_id'   => $this->sanitize_text( $source['client_id'] ?? '', 100 ),
 			'client_name' => $this->sanitize_text( $source['client_name'] ?? '', 160 ),
 			'user_id'     => absint( $source['user_id'] ?? 0 ),

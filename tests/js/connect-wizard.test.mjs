@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	clampWizardStepIndex,
+	connectAppOptionForProvider,
 	connectWizardCompletionStep,
 	connectWizardCompletionState,
 	connectWizardRecoveryStepIndex,
@@ -10,6 +11,21 @@ import {
 	shouldShowPendingRequests,
 	wizardStepsForProvider,
 } from '../../src/connect-wizard.mjs';
+
+test( 'uses the stable generic app option for unknown providers', () => {
+	const options = [
+		{ id: 'chatgpt', providerId: 'chatgpt' },
+		{ id: 'claude', providerId: 'claude' },
+		{ id: 'grok', providerId: 'grok' },
+		{ id: 'other', providerId: 'mcp' },
+	];
+
+	assert.equal(
+		connectAppOptionForProvider( 'external', options )?.id,
+		'other'
+	);
+	assert.equal( connectAppOptionForProvider( 'grok', options )?.id, 'grok' );
+} );
 
 test( 'prefers ChatGPT for the default assistant wizard selection', () => {
 	assert.equal(

@@ -36,5 +36,6 @@ final class DiscoveryControllerTest extends TestCase {
 		self::assertSame( array( 'S256' ), $auth_metadata['code_challenge_methods_supported'] );
 		self::assertSame( TokenEndpointAuthMethod::supported(), $resource_metadata['token_endpoint_auth_methods_supported'] );
 		self::assertSame( TokenEndpointAuthMethod::supported(), $auth_metadata['token_endpoint_auth_methods_supported'] );
+		self::assertFalse( $auth_metadata['client_id_metadata_document_supported'] );
 	}
 }

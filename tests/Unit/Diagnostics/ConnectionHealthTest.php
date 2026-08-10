@@ -17,15 +17,21 @@ use ReflectionMethod;
 
 require_once dirname( __DIR__, 2 ) . '/fixtures/wordpress-abilities-stubs.php';
 
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused diagnostics tests replace wpdb with a local test double.
+
 /**
  * Verifies connection diagnostics summarize and sanitize stored results.
  */
 final class ConnectionHealthTest extends TestCase {
 
+	private mixed $original_wpdb = null;
+
 	protected function setUp(): void {
 		parent::setUp();
 
 		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
+		$this->original_wpdb                               = $GLOBALS['wpdb'] ?? null;
+		unset( $GLOBALS['aculect_ai_companion_test_db_delta_callback'] );
 	}
 
 	protected function tearDown(): void {
@@ -41,6 +47,14 @@ final class ConnectionHealthTest extends TestCase {
 			$_SERVER['HTTP_CF_IPCOUNTRY'],
 			$_SERVER['HTTP_CF_MITIGATED']
 		);
+
+		if ( null !== $this->original_wpdb ) {
+			$GLOBALS['wpdb'] = $this->original_wpdb;
+		} else {
+			unset( $GLOBALS['wpdb'] );
+		}
+
+		unset( $GLOBALS['aculect_ai_companion_test_db_delta_callback'] );
 
 		parent::tearDown();
 	}
@@ -62,6 +76,61 @@ final class ConnectionHealthTest extends TestCase {
 				)
 			)
 		);
+	}
+
+	public function test_required_storage_check_reports_a_bounded_actionable_repair_failure(): void {
+		$GLOBALS['wpdb'] = new ConnectionHealthStorageWpdb();
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_required_storage' );
+
+		self::assertSame( 'required_storage', $result['id'] );
+		self::assertSame( 'fail', $result['status'] );
+		self::assertSame( array( 'oauth', 'activity' ), $result['details']['checked_stores'] );
+		self::assertSame( array( 'oauth', 'activity' ), $result['details']['unavailable_stores'] );
+		self::assertArrayNotHasKey( 'repaired_stores', $result['details'] );
+		self::assertStringContainsString( 'database user', $result['remediation'] );
+	}
+
+	public function test_required_storage_check_reports_only_the_store_that_was_actually_repaired(): void {
+		$wpdb            = new ConnectionHealthStorageWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+			if ( str_contains( $sql, 'aculect_ai_companion_oauth_clients' ) ) {
+				$wpdb->available_tables = array(
+					'wp_42_aculect_ai_companion_oauth_clients',
+					'wp_42_aculect_ai_companion_oauth_access_tokens',
+					'wp_42_aculect_ai_companion_oauth_refresh_tokens',
+					'wp_42_aculect_ai_companion_oauth_auth_codes',
+				);
+			}
+
+			return array();
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_required_storage' );
+
+		self::assertSame( 'fail', $result['status'] );
+		self::assertSame( array( 'oauth' ), $result['details']['repaired_stores'] );
+		self::assertSame( array( 'activity' ), $result['details']['unavailable_stores'] );
+		self::assertNotContains( 'activity', $result['details']['repaired_stores'] );
+	}
+
+	public function test_required_storage_check_records_a_successful_repair_without_physical_table_names(): void {
+		$wpdb            = new ConnectionHealthStorageWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+			unset( $sql );
+			$wpdb->all_tables_available = true;
+
+			return array( 'created missing plugin table' );
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_required_storage' );
+
+		self::assertSame( 'required_storage', $result['id'] );
+		self::assertSame( 'warn', $result['status'] );
+		self::assertSame( array( 'oauth', 'activity' ), $result['details']['repaired_stores'] );
+		self::assertArrayNotHasKey( 'table_names', $result['details'] );
 	}
 
 	public function test_summary_status_reports_warnings_without_failures(): void {
@@ -123,6 +192,36 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertArrayNotHasKey( 'auth_header', $result['system'] );
 		self::assertArrayNotHasKey( 'private_payload', $result['system'] );
 		self::assertArrayNotHasKey( 'wp_salt', $result['system'] );
+	}
+
+	public function test_empty_admin_result_exposes_only_support_safe_ui_context(): void {
+		$result = $this->invokePrivate( new ConnectionHealth(), 'empty_result' );
+
+		self::assertSame( '', $result['ranAt'] );
+		self::assertSame( '', $result['summary'] );
+		self::assertSame( array(), $result['items'] );
+		self::assertSame(
+			array(
+				'site_url',
+				'rest_url',
+				'connection_url',
+				'wordpress_version',
+				'php_version',
+				'environment_type',
+				'debug_mode',
+			),
+			array_keys( $result['system'] )
+		);
+		self::assertSame(
+			array(
+				'connectionUrl',
+				'protectedResourceMetadataUrl',
+				'authorizationServerMetadataUrl',
+			),
+			array_keys( $result['details'] )
+		);
+		self::assertArrayNotHasKey( 'access_token', $result['system'] );
+		self::assertArrayNotHasKey( 'client_secret', $result['details'] );
 	}
 
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
@@ -281,5 +380,65 @@ final class ConnectionHealthTest extends TestCase {
 		$reflection = new ReflectionMethod( $object, $method );
 
 		return $reflection->invokeArgs( $object, $arguments );
+	}
+}
+
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Generic.Commenting.DocComment.MissingShort, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.FunctionComment.IncorrectTypeHint, Squiz.Commenting.FunctionComment.ParamNameNoMatch -- Focused wpdb double remains local to this test file.
+
+/**
+ * Minimal wpdb double for required storage diagnostics.
+ */
+final class ConnectionHealthStorageWpdb {
+
+	public string $prefix             = 'wp_42_';
+	public bool $all_tables_available = false;
+
+	/** @var list<string> */
+	public array $available_tables = array();
+
+	/** @var array<int, mixed> */
+	private array $last_args = array();
+
+	public function prepare( string $query, mixed ...$args ): string {
+		$this->last_args = $args;
+
+		return $query;
+	}
+
+	public function esc_like( string $text ): string {
+		return $text;
+	}
+
+	public function get_var( string $query ): string {
+		unset( $query );
+
+		$table = (string) ( $this->last_args[0] ?? '' );
+
+		return $this->all_tables_available || in_array( $table, $this->available_tables, true ) ? $table : '';
+	}
+
+	public function get_charset_collate(): string {
+		return 'DEFAULT CHARSET=utf8mb4';
+	}
+
+	/**
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function get_results( string $query, string $output ): array {
+		unset( $query, $output );
+
+		return array();
+	}
+
+	/**
+	 * @param array<string, mixed> $data Data to update.
+	 * @param array<string, mixed> $where Update criteria.
+	 * @param string[]             $format Data formats.
+	 * @param string[]             $where_format Update formats.
+	 */
+	public function update( string $table, array $data, array $where, array $format, array $where_format ): int {
+		unset( $table, $data, $where, $format, $where_format );
+
+		return 0;
 	}
 }

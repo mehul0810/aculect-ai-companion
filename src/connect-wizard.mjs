@@ -23,6 +23,18 @@ export function preferredWizardProviderId( providers ) {
 	);
 }
 
+export function connectAppOptionForProvider( providerId, options ) {
+	const items = Array.isArray( options ) ? options : [];
+
+	return (
+		items.find( ( option ) => option.providerId === providerId ) ||
+		items.find( ( option ) => option.providerId === 'mcp' ) ||
+		items.find( ( option ) => option.id === 'other' ) ||
+		items[ 0 ] ||
+		null
+	);
+}
+
 export function wizardStepsForProvider( provider ) {
 	const wizard =
 		provider?.wizard && typeof provider.wizard === 'object'

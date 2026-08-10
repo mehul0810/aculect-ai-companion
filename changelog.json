@@ -1,4 +1,17 @@
 {
+	"0.7.2": {
+		"date": "2026-07-31",
+		"New": [
+			"Added current setup guidance for Grok, Cursor, and other MCP-compatible AI apps, including optional client-side tool-selection guidance that does not change server authorization."
+		],
+		"Improved": [
+			"Improved OAuth dynamic client registration, redirect validation, bounded stale-client recovery, and low-overhead storage maintenance.",
+			"Redesigned diagnostics with clearer health summaries, safe evidence, recovery guidance, and public-safe OAuth capacity status."
+		],
+		"Reliability": [
+			"Hardened production package verification so generated smoke artifacts are excluded from release ZIPs."
+		]
+	},
 	"0.7.1": {
 		"date": "2026-07-20",
 		"New": [

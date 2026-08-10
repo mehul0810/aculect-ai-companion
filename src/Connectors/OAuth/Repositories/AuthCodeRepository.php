@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
+use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AuthCodeEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
@@ -104,24 +105,23 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 	 *
 	 * @param string|null $cutoff Optional UTC cutoff in Y-m-d H:i:s format.
 	 * @param int         $limit  Maximum rows to delete in this pass.
-	 * @return int Number of deleted rows.
+	 * @return int|false Number of deleted rows, or false on database failure.
 	 */
-	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int {
-		global $wpdb;
-
+	public function prune_expired( ?string $cutoff = null, int $limit = self::DEFAULT_PRUNE_BATCH_SIZE ): int|false {
 		$table  = Installer::table_names()['auth_codes'];
 		$cutoff = null !== $cutoff && '' !== $cutoff ? $cutoff : gmdate( 'Y-m-d H:i:s' );
 		$limit  = $this->normalized_batch_limit( $limit );
-		$result = $wpdb->query(
-			$wpdb->prepare(
-				'DELETE FROM %i WHERE expires_at < %s LIMIT %d',
-				$table,
-				$cutoff,
-				$limit
-			)
+		$ids    = BoundedPruner::candidate_ids(
+			'SELECT id FROM %i WHERE expires_at < %s ORDER BY expires_at ASC, id ASC LIMIT %d',
+			array( $table, $cutoff, $limit ),
+			$limit
 		);
 
-		return false === $result ? 0 : (int) $result;
+		if ( false === $ids ) {
+			return false;
+		}
+
+		return BoundedPruner::delete_ids( $table, $ids, 'expires_at < %s', array( $cutoff ) );
 	}
 
 	/**

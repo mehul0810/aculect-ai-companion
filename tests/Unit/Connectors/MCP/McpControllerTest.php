@@ -33,11 +33,12 @@ final class McpControllerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options']         = array();
-		$GLOBALS['aculect_ai_companion_test_transients']      = array();
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array();
-		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 1;
-		$GLOBALS['aculect_ai_companion_test_users']           = array(
+		$GLOBALS['aculect_ai_companion_test_options']          = array();
+		$GLOBALS['aculect_ai_companion_test_transients']       = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']      = array();
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']  = 1;
+		$GLOBALS['aculect_ai_companion_test_users']            = array(
 			1 => (object) array(
 				'ID'           => 1,
 				'roles'        => array( 'administrator' ),
@@ -123,6 +124,223 @@ final class McpControllerTest extends TestCase {
 
 		self::assertInstanceOf( \WP_Error::class, $result );
 		self::assertSame( 'request_body_too_large', $result->get_error_code() );
+	}
+
+	public function test_notification_requires_oauth_authentication(): void {
+		$request = new WP_REST_Request(
+			array(),
+			array(),
+			array(
+				'jsonrpc' => '2.0',
+				'method'  => 'notifications/initialized',
+			),
+			'POST',
+			'/aculect-ai-companion/v1/mcp'
+		);
+
+		$result = ( new McpController() )->check_mcp_permission( $request );
+
+		self::assertInstanceOf( \WP_Error::class, $result );
+		self::assertSame( 'rest_unauthorized', $result->get_error_code() );
+	}
+
+	public function test_origin_validation_uses_exact_origin_and_configured_proxy_origins(): void {
+		$controller = new McpController();
+		$canonical  = Helpers::origin_from_url( Helpers::mcp_resource() );
+
+		self::assertNull( $this->transportError( $controller, array( 'origin' => $canonical ) ) );
+		self::assertSame( 'invalid_mcp_origin', $this->transportError( $controller, array( 'origin' => 'https://foreign.example' ) )['code'] ?? '' );
+		self::assertSame( 'invalid_mcp_origin', $this->transportError( $controller, array( 'origin' => 'null' ) )['code'] ?? '' );
+		self::assertSame( 'invalid_mcp_origin', $this->transportError( $controller, array( 'origin' => str_replace( 'https://', 'http://', $canonical ) ) )['code'] ?? '' );
+
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/allowed_mcp_origins'] = static function ( array $origins ): array {
+			$origins[] = 'https://approved.example:8443';
+			return $origins;
+		};
+
+		self::assertNull( $this->transportError( new McpController(), array( 'origin' => 'https://approved.example:8443' ) ) );
+		self::assertSame( 'invalid_mcp_origin', $this->transportError( new McpController(), array( 'origin' => 'https://approved.example' ) )['code'] ?? '' );
+
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/external_url'] = static fn(): string => 'https://proxy.example.test/connectors';
+		self::assertNull( $this->transportError( new McpController(), array( 'origin' => 'https://proxy.example.test' ) ) );
+		self::assertSame( 'invalid_mcp_origin', $this->transportError( new McpController(), array( 'origin' => 'https://example.com' ) )['code'] ?? '' );
+	}
+
+	public function test_current_stateless_discovery_requires_headers_and_request_metadata(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'user_id' => 1,
+				'scopes'  => array( 'content:read' ),
+			)
+		);
+		$request = $this->currentProtocolRequest( 'server/discover', array() );
+
+		$response = $controller->handle_rpc( $request );
+
+		self::assertIsArray( $response );
+		self::assertSame( McpController::SUPPORTED_PROTOCOL_VERSIONS, $response['result']['supportedVersions'] ?? array() );
+		self::assertSame( 'complete', $response['result']['resultType'] ?? '' );
+		self::assertSame( 'public', $response['result']['cacheScope'] ?? '' );
+		self::assertSame( 3600000, $response['result']['ttlMs'] ?? 0 );
+
+		$initialize = $controller->handle_rpc(
+			$this->currentProtocolRequest(
+				'initialize',
+				array( 'protocolVersion' => McpController::PROTOCOL_VERSION_CURRENT )
+			)
+		);
+		self::assertIsArray( $initialize );
+		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $initialize['result']['protocolVersion'] ?? '' );
+		self::assertSame( 'complete', $initialize['result']['resultType'] ?? '' );
+	}
+
+	public function test_current_protocol_rejects_header_metadata_and_tool_name_mismatches(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'user_id' => 1,
+				'scopes'  => array( 'content:read' ),
+			)
+		);
+		$missing_version = new WP_REST_Request(
+			array(),
+			array(),
+			array(
+				'jsonrpc' => '2.0',
+				'id'      => 2026,
+				'method'  => 'server/discover',
+				'params'  => array(),
+			),
+			'POST',
+			'/aculect-ai-companion/v1/mcp'
+		);
+		$response        = $controller->handle_rpc( $missing_version );
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 'missing_protocol_version', $response->get_data()['error']['data']['code'] ?? '' );
+
+		$bad_meta = $this->currentProtocolRequest(
+			'tools/list',
+			array(),
+			array(),
+			McpController::PROTOCOL_VERSION_LEGACY
+		);
+		$response = $controller->handle_rpc( $bad_meta );
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 400, $response->get_status() );
+		self::assertSame( -32020, $response->get_data()['error']['code'] ?? null );
+		self::assertSame( 'invalid_mcp_request_metadata', $response->get_data()['error']['data']['code'] ?? '' );
+
+		$bad_name = $this->currentProtocolRequest(
+			'tools/call',
+			array(
+				'name'      => 'search',
+				'arguments' => array(),
+			),
+			array( 'mcp-name' => 'fetch' )
+		);
+		$response = $controller->handle_rpc( $bad_name );
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( -32020, $response->get_data()['error']['code'] ?? null );
+		self::assertSame( 'invalid_mcp_name_header', $response->get_data()['error']['data']['code'] ?? '' );
+
+		$resource_uri = 'https://example.com/wp-json/wp/v2/posts/10?context=edit';
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Exercises the MCP mirrored-header sentinel contract.
+		$encoded_name = '=?base64?' . base64_encode( $resource_uri ) . '?=';
+		self::assertNull(
+			$this->invokePrivate(
+				new McpController(),
+				'transport_error',
+				array(
+					$this->currentProtocolRequest(
+						'resources/read',
+						array( 'uri' => $resource_uri ),
+						array( 'mcp-name' => $encoded_name )
+					),
+				)
+			)
+		);
+	}
+
+	public function test_legacy_initialize_negotiates_supported_version_and_rejects_unknown_version(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'user_id' => 1,
+				'scopes'  => array( 'content:read' ),
+			)
+		);
+		$response = $controller->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 1,
+					'method'  => 'initialize',
+					'params'  => array( 'protocolVersion' => McpController::PROTOCOL_VERSION_LEGACY ),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+
+		self::assertIsArray( $response );
+		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $response['result']['protocolVersion'] ?? '' );
+
+		$unknown  = new WP_REST_Request(
+			array(),
+			array(),
+			array(
+				'jsonrpc' => '2.0',
+				'id'      => 2,
+				'method'  => 'initialize',
+				'params'  => array( 'protocolVersion' => '2099-01-01' ),
+			),
+			'POST',
+			'/aculect-ai-companion/v1/mcp'
+		);
+		$response = $controller->handle_rpc( $unknown );
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 400, $response->get_status() );
+		self::assertSame( -32022, $response->get_data()['error']['code'] ?? null );
+		self::assertSame( 'unsupported_protocol_version', $response->get_data()['error']['data']['code'] ?? '' );
+		self::assertSame( '2099-01-01', $response->get_data()['error']['data']['requested'] ?? '' );
+		self::assertSame( McpController::SUPPORTED_PROTOCOL_VERSIONS, $response->get_data()['error']['data']['supported'] ?? array() );
+	}
+
+	public function test_current_unknown_method_returns_json_rpc_404(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty(
+			$controller,
+			'request_auth',
+			array(
+				'user_id' => 1,
+				'scopes'  => array( 'content:read' ),
+			)
+		);
+
+		$response = $controller->handle_rpc( $this->currentProtocolRequest( 'unknown/method', array() ) );
+
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 404, $response->get_status() );
+		self::assertSame( -32601, $response->get_data()['error']['code'] ?? null );
+	}
+
+	public function test_stateless_get_returns_method_not_allowed(): void {
+		$controller = new McpController();
+		$this->setPrivateProperty( $controller, 'request_auth', array( 'user_id' => 1 ) );
+
+		$response = $controller->describe( new WP_REST_Request() );
+
+		self::assertInstanceOf( \WP_REST_Response::class, $response );
+		self::assertSame( 405, $response->get_status() );
 	}
 
 	public function test_tool_call_rejects_oversized_schema_argument_before_execution(): void {
@@ -398,9 +616,9 @@ final class McpControllerTest extends TestCase {
 		self::assertStringContainsString( 'mcp_learning_inspect_activity', $result['instructions'] );
 		self::assertStringContainsString( 'Never use raw Custom HTML blocks', $result['instructions'] );
 		self::assertArrayHasKey( 'tools', $result['capabilities'] );
-		self::assertTrue( $result['capabilities']['tools']['listChanged'] );
+		self::assertFalse( $result['capabilities']['tools']['listChanged'] );
 		self::assertArrayHasKey( 'resources', $result['capabilities'] );
-		self::assertTrue( $result['capabilities']['resources']['listChanged'] );
+		self::assertFalse( $result['capabilities']['resources']['listChanged'] );
 	}
 
 	public function test_intelligence_tools_advertise_output_schemas(): void {
@@ -1463,6 +1681,62 @@ final class McpControllerTest extends TestCase {
 		self::assertTrue( $report['isError'], $role );
 		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $report['content'][0]['text'], $role );
 		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ), $role );
+	}
+
+	/**
+	 * Build a 2026-07-28 stateless MCP request.
+	 *
+	 * @param string                $method           JSON-RPC method.
+	 * @param array<string, mixed>  $params           Request parameters.
+	 * @param array<string, string> $header_overrides Header overrides.
+	 * @param string                $metadata_version Metadata protocol version.
+	 */
+	private function currentProtocolRequest( string $method, array $params, array $header_overrides = array(), string $metadata_version = McpController::PROTOCOL_VERSION_CURRENT ): WP_REST_Request {
+		$params['_meta'] = array(
+			'io.modelcontextprotocol/protocolVersion'    => $metadata_version,
+			'io.modelcontextprotocol/clientCapabilities' => array(),
+			'io.modelcontextprotocol/clientInfo'         => array(
+				'name'    => 'Aculect test client',
+				'version' => '1.0.0',
+			),
+		);
+		$headers         = array(
+			'mcp-protocol-version' => McpController::PROTOCOL_VERSION_CURRENT,
+			'mcp-method'           => $method,
+		);
+		if ( 'tools/call' === $method ) {
+			$headers['mcp-name'] = (string) ( $params['name'] ?? '' );
+		}
+
+		return new WP_REST_Request(
+			array(),
+			array_merge( $headers, $header_overrides ),
+			array(
+				'jsonrpc' => '2.0',
+				'id'      => 2026,
+				'method'  => $method,
+				'params'  => $params,
+			),
+			'POST',
+			'/aculect-ai-companion/v1/mcp'
+		);
+	}
+
+	/**
+	 * Return the private transport validator result for a request.
+	 *
+	 * @param McpController         $controller Controller under test.
+	 * @param array<string, string> $headers    Request headers.
+	 * @return array<string, mixed>|null
+	 */
+	private function transportError( McpController $controller, array $headers ): ?array {
+		$result = $this->invokePrivate(
+			$controller,
+			'transport_error',
+			array( new WP_REST_Request( array(), $headers, array(), 'GET', '/aculect-ai-companion/v1/mcp' ) )
+		);
+
+		return is_array( $result ) ? $result : null;
 	}
 
 	/**

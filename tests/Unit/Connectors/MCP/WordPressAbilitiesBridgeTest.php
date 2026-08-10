@@ -106,24 +106,19 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( 'Custom denial.', $result['message'] );
 	}
 
-	public function test_administrator_can_discover_and_execute_incident_list_alias(): void {
+	public function test_first_party_incident_list_cannot_reenter_through_external_bridge(): void {
 		( new WordPressAbilitiesRegistrar() )->register_abilities();
 
 		$bridge = new WordPressAbilitiesBridge();
 		$list   = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
 		$names  = array_column( $bridge->discover()['items'], 'id' );
 
-		self::assertContains( 'aculect-ai-companion/plugin-incident-list', $names );
-		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $list['id'] );
-		self::assertTrue( $list['readOnly'] );
-		self::assertTrue( $list['allowed'] );
-		self::assertSame( 'plugin_incident_list', $list['meta']['mcp']['tool'] );
+		self::assertNotContains( 'aculect-ai-companion/plugin-incident-list', $names );
+		self::assertSame( 'blocked_by_policy', $list['error'] );
 
 		$result = $bridge->run( array( 'id' => 'plugin_incident_list' ) );
 
-		self::assertSame( 'aculect-ai-companion/plugin-incident-list', $result['ability'] );
-		self::assertSame( 0, $result['result']['total'] );
-		self::assertArrayNotHasKey( 'confirmation_required', $result['result'] );
+		self::assertSame( 'blocked_by_policy', $result['error'] );
 	}
 
 	public function test_subscriber_cannot_discover_or_execute_incident_list_ability(): void {
@@ -232,9 +227,9 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertNotContains( 'aculect-ai-companion/plugin-incident-list', $names, $role );
 
 		$info = $bridge->get_info( array( 'id' => 'plugin_incident_list' ) );
-		self::assertSame( 'forbidden', $info['error'], $role );
+		self::assertSame( 'blocked_by_policy', $info['error'], $role );
 
 		$result = $bridge->run( array( 'id' => 'plugin_incident_list' ) );
-		self::assertSame( 'forbidden', $result['error'], $role );
+		self::assertSame( 'blocked_by_policy', $result['error'], $role );
 	}
 }

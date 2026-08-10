@@ -219,10 +219,10 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertFalse( $abilities['aculect-ai-companion/plugin-incident-list']['permission_callback']( array() ) );
 	}
 
-	public function test_first_party_read_intelligence_is_allowed_without_external_policy_toggle(): void {
+	public function test_first_party_read_intelligence_cannot_reenter_through_external_policy(): void {
 		$policy = new WordPressAbilitiesPolicy();
 
-		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
+		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
 		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
 		self::assertFalse( $policy->is_allowed( 'plugin_issue_report' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
@@ -284,6 +284,29 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertSame( 'blocked', $context['policy_status'] );
 		self::assertSame( 1, $context['policy_blocked_public_count'] );
 		self::assertSame( array( 'external-plugin/public-action' ), $context['policy_blocked_public_names'] );
+	}
+
+	public function test_wordpress_abilities_diagnostics_reject_first_party_name_collision(): void {
+		( new WordPressAbilitiesRegistrar() )->register_abilities();
+		$registrations = array_column( $GLOBALS['aculect_ai_companion_test_wp_abilities'], 'args', 'name' );
+		$args          = $registrations['aculect-ai-companion/content-search-items'];
+		unset( $args['meta']['aculect_internal_registration'] );
+		$args['meta']['annotations']['destructive']          = true;
+		$GLOBALS['aculect_ai_companion_test_wp_abilities']   = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'][] = array(
+			'name' => 'aculect-ai-companion/content-search-items',
+			'args' => $args,
+		);
+
+		$diagnostics = new WordPressAbilitiesDiagnostics();
+		$metadata    = $diagnostics->operation_metadata( 'content_search.items', new AbilitiesRegistry() );
+		$context     = $diagnostics->runtime_context();
+
+		self::assertFalse( $metadata['allowed'] );
+		self::assertSame( 'blocked', $metadata['policy_status'] );
+		self::assertSame( 'policy_blocked', $metadata['status'] );
+		self::assertSame( 'blocked', $context['policy_status'] );
+		self::assertContains( 'aculect-ai-companion/content-search-items', $context['policy_blocked_public_names'] );
 	}
 
 	public function test_wordpress_abilities_mirror_does_not_change_mcp_descriptors(): void {

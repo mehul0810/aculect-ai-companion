@@ -15,6 +15,10 @@ final class WordPressAbilitiesRegistrar {
 		'plugin.incident.report',
 	);
 
+	private const REGISTRATION_MARKER_KEY = 'aculect_internal_registration';
+
+	private static ?string $registration_marker = null;
+
 	/**
 	 * Cached first-party WordPress Ability names.
 	 *
@@ -97,6 +101,27 @@ final class WordPressAbilitiesRegistrar {
 	 */
 	public function is_first_party_read_intelligence( string $name ): bool {
 		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
+	}
+
+	/**
+	 * Verify an ability was registered by this request's Aculect registrar.
+	 *
+	 * @param object $ability WordPress Ability object.
+	 */
+	public function is_trusted_first_party_ability( object $ability ): bool {
+		if ( ! method_exists( $ability, 'get_name' ) || ! method_exists( $ability, 'get_meta' ) ) {
+			return false;
+		}
+
+		$name = $ability->get_name();
+		$meta = $ability->get_meta();
+
+		return is_string( $name )
+			&& $this->is_first_party_read_intelligence( $name )
+			&& is_array( $meta )
+			&& isset( $meta[ self::REGISTRATION_MARKER_KEY ] )
+			&& is_string( $meta[ self::REGISTRATION_MARKER_KEY ] )
+			&& hash_equals( $this->registration_marker(), $meta[ self::REGISTRATION_MARKER_KEY ] );
 	}
 
 	/**
@@ -226,18 +251,30 @@ final class WordPressAbilitiesRegistrar {
 			'execute_callback'    => static fn( mixed $input = array() ): array => $execute( is_array( $input ) ? $input : array() ),
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
-				'show_in_rest' => true,
-				'annotations'  => array(
+				self::REGISTRATION_MARKER_KEY => $this->registration_marker(),
+				'show_in_rest'                => true,
+				'annotations'                 => array(
 					'readonly'    => true,
 					'destructive' => false,
 					'idempotent'  => true,
 				),
-				'mcp'          => array(
+				'mcp'                         => array(
 					'public' => true,
 					'tool'   => ( new AbilitiesRegistry() )->tool_name( $module->id() ),
 				),
 			),
 		);
+	}
+
+	/**
+	 * Return the request-local marker used to distinguish Aculect registrations.
+	 */
+	private function registration_marker(): string {
+		if ( null === self::$registration_marker ) {
+			self::$registration_marker = bin2hex( random_bytes( 16 ) );
+		}
+
+		return self::$registration_marker;
 	}
 
 	/**

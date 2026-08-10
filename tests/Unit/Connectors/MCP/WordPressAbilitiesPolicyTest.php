@@ -52,6 +52,49 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				),
 			)
 		);
+		$this->register_ability(
+			'example/malformed-enum',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type' => 'string',
+						'enum' => 'not-an-array',
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/malformed-constraint',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type'      => 'string',
+						'minLength' => 'one',
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/malformed-composition',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'  => 'object',
+				'allOf' => array( 'not-a-schema-list' => array( 'type' => 'object' ) ),
+			)
+		);
 
 		$policy = new WordPressAbilitiesPolicy();
 
@@ -63,6 +106,9 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/invalid-schema' ) );
 		self::assertFalse( $policy->is_allowed( 'example/missing-destructive' ) );
 		self::assertFalse( $policy->is_allowed( 'example/malformed-nested-schema' ) );
+		self::assertFalse( $policy->is_allowed( 'example/malformed-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/malformed-constraint' ) );
+		self::assertFalse( $policy->is_allowed( 'example/malformed-composition' ) );
 
 		$definitions = array_column( $policy->public_definitions(), null, 'id' );
 		self::assertTrue( $definitions['example/read']['defaultEnabled'] );

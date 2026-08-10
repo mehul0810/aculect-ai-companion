@@ -273,7 +273,77 @@ final class WordPressAbilitiesPolicy {
 			return false;
 		}
 
+		$allowed_keywords = array(
+			'type',
+			'title',
+			'description',
+			'default',
+			'examples',
+			'enum',
+			'const',
+			'properties',
+			'patternProperties',
+			'propertyNames',
+			'required',
+			'items',
+			'additionalProperties',
+			'allOf',
+			'anyOf',
+			'oneOf',
+			'not',
+			'minimum',
+			'maximum',
+			'exclusiveMinimum',
+			'exclusiveMaximum',
+			'multipleOf',
+			'minLength',
+			'maxLength',
+			'pattern',
+			'format',
+			'minItems',
+			'maxItems',
+			'uniqueItems',
+			'minProperties',
+			'maxProperties',
+		);
+		if ( array() !== array_diff( array_keys( $schema ), $allowed_keywords ) ) {
+			return false;
+		}
+
 		if ( ! in_array( $schema['type'], array( 'object', 'array', 'string', 'number', 'integer', 'boolean', 'null' ), true ) ) {
+			return false;
+		}
+
+		foreach ( array( 'title', 'description', 'pattern', 'format' ) as $string_keyword ) {
+			if ( isset( $schema[ $string_keyword ] ) && ! is_string( $schema[ $string_keyword ] ) ) {
+				return false;
+			}
+		}
+
+		if ( isset( $schema['enum'] ) && ( ! is_array( $schema['enum'] ) || ! array_is_list( $schema['enum'] ) || array() === $schema['enum'] ) ) {
+			return false;
+		}
+
+		if ( isset( $schema['examples'] ) && ( ! is_array( $schema['examples'] ) || ! array_is_list( $schema['examples'] ) ) ) {
+			return false;
+		}
+
+		foreach ( array( 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf' ) as $numeric_keyword ) {
+			if ( isset( $schema[ $numeric_keyword ] ) && ! is_int( $schema[ $numeric_keyword ] ) && ! is_float( $schema[ $numeric_keyword ] ) ) {
+				return false;
+			}
+		}
+		if ( isset( $schema['multipleOf'] ) && 0 >= $schema['multipleOf'] ) {
+			return false;
+		}
+
+		foreach ( array( 'minLength', 'maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties' ) as $count_keyword ) {
+			if ( isset( $schema[ $count_keyword ] ) && ( ! is_int( $schema[ $count_keyword ] ) || 0 > $schema[ $count_keyword ] ) ) {
+				return false;
+			}
+		}
+
+		if ( isset( $schema['uniqueItems'] ) && ! is_bool( $schema['uniqueItems'] ) ) {
 			return false;
 		}
 
@@ -290,7 +360,7 @@ final class WordPressAbilitiesPolicy {
 		}
 
 		if ( isset( $schema['required'] ) ) {
-			if ( ! is_array( $schema['required'] ) ) {
+			if ( ! is_array( $schema['required'] ) || ! array_is_list( $schema['required'] ) ) {
 				return false;
 			}
 
@@ -299,6 +369,22 @@ final class WordPressAbilitiesPolicy {
 					return false;
 				}
 			}
+		}
+
+		if ( isset( $schema['patternProperties'] ) ) {
+			if ( ! is_array( $schema['patternProperties'] ) ) {
+				return false;
+			}
+
+			foreach ( $schema['patternProperties'] as $pattern => $property ) {
+				if ( ! is_string( $pattern ) || '' === $pattern || ! is_array( $property ) || ! $this->valid_schema_node( $property, $depth + 1, $nodes ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( isset( $schema['propertyNames'] ) && ( ! is_array( $schema['propertyNames'] ) || ! $this->valid_schema_node( $schema['propertyNames'], $depth + 1, $nodes ) ) ) {
+			return false;
 		}
 
 		if ( isset( $schema['items'] ) && ( ! is_array( $schema['items'] ) || ! $this->valid_schema_node( $schema['items'], $depth + 1, $nodes ) ) ) {
@@ -316,7 +402,7 @@ final class WordPressAbilitiesPolicy {
 				continue;
 			}
 
-			if ( ! is_array( $schema[ $composition ] ) || array() === $schema[ $composition ] ) {
+			if ( ! is_array( $schema[ $composition ] ) || ! array_is_list( $schema[ $composition ] ) || array() === $schema[ $composition ] ) {
 				return false;
 			}
 

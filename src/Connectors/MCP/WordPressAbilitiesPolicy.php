@@ -315,12 +315,12 @@ final class WordPressAbilitiesPolicy {
 		}
 
 		foreach ( array( 'title', 'description', 'pattern', 'format' ) as $string_keyword ) {
-			if ( isset( $schema[ $string_keyword ] ) && ! is_string( $schema[ $string_keyword ] ) ) {
+			if ( array_key_exists( $string_keyword, $schema ) && ! is_string( $schema[ $string_keyword ] ) ) {
 				return false;
 			}
 		}
 
-		if ( isset( $schema['enum'] ) ) {
+		if ( array_key_exists( 'enum', $schema ) ) {
 			if ( ! is_array( $schema['enum'] ) || ! array_is_list( $schema['enum'] ) || array() === $schema['enum'] ) {
 				return false;
 			}
@@ -339,34 +339,34 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		if ( isset( $schema['examples'] ) && ( ! is_array( $schema['examples'] ) || ! array_is_list( $schema['examples'] ) ) ) {
+		if ( array_key_exists( 'examples', $schema ) && ( ! is_array( $schema['examples'] ) || ! array_is_list( $schema['examples'] ) ) ) {
 			return false;
 		}
 
 		foreach ( array( 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf' ) as $numeric_keyword ) {
-			if ( isset( $schema[ $numeric_keyword ] ) && ! is_int( $schema[ $numeric_keyword ] ) && ! is_float( $schema[ $numeric_keyword ] ) ) {
+			if ( array_key_exists( $numeric_keyword, $schema ) && ! is_int( $schema[ $numeric_keyword ] ) && ! is_float( $schema[ $numeric_keyword ] ) ) {
 				return false;
 			}
 		}
-		if ( isset( $schema['multipleOf'] ) && 0 >= $schema['multipleOf'] ) {
+		if ( array_key_exists( 'multipleOf', $schema ) && 0 >= $schema['multipleOf'] ) {
 			return false;
 		}
 
 		foreach ( array( 'minLength', 'maxLength', 'minItems', 'maxItems', 'minProperties', 'maxProperties' ) as $count_keyword ) {
-			if ( isset( $schema[ $count_keyword ] ) && ( ! is_int( $schema[ $count_keyword ] ) || 0 > $schema[ $count_keyword ] ) ) {
+			if ( array_key_exists( $count_keyword, $schema ) && ( ! is_int( $schema[ $count_keyword ] ) || 0 > $schema[ $count_keyword ] ) ) {
 				return false;
 			}
 		}
 
-		if ( isset( $schema['uniqueItems'] ) && ! is_bool( $schema['uniqueItems'] ) ) {
+		if ( array_key_exists( 'uniqueItems', $schema ) && ! is_bool( $schema['uniqueItems'] ) ) {
 			return false;
 		}
 
-		if ( isset( $schema['pattern'] ) && ! $this->valid_schema_pattern( $schema['pattern'] ) ) {
+		if ( array_key_exists( 'pattern', $schema ) && ! $this->valid_schema_pattern( $schema['pattern'] ) ) {
 			return false;
 		}
 
-		if ( isset( $schema['properties'] ) ) {
+		if ( array_key_exists( 'properties', $schema ) ) {
 			if ( ! is_array( $schema['properties'] ) ) {
 				return false;
 			}
@@ -378,7 +378,7 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		if ( isset( $schema['required'] ) ) {
+		if ( array_key_exists( 'required', $schema ) ) {
 			if ( ! is_array( $schema['required'] ) || ! array_is_list( $schema['required'] ) ) {
 				return false;
 			}
@@ -394,7 +394,7 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		if ( isset( $schema['patternProperties'] ) ) {
+		if ( array_key_exists( 'patternProperties', $schema ) ) {
 			if ( ! is_array( $schema['patternProperties'] ) ) {
 				return false;
 			}
@@ -406,22 +406,22 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		if ( isset( $schema['propertyNames'] ) && ( ! is_array( $schema['propertyNames'] ) || ! $this->valid_schema_node( $schema['propertyNames'], $depth + 1, $nodes ) ) ) {
+		if ( array_key_exists( 'propertyNames', $schema ) && ( ! is_array( $schema['propertyNames'] ) || ! $this->valid_schema_node( $schema['propertyNames'], $depth + 1, $nodes ) ) ) {
 			return false;
 		}
 
-		if ( isset( $schema['items'] ) && ( ! is_array( $schema['items'] ) || ! $this->valid_schema_node( $schema['items'], $depth + 1, $nodes ) ) ) {
+		if ( array_key_exists( 'items', $schema ) && ( ! is_array( $schema['items'] ) || ! $this->valid_schema_node( $schema['items'], $depth + 1, $nodes ) ) ) {
 			return false;
 		}
 
-		if ( isset( $schema['additionalProperties'] )
+		if ( array_key_exists( 'additionalProperties', $schema )
 			&& ! is_bool( $schema['additionalProperties'] )
 			&& ( ! is_array( $schema['additionalProperties'] ) || ! $this->valid_schema_node( $schema['additionalProperties'], $depth + 1, $nodes ) ) ) {
 			return false;
 		}
 
 		foreach ( array( 'allOf', 'anyOf', 'oneOf' ) as $composition ) {
-			if ( ! isset( $schema[ $composition ] ) ) {
+			if ( ! array_key_exists( $composition, $schema ) ) {
 				continue;
 			}
 
@@ -436,7 +436,7 @@ final class WordPressAbilitiesPolicy {
 			}
 		}
 
-		return ! isset( $schema['not'] ) || ( is_array( $schema['not'] ) && $this->valid_schema_node( $schema['not'], $depth + 1, $nodes ) );
+		return ! array_key_exists( 'not', $schema ) || ( is_array( $schema['not'] ) && $this->valid_schema_node( $schema['not'], $depth + 1, $nodes ) );
 	}
 
 	/**

@@ -139,6 +139,66 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				'required'   => array( 'query', 'query' ),
 			)
 		);
+		$this->register_ability(
+			'example/null-enum',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type' => 'string',
+						'enum' => null,
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/null-pattern',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type'    => 'string',
+						'pattern' => null,
+					),
+				),
+			)
+		);
+		$this->register_ability(
+			'example/null-required',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array( 'query' => array( 'type' => 'string' ) ),
+				'required'   => null,
+			)
+		);
+		$this->register_ability(
+			'example/null-constraint',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array(
+						'type'      => 'string',
+						'minLength' => null,
+					),
+				),
+			)
+		);
 
 		$policy = new WordPressAbilitiesPolicy();
 
@@ -156,6 +216,10 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/invalid-pattern' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-required' ) );
+		self::assertFalse( $policy->is_allowed( 'example/null-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/null-pattern' ) );
+		self::assertFalse( $policy->is_allowed( 'example/null-required' ) );
+		self::assertFalse( $policy->is_allowed( 'example/null-constraint' ) );
 
 		$definitions = array_column( $policy->public_definitions(), null, 'id' );
 		self::assertTrue( $definitions['example/read']['defaultEnabled'] );

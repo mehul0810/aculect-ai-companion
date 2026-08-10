@@ -135,7 +135,8 @@ final class WordPressAbilitiesDiagnostics {
 		}
 
 		$public       = $this->is_public( $ability );
-		$allowed      = ( new WordPressAbilitiesPolicy() )->is_allowed( $name );
+		$allowed      = ( new WordPressAbilitiesRegistrar() )->is_first_party_read_intelligence( $name )
+			|| ( new WordPressAbilitiesPolicy() )->is_allowed( $name );
 		$schema_valid = $this->schema_valid( $ability );
 		$capable      = $this->permission_allowed( $ability );
 
@@ -214,6 +215,10 @@ final class WordPressAbilitiesDiagnostics {
 		$blocked = array();
 
 		foreach ( $this->registered_abilities() as $name => $ability ) {
+			if ( ( new WordPressAbilitiesRegistrar() )->is_first_party_read_intelligence( $name ) ) {
+				continue;
+			}
+
 			if ( $this->is_public( $ability ) && ! $policy->is_allowed( $name ) ) {
 				$blocked[] = $name;
 			}

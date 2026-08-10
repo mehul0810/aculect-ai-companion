@@ -219,10 +219,10 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertFalse( $abilities['aculect-ai-companion/plugin-incident-list']['permission_callback']( array() ) );
 	}
 
-	public function test_first_party_read_intelligence_is_allowed_without_external_policy_toggle(): void {
+	public function test_first_party_read_intelligence_cannot_reenter_through_external_policy(): void {
 		$policy = new WordPressAbilitiesPolicy();
 
-		self::assertTrue( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
+		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/intelligence-site-get-context' ) );
 		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
 		self::assertFalse( $policy->is_allowed( 'plugin_issue_report' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );

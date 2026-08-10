@@ -5858,7 +5858,7 @@ function normalizedAbilityRows( {
 		title: String( ability.title || ability.id || 'WordPress ability' ),
 		description: String( ability.description || '' ),
 		group: normalizedAbilityGroup( ability.category || 'WordPress API' ),
-		scope: ability.readOnly ? 'content:read' : 'write',
+		scope: 'content:draft',
 		source: 'wordpress',
 		sourceLabel: 'WordPress API',
 		readOnly: Boolean( ability.readOnly ),

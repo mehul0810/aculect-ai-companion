@@ -171,7 +171,7 @@ final class WordPressAbilitiesPolicy {
 		}
 
 		if ( $registrar->is_first_party_read_intelligence( $id ) ) {
-			return true;
+			return false;
 		}
 
 		foreach ( $this->abilities() as $ability ) {
@@ -241,8 +241,8 @@ final class WordPressAbilitiesPolicy {
 			&& ! $registrar->is_first_party_read_intelligence( $id )
 			&& ! $registrar->is_mcp_only_intelligence( $id )
 			&& $this->is_public( $ability )
-			&& $this->is_readonly( $meta )
-			&& ! $this->is_destructive( $meta )
+			&& $this->is_explicitly_readonly( $meta )
+			&& $this->is_explicitly_non_destructive( $meta )
 			&& '' !== $this->method_string( $ability, 'get_label' )
 			&& '' !== $this->method_string( $ability, 'get_description' )
 			&& $this->valid_schema( $this->method_array( $ability, 'get_input_schema' ) )
@@ -256,9 +256,110 @@ final class WordPressAbilitiesPolicy {
 	 * @param array<string, mixed> $schema Ability schema.
 	 */
 	private function valid_schema( array $schema ): bool {
-		return isset( $schema['type'] )
-			&& is_string( $schema['type'] )
-			&& in_array( $schema['type'], array( 'object', 'array', 'string', 'number', 'integer', 'boolean', 'null' ), true );
+		$nodes = 0;
+		return $this->valid_schema_node( $schema, 0, $nodes );
+	}
+
+	/**
+	 * Recursively validate the schema shapes used to decide safe defaults.
+	 *
+	 * @param array<string, mixed> $schema Schema node.
+	 * @param int                  $depth  Current nesting depth.
+	 * @param int                  $nodes  Visited node count.
+	 */
+	private function valid_schema_node( array $schema, int $depth, int &$nodes ): bool {
+		++$nodes;
+		if ( 8 < $depth || 256 < $nodes || ! isset( $schema['type'] ) || ! is_string( $schema['type'] ) ) {
+			return false;
+		}
+
+		if ( ! in_array( $schema['type'], array( 'object', 'array', 'string', 'number', 'integer', 'boolean', 'null' ), true ) ) {
+			return false;
+		}
+
+		if ( isset( $schema['properties'] ) ) {
+			if ( ! is_array( $schema['properties'] ) ) {
+				return false;
+			}
+
+			foreach ( $schema['properties'] as $name => $property ) {
+				if ( ! is_string( $name ) || '' === $name || ! is_array( $property ) || ! $this->valid_schema_node( $property, $depth + 1, $nodes ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( isset( $schema['required'] ) ) {
+			if ( ! is_array( $schema['required'] ) ) {
+				return false;
+			}
+
+			foreach ( $schema['required'] as $required ) {
+				if ( ! is_string( $required ) || '' === $required ) {
+					return false;
+				}
+			}
+		}
+
+		if ( isset( $schema['items'] ) && ( ! is_array( $schema['items'] ) || ! $this->valid_schema_node( $schema['items'], $depth + 1, $nodes ) ) ) {
+			return false;
+		}
+
+		if ( isset( $schema['additionalProperties'] )
+			&& ! is_bool( $schema['additionalProperties'] )
+			&& ( ! is_array( $schema['additionalProperties'] ) || ! $this->valid_schema_node( $schema['additionalProperties'], $depth + 1, $nodes ) ) ) {
+			return false;
+		}
+
+		foreach ( array( 'allOf', 'anyOf', 'oneOf' ) as $composition ) {
+			if ( ! isset( $schema[ $composition ] ) ) {
+				continue;
+			}
+
+			if ( ! is_array( $schema[ $composition ] ) || array() === $schema[ $composition ] ) {
+				return false;
+			}
+
+			foreach ( $schema[ $composition ] as $candidate ) {
+				if ( ! is_array( $candidate ) || ! $this->valid_schema_node( $candidate, $depth + 1, $nodes ) ) {
+					return false;
+				}
+			}
+		}
+
+		return ! isset( $schema['not'] ) || ( is_array( $schema['not'] ) && $this->valid_schema_node( $schema['not'], $depth + 1, $nodes ) );
+	}
+
+	/**
+	 * Require an explicit read-only annotation for safe default activation.
+	 *
+	 * @param array<string, mixed> $meta Ability metadata.
+	 */
+	private function is_explicitly_readonly( array $meta ): bool {
+		if ( array_key_exists( 'readonly', $meta ) ) {
+			return true === $meta['readonly'];
+		}
+
+		return isset( $meta['annotations'] )
+			&& is_array( $meta['annotations'] )
+			&& array_key_exists( 'readonly', $meta['annotations'] )
+			&& true === $meta['annotations']['readonly'];
+	}
+
+	/**
+	 * Require an explicit non-destructive annotation for safe default activation.
+	 *
+	 * @param array<string, mixed> $meta Ability metadata.
+	 */
+	private function is_explicitly_non_destructive( array $meta ): bool {
+		if ( array_key_exists( 'destructive', $meta ) ) {
+			return false === $meta['destructive'];
+		}
+
+		return isset( $meta['annotations'] )
+			&& is_array( $meta['annotations'] )
+			&& array_key_exists( 'destructive', $meta['annotations'] )
+			&& false === $meta['annotations']['destructive'];
 	}
 
 	/**

@@ -112,6 +112,22 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 			)
 		);
 		$this->register_ability(
+			'example/equal-numeric-enum',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'count' => array(
+						'type' => 'number',
+						'enum' => array( 1, 1.0 ),
+					),
+				),
+			)
+		);
+		$this->register_ability(
 			'example/invalid-pattern',
 			true,
 			false,
@@ -214,6 +230,7 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/malformed-constraint' ) );
 		self::assertFalse( $policy->is_allowed( 'example/malformed-composition' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/equal-numeric-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/invalid-pattern' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-required' ) );
 		self::assertFalse( $policy->is_allowed( 'example/null-enum' ) );

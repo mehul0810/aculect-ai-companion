@@ -331,7 +331,9 @@ final class WordPressAbilitiesPolicy {
 					return false;
 				}
 
-				$encoded = wp_json_encode( $enum_value, JSON_PRESERVE_ZERO_FRACTION );
+				$encoded = is_int( $enum_value ) || is_float( $enum_value )
+					? 'number:' . (string) (float) $enum_value
+					: gettype( $enum_value ) . ':' . wp_json_encode( $enum_value );
 				if ( ! is_string( $encoded ) || isset( $enum_values[ $encoded ] ) ) {
 					return false;
 				}

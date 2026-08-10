@@ -50,6 +50,7 @@ final class SettingsTransfer {
 			'settings'      => array(
 				'enabledAbilities'                => $registry->enabled_ids(),
 				'enabledWpAbilities'              => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
+				'wpAbilityDecisions'              => ( new WordPressAbilitiesPolicy() )->saved_decisions(),
 				'confirmationGroups'              => ( new ToolSafety() )->confirmation_groups(),
 				'roleAbilityPolicyEditingEnabled' => $role_ability_policy_enabled,
 				'roleAbilityPolicies'             => $role_ability_policy_enabled ? $role_ability_policy->saved_policies( $registry ) : array(),
@@ -156,7 +157,9 @@ final class SettingsTransfer {
 			$registry->save_enabled_ids( $this->string_list( $settings['enabledAbilities'] ) );
 		}
 
-		if ( array_key_exists( 'enabledWpAbilities', $settings ) ) {
+		if ( array_key_exists( 'wpAbilityDecisions', $settings ) && is_array( $settings['wpAbilityDecisions'] ) ) {
+			( new WordPressAbilitiesPolicy() )->save_decisions( $settings['wpAbilityDecisions'] );
+		} elseif ( array_key_exists( 'enabledWpAbilities', $settings ) ) {
 			( new WordPressAbilitiesPolicy() )->save_allowed_ids( $this->string_list( $settings['enabledWpAbilities'] ) );
 		}
 

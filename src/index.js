@@ -5858,11 +5858,13 @@ function normalizedAbilityRows( {
 		title: String( ability.title || ability.id || 'WordPress ability' ),
 		description: String( ability.description || '' ),
 		group: normalizedAbilityGroup( ability.category || 'WordPress API' ),
-		scope: ability.destructive ? 'write' : 'content:read',
+		scope: 'content:draft',
 		source: 'wordpress',
 		sourceLabel: 'WordPress API',
 		readOnly: Boolean( ability.readOnly ),
 		destructive: Boolean( ability.destructive ),
+		defaultEnabled: Boolean( ability.defaultEnabled ),
+		decision: String( ability.decision || 'default' ),
 		enabled: enabledWpAbilityIds.has( ability.id ),
 		toolName: String( ability.id || '' ),
 		assignedTo: enabledWpAbilityIds.has( ability.id )
@@ -6048,6 +6050,14 @@ function AbilityDashboard( {
 								{ ability.sourceLabel }
 							</span>
 							<span>{ ability.group }</span>
+							{ ability.source === 'wordpress' &&
+								ability.decision === 'default' && (
+									<span>
+										{ ability.defaultEnabled
+											? 'Safe default on'
+											: 'Safe default off' }
+									</span>
+								) }
 						</div>
 					</div>
 				),

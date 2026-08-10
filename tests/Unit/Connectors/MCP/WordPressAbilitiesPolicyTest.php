@@ -127,6 +127,28 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				),
 			)
 		);
+		foreach ( array(
+			'infinite'          => INF,
+			'negative-infinite' => -INF,
+			'not-a-number'      => NAN,
+		) as $suffix => $invalid_number ) {
+			$this->register_ability(
+				'example/' . $suffix . '-enum',
+				true,
+				false,
+				true,
+				'object',
+				array(
+					'type'       => 'object',
+					'properties' => array(
+						'count' => array(
+							'type' => 'number',
+							'enum' => array( $invalid_number ),
+						),
+					),
+				)
+			);
+		}
 		$this->register_ability(
 			'example/invalid-pattern',
 			true,
@@ -231,6 +253,9 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/malformed-composition' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/equal-numeric-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/infinite-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/negative-infinite-enum' ) );
+		self::assertFalse( $policy->is_allowed( 'example/not-a-number-enum' ) );
 		self::assertFalse( $policy->is_allowed( 'example/invalid-pattern' ) );
 		self::assertFalse( $policy->is_allowed( 'example/duplicate-required' ) );
 		self::assertFalse( $policy->is_allowed( 'example/null-enum' ) );

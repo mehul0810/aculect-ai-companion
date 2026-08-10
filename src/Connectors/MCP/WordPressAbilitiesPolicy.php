@@ -330,6 +330,9 @@ final class WordPressAbilitiesPolicy {
 				if ( ! is_scalar( $enum_value ) && null !== $enum_value ) {
 					return false;
 				}
+				if ( is_float( $enum_value ) && ! is_finite( $enum_value ) ) {
+					return false;
+				}
 
 				$encoded = is_int( $enum_value ) || is_float( $enum_value )
 					? 'number:' . (string) (float) $enum_value

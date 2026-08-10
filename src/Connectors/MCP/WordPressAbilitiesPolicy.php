@@ -9,7 +9,18 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class WordPressAbilitiesPolicy {
 
-	public const OPTION_ALLOWED_ABILITIES = 'aculect_ai_companion_allowed_wp_abilities';
+	public const OPTION_ALLOWED_ABILITIES  = 'aculect_ai_companion_allowed_wp_abilities';
+	public const OPTION_ABILITY_DECISIONS  = 'aculect_ai_companion_wp_ability_decisions';
+	public const OPTION_POLICY_INITIALIZED = 'aculect_ai_companion_wp_ability_policy_initialized';
+
+	/**
+	 * Cached explicit ability decisions.
+	 *
+	 * @var array<string, bool>|null
+	 */
+	private ?array $decision_cache = null;
+
+	private ?bool $legacy_policy_cache = null;
 
 	/**
 	 * Return admin-facing WordPress Ability definitions.
@@ -21,7 +32,6 @@ final class WordPressAbilitiesPolicy {
 			return array();
 		}
 
-		$allowed   = $this->allowed_ids();
 		$items     = array();
 		$registrar = new WordPressAbilitiesRegistrar();
 		foreach ( $this->abilities() as $ability ) {
@@ -34,15 +44,18 @@ final class WordPressAbilitiesPolicy {
 				continue;
 			}
 
-			$meta    = $this->ability_meta( $ability );
-			$items[] = array(
-				'id'          => $id,
-				'title'       => $this->method_string( $ability, 'get_label' ),
-				'description' => $this->method_string( $ability, 'get_description' ),
-				'category'    => $this->method_string( $ability, 'get_category' ),
-				'readOnly'    => $this->is_readonly( $meta ),
-				'destructive' => $this->is_destructive( $meta ),
-				'allowed'     => in_array( $id, $allowed, true ),
+			$meta     = $this->ability_meta( $ability );
+			$decision = $this->decision_for( $id );
+			$items[]  = array(
+				'id'             => $id,
+				'title'          => $this->method_string( $ability, 'get_label' ),
+				'description'    => $this->method_string( $ability, 'get_description' ),
+				'category'       => $this->method_string( $ability, 'get_category' ),
+				'readOnly'       => $this->is_readonly( $meta ),
+				'destructive'    => $this->is_destructive( $meta ),
+				'allowed'        => $this->is_allowed_ability( $ability ),
+				'defaultEnabled' => $this->is_safe_default( $ability ),
+				'decision'       => null === $decision ? 'default' : ( $decision ? 'enabled' : 'disabled' ),
 			);
 		}
 
@@ -60,8 +73,51 @@ final class WordPressAbilitiesPolicy {
 	 * @return list<string>
 	 */
 	public function allowed_ids(): array {
-		$stored = get_option( self::OPTION_ALLOWED_ABILITIES, array() );
-		return is_array( $stored ) ? $this->sanitize_ids( $stored ) : array();
+		$decisions = $this->saved_decisions();
+		$allowed   = array_keys( array_filter( $decisions ) );
+
+		if ( ! $this->has_legacy_policy() ) {
+			foreach ( $this->abilities() as $ability ) {
+				$id = $this->ability_name( $ability );
+				if ( ! array_key_exists( $id, $decisions ) && $this->is_safe_default( $ability ) ) {
+					$allowed[] = $id;
+				}
+			}
+		}
+
+		return array_values( array_unique( $allowed ) );
+	}
+
+	/**
+	 * Return explicit administrator decisions, including temporarily unavailable abilities.
+	 *
+	 * @return array<string, bool>
+	 */
+	public function saved_decisions(): array {
+		if ( null !== $this->decision_cache ) {
+			return $this->decision_cache;
+		}
+
+		$stored = get_option( self::OPTION_ABILITY_DECISIONS, array() );
+		if ( $this->is_policy_initialized() ) {
+			$this->decision_cache = is_array( $stored ) ? $this->sanitize_decisions( $stored ) : array();
+			return $this->decision_cache;
+		}
+
+		$legacy = get_option( self::OPTION_ALLOWED_ABILITIES, null );
+		if ( ! is_array( $legacy ) ) {
+			$this->decision_cache = array();
+			return $this->decision_cache;
+		}
+
+		$allowed   = $this->sanitize_ids( $legacy );
+		$decisions = array_fill_keys( $allowed, true );
+		foreach ( $this->configurable_ability_ids() as $id ) {
+			$decisions[ $id ] = in_array( $id, $allowed, true );
+		}
+
+		$this->decision_cache = $decisions;
+		return $this->decision_cache;
 	}
 
 	/**
@@ -70,7 +126,27 @@ final class WordPressAbilitiesPolicy {
 	 * @param array<mixed> $ids Raw ability IDs.
 	 */
 	public function save_allowed_ids( array $ids ): void {
-		update_option( self::OPTION_ALLOWED_ABILITIES, $this->sanitize_ids( $ids ), false );
+		$allowed   = $this->sanitize_ids( $ids );
+		$decisions = $this->saved_decisions();
+		foreach ( $this->configurable_ability_ids() as $id ) {
+			$decisions[ $id ] = in_array( $id, $allowed, true );
+		}
+
+		$this->save_decisions( $decisions );
+	}
+
+	/**
+	 * Replace explicit administrator decisions.
+	 *
+	 * @param array<mixed> $decisions Raw ability decision map.
+	 */
+	public function save_decisions( array $decisions ): void {
+		$decisions = $this->sanitize_decisions( $decisions );
+		update_option( self::OPTION_ABILITY_DECISIONS, $decisions, false );
+		update_option( self::OPTION_ALLOWED_ABILITIES, array_keys( array_filter( $decisions ) ), false );
+		update_option( self::OPTION_POLICY_INITIALIZED, 1, false );
+		$this->decision_cache      = $decisions;
+		$this->legacy_policy_cache = false;
 	}
 
 	/**
@@ -78,6 +154,8 @@ final class WordPressAbilitiesPolicy {
 	 */
 	public static function delete(): void {
 		delete_option( self::OPTION_ALLOWED_ABILITIES );
+		delete_option( self::OPTION_ABILITY_DECISIONS );
+		delete_option( self::OPTION_POLICY_INITIALIZED );
 	}
 
 	/**
@@ -96,7 +174,105 @@ final class WordPressAbilitiesPolicy {
 			return true;
 		}
 
-		return in_array( $id, $this->allowed_ids(), true );
+		foreach ( $this->abilities() as $ability ) {
+			if ( hash_equals( $this->ability_name( $ability ), $id ) ) {
+				return $this->is_allowed_ability( $ability );
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Check one registered ability against explicit policy or the safe default.
+	 *
+	 * @param object $ability Ability object.
+	 */
+	private function is_allowed_ability( object $ability ): bool {
+		$id       = $this->ability_name( $ability );
+		$decision = $this->decision_for( $id );
+		if ( null !== $decision ) {
+			return $decision;
+		}
+
+		return ! $this->has_legacy_policy() && $this->is_safe_default( $ability );
+	}
+
+	/**
+	 * Return an explicit decision or null when the safe default should apply.
+	 *
+	 * @param string $id Ability ID.
+	 */
+	private function decision_for( string $id ): ?bool {
+		$decisions = $this->saved_decisions();
+		return array_key_exists( $id, $decisions ) ? $decisions[ $id ] : null;
+	}
+
+	/**
+	 * Check whether an older saved allowlist exists and must retain upgrade behavior.
+	 */
+	private function has_legacy_policy(): bool {
+		if ( null === $this->legacy_policy_cache ) {
+			$this->legacy_policy_cache = ! $this->is_policy_initialized()
+				&& null !== get_option( self::OPTION_ALLOWED_ABILITIES, null );
+		}
+
+		return $this->legacy_policy_cache;
+	}
+
+	/**
+	 * Check whether the explicit-decision storage contract has been initialized.
+	 */
+	private function is_policy_initialized(): bool {
+		return 1 === (int) get_option( self::OPTION_POLICY_INITIALIZED, 0 );
+	}
+
+	/**
+	 * Determine whether a public third-party ability is safe to enable by default.
+	 *
+	 * @param object $ability Ability object.
+	 */
+	private function is_safe_default( object $ability ): bool {
+		$id        = $this->ability_name( $ability );
+		$meta      = $this->ability_meta( $ability );
+		$registrar = new WordPressAbilitiesRegistrar();
+
+		return 1 === preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/', $id )
+			&& ! $registrar->is_first_party_read_intelligence( $id )
+			&& ! $registrar->is_mcp_only_intelligence( $id )
+			&& $this->is_public( $ability )
+			&& $this->is_readonly( $meta )
+			&& ! $this->is_destructive( $meta )
+			&& '' !== $this->method_string( $ability, 'get_label' )
+			&& '' !== $this->method_string( $ability, 'get_description' )
+			&& $this->valid_schema( $this->method_array( $ability, 'get_input_schema' ) )
+			&& $this->valid_schema( $this->method_array( $ability, 'get_output_schema' ) )
+			&& $this->has_permission_callback( $ability );
+	}
+
+	/**
+	 * Check a bounded registered schema.
+	 *
+	 * @param array<string, mixed> $schema Ability schema.
+	 */
+	private function valid_schema( array $schema ): bool {
+		return isset( $schema['type'] )
+			&& is_string( $schema['type'] )
+			&& in_array( $schema['type'], array( 'object', 'array', 'string', 'number', 'integer', 'boolean', 'null' ), true );
+	}
+
+	/**
+	 * Check whether the registered ability exposes a callable permission callback.
+	 *
+	 * @param object $ability Ability object.
+	 */
+	private function has_permission_callback( object $ability ): bool {
+		if ( method_exists( $ability, 'get_permission_callback' ) && is_callable( $ability->get_permission_callback() ) ) {
+			return true;
+		}
+
+		$meta = $this->ability_meta( $ability );
+		return isset( $meta['permission_callback'] ) && is_callable( $meta['permission_callback'] );
 	}
 
 	/**
@@ -151,6 +327,45 @@ final class WordPressAbilitiesPolicy {
 		}
 
 		return array_values( array_unique( $ids ) );
+	}
+
+	/**
+	 * Return configurable public ability IDs.
+	 *
+	 * @return list<string>
+	 */
+	private function configurable_ability_ids(): array {
+		$ids       = array();
+		$registrar = new WordPressAbilitiesRegistrar();
+		foreach ( $this->abilities() as $ability ) {
+			$id = $this->ability_name( $ability );
+			if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $id ) && ! $registrar->is_mcp_only_intelligence( $id ) ) {
+				$ids[] = $id;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	/**
+	 * Sanitize an ability decision map without requiring the provider to be active.
+	 *
+	 * @param array<mixed> $decisions Raw decision map.
+	 * @return array<string, bool>
+	 */
+	private function sanitize_decisions( array $decisions ): array {
+		$sanitized = array();
+		foreach ( $decisions as $id => $enabled ) {
+			$id = sanitize_text_field( (string) $id );
+			if ( 1 !== preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/', $id ) ) {
+				continue;
+			}
+
+			$sanitized[ $id ] = filter_var( $enabled, FILTER_VALIDATE_BOOLEAN );
+		}
+
+		ksort( $sanitized );
+		return $sanitized;
 	}
 
 	/**
@@ -230,5 +445,21 @@ final class WordPressAbilitiesPolicy {
 
 		$value = $ability->{$method}();
 		return is_scalar( $value ) ? (string) $value : '';
+	}
+
+	/**
+	 * Call an ability getter and return an array.
+	 *
+	 * @param object $ability Ability object.
+	 * @param string $method  Getter method.
+	 * @return array<string, mixed>
+	 */
+	private function method_array( object $ability, string $method ): array {
+		if ( ! method_exists( $ability, $method ) ) {
+			return array();
+		}
+
+		$value = $ability->{$method}();
+		return is_array( $value ) ? $value : array();
 	}
 }

@@ -147,7 +147,13 @@ The endpoint is stateless and POST-only. It supports MCP `2026-07-28` and
 `2026-07-28` must send matching `MCP-Protocol-Version`, `Mcp-Method`, and (for
 `tools/call`, `resources/read`, and `prompts/get`) `Mcp-Name` headers plus the
 required per-request protocol and client-capability metadata. `server/discover`
-advertises the supported versions.
+advertises the supported versions. The `2026-07-28` contract does not use the
+legacy `initialize` / `notifications/initialized` handshake; those methods are
+accepted only by the `2025-06-18` compatibility path. Current-protocol
+discovery and static resource lists include public cache hints, while
+authorization-dependent tool lists and resource reads remain private with a
+zero TTL. Current responses also identify the Aculect MCP server and use
+JSON-RPC invalid-params errors for unknown tools and resources.
 Browser requests are accepted only from the exact public connector origin or
 origins explicitly approved with the
 `aculect-ai-companion/connectors/allowed_mcp_origins` filter; wildcards are not

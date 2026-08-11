@@ -140,3 +140,24 @@ This internal module registry is the foundation for the broader third-party acti
 - OAuth token: `/wp-json/aculect-ai-companion/v1/oauth/token`
 - Protected resource metadata: `/.well-known/oauth-protected-resource`
 - Authorization server metadata: `/.well-known/oauth-authorization-server`
+
+The endpoint is stateless and POST-only. It supports MCP `2026-07-28` and
+`2025-06-18`. Requests that omit `MCP-Protocol-Version` use the legacy
+`2025-06-18` contract for compatibility with existing clients. Requests using
+`2026-07-28` must send matching `MCP-Protocol-Version`, `Mcp-Method`, and (for
+`tools/call`, `resources/read`, and `prompts/get`) `Mcp-Name` headers plus the
+required per-request protocol and client-capability metadata. `server/discover`
+advertises the supported versions. The `2026-07-28` contract does not use the
+legacy `initialize` / `notifications/initialized` handshake; those methods are
+accepted only by the `2025-06-18` compatibility path. Current-protocol
+discovery and static resource lists include public cache hints, while
+authorization-dependent tool lists and resource reads remain private with a
+zero TTL. Current responses also identify the Aculect MCP server and use
+JSON-RPC invalid-params errors for unknown tools and resources.
+Browser requests are accepted only from the exact public connector origin or
+origins explicitly approved with the
+`aculect-ai-companion/connectors/allowed_mcp_origins` filter; wildcards are not
+accepted. JSON-RPC notifications require the same OAuth authentication as other
+MCP requests. The server does not advertise list-change notifications and
+returns HTTP 405 for GET/SSE probes because it does not implement a server event
+stream.

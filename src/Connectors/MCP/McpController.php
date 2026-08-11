@@ -18,12 +18,21 @@ use WP_REST_Server;
  */
 final class McpController {
 
+	public const PROTOCOL_VERSION_CURRENT    = McpProtocolVersion::CURRENT;
+	public const PROTOCOL_VERSION_LEGACY     = McpProtocolVersion::LEGACY;
+	public const SUPPORTED_PROTOCOL_VERSIONS = array(
+		self::PROTOCOL_VERSION_CURRENT,
+		self::PROTOCOL_VERSION_LEGACY,
+	);
+
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
 	 *
 	 * @var array<string, mixed>
 	 */
 	private array $request_auth = array();
+
+	private string $request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
 
 	/**
 	 * Register the OAuth-protected MCP endpoint.
@@ -55,14 +64,12 @@ final class McpController {
 	/**
 	 * Authenticate MCP requests with the OAuth resource server.
 	 *
-	 * JSON-RPC notifications are auth-exempt per the MCP streamable HTTP
-	 * transport: they carry no id and receive an empty 202 acknowledgement.
-	 *
 	 * @param WP_REST_Request $request REST request.
 	 * @return true|\WP_Error
 	 */
 	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
 		$this->request_auth = array();
+		$this->reset_request_protocol_version( $request );
 		McpToolAvailability::set_current_granted_scopes( null );
 
 		$request_error = ( new McpInputValidator() )->request_error( $request );
@@ -70,8 +77,9 @@ final class McpController {
 			return new \WP_Error( $request_error['code'], $request_error['message'], array( 'status' => 413 ) );
 		}
 
-		if ( $this->is_auth_exempt_notification( $request ) ) {
-			return true;
+		$transport_error = $this->transport_error( $request );
+		if ( null !== $transport_error ) {
+			return new \WP_Error( $transport_error['code'], $transport_error['message'], array( 'status' => $transport_error['status'] ) );
 		}
 
 		$auth = ( new TokenValidator() )->authenticate( $request );
@@ -112,6 +120,25 @@ final class McpController {
 			return $response;
 		}
 
+		if ( $response instanceof WP_REST_Response ) {
+			$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+		}
+
+		$data = $response instanceof WP_REST_Response ? $response->get_data() : null;
+		if ( $response instanceof WP_REST_Response && is_array( $data ) && isset( $data['code'] ) && is_string( $data['code'] ) && $this->is_transport_error_code( $data['code'] ) ) {
+			$transport_response = new WP_REST_Response(
+				$this->rpc_error(
+					$this->rpc_id_from_request( $request ),
+					$this->transport_rpc_code( $data['code'] ),
+					(string) ( $data['message'] ?? 'Invalid MCP transport request.' ),
+					$this->transport_rpc_data( $data['code'], $request )
+				),
+				$response->get_status()
+			);
+			$transport_response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			return $transport_response;
+		}
+
 		if ( ! $response instanceof WP_REST_Response || 401 !== $response->get_status() ) {
 			return $response;
 		}
@@ -125,20 +152,267 @@ final class McpController {
 	}
 
 	/**
-	 * Check whether the request is an auth-exempt JSON-RPC notification.
+	 * Validate the request origin and protocol-specific HTTP contract.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return array{code: string, message: string, status: int}|null
+	 */
+	private function transport_error( WP_REST_Request $request ): ?array {
+		$this->reset_request_protocol_version( $request );
+
+		$origin = trim( (string) $request->get_header( 'origin' ) );
+		if ( '' !== $origin && ! $this->is_allowed_origin( $origin ) ) {
+			return array(
+				'code'    => 'invalid_mcp_origin',
+				'message' => 'The request Origin is not allowed for this MCP endpoint.',
+				'status'  => 403,
+			);
+		}
+
+		if ( 'POST' !== $request->get_method() ) {
+			return null;
+		}
+
+		$body           = (array) $request->get_json_params();
+		$method         = (string) ( $body['method'] ?? '' );
+		$version_header = (string) $request->get_header( 'mcp-protocol-version' );
+		if ( '' === $version_header ) {
+			if ( 'server/discover' === $method ) {
+				return array(
+					'code'    => 'missing_protocol_version',
+					'message' => 'MCP-Protocol-Version is required for server/discover.',
+					'status'  => 400,
+				);
+			}
+
+			$this->request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+			return null;
+		}
+
+		$version = $this->decoded_mcp_header( $version_header );
+		if ( null === $version ) {
+			return array(
+				'code'    => 'invalid_mcp_protocol_version_header',
+				'message' => 'MCP-Protocol-Version must be a valid exact mirrored header value.',
+				'status'  => 400,
+			);
+		}
+
+		if ( ! in_array( $version, self::SUPPORTED_PROTOCOL_VERSIONS, true ) ) {
+			return array(
+				'code'    => 'unsupported_protocol_version',
+				'message' => 'The requested MCP protocol version is not supported.',
+				'status'  => 400,
+			);
+		}
+
+		$this->request_protocol_version = $version;
+		if ( self::PROTOCOL_VERSION_CURRENT !== $version ) {
+			return null;
+		}
+
+		$header_method = $this->decoded_mcp_header( (string) $request->get_header( 'mcp-method' ) );
+		if ( null === $header_method || '' === $header_method || ! hash_equals( $method, $header_method ) ) {
+			return array(
+				'code'    => 'invalid_mcp_method_header',
+				'message' => 'Mcp-Method must exactly match the JSON-RPC method.',
+				'status'  => 400,
+			);
+		}
+
+		$params       = isset( $body['params'] ) && is_array( $body['params'] ) ? $body['params'] : array();
+		$meta         = isset( $params['_meta'] ) && is_array( $params['_meta'] ) ? $params['_meta'] : array();
+		$capabilities = $meta['io.modelcontextprotocol/clientCapabilities'] ?? null;
+		$client_info  = $meta['io.modelcontextprotocol/clientInfo'] ?? null;
+		if ( ! isset( $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! is_string( $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! hash_equals( $version, $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! is_array( $capabilities )
+			|| ( array() !== $capabilities && array_is_list( $capabilities ) )
+			|| ( null !== $client_info && ( ! is_array( $client_info )
+				|| ! isset( $client_info['name'], $client_info['version'] )
+				|| ! is_string( $client_info['name'] )
+				|| '' === $client_info['name']
+				|| ! is_string( $client_info['version'] )
+				|| '' === $client_info['version'] ) ) ) {
+			return array(
+				'code'    => 'invalid_mcp_request_metadata',
+				'message' => 'Request metadata must include the matching protocol version and client capabilities.',
+				'status'  => 400,
+			);
+		}
+
+		if ( in_array( $method, array( 'tools/call', 'resources/read', 'prompts/get' ), true ) ) {
+			$header_name = (string) $request->get_header( 'mcp-name' );
+			$body_name   = 'resources/read' === $method
+				? ( isset( $params['uri'] ) && is_string( $params['uri'] ) ? $params['uri'] : '' )
+				: ( isset( $params['name'] ) && is_string( $params['name'] ) ? $params['name'] : '' );
+			$decoded     = $this->decoded_mcp_header( $header_name );
+			if ( null === $decoded || '' === $decoded || ! hash_equals( $body_name, $decoded ) ) {
+				return array(
+					'code'    => 'invalid_mcp_name_header',
+					'message' => 'Mcp-Name must exactly match the requested tool, prompt, or resource name.',
+					'status'  => 400,
+				);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Decode a mirrored MCP header value, including the Base64 sentinel format.
+	 *
+	 * @param string $value Header value.
+	 */
+	private function decoded_mcp_header( string $value ): ?string {
+		if ( '' === $value || 4096 < strlen( $value ) ) {
+			return null;
+		}
+
+		if ( str_starts_with( $value, '=?base64?' ) && str_ends_with( $value, '?=' ) ) {
+			$encoded = substr( $value, 9, -2 );
+			if ( '' === $encoded || 4096 < strlen( $encoded ) || 1 !== preg_match( '/^[A-Za-z0-9+\/]+={0,2}$/D', $encoded ) ) {
+				return null;
+			}
+
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Required by the MCP mirrored-header sentinel contract.
+			$decoded = base64_decode( $encoded, true );
+			if ( false === $decoded || '' === $decoded || 2048 < strlen( $decoded ) || 1 !== preg_match( '//u', $decoded ) ) {
+				return null;
+			}
+
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Required to reject non-canonical mirrored-header encodings.
+			return hash_equals( $encoded, base64_encode( $decoded ) ) ? $decoded : null;
+		}
+
+		if ( trim( $value ) !== $value || 1 !== preg_match( '/^[\x20-\x7E]+$/D', $value ) ) {
+			return null;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Check whether a WordPress REST error came from the MCP transport boundary.
+	 *
+	 * @param string $code Error code.
+	 */
+	private function is_transport_error_code( string $code ): bool {
+		return in_array(
+			$code,
+			array(
+				'invalid_mcp_origin',
+				'missing_protocol_version',
+				'invalid_mcp_protocol_version_header',
+				'unsupported_protocol_version',
+				'invalid_mcp_method_header',
+				'invalid_mcp_request_metadata',
+				'invalid_mcp_name_header',
+			),
+			true
+		);
+	}
+
+	/**
+	 * Return the protocol-defined JSON-RPC code for a transport failure.
+	 *
+	 * @param string $code Error code.
+	 */
+	private function transport_rpc_code( string $code ): int {
+		if ( 'unsupported_protocol_version' === $code ) {
+			return -32022;
+		}
+
+		return 'invalid_mcp_origin' === $code ? -32600 : -32020;
+	}
+
+	/**
+	 * Build bounded public data for a transport error.
+	 *
+	 * @param string          $code    Error code.
+	 * @param WP_REST_Request $request REST request.
+	 * @return array<string, mixed>
+	 */
+	private function transport_rpc_data( string $code, WP_REST_Request $request ): array {
+		$data = array( 'code' => $code );
+		if ( 'unsupported_protocol_version' === $code ) {
+			$requested         = $this->decoded_mcp_header( (string) $request->get_header( 'mcp-protocol-version' ) );
+			$data['requested'] = null === $requested || 64 < strlen( $requested ) ? '' : $requested;
+			$data['supported'] = self::SUPPORTED_PROTOCOL_VERSIONS;
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Reset per-request protocol state and retain only a valid supported header.
+	 *
+	 * This runs before body-bound checks so an early response cannot inherit a
+	 * previous request's protocol or mislabel a current GET/413 response.
 	 *
 	 * @param WP_REST_Request $request REST request.
 	 */
-	private function is_auth_exempt_notification( WP_REST_Request $request ): bool {
-		if ( 'POST' !== $request->get_method() ) {
+	private function reset_request_protocol_version( WP_REST_Request $request ): void {
+		$this->request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+		$header                         = (string) $request->get_header( 'mcp-protocol-version' );
+		$version                        = $this->decoded_mcp_header( $header );
+		if ( null !== $version && in_array( $version, self::SUPPORTED_PROTOCOL_VERSIONS, true ) ) {
+			$this->request_protocol_version = $version;
+		}
+	}
+
+	/**
+	 * Validate a browser Origin using exact scheme, host, and effective port matching.
+	 *
+	 * @param string $origin Request Origin header.
+	 */
+	private function is_allowed_origin( string $origin ): bool {
+		$normalized = $this->normalized_origin( $origin );
+		if ( '' === $normalized ) {
 			return false;
 		}
 
-		$body = $request->get_json_params();
+		$allowed = array( Helpers::origin_from_url( Helpers::mcp_resource() ) );
+		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
+		$filtered = apply_filters( 'aculect-ai-companion/connectors/allowed_mcp_origins', $allowed );
+		if ( ! is_array( $filtered ) ) {
+			$filtered = $allowed;
+		}
 
-		return is_array( $body )
-			&& ! array_key_exists( 'id', $body )
-			&& str_starts_with( (string) ( $body['method'] ?? '' ), 'notifications/' );
+		foreach ( $filtered as $candidate ) {
+			if ( is_string( $candidate ) && hash_equals( $normalized, $this->normalized_origin( $candidate ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Normalize an absolute origin without accepting paths, credentials, or wildcards.
+	 *
+	 * @param string $origin Candidate origin.
+	 */
+	private function normalized_origin( string $origin ): string {
+		if ( 'null' === strtolower( $origin ) || str_contains( $origin, '*' ) ) {
+			return '';
+		}
+
+		$parts = wp_parse_url( $origin );
+		if ( ! is_array( $parts ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['query'] ) || isset( $parts['fragment'] ) ) {
+			return '';
+		}
+
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$path   = (string) ( $parts['path'] ?? '' );
+		if ( ! in_array( $scheme, array( 'http', 'https' ), true ) || '' === $host || ! in_array( $path, array( '', '/' ), true ) ) {
+			return '';
+		}
+
+		$port = isset( $parts['port'] ) ? (int) $parts['port'] : ( 'https' === $scheme ? 443 : 80 );
+		return $scheme . '://' . $host . ':' . $port;
 	}
 
 	/**
@@ -178,29 +452,21 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
+		unset( $request );
+
 		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
-		if ( str_contains( (string) $request->get_header( 'accept' ), 'text/event-stream' ) ) {
-			$this->send_event_stream();
-		}
-
-		return array(
-			'name'           => 'Aculect AI Companion MCP',
-			'protocol'       => 'mcp',
-			'version'        => ACULECT_AI_COMPANION_VERSION,
-			'transport'      => 'streamable-http',
-			'auth'           => 'oauth2.1',
-			'authentication' => array(
-				'type'                  => 'oauth2.1',
-				'resource'              => Helpers::mcp_resource(),
-				'resource_metadata_url' => Helpers::protected_resource_metadata_url(),
+		$response = new WP_REST_Response(
+			array(
+				'code'    => 'mcp_get_not_supported',
+				'message' => 'This stateless MCP endpoint accepts POST requests only.',
 			),
-			'endpoints'      => array(
-				'http' => Helpers::mcp_resource(),
-			),
+			405
 		);
+		$response->header( 'Allow', 'POST' );
+		return $response;
 	}
 
 	/**
@@ -210,6 +476,8 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->reset_request_protocol_version( $request );
+
 		$request_error = ( new McpInputValidator() )->request_error( $request );
 		if ( null !== $request_error ) {
 			return new WP_REST_Response(
@@ -223,6 +491,22 @@ final class McpController {
 					)
 				),
 				413
+			);
+		}
+
+		$transport_error = $this->transport_error( $request );
+		if ( null !== $transport_error ) {
+			return new WP_REST_Response(
+				$this->rpc_error(
+					$this->rpc_id_from_request( $request ),
+					$this->transport_rpc_code( $transport_error['code'] ),
+					'Invalid Request',
+					array_merge(
+						$this->transport_rpc_data( $transport_error['code'], $request ),
+						array( 'message' => $transport_error['message'] )
+					)
+				),
+				$transport_error['status']
 			);
 		}
 
@@ -244,6 +528,10 @@ final class McpController {
 		}
 
 		$method = (string) ( $body['method'] ?? '' );
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && 'notifications/initialized' === $method ) {
+			return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
+		}
+
 		if ( ! array_key_exists( 'id', $body ) && str_starts_with( $method, 'notifications/' ) ) {
 			return new WP_REST_Response( null, 202 );
 		}
@@ -257,8 +545,30 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
+				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+					return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
+				}
+
+				$requested_version = isset( $body['params']['protocolVersion'] ) && is_string( $body['params']['protocolVersion'] )
+					? $body['params']['protocolVersion']
+					: self::PROTOCOL_VERSION_LEGACY;
+				if ( self::PROTOCOL_VERSION_LEGACY !== $requested_version ) {
+					return new WP_REST_Response(
+						$this->rpc_error(
+							$id,
+							-32022,
+							'Unsupported protocol version',
+							array(
+								'code'      => 'unsupported_protocol_version',
+								'requested' => $requested_version,
+								'supported' => array( self::PROTOCOL_VERSION_LEGACY ),
+							)
+						),
+						400
+					);
+				}
 				$started_at = microtime( true );
-				$result     = $this->initialize_payload();
+				$result     = $this->initialize_payload( self::PROTOCOL_VERSION_LEGACY );
 				$this->record_timeline_event(
 					'initialize',
 					array(
@@ -268,12 +578,27 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->rpc_result( $id, $result );
+				return $this->rpc_result( $id, 'initialize', $result );
+
+			case 'server/discover':
+				return $this->rpc_result( $id, 'server/discover', $this->discover_payload(), true );
 
 			case 'tools/list':
 				$started_at = microtime( true );
 				$cursor     = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
-				$result     = $this->list_tools( $cursor );
+				try {
+					$result = $this->list_tools( $cursor );
+				} catch ( \UnexpectedValueException ) {
+					( new Logger() )->error(
+						'mcp.invalid_tool_schema',
+						'An enabled MCP tool has an invalid current-protocol schema.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'invalid_tool_schema' ),
+						$request,
+						200
+					);
+
+					return $this->rpc_error( $id, -32603, 'Internal error', array( 'code' => 'invalid_tool_schema' ) );
+				}
 				$this->record_timeline_event(
 					'tools_list',
 					array(
@@ -284,13 +609,25 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->rpc_result( $id, $result );
+				return $this->rpc_result( $id, 'tools/list', $result );
 
 			case 'resources/list':
-				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
+				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources(), true );
 
 			case 'resources/read':
-				return $this->rpc_result( $id, ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) ) );
+				$resource_result = ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) );
+				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+					&& isset( $resource_result['error'] )
+					&& in_array( $resource_result['error'], array( 'resource_not_found', 'invalid_resource_uri' ), true ) ) {
+					return $this->rpc_error(
+						$id,
+						-32602,
+						'Invalid params',
+						array( 'code' => (string) $resource_result['error'] )
+					);
+				}
+
+				return $this->rpc_result( $id, 'resources/read', $resource_result );
 
 			case 'tools/call':
 				$registry             = new AbilitiesRegistry();
@@ -367,7 +704,9 @@ final class McpController {
 						$request,
 						200
 					);
-					return $this->tool_error_result( $id, 'Unknown tool.' );
+					return self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+						? $this->rpc_error( $id, -32602, 'Invalid params', array( 'code' => 'unknown_tool' ) )
+						: $this->tool_error_result( $id, 'Unknown tool.' );
 				}
 
 				if ( 'tool_disabled' === $error ) {
@@ -544,6 +883,7 @@ final class McpController {
 
 				return $this->rpc_result(
 					$id,
+					'tools/call',
 					array(
 						'content'           => array(
 							array(
@@ -563,7 +903,10 @@ final class McpController {
 			$request,
 			200
 		);
-		return $this->rpc_error( $id, -32601, 'Method not found' );
+		$error = $this->rpc_error( $id, -32601, 'Method not found' );
+		return self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+			? new WP_REST_Response( $error, 404 )
+			: $error;
 	}
 
 	/**
@@ -592,24 +935,6 @@ final class McpController {
 		}
 
 		return $context;
-	}
-
-	/**
-	 * Return a minimal server-sent event stream for clients probing SSE support.
-	 *
-	 * Deliberately echoes and exits inside a REST callback: SSE cannot be
-	 * represented as a WP_REST_Response, and exiting skips rest_post_dispatch.
-	 * Auth has already passed in the permission callback by this point, so no
-	 * challenge headers are needed on this path.
-	 */
-	private function send_event_stream(): void {
-		status_header( 200 );
-		nocache_headers();
-		header( 'Content-Type: text/event-stream; charset=' . get_option( 'blog_charset' ) );
-		header( 'X-Accel-Buffering: no' );
-		echo ": aculect-ai-companion-mcp-stream\n\n";
-		flush();
-		exit;
 	}
 
 	/**
@@ -856,7 +1181,7 @@ final class McpController {
 			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
 		);
 
-		$input_schema = $this->input_schema_for_module( $module );
+		$input_schema = $this->schema_for_protocol( $this->input_schema_for_module( $module ) );
 
 		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
@@ -870,10 +1195,29 @@ final class McpController {
 
 		$output_schema = $this->output_schema_for_module( $module );
 		if ( array() !== $output_schema ) {
-			$descriptor['outputSchema'] = $output_schema;
+			$descriptor['outputSchema'] = $this->schema_for_protocol( $output_schema );
 		}
 
 		return $descriptor;
+	}
+
+	/**
+	 * Prepare an advertised schema for the resolved request protocol.
+	 *
+	 * Execution continues to validate the module's original schema. This method
+	 * only controls the bounded descriptor sent to the client.
+	 *
+	 * @param array<string, mixed> $schema Module schema.
+	 * @return array<string, mixed>|bool|\stdClass
+	 * @throws \UnexpectedValueException When a current schema is invalid.
+	 */
+	private function schema_for_protocol( array $schema ): array|bool|\stdClass {
+		$result = ( new McpSchemaCompatibility() )->prepare( $schema, $this->request_protocol_version );
+		if ( ! $result['valid'] ) {
+			throw new \UnexpectedValueException( 'Invalid MCP tool schema.' );
+		}
+
+		return $result['schema'];
 	}
 
 	/**
@@ -956,24 +1300,38 @@ final class McpController {
 	/**
 	 * Build the MCP initialize payload.
 	 *
+	 * @param string $protocol_version Negotiated protocol version.
 	 * @return array<string, mixed>
 	 */
-	private function initialize_payload(): array {
+	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_LEGACY ): array {
 		return array(
-			'protocolVersion' => '2025-06-18',
-			'serverInfo'      => array(
-				'name'    => 'Aculect AI Companion MCP',
-				'version' => ACULECT_AI_COMPANION_VERSION,
-			),
+			'protocolVersion' => $protocol_version,
+			'serverInfo'      => $this->server_info(),
 			'instructions'    => $this->mcp_instructions(),
 			'capabilities'    => array(
 				'tools'     => array(
-					'listChanged' => true,
+					'listChanged' => false,
 				),
 				'resources' => array(
-					'listChanged' => true,
+					'listChanged' => false,
 				),
 			),
+		);
+	}
+
+	/**
+	 * Build the stateless discovery result defined by MCP 2026-07-28.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function discover_payload(): array {
+		return array(
+			'supportedVersions' => self::SUPPORTED_PROTOCOL_VERSIONS,
+			'capabilities'      => array(
+				'tools'     => array( 'listChanged' => false ),
+				'resources' => array( 'listChanged' => false ),
+			),
+			'instructions'      => $this->mcp_instructions(),
 		);
 	}
 
@@ -2089,6 +2447,7 @@ final class McpController {
 		$response = new WP_REST_Response(
 			$this->rpc_result(
 				$id,
+				'authorization/challenge',
 				array(
 					'content'           => array(
 						array(
@@ -2106,6 +2465,7 @@ final class McpController {
 			$status
 		);
 		$response->header( 'WWW-Authenticate', TokenValidator::www_authenticate_header( $scope, $error ) );
+		$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
 
 		return $response;
 	}
@@ -2120,6 +2480,7 @@ final class McpController {
 	private function tool_error_result( string|int|null $id, string $message ): array {
 		return $this->rpc_result(
 			$id,
+			'tools/call',
 			array(
 				'content'           => array(
 					array(
@@ -2136,11 +2497,20 @@ final class McpController {
 	/**
 	 * Wrap a JSON-RPC result.
 	 *
-	 * @param string|int|null     $id     JSON-RPC request ID.
-	 * @param array<string,mixed> $result Result payload.
+	 * @param string|int|null     $id                        JSON-RPC request ID.
+	 * @param string              $method                    JSON-RPC method.
+	 * @param array<string,mixed> $result                    Result payload.
+	 * @param bool                $authorization_independent Whether the result is public and user independent.
 	 * @return array<string, mixed>
 	 */
-	private function rpc_result( string|int|null $id, array $result ): array {
+	private function rpc_result( string|int|null $id, string $method, array $result, bool $authorization_independent = false ): array {
+		$result = ( new McpResultPolicy() )->shape( $this->request_protocol_version, $method, $result, $authorization_independent );
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+			$meta                                       = isset( $result['_meta'] ) && is_array( $result['_meta'] ) ? $result['_meta'] : array();
+			$meta['io.modelcontextprotocol/serverInfo'] = $this->server_info();
+			$result['_meta']                            = $meta;
+		}
+
 		return array(
 			'jsonrpc' => '2.0',
 			'id'      => $id,
@@ -2166,10 +2536,27 @@ final class McpController {
 			$error['data'] = $data;
 		}
 
-		return array(
+		$response = array(
 			'jsonrpc' => '2.0',
 			'id'      => $id,
 			'error'   => $error,
+		);
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+			$response['_meta'] = array( 'io.modelcontextprotocol/serverInfo' => $this->server_info() );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Return bounded server identity metadata for current-protocol responses.
+	 *
+	 * @return array{name: string, version: string}
+	 */
+	private function server_info(): array {
+		return array(
+			'name'    => 'Aculect AI Companion MCP',
+			'version' => ACULECT_AI_COMPANION_VERSION,
 		);
 	}
 }

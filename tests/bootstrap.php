@@ -2583,6 +2583,33 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		}
 
 		/**
+		 * Return request headers.
+		 *
+		 * @return array<string, string>
+		 */
+		public function get_headers(): array {
+			return $this->headers;
+		}
+
+		/**
+		 * Return query parameters.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_query_params(): array {
+			return $this->params;
+		}
+
+		/**
+		 * Return body parameters.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_body_params(): array {
+			return array();
+		}
+
+		/**
 		 * Return JSON parameters.
 		 *
 		 * @return array<string, mixed>

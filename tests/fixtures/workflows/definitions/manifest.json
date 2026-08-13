@@ -1,0 +1,57 @@
+{
+  "manifest_version": 1,
+  "fixtures": [
+    {
+      "file": "ordered-multi-step-v1.json",
+      "workflow_id": "ordered_multi_step_fixture",
+      "workflow_version": 3,
+      "classification": "current",
+      "checksum": "80cf306c70c9c905d15f719e73235a1d1d85f989eee7142c866532c1cfa53037",
+      "metadata": {
+        "definition_schema_version": 1,
+        "workflow_id": "ordered_multi_step_fixture",
+        "workflow_version": 3,
+        "checksum": "80cf306c70c9c905d15f719e73235a1d1d85f989eee7142c866532c1cfa53037",
+        "input_contract_version": 2,
+        "output_contract_version": 3,
+        "allowed_abilities": [
+          "content/create-draft",
+          "content/get-item",
+          "content/prepare-draft"
+        ],
+        "adapter_requirements": [
+          {
+            "adapter_id": "content_planner",
+            "adapter_versions": [1]
+          },
+          {
+            "adapter_id": "wordpress",
+            "adapter_versions": [1, 2]
+          }
+        ]
+      }
+    },
+    {
+      "file": "proposal-only-v1.json",
+      "workflow_id": "proposal_only_fixture",
+      "workflow_version": 1,
+      "classification": "current",
+      "checksum": "2b8596cced3c6a26a32ff89e0469c368b0c4de36b75596a8bd46a83fdfd6e867",
+      "metadata": {
+        "definition_schema_version": 1,
+        "workflow_id": "proposal_only_fixture",
+        "workflow_version": 1,
+        "checksum": "2b8596cced3c6a26a32ff89e0469c368b0c4de36b75596a8bd46a83fdfd6e867",
+        "input_contract_version": 1,
+        "output_contract_version": 1,
+        "allowed_abilities": ["content/get-item"],
+        "adapter_requirements": [
+          {
+            "adapter_id": "wordpress",
+            "adapter_versions": [1]
+          }
+        ]
+      }
+    }
+  ]
+}

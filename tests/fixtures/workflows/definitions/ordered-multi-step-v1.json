@@ -1,0 +1,93 @@
+{
+  "definition_schema_version": 1,
+  "workflow_id": "ordered_multi_step_fixture",
+  "workflow_version": 3,
+  "name": "Ordered multi-step fixture",
+  "description": "Read context, prepare a proposal, and create an approved draft.",
+  "content_target": {
+    "mode": "new",
+    "post_types": ["page", "post"]
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "brief": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "required": ["brief"]
+  },
+  "steps": [
+    {
+      "step_id": "read_context",
+      "adapter_id": "wordpress",
+      "adapter_version": 2,
+      "ability_id": "content/get-item",
+      "kind": "read",
+      "arguments": {},
+      "depends_on": []
+    },
+    {
+      "step_id": "prepare_content",
+      "adapter_id": "content_planner",
+      "adapter_version": 1,
+      "ability_id": "content/prepare-draft",
+      "kind": "proposal",
+      "arguments": {
+        "format": "blocks"
+      },
+      "depends_on": ["read_context"]
+    },
+    {
+      "step_id": "create_draft",
+      "adapter_id": "wordpress",
+      "adapter_version": 1,
+      "ability_id": "content/create-draft",
+      "kind": "write",
+      "arguments": {
+        "status": "draft"
+      },
+      "depends_on": ["prepare_content"]
+    }
+  ],
+  "allowed_abilities": [
+    "content/prepare-draft",
+    "content/get-item",
+    "content/create-draft"
+  ],
+  "write_policy": {
+    "mode": "draft_only"
+  },
+  "approval_gates": ["create_draft"],
+  "output_contract": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "post_id": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": ["draft"]
+      }
+    },
+    "required": ["post_id", "status"]
+  },
+  "validation_rules": [
+    {
+      "rule_id": "require_title",
+      "severity": "error"
+    }
+  ],
+  "status": "published",
+  "created_by": 7,
+  "updated_by": 9,
+  "compatibility": {
+    "input_contract_version": 2,
+    "output_contract_version": 3
+  }
+}

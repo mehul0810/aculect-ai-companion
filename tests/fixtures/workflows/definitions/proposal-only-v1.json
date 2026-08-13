@@ -1,0 +1,56 @@
+{
+  "definition_schema_version": 1,
+  "workflow_id": "proposal_only_fixture",
+  "workflow_version": 1,
+  "name": "Proposal-only fixture",
+  "description": "Read content and return a bounded proposal without writing.",
+  "content_target": {
+    "mode": "either",
+    "post_types": ["post"]
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "post_id": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "steps": [
+    {
+      "step_id": "read_content",
+      "adapter_id": "wordpress",
+      "adapter_version": 1,
+      "ability_id": "content/get-item",
+      "kind": "read",
+      "arguments": {},
+      "depends_on": []
+    }
+  ],
+  "allowed_abilities": ["content/get-item"],
+  "write_policy": {
+    "mode": "proposal_only"
+  },
+  "approval_gates": [],
+  "output_contract": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "proposal": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "required": ["proposal"]
+  },
+  "validation_rules": [],
+  "status": "draft",
+  "created_by": 7,
+  "updated_by": 7,
+  "compatibility": {
+    "input_contract_version": 1,
+    "output_contract_version": 1
+  }
+}

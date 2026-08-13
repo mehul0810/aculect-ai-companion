@@ -14,10 +14,11 @@
 
 ## Current Pre-1.0 Train
 - `0.7.2` is the current production release at tag and `main` commit `16d8e7776eca4a6cff1d569f595c973046be7620`.
-- `0.7.3` is the active patch train on `release/0.7.3`, based on the released 0.7.2 `main`.
-- Keep 0.7.3 focused on safe WordPress Abilities controls, MCP 2026-07-28 compatibility, provider interoperability, dependency/tooling remediation, and bounded reliability hardening.
-- Do not pull `0.8.0` custom workflow planning, MCP Apps product scope, or unreviewed breaking public-contract work into the `0.7.3` train.
-- Keep the plugin header, runtime constant, package version, and WordPress.org stable tag at `0.7.2` until the final 0.7.3 metadata candidate.
+- `0.8.0` is the active feature train on `release/0.8.0`, created at exact superseded `release/0.7.3` tip `3c9108c5a518cd64d0681e052e2a0f8296f2e498` so every reviewed 0.7.3 change is inherited without replay or tree drift.
+- The inherited scope includes safe WordPress Abilities controls, MCP 2026-07-28 transport and schema compatibility, provider interoperability, dependency/tooling remediation, and bounded reliability hardening.
+- Continue 0.8.0 with the reviewed OAuth issuer/DCR boundary and the custom content workflow schema, runner, admin, adapters, versioning, audit, policy, and ability-connector work.
+- Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`; do not claim it in 0.8.0.
+- Keep the plugin header, runtime constant, package version, and WordPress.org stable tag at `0.7.2` until the final 0.8.0 metadata candidate.
 
 ## Quality Gates
 - Security/privacy

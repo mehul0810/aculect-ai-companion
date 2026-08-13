@@ -18,12 +18,12 @@ use PHPUnit\Framework\TestCase;
 final class ReleaseMetadataTest extends TestCase {
 
 	public function test_release_metadata_is_synchronized_for_current_version(): void {
-		$root      = dirname( __DIR__, 3 );
-		$plugin   = $this->file_contents( $root . '/aculect-ai-companion.php' );
-		$readme   = $this->file_contents( $root . '/readme.txt' );
-		$package  = $this->json_file( $root . '/package.json' );
-		$lockfile = $this->json_file( $root . '/package-lock.json' );
-		$log      = $this->json_file( $root . '/changelog.json' );
+		$root       = dirname( __DIR__, 3 );
+		$plugin     = $this->file_contents( $root . '/aculect-ai-companion.php' );
+		$readme     = $this->file_contents( $root . '/readme.txt' );
+		$package    = $this->json_file( $root . '/package.json' );
+		$lockfile   = $this->json_file( $root . '/package-lock.json' );
+		$log        = $this->json_file( $root . '/changelog.json' );
 		$governance = $this->file_contents( $root . '/RELEASE.md' );
 
 		self::assertSame( '0.7.2', $this->header( $plugin, 'Version' ) );
@@ -45,7 +45,9 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
 		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
 		self::assertStringContainsString( '`0.7.2` is the current production release', $governance );
-		self::assertStringContainsString( '`0.7.3` is the active patch train on `release/0.7.3`', $governance );
+		self::assertStringContainsString( '`0.8.0` is the active feature train on `release/0.8.0`', $governance );
+		self::assertStringContainsString( 'every reviewed 0.7.3 change is inherited without replay or tree drift', $governance );
+		self::assertStringContainsString( 'Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`', $governance );
 		self::assertStringContainsString( 'Keep the plugin header, runtime constant, package version, and WordPress.org stable tag at `0.7.2`', $governance );
 	}
 
@@ -70,10 +72,10 @@ final class ReleaseMetadataTest extends TestCase {
 	}
 
 	public function test_published_071_connect_changelog_remains_immutable(): void {
-		$root    = dirname( __DIR__, 3 );
+		$root   = dirname( __DIR__, 3 );
 		$readme = $this->file_contents( $root . '/readme.txt' );
-		$log     = $this->json_file( $root . '/changelog.json' );
-		$note    = 'Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.';
+		$log    = $this->json_file( $root . '/changelog.json' );
+		$note   = 'Simplified the Connect workspace around one copyable connection link, a lean AI app chooser, and current ChatGPT and Claude setup guidance.';
 
 		self::assertContains( $note, $log['0.7.1']['New'] ?? array() );
 		self::assertStringContainsString( '* ' . $note, $readme );
@@ -118,6 +120,7 @@ final class ReleaseMetadataTest extends TestCase {
 	private function file_contents( string $file ): string {
 		self::assertFileExists( $file );
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Test helper reads repository-local fixtures, not a remote URL.
 		$contents = file_get_contents( $file );
 		self::assertIsString( $contents );
 

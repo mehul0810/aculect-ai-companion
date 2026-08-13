@@ -36,7 +36,7 @@
       "@analyse:mcp:runtime",
       "@analyse:mcp:abilities"
     ],
-    "analyse:core": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Activity src/Admin src/Connectors/OAuth src/Connectors/Providers src/Connectors/Helpers.php src/Diagnostics src/Intelligence src/Plugin.php aculect-ai-companion.php",
+    "analyse:core": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Activity src/Admin src/Connectors/OAuth src/Connectors/Providers src/Connectors/Helpers.php src/Diagnostics src/Intelligence src/Workflows src/Plugin.php aculect-ai-companion.php",
     "analyse": [
       "@analyse:mcp",
       "@analyse:core"

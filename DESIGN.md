@@ -26,3 +26,7 @@
 - V1 contains no storage, migration, runner, adapter execution, workflow admin, or public REST/MCP surface. Those layers must consume this boundary rather than redefining or weakening it.
 - `WorkflowDefinitionCompatibilityMetadata` derives detached deterministic compatibility identity from a validated definition: schema/workflow versions, checksum, input/output contract versions, sorted abilities, and adapter requirements grouped by adapter with sorted unique versions. It does not persist, migrate, or execute definitions.
 - `WorkflowDefinitionSchemaSupport` truthfully supports the current schema and, only after a later schema exists, current-minus-one. Product v1 therefore supports exactly `[1]` with no invented v0; a future v2 policy would report `[2, 1]`. Repository-owned JSON compatibility fixtures and their exact manifest remain test-only under `tests/fixtures/workflows/definitions` and are excluded from production packages.
+
+## Fixed MCP Workflow Module Boundary
+- `Connectors\MCP\Modules\FixedWorkflowAbilityModules` owns the fixed workflow router, sessions, loops, guides, content workflow, content-media workflow, Rank Math workflow, and site-audit declarations and their exclusive input schemas. It preserves their established registry order and fails closed on duplicate internal IDs.
+- `AbilityModuleFactory` and `ToolSafetySchema` are the shared internal construction boundary for callback modules and write-safety schema controls. `FirstPartyAbilityModules` composes domain providers; it must not duplicate their descriptors or schemas.

@@ -234,6 +234,79 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertArrayNotHasKey( 'x-server-only', $info['inputSchema'] );
 	}
 
+	public function test_high_level_public_meta_is_discoverable_without_rest_specific_meta(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'      => true,
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		$items = ( new WordPressAbilitiesBridge() )->discover()['items'];
+
+		self::assertSame( array( 'external-plugin/public-action' ), array_column( $items, 'id' ) );
+	}
+
+	public function test_explicit_rest_exposure_remains_authoritative_over_high_level_public_meta(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'       => true,
+					'show_in_rest' => false,
+					'annotations'  => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		$bridge = new WordPressAbilitiesBridge();
+
+		self::assertSame( array(), $bridge->discover()['items'] );
+		self::assertSame( 'forbidden', $bridge->get_info( array( 'id' => 'external-plugin/public-action' ) )['error'] );
+	}
+
+	public function test_legacy_mcp_public_meta_remains_a_boolean_only_fallback(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'mcp'         => array( 'public' => true ),
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		self::assertSame(
+			array( 'external-plugin/public-action' ),
+			array_column( ( new WordPressAbilitiesBridge() )->discover()['items'], 'id' )
+		);
+	}
+
+	public function test_non_boolean_public_meta_fails_closed(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'      => 'true',
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		self::assertSame( array(), ( new WordPressAbilitiesBridge() )->discover()['items'] );
+	}
+
 	public function test_first_party_incident_list_cannot_reenter_through_external_bridge(): void {
 		( new WordPressAbilitiesRegistrar() )->register_abilities();
 

@@ -267,16 +267,7 @@ final class WordPressAbilitiesBridge {
 	 * @return bool
 	 */
 	private function is_public_ability( object $ability ): bool {
-		$meta = $this->ability_meta( $ability );
-		if ( isset( $meta['show_in_rest'] ) ) {
-			return (bool) $meta['show_in_rest'];
-		}
-
-		if ( isset( $meta['mcp'] ) && is_array( $meta['mcp'] ) && array_key_exists( 'public', $meta['mcp'] ) ) {
-			return (bool) $meta['mcp']['public'];
-		}
-
-		return false;
+		return WordPressAbilityExposure::is_public( $ability );
 	}
 
 	/**

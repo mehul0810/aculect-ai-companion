@@ -466,7 +466,7 @@ Fixes the Learning tab review layout, adds Rank Math redirect and recent 404 wor
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, trusted connection access controls, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
+Adds provider compatibility, search/fetch, workflow and MCP resource guidance, site audit, Abilities diagnostics, and safer MCP access controls.
 
 = 0.5.3 =
 

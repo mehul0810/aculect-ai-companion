@@ -2,7 +2,7 @@
 Contributors: mehul0810
 Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.2
 Stable tag: 0.7.2
 License: GPL-2.0-or-later
@@ -274,6 +274,10 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.8.0 =
+
+* Confirmed WordPress 7.1 compatibility for the native Abilities API execution lifecycle and client-safe schema preparation.
 
 = 0.7.2 =
 

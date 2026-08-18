@@ -101,7 +101,7 @@ final class WordPressAbilitiesBridge {
 	}
 
 	/**
-	 * Execute a WordPress ability through its registered callback.
+	 * Execute a WordPress ability through its registered lifecycle.
 	 *
 	 * @param array<string, mixed> $args Tool arguments.
 	 * @return array<string, mixed>
@@ -128,17 +128,11 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'not_executable', 'This WordPress ability cannot be executed.' );
 		}
 
-		$input      = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
-		$permission = $this->permission_result( $ability, $input );
-		if ( $permission instanceof WP_Error ) {
-			return $this->error( (string) $permission->get_error_code(), $permission->get_error_message() );
-		}
-
-		if ( true !== $permission ) {
+		$input  = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
+		$result = $ability->execute( $input );
+		if ( $result instanceof WP_Error && 'ability_invalid_permissions' === $result->get_error_code() ) {
 			return $this->error( 'forbidden', 'You do not have permission to execute this WordPress ability.' );
 		}
-
-		$result = $ability->execute( $input );
 
 		return array(
 			'ability' => $this->ability_name( $ability ),
@@ -205,7 +199,17 @@ final class WordPressAbilitiesBridge {
 			return true;
 		}
 
-		return true === $this->permission_result( $ability, array() );
+		if ( ! method_exists( $ability, 'check_permissions' ) ) {
+			return false;
+		}
+
+		try {
+			return true === $ability->check_permissions( array() );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 	}
 
 	/**
@@ -228,8 +232,8 @@ final class WordPressAbilitiesBridge {
 		);
 
 		if ( $include_full ) {
-			$item['inputSchema']  = $this->method_array( $ability, 'get_input_schema' );
-			$item['outputSchema'] = $this->method_array( $ability, 'get_output_schema' );
+			$item['inputSchema']  = $this->client_schema( $this->method_array( $ability, 'get_input_schema' ) );
+			$item['outputSchema'] = $this->client_schema( $this->method_array( $ability, 'get_output_schema' ) );
 			$item['meta']         = $meta;
 		}
 
@@ -294,74 +298,19 @@ final class WordPressAbilitiesBridge {
 	}
 
 	/**
-	 * Execute the registered WordPress Ability permission callback when available.
+	 * Prepare a registered JSON Schema for client exposure when core supports it.
 	 *
-	 * @param object               $ability Ability object.
-	 * @param array<string, mixed> $input   Ability input.
-	 * @return bool|WP_Error
-	 */
-	private function permission_result( object $ability, array $input ): bool|WP_Error {
-		foreach ( array( 'check_permission', 'has_permission', 'can_execute' ) as $method ) {
-			if ( method_exists( $ability, $method ) ) {
-				return $this->normalize_permission_result(
-					$this->call_permission_callback(
-						static fn ( array $permission_input ): mixed => $ability->{$method}( $permission_input ),
-						$input
-					)
-				);
-			}
-		}
-
-		if ( method_exists( $ability, 'get_permission_callback' ) ) {
-			$callback = $ability->get_permission_callback();
-			if ( is_callable( $callback ) ) {
-				return $this->normalize_permission_result( $this->call_permission_callback( $callback, $input ) );
-			}
-		}
-
-		$meta = $this->ability_meta( $ability );
-		if ( isset( $meta['permission_callback'] ) && is_callable( $meta['permission_callback'] ) ) {
-			return $this->normalize_permission_result( $this->call_permission_callback( $meta['permission_callback'], $input ) );
-		}
-
-		return new WP_Error(
-			'permission_callback_unavailable',
-			'This WordPress ability cannot be executed because its permission callback is unavailable.'
-		);
-	}
-
-	/**
-	 * Call a permission callback and convert thrown failures into a safe error.
+	 * Registered schemas remain the canonical server-side validation contract.
 	 *
-	 * @param callable             $callback Permission callback.
-	 * @param array<string, mixed> $input    Ability input.
-	 * @return mixed
+	 * @param array<string, mixed> $schema Registered JSON Schema.
+	 * @return array<string, mixed>
 	 */
-	private function call_permission_callback( callable $callback, array $input ): mixed {
-		try {
-			return call_user_func( $callback, $input );
-		} catch ( \Throwable $throwable ) {
-			unset( $throwable );
-
-			return new WP_Error(
-				'permission_callback_failed',
-				'The WordPress ability permission callback could not be evaluated.'
-			);
-		}
-	}
-
-	/**
-	 * Normalize a WordPress Ability permission result.
-	 *
-	 * @param mixed $result Permission callback result.
-	 * @return bool|WP_Error
-	 */
-	private function normalize_permission_result( mixed $result ): bool|WP_Error {
-		if ( $result instanceof WP_Error ) {
-			return $result;
+	private function client_schema( array $schema ): array {
+		if ( function_exists( 'wp_prepare_json_schema_for_client' ) ) {
+			return wp_prepare_json_schema_for_client( $schema );
 		}
 
-		return true === $result;
+		return $schema;
 	}
 
 	/**

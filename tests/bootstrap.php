@@ -817,6 +817,11 @@ if ( ! function_exists( 'current_user_can' ) ) {
 	 * @param mixed  ...$args    Capability args.
 	 */
 	function current_user_can( string $capability, mixed ...$args ): bool {
+		$capability_callback = $GLOBALS['aculect_ai_companion_test_capability_callback'] ?? null;
+		if ( is_callable( $capability_callback ) ) {
+			return (bool) $capability_callback( $capability, $args, get_current_user_id() );
+		}
+
 		$denied = $GLOBALS['aculect_ai_companion_test_denied_caps'] ?? array();
 		if ( 'read_post' === $capability && isset( $args[0] ) ) {
 			$denied_post_ids = $GLOBALS['aculect_ai_companion_test_denied_post_ids'] ?? array();
@@ -1805,6 +1810,20 @@ if ( ! function_exists( 'get_current_user_id' ) ) {
 	 */
 	function get_current_user_id(): int {
 		return (int) ( $GLOBALS['aculect_ai_companion_test_current_user_id'] ?? 1 );
+	}
+}
+
+if ( ! function_exists( 'wp_set_current_user' ) ) {
+	/**
+	 * Set the deterministic WordPress principal for request-path tests.
+	 *
+	 * @param int $user_id User ID.
+	 * @return object
+	 */
+	function wp_set_current_user( int $user_id ): object {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = $user_id;
+
+		return $GLOBALS['aculect_ai_companion_test_users'][ $user_id ] ?? (object) array( 'ID' => $user_id );
 	}
 }
 

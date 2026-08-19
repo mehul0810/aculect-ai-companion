@@ -133,6 +133,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( 'Last verified: 2026-08-19', $register );
 		self::assertStringContainsString( '12 advisory packages (10 high, 2 moderate)', $register );
 		self::assertStringContainsString( 'Production tree: zero advisories', $register );
+		self::assertStringContainsString( 'declared as `^32.2.0` and currently resolves to 32.6.0', $register );
 		self::assertStringContainsString( 'Review deadline: 2026-09-30', $register );
 		self::assertStringContainsString( 'Do not use `npm audit fix --force`', $register );
 		foreach ( $packages as $package ) {

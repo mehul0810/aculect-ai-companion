@@ -7,7 +7,7 @@ This register covers advisories that remain in the repository-only Node.js toolc
 - Last verified: 2026-08-19 with Node 24.16 and npm 11.
 - Full development tree: 12 advisory packages (10 high, 2 moderate).
 - Production tree: zero advisories from `npm audit --omit=dev`.
-- Direct owner: `@wordpress/scripts` 32.2.x. npm's automated force fix proposes installing 19.2.4, which is a breaking downgrade and is not an acceptable remediation.
+- Direct owner: `@wordpress/scripts` is declared as `^32.2.0` and currently resolves to 32.6.0. npm's automated force fix proposes installing 19.2.4, which is a breaking downgrade and is not an acceptable remediation.
 
 ## WordPress Scripts archive, browser, and Markdown tooling
 

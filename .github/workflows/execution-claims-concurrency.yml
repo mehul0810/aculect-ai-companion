@@ -1,0 +1,70 @@
+name: Execution Claims Concurrency
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/execution-claims-concurrency.yml"
+      - "src/Connectors/MCP/ExecutionClaims/**"
+      - "tests/Integration/ExecutionClaims/**"
+      - "composer.json"
+      - "composer.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: execution-claims-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  competing-workers:
+    name: Competing Workers (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: MySQL 8.0 / InnoDB
+            image: mysql:8.0
+          - engine: MariaDB 10.11 / InnoDB
+            image: mariadb:10.11
+
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: execution-claims-test
+          MYSQL_DATABASE: aculect_execution_claims
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          extensions: mysqli
+          tools: composer:v2
+
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Prove exact competing-worker exclusion
+        env:
+          ACULECT_CLAIMS_DB_HOST: 127.0.0.1
+          ACULECT_CLAIMS_DB_PORT: ${{ job.services.database.ports[3306] }}
+          ACULECT_CLAIMS_DB_NAME: aculect_execution_claims
+          ACULECT_CLAIMS_DB_USER: root
+          ACULECT_CLAIMS_DB_PASSWORD: execution-claims-test
+        run: php tests/Integration/ExecutionClaims/real-database-concurrency.php

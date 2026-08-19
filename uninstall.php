@@ -39,6 +39,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 }
 
 \Aculect\AICompanion\Connectors\OAuth\Database\Installer::uninstall();
+\Aculect\AICompanion\Connectors\MCP\ExecutionClaims\Installer::uninstall();
 \Aculect\AICompanion\Diagnostics\Database\Installer::uninstall();
 \Aculect\AICompanion\Activity\Database\Installer::uninstall();
 \Aculect\AICompanion\Intelligence\Database\Installer::uninstall();

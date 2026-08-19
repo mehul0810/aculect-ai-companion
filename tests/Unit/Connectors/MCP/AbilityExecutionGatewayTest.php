@@ -17,6 +17,7 @@ use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Diagnostics\Logger;
+use Aculect\AICompanion\Tests\Support\InMemoryExecutionClaimStore;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -201,7 +202,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 	}
 
 	public function test_gateway_confirmation_and_replay_strip_control_arguments_before_callback_dispatch(): void {
-		$gateway = new AbilityExecutionGateway();
+		$gateway = new AbilityExecutionGateway( null, null, null, new ToolSafety( new InMemoryExecutionClaimStore() ) );
 		$auth    = $this->incident_auth();
 		$args    = array(
 			'title'   => 'Gateway confirmation contract',
@@ -253,7 +254,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 	}
 
 	public function test_standard_write_dry_run_confirmation_and_idempotent_replay_are_gateway_owned(): void {
-		$safety = new ToolSafety();
+		$safety = new ToolSafety( new InMemoryExecutionClaimStore() );
 		$safety->save_confirmation_groups( array( 'Content' ) );
 		$gateway = new AbilityExecutionGateway( null, null, null, $safety );
 		$dry_run = $gateway->execute(
@@ -320,6 +321,121 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertArrayNotHasKey( 'error', $written->data['result'] ?? array() );
 		self::assertTrue( $replayed->data['result']['replayed'] ?? false );
 		self::assertSame( 'Committed once', get_post( 123 )?->post_title );
+	}
+
+	public function test_atomic_claim_returns_bounded_in_progress_without_dispatching_the_contender(): void {
+		$store  = new InMemoryExecutionClaimStore();
+		$safety = new ToolSafety( $store );
+		$auth   = $this->trusted_write_auth( 1 );
+		$args   = array(
+			'id'              => 123,
+			'title'           => 'Atomic contender',
+			'idempotency_key' => 'atomic-contender-key',
+		);
+		$owner  = $safety->claim_write_execution( 'content.update_item', $args, $auth, true );
+		self::assertSame( 'acquired', $owner->type );
+
+		$result = ( new AbilityExecutionGateway( null, null, null, $safety ) )->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_update_item',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+
+		self::assertSame( 'execution_in_progress', $result->data['result']['error'] ?? '' );
+		self::assertSame( 5, $result->data['result']['retry_after'] ?? 0 );
+		self::assertSame( 'Original title', get_post( 123 )?->post_title );
+		self::assertStringNotContainsString( 'atomic-contender-key', (string) wp_json_encode( $result->data ) );
+	}
+
+	public function test_normal_callback_error_releases_claim_for_same_payload_retry(): void {
+		$store   = new InMemoryExecutionClaimStore();
+		$gateway = new AbilityExecutionGateway( null, null, null, new ToolSafety( $store ) );
+		$auth    = $this->trusted_write_auth( 1 );
+		$args    = array(
+			'id'              => 999,
+			'title'           => 'Retry after normal error',
+			'idempotency_key' => 'normal-error-retry',
+		);
+		$failed  = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_update_item',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+		self::assertSame( 'not_found', $failed->data['result']['error'] ?? '' );
+
+		$GLOBALS['aculect_ai_companion_test_posts'][999] = new \WP_Post(
+			array(
+				'ID'           => 999,
+				'post_type'    => 'post',
+				'post_status'  => 'draft',
+				'post_title'   => 'Before retry',
+				'post_content' => '',
+			)
+		);
+		$retried = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_update_item',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+		self::assertArrayNotHasKey( 'error', $retried->data['result'] ?? array() );
+		self::assertSame( 'Retry after normal error', get_post( 999 )?->post_title );
+	}
+
+	public function test_thrown_claimed_callback_becomes_uncertain_and_never_retries(): void {
+		$store   = new InMemoryExecutionClaimStore();
+		$gateway = new AbilityExecutionGateway( null, null, null, new ToolSafety( $store ) );
+		$auth    = array_merge(
+			$this->incident_auth(),
+			array(
+				'access_level'             => ConnectionAccessLevel::WRITE,
+				'write_permission_enabled' => true,
+			)
+		);
+		$args    = array(
+			'title'           => 'Ambiguous callback',
+			'summary'         => 'Thrown callbacks must never retry automatically.',
+			'idempotency_key' => 'ambiguous-callback-key',
+		);
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_github_incident_reporter_repository'] = static function (): string {
+			throw new \RuntimeException( 'Ambiguous callback failure.' );
+		};
+
+		$first = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'plugin_incident_report',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+		unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_github_incident_reporter_repository'] );
+		$retry = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'plugin_incident_report',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+
+		self::assertSame( 'execution_uncertain', $first->data['result']['error'] ?? '' );
+		self::assertSame( 'execution_uncertain', $retry->data['result']['error'] ?? '' );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_incident_reports', array() ) );
+		self::assertStringNotContainsString( 'ambiguous-callback-key', (string) wp_json_encode( $retry->data ) );
 	}
 
 	public function test_gateway_trusted_write_and_activity_failures_do_not_change_execution_result(): void {

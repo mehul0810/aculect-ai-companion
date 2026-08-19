@@ -19,8 +19,11 @@ use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\McpInputValidator;
 use Aculect\AICompanion\Connectors\MCP\McpProtocolVersion;
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\WordPressExecutionClaimStore;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
+use Aculect\AICompanion\Tests\Support\InMemoryExecutionClaimStore;
 use ReflectionMethod;
 use ReflectionProperty;
 use WP_REST_Request;
@@ -31,6 +34,16 @@ require_once dirname( __DIR__, 3 ) . '/fixtures/mcp-request-stubs.php';
  * Verifies public MCP tool payloads remain compatible with assistant clients.
  */
 final class McpControllerTest extends TestCase {
+
+	public function test_default_controller_composes_the_production_execution_claim_store(): void {
+		$controller = new McpController();
+		$gateway    = $this->privatePropertyValue( $controller, 'execution_gateway' );
+		self::assertInstanceOf( AbilityExecutionGateway::class, $gateway );
+
+		$safety = $this->privatePropertyValue( $gateway, 'safety' );
+		self::assertInstanceOf( ToolSafety::class, $safety );
+		self::assertInstanceOf( WordPressExecutionClaimStore::class, $this->privatePropertyValue( $safety, 'claim_store' ) );
+	}
 
 	public function test_controller_protocol_constants_share_the_policy_authority(): void {
 		self::assertSame( McpProtocolVersion::CURRENT, McpController::PROTOCOL_VERSION_CURRENT );
@@ -1554,7 +1567,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_administrator_incident_report_requires_confirmation_and_replays_without_duplicate_storage(): void {
-		$controller = new McpController();
+		$controller = $this->controller_with_claim_store();
 		$auth       = array(
 			'user_id'   => 1,
 			'client_id' => 'incident-test-client',
@@ -1595,7 +1608,7 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_administrator_incident_report_rejects_invalid_confirmation_token(): void {
-		$controller = new McpController();
+		$controller = $this->controller_with_claim_store();
 		$auth       = array(
 			'user_id'   => 1,
 			'client_id' => 'incident-invalid-confirmation-client',
@@ -2214,6 +2227,17 @@ final class McpControllerTest extends TestCase {
 	}
 
 	/**
+	 * Build a controller with isolated authoritative claim storage.
+	 */
+	private function controller_with_claim_store(): McpController {
+		return new McpController(
+			new AbilityExecutionGateway(
+				safety: new ToolSafety( new InMemoryExecutionClaimStore() )
+			)
+		);
+	}
+
+	/**
 	 * Exercise one plugin incident tool through the public JSON-RPC request path.
 	 *
 	 * @param McpController        $controller Controller under test.
@@ -2420,5 +2444,17 @@ final class McpControllerTest extends TestCase {
 		$reflection = new ReflectionProperty( $object, $name );
 		$reflection->setAccessible( true );
 		$reflection->setValue( $object, $value );
+	}
+
+	/**
+	 * Read a private property for focused composition coverage.
+	 *
+	 * @param object $object Object instance.
+	 * @param string $name   Property name.
+	 */
+	private function privatePropertyValue( object $object, string $name ): mixed {
+		$reflection = new ReflectionProperty( $object, $name );
+		$reflection->setAccessible( true );
+		return $reflection->getValue( $object );
 	}
 }

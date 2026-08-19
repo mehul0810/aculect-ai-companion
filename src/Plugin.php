@@ -21,6 +21,7 @@ use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller;
+use Aculect\AICompanion\Workflows\Database\Installer as WorkflowInstaller;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -65,6 +66,7 @@ final class Plugin {
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
 		IntelligenceInstaller::activate();
+		WorkflowInstaller::activate();
 		LocalSampleData::ensure_first_installed_at();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
@@ -115,6 +117,7 @@ final class Plugin {
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();
+		WorkflowInstaller::install();
 		LocalSampleData::ensure_first_installed_at();
 		OAuthStorageMaintenance::maybe_prune();
 	}

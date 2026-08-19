@@ -30,6 +30,7 @@
 - V1 contains no storage, migration, runner, adapter execution, workflow admin, or public REST/MCP surface. Those layers must consume this boundary rather than redefining or weakening it.
 - `WorkflowDefinitionCompatibilityMetadata` derives detached deterministic compatibility identity from a validated definition: schema/workflow versions, checksum, input/output contract versions, sorted abilities, and adapter requirements grouped by adapter with sorted unique versions. It does not persist, migrate, or execute definitions.
 - `WorkflowDefinitionSchemaSupport` truthfully supports the current schema and, only after a later schema exists, current-minus-one. Product v1 therefore supports exactly `[1]` with no invented v0; a future v2 policy would report `[2, 1]`. Repository-owned JSON compatibility fixtures and their exact manifest remain test-only under `tests/fixtures/workflows/definitions` and are excluded from production packages.
+- Compatibility diff reports compare only validated immutable revisions. They bind both checksums and revisions, emit fixed value-free change categories, and fail closed across workflow or schema identities; migration execution and public/runtime exposure remain separate concerns.
 
 ## Pure Workflow Planning Boundary
 - `Aculect\AICompanion\Workflows\Planning` owns deterministic, immutable workflow plans, dry-run summaries, transition states, and evidence binding. It consumes validated workflow definitions but does not persist runs, resolve adapters or abilities, execute callbacks, or call WordPress APIs.

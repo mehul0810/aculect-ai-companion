@@ -2,7 +2,7 @@
 Contributors: mehul0810
 Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.2
 Stable tag: 0.7.2
 License: GPL-2.0-or-later
@@ -275,6 +275,10 @@ Composer dependencies for production releases are installed with:
 
 == Changelog ==
 
+= 0.8.0 =
+
+* Confirmed WordPress 7.1 compatibility for the native Abilities API execution lifecycle and client-safe schema preparation.
+
 = 0.7.2 =
 
 * Added current setup guidance for Grok, Cursor, and other MCP-compatible AI apps, including optional client-side tool-selection guidance that does not change server authorization.
@@ -462,7 +466,7 @@ Fixes the Learning tab review layout, adds Rank Math redirect and recent 404 wor
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, trusted connection access controls, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
+Adds provider compatibility, search/fetch, workflow and MCP resource guidance, site audit, Abilities diagnostics, and safer MCP access controls.
 
 = 0.5.3 =
 

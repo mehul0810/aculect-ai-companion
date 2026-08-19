@@ -52,7 +52,12 @@ if ( ! function_exists( 'wp_get_abilities' ) ) {
 		return array_values(
 			array_map(
 				static function ( array $ability ): object {
-					return new class( (string) $ability['name'], is_array( $ability['args'] ?? null ) ? $ability['args'] : array() ) {
+					$registered_args = is_array( $ability['args'] ?? null ) ? $ability['args'] : array();
+					if ( isset( $registered_args['ability_object'] ) && is_object( $registered_args['ability_object'] ) ) {
+						return $registered_args['ability_object'];
+					}
+
+					return new class( (string) $ability['name'], $registered_args ) {
 
 						/**
 						 * Ability name.
@@ -133,6 +138,23 @@ if ( ! function_exists( 'wp_get_abilities' ) ) {
 						}
 
 						/**
+						 * Model the native WordPress Ability permission check.
+						 *
+						 * @param array<string, mixed> $input Normalized input.
+						 * @return bool|WP_Error
+						 */
+						public function check_permissions( array $input = array() ): bool|WP_Error {
+							$callback = $this->get_permission_callback();
+							if ( ! is_callable( $callback ) ) {
+								return new WP_Error( 'ability_invalid_permission_callback', 'The ability has no permission callback.' );
+							}
+
+							$result = call_user_func( $callback, $input );
+
+							return $result instanceof WP_Error ? $result : true === $result;
+						}
+
+						/**
 						 * Return ability meta.
 						 *
 						 * @return array<string, mixed>
@@ -148,6 +170,11 @@ if ( ! function_exists( 'wp_get_abilities' ) ) {
 						 * @return mixed
 						 */
 						public function execute( array $input = array() ): mixed {
+							$permission = $this->check_permissions( $input );
+							if ( true !== $permission ) {
+								return new WP_Error( 'ability_invalid_permissions', 'The ability does not have necessary permission.' );
+							}
+
 							return is_callable( $this->args['execute_callback'] ?? null )
 								? call_user_func( $this->args['execute_callback'], $input )
 								: null;
@@ -157,6 +184,20 @@ if ( ! function_exists( 'wp_get_abilities' ) ) {
 				is_array( $GLOBALS['aculect_ai_companion_test_wp_abilities'] ?? null ) ? $GLOBALS['aculect_ai_companion_test_wp_abilities'] : array()
 			)
 		);
+	}
+}
+
+if ( ! function_exists( 'wp_prepare_json_schema_for_client' ) ) {
+	/**
+	 * Prepare an external schema for the test client boundary.
+	 *
+	 * @param array<string, mixed> $schema Registered schema.
+	 * @return array<string, mixed>
+	 */
+	function wp_prepare_json_schema_for_client( array $schema ): array {
+		unset( $schema['x-server-only'] );
+
+		return $schema;
 	}
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound

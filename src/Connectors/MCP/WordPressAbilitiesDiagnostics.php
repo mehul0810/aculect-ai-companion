@@ -242,12 +242,7 @@ final class WordPressAbilitiesDiagnostics {
 	 * @param object $ability Ability object.
 	 */
 	private function is_public( object $ability ): bool {
-		$meta = $this->method_array( $ability, 'get_meta' );
-		if ( isset( $meta['show_in_rest'] ) ) {
-			return (bool) $meta['show_in_rest'];
-		}
-
-		return isset( $meta['mcp'] ) && is_array( $meta['mcp'] ) && ! empty( $meta['mcp']['public'] );
+		return WordPressAbilityExposure::is_public( $ability );
 	}
 
 	/**

@@ -18,13 +18,17 @@ use Aculect\AICompanion\Connectors\MCP\McpToolProfiles;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Tests\Support\WorkflowDefinitionFixtureLoader;
 use Aculect\AICompanion\Workflows\Adapters\WordPressReadAdapter;
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterInterface;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
+use Aculect\AICompanion\Workflows\Planning\WorkflowPlanReadinessEvaluator;
+use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningException;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use ReflectionProperty;
 use RuntimeException;
 use stdClass;
@@ -128,6 +132,127 @@ final class WorkflowAdapterRegistryTest extends TestCase {
 		} catch ( RuntimeException $exception ) {
 			self::assertSame( 'Invalid workflow adapter contract.', $exception->getMessage() );
 		}
+	}
+
+	public function test_registry_snapshot_contains_only_exact_default_v2_bindings(): void {
+		$snapshot = ( new WorkflowAdapterRegistry() )->availability_snapshot();
+
+		self::assertSame(
+			array(
+				array(
+					'adapter_id'      => 'content_planner',
+					'adapter_version' => 1,
+					'ability_id'      => 'content/prepare-draft',
+					'kind'            => 'proposal',
+				),
+				array(
+					'adapter_id'      => 'wordpress', // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- Exact machine ID.
+					'adapter_version' => 1,
+					'ability_id'      => 'content/get-item',
+					'kind'            => 'read',
+				),
+			),
+			$snapshot->bindings()
+		);
+	}
+
+	public function test_snapshot_order_is_deterministic_and_returned_bindings_are_detached(): void {
+		$alpha = $this->snapshot_adapter( 'alpha_adapter', 2, 'content/other', 'proposal' );
+		$zeta  = $this->snapshot_adapter( 'zeta_adapter', 1, 'content/get-item', 'read' );
+		$first = ( new WorkflowAdapterRegistry( array( $zeta, $alpha ) ) )->availability_snapshot();
+		$other = ( new WorkflowAdapterRegistry( array( $alpha, $zeta ) ) )->availability_snapshot();
+
+		self::assertSame( $first->bindings(), $other->bindings() );
+		self::assertSame(
+			array(
+				array(
+					'adapter_id'      => 'alpha_adapter',
+					'adapter_version' => 2,
+					'ability_id'      => 'content/other',
+					'kind'            => 'proposal',
+				),
+				array(
+					'adapter_id'      => 'zeta_adapter',
+					'adapter_version' => 1,
+					'ability_id'      => 'content/get-item',
+					'kind'            => 'read',
+				),
+			),
+			$first->bindings()
+		);
+
+		$copy                       = $first->bindings();
+		$copy[0]['adapter_version'] = 99;
+		$copy[0]['ability_id']      = 'content/mutated';
+		self::assertSame( 2, $first->bindings()[0]['adapter_version'] );
+		self::assertSame( 'content/other', $first->bindings()[0]['ability_id'] );
+	}
+
+	public function test_registry_preserves_one_unique_binding_owner(): void {
+		$first  = $this->snapshot_adapter( 'shared_adapter', 1, 'content/get-item', 'read' );
+		$second = $this->snapshot_adapter( 'shared_adapter', 1, 'content/prepare-draft', 'proposal' );
+
+		$this->expectException( RuntimeException::class );
+		$this->expectExceptionMessage( 'Duplicate workflow adapter identity.' );
+		new WorkflowAdapterRegistry( array( $first, $second ) );
+	}
+
+	public function test_registry_snapshot_drives_exact_readiness_without_cross_pair_inference(): void {
+		$registry  = new WorkflowAdapterRegistry();
+		$evaluator = new WorkflowPlanReadinessEvaluator();
+
+		$proposal = $evaluator->evaluate( $this->proposal_plan(), $registry->availability_snapshot() );
+		self::assertNull( $proposal->requirements_error() );
+		self::assertSame( array(), $proposal->missing_bindings() );
+
+		$ordered = $evaluator->evaluate( $this->ordered_plan(), $registry->availability_snapshot() );
+		self::assertSame( 'requirements_unchecked', $ordered->requirements_error() );
+		self::assertSame(
+			array(
+				'wordpress@1|content/create-draft|write',
+				'wordpress@2|content/get-item|read',
+			),
+			$ordered->missing_bindings()
+		);
+		self::assertSame( array( 'wordpress@1', 'wordpress@2' ), $ordered->missing_adapters() ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- Exact machine tokens.
+		self::assertSame( array( 'content/create-draft', 'content/get-item' ), $ordered->missing_abilities() );
+	}
+
+	public function test_snapshot_uses_v2_authority_for_invalid_descriptors_and_propagates_exceptions(): void {
+		$invalid = new WorkflowAdapterRegistry(
+			array( $this->snapshot_adapter( 'invalid_adapter', 1, 'invalid.ability', 'read' ) )
+		);
+
+		try {
+			$invalid->availability_snapshot();
+			self::fail( 'An invalid workflow ability ID must fail closed.' );
+		} catch ( WorkflowPlanningException $exception ) {
+			self::assertSame( 'invalid_ability_id', $exception->error_code() );
+			self::assertSame( '$.bindings[0].ability_id', $exception->path() );
+		}
+
+		$throwing = $this->snapshot_adapter( 'throwing_adapter', 1, 'content/unused', 'read' );
+		$throwing->method( 'ability_id' )->willThrowException( new RuntimeException( 'descriptor_failure' ) );
+		$registry = new WorkflowAdapterRegistry( array( $throwing ) );
+
+		$this->expectException( RuntimeException::class );
+		$this->expectExceptionMessage( 'descriptor_failure' );
+		$registry->availability_snapshot();
+	}
+
+	public function test_snapshot_method_has_no_runtime_persistence_hook_or_public_integration(): void {
+		$method = new ReflectionMethod( WorkflowAdapterRegistry::class, 'availability_snapshot' );
+		$source = file( $method->getFileName() );
+		self::assertIsArray( $source );
+		$body = implode(
+			'',
+			array_slice( $source, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1 )
+		);
+
+		self::assertDoesNotMatchRegularExpression(
+			'/(?:AbilityExecutionGateway|execute\s*\(|register_rest_route|wp_register_ability|add_action|add_filter|\$wpdb|get_option|update_option|add_option|delete_option|set_transient|wp_cache_)/i',
+			$body
+		);
 	}
 
 	public function test_exact_plan_step_executes_only_through_gateway_and_restores_actor(): void {
@@ -464,6 +589,24 @@ final class WorkflowAdapterRegistryTest extends TestCase {
 			( new WorkflowDefinitionFixtureLoader() )->load( 'ordered-multi-step-v1.json' ),
 			WorkflowInputContract::from_json( '{"brief":"Exact adapter version"}' )
 		);
+	}
+
+	/**
+	 * Build a descriptor-only adapter double for availability tests.
+	 *
+	 * @param string $adapter_id      Exact adapter ID.
+	 * @param int    $adapter_version Exact positive adapter version.
+	 * @param string $ability_id      Exact workflow ability ID.
+	 * @param string $kind            Exact binding kind.
+	 */
+	private function snapshot_adapter( string $adapter_id, int $adapter_version, string $ability_id, string $kind ): WorkflowAdapterInterface {
+		$adapter = $this->createMock( WorkflowAdapterInterface::class );
+		$adapter->method( 'adapter_id' )->willReturn( $adapter_id );
+		$adapter->method( 'adapter_version' )->willReturn( $adapter_version );
+		$adapter->method( 'ability_id' )->willReturn( $ability_id );
+		$adapter->method( 'kind' )->willReturn( $kind );
+
+		return $adapter;
 	}
 
 	/**

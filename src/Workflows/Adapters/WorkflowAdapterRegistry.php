@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Workflows\Adapters;
 
+use Aculect\AICompanion\Workflows\Planning\WorkflowAvailabilitySnapshot;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use RuntimeException;
 use Throwable;
@@ -72,6 +73,33 @@ final class WorkflowAdapterRegistry {
 
 			return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_EXECUTION_NOT_AVAILABLE );
 		}
+	}
+
+	/**
+	 * Return the exact binding owned by every validated registry adapter.
+	 *
+	 * Availability is not authorization. This snapshot does not evaluate policy,
+	 * capabilities, scopes, confirmation, or runtime module state.
+	 */
+	public function availability_snapshot(): WorkflowAvailabilitySnapshot {
+		$bindings = array();
+
+		foreach ( $this->adapters as $key => $adapter ) {
+			list( $adapter_id, $adapter_version ) = explode( '@', $key, 2 );
+			$bindings[]                           = array(
+				'adapter_id'      => $adapter_id,
+				'adapter_version' => (int) $adapter_version,
+				'ability_id'      => $adapter->ability_id(),
+				'kind'            => $adapter->kind(),
+			);
+		}
+
+		return WorkflowAvailabilitySnapshot::from_value(
+			array(
+				'availability_schema_version' => WorkflowAvailabilitySnapshot::SCHEMA_VERSION,
+				'bindings'                    => $bindings,
+			)
+		);
 	}
 
 	/**

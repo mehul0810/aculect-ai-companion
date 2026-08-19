@@ -30,7 +30,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$plan     = $this->ordered_plan();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			new WorkflowAvailabilitySnapshot(
+			$this->snapshot(
 				array(
 					array(
 						'adapter_id'       => 'wordpress',
@@ -74,7 +74,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			new WorkflowAvailabilitySnapshot(
+			$this->snapshot(
 				array(
 					array(
 						'adapter_id'       => 'content_planner',
@@ -97,7 +97,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$plan     = $this->ordered_plan();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			new WorkflowAvailabilitySnapshot(
+			$this->snapshot(
 				array(
 					array(
 						'adapter_id'       => 'wordpress',
@@ -138,7 +138,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$identity = $plan->identity();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			new WorkflowAvailabilitySnapshot(
+			$this->snapshot(
 				array(
 					array(
 						'adapter_id'       => 'content_planner',
@@ -157,7 +157,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 	}
 
 	public function test_equivalent_availability_order_is_deterministic_and_detached(): void {
-		$first  = new WorkflowAvailabilitySnapshot(
+		$first  = $this->snapshot(
 			array(
 				array(
 					'adapter_id'       => 'wordpress',
@@ -170,7 +170,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 			),
 			array( 'content/prepare-draft', 'content/get-item', 'content/create-draft' )
 		);
-		$second = new WorkflowAvailabilitySnapshot(
+		$second = $this->snapshot(
 			array(
 				array(
 					'adapter_id'       => 'content_planner',
@@ -204,7 +204,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$identity = $plan->identity();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			new WorkflowAvailabilitySnapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
+			$this->snapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
 		);
 
 		self::assertNull( $evidence->requirements_error() );
@@ -217,7 +217,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$identity = $first->identity();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$first,
-			new WorkflowAvailabilitySnapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
+			$this->snapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
 		);
 
 		self::assertNull( $evidence->binding_error_for( $first ) );
@@ -227,30 +227,35 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		self::assertStringNotContainsString( 'private second brief', $serialized_evidence );
 	}
 
-	public function test_missing_evidence_details_must_be_sorted_unique_and_consistent(): void {
-		$plan     = $this->ordered_plan();
-		$identity = $plan->identity();
-		$invalid  = array(
-			array( array( 'wordpress@2', 'wordpress@1' ), array(), false ),
-			array( array( 'wordpress@1', 'wordpress@1' ), array(), false ),
-			array( array( 'wordpress@0' ), array(), false ),
-			array( array(), array( 'content/get-item', 'content/get-item' ), false ),
-			array( array( 'wordpress@1' ), array(), true ),
+	public function test_checked_evidence_factory_has_one_production_caller(): void {
+		$source_root = dirname( __DIR__, 4 ) . '/src';
+		$matches     = array();
+		$iterator    = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $source_root ) );
+		foreach ( $iterator as $file ) {
+			if ( ! $file->isFile() || 'php' !== $file->getExtension() ) {
+				continue;
+			}
+			$source = file_get_contents( $file->getPathname() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Test-only architecture guard.
+			if ( is_string( $source ) && str_contains( $source, 'WorkflowReadinessEvidence::from_evaluation(' ) ) {
+				$matches[] = $file->getFilename();
+			}
+		}
+
+		self::assertSame( array( 'WorkflowPlanReadinessEvaluator.php' ), $matches );
+	}
+
+	public function test_internal_checked_factory_rejects_malformed_missing_details(): void {
+		$plan    = $this->ordered_plan();
+		$invalid = array(
+			array( array( 'wordpress@2', 'wordpress@1' ), array() ),
+			array( array( 'wordpress@1', 'wordpress@1' ), array() ),
+			array( array( 'wordpress@0' ), array() ),
+			array( array(), array( 'content/get-item', 'content/get-item' ) ),
 		);
 
-		foreach ( $invalid as $invalid_evidence ) {
-			list( $adapters, $abilities, $checked ) = $invalid_evidence;
+		foreach ( $invalid as $missing ) {
 			try {
-				new WorkflowReadinessEvidence(
-					$plan->hash(),
-					$identity['adapter_requirements'],
-					$identity['ability_requirements'],
-					$identity['validation_rule_ids'],
-					$checked,
-					false,
-					$adapters,
-					$abilities
-				);
+				WorkflowReadinessEvidence::from_evaluation( $plan, $missing[0], $missing[1] );
 				self::fail( 'Expected invalid missing evidence.' );
 			} catch ( WorkflowPlanningException $exception ) {
 				self::assertSame( 'invalid_request', $exception->error_code() );
@@ -268,7 +273,7 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 	#[DataProvider( 'invalid_snapshot_provider' )]
 	public function test_malformed_snapshots_fail_closed( array $adapters, array $abilities, string $code ): void {
 		try {
-			new WorkflowAvailabilitySnapshot( $adapters, $abilities );
+			$this->snapshot( $adapters, $abilities );
 			self::fail( 'Expected snapshot failure.' );
 		} catch ( WorkflowPlanningException $exception ) {
 			self::assertSame( $code, $exception->error_code() );
@@ -328,6 +333,21 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		);
 		yield 'duplicate ability' => array( array(), array( 'content/get-item', 'content/get-item' ), 'duplicate_ability_id' );
 		yield 'wildcard ability' => array( array(), array( 'content/*' ), 'invalid_ability_id' );
+	}
+
+	/**
+	 * Build one object-shaped availability fixture.
+	 *
+	 * @param array $adapters  Adapter availability.
+	 * @param array $abilities Ability availability.
+	 */
+	private function snapshot( array $adapters, array $abilities ): WorkflowAvailabilitySnapshot {
+		return WorkflowAvailabilitySnapshot::from_value(
+			array(
+				'adapters'  => $adapters,
+				'abilities' => $abilities,
+			)
+		);
 	}
 
 	private function ordered_plan( string $input = '{"brief":"Readiness"}' ): WorkflowPlan {

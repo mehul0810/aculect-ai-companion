@@ -24,8 +24,13 @@ final class WorkflowPlanReadinessEvaluator {
 	 *
 	 * @param WorkflowPlan                 $plan         Immutable plan.
 	 * @param WorkflowAvailabilitySnapshot $availability Detached availability.
+	 * @param bool                         $validation_checked Separate validation proof.
 	 */
-	public function evaluate( WorkflowPlan $plan, WorkflowAvailabilitySnapshot $availability ): WorkflowReadinessEvidence {
+	public function evaluate(
+		WorkflowPlan $plan,
+		WorkflowAvailabilitySnapshot $availability,
+		bool $validation_checked = false
+	): WorkflowReadinessEvidence {
 		$identity           = $plan->identity();
 		$available_adapters = array();
 		foreach ( $availability->adapters() as $adapter ) {
@@ -59,15 +64,11 @@ final class WorkflowPlanReadinessEvaluator {
 		}
 		sort( $missing_abilities, SORT_STRING );
 
-		return new WorkflowReadinessEvidence(
-			$plan->hash(),
-			$identity['adapter_requirements'],
-			$identity['ability_requirements'],
-			$identity['validation_rule_ids'],
-			array() === $missing_adapters && array() === $missing_abilities,
-			! $plan->requires_validation(),
+		return WorkflowReadinessEvidence::from_evaluation(
+			$plan,
 			$missing_adapters,
-			$missing_abilities
+			$missing_abilities,
+			$validation_checked || ! $plan->requires_validation()
 		);
 	}
 }

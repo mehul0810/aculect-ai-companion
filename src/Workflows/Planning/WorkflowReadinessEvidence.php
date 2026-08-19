@@ -15,7 +15,7 @@ namespace Aculect\AICompanion\Workflows\Planning;
 final readonly class WorkflowReadinessEvidence {
 
 	/**
-	 * Create readiness evidence.
+	 * Create validated readiness evidence.
 	 *
 	 * @param string $plan_hash            Bound plan hash.
 	 * @param array  $adapter_requirements Exact adapter requirements.
@@ -32,7 +32,7 @@ final readonly class WorkflowReadinessEvidence {
 	 * @phpstan-param list<string> $missing_adapters
 	 * @phpstan-param list<string> $missing_abilities
 	 */
-	public function __construct(
+	private function __construct(
 		private string $plan_hash,
 		private array $adapter_requirements,
 		private array $ability_requirements,
@@ -49,6 +49,80 @@ final readonly class WorkflowReadinessEvidence {
 		if ( $requirements_checked && ( array() !== $missing_adapters || array() !== $missing_abilities ) ) {
 			throw new WorkflowPlanningException( 'invalid_request', '$.readiness.requirements' );
 		}
+	}
+
+	/**
+	 * Create plan-bound evidence before requirement evaluation.
+	 *
+	 * Validation proof remains a separate caller-owned concern.
+	 *
+	 * @param WorkflowPlan $plan               Exact plan.
+	 * @param bool         $validation_checked Whether separate validation completed.
+	 */
+	public static function unchecked( WorkflowPlan $plan, bool $validation_checked = false ): self {
+		return self::create( $plan, false, $validation_checked, array(), array() );
+	}
+
+	/**
+	 * Create plan-bound evidence from the pure requirement evaluator.
+	 *
+	 * This internal factory deliberately accepts no requirements-checked flag.
+	 * Completeness is derived only from the evaluator's missing requirement lists.
+	 *
+	 * @internal WorkflowPlanReadinessEvaluator is the sole production caller.
+	 *
+	 * @param WorkflowPlan $plan               Exact plan.
+	 * @param array        $missing_adapters   Missing adapter-version tokens.
+	 * @param array        $missing_abilities  Missing ability IDs.
+	 * @param bool         $validation_checked Whether separate validation completed.
+	 * @phpstan-param list<string> $missing_adapters
+	 * @phpstan-param list<string> $missing_abilities
+	 */
+	public static function from_evaluation(
+		WorkflowPlan $plan,
+		array $missing_adapters,
+		array $missing_abilities,
+		bool $validation_checked = false
+	): self {
+		return self::create(
+			$plan,
+			array() === $missing_adapters && array() === $missing_abilities,
+			$validation_checked,
+			$missing_adapters,
+			$missing_abilities
+		);
+	}
+
+	/**
+	 * Bind evidence to the plan's exact detached identity.
+	 *
+	 * @param WorkflowPlan $plan                 Exact plan.
+	 * @param bool         $requirements_checked Derived requirement state.
+	 * @param bool         $validation_checked   Separate validation state.
+	 * @param array        $missing_adapters     Missing adapter-version tokens.
+	 * @param array        $missing_abilities    Missing ability IDs.
+	 * @phpstan-param list<string> $missing_adapters
+	 * @phpstan-param list<string> $missing_abilities
+	 */
+	private static function create(
+		WorkflowPlan $plan,
+		bool $requirements_checked,
+		bool $validation_checked,
+		array $missing_adapters,
+		array $missing_abilities
+	): self {
+		$identity = $plan->identity();
+
+		return new self(
+			$plan->hash(),
+			$identity['adapter_requirements'],
+			$identity['ability_requirements'],
+			$identity['validation_rule_ids'],
+			$requirements_checked,
+			$validation_checked,
+			$missing_adapters,
+			$missing_abilities
+		);
 	}
 
 	/**

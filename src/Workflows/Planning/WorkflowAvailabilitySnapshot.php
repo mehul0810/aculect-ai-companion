@@ -9,12 +9,15 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Workflows\Planning;
 
+use JsonException;
 use stdClass;
 
 /**
  * Carries detached adapter and ability availability without granting access.
  */
 final readonly class WorkflowAvailabilitySnapshot {
+
+	public const MAX_ENCODED_BYTES = 262144;
 
 	private const MAX_ADAPTERS             = 50;
 	private const MAX_ABILITIES            = 50;
@@ -35,20 +38,68 @@ final readonly class WorkflowAvailabilitySnapshot {
 	private array $abilities;
 
 	/**
-	 * Create a validated availability snapshot.
+	 * Create a snapshot from validated normalized values.
 	 *
 	 * @param array $adapters  Available adapter IDs and exact versions.
 	 * @param array $abilities Available ability IDs.
-	 * @throws WorkflowPlanningException When availability is malformed.
-	 * @phpstan-param list<array{adapter_id:string,adapter_versions:list<int>}|stdClass> $adapters
+	 * @phpstan-param list<array{adapter_id:string,adapter_versions:list<int>}> $adapters
 	 * @phpstan-param list<string> $abilities
 	 */
-	public function __construct(
+	private function __construct(
 		array $adapters,
 		array $abilities
 	) {
-		$this->adapters  = $this->validate_adapters( $adapters );
-		$this->abilities = $this->validate_abilities( $abilities );
+		$this->adapters  = $adapters;
+		$this->abilities = $abilities;
+	}
+
+	/**
+	 * Build from an untrusted object-shaped availability value.
+	 *
+	 * @param mixed $value Candidate map with exact adapters and abilities keys.
+	 * @throws WorkflowPlanningException When availability is malformed.
+	 */
+	public static function from_value( mixed $value ): self {
+		if ( $value instanceof stdClass ) {
+			$value = get_object_vars( $value );
+		}
+		if ( ! is_array( $value ) || array_is_list( $value ) ) {
+			throw new WorkflowPlanningException( 'invalid_availability_root', '$.availability' );
+		}
+
+		$keys = array_keys( $value );
+		sort( $keys, SORT_STRING );
+		if ( array( 'abilities', 'adapters' ) !== $keys ) {
+			throw new WorkflowPlanningException( 'invalid_availability', '$.availability' );
+		}
+
+		return new self(
+			self::validate_adapters( $value['adapters'] ),
+			self::validate_abilities( $value['abilities'] )
+		);
+	}
+
+	/**
+	 * Decode and build from bounded object-preserving JSON.
+	 *
+	 * @param mixed $json Candidate JSON string.
+	 * @throws WorkflowPlanningException When JSON is malformed or unbounded.
+	 */
+	public static function from_json( mixed $json ): self {
+		if ( ! is_string( $json ) ) {
+			throw new WorkflowPlanningException( 'invalid_availability_json', '$.availability' );
+		}
+		if ( strlen( $json ) > self::MAX_ENCODED_BYTES ) {
+			throw new WorkflowPlanningException( 'availability_too_large', '$.availability' );
+		}
+
+		try {
+			$value = json_decode( $json, false, 32, JSON_THROW_ON_ERROR );
+		} catch ( JsonException ) {
+			throw new WorkflowPlanningException( 'invalid_availability_json', '$.availability' );
+		}
+
+		return self::from_value( $value );
 	}
 
 	/**
@@ -78,13 +129,13 @@ final readonly class WorkflowAvailabilitySnapshot {
 	/**
 	 * Validate and normalize adapter availability.
 	 *
-	 * @param array $adapters Raw adapter availability.
+	 * @param mixed $adapters Raw adapter availability.
 	 * @return list<array{adapter_id:string,adapter_versions:list<int>}>
 	 * @throws WorkflowPlanningException When an adapter entry is malformed.
 	 * @phpstan-param list<array{adapter_id:string,adapter_versions:list<int>}|stdClass> $adapters
 	 */
-	private function validate_adapters( array $adapters ): array {
-		if ( ! array_is_list( $adapters ) || count( $adapters ) > self::MAX_ADAPTERS ) {
+	private static function validate_adapters( mixed $adapters ): array {
+		if ( ! is_array( $adapters ) || ! array_is_list( $adapters ) || count( $adapters ) > self::MAX_ADAPTERS ) {
 			throw new WorkflowPlanningException( 'invalid_availability', '$.adapters' );
 		}
 
@@ -93,33 +144,33 @@ final readonly class WorkflowAvailabilitySnapshot {
 			$path    = '$.adapters[' . $index . ']';
 			$adapter = $adapter_value instanceof stdClass ? get_object_vars( $adapter_value ) : $adapter_value;
 			if ( ! is_array( $adapter ) ) {
-				$this->fail( 'invalid_availability', $path );
+				self::fail( 'invalid_availability', $path );
 			}
 			$keys = array_keys( $adapter );
 			sort( $keys, SORT_STRING );
 			if ( array( 'adapter_id', 'adapter_versions' ) !== $keys ) {
-				$this->fail( 'invalid_availability', $path );
+				self::fail( 'invalid_availability', $path );
 			}
 
 			$adapter_id = $adapter['adapter_id'];
 			$versions   = $adapter['adapter_versions'];
 			if ( ! is_string( $adapter_id ) || strlen( $adapter_id ) < 2 || strlen( $adapter_id ) > 64 || 1 !== preg_match( '/^[a-z][a-z0-9_]*$/D', $adapter_id ) ) {
-				$this->fail( 'invalid_adapter_id', $path . '.adapter_id' );
+				self::fail( 'invalid_adapter_id', $path . '.adapter_id' );
 			}
 			if ( isset( $seen[ $adapter_id ] ) ) {
-				$this->fail( 'duplicate_adapter_id', $path . '.adapter_id' );
+				self::fail( 'duplicate_adapter_id', $path . '.adapter_id' );
 			}
 			if ( ! is_array( $versions ) || ! array_is_list( $versions ) || array() === $versions || count( $versions ) > self::MAX_VERSIONS_PER_ADAPTER ) {
-				$this->fail( 'invalid_adapter_versions', $path . '.adapter_versions' );
+				self::fail( 'invalid_adapter_versions', $path . '.adapter_versions' );
 			}
 
 			$version_seen = array();
 			foreach ( $versions as $version_index => $version ) {
 				if ( ! is_int( $version ) || $version < 1 ) {
-					$this->fail( 'invalid_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
+					self::fail( 'invalid_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
 				}
 				if ( isset( $version_seen[ $version ] ) ) {
-					$this->fail( 'duplicate_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
+					self::fail( 'duplicate_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
 				}
 				$version_seen[ $version ] = true;
 			}
@@ -140,13 +191,13 @@ final readonly class WorkflowAvailabilitySnapshot {
 	/**
 	 * Validate and normalize ability availability.
 	 *
-	 * @param array $abilities Raw ability availability.
+	 * @param mixed $abilities Raw ability availability.
 	 * @return list<string>
 	 * @throws WorkflowPlanningException When an ability ID is malformed.
 	 * @phpstan-param list<string> $abilities
 	 */
-	private function validate_abilities( array $abilities ): array {
-		if ( ! array_is_list( $abilities ) || count( $abilities ) > self::MAX_ABILITIES ) {
+	private static function validate_abilities( mixed $abilities ): array {
+		if ( ! is_array( $abilities ) || ! array_is_list( $abilities ) || count( $abilities ) > self::MAX_ABILITIES ) {
 			throw new WorkflowPlanningException( 'invalid_availability', '$.abilities' );
 		}
 
@@ -154,10 +205,10 @@ final readonly class WorkflowAvailabilitySnapshot {
 		foreach ( $abilities as $index => $ability_id ) {
 			$path = '$.abilities[' . $index . ']';
 			if ( ! is_string( $ability_id ) || strlen( $ability_id ) > 128 || 1 !== preg_match( '#^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$#D', $ability_id ) ) {
-				$this->fail( 'invalid_ability_id', $path );
+				self::fail( 'invalid_ability_id', $path );
 			}
 			if ( isset( $seen[ $ability_id ] ) ) {
-				$this->fail( 'duplicate_ability_id', $path );
+				self::fail( 'duplicate_ability_id', $path );
 			}
 			$seen[ $ability_id ] = true;
 		}
@@ -175,7 +226,7 @@ final readonly class WorkflowAvailabilitySnapshot {
 	 * @param string $path Bounded structural path.
 	 * @throws WorkflowPlanningException Always.
 	 */
-	private function fail( string $code, string $path ): never {
+	private static function fail( string $code, string $path ): never {
 		throw new WorkflowPlanningException( $code, $path ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal bounded evidence only.
 	}
 }

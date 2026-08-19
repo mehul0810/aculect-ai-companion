@@ -78,10 +78,15 @@ function aculect_oauth_engine_main(): void {
 	aculect_oauth_engine_assert(
 		1 === aculect_oauth_engine_scalar(
 			$pdo,
-			"SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'wp_aculect_ai_companion_oauth_clients_fresh' AND index_name = 'issuer_revoked'"
+			"SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'wp_aculect_ai_companion_oauth_clients_fresh' AND index_name = 'issuer_revoked'"
 		),
 		'Fresh schema must include issuer_revoked.'
 	);
+	$issuer_index_columns = aculect_oauth_engine_query(
+		$pdo,
+		"SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'wp_aculect_ai_companion_oauth_clients_fresh' AND index_name = 'issuer_revoked'"
+	)->fetchColumn();
+	aculect_oauth_engine_assert( 'issuer_hash,revoked' === $issuer_index_columns, 'Fresh issuer_revoked index must preserve exact column order.' );
 
 	$pdo->exec(
 		"CREATE TABLE `{$tables['clients']}` (

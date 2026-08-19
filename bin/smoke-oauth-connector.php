@@ -129,8 +129,9 @@ function aculect_smoke_normalize_base_url( string $base_url ): string {
 function aculect_smoke_register_client( string $base_url, int $attempt ): array {
 	$redirect_uri = 'https://chatgpt.com/connector/oauth/aculect-smoke-' . rawurlencode( gmdate( 'YmdHis' ) . '-' . bin2hex( random_bytes( 4 ) ) . '-' . (string) $attempt );
 	$payload      = array(
-		'client_name'   => 'Aculect AI Companion OAuth Smoke',
-		'redirect_uris' => array( $redirect_uri ),
+		'client_name'      => 'Aculect AI Companion OAuth Smoke',
+		'application_type' => 'web',
+		'redirect_uris'    => array( $redirect_uri ),
 	);
 
 	$result = aculect_smoke_request(

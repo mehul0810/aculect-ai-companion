@@ -28,7 +28,7 @@ final class Helpers {
 	 * Return the authorization-server issuer used for MCP resource metadata.
 	 */
 	public static function authorization_server_issuer(): string {
-		return self::mcp_resource();
+		return self::issuer();
 	}
 
 	/**

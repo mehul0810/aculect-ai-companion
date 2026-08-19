@@ -14,6 +14,7 @@ use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\RefreshTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\Server\KeyManager;
 use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use League\OAuth2\Server\CryptKey;
@@ -38,6 +39,8 @@ final class TokenControllerTest extends TestCase {
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		KeyManager::delete_keys();
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
+		update_option( 'aculect_ai_companion_oauth_issuer_backfill', IssuerBinding::hash(), false );
 	}
 
 	protected function tearDown(): void {

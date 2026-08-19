@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\Helpers;
+use Aculect\AICompanion\Connectors\OAuth\ApplicationType;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
+use Aculect\AICompanion\Connectors\OAuth\ClientIdentifier;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationResult;
 use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use DateTimeImmutable;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\ClientRepositoryInterface;
@@ -38,9 +41,25 @@ final class ClientRepository implements ClientRepositoryInterface {
 	public function getClientEntity( string $clientIdentifier ): ?ClientEntityInterface {
 		global $wpdb;
 
+		$clientIdentifier = trim( $clientIdentifier );
+		if ( '' === $clientIdentifier || strlen( $clientIdentifier ) > 100 ) {
+			return null;
+		}
+
+		// CIMD remains intentionally unsupported. Never turn a client ID into a
+		// network request or cache lookup; the caller receives invalid_client.
+		if ( ClientIdentifier::is_metadata_document( $clientIdentifier ) ) {
+			return null;
+		}
+
 		$table = Installer::table_names()['clients'];
 		$row   = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT * FROM %i WHERE client_id = %s AND revoked = 0', $table, $clientIdentifier ),
+			$wpdb->prepare(
+				'SELECT * FROM %i WHERE client_id = %s AND issuer_hash = %s AND revoked = 0',
+				$table,
+				$clientIdentifier,
+				IssuerBinding::hash()
+			),
 			ARRAY_A
 		);
 
@@ -82,10 +101,11 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * @param string[] $redirect_uris Valid redirect URIs.
 	 * @param bool     $confidential  Whether the client receives a secret.
 	 * @param int|null $user_id       Optional owning WordPress user.
+	 * @param string   $application_type DCR redirect-policy profile.
 	 * @return array<string, string|null>|null
 	 */
-	public function create_client( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ?array {
-		return $this->create_client_result( $name, $redirect_uris, $confidential, $user_id )->client();
+	public function create_client( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null, string $application_type = ApplicationType::LEGACY ): ?array {
+		return $this->create_client_result( $name, $redirect_uris, $confidential, $user_id, $application_type )->client();
 	}
 
 	/**
@@ -95,16 +115,18 @@ final class ClientRepository implements ClientRepositoryInterface {
 	 * @param string[] $redirect_uris Valid redirect URIs.
 	 * @param bool     $confidential  Whether the client receives a secret.
 	 * @param int|null $user_id       Optional owning WordPress user.
+	 * @param string   $application_type DCR redirect-policy profile.
 	 */
-	public function create_client_result( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null ): ClientRegistrationResult {
+	public function create_client_result( string $name, array $redirect_uris, bool $confidential = true, ?int $user_id = null, string $application_type = ApplicationType::LEGACY ): ClientRegistrationResult {
 		global $wpdb;
 
+		$application_type         = ApplicationType::from_storage( $application_type );
 		$table                    = Installer::table_names()['clients'];
 		$provider                 = Helpers::provider_from_client( $name, $redirect_uris );
 		$encoded_uris             = ClientRegistrationFingerprint::encoded_redirect_uris( $redirect_uris );
 		$registration_fingerprint = ClientRegistrationFingerprint::from_redirect_uris( $redirect_uris );
 
-		if ( null === $encoded_uris || null === $registration_fingerprint ) {
+		if ( '' === $application_type || null === $encoded_uris || null === $registration_fingerprint ) {
 			return ClientRegistrationResult::invalid_metadata();
 		}
 
@@ -132,11 +154,13 @@ final class ClientRepository implements ClientRepositoryInterface {
 				'provider'                 => $provider,
 				'redirect_uris'            => $encoded_uris,
 				'registration_fingerprint' => $registration_fingerprint,
+				'issuer_hash'              => IssuerBinding::hash(),
+				'application_type'         => $application_type,
 				'user_id'                  => $user_id,
 				'is_confidential'          => $confidential ? 1 : 0,
 				'revoked'                  => 0,
 			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d' )
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d' )
 		);
 
 		if ( false === $result ) {
@@ -472,6 +496,8 @@ final class ClientRepository implements ClientRepositoryInterface {
 		$client->setUserId( null !== $row['user_id'] ? (int) $row['user_id'] : null );
 		$client->setClientSecretHash( (string) ( $row['client_secret_hash'] ?? '' ) );
 		$client->setProvider( (string) ( $row['provider'] ?? 'mcp' ) );
+		$client->setIssuerHash( (string) ( $row['issuer_hash'] ?? '' ) );
+		$client->setApplicationType( ApplicationType::from_storage( $row['application_type'] ?? '' ) );
 
 		if ( ! empty( $row['created_at'] ) ) {
 			$client->setCreatedAt( new DateTimeImmutable( (string) $row['created_at'] ) );

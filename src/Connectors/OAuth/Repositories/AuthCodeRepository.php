@@ -6,7 +6,9 @@ namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\BoundClientGuard;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AuthCodeEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AuthCodeEntityInterface;
 use League\OAuth2\Server\Repositories\AuthCodeRepositoryInterface;
@@ -37,6 +39,8 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 	 */
 	public function persistNewAuthCode( AuthCodeEntityInterface $authCodeEntity ): void {
 		global $wpdb;
+
+		BoundClientGuard::assert_current( $authCodeEntity->getClient() );
 
 		$table  = Installer::table_names()['auth_codes'];
 		$scopes = array();
@@ -80,9 +84,20 @@ final class AuthCodeRepository implements AuthCodeRepositoryInterface {
 	public function isAuthCodeRevoked( string $codeId ): bool {
 		global $wpdb;
 
-		$table = Installer::table_names()['auth_codes'];
-		$row   = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT revoked, expires_at FROM %i WHERE code_hash = %s', $table, $this->hash_identifier( $codeId ) ),
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT auth_codes.revoked, auth_codes.expires_at
+				FROM %i auth_codes
+				INNER JOIN %i clients ON clients.client_id = auth_codes.client_id
+				WHERE auth_codes.code_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0',
+				$tables['auth_codes'],
+				$tables['clients'],
+				$this->hash_identifier( $codeId ),
+				IssuerBinding::hash()
+			),
 			ARRAY_A
 		);
 

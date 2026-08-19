@@ -27,6 +27,14 @@ final class RedirectUriPolicyTest extends TestCase {
 		self::assertFalse( RedirectUriPolicy::allows( $registered, 'https://claude.com/api/mcp/auth_callback?tenant=one' ) );
 	}
 
+	public function test_application_profiles_reject_wildcards_credentials_and_fragments(): void {
+		self::assertFalse( RedirectUriPolicy::allows_registration( 'https://*.example.com/callback', 'web' ) );
+		self::assertFalse( RedirectUriPolicy::allows_registration( 'https://user@example.com/callback', 'web' ) );
+		self::assertFalse( RedirectUriPolicy::allows_registration( 'https://example.com/callback#fragment', 'web' ) );
+		self::assertFalse( RedirectUriPolicy::allows_registration( 'http://user@localhost/callback', 'native' ) );
+		self::assertFalse( RedirectUriPolicy::allows_registration( 'http://localhost/callback#fragment', 'legacy' ) );
+	}
+
 	/**
 	 * Verify a supported loopback redirect may use an ephemeral port.
 	 *

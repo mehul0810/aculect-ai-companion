@@ -391,6 +391,7 @@ final class ConnectionHealthTest extends TestCase {
 final class ConnectionHealthStorageWpdb {
 
 	public string $prefix             = 'wp_42_';
+	public string $last_error         = '';
 	public bool $all_tables_available = false;
 
 	/** @var list<string> */

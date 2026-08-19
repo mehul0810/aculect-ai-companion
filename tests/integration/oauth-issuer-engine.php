@@ -56,6 +56,7 @@ function aculect_oauth_engine_main(): void {
 		)
 	);
 	$pdo->exec( "SET SESSION sql_mode = 'STRICT_ALL_TABLES'" );
+	$charset_collate = 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
 
 	$wpdb            = new AculectOAuthEngineWpdb( $pdo );
 	$GLOBALS['wpdb'] = $wpdb;
@@ -70,7 +71,7 @@ function aculect_oauth_engine_main(): void {
 	$fresh_schema  = (string) $schema_method->invoke(
 		null,
 		'wp_aculect_ai_companion_oauth_clients_fresh',
-		'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+		$charset_collate
 	);
 	$pdo->exec( $fresh_schema );
 	aculect_oauth_engine_assert( 1 === substr_count( $fresh_schema, 'issuer_hash char(64)' ), 'Fresh schema must place issuer_hash only on clients.' );
@@ -103,7 +104,7 @@ function aculect_oauth_engine_main(): void {
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY (id), UNIQUE KEY client_id (client_id)
-		) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+		) {$charset_collate}"
 	);
 	$seed = $pdo->prepare(
 		"INSERT INTO `{$tables['clients']}`
@@ -143,7 +144,8 @@ function aculect_oauth_engine_main(): void {
 	aculect_oauth_engine_assert( 0 === aculect_oauth_engine_scalar( $pdo, "SELECT COUNT(*) FROM `{$tables['clients']}` WHERE issuer_hash = ''" ), 'Second backfill pass must resume remaining rows.' );
 	aculect_oauth_engine_assert( IssuerBinding::hash() === (string) get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ), 'Verified completion marker must match the canonical issuer.' );
 
-	aculect_oauth_engine_create_child_tables( $pdo, $tables );
+	aculect_oauth_engine_create_child_tables( $pdo, $tables, $charset_collate );
+	aculect_oauth_engine_assert_join_collations( $pdo, $tables );
 	$future = gmdate( 'Y-m-d H:i:s', time() + HOUR_IN_SECONDS );
 	$pdo->prepare( "INSERT INTO `{$tables['auth_codes']}` (code_hash, client_id, revoked, expires_at) VALUES (?, 'legacy-0', 0, ?)" )->execute( array( hash( 'sha256', 'code-id' ), $future ) );
 	$pdo->prepare( "INSERT INTO `{$tables['access_tokens']}` (token_hash, client_id, revoked, expires_at) VALUES (?, 'legacy-0', 0, ?)" )->execute( array( hash( 'sha256', 'access-id' ), $future ) );
@@ -168,13 +170,50 @@ function aculect_oauth_engine_main(): void {
 /**
  * Create the child credential tables needed by the authoritative-join proof.
  *
+ * @param PDO                   $pdo             Database connection.
+ * @param array<string, string> $tables          Plugin-owned table names.
+ * @param string                $charset_collate Production-equivalent table charset and collation.
+ */
+function aculect_oauth_engine_create_child_tables( PDO $pdo, array $tables, string $charset_collate ): void {
+	$pdo->exec( "CREATE TABLE `{$tables['auth_codes']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, code_hash char(64) NOT NULL, client_id varchar(100) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY code_hash (code_hash)) {$charset_collate}" );
+	$pdo->exec( "CREATE TABLE `{$tables['access_tokens']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, client_id varchar(100) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY token_hash (token_hash)) {$charset_collate}" );
+	$pdo->exec( "CREATE TABLE `{$tables['refresh_tokens']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, access_token_hash char(64) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY token_hash (token_hash)) {$charset_collate}" );
+}
+
+/**
+ * Prove every text join key uses production's one shared table collation.
+ *
  * @param PDO                   $pdo    Database connection.
  * @param array<string, string> $tables Plugin-owned table names.
  */
-function aculect_oauth_engine_create_child_tables( PDO $pdo, array $tables ): void {
-	$pdo->exec( "CREATE TABLE `{$tables['auth_codes']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, code_hash char(64) NOT NULL, client_id varchar(100) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY code_hash (code_hash))" );
-	$pdo->exec( "CREATE TABLE `{$tables['access_tokens']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, client_id varchar(100) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY token_hash (token_hash))" );
-	$pdo->exec( "CREATE TABLE `{$tables['refresh_tokens']}` (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, access_token_hash char(64) NOT NULL, revoked tinyint NOT NULL DEFAULT 0, expires_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY token_hash (token_hash))" );
+function aculect_oauth_engine_assert_join_collations( PDO $pdo, array $tables ): void {
+	$client_id_collations = array();
+	foreach ( array( $tables['clients'], $tables['auth_codes'], $tables['access_tokens'] ) as $table ) {
+		$statement = $pdo->prepare(
+			'SELECT collation_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+		);
+		$statement->execute( array( $table, 'client_id' ) );
+		$client_id_collations[] = $statement->fetchColumn();
+	}
+
+	aculect_oauth_engine_assert(
+		array( 'utf8mb4_unicode_ci' ) === array_values( array_unique( $client_id_collations ) ),
+		'Every client_id join key must use the exact production collation.'
+	);
+
+	$refresh_join_collations = array();
+	foreach ( array( array( $tables['access_tokens'], 'token_hash' ), array( $tables['refresh_tokens'], 'access_token_hash' ) ) as $column ) {
+		$statement = $pdo->prepare(
+			'SELECT collation_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+		);
+		$statement->execute( $column );
+		$refresh_join_collations[] = $statement->fetchColumn();
+	}
+
+	aculect_oauth_engine_assert(
+		array( 'utf8mb4_unicode_ci' ) === array_values( array_unique( $refresh_join_collations ) ),
+		'Refresh-token join keys must use the exact production collation.'
+	);
 }
 
 /**
@@ -224,6 +263,8 @@ function aculect_oauth_engine_query( PDO $pdo, string $query ): PDOStatement {
 final class AculectOAuthEngineWpdb {
 
 	public string $prefix = 'wp_';
+
+	public string $last_error = '';
 
 	public bool $fail_next_update = false;
 

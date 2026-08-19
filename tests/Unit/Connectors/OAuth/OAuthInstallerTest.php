@@ -102,6 +102,21 @@ final class OAuthInstallerTest extends TestCase {
 		);
 	}
 
+	public function test_issuer_backfill_does_not_mark_completion_when_final_read_fails(): void {
+		$wpdb                    = new FakeOAuthInstallerWpdb();
+		$wpdb->results           = array( array( 'id' => '12' ) );
+		$wpdb->update_result     = 0;
+		$wpdb->issuer_remaining  = null;
+		$wpdb->issuer_read_error = 'Forced final issuer verification failure.';
+		$GLOBALS['wpdb']         = $wpdb;
+
+		$this->invokePrivateStatic( 'backfill_client_issuer_bindings' );
+
+		self::assertSame( '', get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+		self::assertFalse( Installer::issuer_binding_ready() );
+		self::assertSame( 'Forced final issuer verification failure.', $wpdb->last_error );
+	}
+
 	public function test_backfill_updates_valid_empty_registration_fingerprints_in_batches(): void {
 		$wpdb            = new FakeOAuthInstallerWpdb();
 		$wpdb->results   = array(
@@ -214,6 +229,13 @@ final class OAuthInstallerTest extends TestCase {
  */
 final class FakeOAuthInstallerWpdb {
 
+	/**
+	 * Last database error, matching wpdb's public error surface.
+	 *
+	 * @var string
+	 */
+	public string $last_error = '';
+
 	public string $prefix = 'wp_';
 
 	/**
@@ -250,6 +272,13 @@ final class FakeOAuthInstallerWpdb {
 	 * @var string|null
 	 */
 	public ?string $issuer_remaining = null;
+
+	/**
+	 * Error injected during final issuer verification.
+	 *
+	 * @var string
+	 */
+	public string $issuer_read_error = '';
 
 	/**
 	 * Update result returned by the test double.
@@ -311,6 +340,7 @@ final class FakeOAuthInstallerWpdb {
 
 		++$this->get_var_calls;
 		if ( str_contains( $query, 'WHERE issuer_hash = %s' ) ) {
+			$this->last_error = $this->issuer_read_error;
 			return $this->issuer_remaining;
 		}
 		$table = (string) ( $this->prepared[ array_key_last( $this->prepared ) ]['args'][0] ?? '' );

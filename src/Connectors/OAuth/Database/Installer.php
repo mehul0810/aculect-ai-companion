@@ -358,10 +358,11 @@ final class Installer {
 			);
 		}
 
-		$remaining = $wpdb->get_var(
+		$wpdb->last_error = '';
+		$remaining        = $wpdb->get_var(
 			$wpdb->prepare( 'SELECT id FROM %i WHERE issuer_hash = %s ORDER BY id ASC LIMIT 1', $table, '' )
 		);
-		if ( null === $remaining ) {
+		if ( '' === trim( (string) $wpdb->last_error ) && null === $remaining ) {
 			update_option( self::OPTION_ISSUER_BACKFILL, $issuer_hash, false );
 		}
 	}

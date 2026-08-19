@@ -293,6 +293,8 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- This real-database test adapter is intentionally local to its test.
 final class OAuthDcrSqliteWpdb {
 
+	public string $last_error = '';
+
 	public string $prefix = 'wp_';
 
 	private PDO $pdo;

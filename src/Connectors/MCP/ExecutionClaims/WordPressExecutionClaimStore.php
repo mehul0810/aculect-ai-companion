@@ -15,7 +15,7 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 
 	private const CLAIM_LEASE_SECONDS = 30;
 	private const MAX_RESULT_BYTES    = 1048576;
-	private const MAX_CLAIM_ATTEMPTS  = 3;
+	private const MAX_CLAIM_ATTEMPTS  = 8;
 
 	/**
 	 * Controlled UTC timestamp source.
@@ -74,7 +74,12 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 
 			$rows = $this->matching_rows( $confirmation_key_hash, $idempotency_key_hash );
 			if ( false === $rows ) {
+				$retryable = $this->query_retryable();
 				$this->rollback();
+				if ( $retryable && $attempt + 1 < self::MAX_CLAIM_ATTEMPTS ) {
+					$this->pause_before_retry( $attempt );
+					continue;
+				}
 				return ExecutionClaimDecision::uncertain();
 			}
 			if ( 1 < count( $rows ) ) {
@@ -117,6 +122,7 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 				}
 
 				$this->rollback();
+				$this->pause_before_retry( $attempt );
 				continue;
 			}
 
@@ -142,6 +148,7 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 			}
 
 			$this->rollback();
+			$this->pause_before_retry( $attempt );
 		}
 
 		return ExecutionClaimDecision::uncertain();
@@ -495,6 +502,23 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 		global $wpdb;
 
 		return '' !== trim( (string) ( $wpdb->last_error ?? '' ) );
+	}
+
+	private function query_retryable(): bool {
+		global $wpdb;
+
+		$error = strtolower( (string) ( $wpdb->last_error ?? '' ) );
+		return str_contains( $error, 'deadlock' )
+			|| str_contains( $error, 'lock wait timeout' )
+			|| str_contains( $error, 'database is locked' );
+	}
+
+	private function pause_before_retry( int $attempt ): void {
+		if ( $attempt + 1 >= self::MAX_CLAIM_ATTEMPTS ) {
+			return;
+		}
+
+		usleep( random_int( 1000, 4000 ) * ( $attempt + 1 ) );
 	}
 
 	private static function valid_hash( string $hash ): bool {

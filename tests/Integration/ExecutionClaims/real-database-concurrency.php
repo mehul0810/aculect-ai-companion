@@ -298,7 +298,7 @@ function aculect_claims_prove_scenario( string $scenario ): void {
 	}
 	foreach ( $outcomes as $outcome ) {
 		if ( ! in_array( $outcome, array( ExecutionClaimDecision::ACQUIRED, ExecutionClaimDecision::IN_PROGRESS, ExecutionClaimDecision::REPLAY ), true ) ) {
-			throw new RuntimeException( 'Worker returned an unsafe decision.' );
+				throw new RuntimeException( 'Worker returned an unsafe decision: ' . $outcome );
 		}
 	}
 }

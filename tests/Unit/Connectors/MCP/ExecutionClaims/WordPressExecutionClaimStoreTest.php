@@ -134,6 +134,16 @@ final class WordPressExecutionClaimStoreTest extends TestCase {
 		self::assertArrayHasKey( 2, $this->wpdb->rows );
 	}
 
+	public function test_transient_deadlock_selection_and_insert_failures_retry_before_dispatch(): void {
+		$this->wpdb->failed_selections = 1;
+		$this->wpdb->failed_inserts    = 1;
+
+		$decision = $this->store()->claim( $this->hash( 'retry-payload' ), $this->hash( 'tool' ), $this->hash( 'identity' ), null, $this->hash( 'retry-idem' ), true, null, false, 86400 );
+
+		self::assertSame( ExecutionClaimDecision::ACQUIRED, $decision->type );
+		self::assertCount( 1, $this->wpdb->rows );
+	}
+
 	private function store(): WordPressExecutionClaimStore {
 		return new WordPressExecutionClaimStore(
 			fn (): int => $this->now,
@@ -159,9 +169,11 @@ final readonly class ExecutionClaimPreparedQuery {
 
 /** Stateful wpdb double implementing the fixed claim-store SQL contract. */
 final class ExecutionClaimWpdb {
-	public string $prefix     = 'wp_';
-	public string $last_error = '';
-	public int $insert_id     = 0;
+	public string $prefix         = 'wp_';
+	public string $last_error     = '';
+	public int $insert_id         = 0;
+	public int $failed_selections = 0;
+	public int $failed_inserts    = 0;
 	/**
 	 * In-memory claim rows.
 	 *
@@ -185,6 +197,10 @@ final class ExecutionClaimWpdb {
 	 */
 	public function insert( string $table, array $data ): int|false {
 		unset( $table );
+		if ( 0 < $this->failed_inserts-- ) {
+			$this->last_error = 'Deadlock found when trying to get lock';
+			return false;
+		}
 		foreach ( $this->rows as $row ) {
 			foreach ( array( 'confirmation_key_hash', 'idempotency_key_hash' ) as $key ) {
 				if ( null !== ( $data[ $key ] ?? null ) && ( $data[ $key ] ?? null ) === ( $row[ $key ] ?? null ) ) {
@@ -212,6 +228,10 @@ final class ExecutionClaimWpdb {
 	 */
 	public function get_results( ExecutionClaimPreparedQuery $query, string $format ): array {
 		unset( $format );
+		if ( 0 < $this->failed_selections-- ) {
+			$this->last_error = 'Deadlock found when trying to get lock';
+			return array();
+		}
 		if ( str_starts_with( $query->template, 'SELECT id FROM' ) ) {
 			$cutoff = (string) $query->args[2];
 			$limit  = (int) $query->args[3];

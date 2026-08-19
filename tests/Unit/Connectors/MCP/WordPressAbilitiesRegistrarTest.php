@@ -272,7 +272,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 					'properties' => array(),
 				),
 				'meta'          => array(
-					'show_in_rest' => true,
+					'public' => true,
 				),
 			)
 		);

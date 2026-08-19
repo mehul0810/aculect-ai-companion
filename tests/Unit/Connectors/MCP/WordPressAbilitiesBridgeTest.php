@@ -74,7 +74,7 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( array( 'post_id' => 123 ), $result['result'] );
 	}
 
-	public function test_run_returns_permission_error_without_permission_callback(): void {
+	public function test_run_denies_execution_without_permission_callback(): void {
 		$this->register_public_ability();
 
 		$result = ( new WordPressAbilitiesBridge() )->run(
@@ -84,10 +84,10 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 			)
 		);
 
-		self::assertSame( 'permission_callback_unavailable', $result['error'] );
+		self::assertSame( 'forbidden', $result['error'] );
 	}
 
-	public function test_run_returns_permission_callback_wp_error(): void {
+	public function test_run_redacts_permission_callback_wp_error(): void {
 		$this->register_public_ability(
 			array(
 				'permission_callback' => static fn (): WP_Error => new WP_Error( 'custom_denied', 'Custom denial.' ),
@@ -102,8 +102,209 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 			)
 		);
 
-		self::assertSame( 'custom_denied', $result['error'] );
-		self::assertSame( 'Custom denial.', $result['message'] );
+		self::assertSame( 'forbidden', $result['error'] );
+		self::assertSame( 'You do not have permission to execute this WordPress ability.', $result['message'] );
+	}
+
+	public function test_run_delegates_normalization_permission_and_pre_execution_to_native_ability(): void {
+		$ability = new class() {
+
+			/**
+			 * Observed native lifecycle events.
+			 *
+			 * @var list<string>
+			 */
+			public array $events;
+
+			public function get_name(): string {
+				return 'external-plugin/native-lifecycle';
+			}
+
+			public function get_label(): string {
+				return 'Native lifecycle';
+			}
+
+			public function get_description(): string {
+				return 'Uses the WordPress native execution lifecycle.';
+			}
+
+			public function get_category(): string {
+				return 'external';
+			}
+
+			/**
+			 * Return the input schema.
+			 *
+			 * @return array<string, mixed>
+			 */
+			public function get_input_schema(): array {
+				return array(
+					'type'       => 'object',
+					'properties' => array(),
+				);
+			}
+
+			/**
+			 * Return the output schema.
+			 *
+			 * @return array<string, mixed>
+			 */
+			public function get_output_schema(): array {
+				return array(
+					'type'       => 'object',
+					'properties' => array(),
+				);
+			}
+
+			/**
+			 * Return public ability metadata.
+			 *
+			 * @return array<string, mixed>
+			 */
+			public function get_meta(): array {
+				return array(
+					'show_in_rest' => true,
+					'annotations'  => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				);
+			}
+
+			/**
+			 * A manual raw permission check would deny this input.
+			 *
+			 * @param array<string, mixed> $input Raw input.
+			 */
+			public function check_permissions( array $input ): bool {
+				$this->events[] = 'raw-permission';
+				return false;
+			}
+
+			/**
+			 * Model the WordPress 7.1 execution sequence.
+			 *
+			 * @param array<string, mixed> $input Raw input.
+			 * @return array<string, bool>
+			 */
+			public function execute( array $input ): array {
+				$this->events[]      = 'normalize';
+				$input['normalized'] = true;
+				$this->events[]      = 'normalized-permission';
+				$this->events[]      = 'execute';
+
+				return array( 'normalized' => $input['normalized'] );
+			}
+		};
+
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array(
+			array(
+				'name' => 'external-plugin/native-lifecycle',
+				'args' => array(
+					'ability_object' => $ability,
+				),
+			),
+		);
+		( new WordPressAbilitiesPolicy() )->save_allowed_ids( array( 'external-plugin/native-lifecycle' ) );
+
+		$result = ( new WordPressAbilitiesBridge() )->run(
+			array(
+				'id'        => 'external-plugin/native-lifecycle',
+				'arguments' => array(),
+			)
+		);
+
+		self::assertSame( array( 'normalized' => true ), $result['result'] );
+		self::assertSame( array( 'normalize', 'normalized-permission', 'execute' ), $ability->events );
+	}
+
+	public function test_get_info_prepares_registered_schemas_for_client_exposure(): void {
+		$this->register_public_ability(
+			array(
+				'input_schema' => array(
+					'type'          => 'object',
+					'properties'    => array(),
+					'x-server-only' => 'do-not-expose',
+				),
+			)
+		);
+
+		$info = ( new WordPressAbilitiesBridge() )->get_info( array( 'id' => 'external-plugin/public-action' ) );
+
+		self::assertArrayNotHasKey( 'x-server-only', $info['inputSchema'] );
+	}
+
+	public function test_high_level_public_meta_is_discoverable_without_rest_specific_meta(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'      => true,
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		$items = ( new WordPressAbilitiesBridge() )->discover()['items'];
+
+		self::assertSame( array( 'external-plugin/public-action' ), array_column( $items, 'id' ) );
+	}
+
+	public function test_explicit_rest_exposure_remains_authoritative_over_high_level_public_meta(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'       => true,
+					'show_in_rest' => false,
+					'annotations'  => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		$bridge = new WordPressAbilitiesBridge();
+
+		self::assertSame( array(), $bridge->discover()['items'] );
+		self::assertSame( 'forbidden', $bridge->get_info( array( 'id' => 'external-plugin/public-action' ) )['error'] );
+	}
+
+	public function test_legacy_mcp_public_meta_remains_a_boolean_only_fallback(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'mcp'         => array( 'public' => true ),
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		self::assertSame(
+			array( 'external-plugin/public-action' ),
+			array_column( ( new WordPressAbilitiesBridge() )->discover()['items'], 'id' )
+		);
+	}
+
+	public function test_non_boolean_public_meta_fails_closed(): void {
+		$this->register_public_ability(
+			array(
+				'meta' => array(
+					'public'      => 'true',
+					'annotations' => array(
+						'readonly'    => true,
+						'destructive' => false,
+					),
+				),
+			)
+		);
+
+		self::assertSame( array(), ( new WordPressAbilitiesBridge() )->discover()['items'] );
 	}
 
 	public function test_first_party_incident_list_cannot_reenter_through_external_bridge(): void {

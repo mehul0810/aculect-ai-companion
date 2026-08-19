@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
-use Aculect\AICompanion\Activity\ActivityRepository;
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
@@ -390,9 +389,10 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function tab_payload( string $payload_tab ): array {
+		$activity_builder = new SettingsActivityPayloadBuilder();
 		$activity_payload = 'activity' === $payload_tab
-			? $this->activity_payload()
-			: $this->empty_activity_payload();
+			? $activity_builder->build( $_GET, $this->settings_url() ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
+			: SettingsActivityPayloadBuilder::empty_payload();
 		$brand_profile    = 'brand' === $payload_tab
 			? ( new BrandProfile() )->admin_payload()
 			: array();
@@ -1286,118 +1286,6 @@ final class SettingsPage {
 			'logs'           => $enabled && $include_logs
 				? $this->logs_payload()
 				: $this->empty_logs_payload(),
-		);
-	}
-
-	/**
-	 * Return a paginated AI activity payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function activity_payload(): array {
-		$repository  = new ActivityRepository();
-		$per_page    = 50;
-		$filters     = $this->activity_filters();
-		$total       = $repository->count( $filters );
-		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
-		$page        = min( max( 1, (int) $filters['page'] ), $total_pages );
-		$filters     = array_merge(
-			$filters,
-			array(
-				'page'     => $page,
-				'per_page' => $per_page,
-			)
-		);
-
-		return array(
-			'summary'    => $repository->summary( $filters ),
-			'items'      => $repository->list( $filters ),
-			'total'      => $total,
-			'page'       => $page,
-			'perPage'    => $per_page,
-			'totalPages' => $total_pages,
-			'filters'    => $filters,
-			'prevUrl'    => $page > 1 ? $this->activity_page_url( $filters, $page - 1 ) : '',
-			'nextUrl'    => $page < $total_pages
-				? $this->activity_page_url( $filters, $page + 1 )
-				: '',
-		);
-	}
-
-	/**
-	 * Return the default empty AI activity payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function empty_activity_payload(): array {
-		return array(
-			'summary'    => array(),
-			'items'      => array(),
-			'total'      => 0,
-			'page'       => 1,
-			'perPage'    => 50,
-			'totalPages' => 1,
-			'filters'    => array(
-				'page'      => 1,
-				'action'    => '',
-				'status'    => '',
-				'user_id'   => 0,
-				'assistant' => '',
-				'search'    => '',
-				'range'     => '7d',
-			),
-			'prevUrl'    => '',
-			'nextUrl'    => '',
-		);
-	}
-
-	/**
-	 * Return sanitized activity filters from the current admin URL.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function activity_filters(): array {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
-		$range = isset( $_GET['activity_range'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_range'] ) ) : '7d';
-		if ( ! in_array( $range, array( '24h', '7d', '30d', '90d', 'all' ), true ) ) {
-			$range = '7d';
-		}
-
-		return array(
-			'page'      => isset( $_GET['activity_page'] ) ? max( 1, absint( $_GET['activity_page'] ) ) : 1,
-			'action'    => isset( $_GET['activity_action'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_action'] ) ) : '',
-			'status'    => isset( $_GET['activity_status'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_status'] ) ) : '',
-			'user_id'   => isset( $_GET['activity_user'] ) ? absint( $_GET['activity_user'] ) : 0,
-			'assistant' => isset( $_GET['activity_assistant'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_assistant'] ) ) : '',
-			'search'    => isset( $_GET['activity_search'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_search'] ) ) : '',
-			'range'     => $range,
-		);
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-	}
-
-	/**
-	 * Build an Activity tab pagination URL.
-	 *
-	 * @param array<string, mixed> $filters Activity filters.
-	 * @param int                  $page    Page number.
-	 */
-	private function activity_page_url( array $filters, int $page ): string {
-		return add_query_arg(
-			array_filter(
-				array(
-					'page'               => 'aculect-ai-companion',
-					'tab'                => 'activity',
-					'activity_page'      => max( 1, $page ),
-					'activity_action'    => (string) ( $filters['action'] ?? '' ),
-					'activity_status'    => (string) ( $filters['status'] ?? '' ),
-					'activity_user'      => (int) ( $filters['user_id'] ?? 0 ),
-					'activity_assistant' => (string) ( $filters['assistant'] ?? '' ),
-					'activity_search'    => (string) ( $filters['search'] ?? '' ),
-					'activity_range'     => (string) ( $filters['range'] ?? '7d' ),
-				),
-				static fn( mixed $value ): bool => '' !== $value && 0 !== $value
-			),
-			$this->settings_url()
 		);
 	}
 

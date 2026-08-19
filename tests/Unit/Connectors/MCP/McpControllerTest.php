@@ -12,6 +12,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 use PHPUnit\Framework\TestCase;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceContext;
 use Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry;
@@ -506,6 +507,100 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'resource_not_found', $resource['error']['data']['code'] ?? '' );
 		self::assertArrayNotHasKey( 'result', $resource );
 		self::assertSame( 'Aculect AI Companion MCP', $resource['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? '' );
+	}
+
+	public function test_tools_call_gateway_errors_have_legacy_and_current_response_goldens(): void {
+		$auth = array(
+			'user_id'   => 1,
+			'client_id' => 'gateway-error-golden-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => Helpers::supported_scopes(),
+			'profile'   => 'full_access',
+		);
+
+		$legacy = new McpController();
+		$this->setPrivateProperty( $legacy, 'request_auth', $auth );
+		$legacy_unknown   = $legacy->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 803,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => 'not_a_real_tool',
+						'arguments' => array(),
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+		$legacy_malformed = $legacy->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 804,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => 'plugin_incident_list',
+						'arguments' => 'not-an-object',
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+
+		$current = new McpController();
+		$this->setPrivateProperty( $current, 'request_auth', $auth );
+		$current_unknown   = $current->handle_rpc(
+			$this->currentProtocolRequest(
+				'tools/call',
+				array(
+					'name'      => 'not_a_real_tool',
+					'arguments' => array(),
+				)
+			)
+		);
+		$current_malformed = $current->handle_rpc(
+			$this->currentProtocolRequest(
+				'tools/call',
+				array(
+					'name'      => 'plugin_incident_list',
+					'arguments' => 'not-an-object',
+				)
+			)
+		);
+
+		self::assertIsArray( $legacy_unknown );
+		self::assertSame( 803, $legacy_unknown['id'] ?? null );
+		self::assertTrue( $legacy_unknown['result']['isError'] ?? false );
+		self::assertSame( 'Unknown tool.', $legacy_unknown['result']['content'][0]['text'] ?? '' );
+		self::assertArrayNotHasKey( 'error', $legacy_unknown );
+		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_unknown['result']['_meta'] ?? array() );
+
+		self::assertIsArray( $current_unknown );
+		self::assertSame( -32602, $current_unknown['error']['code'] ?? null );
+		self::assertSame( 'Invalid params', $current_unknown['error']['message'] ?? '' );
+		self::assertSame( 'unknown_tool', $current_unknown['error']['data']['code'] ?? '' );
+		self::assertArrayNotHasKey( 'result', $current_unknown );
+		self::assertSame( 'Aculect AI Companion MCP', $current_unknown['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? '' );
+
+		foreach ( array( $legacy_malformed, $current_malformed ) as $malformed ) {
+			self::assertIsArray( $malformed );
+			self::assertSame( -32602, $malformed['error']['code'] ?? null );
+			self::assertSame( 'Invalid params', $malformed['error']['message'] ?? '' );
+			self::assertSame( 'invalid_argument_type', $malformed['error']['data']['code'] ?? '' );
+			self::assertSame( 'Tool arguments must be a JSON object.', $malformed['error']['data']['message'] ?? '' );
+			self::assertArrayNotHasKey( 'result', $malformed );
+		}
+
+		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_malformed['_meta'] ?? array() );
+		self::assertSame( 'Aculect AI Companion MCP', $current_malformed['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? '' );
 	}
 
 	public function test_legacy_results_remain_free_of_current_protocol_metadata(): void {
@@ -1675,22 +1770,22 @@ final class McpControllerTest extends TestCase {
 	}
 
 	public function test_global_pause_blocks_tool_calls(): void {
-		$controller = new McpController();
+		$gateway = new AbilityExecutionGateway();
 
-		self::assertFalse( $this->invokePrivate( $controller, 'is_access_paused' ) );
+		self::assertFalse( $gateway->is_access_paused() );
 
 		AccessLockdown::set_paused( true );
 
-		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused' ) );
+		self::assertTrue( $gateway->is_access_paused() );
 	}
 
 	public function test_user_pause_blocks_only_matching_user_tool_calls(): void {
-		$controller = new McpController();
+		$gateway = new AbilityExecutionGateway();
 
 		UserAccessControl::set_paused( 7, true );
 
-		self::assertTrue( $this->invokePrivate( $controller, 'is_access_paused', array( 7 ) ) );
-		self::assertFalse( $this->invokePrivate( $controller, 'is_access_paused', array( 12 ) ) );
+		self::assertTrue( $gateway->is_access_paused( 7 ) );
+		self::assertFalse( $gateway->is_access_paused( 12 ) );
 	}
 
 	public function test_disabled_tools_are_not_listed_and_are_blocked_for_cached_clients(): void {
@@ -1729,121 +1824,102 @@ final class McpControllerTest extends TestCase {
 		self::assertNotContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
 		self::assertNotContains( 'blocks_list_available', $names );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.list_items', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.list', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.save', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'memory.bootstrap', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_guides.list', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow.route_request', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.start', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.get', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'workflow_session.update', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'search', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'fetch', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.items', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_search.chunks', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.related', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_internal_link.policy', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_find.internal_links', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_audit.internal_links', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_batch.status', $registry ) ) );
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'mcp_learning.inspect_activity', $registry ) ) );
-		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry ) ) );
-		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.update_item', $registry ) ) );
-		self::assertSame( 'unknown_tool', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content.not_real', $registry ) ) );
+		$gateway = new AbilityExecutionGateway( $registry );
+		foreach ( array( 'content.list_items', 'memory.list', 'memory.save', 'memory.bootstrap', 'workflow_guides.list', 'workflow.route_request', 'workflow_session.start', 'workflow_session.get', 'workflow_session.update', 'search', 'fetch', 'content_search.items', 'content_search.chunks', 'content_find.related', 'content_internal_link.policy', 'content_find.internal_links', 'content_audit.internal_links', 'content_batch.status', 'mcp_learning.inspect_activity' ) as $tool ) {
+			self::assertSame( '', $this->invokePrivate( $gateway, 'tool_call_error', array( $tool ) ) );
+		}
+		self::assertSame( 'tool_disabled', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content_workflow.create_draft' ) ) );
+		self::assertSame( 'tool_disabled', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content.update_item' ) ) );
+		self::assertSame( 'unknown_tool', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content.not_real' ) ) );
 	}
 
 	public function test_derived_workflow_tool_calls_require_enabled_dependencies(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item' ) );
 
-		self::assertSame( 'tool_disabled', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry, 1 ) ) );
+		self::assertSame( 'tool_disabled', $this->invokePrivate( new AbilityExecutionGateway( $registry ), 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
 
 		$registry->save_enabled_ids( array( 'content.create_item' ) );
 
-		self::assertSame( '', $this->invokePrivate( new McpController(), 'tool_call_error', array( 'content_workflow.create_draft', $registry, 1 ) ) );
+		self::assertSame( '', $this->invokePrivate( new AbilityExecutionGateway( $registry ), 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
 	}
 
 	public function test_scope_checks_require_every_required_scope(): void {
-		$controller = new McpController();
+		$gateway = new AbilityExecutionGateway();
 
-		self::assertTrue( $this->invokePrivate( $controller, 'has_scopes', array( array( 'content:read', 'content:draft' ), array( 'content:draft' ) ) ) );
-		self::assertFalse( $this->invokePrivate( $controller, 'has_scopes', array( array( 'content:read' ), array( 'content:draft' ) ) ) );
+		self::assertTrue( $this->invokePrivate( $gateway, 'has_scopes', array( array( 'content:read', 'content:draft' ), array( 'content:draft' ) ) ) );
+		self::assertFalse( $this->invokePrivate( $gateway, 'has_scopes', array( array( 'content:read' ), array( 'content:draft' ) ) ) );
 	}
 
 	public function test_connection_write_permission_unblocks_only_write_tools(): void {
-		$controller   = new McpController();
-		$registry     = new AbilitiesRegistry();
-		$intelligence = new IntelligenceRegistry();
+		$gateway = new AbilityExecutionGateway();
 
 		self::assertTrue(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'content.update_item',
-					$registry,
 					array( 'write_permission_enabled' => true ),
+					false,
 				)
 			)
 		);
 		self::assertTrue(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'content.update_item',
-					$registry,
 					array(
 						'write_permission_enabled' => false,
 						'access_level'             => ConnectionAccessLevel::FULL_WRITE,
 					),
+					false,
 				)
 			)
 		);
 		self::assertFalse(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'content.update_item',
-					$registry,
 					array( 'write_permission_enabled' => false ),
+					false,
 				)
 			)
 		);
 		self::assertFalse(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'content.get_item',
-					$registry,
 					array( 'write_permission_enabled' => true ),
+					false,
 				)
 			)
 		);
 		self::assertTrue(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'plugin.incident.report',
-					$registry,
 					array( 'write_permission_enabled' => true ),
-					$intelligence,
+					true,
 				)
 			)
 		);
 		self::assertFalse(
 			$this->invokePrivate(
-				$controller,
+				$gateway,
 				'write_permission_unblocks_tool',
 				array(
 					'plugin.incident.list',
-					$registry,
 					array( 'write_permission_enabled' => true ),
-					$intelligence,
+					true,
 				)
 			)
 		);
@@ -1851,7 +1927,7 @@ final class McpControllerTest extends TestCase {
 
 	public function test_write_permission_preview_removes_confirmation_metadata(): void {
 		$result = $this->invokePrivate(
-			new McpController(),
+			new AbilityExecutionGateway(),
 			'write_permission_preview_payload',
 			array(
 				array(
@@ -1874,7 +1950,7 @@ final class McpControllerTest extends TestCase {
 
 	public function test_trusted_write_result_removes_confirmation_metadata(): void {
 		$result = $this->invokePrivate(
-			new McpController(),
+			new AbilityExecutionGateway(),
 			'trusted_write_result_payload',
 			array(
 				array(
@@ -1932,6 +2008,187 @@ final class McpControllerTest extends TestCase {
 
 		self::assertStringContainsString( 'scope="content:read content:draft"', $header );
 		self::assertStringContainsString( 'scope="content:read content:draft"', $data['result']['_meta']['mcp/www_authenticate'][0] );
+	}
+
+	public function test_tools_call_scope_denial_has_legacy_and_current_response_goldens(): void {
+		$auth   = array(
+			'user_id'   => 1,
+			'client_id' => 'golden-scope-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array(),
+			'profile'   => 'full_access',
+		);
+		$legacy = new McpController();
+		$this->setPrivateProperty( $legacy, 'request_auth', $auth );
+		$legacy_response = $legacy->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 801,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => 'plugin_incident_report',
+						'arguments' => array(
+							'title'   => 'Scope golden',
+							'summary' => 'A scope challenge has a stable envelope.',
+						),
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+		$current         = new McpController();
+		$this->setPrivateProperty( $current, 'request_auth', $auth );
+		$current_response = $current->handle_rpc(
+			$this->currentProtocolRequest(
+				'tools/call',
+				array(
+					'name'      => 'plugin_incident_report',
+					'arguments' => array(
+						'title'   => 'Scope golden',
+						'summary' => 'A scope challenge has a stable envelope.',
+					),
+				)
+			)
+		);
+
+		foreach ( array( $legacy_response, $current_response ) as $response ) {
+			self::assertInstanceOf( \WP_REST_Response::class, $response );
+			self::assertSame( 403, $response->get_status() );
+			self::assertStringContainsString( 'insufficient_scope', (string) $response->header( 'WWW-Authenticate' ) );
+			self::assertSame( 'Authorization required.', $response->get_data()['result']['content'][0]['text'] ?? '' );
+			self::assertTrue( $response->get_data()['result']['isError'] ?? false );
+		}
+
+		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $legacy_response->header( 'MCP-Protocol-Version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $current_response->header( 'MCP-Protocol-Version' ) );
+		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_response->get_data()['result']['_meta'] ?? array() );
+		self::assertArrayHasKey( 'io.modelcontextprotocol/serverInfo', $current_response->get_data()['result']['_meta'] ?? array() );
+	}
+
+	public function test_tools_call_normal_policy_denial_has_legacy_and_current_response_goldens(): void {
+		$auth = array(
+			'user_id'   => 1,
+			'client_id' => 'golden-paused-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => Helpers::supported_scopes(),
+			'profile'   => 'full_access',
+		);
+		AccessLockdown::set_paused( true );
+
+		try {
+			$legacy = new McpController();
+			$this->setPrivateProperty( $legacy, 'request_auth', $auth );
+			$legacy_response = $legacy->handle_rpc(
+				new WP_REST_Request(
+					array(),
+					array(),
+					array(
+						'jsonrpc' => '2.0',
+						'id'      => 805,
+						'method'  => 'tools/call',
+						'params'  => array(
+							'name'      => 'plugin_incident_report',
+							'arguments' => array(
+								'title'   => 'Paused golden',
+								'summary' => 'A normal policy denial must retain the tool result envelope.',
+							),
+						),
+					),
+					'POST',
+					'/aculect-ai-companion/v1/mcp'
+				)
+			);
+			$current         = new McpController();
+			$this->setPrivateProperty( $current, 'request_auth', $auth );
+			$current_response = $current->handle_rpc(
+				$this->currentProtocolRequest(
+					'tools/call',
+					array(
+						'name'      => 'plugin_incident_report',
+						'arguments' => array(
+							'title'   => 'Paused golden',
+							'summary' => 'A normal policy denial must retain the tool result envelope.',
+						),
+					)
+				)
+			);
+		} finally {
+			AccessLockdown::set_paused( false );
+		}
+
+		foreach ( array( $legacy_response, $current_response ) as $response ) {
+			self::assertIsArray( $response );
+			self::assertArrayNotHasKey( 'error', $response );
+			self::assertTrue( $response['result']['isError'] ?? false );
+			self::assertSame( 'AI access is paused in Aculect AI Companion settings.', $response['result']['content'][0]['text'] ?? '' );
+			self::assertInstanceOf( \stdClass::class, $response['result']['structuredContent'] ?? null );
+		}
+
+		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_response['result']['_meta'] ?? array() );
+		self::assertSame(
+			'Aculect AI Companion MCP',
+			$current_response['result']['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? ''
+		);
+	}
+
+	public function test_tools_call_success_has_legacy_and_current_response_goldens(): void {
+		$auth   = array(
+			'user_id'   => 1,
+			'client_id' => 'golden-success-client',
+			'provider'  => 'chatgpt',
+			'scopes'    => array( 'content:read' ),
+			'profile'   => 'full_access',
+		);
+		$legacy = new McpController();
+		$this->setPrivateProperty( $legacy, 'request_auth', $auth );
+		$legacy_response = $legacy->handle_rpc(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 802,
+					'method'  => 'tools/call',
+					'params'  => array(
+						'name'      => 'plugin_incident_list',
+						'arguments' => array(),
+					),
+				),
+				'POST',
+				'/aculect-ai-companion/v1/mcp'
+			)
+		);
+		$current         = new McpController();
+		$this->setPrivateProperty( $current, 'request_auth', $auth );
+		$current_response = $current->handle_rpc(
+			$this->currentProtocolRequest(
+				'tools/call',
+				array(
+					'name'      => 'plugin_incident_list',
+					'arguments' => array(),
+				)
+			)
+		);
+
+		foreach ( array( $legacy_response, $current_response ) as $response ) {
+			self::assertIsArray( $response );
+			self::assertArrayNotHasKey( 'error', $response );
+			self::assertSame(
+				wp_json_encode( $response['result']['structuredContent'] ?? array() ),
+				$response['result']['content'][0]['text'] ?? ''
+			);
+			self::assertArrayNotHasKey( 'isError', $response['result'] ?? array() );
+		}
+
+		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_response['result']['_meta'] ?? array() );
+		self::assertSame(
+			'Aculect AI Companion MCP',
+			$current_response['result']['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? ''
+		);
 	}
 
 	/**

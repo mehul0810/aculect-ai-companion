@@ -15,7 +15,8 @@ test( 'editor internal-link panel registers a document settings panel', () => {
 		source,
 		/registerPlugin\( 'aculect-ai-companion-internal-link-suggestions'/
 	);
-	assert.match( source, /PluginDocumentSettingPanel/ );
+	assert.match( source, /wp\.editor\.PluginDocumentSettingPanel/ );
+	assert.match( source, /wp\.editPost\.PluginDocumentSettingPanel/ );
 	assert.match( source, /Aculect internal links/ );
 } );
 

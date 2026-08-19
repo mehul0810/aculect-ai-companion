@@ -34,7 +34,7 @@ final class WorkflowAdapterRegistry {
 	 * @param list<WorkflowAdapterInterface>|null $adapters Explicit adapters for tests/composition.
 	 */
 	public function __construct( ?array $adapters = null ) {
-		$this->adapters = $this->key_by_identity( $adapters ?? array( new WordPressReadAdapter() ) );
+		$this->adapters = $this->key_by_identity( $adapters ?? array( new ContentPlannerAdapter(), new WordPressReadAdapter() ) );
 	}
 
 	/**

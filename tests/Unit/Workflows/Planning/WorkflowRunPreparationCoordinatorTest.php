@@ -22,6 +22,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowRunPreparationCoordinator;
 use Aculect\AICompanion\Workflows\Planning\WorkflowRunState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowStateSnapshot;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 /**
  * Locks pure preflight composition without execution or persistence.
@@ -46,8 +47,8 @@ final class WorkflowRunPreparationCoordinatorTest extends TestCase {
 			WorkflowInputContract::from_json( '{}' ),
 			WorkflowAvailabilitySnapshot::from_value(
 				array(
-					'adapters'  => array(),
-					'abilities' => array(),
+					'availability_schema_version' => 2,
+					'bindings'                    => array(),
 				)
 			)
 		);
@@ -68,18 +69,27 @@ final class WorkflowRunPreparationCoordinatorTest extends TestCase {
 			WorkflowInputContract::from_json( '{"brief":"Missing dependencies"}' ),
 			WorkflowAvailabilitySnapshot::from_value(
 				array(
-					'adapters'  => array(
+					'availability_schema_version' => 2,
+					'bindings'                    => array(
 						array(
-							'adapter_id'       => 'wordpress',
-							'adapter_versions' => array( 2 ),
+							'adapter_id'      => 'wordpress',
+							'adapter_version' => 2,
+							'ability_id'      => 'content/get-item',
+							'kind'            => 'read',
 						),
 					),
-					'abilities' => array( 'content/get-item' ),
 				)
 			)
 		);
 
 		self::assertSame( $plan->hash(), $result->plan()->hash() );
+		self::assertSame(
+			array(
+				'content_planner@1|content/prepare-draft|proposal',
+				'wordpress@1|content/create-draft|write',
+			),
+			$result->readiness()->missing_bindings()
+		);
 		self::assertSame( array( 'content_planner@1', 'wordpress@1' ), $result->readiness()->missing_adapters() );
 		self::assertSame( array( 'content/create-draft', 'content/prepare-draft' ), $result->readiness()->missing_abilities() );
 		self::assertSame( 'requirements_unchecked', $result->readiness()->requirements_error() );
@@ -152,12 +162,21 @@ final class WorkflowRunPreparationCoordinatorTest extends TestCase {
 	}
 
 	private function availability( WorkflowPlan $plan ): WorkflowAvailabilitySnapshot {
-		$identity = $plan->identity();
+		$bindings = array();
+		foreach ( $plan->identity()['steps'] as $step_value ) {
+			$step       = $step_value instanceof stdClass ? get_object_vars( $step_value ) : $step_value;
+			$bindings[] = array(
+				'adapter_id'      => $step['adapter_id'],
+				'adapter_version' => $step['adapter_version'],
+				'ability_id'      => $step['ability_id'],
+				'kind'            => $step['kind'],
+			);
+		}
 
 		return WorkflowAvailabilitySnapshot::from_value(
 			array(
-				'adapters'  => $identity['adapter_requirements'],
-				'abilities' => $identity['ability_requirements'],
+				'availability_schema_version' => 2,
+				'bindings'                    => $bindings,
 			)
 		);
 	}

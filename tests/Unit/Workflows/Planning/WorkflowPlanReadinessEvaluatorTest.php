@@ -17,109 +17,76 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanReadinessEvaluator;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningException;
 use Aculect\AICompanion\Workflows\Planning\WorkflowReadinessEvidence;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 
 /**
- * Locks exact version-aware requirement evaluation and bounded failures.
+ * Locks exact tuple-aware requirement evaluation and bounded failures.
  */
 final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 
-	public function test_exact_and_extra_availability_produces_ready_bound_evidence(): void {
-		$plan     = $this->ordered_plan();
-		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
-			$plan,
-			$this->snapshot(
-				array(
-					array(
-						'adapter_id'       => 'wordpress',
-						'adapter_versions' => array( 9, 2, 1 ),
-					),
-					array(
-						'adapter_id'       => 'content_planner',
-						'adapter_versions' => array( 1, 7 ),
-					),
-				),
-				array( 'content/prepare-draft', 'content/create-draft', 'content/get-item' )
-			)
-		);
+	public function test_exact_and_extra_bindings_produce_ready_bound_evidence(): void {
+		$plan       = $this->ordered_plan();
+		$bindings   = $this->plan_bindings( $plan );
+		$bindings[] = $this->binding( 'wordpress', 9, 'content/get-item', 'read' ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- Exact lowercase adapter identifier.
+		$evidence   = ( new WorkflowPlanReadinessEvaluator() )->evaluate( $plan, $this->snapshot( $bindings ) );
 
 		self::assertNull( $evidence->binding_error_for( $plan ) );
 		self::assertNull( $evidence->requirements_error() );
 		self::assertSame( 'validation_unchecked', $evidence->validation_error_for( $plan ) );
+		self::assertSame( array(), $evidence->missing_bindings() );
 		self::assertSame( array(), $evidence->missing_adapters() );
 		self::assertSame( array(), $evidence->missing_abilities() );
 	}
 
-	public function test_every_exact_step_adapter_version_is_required_even_when_metadata_groups_versions(): void {
-		$plan                  = $this->ordered_plan();
-		$identity              = $plan->identity();
-		$expected_requirements = wp_json_encode(
-			array(
-				array(
-					'adapter_id'       => 'content_planner',
-					'adapter_versions' => array( 1 ),
-				),
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 1, 2 ),
-				),
-			)
-		);
-		$actual_requirements   = wp_json_encode( $identity['adapter_requirements'] );
-		self::assertIsString( $expected_requirements );
-		self::assertIsString( $actual_requirements );
-		self::assertJsonStringEqualsJsonString( $expected_requirements, $actual_requirements );
-
-		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
-			$plan,
-			$this->snapshot(
-				array(
-					array(
-						'adapter_id'       => 'content_planner',
-						'adapter_versions' => array( 1 ),
-					),
-					array(
-						'adapter_id'       => 'wordpress',
-						'adapter_versions' => array( 2 ),
-					),
-				),
-				$identity['ability_requirements']
-			)
-		);
-
-		self::assertSame( 'requirements_unchecked', $evidence->requirements_error() );
-		self::assertSame( array( 'wordpress@1' ), $evidence->missing_adapters() );
-	}
-
-	public function test_wrong_versions_and_missing_abilities_are_sorted_and_fail_closed(): void {
+	public function test_cross_paired_adapter_and_ability_do_not_satisfy_exact_bindings(): void {
 		$plan     = $this->ordered_plan();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
 			$this->snapshot(
 				array(
-					array(
-						'adapter_id'       => 'wordpress',
-						'adapter_versions' => array( 3 ),
-					),
-				),
-				array( 'content/get-item' )
+					$this->binding( 'wordpress', 2, 'content/prepare-draft', 'read' ),
+					$this->binding( 'content_planner', 1, 'content/get-item', 'proposal' ),
+					$this->binding( 'wordpress', 1, 'content/create-draft', 'write' ),
+				)
 			)
 		);
 
 		self::assertSame( 'requirements_unchecked', $evidence->requirements_error() );
 		self::assertSame(
-			array( 'content_planner@1', 'wordpress@1', 'wordpress@2' ),
-			$evidence->missing_adapters()
-		);
-		self::assertSame(
-			array( 'content/create-draft', 'content/prepare-draft' ),
-			$evidence->missing_abilities()
+			array(
+				'content_planner@1|content/prepare-draft|proposal',
+				'wordpress@2|content/get-item|read',
+			),
+			$evidence->missing_bindings()
 		);
 	}
 
-	public function test_repeated_exact_step_version_is_reported_once_when_missing(): void {
+	public function test_wrong_kind_and_wrong_version_fail_closed_even_with_same_ability(): void {
+		$plan     = $this->ordered_plan();
+		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
+			$plan,
+			$this->snapshot(
+				array(
+					$this->binding( 'wordpress', 3, 'content/get-item', 'read' ),
+					$this->binding( 'content_planner', 1, 'content/prepare-draft', 'read' ),
+					$this->binding( 'wordpress', 1, 'content/create-draft', 'write' ),
+				)
+			)
+		);
+
+		self::assertSame(
+			array(
+				'content_planner@1|content/prepare-draft|proposal',
+				'wordpress@2|content/get-item|read',
+			),
+			$evidence->missing_bindings()
+		);
+		self::assertSame( array( 'content_planner@1', 'wordpress@2' ), $evidence->missing_adapters() );
+		self::assertSame( array( 'content/get-item', 'content/prepare-draft' ), $evidence->missing_abilities() );
+	}
+
+	public function test_repeated_exact_binding_is_reported_once_when_missing(): void {
 		$json = file_get_contents( dirname( __DIR__, 3 ) . '/fixtures/workflows/definitions/ordered-multi-step-v1.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Repository-owned local fixture.
 		self::assertIsString( $json );
 		$value = json_decode( $json );
@@ -131,80 +98,44 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		$definition_json   = wp_json_encode( $value );
 		self::assertIsString( $definition_json );
 
-		$plan     = ( new WorkflowPlanBuilder() )->build(
+		$plan      = ( new WorkflowPlanBuilder() )->build(
 			WorkflowDefinition::from_json( $definition_json ),
-			WorkflowInputContract::from_json( '{"brief":"Repeated adapter"}' )
+			WorkflowInputContract::from_json( '{"brief":"Repeated binding"}' )
 		);
-		$identity = $plan->identity();
-		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
-			$plan,
-			$this->snapshot(
-				array(
-					array(
-						'adapter_id'       => 'content_planner',
-						'adapter_versions' => array( 1 ),
-					),
-					array(
-						'adapter_id'       => 'wordpress',
-						'adapter_versions' => array( 1 ),
-					),
-				),
-				$identity['ability_requirements']
+		$available = array_values(
+			array_filter(
+				$this->plan_bindings( $plan ),
+				static fn ( array $binding ): bool => 2 !== $binding['adapter_version']
 			)
 		);
+		$evidence  = ( new WorkflowPlanReadinessEvaluator() )->evaluate( $plan, $this->snapshot( $available ) );
 
-		self::assertSame( array( 'wordpress@2' ), $evidence->missing_adapters() );
+		self::assertSame( array( 'wordpress@2|content/get-item|read' ), $evidence->missing_bindings() );
 	}
 
-	public function test_equivalent_availability_order_is_deterministic_and_detached(): void {
-		$first  = $this->snapshot(
-			array(
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 2, 1 ),
-				),
-				array(
-					'adapter_id'       => 'content_planner',
-					'adapter_versions' => array( 1 ),
-				),
-			),
-			array( 'content/prepare-draft', 'content/get-item', 'content/create-draft' )
-		);
-		$second = $this->snapshot(
-			array(
-				array(
-					'adapter_id'       => 'content_planner',
-					'adapter_versions' => array( 1 ),
-				),
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 1, 2 ),
-				),
-			),
-			array( 'content/create-draft', 'content/get-item', 'content/prepare-draft' )
-		);
+	public function test_equivalent_binding_order_is_deterministic_and_detached(): void {
+		$plan     = $this->ordered_plan();
+		$bindings = $this->plan_bindings( $plan );
+		$first    = $this->snapshot( $bindings );
+		$second   = $this->snapshot( array_reverse( $bindings ) );
 
-		self::assertSame( $first->adapters(), $second->adapters() );
-		self::assertSame( $first->abilities(), $second->abilities() );
-
-		$copy                           = $first->adapters();
-		$copy[0]['adapter_versions'][0] = 999;
-		self::assertSame( 1, $first->adapters()[0]['adapter_versions'][0] );
+		self::assertSame( $first->bindings(), $second->bindings() );
+		$copy                       = $first->bindings();
+		$copy[0]['adapter_version'] = 999;
+		self::assertNotSame( 999, $first->bindings()[0]['adapter_version'] );
 
 		$evaluator = new WorkflowPlanReadinessEvaluator();
-		$plan      = $this->ordered_plan();
 		self::assertSame(
-			$evaluator->evaluate( $plan, $first )->missing_adapters(),
-			$evaluator->evaluate( $plan, $second )->missing_adapters()
+			$evaluator->evaluate( $plan, $first )->missing_bindings(),
+			$evaluator->evaluate( $plan, $second )->missing_bindings()
 		);
 	}
 
 	public function test_no_validation_rules_produces_fully_ready_evidence(): void {
 		$plan     = $this->proposal_plan();
-		$identity = $plan->identity();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
-			$this->snapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
+			$this->snapshot( $this->plan_bindings( $plan ) )
 		);
 
 		self::assertNull( $evidence->requirements_error() );
@@ -214,10 +145,9 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 	public function test_evidence_is_bound_to_exact_plan_hash_and_contains_no_input(): void {
 		$first    = $this->ordered_plan( '{"brief":"private first brief"}' );
 		$second   = $this->ordered_plan( '{"brief":"private second brief"}' );
-		$identity = $first->identity();
 		$evidence = ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$first,
-			$this->snapshot( $identity['adapter_requirements'], $identity['ability_requirements'] )
+			$this->snapshot( $this->plan_bindings( $first ) )
 		);
 
 		self::assertNull( $evidence->binding_error_for( $first ) );
@@ -227,7 +157,29 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 		self::assertStringNotContainsString( 'private second brief', $serialized_evidence );
 	}
 
-	public function test_checked_evidence_factory_has_one_production_caller(): void {
+	public function test_internal_checked_factory_rejects_malformed_missing_binding_tokens(): void {
+		$plan    = $this->ordered_plan();
+		$invalid = array(
+			array( 'wordpress@2|content/get-item|read', 'content_planner@1|content/prepare-draft|proposal' ),
+			array( 'wordpress@2|content/get-item|read', 'wordpress@2|content/get-item|read' ),
+			array( 'wordpress@0|content/get-item|read' ),
+			array( 'wordpress@1|content/get-item|execute' ),
+			array( 'wordpress@1|content/*|read' ),
+			array( 'wordpress@999999999999999999999999|content/get-item|read' ),
+			array( 'wordpress@1|content/' . str_repeat( 'a', 121 ) . '|read' ),
+		);
+
+		foreach ( $invalid as $missing ) {
+			try {
+				WorkflowReadinessEvidence::from_evaluation( $plan, $missing );
+				self::fail( 'Expected invalid missing evidence.' );
+			} catch ( WorkflowPlanningException $exception ) {
+				self::assertSame( 'invalid_request', $exception->error_code() );
+			}
+		}
+	}
+
+	public function test_checked_evidence_factory_has_one_production_caller_and_no_inference_source(): void {
 		$source_root = dirname( __DIR__, 4 ) . '/src';
 		$matches     = array();
 		$iterator    = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $source_root ) );
@@ -240,114 +192,83 @@ final class WorkflowPlanReadinessEvaluatorTest extends TestCase {
 				$matches[] = $file->getFilename();
 			}
 		}
-
 		self::assertSame( array( 'WorkflowPlanReadinessEvaluator.php' ), $matches );
+
+		$evaluator_source = file_get_contents( $source_root . '/Workflows/Planning/WorkflowPlanReadinessEvaluator.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Test-only architecture guard.
+		self::assertIsString( $evaluator_source );
+		self::assertStringContainsString( '->bindings()', $evaluator_source );
+		self::assertStringNotContainsString( '->adapters()', $evaluator_source );
+		self::assertStringNotContainsString( '->abilities()', $evaluator_source );
 	}
 
-	public function test_internal_checked_factory_rejects_malformed_missing_details(): void {
-		$plan    = $this->ordered_plan();
-		$invalid = array(
-			array( array( 'wordpress@2', 'wordpress@1' ), array() ),
-			array( array( 'wordpress@1', 'wordpress@1' ), array() ),
-			array( array( 'wordpress@0' ), array() ),
-			array( array(), array( 'content/get-item', 'content/get-item' ) ),
+	public function test_pure_readiness_sources_have_no_runtime_storage_hook_or_public_integration(): void {
+		$source_root = dirname( __DIR__, 4 ) . '/src/Workflows/Planning/';
+		$forbidden   = array(
+			'wpdb',
+			'get_option',
+			'set_transient',
+			'wp_cache',
+			'do_action',
+			'apply_filters',
+			'AbilityExecutionGateway',
+			'WorkflowAdapterRegistry',
+			'register_rest_route',
+			'OAuth',
+			'Admin',
 		);
 
-		foreach ( $invalid as $missing ) {
-			try {
-				WorkflowReadinessEvidence::from_evaluation( $plan, $missing[0], $missing[1] );
-				self::fail( 'Expected invalid missing evidence.' );
-			} catch ( WorkflowPlanningException $exception ) {
-				self::assertSame( 'invalid_request', $exception->error_code() );
+		foreach ( array( 'WorkflowAvailabilitySnapshot.php', 'WorkflowPlanReadinessEvaluator.php', 'WorkflowReadinessEvidence.php' ) as $filename ) {
+			$source = file_get_contents( $source_root . $filename ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Test-only architecture guard.
+			self::assertIsString( $source );
+			foreach ( $forbidden as $needle ) {
+				self::assertStringNotContainsString( $needle, $source, $filename . ' must remain pure.' );
 			}
 		}
 	}
 
 	/**
-	 * Verify malformed snapshots fail closed with bounded errors.
+	 * Build one v2 exact-binding snapshot.
 	 *
-	 * @param array  $adapters  Invalid adapters.
-	 * @param array  $abilities Invalid abilities.
-	 * @param string $code      Expected error code.
+	 * @param array $bindings Exact binding tuples.
 	 */
-	#[DataProvider( 'invalid_snapshot_provider' )]
-	public function test_malformed_snapshots_fail_closed( array $adapters, array $abilities, string $code ): void {
-		try {
-			$this->snapshot( $adapters, $abilities );
-			self::fail( 'Expected snapshot failure.' );
-		} catch ( WorkflowPlanningException $exception ) {
-			self::assertSame( $code, $exception->error_code() );
-			self::assertLessThanOrEqual( 96, strlen( $exception->path() ) );
-		}
-	}
-
-	/**
-	 * Return invalid snapshot fixtures.
-	 *
-	 * @return iterable<string, array{0:array,1:array,2:string}>
-	 */
-	public static function invalid_snapshot_provider(): iterable {
-		yield 'duplicate adapter' => array(
-			array(
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 1 ),
-				),
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 2 ),
-				),
-			),
-			array(),
-			'duplicate_adapter_id',
-		);
-		yield 'duplicate version' => array(
-			array(
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 1, 1 ),
-				),
-			),
-			array(),
-			'duplicate_adapter_version',
-		);
-		yield 'coerced version' => array(
-			array(
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( '1' ),
-				),
-			),
-			array(),
-			'invalid_adapter_version',
-		);
-		yield 'case folded adapter' => array(
-			array(
-				array(
-					'adapter_id'       => 'WordPress',
-					'adapter_versions' => array( 1 ),
-				),
-			),
-			array(),
-			'invalid_adapter_id',
-		);
-		yield 'duplicate ability' => array( array(), array( 'content/get-item', 'content/get-item' ), 'duplicate_ability_id' );
-		yield 'wildcard ability' => array( array(), array( 'content/*' ), 'invalid_ability_id' );
-	}
-
-	/**
-	 * Build one object-shaped availability fixture.
-	 *
-	 * @param array $adapters  Adapter availability.
-	 * @param array $abilities Ability availability.
-	 */
-	private function snapshot( array $adapters, array $abilities ): WorkflowAvailabilitySnapshot {
+	private function snapshot( array $bindings ): WorkflowAvailabilitySnapshot {
 		return WorkflowAvailabilitySnapshot::from_value(
 			array(
-				'adapters'  => $adapters,
-				'abilities' => $abilities,
+				'availability_schema_version' => 2,
+				'bindings'                    => $bindings,
 			)
 		);
+	}
+
+	/**
+	 * Project the exact step tuples from one immutable plan.
+	 *
+	 * @param WorkflowPlan $plan Immutable plan.
+	 *
+	 * @return list<array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}>
+	 */
+	private function plan_bindings( WorkflowPlan $plan ): array {
+		$bindings = array();
+		foreach ( $plan->identity()['steps'] as $step_value ) {
+			$step       = $step_value instanceof stdClass ? get_object_vars( $step_value ) : $step_value;
+			$bindings[] = $this->binding( $step['adapter_id'], $step['adapter_version'], $step['ability_id'], $step['kind'] );
+		}
+
+		return $bindings;
+	}
+
+	/**
+	 * Build one exact binding tuple.
+	 *
+	 * @param string $adapter_id      Exact adapter ID.
+	 * @param int    $adapter_version Exact adapter version.
+	 * @param string $ability_id      Exact ability ID.
+	 * @param string $kind            Exact binding kind.
+	 *
+	 * @return array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}
+	 */
+	private function binding( string $adapter_id, int $adapter_version, string $ability_id, string $kind ): array {
+		return compact( 'adapter_id', 'adapter_version', 'ability_id', 'kind' );
 	}
 
 	private function ordered_plan( string $input = '{"brief":"Readiness"}' ): WorkflowPlan {

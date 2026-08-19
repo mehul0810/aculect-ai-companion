@@ -36,6 +36,57 @@ final readonly class WorkflowStateSnapshot {
 		if ( null !== $outcome_code && 1 !== preg_match( '/^[a-z][a-z0-9_]{0,63}$/D', $outcome_code ) ) {
 			throw new WorkflowPlanningException( 'invalid_snapshot', '$.outcome_code' );
 		}
+
+		$requires_plan = in_array(
+			$state,
+			array(
+				WorkflowRunState::PREPARED,
+				WorkflowRunState::WAITING_FOR_INPUT,
+				WorkflowRunState::DRY_RUN_READY,
+				WorkflowRunState::WAITING_FOR_APPROVAL,
+				WorkflowRunState::RUNNING,
+				WorkflowRunState::COMPLETED,
+			),
+			true
+		);
+		if ( $requires_plan && null === $plan ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.plan' );
+		}
+
+		if ( WorkflowRunState::CREATED === $state && ( null !== $plan || null !== $dry_run || null !== $outcome_code ) ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.state' );
+		}
+
+		if ( in_array( $state, array( WorkflowRunState::PREPARED, WorkflowRunState::WAITING_FOR_INPUT ), true ) && ( null !== $dry_run || null !== $outcome_code ) ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.state' );
+		}
+
+		if ( WorkflowRunState::WAITING_FOR_INPUT === $state && null !== $plan && array() === $plan->missing_paths() ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.state' );
+		}
+
+		if ( in_array( $state, array( WorkflowRunState::PREPARED, WorkflowRunState::DRY_RUN_READY, WorkflowRunState::WAITING_FOR_APPROVAL, WorkflowRunState::RUNNING, WorkflowRunState::COMPLETED ), true )
+			&& null !== $plan
+			&& ! $plan->is_input_ready()
+		) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.plan' );
+		}
+
+		if ( in_array( $state, array( WorkflowRunState::DRY_RUN_READY, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) && ( null === $dry_run || null !== $outcome_code ) ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.dry_run' );
+		}
+
+		if ( WorkflowRunState::WAITING_FOR_APPROVAL === $state && null !== $plan && array() === $plan->approval_gate_step_ids() ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.approval_gates' );
+		}
+
+		if ( WorkflowRunState::RUNNING === $state && ( null !== $outcome_code || ( null !== $plan && array() !== $plan->approval_gate_step_ids() && null === $dry_run ) ) ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.state' );
+		}
+
+		if ( $state->is_terminal() && null === $outcome_code ) {
+			throw new WorkflowPlanningException( 'invalid_snapshot', '$.outcome_code' );
+		}
 	}
 
 	/**

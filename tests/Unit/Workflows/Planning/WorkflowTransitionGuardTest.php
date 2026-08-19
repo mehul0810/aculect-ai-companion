@@ -180,13 +180,8 @@ final class WorkflowTransitionGuardTest extends TestCase {
 		)->snapshot();
 
 		self::assertSame( WorkflowRunState::WAITING_FOR_INPUT, $prepared->state() );
-		$this->expect_code(
-			'missing_input',
-			fn () => $this->guard->transition(
-				new WorkflowStateSnapshot( WorkflowRunState::PREPARED, $incomplete ),
-				new WorkflowTransitionRequest( WorkflowTransitionAction::BUILD_DRY_RUN, plan: $incomplete )
-			)
-		);
+		self::assertSame( array( '$.brief' ), $incomplete->missing_paths() );
+		self::assertSame( array( '$.extra' ), $incomplete->invalid_paths() );
 
 		$plan = $this->ordered_plan( '{"brief":"Cannot skip approval"}' );
 		$this->expect_code(
@@ -289,7 +284,7 @@ final class WorkflowTransitionGuardTest extends TestCase {
 		$this->expect_code(
 			'evidence_mismatch',
 			fn () => $this->guard->transition(
-				new WorkflowStateSnapshot( WorkflowRunState::RUNNING, $plan ),
+				new WorkflowStateSnapshot( WorkflowRunState::RUNNING, $plan, $dry_run ),
 				new WorkflowTransitionRequest(
 					WorkflowTransitionAction::COMPLETE,
 					plan: $plan,
@@ -297,6 +292,29 @@ final class WorkflowTransitionGuardTest extends TestCase {
 				)
 			)
 		);
+	}
+
+	public function test_malformed_state_snapshots_fail_closed(): void {
+		$complete = $this->ordered_plan( '{"brief":"Snapshot"}' );
+		$missing  = $this->ordered_plan( '{}' );
+		$proposal = $this->proposal_plan();
+		$dry_run  = WorkflowDryRun::from_plan( $complete );
+
+		$invalid = array(
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::CREATED, $complete ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::PREPARED ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::PREPARED, $missing ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::WAITING_FOR_INPUT, $complete ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::DRY_RUN_READY, $complete ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::WAITING_FOR_APPROVAL, $proposal, WorkflowDryRun::from_plan( $proposal ) ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::RUNNING, $complete ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::COMPLETED, $complete, $dry_run ),
+			fn () => new WorkflowStateSnapshot( WorkflowRunState::FAILED ),
+		);
+
+		foreach ( $invalid as $factory ) {
+			$this->expect_code( 'invalid_snapshot', $factory );
+		}
 	}
 
 	public function test_running_cancel_requires_safe_bound_exact_plan_evidence(): void {
@@ -398,7 +416,8 @@ final class WorkflowTransitionGuardTest extends TestCase {
 
 		return match ( $state ) {
 			WorkflowRunState::CREATED => WorkflowStateSnapshot::created(),
-			WorkflowRunState::PREPARED, WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::RUNNING => new WorkflowStateSnapshot( $state, $plan ),
+			WorkflowRunState::PREPARED, WorkflowRunState::WAITING_FOR_INPUT => new WorkflowStateSnapshot( $state, $plan ),
+			WorkflowRunState::RUNNING => new WorkflowStateSnapshot( $state, $plan, $dry_run ),
 			WorkflowRunState::DRY_RUN_READY, WorkflowRunState::WAITING_FOR_APPROVAL => new WorkflowStateSnapshot( $state, $plan, $dry_run ),
 			default => new WorkflowStateSnapshot( $state, $plan, $dry_run, 'terminal_fixture' ),
 		};

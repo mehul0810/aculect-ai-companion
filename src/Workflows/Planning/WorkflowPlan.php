@@ -9,13 +9,15 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Workflows\Planning;
 
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
+
 /**
  * Binds one validated definition and normalized input to ordered requirements.
  */
 final readonly class WorkflowPlan {
 
 	/**
-	 * Create an immutable plan.
+	 * Create an immutable plan from an already verified projection.
 	 *
 	 * @param array<string, mixed> $identity      Canonical plan identity.
 	 * @param array                $missing_paths Missing required input paths.
@@ -25,13 +27,32 @@ final readonly class WorkflowPlan {
 	 * @phpstan-param list<string> $missing_paths
 	 * @phpstan-param list<string> $invalid_paths
 	 */
-	public function __construct(
+	private function __construct(
 		private array $identity,
 		private array $missing_paths,
 		private array $invalid_paths,
 		private string $canonical,
 		private string $plan_hash
 	) {
+	}
+
+	/**
+	 * Build a plan only from a validated definition and normalized input.
+	 *
+	 * @param WorkflowDefinition    $definition Validated immutable definition.
+	 * @param WorkflowInputContract $input      Normalized input.
+	 * @throws WorkflowPlanningException When definition/input projection fails closed.
+	 */
+	public static function from_definition( WorkflowDefinition $definition, WorkflowInputContract $input ): self {
+		$projection = ( new WorkflowPlanBuilder() )->project( $definition, $input );
+
+		return new self(
+			$projection['identity'],
+			$projection['missing_paths'],
+			$projection['invalid_paths'],
+			$projection['canonical'],
+			$projection['plan_hash']
+		);
 	}
 
 	/**

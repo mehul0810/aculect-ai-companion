@@ -12,11 +12,13 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Planning;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Planning\WorkflowDryRun;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
+use Aculect\AICompanion\Workflows\Planning\WorkflowInputValidator;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use stdClass;
 
 /**
@@ -83,6 +85,64 @@ final class WorkflowPlanningTest extends TestCase {
 		self::assertSame( array(), $missing->invalid_paths() );
 		self::assertSame( array(), $invalid->missing_paths() );
 		self::assertSame( array( '$.brief' ), $invalid->invalid_paths() );
+	}
+
+	public function test_plan_construction_is_factory_only_and_recomputed_from_definition(): void {
+		$reflection  = new ReflectionClass( WorkflowPlan::class );
+		$constructor = $reflection->getConstructor();
+		self::assertNotNull( $constructor );
+		self::assertTrue( $constructor->isPrivate() );
+
+		$definition = $this->fixture( 'ordered-multi-step-v1.json' );
+		$input      = WorkflowInputContract::from_json( '{"brief":"Factory boundary"}' );
+		$first      = WorkflowPlan::from_definition( $definition, $input );
+		$second     = ( new WorkflowPlanBuilder() )->build( $definition, $input );
+
+		self::assertSame( $first->canonical_json(), $second->canonical_json() );
+		self::assertSame( hash( 'sha256', $first->canonical_json() ), $first->hash() );
+	}
+
+	public function test_validator_uses_json_number_equality_and_bounded_public_paths(): void {
+		$validator = new WorkflowInputValidator();
+		$schema    = json_decode(
+			'{"type":"object","properties":{"choice":{"type":"number","enum":[1]},"items":{"type":"array","uniqueItems":true,"items":{"type":"number"}}},"additionalProperties":false}'
+		);
+		self::assertInstanceOf( stdClass::class, $schema );
+
+		$valid = $validator->validate( WorkflowInputContract::from_json( '{"choice":1.0,"items":[1]}' ), $schema );
+		self::assertSame( array(), $valid->invalid_paths() );
+
+		$duplicate = $validator->validate( WorkflowInputContract::from_json( '{"choice":1,"items":[1,1.0]}' ), $schema );
+		self::assertSame( array( '$.items' ), $duplicate->invalid_paths() );
+
+		$long_key = str_repeat( 'private_', 1200 );
+		$input    = WorkflowInputContract::from_value( (object) array( $long_key => true ) );
+		$bounded  = $validator->validate( $input, $schema )->invalid_paths();
+		self::assertCount( 1, $bounded );
+		self::assertLessThanOrEqual( 96, strlen( $bounded[0] ) );
+		self::assertStringNotContainsString( $long_key, $bounded[0] );
+	}
+
+	public function test_unicode_lengths_and_pathological_patterns_are_extension_independent(): void {
+		$validator = new WorkflowInputValidator();
+		$schema    = json_decode(
+			'{"type":"object","properties":{"label":{"type":"string","maxLength":1},"bounded":{"type":"string","pattern":"^(a+)+$"}},"additionalProperties":false}'
+		);
+		self::assertInstanceOf( stdClass::class, $schema );
+
+		$valid = $validator->validate( WorkflowInputContract::from_json( '{"label":"😀","bounded":"a"}' ), $schema );
+		self::assertSame( array(), $valid->invalid_paths() );
+
+		$invalid = $validator->validate(
+			WorkflowInputContract::from_value(
+				(object) array(
+					'label'   => '😀😀',
+					'bounded' => str_repeat( 'a', 10000 ) . 'b',
+				)
+			),
+			$schema
+		);
+		self::assertSame( array( '$.bounded', '$.label' ), $invalid->invalid_paths() );
 	}
 
 	public function test_dry_run_is_exact_and_never_contains_raw_input_or_arguments(): void {

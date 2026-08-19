@@ -16,7 +16,10 @@ use stdClass;
  */
 final class WorkflowInputValidator {
 
-	private const MAX_ERRORS = 50;
+	private const MAX_ERRORS        = 50;
+	private const MAX_PATH_BYTES    = 96;
+	private const REGEX_MATCH_LIMIT = 100000;
+	private const REGEX_DEPTH_LIMIT = 1000;
 
 	/**
 	 * Validate one input against an already-validated definition schema.
@@ -62,17 +65,17 @@ final class WorkflowInputValidator {
 		$schema_map = $this->map( $schema );
 		$type       = is_string( $schema_map['type'] ?? null ) ? $schema_map['type'] : '';
 		if ( ! $this->matches_type( $value, $type ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
 		if ( array_key_exists( 'enum', $schema_map ) && is_array( $schema_map['enum'] ) && ! $this->contains_value( $schema_map['enum'], $value ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
 		if ( array_key_exists( 'const', $schema_map ) && ! $this->values_equal( $schema_map['const'], $value ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
@@ -98,7 +101,7 @@ final class WorkflowInputValidator {
 	 */
 	private function validate_object( mixed $value, array $schema, string $path, array &$missing, array &$invalid ): void {
 		if ( ! $value instanceof stdClass ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
@@ -110,24 +113,24 @@ final class WorkflowInputValidator {
 
 		foreach ( $required as $required_key ) {
 			if ( is_string( $required_key ) && ! array_key_exists( $required_key, $values ) ) {
-				$missing[] = $path . '.' . $required_key;
+				$this->record_path( $missing, $path . '.' . $required_key );
 			}
 		}
 
 		if ( false === ( $schema['additionalProperties'] ?? true ) ) {
 			foreach ( array_keys( $values ) as $key ) {
 				if ( ! array_key_exists( $key, $properties ) ) {
-					$invalid[] = $path . '.' . $key;
+					$this->record_path( $invalid, $path . '.' . $key );
 				}
 			}
 		}
 
 		$count = count( $values );
 		if ( isset( $schema['minProperties'] ) && $count < (int) $schema['minProperties'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 		if ( isset( $schema['maxProperties'] ) && $count > (int) $schema['maxProperties'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 
 		foreach ( $properties as $key => $child_schema ) {
@@ -150,16 +153,16 @@ final class WorkflowInputValidator {
 	 */
 	private function validate_array( mixed $value, array $schema, string $path, array &$missing, array &$invalid ): void {
 		if ( ! is_array( $value ) || ! array_is_list( $value ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
 		$count = count( $value );
 		if ( isset( $schema['minItems'] ) && $count < (int) $schema['minItems'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 		if ( isset( $schema['maxItems'] ) && $count > (int) $schema['maxItems'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 
 		if ( true === ( $schema['uniqueItems'] ?? false ) ) {
@@ -167,7 +170,7 @@ final class WorkflowInputValidator {
 			foreach ( $value as $item ) {
 				$key = $this->value_key( $item );
 				if ( isset( $seen[ $key ] ) ) {
-					$invalid[] = $path;
+					$this->record_path( $invalid, $path );
 					break;
 				}
 				$seen[ $key ] = true;
@@ -193,19 +196,22 @@ final class WorkflowInputValidator {
 	 */
 	private function validate_string( mixed $value, array $schema, string $path, array &$invalid ): void {
 		if ( ! is_string( $value ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
-		$length = function_exists( 'mb_strlen' ) ? mb_strlen( $value, 'UTF-8' ) : strlen( $value );
+		$length = $this->unicode_length( $value );
 		if ( isset( $schema['minLength'] ) && $length < (int) $schema['minLength'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 		if ( isset( $schema['maxLength'] ) && $length > (int) $schema['maxLength'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
-		if ( isset( $schema['pattern'] ) && is_string( $schema['pattern'] ) && 1 !== preg_match( '~' . str_replace( '~', '\\~', $schema['pattern'] ) . '~u', $value ) ) {
-			$invalid[] = $path;
+		if ( isset( $schema['pattern'] ) && is_string( $schema['pattern'] ) ) {
+			$pattern = '~(*LIMIT_MATCH=' . self::REGEX_MATCH_LIMIT . ')(*LIMIT_DEPTH=' . self::REGEX_DEPTH_LIMIT . ')(?:' . str_replace( '~', '\\~', $schema['pattern'] ) . ')~u';
+			if ( 1 !== preg_match( $pattern, $value ) ) {
+				$this->record_path( $invalid, $path );
+			}
 		}
 	}
 
@@ -220,15 +226,15 @@ final class WorkflowInputValidator {
 	 */
 	private function validate_number( mixed $value, array $schema, string $path, array &$invalid ): void {
 		if ( ! is_int( $value ) && ! is_float( $value ) ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 			return;
 		}
 
 		if ( isset( $schema['minimum'] ) && $value < $schema['minimum'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 		if ( isset( $schema['maximum'] ) && $value > $schema['maximum'] ) {
-			$invalid[] = $path;
+			$this->record_path( $invalid, $path );
 		}
 	}
 
@@ -303,13 +309,65 @@ final class WorkflowInputValidator {
 	}
 
 	/**
-	 * Return a type-sensitive canonical equality key.
+	 * Return a JSON-Schema-compatible canonical equality key.
 	 *
 	 * @param mixed $value JSON value.
 	 */
 	private function value_key( mixed $value ): string {
+		if ( is_int( $value ) ) {
+			return 'number:' . $value;
+		}
+
+		if ( is_float( $value ) ) {
+			if ( 0.0 === $value || -0.0 === $value ) {
+				return 'number:0';
+			}
+
+			if ( floor( $value ) === $value && $value >= PHP_INT_MIN && $value <= PHP_INT_MAX ) {
+				return 'number:' . (int) $value;
+			}
+		}
+
 		$encoded = ( new WorkflowPlanningCanonicalizer() )->normalize_and_encode( $value );
 
-		return get_debug_type( $value ) . ':' . $encoded['json'];
+		return ( is_float( $value ) ? 'number:' : 'json:' ) . $encoded['json'];
+	}
+
+	/**
+	 * Count UTF-8 code points without an optional PHP extension.
+	 *
+	 * @param string $value Valid JSON UTF-8 string.
+	 */
+	private function unicode_length( string $value ): int {
+		$length = strlen( $value );
+		$count  = 0;
+		for ( $index = 0; $index < $length; ++$count ) {
+			$byte = ord( $value[ $index ] );
+			if ( $byte < 0x80 ) {
+				++$index;
+			} elseif ( $byte < 0xE0 ) {
+				$index += 2;
+			} elseif ( $byte < 0xF0 ) {
+				$index += 3;
+			} else {
+				$index += 4;
+			}
+		}
+
+		return $count;
+	}
+
+	/**
+	 * Append one ASCII, bounded, public-safe field path.
+	 *
+	 * @param array  $paths Collected paths.
+	 * @param string $path  Candidate path.
+	 * @phpstan-param list<string> $paths
+	 */
+	private function record_path( array &$paths, string $path ): void {
+		$bounded = preg_replace( '/[^A-Za-z0-9_$.[\]_-]/', '_', $path );
+		$bounded = is_string( $bounded ) && '' !== $bounded ? $bounded : '$';
+
+		$paths[] = substr( $bounded, 0, self::MAX_PATH_BYTES );
 	}
 }

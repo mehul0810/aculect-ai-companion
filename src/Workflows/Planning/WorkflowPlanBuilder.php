@@ -26,6 +26,19 @@ final class WorkflowPlanBuilder {
 	 * @throws WorkflowPlanningException When definition/input projection fails closed.
 	 */
 	public function build( WorkflowDefinition $definition, WorkflowInputContract $input ): WorkflowPlan {
+		return WorkflowPlan::from_definition( $definition, $input );
+	}
+
+	/**
+	 * Project verified plan data for the factory-only WorkflowPlan boundary.
+	 *
+	 * @param WorkflowDefinition    $definition Validated immutable definition.
+	 * @param WorkflowInputContract $input      Normalized input.
+	 * @return array{identity:array<string,mixed>,missing_paths:list<string>,invalid_paths:list<string>,canonical:string,plan_hash:string}
+	 * @throws WorkflowPlanningException When definition/input projection fails closed.
+	 * @internal
+	 */
+	public function project( WorkflowDefinition $definition, WorkflowInputContract $input ): array {
 		$value    = $definition->to_array();
 		$metadata = ( new WorkflowDefinitionCompatibilityMetadata() )->for_definition( $definition );
 		$schema   = $value['input_schema'];
@@ -90,12 +103,12 @@ final class WorkflowPlanBuilder {
 		 */
 		$identity = get_object_vars( $encoded['value'] );
 
-		return new WorkflowPlan(
-			$identity,
-			$validation->missing_paths(),
-			$validation->invalid_paths(),
-			$encoded['json'],
-			hash( 'sha256', $encoded['json'] )
+		return array(
+			'identity'      => $identity,
+			'missing_paths' => $validation->missing_paths(),
+			'invalid_paths' => $validation->invalid_paths(),
+			'canonical'     => $encoded['json'],
+			'plan_hash'     => hash( 'sha256', $encoded['json'] ),
 		);
 	}
 

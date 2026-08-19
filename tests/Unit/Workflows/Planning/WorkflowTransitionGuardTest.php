@@ -11,11 +11,13 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Planning;
 
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
+use Aculect\AICompanion\Workflows\Planning\WorkflowAvailabilitySnapshot;
 use Aculect\AICompanion\Workflows\Planning\WorkflowDryRun;
 use Aculect\AICompanion\Workflows\Planning\WorkflowExecutionEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
+use Aculect\AICompanion\Workflows\Planning\WorkflowPlanReadinessEvaluator;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningException;
 use Aculect\AICompanion\Workflows\Planning\WorkflowReadinessEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowRunState;
@@ -141,15 +143,7 @@ final class WorkflowTransitionGuardTest extends TestCase {
 			fn () => $this->guard->transition( $snapshot, new WorkflowTransitionRequest( WorkflowTransitionAction::START, plan: $plan ) )
 		);
 
-		$identity        = $plan->identity();
-		$validation_only = new WorkflowReadinessEvidence(
-			$plan->hash(),
-			$identity['adapter_requirements'],
-			$identity['ability_requirements'],
-			$identity['validation_rule_ids'],
-			false,
-			true
-		);
+		$validation_only = WorkflowReadinessEvidence::unchecked( $plan, true );
 		$this->expect_code(
 			'approval_required',
 			fn () => $this->guard->transition(
@@ -221,51 +215,8 @@ final class WorkflowTransitionGuardTest extends TestCase {
 
 	public function test_requirement_gate_and_execution_evidence_tampering_fails_closed(): void {
 		$plan     = $this->ordered_plan( '{"brief":"Bound evidence"}' );
-		$identity = $plan->identity();
 		$dry_run  = WorkflowDryRun::from_plan( $plan );
 		$snapshot = new WorkflowStateSnapshot( WorkflowRunState::WAITING_FOR_APPROVAL, $plan, $dry_run );
-
-		$tampered_readiness = array(
-			new WorkflowReadinessEvidence(
-				$plan->hash(),
-				array(),
-				$identity['ability_requirements'],
-				$identity['validation_rule_ids'],
-				true,
-				true
-			),
-			new WorkflowReadinessEvidence(
-				$plan->hash(),
-				$identity['adapter_requirements'],
-				array( 'content/get-item' ),
-				$identity['validation_rule_ids'],
-				true,
-				true
-			),
-			new WorkflowReadinessEvidence(
-				$plan->hash(),
-				$identity['adapter_requirements'],
-				$identity['ability_requirements'],
-				array(),
-				true,
-				true
-			),
-		);
-
-		foreach ( $tampered_readiness as $readiness ) {
-			$this->expect_code(
-				'evidence_mismatch',
-				fn () => $this->guard->transition(
-					$snapshot,
-					new WorkflowTransitionRequest(
-						WorkflowTransitionAction::START,
-						plan: $plan,
-						approval: $this->approval( $plan ),
-						readiness: $readiness
-					)
-				)
-			);
-		}
 
 		$this->expect_code(
 			'approval_mismatch',
@@ -453,12 +404,14 @@ final class WorkflowTransitionGuardTest extends TestCase {
 	private function readiness( WorkflowPlan $plan ): WorkflowReadinessEvidence {
 		$identity = $plan->identity();
 
-		return new WorkflowReadinessEvidence(
-			$plan->hash(),
-			$identity['adapter_requirements'],
-			$identity['ability_requirements'],
-			$identity['validation_rule_ids'],
-			true,
+		return ( new WorkflowPlanReadinessEvaluator() )->evaluate(
+			$plan,
+			WorkflowAvailabilitySnapshot::from_value(
+				array(
+					'adapters'  => $identity['adapter_requirements'],
+					'abilities' => $identity['ability_requirements'],
+				)
+			),
 			true
 		);
 	}

@@ -19,7 +19,6 @@ final class Installer {
 	private const DB_VERSION                = '2026.08.19.1';
 	private const OPTION_DB_VERSION         = 'aculect_ai_companion_workflows_db_version';
 	private const OPTION_VERIFICATION_STATE = 'aculect_ai_companion_workflows_db_verification';
-	private const VERIFY_INTERVAL           = 12 * 3600;
 	private const FAILURE_RETRY_INTERVAL    = 5 * 60;
 
 	/**
@@ -33,8 +32,8 @@ final class Installer {
 		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
 		$state     = get_option( self::OPTION_VERIFICATION_STATE, array() );
 
-		if ( ! $verify_tables && self::verification_is_throttled( $state, $installed, $now ) ) {
-			return 'valid' === $state['status'];
+		if ( ! $verify_tables && self::failed_retry_is_active( $state, $installed, $now ) ) {
+			return false;
 		}
 
 		$schema_is_stale = version_compare( $installed, self::DB_VERSION, '<' );
@@ -69,15 +68,7 @@ final class Installer {
 			$installed = self::DB_VERSION;
 		}
 
-		update_option(
-			self::OPTION_VERIFICATION_STATE,
-			array(
-				'status'        => 'valid',
-				'db_version'    => $installed,
-				'next_check_at' => $now + self::VERIFY_INTERVAL,
-			),
-			false
-		);
+		delete_option( self::OPTION_VERIFICATION_STATE );
 
 		return true;
 	}
@@ -139,24 +130,26 @@ final class Installer {
 	}
 
 	/**
-	 * Whether a recent verification result may suppress another table probe.
+	 * Whether a recent failed repair may suppress another schema attempt.
 	 *
 	 * @param mixed  $state     Stored lifecycle verification state.
 	 * @param string $installed Stored schema version.
 	 * @param int    $now       Current Unix timestamp.
 	 */
-	private static function verification_is_throttled( mixed $state, string $installed, int $now ): bool {
+	private static function failed_retry_is_active( mixed $state, string $installed, int $now ): bool {
 		if ( ! is_array( $state ) || ! isset( $state['status'], $state['db_version'], $state['next_check_at'] ) ) {
 			return false;
 		}
 
-		if ( ! in_array( $state['status'], array( 'valid', 'failed' ), true )
+		if ( 'failed' !== $state['status']
+			|| ! version_compare( $installed, self::DB_VERSION, '<' )
 			|| $installed !== (string) $state['db_version']
-			|| ! is_numeric( $state['next_check_at'] ) ) {
+			|| ! is_int( $state['next_check_at'] ) ) {
 			return false;
 		}
 
-		return (int) $state['next_check_at'] > $now;
+		return $state['next_check_at'] > $now
+			&& $state['next_check_at'] <= $now + self::FAILURE_RETRY_INTERVAL;
 	}
 
 	/**
@@ -167,6 +160,17 @@ final class Installer {
 	private static function record_failed_verification( int $now ): void {
 		delete_option( self::OPTION_DB_VERSION );
 		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		if ( '0' !== $installed ) {
+			$updated = update_option( self::OPTION_DB_VERSION, '0', false );
+			if ( ! $updated && '0' !== (string) get_option( self::OPTION_DB_VERSION, '0' ) ) {
+				delete_option( self::OPTION_VERIFICATION_STATE );
+
+				return;
+			}
+
+			$installed = '0';
+		}
+
 		update_option(
 			self::OPTION_VERIFICATION_STATE,
 			array(

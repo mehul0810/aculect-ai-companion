@@ -163,7 +163,7 @@ final class InstallerTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
 	}
 
-	public function test_recently_verified_lazy_install_avoids_table_queries_and_schema_work(): void {
+	public function test_legacy_valid_lifecycle_state_never_bypasses_authoritative_table_checks(): void {
 		$wpdb                  = new WorkflowInstallerWpdb();
 		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows', 'wp_aculect_ai_workflow_versions' );
 		$GLOBALS['wpdb']       = $wpdb;
@@ -179,8 +179,95 @@ final class InstallerTest extends TestCase {
 		);
 
 		self::assertTrue( Installer::install() );
-		self::assertSame( 0, $wpdb->get_var_calls );
+		self::assertSame( 2, $wpdb->get_var_calls );
 		self::assertSame( array(), $wpdb->db_delta_queries );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
+	}
+
+	public function test_table_loss_after_success_is_repaired_despite_a_future_valid_state(): void {
+		$wpdb                  = new WorkflowInstallerWpdb();
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows', 'wp_aculect_ai_workflow_versions' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_workflows_db_version', '2026.08.19.1', false );
+
+		self::assertTrue( Installer::install() );
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows' );
+		update_option(
+			'aculect_ai_companion_workflows_db_verification',
+			array(
+				'status'        => 'valid',
+				'db_version'    => '2026.08.19.1',
+				'next_check_at' => time() + 9 * 3600,
+			),
+			false
+		);
+		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+			$wpdb->db_delta_queries[] = $sql;
+			$wpdb->existing_tables[]  = 'wp_aculect_ai_workflow_versions';
+
+			return array( 'restored versions table' );
+		};
+
+		self::assertTrue( Installer::install() );
+		self::assertSame( array(), Installer::missing_table_keys() );
+		self::assertCount( 1, $wpdb->db_delta_queries );
+	}
+
+	public function test_invalid_failure_clocks_force_immediate_authoritative_verification(): void {
+		$invalid_clocks = array(
+			'9e18',
+			9.0e18,
+			'123.4',
+			time() + 3600,
+		);
+
+		foreach ( $invalid_clocks as $clock ) {
+			$wpdb            = new WorkflowInstallerWpdb();
+			$GLOBALS['wpdb'] = $wpdb;
+			$GLOBALS['aculect_ai_companion_test_options']           = array(
+				'aculect_ai_companion_workflows_db_version'      => '0',
+				'aculect_ai_companion_workflows_db_verification' => array(
+					'status'        => 'failed',
+					'db_version'    => '0',
+					'next_check_at' => $clock,
+				),
+			);
+			$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
+				$wpdb->db_delta_queries[] = $sql;
+				$wpdb->existing_tables    = array_values( Installer::table_names() );
+
+				return array( 'created workflow definition tables' );
+			};
+
+			self::assertTrue( Installer::install(), 'Invalid clocks must not suppress verification.' );
+			self::assertSame( 2, $wpdb->get_var_calls );
+		}
+	}
+
+	public function test_failed_schema_version_delete_falls_back_to_a_mismatched_version(): void {
+		$wpdb                  = new WorkflowInstallerWpdb();
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_workflows_db_version', '2026.08.19.1', false );
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes'] = array( 'aculect_ai_companion_workflows_db_version' );
+
+		self::assertFalse( Installer::install() );
+		self::assertSame( '0', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
+	}
+
+	public function test_failed_schema_version_invalidation_forces_the_next_authoritative_recheck(): void {
+		$wpdb                  = new WorkflowInstallerWpdb();
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_workflows_db_version', '2026.08.19.1', false );
+		$GLOBALS['aculect_ai_companion_test_failed_option_deletes'] = array( 'aculect_ai_companion_workflows_db_version' );
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array( 'aculect_ai_companion_workflows_db_version' );
+
+		self::assertFalse( Installer::install() );
+		$calls_after_failure = $wpdb->get_var_calls;
+
+		self::assertFalse( Installer::install() );
+		self::assertGreaterThan( $calls_after_failure, $wpdb->get_var_calls );
 	}
 
 	public function test_plugin_boot_repairs_a_missing_table_with_current_schema_version(): void {
@@ -194,6 +281,11 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
 			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
+			'aculect_ai_companion_workflows_db_verification' => array(
+				'status'        => 'valid',
+				'db_version'    => '2026.08.19.1',
+				'next_check_at' => time() + 9 * 3600,
+			),
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 'outcome:success:0123456789abcdef0123456789abcdef:' . ( time() + 3600 ),
 		);
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
@@ -207,10 +299,7 @@ final class InstallerTest extends TestCase {
 
 		self::assertSame( array(), Installer::missing_table_keys() );
 		self::assertCount( 1, $wpdb->db_delta_queries );
-		self::assertSame(
-			'valid',
-			get_option( 'aculect_ai_companion_workflows_db_verification', array() )['status'] ?? ''
-		);
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
 	}
 
 	public function test_table_names_follow_the_current_site_prefix(): void {

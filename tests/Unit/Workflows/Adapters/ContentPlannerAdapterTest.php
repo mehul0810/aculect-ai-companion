@@ -33,8 +33,15 @@ use RuntimeException;
  */
 final class ContentPlannerAdapterTest extends TestCase {
 
+	private bool $had_wpdb       = false;
+	private mixed $previous_wpdb = null;
+
 	protected function setUp(): void {
 		parent::setUp();
+
+		$this->had_wpdb      = array_key_exists( 'wpdb', $GLOBALS );
+		$this->previous_wpdb = $GLOBALS['wpdb'] ?? null;
+		$GLOBALS['wpdb']     = null; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolate this test from database doubles left by earlier suites.
 
 		AbilitiesRegistry::reset_module_cache();
 		$GLOBALS['aculect_ai_companion_test_options']             = array();
@@ -67,6 +74,11 @@ final class ContentPlannerAdapterTest extends TestCase {
 		AbilitiesRegistry::reset_module_cache();
 		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
 		$GLOBALS['aculect_ai_companion_test_filter_callbacks']    = array();
+		if ( $this->had_wpdb ) {
+			$GLOBALS['wpdb'] = $this->previous_wpdb; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the exact prior test global.
+		} else {
+			unset( $GLOBALS['wpdb'] );
+		}
 
 		parent::tearDown();
 	}

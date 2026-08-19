@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth\Entities;
 
+use Aculect\AICompanion\Connectors\OAuth\ApplicationType;
 use DateTimeImmutable;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\Traits\ClientTrait;
@@ -20,6 +21,8 @@ final class ClientEntity implements ClientEntityInterface {
 	private ?int $user_id                  = null;
 	private ?string $client_secret_hash    = null;
 	private string $provider               = 'mcp';
+	private string $issuer_hash            = '';
+	private string $application_type       = ApplicationType::LEGACY;
 	private ?DateTimeImmutable $created_at = null;
 
 	/**
@@ -95,6 +98,38 @@ final class ClientEntity implements ClientEntityInterface {
 	 */
 	public function getProvider(): string {
 		return $this->provider;
+	}
+
+	/**
+	 * Set the canonical issuer identity stored with this client.
+	 *
+	 * @param string $issuer_hash Fixed-width canonical issuer identity.
+	 */
+	public function setIssuerHash( string $issuer_hash ): void {
+		$this->issuer_hash = $issuer_hash;
+	}
+
+	/**
+	 * Return the canonical issuer identity stored with this client.
+	 */
+	public function getIssuerHash(): string {
+		return $this->issuer_hash;
+	}
+
+	/**
+	 * Set the DCR application type controlling redirect policy.
+	 *
+	 * @param string $application_type DCR application type.
+	 */
+	public function setApplicationType( string $application_type ): void {
+		$this->application_type = $application_type;
+	}
+
+	/**
+	 * Return the DCR application type controlling redirect policy.
+	 */
+	public function getApplicationType(): string {
+		return $this->application_type;
 	}
 
 	/**

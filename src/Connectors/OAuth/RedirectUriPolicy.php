@@ -19,9 +19,10 @@ final class RedirectUriPolicy {
 	 *
 	 * @param string|string[] $registered_uris Registered redirect URI values.
 	 * @param string          $requested_uri   Redirect URI from the authorization request.
+	 * @param string          $application_type Registered DCR application type.
 	 */
-	public static function allows( string|array $registered_uris, string $requested_uri ): bool {
-		if ( '' === $requested_uri || ! Helpers::is_allowed_redirect_uri( $requested_uri ) ) {
+	public static function allows( string|array $registered_uris, string $requested_uri, string $application_type = ApplicationType::LEGACY ): bool {
+		if ( '' === $requested_uri || ! self::allows_registration( $requested_uri, $application_type ) ) {
 			return false;
 		}
 
@@ -42,6 +43,66 @@ final class RedirectUriPolicy {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Validate one DCR redirect URI for the client's declared application type.
+	 *
+	 * Web clients are HTTPS-only, native clients are HTTP loopback-only, and
+	 * registrations that predate application_type retain the existing union.
+	 *
+	 * @param string $uri              Redirect URI candidate.
+	 * @param string $application_type Registered DCR application type.
+	 */
+	public static function allows_registration( string $uri, string $application_type ): bool {
+		$application_type = ApplicationType::from_storage( $application_type );
+		if ( '' === $application_type || ! Helpers::is_allowed_redirect_uri( $uri ) ) {
+			return false;
+		}
+
+		$parts = wp_parse_url( $uri );
+		if ( ! is_array( $parts ) ) {
+			return false;
+		}
+
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$host   = trim( strtolower( (string) ( $parts['host'] ?? '' ) ), '[]' );
+		$port   = isset( $parts['port'] ) ? (int) $parts['port'] : null;
+		if (
+			'' === $host
+			|| str_contains( $host, '*' )
+			|| isset( $parts['user'] )
+			|| isset( $parts['pass'] )
+			|| array_key_exists( 'fragment', $parts )
+			|| ( null !== $port && ( $port < 1 || $port > 65535 ) )
+		) {
+			return false;
+		}
+
+		if ( ApplicationType::WEB === $application_type ) {
+			return 'https' === $scheme;
+		}
+
+		if ( ApplicationType::NATIVE === $application_type ) {
+			return self::is_http_loopback_registration( $parts );
+		}
+
+		return 'https' === $scheme || self::is_http_loopback_registration( $parts );
+	}
+
+	/**
+	 * Return whether parsed redirect components describe a narrow HTTP loopback.
+	 *
+	 * @param array<string, mixed> $parts Parsed URL components.
+	 */
+	private static function is_http_loopback_registration( array $parts ): bool {
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$host   = trim( strtolower( (string) ( $parts['host'] ?? '' ) ), '[]' );
+		$path   = (string) ( $parts['path'] ?? '' );
+
+		return 'http' === $scheme
+			&& in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true )
+			&& '' !== $path;
 	}
 
 	/**

@@ -16,8 +16,11 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned workflow definition tables require controlled schema changes.
 
-	private const DB_VERSION        = '2026.08.19.1';
-	private const OPTION_DB_VERSION = 'aculect_ai_companion_workflows_db_version';
+	private const DB_VERSION                = '2026.08.19.1';
+	private const OPTION_DB_VERSION         = 'aculect_ai_companion_workflows_db_version';
+	private const OPTION_VERIFICATION_STATE = 'aculect_ai_companion_workflows_db_verification';
+	private const VERIFY_INTERVAL           = 12 * 3600;
+	private const FAILURE_RETRY_INTERVAL    = 5 * 60;
 
 	/**
 	 * Create or repair the workflow definition tables.
@@ -26,26 +29,55 @@ final class Installer {
 	 * @return bool Whether both required tables are available at the expected schema version.
 	 */
 	public static function install( bool $verify_tables = false ): bool {
-		$installed       = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$now       = time();
+		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$state     = get_option( self::OPTION_VERIFICATION_STATE, array() );
+
+		if ( ! $verify_tables && self::verification_is_throttled( $state, $installed, $now ) ) {
+			return 'valid' === $state['status'];
+		}
+
 		$schema_is_stale = version_compare( $installed, self::DB_VERSION, '<' );
-		$missing_tables  = $verify_tables ? self::missing_table_keys() : array();
+		$missing_tables  = $schema_is_stale ? array() : self::missing_table_keys();
 
 		if ( $schema_is_stale || array() !== $missing_tables ) {
 			try {
 				self::create_tables();
 			} catch ( \Throwable ) {
+				self::record_failed_verification( $now );
+
 				return false;
 			}
 
-			if ( array() !== self::missing_table_keys() ) {
-				return false;
-			}
+			$missing_tables = self::missing_table_keys();
+		}
 
+		if ( array() !== $missing_tables ) {
+			self::record_failed_verification( $now );
+
+			return false;
+		}
+
+		if ( $schema_is_stale ) {
 			$updated = update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 			if ( ! $updated && self::DB_VERSION !== (string) get_option( self::OPTION_DB_VERSION, '0' ) ) {
+				self::record_failed_verification( $now );
+
 				return false;
 			}
+
+			$installed = self::DB_VERSION;
 		}
+
+		update_option(
+			self::OPTION_VERIFICATION_STATE,
+			array(
+				'status'        => 'valid',
+				'db_version'    => $installed,
+				'next_check_at' => $now + self::VERIFY_INTERVAL,
+			),
+			false
+		);
 
 		return true;
 	}
@@ -103,6 +135,47 @@ final class Installer {
 		$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $tables['catalog'] ) );
 
 		delete_option( self::OPTION_DB_VERSION );
+		delete_option( self::OPTION_VERIFICATION_STATE );
+	}
+
+	/**
+	 * Whether a recent verification result may suppress another table probe.
+	 *
+	 * @param mixed  $state     Stored lifecycle verification state.
+	 * @param string $installed Stored schema version.
+	 * @param int    $now       Current Unix timestamp.
+	 */
+	private static function verification_is_throttled( mixed $state, string $installed, int $now ): bool {
+		if ( ! is_array( $state ) || ! isset( $state['status'], $state['db_version'], $state['next_check_at'] ) ) {
+			return false;
+		}
+
+		if ( ! in_array( $state['status'], array( 'valid', 'failed' ), true )
+			|| $installed !== (string) $state['db_version']
+			|| ! is_numeric( $state['next_check_at'] ) ) {
+			return false;
+		}
+
+		return (int) $state['next_check_at'] > $now;
+	}
+
+	/**
+	 * Invalidate schema truth and bound retries after an unsuccessful repair.
+	 *
+	 * @param int $now Current Unix timestamp.
+	 */
+	private static function record_failed_verification( int $now ): void {
+		delete_option( self::OPTION_DB_VERSION );
+		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		update_option(
+			self::OPTION_VERIFICATION_STATE,
+			array(
+				'status'        => 'failed',
+				'db_version'    => $installed,
+				'next_check_at' => $now + self::FAILURE_RETRY_INTERVAL,
+			),
+			false
+		);
 	}
 
 	/**

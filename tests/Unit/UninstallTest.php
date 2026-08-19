@@ -47,6 +47,7 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_site_editor_snapshot'   => array( 'fingerprint' => 'site-editor' ),
 			'aculect_ai_companion_admin_menu_snapshot'    => array( 'fingerprint' => 'admin-menu' ),
 			'aculect_ai_companion_workflows_db_version'   => '2026.08.19.1',
+			'aculect_ai_companion_workflows_db_verification' => array( 'status' => 'valid' ),
 		);
 	}
 
@@ -81,6 +82,7 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_site_editor_snapshot', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_admin_menu_snapshot', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_remove_data_on_uninstall', 'missing' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_logs' ) );

@@ -112,6 +112,35 @@ final class ReleaseMetadataTest extends TestCase {
 		);
 	}
 
+	public function test_development_advisory_exception_is_complete_and_expiry_dated(): void {
+		$root     = dirname( __DIR__, 3 );
+		$register = $this->file_contents( $root . '/docs/development-dependency-advisories.md' );
+		$packages = array(
+			'@wordpress/scripts',
+			'@wordpress/e2e-test-utils-playwright',
+			'lighthouse',
+			'puppeteer-core',
+			'@puppeteer/browsers',
+			'extract-zip',
+			'adm-zip',
+			'markdownlint-cli',
+			'markdownlint',
+			'markdown-it',
+			'linkify-it',
+			'js-yaml',
+		);
+
+		self::assertStringContainsString( 'Last verified: 2026-08-19', $register );
+		self::assertStringContainsString( '12 advisory packages (10 high, 2 moderate)', $register );
+		self::assertStringContainsString( 'Production tree: zero advisories', $register );
+		self::assertStringContainsString( 'declared as `^32.2.0` and currently resolves to 32.6.0', $register );
+		self::assertStringContainsString( 'Review deadline: 2026-09-30', $register );
+		self::assertStringContainsString( 'Do not use `npm audit fix --force`', $register );
+		foreach ( $packages as $package ) {
+			self::assertStringContainsString( '`' . $package . '`', $register );
+		}
+	}
+
 	/**
 	 * Return file contents or fail.
 	 *

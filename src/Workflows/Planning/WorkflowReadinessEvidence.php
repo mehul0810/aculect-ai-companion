@@ -23,14 +23,12 @@ final readonly class WorkflowReadinessEvidence {
 	 * @param array  $validation_rule_ids  Exact validation rules.
 	 * @param bool   $requirements_checked Requirements checked successfully.
 	 * @param bool   $validation_checked   Validation checked successfully.
-	 * @param array  $missing_adapters     Missing exact adapter-version tokens.
-	 * @param array  $missing_abilities    Missing exact ability IDs.
+	 * @param array  $missing_bindings     Missing exact binding tokens.
 	 * @throws WorkflowPlanningException When evidence identity is malformed.
 	 * @phpstan-param list<mixed> $adapter_requirements
 	 * @phpstan-param list<string> $ability_requirements
 	 * @phpstan-param list<string> $validation_rule_ids
-	 * @phpstan-param list<string> $missing_adapters
-	 * @phpstan-param list<string> $missing_abilities
+	 * @phpstan-param list<string> $missing_bindings
 	 */
 	private function __construct(
 		private string $plan_hash,
@@ -39,14 +37,13 @@ final readonly class WorkflowReadinessEvidence {
 		private array $validation_rule_ids,
 		private bool $requirements_checked,
 		private bool $validation_checked,
-		private array $missing_adapters = array(),
-		private array $missing_abilities = array()
+		private array $missing_bindings = array()
 	) {
 		if ( 1 !== preg_match( '/^[a-f0-9]{64}$/D', $plan_hash ) ) {
 			throw new WorkflowPlanningException( 'invalid_request', '$.readiness' );
 		}
-		$this->assert_missing_values( $missing_adapters, $missing_abilities );
-		if ( $requirements_checked && ( array() !== $missing_adapters || array() !== $missing_abilities ) ) {
+		$this->assert_missing_values( $missing_bindings );
+		if ( $requirements_checked && array() !== $missing_bindings ) {
 			throw new WorkflowPlanningException( 'invalid_request', '$.readiness.requirements' );
 		}
 	}
@@ -60,7 +57,7 @@ final readonly class WorkflowReadinessEvidence {
 	 * @param bool         $validation_checked Whether separate validation completed.
 	 */
 	public static function unchecked( WorkflowPlan $plan, bool $validation_checked = false ): self {
-		return self::create( $plan, false, $validation_checked, array(), array() );
+		return self::create( $plan, false, $validation_checked, array() );
 	}
 
 	/**
@@ -72,24 +69,20 @@ final readonly class WorkflowReadinessEvidence {
 	 * @internal WorkflowPlanReadinessEvaluator is the sole production caller.
 	 *
 	 * @param WorkflowPlan $plan               Exact plan.
-	 * @param array        $missing_adapters   Missing adapter-version tokens.
-	 * @param array        $missing_abilities  Missing ability IDs.
+	 * @param array        $missing_bindings   Missing exact binding tokens.
 	 * @param bool         $validation_checked Whether separate validation completed.
-	 * @phpstan-param list<string> $missing_adapters
-	 * @phpstan-param list<string> $missing_abilities
+	 * @phpstan-param list<string> $missing_bindings
 	 */
 	public static function from_evaluation(
 		WorkflowPlan $plan,
-		array $missing_adapters,
-		array $missing_abilities,
+		array $missing_bindings,
 		bool $validation_checked = false
 	): self {
 		return self::create(
 			$plan,
-			array() === $missing_adapters && array() === $missing_abilities,
+			array() === $missing_bindings,
 			$validation_checked,
-			$missing_adapters,
-			$missing_abilities
+			$missing_bindings
 		);
 	}
 
@@ -99,17 +92,14 @@ final readonly class WorkflowReadinessEvidence {
 	 * @param WorkflowPlan $plan                 Exact plan.
 	 * @param bool         $requirements_checked Derived requirement state.
 	 * @param bool         $validation_checked   Separate validation state.
-	 * @param array        $missing_adapters     Missing adapter-version tokens.
-	 * @param array        $missing_abilities    Missing ability IDs.
-	 * @phpstan-param list<string> $missing_adapters
-	 * @phpstan-param list<string> $missing_abilities
+	 * @param array        $missing_bindings     Missing exact binding tokens.
+	 * @phpstan-param list<string> $missing_bindings
 	 */
 	private static function create(
 		WorkflowPlan $plan,
 		bool $requirements_checked,
 		bool $validation_checked,
-		array $missing_adapters,
-		array $missing_abilities
+		array $missing_bindings
 	): self {
 		$identity = $plan->identity();
 
@@ -120,9 +110,19 @@ final readonly class WorkflowReadinessEvidence {
 			$identity['validation_rule_ids'],
 			$requirements_checked,
 			$validation_checked,
-			$missing_adapters,
-			$missing_abilities
+			$missing_bindings
 		);
+	}
+
+	/**
+	 * Return sorted missing exact binding tokens.
+	 *
+	 * These tokens are the sole dependency-readiness authority.
+	 *
+	 * @return list<string>
+	 */
+	public function missing_bindings(): array {
+		return array_values( $this->missing_bindings );
 	}
 
 	/**
@@ -131,7 +131,16 @@ final readonly class WorkflowReadinessEvidence {
 	 * @return list<string>
 	 */
 	public function missing_adapters(): array {
-		return array_values( $this->missing_adapters );
+		$adapters = array();
+		foreach ( $this->missing_bindings as $token ) {
+			$adapter              = (string) strstr( $token, '|', true );
+			$adapters[ $adapter ] = true;
+		}
+
+		$tokens = array_keys( $adapters );
+		sort( $tokens, SORT_STRING );
+
+		return $tokens;
 	}
 
 	/**
@@ -140,7 +149,16 @@ final readonly class WorkflowReadinessEvidence {
 	 * @return list<string>
 	 */
 	public function missing_abilities(): array {
-		return array_values( $this->missing_abilities );
+		$abilities = array();
+		foreach ( $this->missing_bindings as $token ) {
+			$parts                  = explode( '|', $token, 3 );
+			$abilities[ $parts[1] ] = true;
+		}
+
+		$ability_ids = array_keys( $abilities );
+		sort( $ability_ids, SORT_STRING );
+
+		return $ability_ids;
 	}
 
 	/**
@@ -201,33 +219,30 @@ final readonly class WorkflowReadinessEvidence {
 	/**
 	 * Validate deterministic, public-safe missing requirement details.
 	 *
-	 * @param array $missing_adapters  Missing adapter-version tokens.
-	 * @param array $missing_abilities Missing ability IDs.
+	 * @param array $missing_bindings Missing exact binding tokens.
 	 * @throws WorkflowPlanningException When missing details are malformed.
-	 * @phpstan-param list<string> $missing_adapters
-	 * @phpstan-param list<string> $missing_abilities
+	 * @phpstan-param list<string> $missing_bindings
 	 */
-	private function assert_missing_values( array $missing_adapters, array $missing_abilities ): void {
-		if ( count( $missing_adapters ) > 50 || count( $missing_abilities ) > 50 ) {
+	private function assert_missing_values( array $missing_bindings ): void {
+		if ( count( $missing_bindings ) > 50 ) {
 			throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing' );
 		}
 
-		foreach ( $missing_adapters as $token ) {
-			if ( 1 !== preg_match( '/^[a-z][a-z0-9_]{1,63}@[1-9][0-9]*$/D', $token ) ) {
-				throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing_adapters' );
+		foreach ( $missing_bindings as $token ) {
+			$matches = array();
+			if ( strlen( $token ) > 256 || 1 !== preg_match( '#^[a-z][a-z0-9_]{1,63}@([1-9][0-9]*)\|([a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*)\|(read|proposal|write)$#D', $token, $matches ) ) {
+				throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing_bindings' );
 			}
-		}
-		foreach ( $missing_abilities as $ability_id ) {
-			if ( strlen( $ability_id ) > 128 || 1 !== preg_match( '#^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$#D', $ability_id ) ) {
-				throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing_abilities' );
+
+			$version = filter_var( $matches[1], FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 1 ) ) );
+			if ( false === $version || (string) $version !== $matches[1] || strlen( $matches[2] ) > 128 ) {
+				throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing_bindings' );
 			}
 		}
 
-		$sorted_adapters  = array_values( array_unique( $missing_adapters ) );
-		$sorted_abilities = array_values( array_unique( $missing_abilities ) );
-		sort( $sorted_adapters, SORT_STRING );
-		sort( $sorted_abilities, SORT_STRING );
-		if ( $missing_adapters !== $sorted_adapters || $missing_abilities !== $sorted_abilities ) {
+		$sorted_bindings = array_values( array_unique( $missing_bindings ) );
+		sort( $sorted_bindings, SORT_STRING );
+		if ( $missing_bindings !== $sorted_bindings ) {
 			throw new WorkflowPlanningException( 'invalid_request', '$.readiness.missing' );
 		}
 	}

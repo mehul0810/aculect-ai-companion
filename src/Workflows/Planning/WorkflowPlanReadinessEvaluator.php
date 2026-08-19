@@ -17,7 +17,7 @@ use stdClass;
 final class WorkflowPlanReadinessEvaluator {
 
 	/**
-	 * Evaluate adapter and ability availability for one exact plan.
+	 * Evaluate exact adapter, ability, and kind binding availability for one plan.
 	 *
 	 * Availability is not authorization. Runtime callers must perform policy,
 	 * capability, scope, and confirmation checks before constructing it.
@@ -32,43 +32,40 @@ final class WorkflowPlanReadinessEvaluator {
 		bool $validation_checked = false
 	): WorkflowReadinessEvidence {
 		$identity           = $plan->identity();
-		$available_adapters = array();
-		foreach ( $availability->adapters() as $adapter ) {
-			$available_adapters[ $adapter['adapter_id'] ] = array_fill_keys( $adapter['adapter_versions'], true );
+		$available_bindings = array();
+		foreach ( $availability->bindings() as $binding ) {
+			$available_bindings[ $this->binding_token( $binding ) ] = true;
 		}
 
-		$required_adapters = array();
+		$required_bindings = array();
 		foreach ( $identity['steps'] as $step_value ) {
-			$step = $step_value instanceof stdClass ? get_object_vars( $step_value ) : $step_value;
-			$required_adapters[ $step['adapter_id'] . '@' . $step['adapter_version'] ] = array(
-				'adapter_id'      => $step['adapter_id'],
-				'adapter_version' => $step['adapter_version'],
-			);
+			$step                        = $step_value instanceof stdClass ? get_object_vars( $step_value ) : $step_value;
+			$token                       = $this->binding_token( $step );
+			$required_bindings[ $token ] = true;
 		}
 
-		$missing_adapters = array();
-		foreach ( $required_adapters as $token => $requirement ) {
-			$available_versions = $available_adapters[ $requirement['adapter_id'] ] ?? array();
-			if ( ! isset( $available_versions[ $requirement['adapter_version'] ] ) ) {
-				$missing_adapters[] = $token;
+		$missing_bindings = array();
+		foreach ( array_keys( $required_bindings ) as $token ) {
+			if ( ! isset( $available_bindings[ $token ] ) ) {
+				$missing_bindings[] = $token;
 			}
 		}
-		sort( $missing_adapters, SORT_STRING );
-
-		$available_abilities = array_fill_keys( $availability->abilities(), true );
-		$missing_abilities   = array();
-		foreach ( $identity['ability_requirements'] as $ability_id ) {
-			if ( ! isset( $available_abilities[ $ability_id ] ) ) {
-				$missing_abilities[] = $ability_id;
-			}
-		}
-		sort( $missing_abilities, SORT_STRING );
+		sort( $missing_bindings, SORT_STRING );
 
 		return WorkflowReadinessEvidence::from_evaluation(
 			$plan,
-			$missing_adapters,
-			$missing_abilities,
+			$missing_bindings,
 			$validation_checked || ! $plan->requires_validation()
 		);
+	}
+
+	/**
+	 * Build the deterministic canonical token for one exact binding.
+	 *
+	 * @param array $binding Exact binding or planned step.
+	 * @phpstan-param array{adapter_id:string,adapter_version:int,ability_id:string,kind:string} $binding
+	 */
+	private function binding_token( array $binding ): string {
+		return $binding['adapter_id'] . '@' . $binding['adapter_version'] . '|' . $binding['ability_id'] . '|' . $binding['kind'];
 	}
 }

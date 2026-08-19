@@ -27,6 +27,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionGuard;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 /**
  * Locks the nine-state lifecycle, evidence binding, and error precedence.
@@ -402,14 +403,23 @@ final class WorkflowTransitionGuardTest extends TestCase {
 	}
 
 	private function readiness( WorkflowPlan $plan ): WorkflowReadinessEvidence {
-		$identity = $plan->identity();
+		$bindings = array();
+		foreach ( $plan->identity()['steps'] as $step_value ) {
+			$step       = $step_value instanceof stdClass ? get_object_vars( $step_value ) : $step_value;
+			$bindings[] = array(
+				'adapter_id'      => $step['adapter_id'],
+				'adapter_version' => $step['adapter_version'],
+				'ability_id'      => $step['ability_id'],
+				'kind'            => $step['kind'],
+			);
+		}
 
 		return ( new WorkflowPlanReadinessEvaluator() )->evaluate(
 			$plan,
 			WorkflowAvailabilitySnapshot::from_value(
 				array(
-					'adapters'  => $identity['adapter_requirements'],
-					'abilities' => $identity['ability_requirements'],
+					'availability_schema_version' => 2,
+					'bindings'                    => $bindings,
 				)
 			),
 			true

@@ -13,50 +13,38 @@ use JsonException;
 use stdClass;
 
 /**
- * Carries detached adapter and ability availability without granting access.
+ * Carries detached exact step-binding availability without granting access.
  */
 final readonly class WorkflowAvailabilitySnapshot {
 
+	public const SCHEMA_VERSION    = 2;
 	public const MAX_ENCODED_BYTES = 262144;
-
-	private const MAX_ADAPTERS             = 50;
-	private const MAX_ABILITIES            = 50;
-	private const MAX_VERSIONS_PER_ADAPTER = 50;
+	public const MAX_BINDINGS      = 50;
 
 	/**
-	 * Normalized adapter availability.
+	 * Normalized exact binding availability.
 	 *
-	 * @var list<array{adapter_id:string,adapter_versions:list<int>}>
+	 * @var list<array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}>
 	 */
-	private array $adapters;
-
-	/**
-	 * Normalized ability availability.
-	 *
-	 * @var list<string>
-	 */
-	private array $abilities;
+	private array $bindings;
 
 	/**
 	 * Create a snapshot from validated normalized values.
 	 *
-	 * @param array $adapters  Available adapter IDs and exact versions.
-	 * @param array $abilities Available ability IDs.
-	 * @phpstan-param list<array{adapter_id:string,adapter_versions:list<int>}> $adapters
-	 * @phpstan-param list<string> $abilities
+	 * @param array $bindings Available exact adapter, ability, and kind tuples.
+	 * @phpstan-param list<array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}> $bindings
 	 */
-	private function __construct(
-		array $adapters,
-		array $abilities
-	) {
-		$this->adapters  = $adapters;
-		$this->abilities = $abilities;
+	private function __construct( array $bindings ) {
+		$this->bindings = $bindings;
 	}
 
 	/**
-	 * Build from an untrusted object-shaped availability value.
+	 * Build from an untrusted object-shaped v2 availability value.
 	 *
-	 * @param mixed $value Candidate map with exact adapters and abilities keys.
+	 * Legacy adapters/abilities roots are deliberately unsupported because they
+	 * cannot prove that one ability belongs to one exact adapter and kind.
+	 *
+	 * @param mixed $value Candidate map with schema version and exact bindings.
 	 * @throws WorkflowPlanningException When availability is malformed.
 	 */
 	public static function from_value( mixed $value ): self {
@@ -69,14 +57,17 @@ final readonly class WorkflowAvailabilitySnapshot {
 
 		$keys = array_keys( $value );
 		sort( $keys, SORT_STRING );
-		if ( array( 'abilities', 'adapters' ) !== $keys ) {
+		if ( array( 'availability_schema_version', 'bindings' ) !== $keys ) {
 			throw new WorkflowPlanningException( 'invalid_availability', '$.availability' );
 		}
+		if ( ! is_int( $value['availability_schema_version'] ) ) {
+			throw new WorkflowPlanningException( 'invalid_availability_schema_version', '$.availability_schema_version' );
+		}
+		if ( self::SCHEMA_VERSION !== $value['availability_schema_version'] ) {
+			throw new WorkflowPlanningException( 'unsupported_availability_schema_version', '$.availability_schema_version' );
+		}
 
-		return new self(
-			self::validate_adapters( $value['adapters'] ),
-			self::validate_abilities( $value['abilities'] )
-		);
+		return new self( self::validate_bindings( $value['bindings'] ) );
 	}
 
 	/**
@@ -103,83 +94,80 @@ final readonly class WorkflowAvailabilitySnapshot {
 	}
 
 	/**
-	 * Return detached adapter availability sorted by ID and version.
+	 * Return detached exact bindings in canonical token order.
 	 *
-	 * @return list<array{adapter_id:string,adapter_versions:list<int>}>
+	 * @return list<array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}>
 	 */
-	public function adapters(): array {
+	public function bindings(): array {
 		return array_map(
-			static fn ( array $adapter ): array => array(
-				'adapter_id'       => $adapter['adapter_id'],
-				'adapter_versions' => array_values( $adapter['adapter_versions'] ),
+			static fn ( array $binding ): array => array(
+				'adapter_id'      => $binding['adapter_id'],
+				'adapter_version' => $binding['adapter_version'],
+				'ability_id'      => $binding['ability_id'],
+				'kind'            => $binding['kind'],
 			),
-			$this->adapters
+			$this->bindings
 		);
 	}
 
 	/**
-	 * Return detached ability availability sorted by ID.
+	 * Validate and normalize exact binding availability.
 	 *
-	 * @return list<string>
+	 * @param mixed $bindings Raw binding availability.
+	 * @return list<array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}>
+	 * @throws WorkflowPlanningException When a binding is malformed.
 	 */
-	public function abilities(): array {
-		return array_values( $this->abilities );
-	}
-
-	/**
-	 * Validate and normalize adapter availability.
-	 *
-	 * @param mixed $adapters Raw adapter availability.
-	 * @return list<array{adapter_id:string,adapter_versions:list<int>}>
-	 * @throws WorkflowPlanningException When an adapter entry is malformed.
-	 * @phpstan-param list<array{adapter_id:string,adapter_versions:list<int>}|stdClass> $adapters
-	 */
-	private static function validate_adapters( mixed $adapters ): array {
-		if ( ! is_array( $adapters ) || ! array_is_list( $adapters ) || count( $adapters ) > self::MAX_ADAPTERS ) {
-			throw new WorkflowPlanningException( 'invalid_availability', '$.adapters' );
+	private static function validate_bindings( mixed $bindings ): array {
+		if ( ! is_array( $bindings ) || ! array_is_list( $bindings ) || count( $bindings ) > self::MAX_BINDINGS ) {
+			throw new WorkflowPlanningException( 'invalid_availability', '$.bindings' );
 		}
 
-		$seen = array();
-		foreach ( $adapters as $index => $adapter_value ) {
-			$path    = '$.adapters[' . $index . ']';
-			$adapter = $adapter_value instanceof stdClass ? get_object_vars( $adapter_value ) : $adapter_value;
-			if ( ! is_array( $adapter ) ) {
-				self::fail( 'invalid_availability', $path );
-			}
-			$keys = array_keys( $adapter );
-			sort( $keys, SORT_STRING );
-			if ( array( 'adapter_id', 'adapter_versions' ) !== $keys ) {
+		$seen        = array();
+		$seen_owners = array();
+		foreach ( $bindings as $index => $binding_value ) {
+			$path    = '$.bindings[' . $index . ']';
+			$binding = $binding_value instanceof stdClass ? get_object_vars( $binding_value ) : $binding_value;
+			if ( ! is_array( $binding ) || array_is_list( $binding ) ) {
 				self::fail( 'invalid_availability', $path );
 			}
 
-			$adapter_id = $adapter['adapter_id'];
-			$versions   = $adapter['adapter_versions'];
+			$keys = array_keys( $binding );
+			sort( $keys, SORT_STRING );
+			if ( array( 'ability_id', 'adapter_id', 'adapter_version', 'kind' ) !== $keys ) {
+				self::fail( 'invalid_availability', $path );
+			}
+
+			$adapter_id      = $binding['adapter_id'];
+			$adapter_version = $binding['adapter_version'];
+			$ability_id      = $binding['ability_id'];
+			$kind            = $binding['kind'];
 			if ( ! is_string( $adapter_id ) || strlen( $adapter_id ) < 2 || strlen( $adapter_id ) > 64 || 1 !== preg_match( '/^[a-z][a-z0-9_]*$/D', $adapter_id ) ) {
 				self::fail( 'invalid_adapter_id', $path . '.adapter_id' );
 			}
-			if ( isset( $seen[ $adapter_id ] ) ) {
-				self::fail( 'duplicate_adapter_id', $path . '.adapter_id' );
+			if ( ! is_int( $adapter_version ) || $adapter_version < 1 ) {
+				self::fail( 'invalid_adapter_version', $path . '.adapter_version' );
 			}
-			if ( ! is_array( $versions ) || ! array_is_list( $versions ) || array() === $versions || count( $versions ) > self::MAX_VERSIONS_PER_ADAPTER ) {
-				self::fail( 'invalid_adapter_versions', $path . '.adapter_versions' );
+			if ( ! is_string( $ability_id ) || strlen( $ability_id ) > 128 || 1 !== preg_match( '#^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$#D', $ability_id ) ) {
+				self::fail( 'invalid_ability_id', $path . '.ability_id' );
 			}
-
-			$version_seen = array();
-			foreach ( $versions as $version_index => $version ) {
-				if ( ! is_int( $version ) || $version < 1 ) {
-					self::fail( 'invalid_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
-				}
-				if ( isset( $version_seen[ $version ] ) ) {
-					self::fail( 'duplicate_adapter_version', $path . '.adapter_versions[' . $version_index . ']' );
-				}
-				$version_seen[ $version ] = true;
+			if ( ! is_string( $kind ) || ! in_array( $kind, array( 'read', 'proposal', 'write' ), true ) ) {
+				self::fail( 'invalid_binding_kind', $path . '.kind' );
 			}
 
-			$normalized_versions = array_keys( $version_seen );
-			sort( $normalized_versions, SORT_NUMERIC );
-			$seen[ $adapter_id ] = array(
-				'adapter_id'       => $adapter_id,
-				'adapter_versions' => $normalized_versions,
+			$token = self::token( $adapter_id, $adapter_version, $ability_id, $kind );
+			if ( isset( $seen[ $token ] ) ) {
+				self::fail( 'duplicate_binding', $path );
+			}
+			$owner = $adapter_id . '@' . $adapter_version;
+			if ( isset( $seen_owners[ $owner ] ) ) {
+				self::fail( 'duplicate_binding_owner', $path );
+			}
+			$seen_owners[ $owner ] = true;
+			$seen[ $token ]        = array(
+				'adapter_id'      => $adapter_id,
+				'adapter_version' => $adapter_version,
+				'ability_id'      => $ability_id,
+				'kind'            => $kind,
 			);
 		}
 
@@ -189,34 +177,15 @@ final readonly class WorkflowAvailabilitySnapshot {
 	}
 
 	/**
-	 * Validate and normalize ability availability.
+	 * Build one canonical exact-binding token.
 	 *
-	 * @param mixed $abilities Raw ability availability.
-	 * @return list<string>
-	 * @throws WorkflowPlanningException When an ability ID is malformed.
-	 * @phpstan-param list<string> $abilities
+	 * @param string $adapter_id      Exact adapter ID.
+	 * @param int    $adapter_version Exact adapter version.
+	 * @param string $ability_id      Exact ability ID.
+	 * @param string $kind            Exact binding kind.
 	 */
-	private static function validate_abilities( mixed $abilities ): array {
-		if ( ! is_array( $abilities ) || ! array_is_list( $abilities ) || count( $abilities ) > self::MAX_ABILITIES ) {
-			throw new WorkflowPlanningException( 'invalid_availability', '$.abilities' );
-		}
-
-		$seen = array();
-		foreach ( $abilities as $index => $ability_id ) {
-			$path = '$.abilities[' . $index . ']';
-			if ( ! is_string( $ability_id ) || strlen( $ability_id ) > 128 || 1 !== preg_match( '#^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$#D', $ability_id ) ) {
-				self::fail( 'invalid_ability_id', $path );
-			}
-			if ( isset( $seen[ $ability_id ] ) ) {
-				self::fail( 'duplicate_ability_id', $path );
-			}
-			$seen[ $ability_id ] = true;
-		}
-
-		$abilities = array_keys( $seen );
-		sort( $abilities, SORT_STRING );
-
-		return $abilities;
+	private static function token( string $adapter_id, int $adapter_version, string $ability_id, string $kind ): string {
+		return $adapter_id . '@' . $adapter_version . '|' . $ability_id . '|' . $kind;
 	}
 
 	/**

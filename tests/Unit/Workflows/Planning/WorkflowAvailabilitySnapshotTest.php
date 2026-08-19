@@ -17,39 +17,74 @@ use PHPUnit\Framework\TestCase;
 use stdClass;
 
 /**
- * Locks the fail-closed untrusted availability input boundary.
+ * Locks the fail-closed untrusted exact-binding availability boundary.
  */
 final class WorkflowAvailabilitySnapshotTest extends TestCase {
 
 	public function test_array_object_and_json_inputs_normalize_identically_and_detach(): void {
 		$array = array(
-			'adapters'  => array(
-				array(
-					'adapter_id'       => 'wordpress',
-					'adapter_versions' => array( 2, 1 ),
-				),
+			'availability_schema_version' => 2,
+			'bindings'                    => array(
+				$this->binding( 'wordpress', 2, 'content/update-item', 'write' ),
+				$this->binding( 'wordpress', 1, 'content/get-item', 'read' ),
 			),
-			'abilities' => array( 'content/update-item', 'content/get-item' ),
 		);
 
-		$object            = new stdClass();
-		$object->adapters  = array( (object) $array['adapters'][0] );
-		$object->abilities = $array['abilities'];
-		$json              = wp_json_encode( $object );
+		$object                              = new stdClass();
+		$object->availability_schema_version = 2;
+		$object->bindings                    = array( (object) $array['bindings'][0], (object) $array['bindings'][1] );
+		$json                                = wp_json_encode( $object );
 		self::assertIsString( $json );
 
 		$from_array  = WorkflowAvailabilitySnapshot::from_value( $array );
 		$from_object = WorkflowAvailabilitySnapshot::from_value( $object );
 		$from_json   = WorkflowAvailabilitySnapshot::from_json( $json );
 
-		self::assertSame( $from_array->adapters(), $from_object->adapters() );
-		self::assertSame( $from_array->adapters(), $from_json->adapters() );
-		self::assertSame( array( 'content/get-item', 'content/update-item' ), $from_json->abilities() );
+		self::assertSame( $from_array->bindings(), $from_object->bindings() );
+		self::assertSame( $from_array->bindings(), $from_json->bindings() );
+		self::assertSame( 'content/get-item', $from_json->bindings()[0]['ability_id'] );
 
-		$array['adapters'][0]['adapter_versions'][0] = 99;
-		$copy                                        = $from_json->adapters();
-		$copy[0]['adapter_versions'][0]              = 88;
-		self::assertSame( array( 1, 2 ), $from_json->adapters()[0]['adapter_versions'] );
+		$array['bindings'][0]['adapter_version'] = 99;
+		$copy                                    = $from_json->bindings();
+		$copy[0]['adapter_version']              = 88;
+		self::assertSame( 1, $from_json->bindings()[0]['adapter_version'] );
+	}
+
+	public function test_legacy_adapters_and_abilities_root_is_rejected_without_inference(): void {
+		$this->expect_failure(
+			'invalid_availability',
+			static fn () => WorkflowAvailabilitySnapshot::from_value(
+				array(
+					'adapters'  => array(),
+					'abilities' => array(),
+				)
+			)
+		);
+	}
+
+	public function test_exactly_fifty_distinct_bindings_are_accepted(): void {
+		$bindings = array();
+		for ( $version = 1; $version <= WorkflowAvailabilitySnapshot::MAX_BINDINGS; ++$version ) {
+			$bindings[] = $this->binding( 'wordpress', $version, 'content/get-item', 'read' ); // phpcs:ignore WordPress.WP.CapitalPDangit.MisspelledInText -- Exact lowercase adapter identifier.
+		}
+
+		$snapshot = WorkflowAvailabilitySnapshot::from_value(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array_reverse( $bindings ),
+			)
+		);
+
+		self::assertCount( WorkflowAvailabilitySnapshot::MAX_BINDINGS, $snapshot->bindings() );
+		self::assertSame(
+			$snapshot->bindings(),
+			WorkflowAvailabilitySnapshot::from_value(
+				array(
+					'availability_schema_version' => 2,
+					'bindings'                    => $bindings,
+				)
+			)->bindings()
+		);
 	}
 
 	/**
@@ -85,15 +120,120 @@ final class WorkflowAvailabilitySnapshotTest extends TestCase {
 		}
 	}
 
-	public function test_nested_wrong_types_fail_closed_without_throwable_leakage(): void {
-		$this->expect_failure(
+	/**
+	 * Verify malformed exact bindings fail closed with stable codes.
+	 *
+	 * @param mixed  $value Candidate snapshot.
+	 * @param string $code  Expected code.
+	 */
+	#[DataProvider( 'invalid_binding_provider' )]
+	public function test_malformed_schema_and_bindings_fail_closed( mixed $value, string $code ): void {
+		$this->expect_failure( $code, static fn () => WorkflowAvailabilitySnapshot::from_value( $value ) );
+	}
+
+	/**
+	 * Return malformed schema and binding fixtures.
+	 *
+	 * @return iterable<string, array{0:mixed,1:string}>
+	 */
+	public static function invalid_binding_provider(): iterable {
+		$valid = array(
+			'adapter_id'      => 'wordpress',
+			'adapter_version' => 1,
+			'ability_id'      => 'content/get-item',
+			'kind'            => 'read',
+		);
+
+		yield 'string schema version' => array(
+			array(
+				'availability_schema_version' => '2',
+				'bindings'                    => array(),
+			),
+			'invalid_availability_schema_version',
+		);
+		yield 'unsupported schema version' => array(
+			array(
+				'availability_schema_version' => 1,
+				'bindings'                    => array(),
+			),
+			'unsupported_availability_schema_version',
+		);
+		yield 'unknown root key' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array(),
+				'abilities'                   => array(),
+			),
 			'invalid_availability',
-			static fn () => WorkflowAvailabilitySnapshot::from_value(
-				array(
-					'adapters'  => 'not-a-list',
-					'abilities' => null,
-				)
-			)
+		);
+		yield 'bindings not list' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => 'invalid',
+			),
+			'invalid_availability',
+		);
+		yield 'unknown binding key' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array( $valid + array( 'extra' => true ) ),
+			),
+			'invalid_availability',
+		);
+		yield 'coerced version' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array( array_replace( $valid, array( 'adapter_version' => '1' ) ) ),
+			),
+			'invalid_adapter_version',
+		);
+		yield 'wildcard ability' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array( array_replace( $valid, array( 'ability_id' => 'content/*' ) ) ),
+			),
+			'invalid_ability_id',
+		);
+		yield 'unknown kind' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array( array_replace( $valid, array( 'kind' => 'execute' ) ) ),
+			),
+			'invalid_binding_kind',
+		);
+		yield 'duplicate exact tuple' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array( $valid, $valid ),
+			),
+			'duplicate_binding',
+		);
+		yield 'same owner with different ability' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array(
+					$valid,
+					array_replace( $valid, array( 'ability_id' => 'content/update-item' ) ),
+				),
+			),
+			'duplicate_binding_owner',
+		);
+		yield 'same owner with different kind' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array(
+					$valid,
+					array_replace( $valid, array( 'kind' => 'proposal' ) ),
+				),
+			),
+			'duplicate_binding_owner',
+		);
+		yield 'over bound' => array(
+			array(
+				'availability_schema_version' => 2,
+				'bindings'                    => array_fill( 0, WorkflowAvailabilitySnapshot::MAX_BINDINGS + 1, $valid ),
+			),
+			'invalid_availability',
 		);
 	}
 
@@ -122,10 +262,23 @@ final class WorkflowAvailabilitySnapshotTest extends TestCase {
 	}
 
 	/**
+	 * Build one exact binding.
+	 *
+	 * @param string $adapter_id      Exact adapter ID.
+	 * @param int    $adapter_version Exact adapter version.
+	 * @param string $ability_id      Exact ability ID.
+	 * @param string $kind            Exact binding kind.
+	 * @return array{adapter_id:string,adapter_version:int,ability_id:string,kind:string}
+	 */
+	private function binding( string $adapter_id, int $adapter_version, string $ability_id, string $kind ): array {
+		return compact( 'adapter_id', 'adapter_version', 'ability_id', 'kind' );
+	}
+
+	/**
 	 * Assert one stable bounded planning failure.
 	 *
-	 * @param string   $code     Expected code.
-	 * @param callable $callback Operation.
+	 * @param string   $code     Expected error code.
+	 * @param callable $callback Operation that must fail.
 	 */
 	private function expect_failure( string $code, callable $callback ): void {
 		try {

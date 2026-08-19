@@ -228,26 +228,11 @@ final class WorkflowDefinitionCompatibilityEvaluatorTest extends TestCase {
 		self::assertNotSame( '$.mutated', $report->to_array()['changes'][0]['path'] );
 	}
 
-	public function test_report_rejects_classification_that_does_not_match_changes(): void {
-		$this->expect_compatibility_error( 'invalid_compatibility_class' );
+	public function test_raw_report_construction_is_unavailable(): void {
+		$constructor = ( new \ReflectionClass( WorkflowDefinitionCompatibilityReport::class ) )->getConstructor();
 
-		new WorkflowDefinitionCompatibilityReport(
-			'sample_workflow',
-			1,
-			1,
-			1,
-			2,
-			str_repeat( 'a', 64 ),
-			str_repeat( 'b', 64 ),
-			WorkflowDefinitionCompatibilityReport::COMPATIBLE,
-			array(
-				array(
-					'code'           => 'write_policy_changed',
-					'path'           => '$.write_policy',
-					'classification' => WorkflowDefinitionCompatibilityReport::INCOMPATIBLE,
-				),
-			)
-		);
+		self::assertNotNull( $constructor );
+		self::assertTrue( $constructor->isPrivate() );
 	}
 
 	public function test_workflow_id_mismatch_fails_closed(): void {
@@ -299,6 +284,13 @@ final class WorkflowDefinitionCompatibilityEvaluatorTest extends TestCase {
 		self::assertDoesNotMatchRegularExpression(
 			'/\b(?:wpdb|add_action|add_filter|get_option|update_option|McpController|WorkflowRegistry|WorkflowRun)\b/',
 			$source
+		);
+		$report_source = file_get_contents( $files[1] ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Source architecture assertion.
+		self::assertNotFalse( $report_source );
+		self::assertSame(
+			1,
+			preg_match_all( '/new self\s*\(/', $report_source ),
+			'Only the report-owned definition factory may invoke its private constructor.'
 		);
 	}
 

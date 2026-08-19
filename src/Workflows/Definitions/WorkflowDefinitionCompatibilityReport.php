@@ -33,7 +33,7 @@ final readonly class WorkflowDefinitionCompatibilityReport {
 	 * @param list<array{code: string, path: string, classification: string}> $changes              Bounded change records.
 	 * @throws WorkflowDefinitionValidationException When report data violates the bounded contract.
 	 */
-	public function __construct(
+	private function __construct(
 		private string $workflow_id,
 		private int $source_schema_version,
 		private int $target_schema_version,
@@ -83,6 +83,29 @@ final readonly class WorkflowDefinitionCompatibilityReport {
 		if ( $classification !== $expected_classification ) {
 			throw new WorkflowDefinitionValidationException( 'invalid_compatibility_class', '$.classification' );
 		}
+	}
+
+	/**
+	 * Create a report from two validated definitions through the evaluator.
+	 *
+	 * @param WorkflowDefinition $source Earlier validated definition.
+	 * @param WorkflowDefinition $target Later validated definition.
+	 * @throws WorkflowDefinitionValidationException When definitions cannot be compared safely.
+	 */
+	public static function from_definitions( WorkflowDefinition $source, WorkflowDefinition $target ): self {
+		$data = ( new WorkflowDefinitionCompatibilityEvaluator() )->derive_report_data( $source, $target );
+
+		return new self(
+			$data['workflow_id'],
+			$data['source_schema_version'],
+			$data['target_schema_version'],
+			$data['source_revision'],
+			$data['target_revision'],
+			$data['source_checksum'],
+			$data['target_checksum'],
+			$data['classification'],
+			$data['changes']
+		);
 	}
 
 	public function workflow_id(): string {

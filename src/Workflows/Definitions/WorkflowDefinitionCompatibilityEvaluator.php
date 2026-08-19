@@ -28,6 +28,30 @@ final class WorkflowDefinitionCompatibilityEvaluator {
 		WorkflowDefinition $source,
 		WorkflowDefinition $target
 	): WorkflowDefinitionCompatibilityReport {
+		return WorkflowDefinitionCompatibilityReport::from_definitions( $source, $target );
+	}
+
+	/**
+	 * Derive the private report data for the report factory.
+	 *
+	 * @internal The immutable report is the only production consumer.
+	 *
+	 * @param WorkflowDefinition $source Earlier validated definition.
+	 * @param WorkflowDefinition $target Later validated definition.
+	 * @return array{
+	 *     workflow_id: string,
+	 *     source_schema_version: int,
+	 *     target_schema_version: int,
+	 *     source_revision: int,
+	 *     target_revision: int,
+	 *     source_checksum: string,
+	 *     target_checksum: string,
+	 *     classification: string,
+	 *     changes: list<array{code: string, path: string, classification: string}>
+	 * }
+	 * @throws WorkflowDefinitionValidationException When definitions cannot be compared safely.
+	 */
+	public function derive_report_data( WorkflowDefinition $source, WorkflowDefinition $target ): array {
 		$source_value = $source->to_array();
 		$target_value = $target->to_array();
 
@@ -131,16 +155,16 @@ final class WorkflowDefinitionCompatibilityEvaluator {
 			static fn ( array $left, array $right ): int => array( $left['path'], $left['code'] ) <=> array( $right['path'], $right['code'] )
 		);
 
-		return new WorkflowDefinitionCompatibilityReport(
-			$source_value['workflow_id'],
-			$source_value['definition_schema_version'],
-			$target_value['definition_schema_version'],
-			$source_value['workflow_version'],
-			$target_value['workflow_version'],
-			$source->checksum(),
-			$target->checksum(),
-			$this->overall_classification( $changes ),
-			$changes
+		return array(
+			'workflow_id'           => $source_value['workflow_id'],
+			'source_schema_version' => $source_value['definition_schema_version'],
+			'target_schema_version' => $target_value['definition_schema_version'],
+			'source_revision'       => $source_value['workflow_version'],
+			'target_revision'       => $target_value['workflow_version'],
+			'source_checksum'       => $source->checksum(),
+			'target_checksum'       => $target->checksum(),
+			'classification'        => $this->overall_classification( $changes ),
+			'changes'               => $changes,
 		);
 	}
 

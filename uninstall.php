@@ -43,6 +43,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Diagnostics\Database\Installer::uninstall();
 \Aculect\AICompanion\Activity\Database\Installer::uninstall();
 \Aculect\AICompanion\Intelligence\Database\Installer::uninstall();
+\Aculect\AICompanion\Workflows\Database\Installer::uninstall();
 \Aculect\AICompanion\Brand\BrandProfile::delete();
 \Aculect\AICompanion\Intelligence\LearningSuggestionRepository::delete();
 \Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter::delete();

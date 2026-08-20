@@ -16,26 +16,36 @@ use PHPUnit\Framework\TestCase;
  * Verifies release metadata stays synchronized across package surfaces.
  */
 final class ReleaseMetadataTest extends TestCase {
+	private const EXPECTED_VERSION = '0.8.0';
 
 	public function test_release_metadata_is_synchronized_for_current_version(): void {
 		$root       = dirname( __DIR__, 3 );
 		$plugin     = $this->file_contents( $root . '/aculect-ai-companion.php' );
 		$readme     = $this->file_contents( $root . '/readme.txt' );
+		$pot        = $this->file_contents( $root . '/languages/aculect-ai-companion.pot' );
 		$package    = $this->json_file( $root . '/package.json' );
 		$lockfile   = $this->json_file( $root . '/package-lock.json' );
 		$log        = $this->json_file( $root . '/changelog.json' );
 		$governance = $this->file_contents( $root . '/RELEASE.md' );
 
-		self::assertSame( '0.7.2', $this->header( $plugin, 'Version' ) );
-		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '0.7.2' );", $plugin );
-		self::assertSame( '0.7.2', $this->header( $readme, 'Stable tag' ) );
-		self::assertSame( '0.7.2', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.2', (string) ( $lockfile['version'] ?? '' ) );
-		self::assertSame( '0.7.2', (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertSame( self::EXPECTED_VERSION, $this->header( $plugin, 'Version' ) );
+		self::assertStringContainsString( "define( 'ACULECT_AI_COMPANION_VERSION', '" . self::EXPECTED_VERSION . "' );", $plugin );
+		self::assertSame( self::EXPECTED_VERSION, $this->header( $readme, 'Stable tag' ) );
+		self::assertSame( '7.1', $this->header( $readme, 'Tested up to' ) );
+		self::assertSame( self::EXPECTED_VERSION, (string) ( $package['version'] ?? '' ) );
+		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['version'] ?? '' ) );
+		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['packages']['']['version'] ?? '' ) );
+		self::assertStringContainsString( 'Project-Id-Version: Aculect AI Companion ' . self::EXPECTED_VERSION, $pot );
+		self::assertSame( 119, substr_count( $pot, "\nmsgid " ) );
+		self::assertStringContainsString( 'msgid "Settings"', $pot );
+		self::assertStringContainsString( 'msgid "Review connection request"', $pot );
+		self::assertStringContainsString( 'msgid "AI access"', $pot );
+		self::assertStringContainsString( 'msgid "Aculect Intelligence"', $pot );
 
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
-		self::assertSame( '0.7.2', $release_version );
+		self::assertSame( self::EXPECTED_VERSION, $release_version );
 		self::assertArrayHasKey( $release_version, $log );
+		self::assertSame( '2026-08-20', $log[ $release_version ]['date'] ?? '' );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
@@ -44,11 +54,23 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '= ' . $release_version . ' =', $readme );
 		self::assertStringContainsString( '8. Changelog tab with the current ' . $release_version . ' release notes.', $readme );
 		self::assertStringNotContainsString( '8. Changelog tab with the current 0.7.0 release notes.', $readme );
+		foreach ( array( 'New', 'Improved', 'Fixed', 'Reliability' ) as $category ) {
+			self::assertArrayHasKey( $category, $log[ $release_version ] );
+			self::assertIsArray( $log[ $release_version ][ $category ] );
+			foreach ( $log[ $release_version ][ $category ] as $note ) {
+				self::assertIsString( $note );
+				self::assertStringContainsString( '* ' . $note, $readme );
+			}
+		}
+		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nExisting OAuth clients are issuer-bound in resumable batches.", $readme );
+		self::assertStringContainsString( 'Registration and credential issuance stay unavailable until verified.', $readme );
+		self::assertStringContainsString( 'Changing the external site URL does not rebind credentials and may require reconnecting assistants.', $readme );
 		self::assertStringContainsString( '`0.7.2` is the current production release', $governance );
-		self::assertStringContainsString( '`0.8.0` is the active feature train on `release/0.8.0`', $governance );
+		self::assertStringContainsString( '`0.8.0` is the final metadata candidate on `release/0.8.0`', $governance );
 		self::assertStringContainsString( 'every reviewed 0.7.3 change is inherited without replay or tree drift', $governance );
 		self::assertStringContainsString( 'Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`', $governance );
-		self::assertStringContainsString( 'Keep the plugin header, runtime constant, package version, and WordPress.org stable tag at `0.7.2`', $governance );
+		self::assertStringContainsString( 'synchronized to the `0.8.0` metadata candidate', $governance );
+		self::assertStringContainsString( 'Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.7.2
+Stable tag: 0.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -246,7 +246,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.7.2 release notes.
+8. Changelog tab with the current 0.8.0 release notes.
 
 == Development ==
 
@@ -277,7 +277,14 @@ Composer dependencies for production releases are installed with:
 
 = 0.8.0 =
 
-* Confirmed WordPress 7.1 compatibility for the native Abilities API execution lifecycle and client-safe schema preparation.
+* Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.
+* Added internal custom-workflow foundations for immutable definitions, deterministic planning and readiness, private read/proposal adapters, and Phase-A definition-storage schema/installer groundwork. No definition rows, runner, custom-workflow administration, or public connector tools are included yet.
+* Improved eligible public third-party WordPress Ability exposure with explicit administrator policy, safe read-only/non-destructive defaults, and fail-closed malformed metadata.
+* Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.
+* Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.
+* Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1.
+* Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.
+* Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
 
 = 0.7.2 =
 
@@ -447,6 +454,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.8.0 =
+
+Existing OAuth clients are issuer-bound in resumable batches. Registration and credential issuance stay unavailable until verified. Aculect does not fetch Client ID Metadata Documents; use DCR. Changing the external site URL does not rebind credentials and may require reconnecting assistants.
 
 = 0.7.2 =
 

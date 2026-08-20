@@ -144,6 +144,35 @@ final class WordPressExecutionClaimStoreTest extends TestCase {
 		self::assertCount( 1, $this->wpdb->rows );
 	}
 
+	public function test_expired_completed_result_is_deleted_and_replaced_by_a_new_owner(): void {
+		$store = $this->store();
+		$first = $store->claim( $this->hash( 'expired-payload' ), $this->hash( 'tool' ), $this->hash( 'identity' ), null, $this->hash( 'expired-idem' ), true, null, false, 1 );
+		self::assertTrue( $store->mark_running( $first->claim() ) );
+		self::assertTrue( $store->complete( $first->claim(), array( 'status' => 'success' ), 1 ) );
+
+		$this->now   = 1002;
+		$replacement = $store->claim( $this->hash( 'expired-payload' ), $this->hash( 'tool' ), $this->hash( 'identity' ), null, $this->hash( 'expired-idem' ), true, null, false, 86400 );
+
+		self::assertSame( ExecutionClaimDecision::ACQUIRED, $replacement->type );
+		self::assertNull( $replacement->result() );
+		self::assertSame( 'claimed', $this->wpdb->rows[1]['state'] ?? '' );
+		self::assertSame( $replacement->claim()?->owner_hash(), $this->wpdb->rows[1]['owner_hash'] ?? '' );
+	}
+
+	public function test_malformed_completed_retention_fails_closed_without_deleting_or_replaying(): void {
+		$store = $this->store();
+		$first = $store->claim( $this->hash( 'malformed-payload' ), $this->hash( 'tool' ), $this->hash( 'identity' ), null, $this->hash( 'malformed-idem' ), true, null, false, 86400 );
+		self::assertTrue( $store->mark_running( $first->claim() ) );
+		self::assertTrue( $store->complete( $first->claim(), array( 'status' => 'success' ), 86400 ) );
+		$this->wpdb->rows[1]['retain_until'] = '2026-02-31 12:00:00';
+
+		$decision = $store->claim( $this->hash( 'malformed-payload' ), $this->hash( 'tool' ), $this->hash( 'identity' ), null, $this->hash( 'malformed-idem' ), true, null, false, 86400 );
+
+		self::assertSame( ExecutionClaimDecision::UNCERTAIN, $decision->type );
+		self::assertArrayHasKey( 1, $this->wpdb->rows );
+		self::assertSame( 'completed', $this->wpdb->rows[1]['state'] );
+	}
+
 	private function store(): WordPressExecutionClaimStore {
 		return new WordPressExecutionClaimStore(
 			fn (): int => $this->now,
@@ -300,6 +329,14 @@ final class ExecutionClaimWpdb {
 			}
 			$this->rows[ $id ]['state']      = $args[1];
 			$this->rows[ $id ]['owner_hash'] = null;
+			return 1;
+		}
+		if ( str_starts_with( $query->template, 'DELETE FROM %i WHERE id = %d AND state = %s AND retain_until = %s' ) ) {
+			$id = (int) $args[1];
+			if ( ! isset( $this->rows[ $id ] ) || (string) $args[2] !== (string) $this->rows[ $id ]['state'] || (string) $args[3] !== (string) $this->rows[ $id ]['retain_until'] ) {
+				return 0;
+			}
+			unset( $this->rows[ $id ] );
 			return 1;
 		}
 		if ( str_starts_with( $query->template, 'DELETE FROM %i WHERE id = %d' ) ) {

@@ -88,17 +88,24 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 			}
 
 			if ( 1 === count( $rows ) ) {
-				$decision = $this->decision_for_row(
-					$rows[0],
-					$payload_hash,
-					$tool_hash,
-					$identity_hash,
-					$confirmation_key_hash,
-					$idempotency_key_hash,
-					$owner_token
-				);
+				$expired = $this->delete_expired_completed_row( $rows[0] );
+				if ( false === $expired ) {
+					$this->rollback();
+					return ExecutionClaimDecision::uncertain();
+				}
+				if ( null === $expired ) {
+					$decision = $this->decision_for_row(
+						$rows[0],
+						$payload_hash,
+						$tool_hash,
+						$identity_hash,
+						$confirmation_key_hash,
+						$idempotency_key_hash,
+						$owner_token
+					);
 
-				return $this->commit() ? $decision : ExecutionClaimDecision::uncertain();
+					return $this->commit() ? $decision : ExecutionClaimDecision::uncertain();
+				}
 			}
 
 			if ( null !== $legacy_result ) {
@@ -367,6 +374,48 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 	}
 
 	/**
+	 * Delete one expired completed row while its alias row is transaction-locked.
+	 *
+	 * @param array<string, mixed> $row Locked database row.
+	 * @return bool|null True when deleted, false when malformed or stale, null when not completed or still retained.
+	 */
+	private function delete_expired_completed_row( array $row ): ?bool {
+		if ( 'completed' !== (string) ( $row['state'] ?? '' ) ) {
+			return null;
+		}
+
+		$retain_until = $row['retain_until'] ?? null;
+		if ( ! is_string( $retain_until ) ) {
+			return false;
+		}
+		$retain_timestamp = self::parse_db_timestamp( $retain_until );
+		if ( null === $retain_timestamp ) {
+			return false;
+		}
+		if ( $retain_timestamp > ( $this->clock )() ) {
+			return null;
+		}
+
+		$id = absint( $row['id'] ?? 0 );
+		if ( 0 >= $id ) {
+			return false;
+		}
+
+		global $wpdb;
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE id = %d AND state = %s AND retain_until = %s',
+				Installer::table_name(),
+				$id,
+				'completed',
+				$retain_until
+			)
+		);
+
+		return 1 === (int) $deleted;
+	}
+
+	/**
 	 * Find rows matching either execution alias while holding a transaction lock.
 	 *
 	 * @param string|null $confirmation_key_hash Confirmation-token hash.
@@ -523,6 +572,26 @@ final class WordPressExecutionClaimStore implements ExecutionClaimStoreInterface
 
 	private static function valid_hash( string $hash ): bool {
 		return 1 === preg_match( '/\A[a-f0-9]{64}\z/', $hash );
+	}
+
+	/**
+	 * Parse one exact UTC database timestamp within the portable DATETIME range.
+	 *
+	 * @param string $value Canonical UTC database timestamp.
+	 */
+	private static function parse_db_timestamp( string $value ): ?int {
+		if ( 1 !== preg_match( '/\A(?:19[7-9]\d|[2-9]\d{3})-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]) (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\z/', $value ) ) {
+			return null;
+		}
+
+		$timestamp = \DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $value, new \DateTimeZone( 'UTC' ) );
+		$errors    = \DateTimeImmutable::getLastErrors();
+		if ( false === $timestamp || ( is_array( $errors ) && ( 0 < $errors['warning_count'] || 0 < $errors['error_count'] ) ) || $timestamp->format( 'Y-m-d H:i:s' ) !== $value ) {
+			return null;
+		}
+
+		$unix = $timestamp->getTimestamp();
+		return 0 <= $unix && 253402300799 >= $unix ? $unix : null;
 	}
 
 	/**

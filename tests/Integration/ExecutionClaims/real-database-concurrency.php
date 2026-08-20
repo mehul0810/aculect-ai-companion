@@ -212,7 +212,7 @@ function aculect_claims_worker( string $scenario, float $start_at ): never {
 
 	$store        = new WordPressExecutionClaimStore();
 	$confirmation = 'confirmation' === $scenario ? aculect_claims_hash( $scenario, 'confirmation' ) : null;
-	$idempotency  = 'idempotency' === $scenario ? aculect_claims_hash( $scenario, 'idempotency' ) : null;
+	$idempotency  = 'confirmation' === $scenario ? null : aculect_claims_hash( $scenario, 'idempotency' );
 	$decision     = $store->claim(
 		aculect_claims_hash( $scenario, 'payload' ),
 		aculect_claims_hash( $scenario, 'tool' ),
@@ -316,6 +316,30 @@ $wpdb->query( 'CREATE TABLE `wp_aculect_claim_side_effects` (id BIGINT UNSIGNED 
 
 aculect_claims_prove_scenario( 'confirmation' );
 aculect_claims_prove_scenario( 'idempotency' );
+
+$expired_scenario = 'expired-idempotency';
+$expired_result   = wp_json_encode( array( 'status' => 'success' ) );
+$expired_now      = time();
+$wpdb->insert(
+	Installer::table_name(),
+	array(
+		'confirmation_key_hash' => null,
+		'idempotency_key_hash'  => aculect_claims_hash( $expired_scenario, 'idempotency' ),
+		'payload_hash'          => aculect_claims_hash( $expired_scenario, 'payload' ),
+		'tool_hash'             => aculect_claims_hash( $expired_scenario, 'tool' ),
+		'identity_hash'         => aculect_claims_hash( $expired_scenario, 'identity' ),
+		'owner_hash'            => null,
+		'fence'                 => 1,
+		'state'                 => 'completed',
+		'result_json'           => $expired_result,
+		'result_hash'           => hash( 'sha256', (string) $expired_result ),
+		'completed_at'          => gmdate( 'Y-m-d H:i:s', $expired_now - 20 ),
+		'retain_until'          => gmdate( 'Y-m-d H:i:s', $expired_now - 10 ),
+		'created_at'            => gmdate( 'Y-m-d H:i:s', $expired_now - 20 ),
+		'updated_at'            => gmdate( 'Y-m-d H:i:s', $expired_now - 20 ),
+	)
+);
+aculect_claims_prove_scenario( $expired_scenario );
 
 $engine = (string) $wpdb->get_var( 'SELECT VERSION()' );
 echo "PASS real competing-worker proof on {$engine}\n";

@@ -15,20 +15,27 @@ final class Installer {
 	private const OPTION_DB_VERSION = 'aculect_ai_companion_execution_claims_db_version';
 
 	public static function install( bool $verify_table = false ): bool {
+		unset( $verify_table );
 		$installed = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		$missing   = $verify_table && ! self::table_exists();
+		$missing   = ! self::table_exists();
 		if ( version_compare( $installed, self::DB_VERSION, '<' ) || $missing ) {
 			try {
 				self::create_table();
 			} catch ( \Throwable ) {
+				self::invalidate_schema_version();
 				return false;
 			}
 
 			if ( ! self::table_exists() ) {
+				self::invalidate_schema_version();
 				return false;
 			}
 
-			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+			$updated = update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+			if ( ! $updated && self::DB_VERSION !== (string) get_option( self::OPTION_DB_VERSION, '0' ) ) {
+				self::invalidate_schema_version();
+				return false;
+			}
 		}
 
 		return true;
@@ -93,5 +100,15 @@ final class Installer {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		}
 		dbDelta( $sql );
+	}
+
+	/**
+	 * Invalidate stale schema truth after an unsuccessful repair.
+	 */
+	private static function invalidate_schema_version(): void {
+		delete_option( self::OPTION_DB_VERSION );
+		if ( '0' !== (string) get_option( self::OPTION_DB_VERSION, '0' ) ) {
+			update_option( self::OPTION_DB_VERSION, '0', false );
+		}
 	}
 }

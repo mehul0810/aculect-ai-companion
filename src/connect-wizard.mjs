@@ -35,6 +35,62 @@ export function connectAppOptionForProvider( providerId, options ) {
 	);
 }
 
+export function connectAppNavigationTarget(
+	key,
+	currentOptionId,
+	options,
+	availableProviderIds
+) {
+	const direction = {
+		ArrowRight: 1,
+		ArrowDown: 1,
+		ArrowLeft: -1,
+		ArrowUp: -1,
+	}[ key ];
+	const isBoundaryKey = key === 'Home' || key === 'End';
+
+	if ( ! direction && ! isBoundaryKey ) {
+		return null;
+	}
+
+	const providerIds = new Set(
+		Array.isArray( availableProviderIds ) ? availableProviderIds : []
+	);
+	const availableOptions = ( Array.isArray( options ) ? options : [] ).filter(
+		( option ) =>
+			option &&
+			typeof option.id === 'string' &&
+			typeof option.providerId === 'string' &&
+			providerIds.has( option.providerId )
+	);
+
+	if ( availableOptions.length === 0 ) {
+		return null;
+	}
+
+	if ( key === 'Home' ) {
+		return availableOptions[ 0 ];
+	}
+
+	if ( key === 'End' ) {
+		return availableOptions[ availableOptions.length - 1 ];
+	}
+
+	const currentIndex = availableOptions.findIndex(
+		( option ) => option.id === currentOptionId
+	);
+	let nextIndex;
+	if ( currentIndex < 0 ) {
+		nextIndex = direction > 0 ? 0 : availableOptions.length - 1;
+	} else {
+		nextIndex =
+			( currentIndex + direction + availableOptions.length ) %
+			availableOptions.length;
+	}
+
+	return availableOptions[ nextIndex ];
+}
+
 export function wizardStepsForProvider( provider ) {
 	const wizard =
 		provider?.wizard && typeof provider.wizard === 'object'

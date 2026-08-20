@@ -30,6 +30,7 @@ import {
 	safeDiagnosticEvidence,
 } from './diagnostics-ui.mjs';
 import {
+	connectAppNavigationTarget,
 	connectAppOptionForProvider,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
@@ -5369,6 +5370,33 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
 	);
 	const guideUrl = safeExternalUrl( selectedOption.guideUrl );
+	const availableProviderIds = providers.map( ( provider ) => provider.id );
+	const handleOptionKeyDown = ( event ) => {
+		const nextOption = connectAppNavigationTarget(
+			event.key,
+			selectedOption.id,
+			CONNECT_APP_OPTIONS,
+			availableProviderIds
+		);
+
+		if ( ! nextOption ) {
+			return;
+		}
+
+		const provider = providers.find(
+			( item ) => item.id === nextOption.providerId
+		);
+
+		if ( ! provider ) {
+			return;
+		}
+
+		event.preventDefault();
+		onSelectProvider( provider.id );
+		event.currentTarget.parentElement
+			?.querySelector( `[data-connect-option-id="${ nextOption.id }"]` )
+			?.focus();
+	};
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
@@ -5380,6 +5408,7 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				className="aculect-ai-companion-connect-app-picker__options"
 				role="radiogroup"
 				aria-label="AI app"
+				aria-orientation="horizontal"
 			>
 				{ CONNECT_APP_OPTIONS.map( ( option ) => {
 					const provider = providers.find(
@@ -5396,8 +5425,11 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 							}` }
 							role="radio"
 							aria-checked={ isSelected }
+							tabIndex={ isSelected ? 0 : -1 }
+							data-connect-option-id={ option.id }
 							disabled={ ! provider }
 							onClick={ () => onSelectProvider( provider.id ) }
+							onKeyDown={ handleOptionKeyDown }
 						>
 							{ provider && (
 								<ConnectProviderBadge provider={ provider } />

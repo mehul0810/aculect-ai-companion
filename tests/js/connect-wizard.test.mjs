@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	clampWizardStepIndex,
+	connectAppNavigationTarget,
 	connectAppOptionForProvider,
 	connectWizardCompletionStep,
 	connectWizardCompletionState,
@@ -11,6 +12,14 @@ import {
 	shouldShowPendingRequests,
 	wizardStepsForProvider,
 } from '../../src/connect-wizard.mjs';
+
+const CONNECT_OPTIONS = [
+	{ id: 'chatgpt', providerId: 'chatgpt' },
+	{ id: 'claude', providerId: 'claude' },
+	{ id: 'grok', providerId: 'grok' },
+	{ id: 'cursor', providerId: 'cursor' },
+	{ id: 'other', providerId: 'mcp' },
+];
 
 test( 'uses the stable generic app option for unknown providers', () => {
 	const options = [
@@ -25,6 +34,106 @@ test( 'uses the stable generic app option for unknown providers', () => {
 		'other'
 	);
 	assert.equal( connectAppOptionForProvider( 'grok', options )?.id, 'grok' );
+} );
+
+test( 'moves through available connect apps with wrapping arrow navigation', () => {
+	const available = [ 'chatgpt', 'claude', 'grok', 'cursor', 'mcp' ];
+
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowRight',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'claude'
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowDown',
+			'other',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'chatgpt'
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowLeft',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'other'
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowUp',
+			'grok',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'claude'
+	);
+} );
+
+test( 'skips unavailable connect apps and supports Home and End', () => {
+	const available = [ 'chatgpt', 'grok', 'mcp' ];
+
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowRight',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'grok'
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowLeft',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'other'
+	);
+	assert.equal(
+		connectAppNavigationTarget( 'Home', 'grok', CONNECT_OPTIONS, available )
+			?.id,
+		'chatgpt'
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'End',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			available
+		)?.id,
+		'other'
+	);
+} );
+
+test( 'connect app navigation ignores unrelated and unusable input', () => {
+	assert.equal(
+		connectAppNavigationTarget( 'Enter', 'chatgpt', CONNECT_OPTIONS, [
+			'chatgpt',
+		] ),
+		null
+	);
+	assert.equal(
+		connectAppNavigationTarget(
+			'ArrowRight',
+			'chatgpt',
+			CONNECT_OPTIONS,
+			[]
+		),
+		null
+	);
+	assert.equal(
+		connectAppNavigationTarget( 'ArrowLeft', 'missing', null, null ),
+		null
+	);
 } );
 
 test( 'prefers ChatGPT for the default assistant wizard selection', () => {

@@ -10,6 +10,10 @@ const ADMIN_STYLE_SOURCE = readFileSync(
 	new URL( '../../src/style.scss', import.meta.url ),
 	'utf8'
 );
+const RELEASE_UI_SMOKE_SOURCE = readFileSync(
+	new URL( '../../scripts/smoke/release-ui.mjs', import.meta.url ),
+	'utf8'
+);
 
 test( 'connect tab renders a persistent connection link before the lean app picker', () => {
 	assert.match(
@@ -93,6 +97,28 @@ test( 'connect picker shows ChatGPT, Claude, Grok, Cursor, and a generic MCP-com
 	);
 	assert.match( ADMIN_APP_SOURCE, /label: 'Other AI app'/ );
 	assert.match( ADMIN_APP_SOURCE, /brand: 'MCP compatible'/ );
+} );
+
+test( 'connect picker uses roving radio focus and keyboard navigation', () => {
+	assert.match( ADMIN_APP_SOURCE, /role="radiogroup"/ );
+	assert.match( ADMIN_APP_SOURCE, /aria-orientation="horizontal"/ );
+	assert.match( ADMIN_APP_SOURCE, /role="radio"/ );
+	assert.match( ADMIN_APP_SOURCE, /aria-checked=\{ isSelected \}/ );
+	assert.match( ADMIN_APP_SOURCE, /tabIndex=\{ isSelected \? 0 : -1 \}/ );
+	assert.match( ADMIN_APP_SOURCE, /onKeyDown=\{ handleOptionKeyDown \}/ );
+	assert.match( ADMIN_APP_SOURCE, /connectAppNavigationTarget\(/ );
+	assert.match( ADMIN_APP_SOURCE, /data-connect-option-id/ );
+	assert.match( ADMIN_APP_SOURCE, /\.focus\(\)/ );
+	assert.match( RELEASE_UI_SMOKE_SOURCE, /verifyConnectPickerKeyboard/ );
+	assert.match(
+		RELEASE_UI_SMOKE_SOURCE,
+		/page\.keyboard\.press\( 'ArrowRight' \)/
+	);
+	assert.match(
+		RELEASE_UI_SMOKE_SOURCE,
+		/page\.keyboard\.press\( 'Home' \)/
+	);
+	assert.match( RELEASE_UI_SMOKE_SOURCE, /page\.keyboard\.press\( 'End' \)/ );
 } );
 
 test( 'connect tab keeps client tool filtering advanced and provider-driven', () => {

@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP\ExecutionClaims;
 
 use Aculect\AICompanion\Plugin;
 use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\Installer;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use PHPUnit\Framework\TestCase;
 
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Files.OneObjectStructurePerFile.MultipleFound -- Focused installer test double.
@@ -118,8 +119,9 @@ final class InstallerTest extends TestCase {
 		$GLOBALS['wpdb'] = $wpdb;
 		$GLOBALS['aculect_ai_companion_test_options']           = array(
 			'aculect_ai_companion_execution_claims_db_version' => '2026.08.19.1',
-			'aculect_ai_companion_oauth_db_version'        => '2026.06.03.1',
+			'aculect_ai_companion_oauth_db_version'        => '2026.08.19.1',
 			'aculect_ai_companion_oauth_legacy_migrated'   => '1',
+			'aculect_ai_companion_oauth_issuer_backfill'   => IssuerBinding::hash(),
 			'aculect_ai_companion_logs_db_version'         => '2026.05.17.1',
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',

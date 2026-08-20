@@ -1,0 +1,66 @@
+name: OAuth Engine Matrix
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oauth-engine-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issuer-migration:
+    name: Issuer Migration (${{ matrix.database.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - name: MySQL 8.0
+            image: mysql:8.0
+          - name: MariaDB 10.11
+            image: mariadb:10.11
+
+    services:
+      database:
+        image: ${{ matrix.database.image }}
+        env:
+          MYSQL_DATABASE: oauth_test
+          MYSQL_ROOT_PASSWORD: oauth_test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=oauth_test_password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          extensions: pdo_mysql
+          tools: composer:v2
+
+      - name: Install locked PHP dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Prove OAuth issuer migration and credential joins
+        env:
+          ACULECT_TEST_DB_DSN: mysql:host=127.0.0.1;port=3306;dbname=oauth_test;charset=utf8mb4
+          ACULECT_TEST_DB_USER: root
+          ACULECT_TEST_DB_PASSWORD: oauth_test_password
+        run: php tests/integration/oauth-issuer-engine.php

@@ -12,6 +12,7 @@ use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\UserEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
@@ -272,6 +273,7 @@ final class AuthorizationController {
 				);
 				$this->render_error( 'Connection approval failed', 'Aculect AI Companion could not complete the approval request.', 500 );
 			}
+			$location = $this->authorization_response_location( $location );
 
 			$this->delete_consent_request( $request_token );
 			( new Logger() )->info(
@@ -531,10 +533,23 @@ final class AuthorizationController {
 	 * @param array<string, string> $params       Response query parameters.
 	 */
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
-		$params = array_filter( $params, static fn( $value ): bool => '' !== (string) $value );
+		$location = $this->authorization_response_location( $redirect_uri, $params );
 		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-		wp_redirect( add_query_arg( $params, $redirect_uri ), 302, 'Aculect AI Companion OAuth' );
+		wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
 		exit;
+	}
+
+	/**
+	 * Add the RFC 9207 issuer to a successful or error authorization response.
+	 *
+	 * @param string                $location Validated client redirect URI.
+	 * @param array<string, string> $params   Authorization response parameters.
+	 */
+	private function authorization_response_location( string $location, array $params = array() ): string {
+		$params['iss'] = IssuerBinding::issuer();
+		$params        = array_filter( $params, static fn( $value ): bool => '' !== (string) $value );
+
+		return add_query_arg( $params, $location );
 	}
 
 	/**
@@ -546,6 +561,10 @@ final class AuthorizationController {
 	 * @return array{params: array<string, string>, client: ClientEntity, resource: string}
 	 */
 	private function authorization_context( array $params, bool $admin_context, ?WP_REST_Request $request = null ): array {
+		if ( ! Installer::issuer_binding_ready() ) {
+			$this->fail( 'Temporarily unavailable', 'OAuth client storage is being upgraded. Try again shortly.', 503, $admin_context );
+		}
+
 		$resource = $this->resource_from_params( $params );
 
 		if ( 'code' !== (string) ( $params['response_type'] ?? '' ) ) {
@@ -839,7 +858,7 @@ final class AuthorizationController {
 	 * @return bool
 	 */
 	private function redirect_uri_allowed( ClientEntity $client, string $redirect_uri ): bool {
-		return RedirectUriPolicy::allows( $client->getRedirectUri(), $redirect_uri );
+		return RedirectUriPolicy::allows( $client->getRedirectUri(), $redirect_uri, $client->getApplicationType() );
 	}
 
 	/**

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
+use Aculect\AICompanion\Connectors\OAuth\BoundClientGuard;
 use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
@@ -75,6 +77,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	public function persistNewAccessToken( AccessTokenEntityInterface $accessTokenEntity ): void {
 		global $wpdb;
 
+		BoundClientGuard::assert_current( $accessTokenEntity->getClient() );
+
 		$table  = Installer::table_names()['access_tokens'];
 		$scopes = array();
 		foreach ( $accessTokenEntity->getScopes() as $scope ) {
@@ -136,9 +140,20 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	public function isAccessTokenRevoked( string $tokenId ): bool {
 		global $wpdb;
 
-		$table = Installer::table_names()['access_tokens'];
-		$row   = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT revoked, expires_at FROM %i WHERE token_hash = %s', $table, $this->hash_identifier( $tokenId ) ),
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT access_tokens.revoked, access_tokens.expires_at
+				FROM %i access_tokens
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE access_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0',
+				$tables['access_tokens'],
+				$tables['clients'],
+				$this->hash_identifier( $tokenId ),
+				IssuerBinding::hash()
+			),
 			ARRAY_A
 		);
 
@@ -167,12 +182,15 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			$wpdb->prepare(
 				'SELECT access_tokens.*, clients.client_name, clients.provider
                 FROM %i access_tokens
-                LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
                 WHERE access_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0
                 LIMIT 1',
 				$tables['access_tokens'],
 				$tables['clients'],
-				$this->hash_identifier( $token_id )
+				$this->hash_identifier( $token_id ),
+				IssuerBinding::hash()
 			),
 			ARRAY_A
 		);

@@ -119,10 +119,7 @@ final class DiscoveryController {
 		$response = new WP_REST_Response(
 			array(
 				'resource'                              => $resource,
-				'authorization_servers'                 => array(
-					Helpers::authorization_server_issuer(),
-					Helpers::issuer(),
-				),
+				'authorization_servers'                 => array( Helpers::authorization_server_issuer() ),
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_documentation'                => 'https://github.com/mehul0810/aculect-ai-companion',
 				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
@@ -143,10 +140,9 @@ final class DiscoveryController {
 	 */
 	public function authorization_server_metadata( string $requested_issuer_path = '' ): WP_REST_Response {
 		$site_issuer_path      = untrailingslashit( (string) wp_parse_url( Helpers::issuer(), PHP_URL_PATH ) );
-		$mcp_issuer_path       = untrailingslashit( Helpers::resource_path( Helpers::authorization_server_issuer() ) );
 		$requested_issuer_path = untrailingslashit( $requested_issuer_path );
 
-		if ( '' !== $requested_issuer_path && $requested_issuer_path !== $site_issuer_path && $requested_issuer_path !== $mcp_issuer_path ) {
+		if ( '' !== $requested_issuer_path && $requested_issuer_path !== $site_issuer_path ) {
 			( new Logger() )->warning(
 				'metadata.invalid_issuer',
 				'Authorization server metadata was requested for an unknown issuer path.',
@@ -154,7 +150,6 @@ final class DiscoveryController {
 					'error_code'            => 'invalid_issuer',
 					'requested_issuer_path' => $requested_issuer_path,
 					'site_issuer_path'      => $site_issuer_path,
-					'mcp_issuer_path'       => $mcp_issuer_path,
 				),
 				null,
 				404
@@ -162,11 +157,9 @@ final class DiscoveryController {
 			return new WP_REST_Response( array( 'error' => 'invalid_issuer' ), 404 );
 		}
 
-		$issuer = $requested_issuer_path === $mcp_issuer_path ? Helpers::authorization_server_issuer() : Helpers::issuer();
-
 		$response = new WP_REST_Response(
 			array(
-				'issuer'                                => $issuer,
+				'issuer'                                => Helpers::authorization_server_issuer(),
 				'authorization_endpoint'                => Helpers::authorization_endpoint(),
 				'token_endpoint'                        => Helpers::token_endpoint(),
 				'registration_endpoint'                 => Helpers::registration_endpoint(),

@@ -30,7 +30,9 @@ import {
 	safeDiagnosticEvidence,
 } from './diagnostics-ui.mjs';
 import {
+	connectAppNavigationTarget,
 	connectAppOptionForProvider,
+	connectAppPickerState,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
@@ -5361,14 +5363,54 @@ function preferredConnectProviderId( providers ) {
 }
 
 function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
-	const selectedOption = connectAppOptionForProvider(
+	const fallbackOption = connectAppOptionForProvider(
 		selectedProvider?.id || '',
 		CONNECT_APP_OPTIONS
 	);
-	const actionUrl = safeExternalUrl(
-		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
+	const pickerState = connectAppPickerState(
+		selectedProvider?.id || '',
+		CONNECT_APP_OPTIONS,
+		providers
 	);
-	const guideUrl = safeExternalUrl( selectedOption.guideUrl );
+	const selectedItem = pickerState.selectedItem;
+	const selectedOption = selectedItem?.option || fallbackOption;
+	const effectiveSelectedProvider = selectedItem?.provider || null;
+	const actionUrl = effectiveSelectedProvider
+		? safeExternalUrl(
+				effectiveSelectedProvider.primaryActionUrl ||
+					selectedOption.guideUrl
+		  )
+		: '';
+	const guideUrl = effectiveSelectedProvider
+		? safeExternalUrl( selectedOption.guideUrl )
+		: '';
+	const availableProviderIds = providers.map( ( provider ) => provider.id );
+	const handleOptionKeyDown = ( event ) => {
+		const nextOption = connectAppNavigationTarget(
+			event.key,
+			selectedOption.id,
+			CONNECT_APP_OPTIONS,
+			availableProviderIds
+		);
+
+		if ( ! nextOption ) {
+			return;
+		}
+
+		const provider = providers.find(
+			( item ) => item.id === nextOption.providerId
+		);
+
+		if ( ! provider ) {
+			return;
+		}
+
+		event.preventDefault();
+		onSelectProvider( provider.id );
+		event.currentTarget.parentElement
+			?.querySelector( `[data-connect-option-id="${ nextOption.id }"]` )
+			?.focus();
+	};
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
@@ -5380,13 +5422,11 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				className="aculect-ai-companion-connect-app-picker__options"
 				role="radiogroup"
 				aria-label="AI app"
+				aria-orientation="horizontal"
 			>
-				{ CONNECT_APP_OPTIONS.map( ( option ) => {
-					const provider = providers.find(
-						( item ) => item.id === option.providerId
-					);
-					const isSelected = selectedOption.id === option.id;
-
+				{ pickerState.items.map( ( item ) => {
+					const { option, provider, isSelected, tabIndex, disabled } =
+						item;
 					return (
 						<button
 							key={ option.id }
@@ -5396,8 +5436,13 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 							}` }
 							role="radio"
 							aria-checked={ isSelected }
-							disabled={ ! provider }
-							onClick={ () => onSelectProvider( provider.id ) }
+							tabIndex={ tabIndex }
+							data-connect-option-id={ option.id }
+							disabled={ disabled }
+							onClick={ () =>
+								provider && onSelectProvider( provider.id )
+							}
+							onKeyDown={ handleOptionKeyDown }
 						>
 							{ provider && (
 								<ConnectProviderBadge provider={ provider } />
@@ -5411,10 +5456,14 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 				} ) }
 			</div>
 			<div className="aculect-ai-companion-connect-app-picker__action">
-				{ selectedProvider && (
-					<ConnectProviderBadge provider={ selectedProvider } />
+				{ effectiveSelectedProvider && (
+					<ConnectProviderBadge
+						provider={ effectiveSelectedProvider }
+					/>
 				) }
-				<p>{ selectedOption.description }</p>
+				{ effectiveSelectedProvider && (
+					<p>{ selectedOption.description }</p>
+				) }
 				<div className="aculect-ai-companion-connect-app-picker__actions">
 					{ guideUrl && (
 						<a

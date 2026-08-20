@@ -28,12 +28,17 @@
     "@wordpress/scripts": "^32.2.0"
   },
   "overrides": {
+    "@puppeteer/browsers": "^3.2.1",
+    "adm-zip": "^0.6.0",
     "copy-webpack-plugin": {
       "serialize-javascript": "^7.0.5"
     },
+    "lighthouse": "^13.4.1",
     "markdownlint-cli": {
-      "minimatch": "^3.1.5"
+      ".": "^0.49.1",
+      "minimatch": "^10.2.5"
     },
+    "puppeteer-core": "^25.8.0",
     "shell-quote": "^1.8.4",
     "webpack-dev-server": "^5.2.2",
     "sockjs": {

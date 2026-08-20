@@ -104,9 +104,10 @@ test( 'connect picker uses roving radio focus and keyboard navigation', () => {
 	assert.match( ADMIN_APP_SOURCE, /aria-orientation="horizontal"/ );
 	assert.match( ADMIN_APP_SOURCE, /role="radio"/ );
 	assert.match( ADMIN_APP_SOURCE, /aria-checked=\{ isSelected \}/ );
-	assert.match( ADMIN_APP_SOURCE, /tabIndex=\{ isSelected \? 0 : -1 \}/ );
+	assert.match( ADMIN_APP_SOURCE, /tabIndex=\{ tabIndex \}/ );
 	assert.match( ADMIN_APP_SOURCE, /onKeyDown=\{ handleOptionKeyDown \}/ );
 	assert.match( ADMIN_APP_SOURCE, /connectAppNavigationTarget\(/ );
+	assert.match( ADMIN_APP_SOURCE, /connectAppPickerState\(/ );
 	assert.match( ADMIN_APP_SOURCE, /data-connect-option-id/ );
 	assert.match( ADMIN_APP_SOURCE, /\.focus\(\)/ );
 	assert.match( RELEASE_UI_SMOKE_SOURCE, /verifyConnectPickerKeyboard/ );

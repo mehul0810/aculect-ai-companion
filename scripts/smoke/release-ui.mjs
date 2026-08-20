@@ -321,6 +321,34 @@ async function verifyLearningSurfaces( page ) {
 	}
 }
 
+async function selectedEnabledConnectRadio( page ) {
+	const selected = page.locator(
+		'.aculect-ai-companion-connect-app-picker button[role="radio"][aria-checked="true"]'
+	);
+	const selectedEnabled = page.locator(
+		'.aculect-ai-companion-connect-app-picker button[role="radio"][aria-checked="true"]:not([disabled])'
+	);
+	const enabledTabStops = page.locator(
+		'.aculect-ai-companion-connect-app-picker button[role="radio"][tabindex="0"]:not([disabled])'
+	);
+	const disabledSelected = page.locator(
+		'.aculect-ai-companion-connect-app-picker button[role="radio"][aria-checked="true"][disabled]'
+	);
+
+	if (
+		( await selected.count() ) !== 1 ||
+		( await selectedEnabled.count() ) !== 1 ||
+		( await enabledTabStops.count() ) !== 1 ||
+		( await disabledSelected.count() ) !== 0
+	) {
+		throw new Error(
+			'Connect app picker must expose exactly one enabled selected tab stop.'
+		);
+	}
+
+	return selectedEnabled;
+}
+
 async function verifyConnectPickerKeyboard( page ) {
 	const radios = page.locator(
 		'.aculect-ai-companion-connect-app-picker button[role="radio"]:not([disabled])'
@@ -333,22 +361,12 @@ async function verifyConnectPickerKeyboard( page ) {
 		);
 	}
 
-	const selected = page.locator(
-		'.aculect-ai-companion-connect-app-picker button[role="radio"][aria-checked="true"]'
-	);
-	if ( ( await selected.count() ) !== 1 ) {
-		throw new Error(
-			'Connect app picker must expose exactly one selected radio.'
-		);
-	}
-
+	const selected = await selectedEnabledConnectRadio( page );
 	const initialId = await selected.getAttribute( 'data-connect-option-id' );
 	await selected.focus();
 	await page.keyboard.press( 'ArrowRight' );
 
-	const nextSelected = page.locator(
-		'.aculect-ai-companion-connect-app-picker button[role="radio"][aria-checked="true"]'
-	);
+	const nextSelected = await selectedEnabledConnectRadio( page );
 	const nextId = await nextSelected.getAttribute( 'data-connect-option-id' );
 	if ( ! nextId || nextId === initialId ) {
 		throw new Error(
@@ -367,6 +385,7 @@ async function verifyConnectPickerKeyboard( page ) {
 	}
 
 	await page.keyboard.press( 'Home' );
+	await selectedEnabledConnectRadio( page );
 	const first = radios.first();
 	if (
 		( await first.getAttribute( 'aria-checked' ) ) !== 'true' ||
@@ -380,6 +399,7 @@ async function verifyConnectPickerKeyboard( page ) {
 	}
 
 	await page.keyboard.press( 'End' );
+	await selectedEnabledConnectRadio( page );
 	const last = radios.last();
 	if (
 		( await last.getAttribute( 'aria-checked' ) ) !== 'true' ||
@@ -393,6 +413,7 @@ async function verifyConnectPickerKeyboard( page ) {
 	}
 
 	await page.keyboard.press( 'ArrowRight' );
+	await selectedEnabledConnectRadio( page );
 	if (
 		( await first.getAttribute( 'aria-checked' ) ) !== 'true' ||
 		! ( await first.evaluate(

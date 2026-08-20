@@ -4,6 +4,7 @@ import {
 	clampWizardStepIndex,
 	connectAppNavigationTarget,
 	connectAppOptionForProvider,
+	connectAppPickerState,
 	connectWizardCompletionStep,
 	connectWizardCompletionState,
 	connectWizardRecoveryStepIndex,
@@ -134,6 +135,54 @@ test( 'connect app navigation ignores unrelated and unusable input', () => {
 		connectAppNavigationTarget( 'ArrowLeft', 'missing', null, null ),
 		null
 	);
+} );
+
+test( 'connect picker state selects only available option-provider pairs', () => {
+	const state = connectAppPickerState( 'missing', CONNECT_OPTIONS, [
+		{ id: 'grok' },
+		{ id: 'mcp' },
+	] );
+
+	assert.equal( state.selectedItem?.option.id, 'grok' );
+	assert.equal( state.selectedItem?.provider.id, 'grok' );
+	assert.deepEqual(
+		state.items.map( ( item ) => ( {
+			disabled: item.disabled,
+			isSelected: item.isSelected,
+			tabIndex: item.tabIndex,
+		} ) ),
+		[
+			{ disabled: true, isSelected: false, tabIndex: -1 },
+			{ disabled: true, isSelected: false, tabIndex: -1 },
+			{ disabled: false, isSelected: true, tabIndex: 0 },
+			{ disabled: true, isSelected: false, tabIndex: -1 },
+			{ disabled: false, isSelected: false, tabIndex: -1 },
+		]
+	);
+} );
+
+test( 'connect picker state leaves empty and custom-only payloads unreachable but truthful', () => {
+	for ( const providers of [ [], [ { id: 'custom-provider' } ] ] ) {
+		const state = connectAppPickerState(
+			'custom-provider',
+			CONNECT_OPTIONS,
+			providers
+		);
+
+		assert.equal( state.selectedItem, null );
+		assert.equal(
+			state.items.filter( ( item ) => item.isSelected ).length,
+			0
+		);
+		assert.equal(
+			state.items.filter( ( item ) => item.tabIndex === 0 ).length,
+			0
+		);
+		assert.equal(
+			state.items.some( ( item ) => item.disabled && item.isSelected ),
+			false
+		);
+	}
 } );
 
 test( 'prefers ChatGPT for the default assistant wizard selection', () => {

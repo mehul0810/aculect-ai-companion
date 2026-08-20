@@ -35,6 +35,47 @@ export function connectAppOptionForProvider( providerId, options ) {
 	);
 }
 
+export function connectAppPickerState(
+	selectedProviderId,
+	options,
+	providers
+) {
+	const optionItems = Array.isArray( options ) ? options : [];
+	const providerItems = Array.isArray( providers ) ? providers : [];
+	const items = optionItems.map( ( option ) => {
+		const provider = providerItems.find(
+			( item ) => item?.id === option?.providerId
+		);
+
+		return {
+			option,
+			provider: provider || null,
+		};
+	} );
+	const selectedItem =
+		items.find(
+			( item ) => item.provider && item.provider.id === selectedProviderId
+		) ||
+		items.find( ( item ) => item.provider ) ||
+		null;
+
+	return {
+		items: items.map( ( item ) => {
+			const isSelected = Boolean(
+				item.provider && item === selectedItem
+			);
+
+			return {
+				...item,
+				disabled: ! item.provider,
+				isSelected,
+				tabIndex: isSelected ? 0 : -1,
+			};
+		} ),
+		selectedItem,
+	};
+}
+
 export function connectAppNavigationTarget(
 	key,
 	currentOptionId,

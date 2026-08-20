@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Workflows\Database;
 
 use Aculect\AICompanion\Plugin;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Workflows\Database\Installer;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -136,7 +137,7 @@ final class InstallerTest extends TestCase {
 
 	public function test_failed_lazy_repair_invalidates_a_current_schema_version(): void {
 		$wpdb                  = new WorkflowInstallerWpdb();
-		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows' );
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows', 'wp_aculect_ai_companion_execution_claims' );
 		$GLOBALS['wpdb']       = $wpdb;
 		update_option( 'aculect_ai_companion_workflows_db_version', '2026.08.19.1', false );
 
@@ -275,8 +276,10 @@ final class InstallerTest extends TestCase {
 		$wpdb->existing_tables = array( 'wp_aculect_ai_workflows' );
 		$GLOBALS['wpdb']       = $wpdb;
 		$GLOBALS['aculect_ai_companion_test_options']           = array(
-			'aculect_ai_companion_oauth_db_version'        => '2026.06.03.1',
+			'aculect_ai_companion_execution_claims_db_version' => '2026.08.19.1',
+			'aculect_ai_companion_oauth_db_version'        => '2026.08.19.1',
 			'aculect_ai_companion_oauth_legacy_migrated'   => '1',
+			'aculect_ai_companion_oauth_issuer_backfill'   => IssuerBinding::hash(),
 			'aculect_ai_companion_logs_db_version'         => '2026.05.17.1',
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',

@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaim;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimDecision;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimStoreInterface;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\WordPressExecutionClaimStore;
+
 /**
  * Centralizes MCP dry-run and confirmation safety controls.
  */
@@ -15,6 +20,139 @@ final class ToolSafety {
 	private const CONSUMED_RESULT_TTL = 3600;
 	private const IDEMPOTENCY_TTL     = 86400;
 	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key' );
+
+	private ExecutionClaimStoreInterface $claim_store;
+
+	public function __construct( ?ExecutionClaimStoreInterface $claim_store = null ) {
+		$this->claim_store = $claim_store ?? new WordPressExecutionClaimStore();
+	}
+
+	/**
+	 * Resolve or acquire the authoritative claim for one write execution.
+	 *
+	 * Existing completed transients are compatibility inputs only. The claim
+	 * store resolves an existing database row first and imports a legacy result
+	 * only when no authoritative row exists.
+	 *
+	 * @param string               $tool         Internal ability ID.
+	 * @param array<string, mixed> $args         Tool arguments including controls.
+	 * @param array<string, mixed> $auth         OAuth context.
+	 * @param bool                 $allow_create Whether this call may start execution.
+	 */
+	public function claim_write_execution( string $tool, array $args, array $auth, bool $allow_create ): ExecutionClaimDecision {
+		$confirmation_hash = $this->confirmation_key_hash( $args );
+		$idempotency_hash  = $this->idempotency_key_hash( $args, $auth );
+		if ( null === $confirmation_hash && null === $idempotency_hash ) {
+			return ExecutionClaimDecision::missing();
+		}
+
+		$legacy_result    = $this->confirmation_replay( $tool, $args, $auth );
+		$legacy_idem      = $this->idempotent_replay( $tool, $args, $auth );
+		$legacy_key_reuse = is_array( $legacy_idem ) && 'idempotency_key_reuse' === ( $legacy_idem['error'] ?? '' );
+		if ( null === $legacy_result && is_array( $legacy_idem ) && ! $legacy_key_reuse ) {
+			$legacy_result = $legacy_idem;
+		}
+
+		return $this->claim_store->claim(
+			$this->payload_hash( $tool, $args, $auth ),
+			hash( 'sha256', $tool ),
+			$this->identity_hash( $auth ),
+			$confirmation_hash,
+			$idempotency_hash,
+			$allow_create,
+			$legacy_result,
+			$legacy_key_reuse,
+			null === $idempotency_hash ? self::CONSUMED_RESULT_TTL : self::IDEMPOTENCY_TTL
+		);
+	}
+
+	public function mark_claim_running( ExecutionClaim $claim ): bool {
+		return $this->claim_store->mark_running( $claim );
+	}
+
+	/**
+	 * Publish the authoritative result before compatibility transients.
+	 *
+	 * @param ExecutionClaim      $claim Exact owner/fence handle.
+	 * @param string              $tool  Internal ability ID.
+	 * @param array<string,mixed> $args  Original arguments including controls.
+	 * @param array<string,mixed> $auth  OAuth context.
+	 * @param array<string,mixed> $result Successful result.
+	 */
+	public function complete_claim( ExecutionClaim $claim, string $tool, array $args, array $auth, array $result ): bool {
+		$retention = null === $this->idempotency_key_hash( $args, $auth ) ? self::CONSUMED_RESULT_TTL : self::IDEMPOTENCY_TTL;
+		if ( ! $this->claim_store->complete( $claim, $result, $retention ) ) {
+			return false;
+		}
+
+		$this->remember_write_result( $tool, $args, $auth, $result );
+		$this->claim_store->prune_completed();
+
+		return true;
+	}
+
+	public function release_claim( ExecutionClaim $claim ): bool {
+		return $this->claim_store->release( $claim );
+	}
+
+	public function mark_claim_uncertain( ExecutionClaim $claim ): bool {
+		return $this->claim_store->mark_uncertain( $claim );
+	}
+
+	/**
+	 * Determine whether a request carries an execution alias.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 */
+	public function has_execution_alias( array $args ): bool {
+		return null !== $this->confirmation_key_hash( $args ) || '' !== $this->idempotency_key_arg( $args );
+	}
+
+	/**
+	 * Convert a non-acquired claim decision into the bounded public result.
+	 *
+	 * @param ExecutionClaimDecision $decision Authoritative claim decision.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	public function claim_decision_result( ExecutionClaimDecision $decision ): ?array {
+		if ( ExecutionClaimDecision::REPLAY === $decision->type ) {
+			return $decision->result();
+		}
+		if ( ExecutionClaimDecision::IN_PROGRESS === $decision->type ) {
+			return array(
+				'status'      => 'blocked',
+				'error'       => 'execution_in_progress',
+				'message'     => 'This write is already being processed.',
+				'retry_after' => $decision->retry_after,
+			);
+		}
+		if ( ExecutionClaimDecision::KEY_REUSE === $decision->type ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'idempotency_key_reuse',
+				'message' => 'This idempotency_key was already used with different arguments. Use a new key for new work.',
+			);
+		}
+		if ( ExecutionClaimDecision::UNCERTAIN === $decision->type ) {
+			return $this->execution_uncertain_result();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Return the bounded uncertain-outcome result.
+	 *
+	 * @return array<string, string>
+	 */
+	public function execution_uncertain_result(): array {
+		return array(
+			'status'  => 'blocked',
+			'error'   => 'execution_uncertain',
+			'message' => 'The previous write outcome could not be confirmed. Do not retry automatically.',
+		);
+	}
 
 	/**
 	 * Return selectable non-read-only ability groups.
@@ -386,6 +524,42 @@ final class ToolSafety {
 		$identity = (int) ( $auth['user_id'] ?? 0 ) . '|' . sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) );
 
 		return 'aculect_ai_companion_idem_' . hash( 'sha256', $identity . '|' . $key );
+	}
+
+	/**
+	 * Return the hash-only confirmation alias used by claim storage.
+	 *
+	 * @param array<mixed> $args Tool arguments.
+	 */
+	private function confirmation_key_hash( array $args ): ?string {
+		$token = $this->confirmation_token_arg( $args );
+		return '' === $token ? null : hash( 'sha256', "confirmation\0" . $token );
+	}
+
+	/**
+	 * Return the authenticated identity-bound idempotency alias.
+	 *
+	 * @param array<mixed>         $args Tool arguments.
+	 * @param array<string, mixed> $auth OAuth context.
+	 */
+	private function idempotency_key_hash( array $args, array $auth ): ?string {
+		$key = $this->idempotency_key_arg( $args );
+		return '' === $key ? null : hash( 'sha256', "idempotency\0" . $this->identity_hash( $auth ) . "\0" . $key );
+	}
+
+	/**
+	 * Hash the exact authenticated identity without persisting its raw fields.
+	 *
+	 * @param array<string, mixed> $auth OAuth context.
+	 */
+	private function identity_hash( array $auth ): string {
+		$identity = array(
+			'user_id'   => (int) ( $auth['user_id'] ?? 0 ),
+			'client_id' => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
+			'provider'  => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+		);
+
+		return hash( 'sha256', (string) wp_json_encode( $identity ) );
 	}
 
 	/**

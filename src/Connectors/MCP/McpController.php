@@ -32,6 +32,16 @@ final class McpController {
 	private array $request_auth = array();
 
 	private string $request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+	private AbilityExecutionGateway $execution_gateway;
+
+	/**
+	 * Construct the transport controller.
+	 *
+	 * @param AbilityExecutionGateway|null $execution_gateway Execution policy boundary.
+	 */
+	public function __construct( ?AbilityExecutionGateway $execution_gateway = null ) {
+		$this->execution_gateway = $execution_gateway ?? new AbilityExecutionGateway();
+	}
 
 	/**
 	 * Register the OAuth-protected MCP endpoint.
@@ -630,7 +640,7 @@ final class McpController {
 
 			case 'tools/call':
 				$params  = isset( $body['params'] ) && is_array( $body['params'] ) ? $body['params'] : array();
-				$outcome = ( new AbilityExecutionGateway() )->execute( new AbilityExecutionRequest( $params, $auth, $request ) );
+				$outcome = $this->execution_gateway->execute( new AbilityExecutionRequest( $params, $auth, $request ) );
 
 				return $this->adapt_tool_execution_outcome( $id, $outcome );
 

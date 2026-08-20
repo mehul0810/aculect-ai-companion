@@ -20,6 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/Support/InMemoryExecutionClaimStore.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
 	define( 'ACULECT_AI_COMPANION_VERSION', '0.6.0' );

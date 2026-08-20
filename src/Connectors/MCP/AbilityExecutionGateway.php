@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimDecision;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Closure;
@@ -390,32 +391,33 @@ final class AbilityExecutionGateway {
 		$has_confirmation_token     = $is_write_tool && $this->safety->has_confirmation_token( $args );
 		$is_dry_run                 = $is_write_tool && $this->safety->is_dry_run( $args ) && ! $has_confirmation_token;
 		$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $auth, $is_intelligence_tool );
-		$replay                     = $is_write_tool && ! $is_dry_run
-			? ( $this->safety->confirmation_replay( $tool, $args, $auth ) ?? $this->safety->idempotent_replay( $tool, $args, $auth ) )
-			: null;
 		$trusted_write_executed     = false;
 		$confirmation_validated     = $is_write_tool
 			&& ! $is_dry_run
-			&& null === $replay
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& $this->confirmation_token_validated( $tool, $args, $auth );
+		$allow_claim_create         = $write_permission_unblocked || ! $requires_confirmation || $confirmation_validated;
+		$claim_decision             = $is_write_tool && ! $is_dry_run
+			? $this->safety->claim_write_execution( $tool, $args, $auth, $allow_claim_create )
+			: ExecutionClaimDecision::missing();
+		$claim_result               = $this->safety->claim_decision_result( $claim_decision );
 		$invalid_confirmation       = $has_confirmation_token
 			&& ! $is_dry_run
-			&& null === $replay
+			&& null === $claim_result
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& ! $confirmation_validated;
 		$needs_confirmation_gate    = $is_write_tool
 			&& ! $is_dry_run
-			&& null === $replay
+			&& null === $claim_result
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& ! $has_confirmation_token
 			&& ! $confirmation_validated;
 
-		if ( null !== $replay ) {
-			$result = $replay;
+		if ( null !== $claim_result ) {
+			$result = $claim_result;
 		} elseif ( $is_dry_run ) {
 			$result = $this->execute_tool( $tool, $args, $is_intelligence_tool, $auth );
 			if ( ! isset( $result['error'] ) ) {
@@ -433,16 +435,42 @@ final class AbilityExecutionGateway {
 			$preview                 = $this->execute_tool( $tool, $preview_args, $is_intelligence_tool, $auth );
 			$result                  = isset( $preview['error'] )
 				? $preview
-				: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
+					: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
 		} else {
 			$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
-			$result    = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
-			if ( $is_write_tool && ! isset( $result['error'] ) ) {
+			$claim     = $claim_decision->claim();
+			if ( $is_write_tool && $this->safety->has_execution_alias( $args ) && null === $claim ) {
+				$result = $this->safety->execution_uncertain_result();
+			} elseif ( null !== $claim && ! $this->safety->mark_claim_running( $claim ) ) {
+				$result = $this->safety->execution_uncertain_result();
+			} elseif ( null === $claim ) {
+				$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
+			} else {
+				try {
+					$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
+				} catch ( \Throwable ) {
+					$this->safety->mark_claim_uncertain( $claim );
+					$result = $this->safety->execution_uncertain_result();
+				}
+			}
+
+			if ( null !== $claim && isset( $result['error'] ) && 'execution_uncertain' !== $result['error'] ) {
+				if ( ! $this->safety->release_claim( $claim ) ) {
+					$result = $this->safety->execution_uncertain_result();
+				}
+			} elseif ( $is_write_tool && ! isset( $result['error'] ) ) {
 				$trusted_write_executed = $write_permission_unblocked;
 				if ( $trusted_write_executed ) {
 					$result = $this->trusted_write_result_payload( $result, $auth );
 				}
-				$this->safety->remember_write_result( $tool, $args, $auth, $result );
+
+				if ( null !== $claim ) {
+					if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
+						$result = $this->safety->execution_uncertain_result();
+					}
+				} else {
+					$this->safety->remember_write_result( $tool, $args, $auth, $result );
+				}
 			}
 			$args = $exec_args;
 		}

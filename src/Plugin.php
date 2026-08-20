@@ -12,6 +12,7 @@ use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\Installer as ExecutionClaimsInstaller;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
@@ -62,6 +63,7 @@ final class Plugin {
 	 * Run activation tasks that require immediate persistence.
 	 */
 	public static function activate(): void {
+		ExecutionClaimsInstaller::activate();
 		OAuthInstaller::activate();
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
@@ -114,6 +116,7 @@ final class Plugin {
 		( new EditorInternalLinkSuggestions() )->register();
 
 		OAuthInstaller::install();
+		ExecutionClaimsInstaller::install();
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();

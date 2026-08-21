@@ -36,10 +36,6 @@ import {
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
-import {
-	connectToolFilteringViewModel,
-	copyToolFilteringField,
-} from './connect-tool-filtering.mjs';
 import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
 import {
 	Button,
@@ -62,6 +58,7 @@ import {
 	category,
 	chartBar,
 	check,
+	chevronDown,
 	cog,
 	comment,
 	copy,
@@ -671,23 +668,6 @@ function ConnectionProviderLogo( {
 				fallback={ label.slice( 0, 2 ).toUpperCase() }
 			/>
 		</span>
-	);
-}
-
-function ConnectCapabilityCard( { icon, title, children, tone = 'blue' } ) {
-	return (
-		<div className="aculect-ai-companion-connect-capability-card">
-			<span
-				className={ `aculect-ai-companion-connect-capability-card__icon is-${ tone }` }
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 20 } />
-			</span>
-			<div>
-				<h3>{ title }</h3>
-				<p>{ children }</p>
-			</div>
-		</div>
 	);
 }
 
@@ -5416,7 +5396,7 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
 			<div className="aculect-ai-companion-connect-app-picker__heading">
 				<h2>Choose an AI app</h2>
-				<p>Pick an app to see where to add your connection link.</p>
+				<p>Pick an app to see next steps.</p>
 			</div>
 			<div
 				className="aculect-ai-companion-connect-app-picker__options"
@@ -5451,16 +5431,25 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 								<strong>{ option.label }</strong>
 								<span>{ option.brand }</span>
 							</span>
+							{ isSelected && (
+								<span
+									className="aculect-ai-companion-connect-app-option__check"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 14 } />
+								</span>
+							) }
 						</button>
 					);
 				} ) }
 			</div>
 			<div className="aculect-ai-companion-connect-app-picker__action">
-				{ effectiveSelectedProvider && (
-					<ConnectProviderBadge
-						provider={ effectiveSelectedProvider }
-					/>
-				) }
+				<span
+					className="aculect-ai-companion-connect-app-picker__action-icon"
+					aria-hidden="true"
+				>
+					<Icon icon={ info } size={ 18 } />
+				</span>
 				{ effectiveSelectedProvider && (
 					<p>{ selectedOption.description }</p>
 				) }
@@ -5504,79 +5493,6 @@ function ConnectReadinessBadge( { status } ) {
 	);
 }
 
-function ConnectToolFilteringGuidance( { provider, onCopy } ) {
-	const viewModel = connectToolFilteringViewModel( provider );
-
-	if ( ! viewModel ) {
-		return null;
-	}
-
-	const { provider: selectedProvider, guidance, copyFields } = viewModel;
-
-	return (
-		<section className="aculect-ai-companion-connect-card aculect-ai-companion-tool-filtering">
-			<details>
-				<summary>
-					<span>{ guidance.title }</span>
-					<span className="aculect-ai-companion-tool-filtering__summary-note">
-						{ guidance.advancedLabel }
-					</span>
-				</summary>
-				<div className="aculect-ai-companion-tool-filtering__content">
-					<section className="aculect-ai-companion-tool-filtering__provider">
-						<h3>{ selectedProvider.label }</h3>
-						<p>{ guidance.description }</p>
-						{ guidance.providerNote && (
-							<p className="aculect-ai-companion-help-text">
-								{ guidance.providerNote }
-							</p>
-						) }
-						<div className="aculect-ai-companion-tool-filtering__sets">
-							{ guidance.toolSets.map( ( toolSet ) => (
-								<article
-									key={ toolSet.id }
-									className="aculect-ai-companion-tool-filtering__set"
-								>
-									<strong>{ toolSet.label }</strong>
-									<p>{ toolSet.description }</p>
-									{ toolSet.readOnlyDefault && (
-										<p>{ guidance.readOnlyLabel }</p>
-									) }
-									{ toolSet.requiresExplicitApproval && (
-										<p>{ guidance.approvalLabel }</p>
-									) }
-									<code>
-										{ ( toolSet.toolNames || [] ).join(
-											', '
-										) }
-									</code>
-								</article>
-							) ) }
-						</div>
-						{ copyFields.map( ( field ) => (
-							<CopyField
-								key={ field.label }
-								label={ field.label }
-								value={ field.value }
-								copyButtonLabel={ guidance.copyButtonLabel }
-								onCopy={ ( value ) =>
-									copyToolFilteringField(
-										{ ...field, value },
-										onCopy
-									)
-								}
-							/>
-						) ) }
-						<p className="aculect-ai-companion-tool-filtering__warning">
-							{ guidance.warning }
-						</p>
-					</section>
-				</div>
-			</details>
-		</section>
-	);
-}
-
 function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 	const endpoint = String( mcpUrl || '' ).trim();
 	const hasEndpoint = endpoint !== '';
@@ -5589,16 +5505,19 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
-			<div className="aculect-ai-companion-connect-section-heading">
+			<div className="aculect-ai-companion-connect-endpoint-heading">
+				<span
+					className="aculect-ai-companion-connect-endpoint-heading__icon"
+					aria-hidden="true"
+				>
+					<Icon icon={ link } size={ 20 } />
+				</span>
 				<div>
-					<div className="aculect-ai-companion-connect-section-heading__title">
-						<h2>Connection link</h2>
-						<span className="aculect-ai-companion-connect-apps-chip">
-							<Icon icon={ link } size={ 16 } />
-							Works with AI apps
-						</span>
-					</div>
-					<p>Copy this link into your AI app.</p>
+					<h2>Connection endpoint</h2>
+					<p>
+						Use this endpoint in your AI app to connect to your
+						site.
+					</p>
 				</div>
 			</div>
 			<div className="aculect-ai-companion-connect-url-panel">
@@ -5607,9 +5526,9 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 						label="Connection link"
 						value={ endpoint }
 						visuallyHiddenLabel={ true }
-						copyButtonLabel="Copy link"
+						copyButtonLabel="Copy endpoint"
 						onCopy={ ( value ) =>
-							onCopy( value, 'Connection link copied.' )
+							onCopy( value, 'Connection endpoint copied.' )
 						}
 					/>
 				) : (
@@ -5619,33 +5538,99 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 					</p>
 				) }
 			</div>
-			<div
-				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
-				role="status"
-			>
-				<span
-					aria-hidden="true"
-					className="aculect-ai-companion-connect-info-message__icon"
-				>
-					<Icon icon={ statusIcon } size={ 16 } />
-				</span>
-				<div className="aculect-ai-companion-connect-info-message__content">
-					<div className="aculect-ai-companion-connect-info-message__summary">
-						<p>
-							<strong>{ status.title }</strong>{ ' ' }
-							{ status.description }
-						</p>
-						{ status.verified && (
-							<StatusBadge status="pass" label="Verified" />
-						) }
-					</div>
-					{ status.detail && <p>{ status.detail }</p> }
+			{ status.status === 'pass' ? (
+				<div className="aculect-ai-companion-connect-endpoint-meta">
+					<span className="is-verified">
+						<span
+							className="aculect-ai-companion-connect-endpoint-meta__verified-icon"
+							aria-hidden="true"
+						>
+							<Icon icon={ check } size={ 13 } />
+						</span>
+						Verified
+					</span>
+					<span
+						className="aculect-ai-companion-connect-endpoint-meta__separator"
+						aria-hidden="true"
+					>
+						•
+					</span>
+					<span className="aculect-ai-companion-connect-endpoint-meta__secure">
+						<Icon icon={ lock } size={ 16 } />
+						Contains no secrets
+					</span>
 				</div>
-			</div>
-			<p className="aculect-ai-companion-connect-secure-note">
-				<Icon icon={ lock } size={ 16 } />
-				This link contains no secrets.
-			</p>
+			) : (
+				<>
+					<div
+						className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
+						role="status"
+					>
+						<span
+							aria-hidden="true"
+							className="aculect-ai-companion-connect-info-message__icon"
+						>
+							<Icon icon={ statusIcon } size={ 16 } />
+						</span>
+						<div className="aculect-ai-companion-connect-info-message__content">
+							<p>
+								<strong>{ status.title }</strong>{ ' ' }
+								{ status.description }
+							</p>
+							{ status.detail && <p>{ status.detail }</p> }
+						</div>
+					</div>
+					<p className="aculect-ai-companion-connect-secure-note">
+						<Icon icon={ lock } size={ 16 } />
+						This endpoint contains no secrets.
+					</p>
+				</>
+			) }
+		</section>
+	);
+}
+
+function ConnectSetupSteps() {
+	const steps = [
+		{
+			icon: copy,
+			title: 'Copy endpoint',
+			description: 'Copy the endpoint from the left.',
+		},
+		{
+			icon: category,
+			title: 'Choose an AI app',
+			description: 'Select the app you’ll connect.',
+		},
+		{
+			icon: shield,
+			title: 'Authorize in WordPress',
+			description: 'Approve access when prompted.',
+		},
+	];
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-setup-steps">
+			<h2>Finish setup</h2>
+			<ol>
+				{ steps.map( ( step, index ) => (
+					<li key={ step.title }>
+						<span className="aculect-ai-companion-connect-setup-steps__number">
+							{ index + 1 }
+						</span>
+						<span
+							className="aculect-ai-companion-connect-setup-steps__icon"
+							aria-hidden="true"
+						>
+							<Icon icon={ step.icon } size={ 18 } />
+						</span>
+						<span className="aculect-ai-companion-connect-setup-steps__copy">
+							<strong>{ step.title }</strong>
+							<small>{ step.description }</small>
+						</span>
+					</li>
+				) ) }
+			</ol>
 		</section>
 	);
 }
@@ -5734,57 +5719,158 @@ function PendingConnectionRequests( { requests } ) {
 	);
 }
 
-function ConnectCapabilitySummary( { permissionsUrl, onManagePermissions } ) {
+function connectAllowedRoleLabels( roleConnections ) {
+	const roleSettings =
+		roleConnections && typeof roleConnections === 'object'
+			? roleConnections
+			: {};
+	const options = Array.isArray( roleSettings.roleOptions )
+		? roleSettings.roleOptions
+		: [];
+	const optionLabels = new Map(
+		options.map( ( option ) => [ option.id, option.label ] )
+	);
+	const roleIds = [
+		'administrator',
+		...( roleSettings.enabled && Array.isArray( roleSettings.allowedRoles )
+			? roleSettings.allowedRoles
+			: [] ),
+	].filter( ( roleId, index, items ) => items.indexOf( roleId ) === index );
+	const labels = roleIds
+		.map( ( roleId ) => optionLabels.get( roleId ) || '' )
+		.filter( Boolean );
+
+	return labels.length > 0 ? labels.join( ', ' ) : 'Administrators';
+}
+
+function ConnectPermissionsSummary( {
+	roleConnections,
+	connectionsUrl,
+	permissionsUrl,
+	onViewConnections,
+	onManagePermissions,
+} ) {
+	const allowedRoles = connectAllowedRoleLabels( roleConnections );
+
 	return (
-		<section className="aculect-ai-companion-connect-capabilities">
-			<div className="aculect-ai-companion-connect-section-heading">
-				<div>
-					<h2>What your AI assistant can do</h2>
-					<p>
-						These actions are always subject to WordPress
-						permissions and Aculect settings.
-					</p>
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-permissions">
+			<details open>
+				<summary className="aculect-ai-companion-connect-permissions__summary">
+					<span className="aculect-ai-companion-connect-permissions__heading">
+						<span
+							className="aculect-ai-companion-connect-permissions__shield"
+							aria-hidden="true"
+						>
+							<Icon icon={ shield } size={ 20 } />
+						</span>
+						<span className="aculect-ai-companion-connect-permissions__heading-copy">
+							<strong>Permissions</strong>
+							<small>
+								Review what your AI assistant can do in
+								WordPress.
+							</small>
+						</span>
+					</span>
+					<span className="aculect-ai-companion-connect-permissions__status">
+						<span className="aculect-ai-companion-connect-permissions__status-chip">
+							<Icon icon={ people } size={ 16 } />
+							OAuth consent required
+						</span>
+						<span className="aculect-ai-companion-connect-permissions__status-chip">
+							<Icon icon={ lock } size={ 16 } />
+							WordPress permissions enforced
+						</span>
+					</span>
+					<span
+						className="aculect-ai-companion-connect-permissions__chevron"
+						aria-hidden="true"
+					>
+						<Icon icon={ chevronDown } size={ 20 } />
+					</span>
+				</summary>
+				<div className="aculect-ai-companion-connect-permissions__content">
+					<div className="aculect-ai-companion-connect-permissions__grid">
+						<section>
+							<h3>Access policy</h3>
+							<dl>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Connection profile</dt>
+									<dd>Selected at authorization</dd>
+								</div>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Allowed roles</dt>
+									<dd>{ allowedRoles }</dd>
+								</div>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Access level</dt>
+									<dd>
+										<span className="aculect-ai-companion-connect-permissions__access-level">
+											Read-only by default
+										</span>
+									</dd>
+								</div>
+							</dl>
+						</section>
+						<section>
+							<h3>Available OAuth scopes</h3>
+							<div className="aculect-ai-companion-connect-permissions__scopes">
+								<code>content:read</code>
+								<code>content:draft</code>
+							</div>
+							<p className="aculect-ai-companion-connect-permissions__scope-note">
+								Scopes limit what a connected app may request.
+							</p>
+						</section>
+					</div>
+					<div className="aculect-ai-companion-connect-permissions__footer">
+						<ul aria-label="Connection safeguards">
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Write confirmation
+							</li>
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Dry-run preview
+							</li>
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Revoke anytime
+							</li>
+						</ul>
+						<div className="aculect-ai-companion-connect-permissions__actions">
+							<a
+								className="aculect-ai-companion-connect-permissions__action-link"
+								href={ connectionsUrl }
+								onClick={ onViewConnections }
+							>
+								View connections
+							</a>
+							<Button
+								href={ permissionsUrl }
+								variant="secondary"
+								onClick={ onManagePermissions }
+							>
+								Manage permissions
+							</Button>
+						</div>
+					</div>
 				</div>
-				<Button
-					href={ permissionsUrl }
-					variant="secondary"
-					onClick={ onManagePermissions }
-				>
-					Manage permissions
-				</Button>
-			</div>
-			<div className="aculect-ai-companion-connect-capability-grid">
-				<ConnectCapabilityCard
-					icon={ postContent }
-					title="Create and edit content"
-				>
-					Draft and update posts, pages, and custom content.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ media }
-					title="Manage media"
-					tone="green"
-				>
-					Upload, organize, and manage media files.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ comment }
-					title="Moderate comments"
-					tone="purple"
-				>
-					Review, reply to, and manage comments.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ category }
-					title="Use SEO tools"
-					tone="orange"
-				>
-					View and update SEO data when supported.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard icon={ shield } title="Secure by design">
-					You stay in control and can revoke access anytime.
-				</ConnectCapabilityCard>
-			</div>
+			</details>
 		</section>
 	);
 }
@@ -8233,14 +8319,20 @@ function SettingsApp() {
 												status={ endpointStatus }
 											/>
 										</div>
-										<p>Connect your site to an AI app.</p>
+										<p>
+											Connect your site to an AI app in
+											three simple steps.
+										</p>
 									</div>
 								</div>
-								<ConnectMcpUrlUtility
-									mcpUrl={ mcpUrl }
-									health={ connectionHealth }
-									onCopy={ copyValue }
-								/>
+								<div className="aculect-ai-companion-connect-step-row">
+									<ConnectMcpUrlUtility
+										mcpUrl={ mcpUrl }
+										health={ connectionHealth }
+										onCopy={ copyValue }
+									/>
+									<ConnectSetupSteps />
+								</div>
 								<ConnectAppPicker
 									providers={ providers }
 									selectedProvider={ selectedConnectProvider }
@@ -8250,18 +8342,22 @@ function SettingsApp() {
 										);
 									} }
 								/>
-								<ConnectToolFilteringGuidance
-									provider={ selectedConnectProvider }
-									onCopy={ copyValue }
-								/>
 								<PendingConnectionRequests
 									requests={ connectionRequests }
 								/>
-								<ConnectCapabilitySummary
+								<ConnectPermissionsSummary
+									roleConnections={ roleConnections }
+									connectionsUrl={ tabUrl(
+										'connections',
+										data.adminPageUrl
+									) }
 									permissionsUrl={ tabUrl(
 										'abilities',
 										data.adminPageUrl
 									) }
+									onViewConnections={ ( event ) =>
+										maybeSelectTab( event, 'connections' )
+									}
 									onManagePermissions={ ( event ) =>
 										maybeSelectTab( event, 'abilities' )
 									}

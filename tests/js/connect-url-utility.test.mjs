@@ -135,6 +135,12 @@ test( 'connect tab removes advanced tool filtering and shows a native permission
 	assert.match( ADMIN_APP_SOURCE, /Read-only by default/ );
 	assert.match( ADMIN_APP_SOURCE, /content:read/ );
 	assert.match( ADMIN_APP_SOURCE, /content:draft/ );
+	assert.match( ADMIN_APP_SOURCE, /Core OAuth scopes/ );
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/This\s+site may support additional scopes\./
+	);
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /Available OAuth scopes/ );
 } );
 
 test( 'five-option connect picker keeps complete responsive separators', () => {

@@ -5812,13 +5812,14 @@ function ConnectPermissionsSummary( {
 							</dl>
 						</section>
 						<section>
-							<h3>Available OAuth scopes</h3>
+							<h3>Core OAuth scopes</h3>
 							<div className="aculect-ai-companion-connect-permissions__scopes">
 								<code>content:read</code>
 								<code>content:draft</code>
 							</div>
 							<p className="aculect-ai-companion-connect-permissions__scope-note">
-								Scopes limit what a connected app may request.
+								These are Aculect&apos;s default connection
+								scopes. This site may support additional scopes.
 							</p>
 						</section>
 					</div>

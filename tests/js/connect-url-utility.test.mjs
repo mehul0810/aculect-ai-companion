@@ -15,22 +15,24 @@ const RELEASE_UI_SMOKE_SOURCE = readFileSync(
 	'utf8'
 );
 
-test( 'connect tab renders a persistent connection link before the lean app picker', () => {
+test( 'connect tab renders endpoint and setup cards before the lean app picker', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/function ConnectMcpUrlUtility\( \{ mcpUrl, health, onCopy \} \)/
 	);
-	assert.match( ADMIN_APP_SOURCE, /<h2>Connection link<\/h2>/ );
+	assert.match( ADMIN_APP_SOURCE, /<h2>Connection endpoint<\/h2>/ );
 	assert.match( ADMIN_APP_SOURCE, /<CopyField\s+label="Connection link"/ );
-	assert.match( ADMIN_APP_SOURCE, /copyButtonLabel="Copy link"/ );
+	assert.match( ADMIN_APP_SOURCE, /copyButtonLabel="Copy endpoint"/ );
 	assert.match( ADMIN_APP_SOURCE, /visuallyHiddenLabel=\{ true \}/ );
+	assert.match( ADMIN_APP_SOURCE, /function ConnectSetupSteps\(\)/ );
+	assert.match( ADMIN_APP_SOURCE, /<h2>Finish setup<\/h2>/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/<ConnectMcpUrlUtility\s+[\s\S]*mcpUrl=\{ mcpUrl \}[\s\S]*health=\{ connectionHealth \}[\s\S]*onCopy=\{ copyValue \}/
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/<ConnectMcpUrlUtility[\s\S]*\/>\s*<ConnectAppPicker/s
+		/<ConnectMcpUrlUtility[\s\S]*\/>\s*<ConnectSetupSteps[\s\S]*<ConnectAppPicker/s
 	);
 } );
 
@@ -58,8 +60,9 @@ test( 'persistent MCP endpoint utility presents local and verified states from e
 		ADMIN_APP_SOURCE,
 		/Your public HTTPS endpoint is available for hosted assistants\./
 	);
-	assert.match( ADMIN_APP_SOURCE, /label="Verified"/ );
-	assert.match( ADMIN_APP_SOURCE, /This link contains no secrets\./ );
+	assert.match( ADMIN_APP_SOURCE, />\s*Verified\s*<\/span>/ );
+	assert.match( ADMIN_APP_SOURCE, /Contains no secrets/ );
+	assert.match( ADMIN_APP_SOURCE, /This endpoint contains no secrets\./ );
 } );
 
 test( 'local endpoint warning keeps its icon and text vertically aligned in a compact row', () => {
@@ -122,18 +125,22 @@ test( 'connect picker uses roving radio focus and keyboard navigation', () => {
 	assert.match( RELEASE_UI_SMOKE_SOURCE, /page\.keyboard\.press\( 'End' \)/ );
 } );
 
-test( 'connect tab keeps client tool filtering advanced and provider-driven', () => {
+test( 'connect tab removes advanced tool filtering and shows a native permissions disclosure', () => {
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /ConnectToolFilteringGuidance/ );
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /Advanced tool filtering/ );
+	assert.match( ADMIN_APP_SOURCE, /function ConnectPermissionsSummary/ );
+	assert.match( ADMIN_APP_SOURCE, /<details open>/ );
+	assert.match( ADMIN_APP_SOURCE, /OAuth consent required/ );
+	assert.match( ADMIN_APP_SOURCE, /WordPress permissions enforced/ );
+	assert.match( ADMIN_APP_SOURCE, /Read-only by default/ );
+	assert.match( ADMIN_APP_SOURCE, /content:read/ );
+	assert.match( ADMIN_APP_SOURCE, /content:draft/ );
+	assert.match( ADMIN_APP_SOURCE, /Core OAuth scopes/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/function ConnectToolFilteringGuidance\( \{ provider, onCopy \} \)/
+		/This\s+site may support additional scopes\./
 	);
-	assert.match(
-		ADMIN_APP_SOURCE,
-		/connectToolFilteringViewModel\( provider \)/
-	);
-	assert.match( ADMIN_APP_SOURCE, /provider=\{ selectedConnectProvider \}/ );
-	assert.match( ADMIN_APP_SOURCE, /<details>/ );
-	assert.match( ADMIN_APP_SOURCE, /guidance\.approvalLabel/ );
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /Available OAuth scopes/ );
 } );
 
 test( 'five-option connect picker keeps complete responsive separators', () => {
@@ -147,15 +154,25 @@ test( 'five-option connect picker keeps complete responsive separators', () => {
 	);
 } );
 
-test( 'connect picker puts the setup guide before the provider action without rendering a step flow', () => {
+test( 'connect picker puts the setup guide before the provider action', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/<a[\s\S]*>\s*Setup guide\s*<\/a>[\s\S]*<Button[\s\S]*selectedOption\.actionLabel/s
 	);
-	const pickerSource = ADMIN_APP_SOURCE.slice(
-		ADMIN_APP_SOURCE.indexOf( 'function ConnectAppPicker' ),
-		ADMIN_APP_SOURCE.indexOf( 'function ConnectReadinessBadge' )
+	assert.match( ADMIN_APP_SOURCE, /Pick an app to see next steps\./ );
+} );
+
+test( 'permissions disclosure remains responsive and keyboard focusable', () => {
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/\.aculect-ai-companion-connect-permissions__summary:focus-visible[\s\S]*box-shadow:/
 	);
-	assert.doesNotMatch( pickerSource, /Step \{\s*stepIndex/ );
-	assert.doesNotMatch( pickerSource, /WizardProgress/ );
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/@media \(max-width: 900px\)[\s\S]*\.aculect-ai-companion-connect-permissions__grid\s*\{\s*grid-template-columns:\s*1fr;/
+	);
+	assert.match(
+		ADMIN_STYLE_SOURCE,
+		/@media \(max-width: 600px\)[\s\S]*\.aculect-ai-companion-connect-permissions__actions \.components-button\s*\{[\s\S]*width:\s*100%;/
+	);
 } );

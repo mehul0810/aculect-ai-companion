@@ -5932,6 +5932,8 @@ function abilitySearchText( ability ) {
 		ability.category,
 		ability.toolName,
 		ability.sourceLabel,
+		ability.surfaceType,
+		ability.policyState,
 	]
 		.join( ' ' )
 		.toLowerCase();
@@ -5960,20 +5962,15 @@ function sameStringSet( firstValue, secondValue ) {
 	return first.every( ( item ) => secondSet.has( item ) );
 }
 
-function activeConnectionLabel( count ) {
-	return `${ count } active connection${ count === 1 ? '' : 's' }`;
-}
-
 function normalizedAbilityRows( {
-	abilities,
+	abilityCatalog,
 	enabledAbilities,
 	wpAbilities,
 	enabledWpAbilities,
-	activeConnectionCount,
 } ) {
 	const enabledAbilityIds = new Set( enabledAbilities );
 	const enabledWpAbilityIds = new Set( enabledWpAbilities );
-	const firstParty = abilities.map( ( ability ) => ( {
+	const firstParty = abilityCatalog.map( ( ability ) => ( {
 		id: String( ability.id || '' ),
 		title: String( ability.title || ability.id || 'Untitled ability' ),
 		description: String( ability.description || '' ),
@@ -5981,12 +5978,14 @@ function normalizedAbilityRows( {
 		scope: String( ability.scope || 'content:read' ),
 		source: 'system',
 		sourceLabel: 'System',
+		surfaceType: String( ability.surfaceType || 'ability' ),
+		configurable: Boolean( ability.configurable ),
+		policyState: String( ability.policyState || 'policy-managed' ),
 		readOnly: Boolean( ability.readOnly ),
-		enabled: enabledAbilityIds.has( ability.id ),
+		enabled: Boolean( ability.configurable )
+			? enabledAbilityIds.has( ability.id )
+			: Boolean( ability.enabled ),
 		toolName: String( ability.toolName || ability.id || '' ),
-		assignedTo: enabledAbilityIds.has( ability.id )
-			? activeConnectionLabel( activeConnectionCount )
-			: 'Not exposed',
 		updated: 'Bundled registry',
 	} ) );
 	const wordpress = wpAbilities.map( ( ability ) => ( {
@@ -5997,15 +5996,17 @@ function normalizedAbilityRows( {
 		scope: 'content:draft',
 		source: 'wordpress',
 		sourceLabel: 'WordPress API',
+		surfaceType: 'ability',
+		configurable: true,
+		policyState: enabledWpAbilityIds.has( ability.id )
+			? 'enabled'
+			: 'disabled',
 		readOnly: Boolean( ability.readOnly ),
 		destructive: Boolean( ability.destructive ),
 		defaultEnabled: Boolean( ability.defaultEnabled ),
 		decision: String( ability.decision || 'default' ),
 		enabled: enabledWpAbilityIds.has( ability.id ),
 		toolName: String( ability.id || '' ),
-		assignedTo: enabledWpAbilityIds.has( ability.id )
-			? activeConnectionLabel( activeConnectionCount )
-			: 'Not exposed',
 		updated: 'Runtime policy',
 	} ) );
 
@@ -6016,13 +6017,11 @@ function normalizedAbilityRows( {
 
 function AbilityDashboard( {
 	data,
-	abilities,
 	enabledAbilities,
 	wpAbilities,
 	enabledWpAbilities,
 	confirmationGroups,
 	confirmationGroupOptions,
-	activeConnectionCount,
 	roleAbilitiesEnabled,
 	hasChanges,
 	onToggleAbility,
@@ -6034,8 +6033,8 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
-	const coreDefaultAbilities = Array.isArray( data.coreDefaultAbilities )
-		? data.coreDefaultAbilities
+	const abilityCatalog = Array.isArray( data.abilityCatalog )
+		? data.abilityCatalog
 		: EMPTY_ARRAY;
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
@@ -6089,19 +6088,12 @@ function AbilityDashboard( {
 	const rows = useMemo(
 		() =>
 			normalizedAbilityRows( {
-				abilities,
+				abilityCatalog,
 				enabledAbilities,
 				wpAbilities,
 				enabledWpAbilities,
-				activeConnectionCount,
 			} ),
-		[
-			abilities,
-			activeConnectionCount,
-			enabledAbilities,
-			enabledWpAbilities,
-			wpAbilities,
-		]
+		[ abilityCatalog, enabledAbilities, enabledWpAbilities, wpAbilities ]
 	);
 	const categoryOptions = useMemo(
 		() =>
@@ -6119,6 +6111,14 @@ function AbilityDashboard( {
 		],
 		[ wpAbilities.length ]
 	);
+	const surfaceTypeOptions = useMemo(
+		() => [
+			{ value: 'ability', label: 'Ability' },
+			{ value: 'intelligence', label: 'Intelligence' },
+			{ value: 'workflow', label: 'Workflow' },
+		],
+		[]
+	);
 	const fields = useMemo(
 		() => [
 			{
@@ -6129,24 +6129,30 @@ function AbilityDashboard( {
 				getValue: ( { item } ) => Boolean( item.enabled ),
 				render: ( { item: ability } ) => (
 					<div className="aculect-ai-companion-ability-toggle-cell">
-						<ToggleControl
-							label={ `${ ability.title } active state` }
-							checked={ ability.enabled }
-							onChange={ ( checked ) => {
-								if ( ability.source === 'wordpress' ) {
-									onToggleWpAbility(
+						{ ability.configurable ? (
+							<ToggleControl
+								label={ `${ ability.title } active state` }
+								checked={ ability.enabled }
+								onChange={ ( checked ) => {
+									if ( ability.source === 'wordpress' ) {
+										onToggleWpAbility(
+											ability.id,
+											Boolean( checked )
+										);
+										return;
+									}
+
+									onToggleAbility(
 										ability.id,
 										Boolean( checked )
 									);
-									return;
-								}
-
-								onToggleAbility(
-									ability.id,
-									Boolean( checked )
-								);
-							} }
-						/>
+								} }
+							/>
+						) : (
+							<span className="aculect-ai-companion-policy-chip is-managed">
+								Managed
+							</span>
+						) }
 					</div>
 				),
 			},
@@ -6185,6 +6191,7 @@ function AbilityDashboard( {
 							<span className="is-source">
 								{ ability.sourceLabel }
 							</span>
+							<span>{ ability.surfaceType }</span>
 							<span>{ ability.group }</span>
 							{ ability.source === 'wordpress' &&
 								ability.decision === 'default' && (
@@ -6220,20 +6227,18 @@ function AbilityDashboard( {
 			},
 			{
 				id: 'active_connections',
-				label: 'Active connections',
+				label: 'Policy state',
 				enableGlobalSearch: true,
-				getValue: ( { item } ) => item.assignedTo,
+				getValue: ( { item } ) => item.policyState,
 				render: ( { item: ability } ) => (
 					<div className="aculect-ai-companion-ability-connection-cell">
 						<strong>
-							{ ability.enabled ? activeConnectionCount : 0 }
+							{ ability.policyState.replaceAll( '-', ' ' ) }
 						</strong>
 						<span>
-							{ ability.enabled
-								? `active connection${
-										activeConnectionCount === 1 ? '' : 's'
-								  }`
-								: 'Not exposed' }
+							{ ability.configurable
+								? 'Global policy setting'
+								: 'Not directly configurable' }
 						</span>
 					</div>
 				),
@@ -6276,6 +6281,14 @@ function AbilityDashboard( {
 				getValue: ( { item } ) => ( item.readOnly ? 'read' : 'write' ),
 			},
 			{
+				id: 'surface_type',
+				label: 'Surface type',
+				elements: surfaceTypeOptions,
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
+				enableGlobalSearch: true,
+				getValue: ( { item } ) => item.surfaceType,
+			},
+			{
 				id: 'source',
 				label: 'Source',
 				elements: sourceOptions,
@@ -6303,12 +6316,12 @@ function AbilityDashboard( {
 			},
 		],
 		[
-			activeConnectionCount,
 			categoryOptions,
 			onCopy,
 			onToggleAbility,
 			onToggleWpAbility,
 			sourceOptions,
+			surfaceTypeOptions,
 		]
 	);
 	const { data: visibleRows, paginationInfo } = useMemo(
@@ -6413,21 +6426,16 @@ function AbilityDashboard( {
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>About abilities</h3>
 						<p>
-							System rows come from the bundled registry.
-							WordPress Ability API rows appear only when public
-							abilities are registered on this site.
+							The catalog separates context intelligence, composed
+							workflows, and independent abilities. WordPress
+							Ability API rows appear only when public abilities
+							are registered on this site.
 						</p>
-						{ coreDefaultAbilities.length > 0 && (
-							<p className="aculect-ai-companion-help-text">
-								{ coreDefaultAbilities.length } default core
-								read/discovery{ ' ' }
-								{ coreDefaultAbilities.length === 1
-									? 'ability is'
-									: 'abilities are' }{ ' ' }
-								always registered and stay outside the toggle
-								table.
-							</p>
-						) }
+						<p className="aculect-ai-companion-help-text">
+							Catalog visibility does not grant access. OAuth,
+							roles, profiles, and WordPress permissions still
+							apply to every connection.
+						</p>
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>Quick actions</h3>
@@ -8488,7 +8496,6 @@ function SettingsApp() {
 							<>
 								<AbilityDashboard
 									data={ data }
-									abilities={ abilities }
 									enabledAbilities={ enabledAbilities }
 									wpAbilities={ wpAbilities }
 									enabledWpAbilities={ enabledWpAbilities }
@@ -8496,7 +8503,6 @@ function SettingsApp() {
 									confirmationGroupOptions={
 										confirmationGroupOptions
 									}
-									activeConnectionCount={ activeSessionCount }
 									roleAbilitiesEnabled={
 										roleAbilitiesEnabled
 									}

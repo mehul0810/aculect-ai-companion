@@ -610,6 +610,23 @@ final class SettingsPageTest extends TestCase {
 		unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/external_url'] );
 	}
 
+	public function test_abilities_payload_keeps_configurable_state_separate_from_the_complete_catalog(): void {
+		$payload   = $this->invokePrivate( new SettingsPage(), 'settings_payload', array( 'abilities' ) );
+		$abilities = array_column( $payload['abilities'], null, 'id' );
+		$catalog   = array_column( $payload['abilityCatalog'], null, 'id' );
+		$enabled   = $payload['enabledAbilities'];
+
+		self::assertArrayHasKey( 'content.update_item', $abilities );
+		self::assertArrayNotHasKey( 'search', $abilities );
+		self::assertArrayNotHasKey( 'intelligence.site.get_context', $abilities );
+		self::assertArrayHasKey( 'content.update_item', $catalog );
+		self::assertArrayHasKey( 'search', $catalog );
+		self::assertArrayHasKey( 'intelligence.site.get_context', $catalog );
+		self::assertSame( 'ability', $catalog['content.update_item']['surfaceType'] );
+		self::assertSame( 'intelligence', $catalog['intelligence.site.get_context']['surfaceType'] );
+		self::assertSame( array(), array_values( array_diff( $enabled, array_keys( $abilities ) ) ) );
+	}
+
 	/**
 	 * Invoke the private settings payload builder.
 	 *

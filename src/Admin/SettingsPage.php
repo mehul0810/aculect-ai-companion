@@ -11,6 +11,7 @@ use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Connectors\MCP\McpSurfaceCatalog;
 use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
@@ -361,6 +362,7 @@ final class SettingsPage {
 			$tool_safety                 = new ToolSafety();
 			self::$ability_payload_cache = array(
 				'abilities'                => $ability_registry->public_definitions(),
+				'abilityCatalog'           => ( new McpSurfaceCatalog() )->public_definitions(),
 				'coreDefaultAbilities'     => $ability_registry->core_default_public_definitions(),
 				'enabledAbilities'         => $ability_registry->enabled_ids(),
 				'wpAbilities'              => $wp_abilities->public_definitions(),

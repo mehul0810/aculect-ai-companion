@@ -3398,6 +3398,20 @@ td:last-child
 	min-width: 52px;
 }
 
+.aculect-ai-companion-policy-chip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 24px;
+	padding: 2px 8px;
+	border: 1px solid #dcdcde;
+	border-radius: 999px;
+	background: #f6f7f7;
+	color: #50575e;
+	font-size: 11px;
+	font-weight: 600;
+}
+
 .aculect-ai-companion-ability-toggle-cell .components-base-control__field {
 	margin-bottom: 0;
 }

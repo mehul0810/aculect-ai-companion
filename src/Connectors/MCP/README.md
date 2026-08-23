@@ -84,10 +84,13 @@ through tools.
 
 ## Aculect Intelligence
 
-Aculect Intelligence tools are always-on read-only MCP context tools. They are
-not user-managed abilities, do not appear in the admin Abilities list, and are
-not controlled by global or role-based ability toggles. They still require an
-authenticated connection, the `content:read` OAuth scope, and active AI access.
+Aculect Intelligence is a categorized context surface, not an entitlement layer
+that hides operational abilities. Intelligence entries appear in the admin
+catalog but are not directly controlled by global or role-based ability toggles.
+Most tools are read-only context; reviewed feedback and incident-report tools
+can write bounded local records. Every tool still requires an authenticated
+connection, its declared OAuth scopes, profile visibility, WordPress capability
+checks, and active AI access.
 
 The intelligence layer is divided into these context domains:
 

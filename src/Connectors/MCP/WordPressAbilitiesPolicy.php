@@ -13,6 +13,10 @@ final class WordPressAbilitiesPolicy {
 	public const OPTION_ABILITY_DECISIONS  = 'aculect_ai_companion_wp_ability_decisions';
 	public const OPTION_POLICY_INITIALIZED = 'aculect_ai_companion_wp_ability_policy_initialized';
 
+	private const SAFE_SCHEMA_MAX_BYTES      = 65536;
+	private const SAFE_SCHEMA_MAX_ITEMS      = 100;
+	private const SAFE_SCHEMA_MAX_PROPERTIES = 100;
+
 	/**
 	 * Cached explicit ability decisions.
 	 *
@@ -245,9 +249,26 @@ final class WordPressAbilitiesPolicy {
 			&& $this->is_explicitly_non_destructive( $meta )
 			&& '' !== $this->method_string( $ability, 'get_label' )
 			&& '' !== $this->method_string( $ability, 'get_description' )
-			&& $this->valid_schema( $this->method_array( $ability, 'get_input_schema' ) )
-			&& $this->valid_schema( $this->method_array( $ability, 'get_output_schema' ) )
+			&& $this->valid_safe_default_schema( $this->method_array( $ability, 'get_input_schema' ) )
+			&& $this->valid_safe_default_schema( $this->method_array( $ability, 'get_output_schema' ) )
 			&& $this->has_permission_callback( $ability );
+	}
+
+	/**
+	 * Check a schema is valid and bounded enough for automatic third-party exposure.
+	 *
+	 * Explicit administrator decisions may still enable a valid ability that does
+	 * not meet these conservative default-exposure bounds.
+	 *
+	 * @param array<string, mixed> $schema Ability schema.
+	 */
+	private function valid_safe_default_schema( array $schema ): bool {
+		if ( ! $this->valid_schema( $schema ) ) {
+			return false;
+		}
+
+		$nodes = 0;
+		return $this->bounded_schema_node( $schema, 0, $nodes );
 	}
 
 	/**
@@ -256,7 +277,8 @@ final class WordPressAbilitiesPolicy {
 	 * @param array<string, mixed> $schema Ability schema.
 	 */
 	private function valid_schema( array $schema ): bool {
-		if ( ! is_string( wp_json_encode( $schema, JSON_PRESERVE_ZERO_FRACTION ) ) ) {
+		$encoded = wp_json_encode( $schema, JSON_PRESERVE_ZERO_FRACTION );
+		if ( ! is_string( $encoded ) || self::SAFE_SCHEMA_MAX_BYTES < strlen( $encoded ) ) {
 			return false;
 		}
 
@@ -449,6 +471,69 @@ final class WordPressAbilitiesPolicy {
 	}
 
 	/**
+	 * Require finite object keys and bounded arrays for automatic exposure.
+	 *
+	 * @param array<string, mixed> $schema Schema node.
+	 * @param int                  $depth Current nesting depth.
+	 * @param int                  $nodes Visited node count.
+	 */
+	private function bounded_schema_node( array $schema, int $depth, int &$nodes ): bool {
+		++$nodes;
+		if ( 8 < $depth || 256 < $nodes ) {
+			return false;
+		}
+
+		$type = (string) ( $schema['type'] ?? '' );
+		if ( 'object' === $type ) {
+			if ( false !== ( $schema['additionalProperties'] ?? null ) || array_key_exists( 'patternProperties', $schema ) || array_key_exists( 'propertyNames', $schema ) ) {
+				return false;
+			}
+
+			$properties = (array) ( $schema['properties'] ?? array() );
+			if ( self::SAFE_SCHEMA_MAX_PROPERTIES < count( $properties ) ) {
+				return false;
+			}
+			if ( array_key_exists( 'maxProperties', $schema ) && ( ! is_int( $schema['maxProperties'] ) || self::SAFE_SCHEMA_MAX_PROPERTIES < $schema['maxProperties'] ) ) {
+				return false;
+			}
+
+			foreach ( $properties as $property ) {
+				if ( ! is_array( $property ) || ! $this->bounded_schema_node( $property, $depth + 1, $nodes ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( 'array' === $type ) {
+			if ( ! isset( $schema['maxItems'] ) || ! is_int( $schema['maxItems'] ) || 0 > $schema['maxItems'] || self::SAFE_SCHEMA_MAX_ITEMS < $schema['maxItems'] || ! isset( $schema['items'] ) || ! is_array( $schema['items'] ) ) {
+				return false;
+			}
+
+			if ( ! $this->bounded_schema_node( $schema['items'], $depth + 1, $nodes ) ) {
+				return false;
+			}
+		}
+
+		if ( array_key_exists( 'additionalProperties', $schema ) && is_array( $schema['additionalProperties'] ) && ! $this->bounded_schema_node( $schema['additionalProperties'], $depth + 1, $nodes ) ) {
+			return false;
+		}
+
+		foreach ( array( 'allOf', 'anyOf', 'oneOf' ) as $composition ) {
+			foreach ( (array) ( $schema[ $composition ] ?? array() ) as $candidate ) {
+				if ( ! is_array( $candidate ) || ! $this->bounded_schema_node( $candidate, $depth + 1, $nodes ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( array_key_exists( 'not', $schema ) && is_array( $schema['not'] ) && ! $this->bounded_schema_node( $schema['not'], $depth + 1, $nodes ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Conservatively accept regex patterns supported by the PHP runtime.
 	 *
 	 * @param string $pattern JSON Schema pattern.
@@ -497,8 +582,16 @@ final class WordPressAbilitiesPolicy {
 	 * @param object $ability Ability object.
 	 */
 	private function has_permission_callback( object $ability ): bool {
-		if ( method_exists( $ability, 'get_permission_callback' ) && is_callable( $ability->get_permission_callback() ) ) {
-			return true;
+		if ( method_exists( $ability, 'get_permission_callback' ) ) {
+			try {
+				if ( is_callable( $ability->get_permission_callback() ) ) {
+					return true;
+				}
+			} catch ( \Throwable $throwable ) {
+				unset( $throwable );
+
+				return false;
+			}
 		}
 
 		$meta = $this->ability_meta( $ability );
@@ -515,7 +608,13 @@ final class WordPressAbilitiesPolicy {
 			return array();
 		}
 
-		$abilities = call_user_func( 'wp_get_abilities' );
+		try {
+			$abilities = call_user_func( 'wp_get_abilities' );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
 		if ( ! is_array( $abilities ) ) {
 			return array();
 		}
@@ -653,7 +752,14 @@ final class WordPressAbilitiesPolicy {
 			return array();
 		}
 
-		$value = $ability->get_meta();
+		try {
+			$value = $ability->get_meta();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
+
 		return is_array( $value ) ? $value : array();
 	}
 
@@ -668,7 +774,14 @@ final class WordPressAbilitiesPolicy {
 			return '';
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
+
 		return is_scalar( $value ) ? (string) $value : '';
 	}
 
@@ -684,7 +797,14 @@ final class WordPressAbilitiesPolicy {
 			return array();
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
+
 		return is_array( $value ) ? $value : array();
 	}
 }

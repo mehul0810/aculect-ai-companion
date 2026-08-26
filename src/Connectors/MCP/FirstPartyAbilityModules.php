@@ -551,30 +551,31 @@ final class FirstPartyAbilityModules {
 				false,
 				$this->object_schema(
 					array(
-						'id'                   => array( 'type' => 'integer' ),
-						'title'                => array( 'type' => 'string' ),
-						'content'              => array(
+						'id'                    => array( 'type' => 'integer' ),
+						'title'                 => array( 'type' => 'string' ),
+						'content'               => array(
 							'type'        => 'string',
 							'maxLength'   => self::MAX_SERIALIZED_CONTENT_BYTES,
 							'description' => 'Serialized WordPress block content. Use registered blocks and patterns, and never use the Custom HTML block (core/html).',
 						),
-						'excerpt'              => array( 'type' => 'string' ),
-						'slug'                 => array( 'type' => 'string' ),
-						'status'               => $this->content_status_schema(),
-						'date'                 => $this->content_date_schema(),
-						'featured_media'       => array(
+						'excerpt'               => array( 'type' => 'string' ),
+						'slug'                  => array( 'type' => 'string' ),
+						'status'                => $this->content_status_schema(),
+						'date'                  => $this->content_date_schema(),
+						'featured_media'        => array(
 							'type'        => 'integer',
 							'description' => 'Existing image attachment ID to assign as the featured image.',
 						),
-						'clear_featured_media' => array(
+						'clear_featured_media'  => array(
 							'type'        => 'boolean',
 							'description' => 'Set true to intentionally remove the current featured image.',
 						),
-						'author'               => array(
+						'author'                => array(
 							'type'        => 'integer',
 							'description' => 'Existing WordPress user ID to assign as author.',
 						),
-						'taxonomies'           => $this->taxonomy_assignment_schema( 'Map taxonomy slugs to existing term IDs or term slugs. Use an empty array to clear a taxonomy.' ),
+						'taxonomies'            => $this->taxonomy_assignment_schema( 'Map taxonomy slugs to existing term IDs or term slugs. Use an empty array to clear a taxonomy.' ),
+						'expected_modified_gmt' => ContentWriteSchemas::expected_modified_gmt(),
 					),
 					array( 'id' )
 				),
@@ -589,8 +590,8 @@ final class FirstPartyAbilityModules {
 				false,
 				$this->object_schema(
 					array(
-						'id'            => array( 'type' => 'integer' ),
-						'locator'       => array(
+						'id'                    => array( 'type' => 'integer' ),
+						'locator'               => array(
 							'type'        => 'object',
 							'description' => 'Server-side block locator from content_get_item block_locators. Path is a zero-based nested block index path.',
 							'properties'  => array(
@@ -607,12 +608,12 @@ final class FirstPartyAbilityModules {
 							),
 							'required'    => array( 'path' ),
 						),
-						'text'          => array(
+						'text'                  => array(
 							'type'        => 'string',
 							'maxLength'   => 20000,
 							'description' => 'Replacement plain text for core/paragraph or core/heading. The tool serializes safe block markup; do not pass HTML.',
 						),
-						'internal_link' => array(
+						'internal_link'         => array(
 							'type'        => 'object',
 							'description' => 'Allowlisted same-site internal-link insertion for one existing anchor text occurrence in the targeted core paragraph or heading block.',
 							'properties'  => array(
@@ -628,15 +629,16 @@ final class FirstPartyAbilityModules {
 							),
 							'required'    => array( 'anchor_text', 'url' ),
 						),
-						'attrs'         => array(
+						'attrs'                 => array(
 							'type'                 => 'object',
 							'description'          => 'Reserved for future narrow allowlisted registered block attributes. This beta slice rejects attribute writes to avoid unsafe third-party settings edits.',
 							'additionalProperties' => true,
 						),
-						'dry_run'       => array(
+						'dry_run'               => array(
 							'type'        => 'boolean',
 							'description' => 'When true, validate and return a field-level diff without saving.',
 						),
+						'expected_modified_gmt' => ContentWriteSchemas::expected_modified_gmt(),
 					),
 					array( 'id', 'locator' )
 				),
@@ -705,102 +707,7 @@ final class FirstPartyAbilityModules {
 				$this->not_found_list_schema(),
 				static fn ( array $args ): array => ( new RankMathRedirectAbilities() )->list_recent_404s( $args )
 			),
-			$this->module(
-				'taxonomy.list_taxonomies',
-				'List Content Groups',
-				'List available categories, tags, and custom content groups.',
-				'Content Groups',
-				'content:read',
-				true,
-				$this->empty_schema(),
-				static fn (): array => array( 'items' => ( new TaxonomyAbilities() )->list_taxonomies() )
-			),
-			$this->module(
-				'taxonomy.list_terms',
-				'List Categories and Tags',
-				'List categories, tags, or custom content groups with pagination.',
-				'Content Groups',
-				'content:read',
-				true,
-				$this->object_schema(
-					array(
-						'taxonomy'   => array( 'type' => 'string' ),
-						'page'       => $this->page_schema(),
-						'per_page'   => $this->per_page_schema( 100, 'Terms per page. Defaults to 50.' ),
-						'search'     => array( 'type' => 'string' ),
-						'hide_empty' => array( 'type' => 'boolean' ),
-					),
-					array( 'taxonomy' )
-				),
-				static fn ( array $args ): array => ( new TaxonomyAbilities() )->list_terms( $args )
-			),
-			$this->module(
-				'taxonomy.create_term',
-				'Create a Category or Tag',
-				'Create a category, tag, or custom content group.',
-				'Content Groups',
-				'content:draft',
-				false,
-				$this->object_schema(
-					array(
-						'taxonomy'    => array( 'type' => 'string' ),
-						'name'        => array( 'type' => 'string' ),
-						'slug'        => array( 'type' => 'string' ),
-						'description' => array( 'type' => 'string' ),
-						'parent'      => array( 'type' => 'integer' ),
-					),
-					array( 'taxonomy', 'name' )
-				),
-				static fn ( array $args ): array => ( new TaxonomyAbilities() )->create_term( $args )
-			),
-			$this->module(
-				'taxonomy.update_term',
-				'Update a Category or Tag',
-				'Update a category, tag, or custom content group.',
-				'Content Groups',
-				'content:draft',
-				false,
-				$this->object_schema(
-					array(
-						'taxonomy'    => array( 'type' => 'string' ),
-						'term_id'     => array( 'type' => 'integer' ),
-						'name'        => array( 'type' => 'string' ),
-						'slug'        => array( 'type' => 'string' ),
-						'description' => array( 'type' => 'string' ),
-						'parent'      => array( 'type' => 'integer' ),
-					),
-					array( 'taxonomy', 'term_id' )
-				),
-				static fn ( array $args ): array => ( new TaxonomyAbilities() )->update_term( $args )
-			),
-			$this->module(
-				'taxonomy.set_term_image',
-				'Set Category or Tag Image',
-				'Assign or clear an image attachment for an allowlisted taxonomy term image meta key.',
-				'Content Groups',
-				'content:draft',
-				false,
-				$this->object_schema(
-					array(
-						'taxonomy'    => array( 'type' => 'string' ),
-						'term_id'     => array( 'type' => 'integer' ),
-						'image_id'    => array(
-							'type'        => 'integer',
-							'description' => 'Existing image attachment ID to assign as the term image.',
-						),
-						'clear_image' => array(
-							'type'        => 'boolean',
-							'description' => 'Set true to intentionally clear the term image.',
-						),
-						'meta_key'    => array(
-							'type'        => 'string',
-							'description' => 'Allowlisted term meta key. Defaults to aculect_ai_companion_term_image_id.',
-						),
-					),
-					array( 'taxonomy', 'term_id' )
-				),
-				static fn ( array $args ): array => ( new TaxonomyAbilities() )->set_term_image( $args )
-			),
+			...TaxonomyAbilityModules::all( $this->module_factory ),
 			$this->module(
 				'media.list_items',
 				'List Media',

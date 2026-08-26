@@ -22,6 +22,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 				continue;
 			}
 
+			$manage_capability = $this->taxonomy_capability( $taxonomy, 'manage_terms' );
+			$edit_capability   = $this->taxonomy_capability( $taxonomy, 'edit_terms' );
+			$delete_capability = $this->taxonomy_capability( $taxonomy, 'delete_terms' );
+			$assign_capability = $this->taxonomy_capability( $taxonomy, 'assign_terms' );
+
 			$items[] = array(
 				'name'         => $taxonomy->name,
 				'label'        => $taxonomy->label,
@@ -29,8 +34,10 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 				'show_in_rest' => (bool) $taxonomy->show_in_rest,
 				'hierarchical' => (bool) $taxonomy->hierarchical,
 				'object_types' => array_values( array_map( 'strval', (array) $taxonomy->object_type ) ),
-				'can_create'   => current_user_can( $taxonomy->cap->edit_terms ),
-				'can_update'   => current_user_can( $taxonomy->cap->edit_terms ),
+				'can_create'   => null !== $manage_capability && current_user_can( $manage_capability ),
+				'can_update'   => null !== $edit_capability && current_user_can( $edit_capability ),
+				'can_delete'   => null !== $delete_capability && current_user_can( $delete_capability ),
+				'can_assign'   => null !== $assign_capability && current_user_can( $assign_capability ),
 			);
 		}
 
@@ -50,7 +57,7 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 50 ) ) );
 
 		if ( ! $this->is_supported_taxonomy( $object ) ) {
-			return $this->empty_collection( $page, $per_page );
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
 		}
 
 		$query = array(
@@ -66,19 +73,28 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 
 		$terms = get_terms( $query );
 		if ( is_wp_error( $terms ) ) {
-			return $this->empty_collection( $page, $per_page );
+			return $this->error( 'terms_unavailable', 'Terms could not be loaded for this taxonomy.' );
 		}
 
-		$total = wp_count_terms(
-			array(
-				'taxonomy'   => $taxonomy,
-				'hide_empty' => $query['hide_empty'],
-			)
+		$count_query = array(
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => $query['hide_empty'],
 		);
+		if ( isset( $query['search'] ) ) {
+			$count_query['search'] = $query['search'];
+		}
+
+		$total = wp_count_terms( $count_query );
+		if ( is_wp_error( $total ) ) {
+			return array(
+				'error'   => (string) $total->get_error_code(),
+				'message' => 'The taxonomy total could not be calculated.',
+			);
+		}
 
 		return array(
 			'items'    => array_map( array( $this, 'map_term' ), $terms ),
-			'total'    => is_wp_error( $total ) ? count( $terms ) : (int) $total,
+			'total'    => (int) $total,
 			'page'     => $page,
 			'per_page' => $per_page,
 		);
@@ -95,7 +111,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$object   = get_taxonomy( $taxonomy );
 		$name     = sanitize_text_field( (string) ( $data['name'] ?? '' ) );
 
-		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
+		$manage_capability = $object instanceof \WP_Taxonomy ? $this->taxonomy_capability( $object, 'manage_terms' ) : null;
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
+		}
+		if ( null === $manage_capability || ! current_user_can( $manage_capability ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to create terms in this taxonomy.' );
 		}
 
@@ -103,7 +123,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_term', 'Term name is required.' );
 		}
 
-		$payload = $this->term_payload( $data, $object );
+		$payload      = $this->term_payload( $data, $object );
+		$parent_error = $this->validate_term_parent( $payload, $taxonomy, 0, $object );
+		if ( array() !== $parent_error ) {
+			return $parent_error;
+		}
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'taxonomy.create_term',
@@ -136,7 +160,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$term_id  = absint( $data['term_id'] ?? 0 );
 		$object   = get_taxonomy( $taxonomy );
 
-		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) || ! current_user_can( $object->cap->edit_terms ) ) {
+		$edit_capability = $object instanceof \WP_Taxonomy ? $this->taxonomy_capability( $object, 'edit_terms' ) : null;
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
+		}
+		if ( null === $edit_capability || ! current_user_can( $edit_capability ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update terms in this taxonomy.' );
 		}
 
@@ -145,7 +173,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 			return $this->error( 'not_found', 'Term not found.' );
 		}
 
-		$payload = $this->term_payload( $data, $object );
+		$payload      = $this->term_payload( $data, $object );
+		$parent_error = $this->validate_term_parent( $payload, $taxonomy, $term_id, $object );
+		if ( array() !== $parent_error ) {
+			return $parent_error;
+		}
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'taxonomy.update_term',
@@ -176,6 +208,88 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Read one term from a supported taxonomy.
+	 *
+	 * @param array<string, mixed> $data Term identifier.
+	 * @return array<string, mixed>
+	 */
+	public function get_term( array $data ): array {
+		$taxonomy = sanitize_key( (string) ( $data['taxonomy'] ?? '' ) );
+		$term_id  = absint( $data['term_id'] ?? 0 );
+		$object   = get_taxonomy( $taxonomy );
+
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
+		}
+
+		$edit_capability = $this->taxonomy_capability( $object, 'edit_terms' );
+		if ( ! current_user_can( 'read' ) && ( null === $edit_capability || ! current_user_can( $edit_capability ) ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to read terms in this taxonomy.' );
+		}
+
+		$term = get_term( $term_id, $taxonomy );
+		if ( 0 === $term_id || ! $term instanceof \WP_Term ) {
+			return $this->error( 'not_found', 'Term not found.' );
+		}
+
+		return $this->map_term( $term );
+	}
+
+	/**
+	 * Delete one term from a supported taxonomy.
+	 *
+	 * @param array<string, mixed> $data Term identifier and safety fields.
+	 * @return array<string, mixed>
+	 */
+	public function delete_term( array $data ): array {
+		$taxonomy = sanitize_key( (string) ( $data['taxonomy'] ?? '' ) );
+		$term_id  = absint( $data['term_id'] ?? 0 );
+		$object   = get_taxonomy( $taxonomy );
+
+		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
+			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
+		}
+
+		$delete_capability = $this->taxonomy_capability( $object, 'delete_terms' );
+		if ( null === $delete_capability || ! current_user_can( $delete_capability ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to delete terms in this taxonomy.' );
+		}
+
+		$term = get_term( $term_id, $taxonomy );
+		if ( 0 === $term_id || ! $term instanceof \WP_Term ) {
+			return $this->error( 'not_found', 'Term not found.' );
+		}
+
+		if ( $this->is_dry_run( $data ) ) {
+			return $this->preview_response(
+				'taxonomy.delete_term',
+				$data,
+				array(
+					'type' => $taxonomy,
+					'id'   => $term_id,
+				),
+				array(
+					$this->change( 'term', $this->map_term( $term ), null ),
+				),
+				array( 'Deleting a term removes its assignments from content; confirm the intended term before execution.' )
+			);
+		}
+
+		$result = wp_delete_term( $term_id, $taxonomy );
+		if ( is_wp_error( $result ) || false === $result ) {
+			return is_wp_error( $result )
+				? $this->error( (string) $result->get_error_code(), $result->get_error_message() )
+				: $this->error( 'delete_failed', 'Term could not be deleted.' );
+		}
+
+		return array(
+			'status'   => 'deleted',
+			'taxonomy' => $taxonomy,
+			'term_id'  => $term_id,
+		);
+	}
+
+	/**
 	 * Assign or clear an image attachment for a taxonomy term.
 	 *
 	 * @param array<string, mixed> $data Term image fields.
@@ -190,7 +304,8 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
 		}
 
-		if ( ! current_user_can( $object->cap->edit_terms ) ) {
+		$edit_capability = $this->taxonomy_capability( $object, 'edit_terms' );
+		if ( null === $edit_capability || ! current_user_can( $edit_capability ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update terms in this taxonomy.' );
 		}
 
@@ -233,5 +348,65 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 
 		$term = get_term( $term_id, $taxonomy );
 		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
+	}
+
+	/**
+	 * Return a taxonomy capability with a safe fallback for older/custom objects.
+	 *
+	 * @param \WP_Taxonomy $taxonomy Taxonomy object.
+	 * @param string       $operation Capability property.
+	 */
+	private function taxonomy_capability( \WP_Taxonomy $taxonomy, string $operation ): ?string {
+		if ( is_object( $taxonomy->cap ) && property_exists( $taxonomy->cap, $operation ) && is_scalar( $taxonomy->cap->{$operation} ) && '' !== (string) $taxonomy->cap->{$operation} ) {
+			return (string) $taxonomy->cap->{$operation};
+		}
+
+		return null;
+	}
+
+	/**
+	 * Validate a hierarchical term parent before WordPress writes.
+	 *
+	 * @param array<string, mixed> $payload  Sanitized term payload.
+	 * @param string               $taxonomy Taxonomy slug.
+	 * @param int                  $term_id  Current term ID for updates.
+	 * @param \WP_Taxonomy         $object   Taxonomy object.
+	 * @return array<string, mixed>
+	 */
+	private function validate_term_parent( array $payload, string $taxonomy, int $term_id, \WP_Taxonomy $object ): array {
+		if ( ! $object->hierarchical || ! isset( $payload['parent'] ) ) {
+			return array();
+		}
+
+		$parent = absint( $payload['parent'] );
+		if ( 0 === $parent ) {
+			return array();
+		}
+
+		if ( $parent === $term_id ) {
+			return $this->error( 'invalid_parent', 'A taxonomy term cannot be its own parent.' );
+		}
+
+		$parent_term = get_term( $parent, $taxonomy );
+		if ( ! $parent_term instanceof \WP_Term ) {
+			return $this->error( 'invalid_parent', 'Parent term was not found in this taxonomy.' );
+		}
+
+		$seen   = array( $parent );
+		$cursor = (int) $parent_term->parent;
+		while ( 0 < $cursor ) {
+			if ( $cursor === $term_id || in_array( $cursor, $seen, true ) ) {
+				return $this->error( 'invalid_parent', 'The requested parent would create a taxonomy hierarchy cycle.' );
+			}
+
+			$seen[]   = $cursor;
+			$ancestor = get_term( $cursor, $taxonomy );
+			if ( ! $ancestor instanceof \WP_Term ) {
+				break;
+			}
+			$cursor = (int) $ancestor->parent;
+		}
+
+		return array();
 	}
 }

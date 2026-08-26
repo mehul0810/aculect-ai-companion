@@ -273,6 +273,7 @@ final class ToolSafety {
 			'plugin_lifecycle.activate_plugin',
 			'plugin_lifecycle.deactivate_plugin',
 			'theme_lifecycle.switch_theme' => 'system',
+			'taxonomy.delete_term' => 'destructive',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',

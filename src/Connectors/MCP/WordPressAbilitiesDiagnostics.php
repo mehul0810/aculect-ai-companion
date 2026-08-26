@@ -186,7 +186,13 @@ final class WordPressAbilitiesDiagnostics {
 			return $this->registered;
 		}
 
-		$abilities = call_user_func( 'wp_get_abilities' );
+		try {
+			$abilities = call_user_func( 'wp_get_abilities' );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return $this->registered;
+		}
 		if ( ! is_array( $abilities ) ) {
 			return $this->registered;
 		}
@@ -265,12 +271,24 @@ final class WordPressAbilitiesDiagnostics {
 			return true;
 		}
 
-		$callback = $ability->get_permission_callback();
+		try {
+			$callback = $ability->get_permission_callback();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 		if ( ! is_callable( $callback ) ) {
 			return true;
 		}
 
-		$result = call_user_func( $callback, array() );
+		try {
+			$result = call_user_func( $callback, array() );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 
 		return true === $result;
 	}
@@ -325,7 +343,13 @@ final class WordPressAbilitiesDiagnostics {
 			return '';
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
 
 		return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
 	}
@@ -342,7 +366,13 @@ final class WordPressAbilitiesDiagnostics {
 			return array();
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
 
 		return is_array( $value ) ? $value : array();
 	}

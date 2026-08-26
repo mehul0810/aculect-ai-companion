@@ -454,7 +454,14 @@ final class AbilityExecutionGateway {
 				}
 			}
 
-			if ( null !== $claim && isset( $result['error'] ) && 'execution_uncertain' !== $result['error'] ) {
+			$is_terminal_partial = isset( $result['error'] )
+				&& 'partial_write' === $result['error']
+				&& true === ( $result['terminal'] ?? false );
+			if ( null !== $claim && $is_terminal_partial ) {
+				if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
+					$result = $this->safety->execution_uncertain_result();
+				}
+			} elseif ( null !== $claim && isset( $result['error'] ) && 'execution_uncertain' !== $result['error'] ) {
 				if ( ! $this->safety->release_claim( $claim ) ) {
 					$result = $this->safety->execution_uncertain_result();
 				}

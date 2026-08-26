@@ -33,6 +33,7 @@ final class IntelligenceRegistry {
 	public function modules(): array {
 		if ( null === $this->modules ) {
 			$this->modules = $this->build_modules();
+			AbilityModuleContract::validate( $this->modules );
 		}
 
 		return $this->modules;

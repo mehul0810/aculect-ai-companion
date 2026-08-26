@@ -42,14 +42,18 @@ final class WordPressAbilitiesRegistrar {
 			return;
 		}
 
-		call_user_func(
-			'wp_register_ability_category',
-			self::CATEGORY,
-			array(
-				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
-			)
-		);
+		try {
+			call_user_func(
+				'wp_register_ability_category',
+				self::CATEGORY,
+				array(
+					'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
+					'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				)
+			);
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
 	}
 
 	/**
@@ -61,11 +65,17 @@ final class WordPressAbilitiesRegistrar {
 		}
 
 		foreach ( $this->read_only_module_registrations() as $registration ) {
-			call_user_func(
-				'wp_register_ability',
-				$this->ability_name( $registration['module'] ),
-				$this->ability_args( $registration['module'], $registration['execute'] )
-			);
+			try {
+				call_user_func(
+					'wp_register_ability',
+					$this->ability_name( $registration['module'] ),
+					$this->ability_args( $registration['module'], $registration['execute'] )
+				);
+			} catch ( \Throwable $throwable ) {
+				unset( $throwable );
+
+				continue;
+			}
 		}
 	}
 
@@ -113,8 +123,14 @@ final class WordPressAbilitiesRegistrar {
 			return false;
 		}
 
-		$name = $ability->get_name();
-		$meta = $ability->get_meta();
+		try {
+			$name = $ability->get_name();
+			$meta = $ability->get_meta();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 
 		return is_string( $name )
 			&& $this->is_first_party_read_intelligence( $name )
@@ -339,6 +355,12 @@ final class WordPressAbilitiesRegistrar {
 					'quality_summary'    => array( 'type' => 'object' ),
 					'error'              => array( 'type' => 'string' ),
 					'message'            => array( 'type' => 'string' ),
+					'terminal'           => array( 'type' => 'boolean' ),
+					'failed_step'        => array( 'type' => 'string' ),
+					'rollback_status'    => array( 'type' => 'string' ),
+					'recovery'           => array( 'type' => 'string' ),
+					'expected_modified'  => array( 'type' => 'string' ),
+					'current_modified'   => array( 'type' => 'string' ),
 				)
 			);
 		}

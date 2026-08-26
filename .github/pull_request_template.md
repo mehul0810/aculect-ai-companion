@@ -21,6 +21,11 @@
 ## Validation
 
 - Commands/checks run:
+- Modularity impact:
+  - [ ] `composer check:modularity` passes.
+  - [ ] If a legacy exception is touched, the changed-file ratchet passes against the PR base.
+  - [ ] No new legacy exception was added; if an exception is required, it has an owner, issue, target, and removal plan in `.codex/modularity-rules.php`.
+  - [ ] New responsibilities stay within the documented namespace dependency boundaries.
 - PHPStan baseline justification:
 - UI or workflow proof:
   - [ ] Screenshot, screen recording, CLI output, or reason not applicable is included for UI/workflow-visible changes.

@@ -9,6 +9,7 @@ namespace Aculect\AICompanion\Connectors\MCP\Modules;
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleFactory;
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\ContentMediaWorkflowAbilities;
+use Aculect\AICompanion\Connectors\MCP\ContentWriteSchemas;
 use Aculect\AICompanion\Connectors\MCP\ContentWorkflowAbilities;
 use Aculect\AICompanion\Connectors\MCP\SiteWorkflowAbilities;
 use Aculect\AICompanion\Connectors\MCP\WorkflowGuideRegistry;
@@ -319,7 +320,8 @@ final class FixedWorkflowAbilityModules {
 					'workflow_session_id' => $this->workflow_session_id_schema(),
 				),
 				$this->workflow_content_fields(),
-				$this->rankmath_fields()
+				$this->rankmath_fields(),
+				array( 'expected_modified_gmt' => ContentWriteSchemas::expected_modified_gmt() )
 			),
 			array( 'id' )
 		);

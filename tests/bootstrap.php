@@ -20,11 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
-require_once __DIR__ . '/Support/InMemoryExecutionClaimStore.php';
-
-if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.6.0' );
-}
+require_once __DIR__ . '/Support/TestBootstrap.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {
 	define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', dirname( __DIR__ ) . '/aculect-ai-companion.php' );

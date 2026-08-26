@@ -40,6 +40,12 @@ jobs:
       - name: Validate composer metadata
         run: composer validate --strict
 
+      - name: Enforce modularity ratchet for pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from="origin/${BASE_REF}"
+
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 

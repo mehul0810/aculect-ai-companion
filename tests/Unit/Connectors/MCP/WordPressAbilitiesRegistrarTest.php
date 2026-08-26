@@ -228,6 +228,20 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
 	}
 
+	public function test_trust_check_fails_closed_when_external_getters_throw(): void {
+		$ability = new class() {
+			public function get_name(): never {
+				throw new \Error( 'private getter failure' );
+			}
+
+			public function get_meta(): array {
+				return array();
+			}
+		};
+
+		self::assertFalse( ( new WordPressAbilitiesRegistrar() )->is_trusted_first_party_ability( $ability ) );
+	}
+
 	public function test_wordpress_abilities_diagnostics_report_first_party_registration_status(): void {
 		$diagnostics = new WordPressAbilitiesDiagnostics();
 

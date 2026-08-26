@@ -129,6 +129,13 @@ flows through WordPress ability permissions, Aculect AI Companion ability toggle
 scopes. Keep `wp_abilities_run` treated as write-capable because third-party
 abilities may modify data even when their names are not obvious.
 
+Third-party abilities are default-denied unless they declare public,
+read-only, non-destructive metadata, a callable permission callback, and
+closed, bounded JSON Schemas (including nested objects and arrays). An
+administrator may explicitly enable an otherwise valid public ability through
+the policy screen; that decision does not bypass the WordPress permission
+callback or the MCP/OAuth boundary.
+
 ## Content Surface
 
 Aculect AI Companion's built-in user-managed MCP abilities cover posts/pages/custom post types, taxonomies,

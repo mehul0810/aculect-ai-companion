@@ -1,0 +1,82 @@
+name: WordPress Abilities Contract
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/**"
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wordpress-abilities-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: WordPress ${{ matrix.wordpress }} Abilities contract
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        wordpress:
+          - "6.8.1"
+          - "6.9"
+          - "7.1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer:v2
+
+      - name: Install PHP dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20.19.0"
+
+      - name: Install wp-env
+        run: npm install --global @wordpress/env@11.6.0
+
+      - name: Configure wp-env
+        env:
+          WP_VERSION: ${{ matrix.wordpress }}
+        run: |
+          cat > .wp-env.json <<JSON
+          {
+            "core": "https://wordpress.org/wordpress-${WP_VERSION}.zip",
+            "port": 8880,
+            "testsEnvironment": false,
+            "plugins": [],
+            "mappings": {
+              "wp-content/plugins/aculect-ai-companion": "${GITHUB_WORKSPACE}"
+            }
+          }
+          JSON
+
+      - name: Start WordPress
+        run: wp-env start --update
+
+      - name: Activate plugin
+        run: wp-env run cli wp plugin activate aculect-ai-companion
+
+      - name: Run native Abilities contract
+        run: wp-env run cli wp eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/WordPressAbilities/contract.php
+
+      - name: Stop WordPress
+        if: always()
+        run: wp-env stop

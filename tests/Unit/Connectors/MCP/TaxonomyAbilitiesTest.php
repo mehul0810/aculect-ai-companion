@@ -36,6 +36,18 @@ final class TaxonomyAbilitiesTest extends TestCase {
 				2 => new \WP_Term( array( 'term_id' => 2, 'name' => 'Guides', 'slug' => 'guides', 'taxonomy' => 'product_group' ) ),
 			),
 		);
+		$GLOBALS['aculect_ai_companion_test_posts'] = array(
+			100 => new \WP_Post(
+				array(
+					'ID'              => 100,
+					'post_type'       => 'attachment',
+					'post_mime_type'  => 'image/png',
+				)
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_term_meta']                 = array();
+		$GLOBALS['aculect_ai_companion_test_update_term_meta_callback'] = null;
+		$GLOBALS['aculect_ai_companion_test_delete_term_meta_callback'] = null;
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
 		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
 	}
@@ -43,6 +55,8 @@ final class TaxonomyAbilitiesTest extends TestCase {
 	protected function tearDown(): void {
 		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+		$GLOBALS['aculect_ai_companion_test_update_term_meta_callback'] = null;
+		$GLOBALS['aculect_ai_companion_test_delete_term_meta_callback'] = null;
 
 		parent::tearDown();
 	}
@@ -103,5 +117,36 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( 'Newsroom', $updated['name'] );
 		self::assertSame( 'deleted', $deleted['status'] );
 		self::assertSame( array( 'manage_product_groups', 'edit_product_groups', 'delete_product_groups' ), $calls );
+	}
+
+	public function test_term_image_update_failure_is_reported(): void {
+		$GLOBALS['aculect_ai_companion_test_update_term_meta_callback'] = static fn(): bool => false;
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
+
+		$result = ( new TaxonomyAbilities() )->set_term_image(
+			array(
+				'taxonomy' => 'product_group',
+				'term_id'  => 1,
+				'image_id' => 100,
+			)
+		);
+
+		self::assertSame( 'term_image_update_failed', $result['error'] );
+	}
+
+	public function test_term_image_delete_failure_is_reported(): void {
+		$GLOBALS['aculect_ai_companion_test_term_meta'][1]['aculect_ai_companion_term_image_id'] = 100;
+		$GLOBALS['aculect_ai_companion_test_delete_term_meta_callback'] = static fn(): bool => false;
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
+
+		$result = ( new TaxonomyAbilities() )->set_term_image(
+			array(
+				'taxonomy'   => 'product_group',
+				'term_id'    => 1,
+				'clear_image' => true,
+			)
+		);
+
+		self::assertSame( 'term_image_update_failed', $result['error'] );
 	}
 }

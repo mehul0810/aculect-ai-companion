@@ -205,10 +205,18 @@ if ( ! function_exists( 'update_term_meta' ) ) {
 	/**
 	 * Store test term metadata.
 	 */
-	function update_term_meta( int $term_id, string $key, mixed $value ): bool {
+	function update_term_meta( int $term_id, string $key, mixed $value ): int|bool|WP_Error {
+		$callback = $GLOBALS['aculect_ai_companion_test_update_term_meta_callback'] ?? null;
+		if ( is_callable( $callback ) ) {
+			$result = $callback( $term_id, $key, $value );
+			if ( is_int( $result ) || is_bool( $result ) || is_wp_error( $result ) ) {
+				return $result;
+			}
+		}
+
 		$GLOBALS['aculect_ai_companion_test_term_meta'][ $term_id ][ $key ] = $value;
 
-		return true;
+		return 1;
 	}
 }
 
@@ -216,7 +224,15 @@ if ( ! function_exists( 'delete_term_meta' ) ) {
 	/**
 	 * Delete test term metadata.
 	 */
-	function delete_term_meta( int $term_id, string $key ): bool {
+	function delete_term_meta( int $term_id, string $key ): bool|WP_Error {
+		$callback = $GLOBALS['aculect_ai_companion_test_delete_term_meta_callback'] ?? null;
+		if ( is_callable( $callback ) ) {
+			$result = $callback( $term_id, $key );
+			if ( is_bool( $result ) || is_wp_error( $result ) ) {
+				return $result;
+			}
+		}
+
 		unset( $GLOBALS['aculect_ai_companion_test_term_meta'][ $term_id ][ $key ] );
 
 		return true;

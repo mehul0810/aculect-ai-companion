@@ -340,10 +340,24 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 			);
 		}
 
+		// Avoid treating WordPress's "unchanged" false return as a write
+		// failure when the requested value is already persisted.
+		if ( $current === $image_id ) {
+			return $this->map_term( $term );
+		}
+
 		if ( 0 === $image_id ) {
-			delete_term_meta( $term_id, $meta_key );
+			$result = delete_term_meta( $term_id, $meta_key );
 		} else {
-			update_term_meta( $term_id, $meta_key, $image_id );
+			$result = update_term_meta( $term_id, $meta_key, $image_id );
+		}
+
+		if ( is_wp_error( $result ) ) {
+			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+		}
+
+		if ( false === $result ) {
+			return $this->error( 'term_image_update_failed', 'The term image could not be saved.' );
 		}
 
 		$term = get_term( $term_id, $taxonomy );

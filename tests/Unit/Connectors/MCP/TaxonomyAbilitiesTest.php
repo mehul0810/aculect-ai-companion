@@ -134,6 +134,21 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( 'term_image_write_failed', $result['error'] );
 	}
 
+	public function test_term_image_wp_error_is_reported(): void {
+		$GLOBALS['aculect_ai_companion_test_update_term_meta_callback'] = static fn(): \WP_Error => new \WP_Error( 'meta_failure', 'Metadata backend unavailable.' );
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
+
+		$result = ( new TaxonomyAbilities() )->set_term_image(
+			array(
+				'taxonomy' => 'product_group',
+				'term_id'  => 1,
+				'image_id' => 100,
+			)
+		);
+
+		self::assertSame( 'term_image_write_failed', $result['error'] );
+	}
+
 	public function test_term_image_delete_failure_is_reported(): void {
 		$GLOBALS['aculect_ai_companion_test_term_meta'][1]['aculect_ai_companion_term_image_id'] = 100;
 		$GLOBALS['aculect_ai_companion_test_delete_term_meta_callback'] = static fn(): bool => false;
@@ -182,6 +197,21 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( 'term_image_write_failed', $result['error'] );
 	}
 
+	public function test_term_image_update_persists_exact_value(): void {
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
+
+		$result = ( new TaxonomyAbilities() )->set_term_image(
+			array(
+				'taxonomy' => 'product_group',
+				'term_id'  => 1,
+				'image_id' => 100,
+			)
+		);
+
+		self::assertSame( 1, $result['id'] );
+		self::assertSame( 100, get_term_meta( 1, 'aculect_ai_companion_term_image_id', true ) );
+	}
+
 	public function test_term_image_update_noop_does_not_write(): void {
 		$GLOBALS['aculect_ai_companion_test_term_meta'][1]['aculect_ai_companion_term_image_id'] = 100;
 		$writes = 0;
@@ -206,6 +236,22 @@ final class TaxonomyAbilitiesTest extends TestCase {
 
 	public function test_term_image_clear_removes_metadata(): void {
 		$GLOBALS['aculect_ai_companion_test_term_meta'][1]['aculect_ai_companion_term_image_id'] = 100;
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
+
+		$result = ( new TaxonomyAbilities() )->set_term_image(
+			array(
+				'taxonomy'   => 'product_group',
+				'term_id'    => 1,
+				'clear_image' => true,
+			)
+		);
+
+		self::assertSame( 1, $result['id'] );
+		self::assertFalse( metadata_exists( 'term', 1, 'aculect_ai_companion_term_image_id' ) );
+	}
+
+	public function test_term_image_clear_removes_malformed_existing_metadata(): void {
+		$GLOBALS['aculect_ai_companion_test_term_meta'][1]['aculect_ai_companion_term_image_id'] = 'legacy';
 		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn(): bool => true;
 
 		$result = ( new TaxonomyAbilities() )->set_term_image(

@@ -327,7 +327,13 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 			}
 		}
 
-		$current = absint( get_term_meta( $term_id, $meta_key, true ) );
+		$meta_state = $this->term_image_meta_state( $term_id, $meta_key );
+		if ( null === $meta_state ) {
+			return $this->term_image_write_error();
+		}
+		$current  = $meta_state['value'];
+		$has_meta = $meta_state['exists'];
+
 		if ( $this->is_dry_run( $data ) ) {
 			return $this->preview_response(
 				'taxonomy.set_term_image',
@@ -342,26 +348,77 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 
 		// Avoid treating WordPress's "unchanged" false return as a write
 		// failure when the requested value is already persisted.
-		if ( $current === $image_id ) {
+		if ( $current === $image_id && ( 0 === $image_id ? ! $has_meta : $has_meta ) ) {
 			return $this->map_term( $term );
 		}
 
-		if ( 0 === $image_id ) {
-			$result = delete_term_meta( $term_id, $meta_key );
-		} else {
-			$result = update_term_meta( $term_id, $meta_key, $image_id );
+		if ( ! $this->persist_term_image_meta( $term_id, $meta_key, $image_id ) ) {
+			return $this->term_image_write_error();
 		}
 
-		if ( is_wp_error( $result ) ) {
-			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+		$persisted_state = $this->term_image_meta_state( $term_id, $meta_key );
+		if ( null === $persisted_state ) {
+			return $this->term_image_write_error();
+		}
+		$persisted = $persisted_state['value'];
+		$has_meta  = $persisted_state['exists'];
+
+		if ( ( 0 === $image_id && $has_meta ) || ( 0 !== $image_id && ( ! $has_meta || $persisted !== $image_id ) ) ) {
+			return $this->term_image_write_error();
 		}
 
-		if ( false === $result ) {
-			return $this->error( 'term_image_update_failed', 'The term image could not be saved.' );
+		try {
+			$term = get_term( $term_id, $taxonomy );
+			return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
+		} catch ( \Throwable $throwable ) {
+			return $this->term_image_write_error();
+		}
+	}
+
+	/**
+	 * Return a bounded error for a term-image persistence or verification failure.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function term_image_write_error(): array {
+		return $this->error( 'term_image_write_failed', 'The term image could not be saved or verified.' );
+	}
+
+	/**
+	 * Read the current term-image metadata state without allowing filters to escape.
+	 *
+	 * @param int    $term_id  Term ID.
+	 * @param string $meta_key Allowlisted metadata key.
+	 * @return array{value:int, exists:bool}|null
+	 */
+	private function term_image_meta_state( int $term_id, string $meta_key ): ?array {
+		try {
+			return array(
+				'value'  => absint( get_term_meta( $term_id, $meta_key, true ) ),
+				'exists' => metadata_exists( 'term', $term_id, $meta_key ),
+			);
+		} catch ( \Throwable $throwable ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Persist one term-image metadata value and normalize backend failures.
+	 *
+	 * @param int    $term_id  Term ID.
+	 * @param string $meta_key Allowlisted metadata key.
+	 * @param int    $image_id Attachment ID, or zero to clear.
+	 */
+	private function persist_term_image_meta( int $term_id, string $meta_key, int $image_id ): bool {
+		try {
+			$result = 0 === $image_id
+				? delete_term_meta( $term_id, $meta_key )
+				: update_term_meta( $term_id, $meta_key, $image_id );
+		} catch ( \Throwable $throwable ) {
+			return false;
 		}
 
-		$term = get_term( $term_id, $taxonomy );
-		return $term instanceof \WP_Term ? $this->map_term( $term ) : array( 'term_id' => $term_id );
+		return ! is_wp_error( $result ) && false !== $result;
 	}
 
 	/**

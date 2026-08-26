@@ -201,6 +201,20 @@ if ( ! function_exists( 'get_term_meta' ) ) {
 	}
 }
 
+if ( ! function_exists( 'metadata_exists' ) ) {
+	/**
+	 * Check whether test term metadata exists.
+	 */
+	function metadata_exists( string $meta_type, int $object_id, string $meta_key ): bool {
+		if ( 'term' !== $meta_type ) {
+			return false;
+		}
+
+		$meta = (array) ( $GLOBALS['aculect_ai_companion_test_term_meta'][ $object_id ] ?? array() );
+		return array_key_exists( $meta_key, $meta );
+	}
+}
+
 if ( ! function_exists( 'update_term_meta' ) ) {
 	/**
 	 * Store test term metadata.

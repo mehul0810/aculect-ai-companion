@@ -206,12 +206,47 @@ if ( ! function_exists( 'metadata_exists' ) ) {
 	 * Check whether test term metadata exists.
 	 */
 	function metadata_exists( string $meta_type, int $object_id, string $meta_key ): bool {
-		if ( 'term' !== $meta_type ) {
+		$meta = 'term' === $meta_type
+			? (array) ( $GLOBALS['aculect_ai_companion_test_term_meta'][ $object_id ] ?? array() )
+			: ( 'post' === $meta_type ? (array) ( $GLOBALS['aculect_ai_companion_test_post_meta'][ $object_id ] ?? array() ) : array() );
+		return array_key_exists( $meta_key, $meta );
+	}
+}
+
+if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
+	/**
+	 * Return a test featured image ID.
+	 */
+	function get_post_thumbnail_id( WP_Post|int $post ): int {
+		$post_id = $post instanceof WP_Post ? $post->ID : (int) $post;
+
+		return (int) ( $GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] ?? 0 );
+	}
+}
+
+if ( ! function_exists( 'set_post_thumbnail' ) ) {
+	/**
+	 * Store a test featured image ID.
+	 */
+	function set_post_thumbnail( int $post_id, int $thumbnail_id ): bool {
+		$GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] = $thumbnail_id;
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'delete_post_thumbnail' ) ) {
+	/**
+	 * Delete a test featured image ID.
+	 */
+	function delete_post_thumbnail( int $post_id ): bool {
+		if ( ! metadata_exists( 'post', $post_id, '_thumbnail_id' ) ) {
 			return false;
 		}
 
-		$meta = (array) ( $GLOBALS['aculect_ai_companion_test_term_meta'][ $object_id ] ?? array() );
-		return array_key_exists( $meta_key, $meta );
+		unset( $GLOBALS['aculect_ai_companion_test_post_meta'][ $post_id ]['_thumbnail_id'] );
+
+		return true;
 	}
 }
 

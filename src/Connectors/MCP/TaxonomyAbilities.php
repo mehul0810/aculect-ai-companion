@@ -111,11 +111,11 @@ final class TaxonomyAbilities extends AbstractAbilityService {
 		$object   = get_taxonomy( $taxonomy );
 		$name     = sanitize_text_field( (string) ( $data['name'] ?? '' ) );
 
-		$manage_capability = $object instanceof \WP_Taxonomy ? $this->taxonomy_capability( $object, 'manage_terms' ) : null;
+		$edit_capability = $object instanceof \WP_Taxonomy ? $this->taxonomy_capability( $object, 'edit_terms' ) : null;
 		if ( ! $object instanceof \WP_Taxonomy || ! $this->is_supported_taxonomy( $object ) ) {
 			return $this->error( 'invalid_taxonomy', 'Taxonomy is not available through Aculect AI Companion.' );
 		}
-		if ( null === $manage_capability || ! current_user_can( $manage_capability ) ) {
+		if ( null === $edit_capability || ! current_user_can( $edit_capability ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to create terms in this taxonomy.' );
 		}
 

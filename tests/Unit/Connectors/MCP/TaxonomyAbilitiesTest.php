@@ -116,7 +116,7 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( 3, $created['id'] );
 		self::assertSame( 'Newsroom', $updated['name'] );
 		self::assertSame( 'deleted', $deleted['status'] );
-		self::assertSame( array( 'manage_product_groups', 'edit_product_groups', 'delete_product_groups' ), $calls );
+		self::assertSame( array( 'edit_product_groups', 'edit_product_groups', 'delete_product_groups' ), $calls );
 	}
 
 	public function test_term_image_update_failure_is_reported(): void {

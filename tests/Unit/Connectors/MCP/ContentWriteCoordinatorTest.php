@@ -118,4 +118,18 @@ final class ContentWriteCoordinatorTest extends TestCase {
 		self::assertSame( 'Original title', get_post( 10 )->post_title );
 		self::assertSame( array( 1 ), array_map( static fn( \WP_Term $term ): int => $term->term_id, wp_get_object_terms( 10, 'category' ) ) );
 	}
+
+	public function test_update_clear_without_existing_featured_media_is_idempotent(): void {
+		unset( $GLOBALS['aculect_ai_companion_test_post_meta'][10]['_thumbnail_id'] );
+
+		$result = ( new ContentWriteCoordinator() )->update(
+			get_post( 10 ),
+			array( 'ID' => 10, 'post_title' => 'Still safe' ),
+			array(),
+			array( 'value' => 0 )
+		);
+
+		self::assertTrue( $result['success'] );
+		self::assertSame( 0, get_post_thumbnail_id( 10 ) );
+	}
 }

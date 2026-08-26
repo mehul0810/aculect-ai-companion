@@ -36,12 +36,7 @@ final class ContentWriteCoordinator {
 		$post_id = (int) $post_id;
 
 		if ( null !== $featured_media ) {
-			try {
-				$featured_result = set_post_thumbnail( $post_id, $featured_media );
-			} catch ( \Throwable ) {
-				$featured_result = false;
-			}
-			if ( false === $featured_result ) {
+			if ( ! $this->apply_featured_media( $post_id, $featured_media ) ) {
 				return $this->failed_after_create( $post_id, 'featured_media', 'Featured image could not be assigned.' );
 			}
 		}
@@ -112,12 +107,7 @@ final class ContentWriteCoordinator {
 
 		if ( array() !== $featured_media_change ) {
 			$value = absint( $featured_media_change['value'] ?? 0 );
-			try {
-				$featured_result = 0 === $value ? delete_post_thumbnail( $post_id ) : set_post_thumbnail( $post_id, $value );
-			} catch ( \Throwable ) {
-				$featured_result = false;
-			}
-			if ( false === $featured_result ) {
+			if ( ! $this->apply_featured_media( $post_id, $value ) ) {
 				return $this->failed_after_update( $before, $snapshot, 'featured_media', 'Featured image could not be assigned.' );
 			}
 		}
@@ -243,6 +233,33 @@ final class ContentWriteCoordinator {
 	}
 
 	/**
+	 * Apply a featured-image change with idempotent clear and postcondition checks.
+	 *
+	 * @param int $post_id Post ID.
+	 * @param int $value   Attachment ID, or zero to clear.
+	 */
+	private function apply_featured_media( int $post_id, int $value ): bool {
+		try {
+			$current  = absint( get_post_thumbnail_id( $post_id ) );
+			$has_meta = metadata_exists( 'post', $post_id, '_thumbnail_id' );
+			if ( ( 0 === $value && ! $has_meta ) || ( 0 !== $value && $has_meta && $current === $value ) ) {
+				return true;
+			}
+
+			$result = 0 === $value ? delete_post_thumbnail( $post_id ) : set_post_thumbnail( $post_id, $value );
+			if ( false === $result ) {
+				return false;
+			}
+
+			$persisted = absint( get_post_thumbnail_id( $post_id ) );
+			$exists    = metadata_exists( 'post', $post_id, '_thumbnail_id' );
+			return 0 === $value ? ! $exists : $exists && $persisted === $value;
+		} catch ( \Throwable ) {
+			return false;
+		}
+	}
+
+	/**
 	 * Restore state touched by an update and verify every component.
 	 *
 	 * @param \WP_Post             $before   Existing post.
@@ -264,10 +281,7 @@ final class ContentWriteCoordinator {
 
 			if ( null !== ( $snapshot['featured_media'] ?? null ) ) {
 				$featured_media = absint( $snapshot['featured_media'] );
-				$result         = 0 === $featured_media
-					? delete_post_thumbnail( (int) $before->ID )
-					: set_post_thumbnail( (int) $before->ID, $featured_media );
-				if ( false === $result ) {
+				if ( ! $this->apply_featured_media( (int) $before->ID, $featured_media ) ) {
 					return false;
 				}
 			}

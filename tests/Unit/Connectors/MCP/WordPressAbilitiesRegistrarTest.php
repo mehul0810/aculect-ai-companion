@@ -101,6 +101,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 			self::assertSame( 'object', $ability['args']['input_schema']['type'] );
 			self::assertSame( 'object', $ability['args']['output_schema']['type'] );
 			self::assertIsArray( $ability['args']['output_schema']['properties'] );
+			self::assertTrue( $ability['args']['meta']['public'] );
 			self::assertTrue( $ability['args']['meta']['show_in_rest'] );
 			self::assertTrue( $ability['args']['meta']['annotations']['readonly'] );
 			self::assertFalse( $ability['args']['meta']['annotations']['destructive'] );

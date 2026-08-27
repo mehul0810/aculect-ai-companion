@@ -268,6 +268,7 @@ final class WordPressAbilitiesRegistrar {
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
 				self::REGISTRATION_MARKER_KEY => $this->registration_marker(),
+				'public'                      => true,
 				'show_in_rest'                => true,
 				'annotations'                 => array(
 					'readonly'    => true,

@@ -11,6 +11,17 @@
 - JavaScript tests: `npm run test:js`
 - JavaScript lint: `npm run lint:js`
 - Diff hygiene: `git diff --check`
+- Modularity budgets and dependency boundaries: `composer check:modularity`. For the pull-request ratchet (legacy files may not grow), run `php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from=origin/<base-branch>`.
+
+## WordPress Abilities Integration
+
+The PHPUnit suite deliberately uses WordPress-light stubs and cannot prove the
+native Abilities API lifecycle. `.github/workflows/wordpress-abilities.yml`
+runs `tests/Integration/WordPressAbilities/contract.php` in `wp-env` against
+the supported WordPress matrix (6.8.1 compatibility, 6.9, and 7.1). The contract verifies native
+registration, object schemas, public exposure metadata, permission callback
+return types, and the expected Aculect read abilities. Older core versions
+without `wp_get_abilities()` report an explicit skip.
 
 ## Pull Request PHP Gates
 - Pull requests targeting `main`, `develop`, or `release/**` must pass `CI / PHP Quality`.

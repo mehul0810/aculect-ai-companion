@@ -181,6 +181,7 @@ final class AbilitiesRegistry {
 	public function modules(): array {
 		if ( null === self::$shared_modules ) {
 			self::$shared_modules = ( new FirstPartyAbilityModules() )->all();
+			AbilityModuleContract::validate( self::$shared_modules );
 		}
 
 		return self::$shared_modules;

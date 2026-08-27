@@ -62,8 +62,11 @@ final class AbilityExecutionGatewayTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
-		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
-		$GLOBALS['aculect_ai_companion_test_filter_callbacks']    = array();
+		$GLOBALS['aculect_ai_companion_test_capability_callback']       = null;
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']          = array();
+		$GLOBALS['aculect_ai_companion_test_set_object_terms_callback'] = null;
+		$GLOBALS['aculect_ai_companion_test_wp_insert_post_callback']   = null;
+		$GLOBALS['aculect_ai_companion_test_wp_trash_post_callback']    = null;
 
 		parent::tearDown();
 	}
@@ -391,6 +394,63 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 		self::assertArrayNotHasKey( 'error', $retried->data['result'] ?? array() );
 		self::assertSame( 'Retry after normal error', get_post( 999 )?->post_title );
+	}
+
+	public function test_terminal_partial_write_is_completed_and_replayed_without_retrying_the_insert(): void {
+		$store   = new InMemoryExecutionClaimStore();
+		$gateway = new AbilityExecutionGateway( null, null, null, new ToolSafety( $store ) );
+		$args    = array(
+			'title'           => 'Needs manual recovery',
+			'taxonomies'      => array( 'category' => array( 1 ) ),
+			'idempotency_key' => 'terminal-partial-write',
+		);
+		$GLOBALS['aculect_ai_companion_test_taxonomies']                = array(
+			'category' => new \WP_Taxonomy( 'category', array( 'hierarchical' => true ) ),
+		);
+		$GLOBALS['aculect_ai_companion_test_terms']                     = array(
+			'category' => array(
+				1 => new \WP_Term(
+					array(
+						'term_id'  => 1,
+						'name'     => 'News',
+						'taxonomy' => 'category',
+					)
+				),
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_set_object_terms_callback'] = static fn(): \WP_Error => new \WP_Error( 'term_failure', 'Terms failed.' );
+		$insertions = 0;
+		$GLOBALS['aculect_ai_companion_test_wp_insert_post_callback'] = static function ( array $postarr ) use ( &$insertions ): int {
+			unset( $postarr );
+			++$insertions;
+			return 900 + $insertions;
+		};
+		$GLOBALS['aculect_ai_companion_test_wp_trash_post_callback']  = static fn(): false => false;
+		$auth = $this->trusted_write_auth( 1 );
+
+		$first = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_create_item',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+		$retry = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_create_item',
+					'arguments' => $args,
+				),
+				$auth
+			)
+		);
+
+		self::assertSame( 'partial_write', $first->data['result']['error'] ?? '' );
+		self::assertTrue( $first->data['result']['terminal'] ?? false );
+		self::assertSame( 'partial_write', $retry->data['result']['error'] ?? '' );
+		self::assertSame( 1, $insertions );
 	}
 
 	public function test_thrown_claimed_callback_becomes_uncertain_and_never_retries(): void {

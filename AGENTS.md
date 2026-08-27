@@ -9,6 +9,13 @@
 - Use locally installed Codex skills for WordPress and GitHub work, especially `$wp-expert` and `$github`; do not depend on repo-local skill copies.
 - Repo-local governance docs live in `AGENTS.md`, `DESIGN.md`, `TESTING.md`, and `RELEASE.md`; keep product-specific workflow rules there instead of only in chat or memory.
 
+## Modularity and Dependency Budgets
+- New production PHP, JavaScript, and SCSS files should stay at or below 500 lines for review and 1,200 lines as a hard ceiling; new test files should stay at or below 800 lines for review and 1,800 lines as a hard ceiling.
+- Keep individual methods below 80 lines in production and 100 lines in tests for review; the hard ceilings are 120 and 180 lines respectively. Extract a focused collaborator before adding a new responsibility to a legacy exception.
+- Run `composer check:modularity` for every scoped change. It reports legacy hotspots with owner/issue/target metadata, enforces exception ceilings, and checks forbidden namespace dependencies. Pull-request CI additionally runs `bin/check-modularity.php --changed-from=origin/<base>` so touched legacy exceptions cannot grow relative to the base branch.
+- Legacy exceptions in `.codex/modularity-rules.php` are temporary ratchets, not waivers. A PR that touches an exception must either reduce its ceiling or explain the bounded change and keep the recorded ceiling fixed afterward.
+- Domain ownership is directional: `Workflows\Definitions` and `Workflows\Planning` remain pure contracts/plans and cannot import MCP, admin, or intelligence layers; Intelligence and Activity cannot import MCP services directly. Add a neutral port or adapter when a boundary needs to cross layers.
+
 ## Project Subagents
 - Project subagents live in `.codex/agents`; `.codex/config.toml` limits concurrency to three threads and one agent depth.
 - Use `aculect-plugin-mapper` for read-only PHP/MCP/OAuth/admin architecture mapping.

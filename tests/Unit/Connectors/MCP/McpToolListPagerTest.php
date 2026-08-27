@@ -22,8 +22,8 @@ require_once dirname( __DIR__, 3 ) . '/fixtures/wordpress-abilities-stubs.php';
  */
 final class McpToolListPagerTest extends TestCase {
 
-	private const FIXTURE_FINGERPRINT = '3ae7fb79cafc55342ad851ec84009725a5d152ee4c25149ec9e2c5310d5faf45';
-	private const FIXTURE_CURSOR      = 'eyJ2IjoyLCJvIjo2MCwiZnAiOiIzYWU3ZmI3OWNhZmM1NTM0MmFkODUxZWM4NDAwOTcyNWE1ZDE1MmVlNGMyNTE0OWVjOWUyYzUzMTBkNWZhZjQ1In0=';
+	private const FIXTURE_FINGERPRINT = 'f7bec4d6f08b5886b27111e22eec04252ae11e934c0811af3f41b57d80f2f32d';
+	private const FIXTURE_CURSOR      = 'eyJ2IjoyLCJvIjo2MCwiZnAiOiJmN2JlYzRkNmYwOGI1ODg2YjI3MTExZTIyZWVjMDQyNTJhZTExZTkzNGMwODExYWYzZjQxYjU3ZDgwZjJmMzJkIn0=';
 
 	protected function setUp(): void {
 		parent::setUp();

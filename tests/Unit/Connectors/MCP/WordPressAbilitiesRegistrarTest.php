@@ -101,6 +101,7 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 			self::assertSame( 'object', $ability['args']['input_schema']['type'] );
 			self::assertSame( 'object', $ability['args']['output_schema']['type'] );
 			self::assertIsArray( $ability['args']['output_schema']['properties'] );
+			self::assertTrue( $ability['args']['meta']['public'] );
 			self::assertTrue( $ability['args']['meta']['show_in_rest'] );
 			self::assertTrue( $ability['args']['meta']['annotations']['readonly'] );
 			self::assertFalse( $ability['args']['meta']['annotations']['destructive'] );
@@ -226,6 +227,20 @@ final class WordPressAbilitiesRegistrarTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'aculect-ai-companion/plugin-incident-report' ) );
 		self::assertFalse( $policy->is_allowed( 'plugin_issue_report' ) );
 		self::assertFalse( $policy->is_allowed( 'external-plugin/some-ability' ) );
+	}
+
+	public function test_trust_check_fails_closed_when_external_getters_throw(): void {
+		$ability = new class() {
+			public function get_name(): never {
+				throw new \Error( 'private getter failure' );
+			}
+
+			public function get_meta(): array {
+				return array();
+			}
+		};
+
+		self::assertFalse( ( new WordPressAbilitiesRegistrar() )->is_trusted_first_party_ability( $ability ) );
 	}
 
 	public function test_wordpress_abilities_diagnostics_report_first_party_registration_status(): void {

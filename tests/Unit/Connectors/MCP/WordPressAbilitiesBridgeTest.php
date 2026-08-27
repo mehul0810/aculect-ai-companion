@@ -106,6 +106,93 @@ final class WordPressAbilitiesBridgeTest extends TestCase {
 		self::assertSame( 'You do not have permission to execute this WordPress ability.', $result['message'] );
 	}
 
+	public function test_run_returns_bounded_error_when_external_execute_throws(): void {
+		$ability = new class() {
+			public function get_name(): string {
+				return 'external-plugin/throws';
+			}
+
+			public function get_label(): string {
+				return 'Throws';
+			}
+
+			public function get_description(): string {
+				return 'Throws during execution.';
+			}
+
+			public function get_category(): string {
+				return 'external';
+			}
+
+			public function get_input_schema(): array {
+				return array( 'type' => 'object', 'properties' => array() );
+			}
+
+			public function get_output_schema(): array {
+				return array( 'type' => 'object', 'properties' => array() );
+			}
+
+			public function get_meta(): array {
+				return array( 'show_in_rest' => true );
+			}
+
+			public function execute( array $input ): never {
+				unset( $input );
+				throw new \RuntimeException( 'secret provider detail must not escape' );
+			}
+		};
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array(
+			array( 'name' => 'external-plugin/throws', 'args' => array( 'ability_object' => $ability ) ),
+		);
+		( new WordPressAbilitiesPolicy() )->save_allowed_ids( array( 'external-plugin/throws' ) );
+
+		$result = ( new WordPressAbilitiesBridge() )->run( array( 'id' => 'external-plugin/throws' ) );
+
+		self::assertSame( 'ability_execution_failed', $result['error'] );
+		self::assertSame( 'The WordPress ability failed without returning a safe result.', $result['message'] );
+		self::assertStringNotContainsString( 'secret', (string) wp_json_encode( $result ) );
+	}
+
+	public function test_run_rejects_a_native_result_that_cannot_be_serialized_safely(): void {
+		$resource = fopen( 'php://memory', 'rb' );
+		$this->register_public_ability(
+			array(
+				'permission_callback' => static fn (): bool => true,
+				'execute_callback' => static fn () => $resource,
+			)
+		);
+
+		$result = ( new WordPressAbilitiesBridge() )->run( array( 'id' => 'external-plugin/public-action' ) );
+		if ( is_resource( $resource ) ) {
+			fclose( $resource );
+		}
+
+		self::assertSame( 'invalid_ability_result', $result['error'] );
+		self::assertStringNotContainsString( 'Resource id', (string) wp_json_encode( $result ) );
+	}
+
+	public function test_discovery_skips_an_ability_with_throwing_metadata_getter(): void {
+		$ability = new class() {
+			public function get_name(): string {
+				return 'external-plugin/malformed';
+			}
+
+			public function get_meta(): array {
+				return array( 'show_in_rest' => true );
+			}
+
+			public function get_label(): never {
+				throw new \Error( 'private metadata failure' );
+			}
+		};
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array(
+			array( 'name' => 'external-plugin/malformed', 'args' => array( 'ability_object' => $ability ) ),
+		);
+		( new WordPressAbilitiesPolicy() )->save_allowed_ids( array( 'external-plugin/malformed' ) );
+
+		self::assertSame( array(), ( new WordPressAbilitiesBridge() )->discover()['items'] );
+	}
+
 	public function test_run_delegates_normalization_permission_and_pre_execution_to_native_ability(): void {
 		$ability = new class() {
 

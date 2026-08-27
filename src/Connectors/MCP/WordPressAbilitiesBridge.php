@@ -28,35 +28,30 @@ final class WordPressAbilitiesBridge {
 		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
 		$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 50 ) ) );
 
-		$abilities = array_filter(
-			$this->abilities(),
-			fn ( object $ability ): bool => $this->incident_list_discovery_allowed( $ability )
-		);
-		$items     = array_values(
-			array_filter(
-				array_map( array( $this, 'map_ability' ), $abilities ),
-				static function ( array $ability ) use ( $search, $category ): bool {
-					if ( empty( $ability['public'] ) ) {
-						return false;
-					}
+		$items = array();
+		foreach ( $this->abilities() as $ability ) {
+			if ( ! $this->incident_list_discovery_allowed( $ability ) ) {
+				continue;
+			}
 
-					if ( empty( $ability['allowed'] ) ) {
-						return false;
-					}
+			$mapped = $this->safe_map_ability( $ability );
+			if ( null === $mapped || empty( $mapped['public'] ) || empty( $mapped['allowed'] ) ) {
+				continue;
+			}
 
-					if ( '' !== $category && $category !== $ability['category'] ) {
-						return false;
-					}
+			if ( '' !== $category && $category !== $mapped['category'] ) {
+				continue;
+			}
 
-					if ( '' === $search ) {
-						return true;
-					}
-
-					$haystack = strtolower( implode( ' ', array( $ability['id'], $ability['title'], $ability['description'] ) ) );
-					return str_contains( $haystack, strtolower( $search ) );
+			if ( '' !== $search ) {
+				$haystack = strtolower( implode( ' ', array( $mapped['id'], $mapped['title'], $mapped['description'] ) ) );
+				if ( ! str_contains( $haystack, strtolower( $search ) ) ) {
+					continue;
 				}
-			)
-		);
+			}
+
+			$items[] = $mapped;
+		}
 
 		$total = count( $items );
 		$items = array_slice( $items, ( $page - 1 ) * $per_page, $per_page );
@@ -97,7 +92,8 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'forbidden', 'You do not have permission to discover this WordPress ability.' );
 		}
 
-		return $this->map_ability( $ability, true );
+		$mapped = $this->safe_map_ability( $ability, true );
+		return null === $mapped ? $this->error( 'ability_metadata_unavailable', 'This WordPress ability returned invalid metadata.' ) : $mapped;
 	}
 
 	/**
@@ -128,15 +124,26 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'not_executable', 'This WordPress ability cannot be executed.' );
 		}
 
-		$input  = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
-		$result = $ability->execute( $input );
+		$input = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
+		try {
+			$result = $ability->execute( $input );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return $this->error( 'ability_execution_failed', 'The WordPress ability failed without returning a safe result.' );
+		}
 		if ( $result instanceof WP_Error && 'ability_invalid_permissions' === $result->get_error_code() ) {
 			return $this->error( 'forbidden', 'You do not have permission to execute this WordPress ability.' );
 		}
 
+		$normalized = $this->normalize_result( $result );
+		if ( ! $normalized['valid'] ) {
+			return $this->error( 'invalid_ability_result', 'The WordPress ability returned data that could not be represented safely.' );
+		}
+
 		return array(
 			'ability' => $this->ability_name( $ability ),
-			'result'  => $this->normalize_result( $result ),
+			'result'  => $normalized['value'],
 		);
 	}
 
@@ -150,7 +157,13 @@ final class WordPressAbilitiesBridge {
 			return array();
 		}
 
-		$abilities = call_user_func( 'wp_get_abilities' );
+		try {
+			$abilities = call_user_func( 'wp_get_abilities' );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
 		if ( ! is_array( $abilities ) ) {
 			return array();
 		}
@@ -241,6 +254,29 @@ final class WordPressAbilitiesBridge {
 	}
 
 	/**
+	 * Map an external ability without allowing malformed plugin code to abort discovery.
+	 *
+	 * @param object $ability      Ability object.
+	 * @param bool   $include_full Whether to include schemas and raw metadata.
+	 * @return array<string, mixed>|null
+	 */
+	private function safe_map_ability( object $ability, bool $include_full = false ): ?array {
+		try {
+			$mapped = $this->map_ability( $ability, $include_full );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return null;
+		}
+
+		if ( '' === (string) ( $mapped['id'] ?? '' ) || '' === (string) ( $mapped['title'] ?? '' ) || '' === (string) ( $mapped['description'] ?? '' ) ) {
+			return null;
+		}
+
+		return $mapped;
+	}
+
+	/**
 	 * Return an ability name from a WP_Ability-like object.
 	 *
 	 * @param object $ability Ability object.
@@ -316,7 +352,14 @@ final class WordPressAbilitiesBridge {
 			return '';
 		}
 
-		$value = $object->{$method}();
+		try {
+			$value = $object->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
+
 		return is_scalar( $value ) ? (string) $value : '';
 	}
 
@@ -332,7 +375,14 @@ final class WordPressAbilitiesBridge {
 			return array();
 		}
 
-		$value = $object->{$method}();
+		try {
+			$value = $object->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
+
 		return is_array( $value ) ? $value : array();
 	}
 
@@ -340,18 +390,37 @@ final class WordPressAbilitiesBridge {
 	 * Normalize ability execution results into JSON-safe data.
 	 *
 	 * @param mixed $result Ability result.
-	 * @return mixed
+	 * @return array{valid: bool, value: mixed}
 	 */
-	private function normalize_result( mixed $result ): mixed {
+	private function normalize_result( mixed $result ): array {
 		if ( $result instanceof WP_Error ) {
-			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+			$result = $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		if ( $result instanceof WP_REST_Response ) {
-			return $result->get_data();
+			$result = $result->get_data();
 		}
 
-		return $result;
+		$encoded = wp_json_encode( $result );
+		if ( ! is_string( $encoded ) ) {
+			return array(
+				'valid' => false,
+				'value' => null,
+			);
+		}
+
+		$decoded = json_decode( $encoded, true );
+		if ( JSON_ERROR_NONE !== json_last_error() ) {
+			return array(
+				'valid' => false,
+				'value' => null,
+			);
+		}
+
+		return array(
+			'valid' => true,
+			'value' => $decoded,
+		);
 	}
 
 	/**

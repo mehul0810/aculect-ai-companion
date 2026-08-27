@@ -234,22 +234,12 @@ final class ContentAbilities extends AbstractAbilityService {
 			);
 		}
 
-		$post_id = wp_insert_post( $payload, true );
-
-		if ( is_wp_error( $post_id ) ) {
-			return $this->error( (string) $post_id->get_error_code(), $post_id->get_error_message() );
+		$write_result = ( new ContentWriteCoordinator() )->create( $payload, $featured_media, $taxonomy_assignments );
+		if ( isset( $write_result['error'] ) ) {
+			return $write_result;
 		}
 
-		if ( null !== $featured_media && false === set_post_thumbnail( (int) $post_id, $featured_media ) ) {
-			return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
-		}
-
-		$assignment_result = $this->apply_taxonomy_assignments( (int) $post_id, $taxonomy_assignments );
-		if ( isset( $assignment_result['error'] ) ) {
-			return $assignment_result['error'];
-		}
-
-		return $this->get_item( (int) $post_id );
+		return $this->get_item( (int) $write_result['post_id'] );
 	}
 
 	/**
@@ -280,6 +270,11 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_type_object = get_post_type_object( $post->post_type );
 		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
+		}
+
+		$conflict = ContentWriteSafety::expected_modified_error( $post, $data );
+		if ( array() !== $conflict ) {
+			return $conflict;
 		}
 
 		$validated_content = $this->validated_block_content_argument( $data );
@@ -440,22 +435,9 @@ final class ContentAbilities extends AbstractAbilityService {
 			);
 		}
 
-		$result = wp_update_post( $update, true );
-		if ( is_wp_error( $result ) ) {
-			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
-		}
-
-		$assignment_result = $this->apply_taxonomy_assignments( $post_id, $taxonomy_assignments );
-		if ( isset( $assignment_result['error'] ) ) {
-			return $assignment_result['error'];
-		}
-
-		if ( ! empty( $featured_media_change ) ) {
-			if ( 0 === $featured_media_change['value'] ) {
-				delete_post_thumbnail( $post_id );
-			} elseif ( false === set_post_thumbnail( $post_id, (int) $featured_media_change['value'] ) ) {
-				return $this->error( 'featured_media_failed', 'Featured image could not be assigned.' );
-			}
+		$write_result = ( new ContentWriteCoordinator() )->update( $post, $update, $taxonomy_assignments, $featured_media_change );
+		if ( isset( $write_result['error'] ) ) {
+			return $write_result;
 		}
 
 		return $this->get_item( $post_id );
@@ -478,6 +460,11 @@ final class ContentAbilities extends AbstractAbilityService {
 		$post_type_object = get_post_type_object( $post->post_type );
 		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'edit_post', $post_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update this content item.' );
+		}
+
+		$conflict = ContentWriteSafety::expected_modified_error( $post, $data );
+		if ( array() !== $conflict ) {
+			return $conflict;
 		}
 
 		if ( ! function_exists( 'parse_blocks' ) || ! function_exists( 'serialize_blocks' ) ) {
@@ -594,12 +581,11 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $response;
 		}
 
-		$result = wp_update_post(
+		$result = ContentWriteSafety::update_post(
 			array(
 				'ID'           => $post_id,
 				'post_content' => $content,
-			),
-			true
+			)
 		);
 		if ( is_wp_error( $result ) ) {
 			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );

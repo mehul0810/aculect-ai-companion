@@ -627,7 +627,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	 */
 	private function content_payload( array $args ): array {
 		$payload = array();
-		foreach ( array( 'title', 'excerpt', 'slug', 'status', 'date', 'featured_media', 'clear_featured_media', 'author', 'taxonomies' ) as $field ) {
+		foreach ( array( 'title', 'excerpt', 'slug', 'status', 'date', 'featured_media', 'clear_featured_media', 'author', 'taxonomies', 'expected_modified_gmt' ) as $field ) {
 			if ( array_key_exists( $field, $args ) ) {
 				$payload[ $field ] = $args[ $field ];
 			}

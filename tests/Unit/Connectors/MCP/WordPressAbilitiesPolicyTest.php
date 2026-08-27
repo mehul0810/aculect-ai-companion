@@ -295,6 +295,45 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $definitions['example/write']['defaultEnabled'] );
 	}
 
+	public function test_open_or_nested_open_schemas_are_not_safe_defaults(): void {
+		$this->register_ability(
+			'example/open-schema',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'                 => 'object',
+				'properties'           => array(),
+				'additionalProperties' => true,
+			)
+		);
+		$this->register_ability(
+			'example/nested-open-schema',
+			true,
+			false,
+			true,
+			'object',
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'filters' => array(
+						'type'                 => 'object',
+						'properties'           => array(),
+						'additionalProperties' => true,
+					),
+				),
+				'additionalProperties' => false,
+			)
+		);
+
+		$policy = new WordPressAbilitiesPolicy();
+		self::assertFalse( $policy->is_allowed( 'example/open-schema' ) );
+		self::assertFalse( $policy->is_allowed( 'example/nested-open-schema' ) );
+		$definitions = array_column( $policy->public_definitions(), null, 'id' );
+		self::assertFalse( $definitions['example/open-schema']['defaultEnabled'] );
+	}
+
 	public function test_explicit_decisions_override_defaults_and_preserve_unavailable_ids(): void {
 		$this->register_ability( 'example/read', true, false );
 		$this->register_ability( 'example/write', false, false );
@@ -381,8 +420,8 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 				'label'               => 'Example ability',
 				'description'         => 'Example third-party ability.',
 				'category'            => 'example',
-				'input_schema'        => $input_schema ?? array( 'type' => $schema_type ),
-				'output_schema'       => array( 'type' => 'object' ),
+				'input_schema'        => $input_schema ?? array( 'type' => $schema_type, 'properties' => array(), 'additionalProperties' => false ),
+				'output_schema'       => array( 'type' => 'object', 'properties' => array( 'ok' => array( 'type' => 'boolean' ) ), 'additionalProperties' => false ),
 				'permission_callback' => $with_permission ? static fn(): bool => true : null,
 				'execute_callback'    => static fn(): array => array( 'ok' => true ),
 				'meta'                => array(

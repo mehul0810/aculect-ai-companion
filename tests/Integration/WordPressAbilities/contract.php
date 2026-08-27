@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 /**
  * WordPress Abilities API contract smoke test.
  *

@@ -100,7 +100,7 @@ final class AbilityExecutionGateway {
 			return $this->unavailable_authenticated_actor_outcome();
 		}
 
-		$previous_request_auth       = self::$current_request_auth;
+		$previous_request_auth      = self::$current_request_auth;
 		self::$current_request_auth = $request->auth;
 		try {
 			return AbilityExecutionOutcome::from_array( $this->execute_params( $request->params, $request->auth, $request->rest_request ) );

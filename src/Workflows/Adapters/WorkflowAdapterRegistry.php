@@ -39,6 +39,40 @@ final class WorkflowAdapterRegistry {
 	}
 
 	/**
+	 * Compose a registry from the closed first-party adapter catalog.
+	 *
+	 * The default constructor remains the small compatibility set used by the
+	 * original private facade; callers that need the broader workflow surface
+	 * opt into this explicit composition boundary.
+	 */
+	public static function from_catalog(): self {
+		return new self( WorkflowAdapterCatalog::adapters() );
+	}
+
+	/**
+	 * Return detached contracts for every registered adapter.
+	 *
+	 * @return list<WorkflowAdapterDescriptor>
+	 */
+	public function descriptors(): array {
+		$descriptors = array();
+		foreach ( $this->adapters as $adapter ) {
+			$descriptors[] = new WorkflowAdapterDescriptor(
+				$adapter->adapter_id(),
+				$adapter->adapter_version(),
+				$adapter->ability_id(),
+				$adapter->kind(),
+				$adapter->is_read_only(),
+				$adapter->required_capabilities(),
+				$adapter->input_schema(),
+				$adapter->output_schema()
+			);
+		}
+
+		return $descriptors;
+	}
+
+	/**
 	 * Execute one exact plan step through its registered adapter.
 	 *
 	 * @param WorkflowPlan         $plan      Immutable workflow plan.

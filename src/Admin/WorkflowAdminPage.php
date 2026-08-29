@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
+use stdClass;
 use Throwable;
 
 defined( 'ABSPATH' ) || exit;
@@ -597,26 +598,39 @@ JS;
 			);
 		}
 
-		$value      = $record->definition()->to_array();
-		$properties = (array) ( $value['input_schema']['properties'] ?? array() );
-		$required   = array_map( 'strval', (array) ( $value['input_schema']['required'] ?? array() ) );
-		$fields     = array();
+		$value          = $record->definition()->to_array();
+		$input_schema   = $value['input_schema'] ?? array();
+		$input_schema   = $input_schema instanceof stdClass ? get_object_vars( $input_schema ) : ( is_array( $input_schema ) ? $input_schema : array() );
+		$raw_properties = $input_schema['properties'] ?? array();
+		$properties     = $raw_properties instanceof stdClass ? get_object_vars( $raw_properties ) : ( is_array( $raw_properties ) ? $raw_properties : array() );
+		$raw_required   = $input_schema['required'] ?? array();
+		$required       = is_array( $raw_required ) ? array_map( 'strval', $raw_required ) : array();
+		$fields         = array();
 		foreach ( $properties as $name => $schema ) {
+			$schema   = $schema instanceof stdClass ? get_object_vars( $schema ) : $schema;
 			$type     = is_array( $schema ) ? (string) ( $schema['type'] ?? 'string' ) : 'string';
 			$fields[] = (string) $name . ':' . $type . ( in_array( (string) $name, $required, true ) ? ':required' : '' );
 		}
 		$steps          = array();
 		$step_arguments = array();
 		foreach ( (array) ( $value['steps'] ?? array() ) as $step ) {
+			$step = $step instanceof stdClass ? get_object_vars( $step ) : $step;
 			if ( is_array( $step ) ) {
-				$steps[] = (string) ( $step['ability_id'] ?? '' );
-				$step_id = (string) ( $step['step_id'] ?? '' );
-				if ( '' !== $step_id && is_array( $step['arguments'] ?? null ) ) {
-					$step_arguments[ $step_id ] = $step['arguments'];
+				$steps[]   = (string) ( $step['ability_id'] ?? '' );
+				$step_id   = (string) ( $step['step_id'] ?? '' );
+				$arguments = $step['arguments'] ?? null;
+				if ( '' !== $step_id && ( is_array( $arguments ) || $arguments instanceof stdClass ) ) {
+					$step_arguments[ $step_id ] = $arguments;
 				}
 			}
 		}
 		$step_arguments_json = function_exists( 'wp_json_encode' ) ? wp_json_encode( $step_arguments ) : '{}';
+		$content_target      = $value['content_target'] ?? array();
+		$content_target      = $content_target instanceof stdClass ? get_object_vars( $content_target ) : ( is_array( $content_target ) ? $content_target : array() );
+		$target_post_types   = $content_target['post_types'] ?? array();
+		$target_post_types   = is_array( $target_post_types ) ? $target_post_types : array();
+		$write_policy        = $value['write_policy'] ?? array();
+		$write_policy        = $write_policy instanceof stdClass ? get_object_vars( $write_policy ) : ( is_array( $write_policy ) ? $write_policy : array() );
 
 		return array(
 			'workflow_id'         => $record->workflow_id(),
@@ -624,12 +638,12 @@ JS;
 			'template_id'         => '' === $record->template_id() ? 'blank' : $record->template_id(),
 			'name'                => $value['name'] ?? '',
 			'description'         => $value['description'] ?? '',
-			'target_mode'         => $value['content_target']['mode'] ?? 'either',
-			'post_types'          => implode( ', ', array_map( 'strval', (array) ( $value['content_target']['post_types'] ?? array() ) ) ),
+			'target_mode'         => $content_target['mode'] ?? 'either',
+			'post_types'          => implode( ', ', array_map( 'strval', $target_post_types ) ),
 			'input_fields'        => implode( "\n", $fields ),
 			'step_abilities'      => implode( "\n", $steps ),
 			'step_arguments'      => is_string( $step_arguments_json ) ? $step_arguments_json : '{}',
-			'write_policy'        => $value['write_policy']['mode'] ?? 'proposal_only',
+			'write_policy'        => $write_policy['mode'] ?? 'proposal_only',
 			'allowed_roles'       => $record->allowed_roles(),
 			'migration_id'        => '',
 			'migration_confirmed' => false,

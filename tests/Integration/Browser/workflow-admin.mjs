@@ -149,8 +149,15 @@ try {
 		`${ workflowUrl }&workflow_id=${ encodeURIComponent( workflowId ) }`,
 		{ waitUntil: 'networkidle' }
 	);
-	if ( ( await page.locator( 'h1' ).first().textContent() )?.trim() !== 'Content Workflows' ) {
-		throw new Error( 'The saved workflow editor could not be reopened.' );
+	const editorHeading = page.locator( 'h1' ).first();
+	if ( ( await editorHeading.count() ) !== 1 ) {
+		const diagnosticBody = ( await page.locator( 'body' ).textContent() ) || '';
+		throw new Error(
+			`The saved workflow editor could not be reopened (URL: ${ page.url() }; title: ${ await page.title() }; body: ${ diagnosticBody.trim().slice( 0, 240 ) }).`
+		);
+	}
+	if ( ( await editorHeading.textContent() )?.trim() !== 'Content Workflows' ) {
+		throw new Error( `The saved workflow editor returned an unexpected heading at ${ page.url() }.` );
 	}
 	if ( ( await page.locator( '#aculect-workflow-template' ).count() ) !== 1 ) {
 		throw new Error( 'The saved workflow editor is missing its starter template control.' );

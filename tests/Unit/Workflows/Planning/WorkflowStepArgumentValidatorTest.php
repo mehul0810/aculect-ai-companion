@@ -141,4 +141,48 @@ final class WorkflowStepArgumentValidatorTest extends TestCase {
 			$validator->validate( $arguments, $too_strict, $source )
 		);
 	}
+
+	public function test_recursive_additional_property_schemas_must_be_compatible(): void {
+		$validator      = new WorkflowStepArgumentValidator();
+		$target         = array(
+			'type'       => 'object',
+			'properties' => array(
+				'payload' => array(
+					'type'                 => 'object',
+					'additionalProperties' => array(
+						'type'                 => 'object',
+						'properties'           => array( 'id' => array( 'type' => 'integer' ) ),
+						'required'             => array( 'id' ),
+						'additionalProperties' => false,
+					),
+				),
+			),
+			'required'   => array( 'payload' ),
+		);
+		$source         = array(
+			'type'       => 'object',
+			'properties' => array(
+				'payload' => array(
+					'type'                 => 'object',
+					'additionalProperties' => array(
+						'type'                 => 'object',
+						'properties'           => array( 'id' => array( 'type' => 'string' ) ),
+						'required'             => array( 'id' ),
+						'additionalProperties' => false,
+					),
+				),
+			),
+			'required'   => array( 'payload' ),
+		);
+		$adapter_schema = array(
+			'type'       => 'object',
+			'properties' => array( 'payload' => $target['properties']['payload'] ),
+			'required'   => array( 'payload' ),
+		);
+
+		self::assertSame(
+			array( '$.arguments.payload' ),
+			$validator->validate( array( 'payload' => '{{input.payload}}' ), $adapter_schema, $source )
+		);
+	}
 }

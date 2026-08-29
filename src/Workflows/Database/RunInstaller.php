@@ -198,6 +198,11 @@ final class RunInstaller {
 	 */
 	private static function ensure_transactional_tables(): bool {
 		global $wpdb;
+		if ( self::is_sqlite_backend() ) {
+			// SQLite provides transactional DDL/DML semantics without MySQL table engines.
+			return true;
+		}
+
 		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_var' ) || ! method_exists( $wpdb, 'query' ) ) {
 			return false;
 		}
@@ -221,6 +226,31 @@ final class RunInstaller {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Detect the supported SQLite WordPress database adapters.
+	 *
+	 * SQLite has no InnoDB table engine to inspect, but its transaction boundary
+	 * is authoritative for the parent/child retention delete. Unknown adapters
+	 * remain on the fail-closed MySQL verification path.
+	 */
+	private static function is_sqlite_backend(): bool {
+		foreach ( array( 'DB_ENGINE', 'DATABASE_TYPE' ) as $constant ) {
+			if ( defined( $constant ) && 'SQLITE' === strtoupper( (string) constant( $constant ) ) ) {
+				return true;
+			}
+		}
+
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) ) {
+			return false;
+		}
+		if ( class_exists( 'WP_SQLite_DB', false ) && $wpdb instanceof \WP_SQLite_DB ) {
+			return true;
+		}
+
+		return property_exists( $wpdb, 'is_mysql' ) && false === $wpdb->is_mysql;
 	}
 
 	/**

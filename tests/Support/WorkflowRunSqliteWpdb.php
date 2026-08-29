@@ -25,6 +25,7 @@ final class WorkflowRunSqliteWpdb {
 	public int $insert_id                = 0;
 	public string $fail_query_containing = '';
 	public bool $fail_query_once         = false;
+	public bool $is_mysql                = false;
 	/**
 	 * Simulated MySQL table engines used by installer contract tests.
 	 *

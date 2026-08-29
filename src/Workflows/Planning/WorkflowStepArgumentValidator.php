@@ -405,6 +405,14 @@ final class WorkflowStepArgumentValidator {
 		if ( false === $target_additional && false !== $source_additional ) {
 			return false;
 		}
+		if ( is_array( $target_additional ) || $target_additional instanceof stdClass ) {
+			if ( true === $source_additional ) {
+				return false;
+			}
+			if ( ( is_array( $source_additional ) || $source_additional instanceof stdClass ) && ! $this->compatible( $this->map( $source_additional ), $this->map( $target_additional ) ) ) {
+				return false;
+			}
+		}
 		foreach ( $target_required as $key ) {
 			if ( ! is_string( $key ) || ! in_array( $key, $source_required, true ) || ! array_key_exists( $key, $source_properties ) ) {
 				return false;

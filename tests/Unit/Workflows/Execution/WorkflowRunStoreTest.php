@@ -374,7 +374,8 @@ final class WorkflowRunStoreTest extends TestCase {
 	}
 
 	public function test_run_tables_are_repaired_to_innodb_before_use(): void {
-		$wpdb = $this->wpdb();
+		$wpdb           = $this->wpdb();
+		$wpdb->is_mysql = true;
 		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
 		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
 
@@ -384,11 +385,22 @@ final class WorkflowRunStoreTest extends TestCase {
 	}
 
 	public function test_run_tables_fail_closed_when_engine_repair_fails(): void {
-		$wpdb = $this->wpdb();
+		$wpdb           = $this->wpdb();
+		$wpdb->is_mysql = true;
 		$wpdb->table_engines['wp_aculect_ai_workflow_runs'] = 'MyISAM';
 		$wpdb->fail_query_containing                        = 'ALTER TABLE';
 
 		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+	}
+
+	public function test_sqlite_backend_uses_native_transactionality_without_mysql_engine_queries(): void {
+		$wpdb = $this->wpdb();
+		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
+		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
+
+		self::assertTrue( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+		self::assertSame( 'MyISAM', $wpdb->table_engines['wp_aculect_ai_workflow_runs'] );
+		self::assertSame( 'MyISAM', $wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] );
 	}
 
 	public function test_waiting_transition_cas_rechecks_expiry_in_sql(): void {

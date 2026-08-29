@@ -154,7 +154,7 @@ try {
 		const diagnosticBody = ( await page.locator( 'body' ).textContent() ) || '';
 		const visibleBody = ( await page.locator( 'body' ).innerText() ) || '';
 		throw new Error(
-			`The saved workflow editor could not be reopened (URL: ${ page.url() }; title: ${ await page.title() }; visible: ${ visibleBody.trim().slice( 0, 600 ) }; body-tail: ${ diagnosticBody.trim().slice( -600 ) }).`
+			`The saved workflow editor could not be reopened (URL: ${ page.url() }; title: ${ await page.title() }; visible: ${ visibleBody.trim().slice( 0, 600 ) }; body-tail: ${ diagnosticBody.trim().slice( -3000 ) }).`
 		);
 	}
 	if ( ( await editorHeading.textContent() )?.trim() !== 'Content Workflows' ) {

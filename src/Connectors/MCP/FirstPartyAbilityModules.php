@@ -15,13 +15,10 @@ use RuntimeException;
 final class FirstPartyAbilityModules {
 
 	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
-
 	private readonly AbilityModuleFactory $module_factory;
-
 	public function __construct( ?AbilityModuleFactory $module_factory = null ) {
 		$this->module_factory = $module_factory ?? new AbilityModuleFactory();
 	}
-
 	/**
 	 * Return first-party modules keyed by internal ability ID.
 	 *

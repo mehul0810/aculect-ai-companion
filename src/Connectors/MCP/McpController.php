@@ -23,18 +23,6 @@ final class McpController {
 		self::PROTOCOL_VERSION_CURRENT,
 		self::PROTOCOL_VERSION_LEGACY,
 	);
-	private const CUSTOM_WORKFLOW_MODULE_IDS = array(
-		'content_workflow.list',
-		'content_workflow.get',
-		'content_workflow.prepare',
-		'content_workflow.dry_run',
-		'content_workflow.execute',
-		'content_workflow.resume',
-		'content_workflow.cancel',
-		'content_workflow.status',
-		'content_workflow.result',
-	);
-
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
 	 *
@@ -937,7 +925,6 @@ final class McpController {
 				'For classic menus, registered menu locations, wp_navigation entities, or Navigation block inventory, call navigation_get_context first and then use navigation_list_menus, navigation_list_locations, or navigation_list_items. This slice is read-only and does not implement menu writes or raw serialized block edits.',
 				'For WordPress core, plugin, or theme admin settings work, call admin_menu_get_context or admin_menu_get_navigation_target first. Use registered settings metadata for discovery only; do not read or write arbitrary wp_options.',
 				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
-				'For published custom content workflows, call content_workflow_list and content_workflow_get first, then use content_workflow_prepare, content_workflow_dry_run, and content_workflow_execute; resume or cancel only with the returned run_id and exact input/approval evidence.',
 				'When an internal-link apply or other write preview returns confirmation_required, ask the user for confirmation and repeat the same tool call with confirmation_token before it expires.',
 				'For image workflows, use content_media_apply_image to import an existing attachment, public URL, externally generated image URL, direct image data, or Openverse CC0 result, then set featured media or insert core image/gallery/cover/media-text blocks without hand-stitching raw media and content calls.',
 				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
@@ -963,15 +950,12 @@ final class McpController {
 		if ( 'fetch' === $module->id() ) {
 			return $this->canonical_fetch_output_schema();
 		}
-
 		if ( 'workflow_guides.list' === $module->id() ) {
 			return $this->workflow_guides_list_output_schema();
 		}
-
 		if ( 'workflow_guides.get' === $module->id() ) {
 			return $this->workflow_guides_get_output_schema();
 		}
-
 		if ( 'core_schema.discover' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
@@ -989,7 +973,6 @@ final class McpController {
 				array( 'schema_version', 'wordpress', 'capabilities', 'post_types', 'taxonomies', 'statuses', 'rest', 'features', 'diagnostics' )
 			);
 		}
-
 		if ( str_starts_with( $module->id(), 'users.' ) ) {
 			return $this->object_output_schema(
 				array(
@@ -1009,7 +992,6 @@ final class McpController {
 				)
 			);
 		}
-
 		if ( 'intelligence.feedback.submit' === $module->id() ) {
 			return $this->object_output_schema(
 				array(
@@ -1137,32 +1119,9 @@ final class McpController {
 			);
 		}
 
-		if ( in_array( $module->id(), self::CUSTOM_WORKFLOW_MODULE_IDS, true ) ) {
-			return $this->object_output_schema(
-				array(
-					'status'              => array( 'type' => 'string' ),
-					'error'               => array( 'type' => 'string' ),
-					'message'             => array( 'type' => 'string' ),
-					'bounded'             => array( 'type' => 'boolean' ),
-					'custom_workflows'    => array( 'type' => 'array' ),
-					'fixed_guides'        => array( 'type' => 'array' ),
-					'workflow'            => array( 'type' => 'object' ),
-					'run'                 => array( 'type' => 'object' ),
-					'plan'                => array( 'type' => 'object' ),
-					'dry_run'             => array( 'type' => 'object' ),
-					'readiness'           => array( 'type' => 'object' ),
-					'risks'               => array( 'type' => 'object' ),
-					'step'                => array( 'type' => 'object' ),
-					'step_result'         => array( 'type' => 'object' ),
-					'audit'               => array( 'type' => 'array' ),
-					'progressed'          => array( 'type' => 'boolean' ),
-					'missing_input_paths' => array( 'type' => 'array' ),
-					'missing_bindings'    => array( 'type' => 'array' ),
-					'missing_abilities'   => array( 'type' => 'array' ),
-					'approval_gate_ids'   => array( 'type' => 'array' ),
-					'next_actions'        => array( 'type' => 'array' ),
-				)
-			);
+		$custom_schema = CustomWorkflowOutputSchema::for_id( $module->id() );
+		if ( array() !== $custom_schema ) {
+			return $custom_schema;
 		}
 
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {

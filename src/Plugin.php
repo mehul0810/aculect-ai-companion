@@ -9,6 +9,7 @@ use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
 use Aculect\AICompanion\Admin\LocalSampleData;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
+use Aculect\AICompanion\Admin\WorkflowAdminPage;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
@@ -284,6 +285,7 @@ final class Plugin {
 	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
+		( new WorkflowAdminPage() )->register();
 	}
 
 	/**

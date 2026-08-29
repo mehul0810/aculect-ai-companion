@@ -560,10 +560,28 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			if ( $run_id < 1 ) {
 				continue;
 			}
+			$this->begin();
 			try {
-				$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
-				$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE id = %d', $tables['runs'], $run_id ) );
+				$deleted = $wpdb->query(
+					$wpdb->prepare(
+						'DELETE FROM %i WHERE id = %d AND ((state IN (%s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at < %s))',
+						$tables['runs'],
+						$run_id,
+						WorkflowRunState::COMPLETED->value,
+						WorkflowRunState::FAILED->value,
+						WorkflowRunState::CANCELLED->value,
+						$cutoff,
+						WorkflowRunState::WAITING_FOR_INPUT->value,
+						WorkflowRunState::WAITING_FOR_APPROVAL->value,
+						$cutoff
+					)
+				);
+				if ( 1 === (int) $deleted ) {
+					$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
+				}
+				$this->commit();
 			} catch ( Throwable ) {
+				$this->rollback();
 				// Retention is best effort; a storage outage must not block a new run.
 				continue;
 			}

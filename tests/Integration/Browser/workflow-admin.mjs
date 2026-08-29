@@ -142,6 +142,19 @@ try {
 	if ( ! page.url().includes( `workflow_id=${ workflowId }` ) ) {
 		throw new Error( 'The browser proof draft was not persisted.' );
 	}
+	// Re-open the canonical editor URL after the redirect so the remainder of
+	// the proof always exercises the page that owns the saved draft. This also
+	// makes the check independent of an intermediate admin-post response.
+	await page.goto(
+		`${ workflowUrl }&workflow_id=${ encodeURIComponent( workflowId ) }`,
+		{ waitUntil: 'networkidle' }
+	);
+	if ( ( await page.locator( 'h1' ).first().textContent() )?.trim() !== 'Content Workflows' ) {
+		throw new Error( 'The saved workflow editor could not be reopened.' );
+	}
+	if ( ( await page.locator( '#aculect-workflow-template' ).count() ) !== 1 ) {
+		throw new Error( 'The saved workflow editor is missing its starter template control.' );
+	}
 
 	// Selecting a write-capable starter must expose a migration preview and an
 	// explicit plan approval before the immutable version can be changed.

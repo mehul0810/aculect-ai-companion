@@ -40,6 +40,49 @@ final class WorkflowAdminServiceTest extends TestCase {
 			),
 			array_keys( $templates )
 		);
+		self::assertContains( 'title:string:required', $templates['blog_post_draft']['input_fields'] );
+		self::assertContains( 'content:string:required', $templates['blog_post_draft']['input_fields'] );
+		self::assertSame( '{{input.title}}', $templates['blog_post_draft']['step_arguments']['step_2']['title'] );
+		self::assertSame( '{{input.meta_title}}', $templates['seo_rewrite']['step_arguments']['step_2']['meta_title'] );
+	}
+
+	public function test_blog_template_builds_executable_input_bound_create_arguments(): void {
+		$definition = ( new WorkflowAdminService() )->definition_from_input(
+			array(
+				'workflow_id' => 'blog_template_defaults',
+				'template_id' => 'blog_post_draft',
+			),
+			7
+		);
+		$value = $definition->to_array();
+
+		self::assertSame( array( 'brief', 'title', 'content' ), $value['input_schema']['required'] );
+		self::assertSame( '{{input.brief}}', $value['steps'][0]['arguments']['brief'] );
+		self::assertSame( '{{input.title}}', $value['steps'][1]['arguments']['title'] );
+		self::assertSame( '{{input.content}}', $value['steps'][1]['arguments']['content'] );
+		self::assertSame( 'draft', $value['steps'][1]['arguments']['status'] );
+	}
+
+	public function test_missing_required_adapter_argument_is_rejected_before_persistence(): void {
+		$service = new WorkflowAdminService();
+
+		try {
+			$service->definition_from_input(
+				array(
+					'workflow_id'    => 'missing_adapter_argument',
+					'name'           => 'Missing adapter argument',
+					'description'    => 'Required adapter argument test.',
+					'post_types'     => 'post',
+					'input_fields'   => 'post_id:integer:required',
+					'step_abilities' => 'content/get-item',
+					'step_arguments' => '{"step_1":{}}',
+				),
+				7
+			);
+			self::fail( 'A required adapter argument must not be silently omitted.' );
+		} catch ( WorkflowAdminValidationException $exception ) {
+			self::assertSame( 'Provide arguments for required adapter fields: id.', $exception->errors()['step_arguments'] );
+		}
 	}
 
 	public function test_roles_are_exposed_without_the_administrator_bypass_role(): void {

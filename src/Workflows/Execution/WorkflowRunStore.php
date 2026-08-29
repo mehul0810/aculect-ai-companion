@@ -30,6 +30,8 @@ use stdClass;
 final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private const STEP_LEASE_SECONDS = 30;
+	private const RETENTION_SECONDS  = 2592000;
+	private const PRUNE_LIMIT        = 25;
 
 	/**
 	 * Controlled UTC clock.
@@ -74,6 +76,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( $input->hash() !== $plan->input_hash() ) {
 			throw new WorkflowRunStoreException( 'input_plan_mismatch' );
 		}
+		$this->prune_retention();
 
 		$input_ciphertext = $this->seal( $input->canonical_json() );
 		$now              = $this->now_sql();
@@ -189,7 +192,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		global $wpdb;
 		$tables = RunInstaller::table_names();
 		if ( WorkflowRunState::CANCELLED === $next_state && WorkflowRunState::RUNNING === $expected_state ) {
-			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = %s, updated_by = %d, updated_at = %s WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND s.state = %s)';
+			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND (s.state = %s OR (s.state = %s AND s.error_code = %s)))';
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
 			$updated = $wpdb->query(
 				$wpdb->prepare(
@@ -199,14 +202,15 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 					$next_state->value,
 					$expected_version + 1,
 					$outcome_code ?? '',
-					$waiting_expires_at ?? '',
 					$actor_id,
 					$this->now_sql(),
 					$run_id,
 					$expected_state->value,
 					$expected_version,
 					$tables['steps'],
-					WorkflowStepState::RUNNING->value
+					WorkflowStepState::RUNNING->value,
+					WorkflowStepState::FAILED->value,
+					'execution_uncertain'
 				)
 			);
 		} else {
@@ -511,6 +515,59 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			array( '%d', '%s' ),
 			array( '%s' )
 		);
+	}
+
+	/**
+	 * Delete a bounded batch of stale terminal or expired waiting runs.
+	 *
+	 * Run and step tables intentionally have no foreign key so the plugin can
+	 * install safely on existing WordPress databases. Delete child steps first
+	 * and only after selecting exact run identities, keeping output retention
+	 * bounded without touching active runs.
+	 */
+	private function prune_retention(): void {
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_col' ) || ! method_exists( $wpdb, 'query' ) ) {
+			return;
+		}
+
+		$cutoff = gmdate( 'Y-m-d H:i:s', ( $this->clock )() - self::RETENTION_SECONDS );
+		$tables = RunInstaller::table_names();
+		try {
+			$run_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					'SELECT id FROM %i WHERE ((state IN (%s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at < %s)) ORDER BY updated_at ASC, id ASC LIMIT %d',
+					$tables['runs'],
+					WorkflowRunState::COMPLETED->value,
+					WorkflowRunState::FAILED->value,
+					WorkflowRunState::CANCELLED->value,
+					$cutoff,
+					WorkflowRunState::WAITING_FOR_INPUT->value,
+					WorkflowRunState::WAITING_FOR_APPROVAL->value,
+					$cutoff,
+					self::PRUNE_LIMIT
+				)
+			);
+		} catch ( Throwable ) {
+			return;
+		}
+		if ( ! is_array( $run_ids ) ) {
+			return;
+		}
+
+		foreach ( $run_ids as $run_id ) {
+			$run_id = (int) $run_id;
+			if ( $run_id < 1 ) {
+				continue;
+			}
+			try {
+				$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
+				$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE id = %d', $tables['runs'], $run_id ) );
+			} catch ( Throwable ) {
+				// Retention is best effort; a storage outage must not block a new run.
+				continue;
+			}
+		}
 	}
 
 	/** Seal one bounded JSON payload. */

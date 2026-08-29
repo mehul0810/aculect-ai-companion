@@ -91,7 +91,7 @@ final class WorkflowAdminPage {
 	public function handle_save(): void {
 		$this->assert_admin_request( self::SAVE_NONCE );
 		$submitted           = $this->submitted_values();
-		$status              = isset( $_POST['save_status'] ) ? sanitize_key( (string) $_POST['save_status'] ) : 'draft'; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
+		$status              = sanitize_key( (string) $this->post_value( 'save_status', 'draft' ) );
 		$submitted['status'] = in_array( $status, array( 'draft', 'published' ), true ) ? $status : 'draft';
 		$result              = $this->service->save( $submitted, get_current_user_id() );
 		if ( ! $result['ok'] ) {
@@ -115,8 +115,8 @@ final class WorkflowAdminPage {
 	/** Disable a workflow without deleting its immutable history. */
 	public function handle_disable(): void {
 		$this->assert_admin_request( self::DISABLE_NONCE );
-		$workflow_id = sanitize_key( (string) ( $_POST['workflow_id'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
-		$version     = absint( $_POST['expected_version'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
+		$workflow_id = sanitize_key( (string) $this->post_value( 'workflow_id', '' ) );
+		$version     = absint( $this->post_value( 'expected_version', 0 ) );
 		$result      = $this->service->disable( $workflow_id, get_current_user_id(), $version );
 		if ( ! $result['ok'] ) {
 			$this->notice = (string) ( $result['errors']['form'] ?? 'The workflow could not be disabled.' );
@@ -136,7 +136,7 @@ final class WorkflowAdminPage {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
 		}
-		$nonce = isset( $_POST['_wpnonce'] ) ? sanitize_text_field( (string) $_POST['_wpnonce'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Value is read to verify below.
+		$nonce = sanitize_text_field( (string) $this->post_value( '_wpnonce', '' ) );
 		if ( ! wp_verify_nonce( $nonce, $action ) ) {
 			wp_die( esc_html__( 'Security check failed.', 'aculect-ai-companion' ) );
 		}
@@ -148,7 +148,7 @@ final class WorkflowAdminPage {
 	 * @return array<string,mixed>
 	 */
 	private function submitted_values(): array {
-		$allowed_roles = $_POST['allowed_roles'] ?? array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+		$allowed_roles = $this->post_value( 'allowed_roles', array() );
 		if ( is_array( $allowed_roles ) ) {
 			$allowed_roles = array_map(
 				static fn ( mixed $role ): mixed => is_scalar( $role ) ? sanitize_key( (string) $role ) : $role,
@@ -157,19 +157,31 @@ final class WorkflowAdminPage {
 		}
 
 		return array(
-			'workflow_id'      => sanitize_key( (string) ( $_POST['workflow_id'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'expected_version' => absint( $_POST['expected_version'] ?? 0 ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'template_id'      => sanitize_key( (string) ( $_POST['template_id'] ?? 'blank' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'name'             => sanitize_text_field( (string) ( $_POST['name'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'description'      => sanitize_text_field( (string) ( $_POST['description'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'target_mode'      => sanitize_key( (string) ( $_POST['target_mode'] ?? 'either' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'post_types'       => (string) ( $_POST['post_types'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'input_fields'     => (string) ( $_POST['input_fields'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'step_abilities'   => (string) ( $_POST['step_abilities'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'step_arguments'   => isset( $_POST['step_arguments'] ) ? substr( (string) wp_unslash( $_POST['step_arguments'] ), 0, 32768 ) : '', // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
-			'write_policy'     => sanitize_key( (string) ( $_POST['write_policy'] ?? 'proposal_only' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+			'workflow_id'      => sanitize_key( (string) $this->post_value( 'workflow_id', '' ) ),
+			'expected_version' => absint( $this->post_value( 'expected_version', 0 ) ),
+			'template_id'      => sanitize_key( (string) $this->post_value( 'template_id', 'blank' ) ),
+			'name'             => sanitize_text_field( (string) $this->post_value( 'name', '' ) ),
+			'description'      => sanitize_text_field( (string) $this->post_value( 'description', '' ) ),
+			'target_mode'      => sanitize_key( (string) $this->post_value( 'target_mode', 'either' ) ),
+			'post_types'       => (string) $this->post_value( 'post_types', '' ),
+			'input_fields'     => (string) $this->post_value( 'input_fields', '' ),
+			'step_abilities'   => (string) $this->post_value( 'step_abilities', '' ),
+			'step_arguments'   => substr( (string) $this->post_value( 'step_arguments', '' ), 0, 32768 ),
+			'write_policy'     => sanitize_key( (string) $this->post_value( 'write_policy', 'proposal_only' ) ),
 			'allowed_roles'    => $allowed_roles,
 		);
+	}
+
+	/**
+	 * Read one request value after removing WordPress request slashes.
+	 *
+	 * @param string $key     Request key.
+	 * @param mixed  $default Fallback value.
+	 * @return mixed Unslashed request value or fallback.
+	 */
+	private function post_value( string $key, mixed $default = '' ): mixed {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Callers verify the mutation nonce before reading request values.
+		return array_key_exists( $key, $_POST ) ? wp_unslash( $_POST[ $key ] ) : $default;
 	}
 
 	/**
@@ -273,6 +285,37 @@ final class WorkflowAdminPage {
 			echo '<tr><td><code>' . esc_html( (string) ( $adapter['ability_id'] ?? '' ) ) . '</code></td><td>' . esc_html( (string) ( $adapter['adapter_id'] ?? '' ) ) . '</td><td>' . esc_html( (string) ( $adapter['kind'] ?? '' ) ) . '</td><td>' . esc_html( implode( ', ', array_map( 'strval', (array) ( $adapter['capabilities'] ?? array() ) ) ) ) . '</td></tr>';
 		}
 		echo '</tbody></table><p><button class="button button-primary" name="save_status" value="draft" type="submit">' . esc_html__( 'Save draft', 'aculect-ai-companion' ) . '</button> <button class="button" name="save_status" value="published" type="submit">' . esc_html__( 'Validate and publish', 'aculect-ai-companion' ) . '</button></p></form>';
+		$this->render_template_defaults_script( $templates );
+	}
+
+	/**
+	 * Populate editable fields when an administrator changes the starter.
+	 *
+	 * @param array<string,array<string,mixed>> $templates Starter templates.
+	 */
+	private function render_template_defaults_script( array $templates ): void {
+		$defaults = array();
+		foreach ( $templates as $id => $template ) {
+			$arguments       = function_exists( 'wp_json_encode' ) ? wp_json_encode( $template['step_arguments'] ?? array() ) : '{}';
+			$defaults[ $id ] = array(
+				'name'           => (string) ( $template['label'] ?? $id ),
+				'description'    => (string) ( $template['description'] ?? '' ),
+				'target_mode'    => (string) ( $template['target_mode'] ?? 'either' ),
+				'post_types'     => implode( ",\n", array_map( 'strval', (array) ( $template['post_types'] ?? array() ) ) ),
+				'input_fields'   => implode( "\n", array_map( 'strval', (array) ( $template['input_fields'] ?? array() ) ) ),
+				'step_abilities' => implode( "\n", array_map( 'strval', (array) ( $template['step_abilities'] ?? array() ) ) ),
+				'step_arguments' => is_string( $arguments ) ? $arguments : '{}',
+				'write_policy'   => (string) ( $template['write_policy'] ?? 'proposal_only' ),
+			);
+		}
+		$encoded = function_exists( 'wp_json_encode' ) ? wp_json_encode( $defaults, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) : '{}';
+		if ( ! is_string( $encoded ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON_HEX_* makes the bounded JSON safe for a raw script data block; HTML-escaping quotes would make JSON.parse fail.
+		echo '<script type="application/json" id="aculect-workflow-template-defaults">' . $encoded . '</script>';
+		echo '<script>(function(){const select=document.getElementById("aculect-workflow-template");const payload=document.getElementById("aculect-workflow-template-defaults");if(!select||!payload){return;}let defaults={};try{defaults=JSON.parse(payload.textContent||"{}");}catch(error){return;}const fields=["name","description","target_mode","post_types","input_fields","step_abilities","step_arguments","write_policy"];select.addEventListener("change",function(){const values=defaults[select.value]||{};fields.forEach(function(field){const input=document.getElementById("aculect-"+field);if(input&&Object.prototype.hasOwnProperty.call(values,field)){input.value=values[field];}});});})();</script>';
 	}
 
 	/**
@@ -303,7 +346,8 @@ final class WorkflowAdminPage {
 	 */
 	private function values_for_record( ?WorkflowDefinitionRecord $record ): array {
 		if ( null === $record ) {
-			$template = $this->service->templates()['blank'];
+			$template            = $this->service->templates()['blank'];
+			$step_arguments_json = function_exists( 'wp_json_encode' ) ? wp_json_encode( $template['step_arguments'] ?? array() ) : '{}';
 			return array(
 				'workflow_id'      => '',
 				'expected_version' => 0,
@@ -314,7 +358,7 @@ final class WorkflowAdminPage {
 				'post_types'       => implode( ', ', $template['post_types'] ),
 				'input_fields'     => implode( "\n", $template['input_fields'] ),
 				'step_abilities'   => implode( "\n", $template['step_abilities'] ),
-				'step_arguments'   => '',
+				'step_arguments'   => is_string( $step_arguments_json ) ? $step_arguments_json : '{}',
 				'write_policy'     => $template['write_policy'],
 				'allowed_roles'    => array(),
 				'status'           => 'draft',

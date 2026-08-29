@@ -107,7 +107,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		}
 		if ( WorkflowRunState::RUNNING === $expected_state && WorkflowRunState::CANCELLED === $next_state ) {
 			foreach ( $this->steps[ $run_id ] ?? array() as $step ) {
-				if ( WorkflowStepState::RUNNING === $step->state() ) {
+				if ( WorkflowStepState::RUNNING === $step->state() || ( WorkflowStepState::FAILED === $step->state() && 'execution_uncertain' === $step->error_code() ) ) {
 					return null;
 				}
 			}

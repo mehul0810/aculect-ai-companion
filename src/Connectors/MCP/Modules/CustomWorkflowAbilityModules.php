@@ -227,7 +227,7 @@ final class CustomWorkflowAbilityModules {
 				'input'    => $this->input_schema(),
 				'approval' => $this->approval_schema(),
 			),
-			array( 'run_id' )
+			array( 'run_id', 'input' )
 		);
 	}
 
@@ -246,7 +246,7 @@ final class CustomWorkflowAbilityModules {
 					'description' => 'Required when stopping a running workflow at a proven safe boundary.',
 				),
 			),
-			array( 'run_id' )
+			array( 'run_id', 'input' )
 		);
 	}
 

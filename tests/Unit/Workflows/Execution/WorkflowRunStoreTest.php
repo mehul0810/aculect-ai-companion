@@ -147,9 +147,10 @@ final class WorkflowRunStoreTest extends TestCase {
 			$store->transition( 'run-store-cancel', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' ),
 			'Cancellation must not cross an active durable step lease.'
 		);
-		self::assertNotNull( $store->fail_step( 'run-store-cancel', 'read_content', $claimed?->fence() ?? 0, 'execution_uncertain', 7 ) );
+		self::assertNotNull( $store->fail_step( 'run-store-cancel', 'read_content', $claimed?->fence() ?? 0, 'execution_not_available', 7 ) );
 		$cancelled = $store->transition( 'run-store-cancel', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' );
 		self::assertNotNull( $cancelled );
+		self::assertNull( $cancelled?->waiting_expires_at(), 'Cancellation must persist SQL NULL for waiting_expires_at.' );
 
 		self::assertNull(
 			$store->complete_step(
@@ -160,6 +161,22 @@ final class WorkflowRunStoreTest extends TestCase {
 				7
 			),
 			'An adapter completion arriving after cancellation must be fenced out.'
+		);
+	}
+
+	public function test_cancellation_is_rejected_while_an_uncertain_step_is_durable(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$store->create( 'run-store-uncertain-cancel', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		self::assertNotNull( $store->transition( 'run-store-uncertain-cancel', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 ) );
+		$claimed = $store->claim_step( 'run-store-uncertain-cancel', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		self::assertNotNull( $store->fail_step( 'run-store-uncertain-cancel', 'read_content', $claimed?->fence() ?? 0, 'execution_uncertain', 7 ) );
+
+		self::assertNull(
+			$store->transition( 'run-store-uncertain-cancel', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' ),
+			'An uncertain durable step must be reconciled before cancellation.'
 		);
 	}
 

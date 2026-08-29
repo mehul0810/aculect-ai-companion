@@ -160,7 +160,10 @@ final class WorkflowAdminService {
 		$existing    = '' === $workflow_id ? null : $this->record( $workflow_id );
 		$expected    = max( 0, (int) ( $submitted['expected_version'] ?? 0 ) );
 		if ( null !== $existing && 0 === $expected ) {
-			$expected = $existing->latest_version();
+			return array(
+				'ok'     => false,
+				'errors' => array( 'workflow_id' => 'That workflow ID is already in use; edit the existing workflow instead.' ),
+			);
 		}
 		if ( null === $existing && $expected > 0 ) {
 			return array(
@@ -523,6 +526,18 @@ final class WorkflowAdminService {
 			if ( ! is_array( $arguments ) || ( array() !== $arguments && array_is_list( $arguments ) ) ) {
 				$errors['step_arguments'] = 'Step arguments must be an object keyed by step ID, position, or ability ID.';
 				$arguments                = array();
+			}
+			$required = $descriptor->input_schema()['required'] ?? array();
+			if ( is_array( $required ) ) {
+				$missing = array();
+				foreach ( $required as $required_key ) {
+					if ( is_string( $required_key ) && ! array_key_exists( $required_key, $arguments ) ) {
+						$missing[] = $required_key;
+					}
+				}
+				if ( array() !== $missing ) {
+					$errors['step_arguments'] = 'Provide arguments for required adapter fields: ' . implode( ', ', $missing ) . '.';
+				}
 			}
 			$steps[] = array(
 				'step_id'         => $step_id,

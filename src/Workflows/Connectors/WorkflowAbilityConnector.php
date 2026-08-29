@@ -289,7 +289,8 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function execute( array $args ): array {
-		$auth = $this->auth();
+		$this->execution_authorization = null;
+		$auth                          = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
@@ -363,7 +364,8 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function resume( array $args ): array {
-		$auth = $this->auth();
+		$this->execution_authorization = null;
+		$auth                          = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
@@ -376,6 +378,13 @@ final class WorkflowAbilityConnector {
 		$runner                  = $this->runner();
 
 		try {
+			$approval = null;
+			if ( WorkflowRunState::RUNNING === $run->state() ) {
+				$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
+				if ( is_array( $approval ) ) {
+					return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
+				}
+			}
 			if ( WorkflowRunState::WAITING_FOR_INPUT === $run->state() ) {
 				$input = $this->input( $args['input'] ?? null );
 				if ( is_array( $input ) ) {
@@ -536,7 +545,6 @@ final class WorkflowAbilityConnector {
 		if ( ! is_array( $auth ) || (int) ( $auth['user_id'] ?? 0 ) < 1 ) {
 			return null;
 		}
-
 		$auth['user_id'] = (int) $auth['user_id'];
 		return $auth;
 	}
@@ -619,7 +627,7 @@ final class WorkflowAbilityConnector {
 		}
 		$input = $this->input( $args['input'] ?? null );
 		if ( is_array( $input ) ) {
-			if ( $allow_missing_input && 'input_required' === ( $input['error'] ?? '' ) ) {
+			if ( $allow_missing_input && WorkflowRunState::WAITING_FOR_INPUT === $run->state() && 'input_required' === ( $input['error'] ?? '' ) ) {
 				try {
 					$empty_plan = $this->plans->build( $record->definition(), WorkflowInputContract::from_value( (object) array() ) );
 					return array( $run, $record, $empty_plan );
@@ -987,7 +995,6 @@ final class WorkflowAbilityConnector {
 		if ( array() !== $plan->invalid_paths() ) {
 			return array( 'Correct the invalid input paths before resubmitting the workflow.' );
 		}
-
 		return array( 'Call content_workflow_dry_run, then content_workflow_execute after reviewing any approval gates.' );
 	}
 
@@ -1015,7 +1022,6 @@ final class WorkflowAbilityConnector {
 			$payload['approval_expires_in']   = $this->approval_authority->ttl();
 			$payload['approval_instructions'] = 'Repeat the same workflow call with approval.approval_token before it expires.';
 		}
-
 		return $payload;
 	}
 
@@ -1112,7 +1118,6 @@ final class WorkflowAbilityConnector {
 	private function identifier( mixed $value ): string {
 		$value = strtolower( trim( (string) $value ) );
 		$value = (string) preg_replace( '/[^a-z0-9_-]/', '', $value );
-
 		return 1 === preg_match( '/^[a-z0-9][a-z0-9_-]{2,63}$/D', $value ) ? $value : '';
 	}
 
@@ -1137,13 +1142,11 @@ final class WorkflowAbilityConnector {
 				return $this->error( 'input_invalid', 'Workflow input must be a bounded JSON object.' );
 			}
 		}
-
 		return $this->error( 'input_required', 'Provide the workflow input object.' );
 	}
 
 	private function run_id( mixed $value ): string {
 		$value = trim( (string) $value );
-
 		return 1 === preg_match( '/^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$/D', $value ) ? $value : '';
 	}
 
@@ -1159,7 +1162,6 @@ final class WorkflowAbilityConnector {
 
 	private function bounded_limit( mixed $value ): int {
 		$value = is_int( $value ) ? $value : self::MAX_LIST;
-
 		return max( 1, min( self::MAX_LIST, $value ) );
 	}
 
@@ -1173,7 +1175,6 @@ final class WorkflowAbilityConnector {
 		if ( $value instanceof stdClass ) {
 			$value = get_object_vars( $value );
 		}
-
 		return is_array( $value ) && ! array_is_list( $value ) ? $value : null;
 	}
 
@@ -1194,7 +1195,6 @@ final class WorkflowAbilityConnector {
 		if ( in_array( 'manage_options', (array) ( $auth['capabilities'] ?? array() ), true ) ) {
 			return true;
 		}
-
 		return function_exists( 'current_user_can' ) && current_user_can( 'manage_options' );
 	}
 }

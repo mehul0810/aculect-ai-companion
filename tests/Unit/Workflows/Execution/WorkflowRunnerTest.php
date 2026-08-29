@@ -297,6 +297,23 @@ final class WorkflowRunnerTest extends TestCase {
 		}
 	}
 
+	public function test_existing_uncertain_step_fails_the_parent_run_instead_of_deadlocking(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$store      = new InMemoryWorkflowRunStore();
+		$runner     = new WorkflowRunner( $store, new WorkflowAdapterRegistry( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) ) );
+		$record     = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		self::assertNotNull( $runner->start( $record->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 ) );
+		$claimed = $store->claim_step( $record->run_id(), 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		self::assertNotNull( $store->fail_step( $record->run_id(), 'read_content', $claimed?->fence() ?? 0, 'execution_uncertain', 7 ) );
+
+		$result = $runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
+
+		self::assertSame( WorkflowRunState::FAILED, $result->run()->state() );
+		self::assertSame( 'execution_uncertain', $result->run()->outcome_code() );
+	}
+
 	/**
 	 * Compose a runner with an isolated in-memory store.
 	 *

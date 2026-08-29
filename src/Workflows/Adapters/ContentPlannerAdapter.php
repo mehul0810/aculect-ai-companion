@@ -31,7 +31,6 @@ final class ContentPlannerAdapter implements WorkflowAdapterInterface {
 	private const ADAPTER_VERSION     = 1;
 	private const WORKFLOW_ABILITY_ID = 'content/prepare-draft';
 	private const INTERNAL_ABILITY_ID = 'content_workflow.prepare_post';
-	private const STEP_ID             = 'prepare_content';
 	private const STEP_KIND           = 'proposal';
 	private const EXPECTED_STATUS     = 'ready';
 	private const EXPECTED_WORKFLOW   = 'content_workflow_prepare_post';
@@ -405,7 +404,6 @@ final class ContentPlannerAdapter implements WorkflowAdapterInterface {
 		if (
 			null === $binding
 			|| ! $binding->belongs_to( $plan )
-			|| self::STEP_ID !== $binding->step_id()
 			|| self::ADAPTER_ID !== $binding->adapter_id()
 			|| self::ADAPTER_VERSION !== $binding->adapter_version()
 			|| self::WORKFLOW_ABILITY_ID !== $binding->ability_id()

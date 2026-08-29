@@ -193,8 +193,16 @@ final class WorkflowRunner {
 			throw new WorkflowRunnerException( 'run_not_started' );
 		}
 
-		$steps = $this->store->steps( $run_id );
-		$next  = $this->next_step( $plan, $steps );
+		$steps     = $this->store->steps( $run_id );
+		$uncertain = $this->uncertain_step( $steps );
+		if ( null !== $uncertain ) {
+			// A worker may observe a durable uncertainty marker after another
+			// worker fenced the adapter result but before it fenced the parent
+			// run. Fail the parent deterministically instead of reporting a
+			// misleading dependency deadlock.
+			return $this->fail_run( $record, $plan, 'execution_uncertain', $actor_id );
+		}
+		$next = $this->next_step( $plan, $steps );
 		if ( null === $next ) {
 			if ( $this->all_steps_complete( $steps ) ) {
 				$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'completed', 'completed' );
@@ -430,6 +438,17 @@ final class WorkflowRunner {
 	private function running_step( array $steps ): ?WorkflowStepRecord {
 		foreach ( $steps as $step ) {
 			if ( WorkflowStepState::RUNNING === $step->state() ) {
+				return $step;
+			}
+		}
+
+		return null;
+	}
+
+	/** Return a durable step whose adapter result cannot be safely inferred. */
+	private function uncertain_step( array $steps ): ?WorkflowStepRecord {
+		foreach ( $steps as $step ) {
+			if ( WorkflowStepState::FAILED === $step->state() && 'execution_uncertain' === $step->error_code() ) {
 				return $step;
 			}
 		}

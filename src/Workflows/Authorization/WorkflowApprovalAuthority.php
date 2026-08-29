@@ -37,6 +37,7 @@ final class WorkflowApprovalAuthority {
 		if ( '' === $run_id || (int) ( $auth['user_id'] ?? 0 ) < 1 || ! function_exists( 'set_transient' ) ) {
 			return '';
 		}
+		$this->prune_consumed_markers();
 
 		try {
 			$token = self::TOKEN_PREFIX . bin2hex( random_bytes( 24 ) );
@@ -64,13 +65,14 @@ final class WorkflowApprovalAuthority {
 	 * @param array<string, mixed> $auth   Authenticated request context.
 	 */
 	public function consume( string $token, string $run_id, WorkflowPlan $plan, array $auth ): ?WorkflowApprovalEvidence {
-		if ( ! $this->valid_token( $token ) || ! function_exists( 'get_transient' ) || ! function_exists( 'set_transient' ) || ! function_exists( 'add_option' ) || ! function_exists( 'delete_option' ) ) {
+		if ( ! $this->valid_token( $token ) || ! function_exists( 'get_transient' ) || ! function_exists( 'set_transient' ) || ! function_exists( 'get_option' ) || ! function_exists( 'add_option' ) || ! function_exists( 'delete_option' ) ) {
 			return null;
 		}
 
 		$key   = $this->key( $token );
 		$value = get_transient( $key );
-		if ( ! is_array( $value ) || true === ( $value['consumed'] ?? false ) || (int) ( $value['expires_at'] ?? 0 ) <= time() ) {
+		$now   = time();
+		if ( ! is_array( $value ) || true === ( $value['consumed'] ?? false ) || (int) ( $value['expires_at'] ?? 0 ) <= $now ) {
 			if ( ! is_array( $value ) && function_exists( 'delete_option' ) ) {
 				delete_option( $this->consumed_key( $token ) );
 			}
@@ -87,11 +89,16 @@ final class WorkflowApprovalAuthority {
 		// add_option is an atomic insert in WordPress. Keeping this marker while
 		// the transient is live closes the concurrent double-consume race that a
 		// get-then-set transient update would otherwise leave open.
-		if ( function_exists( 'add_option' ) && ! add_option( $this->consumed_key( $token ), time(), '', false ) ) {
+		$consumed_key = $this->consumed_key( $token );
+		$marker       = get_option( $consumed_key, false );
+		if ( is_numeric( $marker ) && (int) $marker <= $now ) {
+			delete_option( $consumed_key );
+		}
+		if ( ! add_option( $consumed_key, $now + self::TTL_SECONDS, '', false ) ) {
 			return null;
 		}
 		$value['consumed'] = true;
-		$remaining         = max( 1, (int) $value['expires_at'] - time() );
+		$remaining         = max( 1, (int) $value['expires_at'] - $now );
 		if ( ! set_transient( $key, $value, $remaining ) ) {
 			if ( function_exists( 'delete_option' ) ) {
 				delete_option( $this->consumed_key( $token ) );
@@ -159,5 +166,50 @@ final class WorkflowApprovalAuthority {
 
 	private function valid_token( string $token ): bool {
 		return 1 === preg_match( '/^wfa_[a-f0-9]{48}$/D', $token );
+	}
+
+	/**
+	 * Remove a bounded batch of expired atomic-consume markers.
+	 *
+	 * WordPress options do not have a native per-row TTL. The marker stores its
+	 * expiry timestamp and issuance opportunistically prunes a small batch so
+	 * replay protection remains atomic without accumulating permanent options.
+	 */
+	private function prune_consumed_markers(): void {
+		if ( ! function_exists( 'delete_option' ) ) {
+			return;
+		}
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_results' ) || ! method_exists( $wpdb, 'esc_like' ) || ! isset( $wpdb->options ) ) {
+			return;
+		}
+
+		try {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					'SELECT option_name, option_value FROM %i WHERE option_name LIKE %s LIMIT %d',
+					(string) $wpdb->options,
+					$wpdb->esc_like( self::CONSUMED_PREFIX ) . '%',
+					25
+				),
+				ARRAY_A
+			);
+		} catch ( \Throwable ) {
+			return;
+		}
+		if ( ! is_array( $rows ) ) {
+			return;
+		}
+
+		$now = time();
+		foreach ( $rows as $row ) {
+			if ( ! is_array( $row ) || ! is_string( $row['option_name'] ?? null ) ) {
+				continue;
+			}
+			$expires_at = (int) ( $row['option_value'] ?? 0 );
+			if ( $expires_at > 0 && $expires_at <= $now ) {
+				delete_option( $row['option_name'] );
+			}
+		}
 	}
 }

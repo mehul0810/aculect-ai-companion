@@ -23,6 +23,7 @@ final class WorkflowApprovalAuthorityTest extends TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+		$GLOBALS['aculect_ai_companion_test_options']    = array();
 		$GLOBALS['aculect_ai_companion_test_transients'] = array();
 	}
 
@@ -50,6 +51,13 @@ final class WorkflowApprovalAuthorityTest extends TestCase {
 		self::assertNotNull( $evidence );
 		self::assertTrue( $evidence?->matches( $plan ) );
 		self::assertSame( $token, $evidence?->reference() );
+		$markers = array_filter(
+			$GLOBALS['aculect_ai_companion_test_options'],
+			static fn ( mixed $value, string $key ): bool => str_starts_with( $key, 'aculect_wf_approval_consumed_' ),
+			ARRAY_FILTER_USE_BOTH
+		);
+		self::assertCount( 1, $markers );
+		self::assertGreaterThan( time(), (int) reset( $markers ) );
 		self::assertNull( $authority->consume( $token, 'run-approval-1', $plan, $auth ), 'A consumed approval must not be replayable.' );
 	}
 

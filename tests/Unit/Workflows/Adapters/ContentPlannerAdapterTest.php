@@ -348,6 +348,23 @@ final class ContentPlannerAdapterTest extends TestCase {
 		self::assertSame( WorkflowAdapterResult::CODE_STEP_CONTRACT_MISMATCH, $registry->execute( $this->mutated_plan( 'kind', 'read' ), 'prepare_content', array( 'brief' => 'x' ), $this->auth() )->code() );
 	}
 
+	public function test_exact_binding_allows_a_custom_plan_step_id(): void {
+		$path = dirname( __DIR__, 3 ) . '/fixtures/workflows/definitions/ordered-multi-step-v1.json';
+		$json = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Repository-owned fixture.
+		self::assertIsString( $json );
+		$definition                     = json_decode( $json, true, 32, JSON_THROW_ON_ERROR );
+		$definition['steps'][1]['step_id'] = 'planner_step';
+		$definition['steps'][2]['depends_on'] = array( 'planner_step' );
+		$plan = ( new WorkflowPlanBuilder() )->build(
+			WorkflowDefinition::from_json( (string) wp_json_encode( $definition ) ),
+			WorkflowInputContract::from_json( '{"brief":"Custom planner step"}' )
+		);
+
+		$result = ( new WorkflowAdapterRegistry() )->execute( $plan, 'planner_step', array( 'brief' => 'Custom planner step' ), $this->auth() );
+
+		self::assertTrue( $result->succeeded(), (string) wp_json_encode( $result->to_array() ) );
+	}
+
 	public function test_read_only_scope_or_input_schema_drift_fails_before_dispatch(): void {
 		$executions = 0;
 		$this->replace_planner_module(

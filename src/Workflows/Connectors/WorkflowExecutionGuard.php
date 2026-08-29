@@ -13,6 +13,7 @@ use Aculect\AICompanion\Workflows\Authorization\WorkflowApprovalAuthority;
 use Aculect\AICompanion\Workflows\Authorization\WorkflowExecutionAuthorization;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunStoreInterface;
+use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowExecutionEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
@@ -88,8 +89,11 @@ final class WorkflowExecutionGuard {
 		}
 		try {
 			foreach ( $runs->steps( $run->run_id() ) as $step ) {
-				if ( WorkflowRunState::RUNNING->value === $step->state()->value ) {
+				if ( WorkflowStepState::RUNNING === $step->state() ) {
 					return $this->error( 'cancel_not_allowed', 'The current step is still running; cancellation must wait for a durable safe boundary.' );
+				}
+				if ( WorkflowStepState::FAILED === $step->state() && 'execution_uncertain' === $step->error_code() ) {
+					return $this->error( 'cancel_not_allowed', 'The run has an uncertain execution result; reconcile it before cancellation.' );
 				}
 			}
 		} catch ( Throwable ) {

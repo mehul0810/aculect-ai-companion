@@ -42,6 +42,8 @@ final class CustomWorkflowAbilityModulesTest extends TestCase {
 		self::assertFalse( $modules['content_workflow.execute']->is_read_only() );
 		self::assertFalse( $modules['content_workflow.cancel']->is_read_only() );
 		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.execute']->input_schema()['required'] ?? array() );
+		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.resume']->input_schema()['required'] ?? array() );
+		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.cancel']->input_schema()['required'] ?? array() );
 	}
 
 	public function test_connector_fails_closed_when_called_without_gateway_auth(): void {

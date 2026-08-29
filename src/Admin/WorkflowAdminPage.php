@@ -236,7 +236,7 @@ final class WorkflowAdminPage {
 	/** Render scoped layout rules for the guided editor. */
 	private function render_admin_styles(): void {
 		echo '<style id="aculect-workflow-admin-styles">';
-		echo '.aculect-workflow-admin .widefat{display:block;max-width:100%;overflow-x:auto}';
+		echo '.aculect-workflow-admin .widefat{display:block;box-sizing:border-box;max-width:100%;overflow-x:auto}';
 		echo '.aculect-workflow-admin .aculect-live-preview{box-sizing:border-box;max-width:100%;border:1px solid #dcdcde;padding:16px;margin:16px 0;background:#fff}';
 		echo '.aculect-workflow-admin .aculect-live-preview dl{display:grid;grid-template-columns:minmax(120px,180px) 1fr;gap:8px;margin:0}';
 		echo '.aculect-workflow-admin .aculect-live-preview dt{font-weight:600}';

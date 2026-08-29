@@ -56,6 +56,11 @@ final class WorkflowAdminPage {
 			self::PAGE_SLUG,
 			array( $this, 'render' )
 		);
+		$this->register_mutation_handlers();
+	}
+
+	/** Register admin-post handlers early enough for admin-post.php requests. */
+	public function register_mutation_handlers(): void {
 		add_action( 'admin_post_' . self::SAVE_ACTION, array( $this, 'handle_save' ) );
 		add_action( 'admin_post_' . self::DISABLE_ACTION, array( $this, 'handle_disable' ) );
 	}

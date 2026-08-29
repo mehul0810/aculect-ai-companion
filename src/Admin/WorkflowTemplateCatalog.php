@@ -110,23 +110,14 @@ final class WorkflowTemplateCatalog {
 			),
 			'custom_post_type_creation' => array(
 				'label'          => 'Custom post type content creation',
-				'description'    => 'Create a reviewable draft post from a brief and supplied block content. Publishing and deletion are unavailable.',
+				'description'    => 'Create a reviewable draft in the selected public post type from a brief and supplied block content. Publishing and deletion are unavailable.',
 				'target_mode'    => 'new',
 				'post_types'     => array( 'post' ),
 				'input_fields'   => array( 'brief:string:required', 'title:string:required', 'content:string:required' ),
 				'step_abilities' => array( 'content/prepare-draft', 'content/create-item' ),
-				'step_arguments' => array(
-					'step_1' => array(
-						'brief'     => '{{input.brief}}',
-						'post_type' => 'post',
-					),
-					'step_2' => array(
-						'post_type' => 'post',
-						'title'     => '{{input.title}}',
-						'content'   => '{{input.content}}',
-						'status'    => 'draft',
-					),
-				),
+				// Leave all arguments unbound so the service derives the selected
+				// bounded public target instead of silently forcing "post".
+				'step_arguments' => array(),
 				'write_policy'   => 'draft_only',
 			),
 			'blank'                     => array(

@@ -17,6 +17,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionCompatibilityEva
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionSchema;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionValidationException;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
@@ -37,7 +38,7 @@ use Throwable;
 final class WorkflowAdminService {
 
 	private WorkflowTemplateCatalog $templates;
-	private WorkflowDefinitionRepository $repository;
+	private WorkflowDefinitionRepositoryInterface $repository;
 	private WorkflowRoleAccessPolicy $role_access;
 	private WorkflowAuditStoreInterface $audit;
 	private WorkflowStepArgumentValidator $argument_validator;
@@ -45,12 +46,12 @@ final class WorkflowAdminService {
 	/**
 	 * Create the service with repository and template collaborators.
 	 *
-	 * @param WorkflowDefinitionRepository|null $repository  Definition repository.
-	 * @param WorkflowTemplateCatalog|null      $templates   Starter catalog.
-	 * @param WorkflowRoleAccessPolicy|null     $role_access Workflow role policy.
-	 * @param WorkflowAuditStoreInterface|null  $audit       Summary-only audit store.
+	 * @param WorkflowDefinitionRepositoryInterface|null $repository  Definition repository.
+	 * @param WorkflowTemplateCatalog|null               $templates   Starter catalog.
+	 * @param WorkflowRoleAccessPolicy|null              $role_access Workflow role policy.
+	 * @param WorkflowAuditStoreInterface|null           $audit       Summary-only audit store.
 	 */
-	public function __construct( ?WorkflowDefinitionRepository $repository = null, ?WorkflowTemplateCatalog $templates = null, ?WorkflowRoleAccessPolicy $role_access = null, ?WorkflowAuditStoreInterface $audit = null ) {
+	public function __construct( ?WorkflowDefinitionRepositoryInterface $repository = null, ?WorkflowTemplateCatalog $templates = null, ?WorkflowRoleAccessPolicy $role_access = null, ?WorkflowAuditStoreInterface $audit = null ) {
 		$this->repository         = $repository ?? new WorkflowDefinitionRepository();
 		$this->templates          = $templates ?? new WorkflowTemplateCatalog();
 		$this->role_access        = $role_access ?? new WorkflowRoleAccessPolicy();
@@ -175,37 +176,16 @@ final class WorkflowAdminService {
 				'errors' => array( 'workflow_id' => 'The workflow could not be found for this versioned edit.' ),
 			);
 		}
-		$role_errors               = array();
-		$has_submitted_roles       = array_key_exists( 'allowed_roles', $submitted );
-		$role_value                = $has_submitted_roles ? $submitted['allowed_roles'] : ( $existing?->allowed_roles() ?? array() );
-		$unknown_roles             = null === $existing ? array() : $this->unknown_stored_roles( $existing->allowed_roles() );
-		$role_value_for_validation = $role_value;
-		if ( null !== $existing && is_array( $role_value ) && array() !== $unknown_roles ) {
-			$known                     = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
-			$role_value_for_validation = array();
-			foreach ( $role_value as $role ) {
-				if ( ! is_scalar( $role ) ) {
-					if ( $has_submitted_roles ) {
-						$role_errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
-						break;
-					}
-					continue;
-				}
-				if ( ! isset( $known[ sanitize_key( (string) $role ) ] ) ) {
-					if ( ! $has_submitted_roles ) {
-						continue;
-					}
-					$role_errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
-					break;
-				}
-				$role_value_for_validation[] = $role;
-			}
+		$role_errors         = array();
+		$has_submitted_roles = array_key_exists( 'allowed_roles', $submitted );
+		$role_value          = $has_submitted_roles ? $submitted['allowed_roles'] : ( $existing?->allowed_roles() ?? array() );
+		if ( null !== $existing && ! $has_submitted_roles ) {
+			// A role can disappear between versions (for example after a plugin
+			// is removed). Keep only currently registered roles when the form did
+			// not submit a selector, so stale access entries are not resurrected.
+			$role_value = $this->registered_roles_only( $existing->allowed_roles() );
 		}
-		$allowed_roles = $this->normalize_roles( $role_value_for_validation, $role_errors );
-		if ( array() === $role_errors && array() !== $unknown_roles ) {
-			$allowed_roles = array_values( array_unique( array_merge( $allowed_roles, $unknown_roles ) ) );
-			sort( $allowed_roles, SORT_STRING );
-		}
+		$allowed_roles = $this->normalize_roles( $role_value, $role_errors );
 		if ( array() !== $role_errors ) {
 			return array(
 				'ok'     => false,
@@ -214,11 +194,14 @@ final class WorkflowAdminService {
 		}
 
 		try {
-			$definition = $this->definition_from_input( $submitted, $actor_id, $existing );
-			$template   = $this->template_key( $submitted['template_id'] ?? '', $existing );
-			$record     = null === $existing
+			$definition            = $this->definition_from_input( $submitted, $actor_id, $existing );
+			$template              = $this->template_key( $submitted['template_id'] ?? '', $existing );
+			$approved_migration_id = true === ( $submitted['migration_confirmed'] ?? false )
+				? $this->migration_id( $submitted['migration_id'] ?? '' )
+				: null;
+			$record                = null === $existing
 				? $this->repository->create( $definition, $template, 1, $allowed_roles )
-				: $this->repository->update( $definition, $expected, $template, 1, $allowed_roles );
+				: $this->repository->update( $definition, $expected, $template, 1, $allowed_roles, $approved_migration_id );
 
 			return array(
 				'ok'     => true,
@@ -816,6 +799,17 @@ final class WorkflowAdminService {
 		return 1 === preg_match( '/^[a-z][a-z0-9_-]{2,63}$/D', $value ) ? $value : '';
 	}
 
+	/**
+	 * Normalize a submitted migration preview identifier.
+	 *
+	 * @param mixed $value Candidate migration identifier.
+	 */
+	private function migration_id( mixed $value ): ?string {
+		$value = strtolower( trim( (string) $value ) );
+
+		return 1 === preg_match( '/^[a-f0-9]{64}$/D', $value ) ? $value : null;
+	}
+
 	private function bounded_text( mixed $value, int $max ): string {
 		$value = sanitize_text_field( (string) $value );
 
@@ -840,25 +834,25 @@ final class WorkflowAdminService {
 	}
 
 	/**
-	 * Preserve stored roles that are no longer registered instead of silently
-	 * turning an explicit allowlist into inherited/global access.
+	 * Drop stored role slugs that no longer exist in the current WordPress role registry.
 	 *
 	 * @param array<string> $roles Stored role slugs.
 	 * @phpstan-param list<string> $roles
 	 * @return list<string>
 	 */
-	private function unknown_stored_roles( array $roles ): array {
-		$known   = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
-		$unknown = array();
+	private function registered_roles_only( array $roles ): array {
+		$known = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
+		$valid = array();
 		foreach ( $roles as $role ) {
 			$role = sanitize_key( (string) $role );
-			if ( '' !== $role && ! isset( $known[ $role ] ) && 'administrator' !== $role ) {
-				$unknown[] = $role;
+			if ( '' !== $role && isset( $known[ $role ] ) ) {
+				$valid[] = $role;
 			}
 		}
 
-		sort( $unknown, SORT_STRING );
+		$valid = array_values( array_unique( $valid ) );
+		sort( $valid, SORT_STRING );
 
-		return array_values( array_unique( $unknown ) );
+		return $valid;
 	}
 }

@@ -20,6 +20,7 @@
     "npm": ">=11"
   },
   "devDependencies": {
+    "axe-core": "^4.13.0",
     "@playwright/test": "^1.60.0",
     "@wordpress/components": "^33.1.0",
     "@wordpress/dataviews": "^14.3.0",

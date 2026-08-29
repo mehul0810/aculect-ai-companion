@@ -427,6 +427,35 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertSame( 2, $wpdb->alter_count );
 	}
 
+	public function test_malformed_and_far_future_repair_options_are_replaced_before_repair(): void {
+		$cases = array(
+			array(
+				'lock'  => 'not-a-canonical-lease',
+				'retry' => 'not-a-timestamp',
+			),
+			array(
+				'lock'  => str_repeat( 'a', 32 ) . ':' . ( time() + 3600 ),
+				'retry' => (string) ( time() + 3600 ),
+			),
+		);
+
+		foreach ( $cases as $case ) {
+			$wpdb            = new WorkflowRunSqliteWpdb();
+			$GLOBALS['wpdb'] = $wpdb;
+			update_option( 'aculect_ai_companion_workflow_runs_engine_repair_lock', $case['lock'], false );
+			update_option( 'aculect_ai_companion_workflow_runs_engine_repair_retry_after', $case['retry'], false );
+			$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
+			$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
+
+			self::assertTrue( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+			self::assertSame( 2, $wpdb->alter_count );
+			self::assertSame( 'InnoDB', $wpdb->table_engines['wp_aculect_ai_workflow_runs'] );
+			self::assertSame( 'InnoDB', $wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] );
+			self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflow_runs_engine_repair_lock', 'missing' ) );
+			self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflow_runs_engine_repair_retry_after', 'missing' ) );
+		}
+	}
+
 	public function test_false_is_mysql_does_not_claim_sqlite_transactionality(): void {
 		$wpdb           = $this->wpdb();
 		$wpdb->is_mysql = false;

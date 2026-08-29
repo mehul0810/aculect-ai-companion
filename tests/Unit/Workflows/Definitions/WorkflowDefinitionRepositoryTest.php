@@ -13,6 +13,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
 use PDO;
 use PHPUnit\Framework\TestCase;
 
@@ -177,6 +178,15 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		}
 
 		self::assertSame( 1, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflow_versions' ) );
+
+		$plan     = ( new WorkflowMigrationPlanner() )->preview(
+			WorkflowDefinition::from_array( $this->definition() ),
+			WorkflowDefinition::from_array( $next )
+		);
+		$approved = $repository->update( WorkflowDefinition::from_array( $next ), 1, null, null, null, $plan->migration_id() );
+
+		self::assertSame( 2, $approved->latest_version() );
+		self::assertSame( $plan->migration_id(), $approved->migration_id() );
 	}
 
 	public function test_repository_rejects_malformed_role_metadata(): void {

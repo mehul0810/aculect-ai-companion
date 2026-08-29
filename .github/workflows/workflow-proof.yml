@@ -5,6 +5,9 @@ on:
     paths:
       - ".github/workflows/workflow-proof.yml"
       - "src/Workflows/**"
+      - "src/Admin/**"
+      - "tests/Unit/Admin/**"
+      - "tests/Unit/Workflows/**"
       - "tests/Integration/Workflows/**"
       - "tests/Integration/Browser/**"
       - "composer.json"
@@ -18,6 +21,9 @@ on:
     paths:
       - ".github/workflows/workflow-proof.yml"
       - "src/Workflows/**"
+      - "src/Admin/**"
+      - "tests/Unit/Admin/**"
+      - "tests/Unit/Workflows/**"
       - "tests/Integration/Workflows/**"
       - "tests/Integration/Browser/**"
       - "composer.json"
@@ -40,10 +46,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           coverage: none
@@ -86,10 +92,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           coverage: none
@@ -114,10 +120,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           coverage: none
@@ -127,7 +133,7 @@ jobs:
         run: composer install --prefer-dist --no-progress --no-interaction
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "20.19.0"
 
@@ -187,10 +193,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           coverage: none
@@ -200,7 +206,7 @@ jobs:
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.16.0"
           cache: npm
@@ -216,8 +222,25 @@ jobs:
           rsync -rc --exclude-from="${GITHUB_WORKSPACE}/.distignore" "${GITHUB_WORKSPACE}/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
           php bin/verify-production-package.php release/aculect-ai-companion
 
+      - name: Create immutable package artifact
+        run: |
+          cd release
+          zip -qr -X aculect-ai-companion.zip aculect-ai-companion
+          sha256sum aculect-ai-companion.zip > aculect-ai-companion.zip.sha256
+          test -s aculect-ai-companion.zip.sha256
+
+      - name: Upload immutable package artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aculect-ai-companion-package-${{ github.sha }}
+          path: |
+            release/aculect-ai-companion.zip
+            release/aculect-ai-companion.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Setup Node for WordPress environment
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "20.19.0"
 

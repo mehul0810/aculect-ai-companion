@@ -238,16 +238,32 @@ final class RunInstaller {
 			return true;
 		}
 
-		$now = time();
-		if ( self::repair_lock_is_active( (string) get_option( self::OPTION_ENGINE_REPAIR_LOCK, '' ), $now ) ) {
-			return false;
-		}
+		$now          = time();
 		$current_lock = self::read_repair_lock();
-		if ( '' !== $current_lock && self::repair_lock_expires_at( $current_lock ) >= $now ) {
+		if ( self::repair_lock_is_active( $current_lock, $now ) ) {
 			return false;
 		}
-		if ( (int) get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, 0 ) > $now ) {
-			return false;
+
+		$retry_after = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
+		if ( null !== $retry_after ) {
+			if ( self::repair_retry_is_active( $retry_after, $now ) ) {
+				return false;
+			}
+			if ( ! self::delete_repair_retry_if_value( $retry_after ) ) {
+				// A concurrent writer may have replaced the invalid value with a
+				// valid backoff while this request was cleaning it up. Re-read the
+				// authoritative option before deciding whether repair is allowed.
+				$current_retry = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
+				if ( null !== $current_retry ) {
+					if ( self::repair_retry_is_active( $current_retry, $now ) ) {
+						return false;
+					}
+
+					// An invalid value that cannot be atomically replaced is not
+					// evidence that the engine repair is safe to attempt.
+					return false;
+				}
+			}
 		}
 
 		$lock_token = self::acquire_repair_lock( $now );
@@ -321,7 +337,10 @@ final class RunInstaller {
 		}
 
 		$current = self::read_repair_lock();
-		if ( '' === $current || self::repair_lock_expires_at( $current ) >= $now ) {
+		if ( '' === $current ) {
+			return '';
+		}
+		if ( self::repair_lock_is_active( $current, $now ) ) {
 			return '';
 		}
 
@@ -442,15 +461,59 @@ final class RunInstaller {
 	}
 
 	/**
+	 * Remove a malformed or expired retry option only when its value is unchanged.
+	 *
+	 * @param mixed $retry_after Exact value observed before cleanup.
+	 */
+	private static function delete_repair_retry_if_value( mixed $retry_after ): bool {
+		if ( self::uses_test_options() ) {
+			$current = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
+			if ( ! self::same_option_value( $retry_after, $current ) ) {
+				return false;
+			}
+
+			return delete_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
+		}
+
+		global $wpdb;
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+				self::OPTION_ENGINE_REPAIR_RETRY_AFTER,
+				self::option_storage_value( $retry_after )
+			)
+		);
+
+		return 1 === (int) $deleted;
+	}
+
+	/**
 	 * Return an expiring lease token suffix, including failure outcomes.
 	 *
 	 * @param string $lock_token Lease token.
 	 */
-	private static function repair_lock_expires_at( string $lock_token ): int {
+	private static function repair_lock_expires_at( string $lock_token ): ?int {
 		$parts = explode( ':', $lock_token );
-		$last  = end( $parts );
+		if ( 2 === count( $parts ) ) {
+			$valid = 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[0] );
+			$last  = $parts[1];
+		} elseif ( 3 === count( $parts ) ) {
+			$valid = 'failure' === $parts[0] && 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[1] );
+			$last  = $parts[2];
+		} else {
+			return null;
+		}
 
-		return is_string( $last ) && ctype_digit( $last ) ? (int) $last : 0;
+		if ( ! $valid || ! is_string( $last ) || 1 !== preg_match( '/^(?:0|[1-9][0-9]*)$/D', $last ) ) {
+			return null;
+		}
+
+		$expires_at = (int) $last;
+		if ( (string) $expires_at !== $last ) {
+			return null;
+		}
+
+		return $expires_at;
 	}
 
 	/**
@@ -460,16 +523,66 @@ final class RunInstaller {
 	 * @param int    $now        Current Unix timestamp.
 	 */
 	private static function repair_lock_is_active( string $lock_token, int $now ): bool {
-		$parts = explode( ':', $lock_token );
-		if ( 2 === count( $parts ) ) {
-			$valid = 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[0] ) && ctype_digit( $parts[1] );
-		} elseif ( 3 === count( $parts ) ) {
-			$valid = 'failure' === $parts[0] && 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[1] ) && ctype_digit( $parts[2] );
+		$expires_at = self::repair_lock_expires_at( $lock_token );
+
+		return null !== $expires_at && $expires_at >= $now && $expires_at <= $now + self::ENGINE_REPAIR_LOCK_TTL;
+	}
+
+	/**
+	 * Validate a retry timestamp against the same bounded five-minute window.
+	 *
+	 * @param mixed $value Candidate option value.
+	 * @param int   $now   Current Unix timestamp.
+	 */
+	private static function repair_retry_is_active( mixed $value, int $now ): bool {
+		if ( is_int( $value ) ) {
+			$raw = (string) $value;
+		} elseif ( is_string( $value ) ) {
+			$raw = $value;
 		} else {
-			$valid = false;
+			return false;
 		}
 
-		return $valid && self::repair_lock_expires_at( $lock_token ) >= $now;
+		if ( 1 !== preg_match( '/^(?:0|[1-9][0-9]*)$/D', $raw ) ) {
+			return false;
+		}
+
+		$expires_at = (int) $raw;
+		if ( (string) $expires_at !== $raw ) {
+			return false;
+		}
+
+		return $expires_at >= $now && $expires_at <= $now + self::ENGINE_REPAIR_FAILURE_RETRY_INTERVAL;
+	}
+
+	/**
+	 * Compare test-option values without coercing malformed structures.
+	 *
+	 * @param mixed $left  First option value.
+	 * @param mixed $right Second option value.
+	 */
+	private static function same_option_value( mixed $left, mixed $right ): bool {
+		if ( gettype( $left ) !== gettype( $right ) ) {
+			return false;
+		}
+
+		return $left === $right;
+	}
+
+	/**
+	 * Convert an option value to the value stored in wp_options for CAS cleanup.
+	 *
+	 * @param mixed $value Option value.
+	 */
+	private static function option_storage_value( mixed $value ): string {
+		if ( is_scalar( $value ) || null === $value ) {
+			return (string) $value;
+		}
+		if ( function_exists( 'maybe_serialize' ) ) {
+			return (string) maybe_serialize( $value );
+		}
+
+		return serialize( $value ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Fallback is only for an impossible partial WordPress runtime.
 	}
 
 	/**

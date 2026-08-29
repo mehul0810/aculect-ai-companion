@@ -16,7 +16,7 @@ use Throwable;
  * Stores versioned custom workflow definitions without coupling the pure
  * definition contract to WordPress, MCP, admin, or execution code.
  */
-final class WorkflowDefinitionRepository {
+final class WorkflowDefinitionRepository implements WorkflowDefinitionRepositoryInterface {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Workflow definitions use plugin-owned operational tables and must reflect current state.
 
@@ -248,11 +248,12 @@ final class WorkflowDefinitionRepository {
 	 * @param int                    $expected_version Current latest version.
 	 * @param string|null            $template_id      Template override, or null to retain the origin.
 	 * @param int|null               $template_version Template revision override.
-	 * @param array<int,string>|null $allowed_roles Role allowlist override, or null to retain the prior version.
+	 * @param array<int,string>|null $allowed_roles       Role allowlist override, or null to retain the prior version.
+	 * @param string|null            $approved_migration_id Exact preview ID explicitly approved by the administrator.
 	 * @phpstan-param list<string>|null $allowed_roles
 	 * @throws WorkflowDefinitionRepositoryException When the version or storage state is invalid.
 	 */
-	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null, ?array $allowed_roles = null ): WorkflowDefinitionRecord {
+	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null, ?array $allowed_roles = null, ?string $approved_migration_id = null ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
 		$value       = $definition->to_array();
 		$workflow_id = (string) $value['workflow_id'];
@@ -287,7 +288,10 @@ final class WorkflowDefinitionRepository {
 		} catch ( WorkflowDefinitionValidationException ) {
 			throw new WorkflowDefinitionRepositoryException( 'migration_preview_invalid' );
 		}
-		if ( ! $migration->can_apply() && ! $this->is_initial_publication( $current->definition(), $definition, $migration ) ) {
+		$approved_migration = is_string( $approved_migration_id )
+			&& 1 === preg_match( '/^[a-f0-9]{64}$/D', $approved_migration_id )
+			&& hash_equals( $migration->migration_id(), $approved_migration_id );
+		if ( ! $migration->can_apply() && ! $approved_migration && ! $this->is_initial_publication( $current->definition(), $definition, $migration ) ) {
 			throw new WorkflowDefinitionRepositoryException( 'migration_blocked' );
 		}
 

@@ -11,7 +11,9 @@ namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\WorkflowAdminService;
 use Aculect\AICompanion\Admin\WorkflowAdminValidationException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
 use PHPUnit\Framework\TestCase;
@@ -55,13 +57,33 @@ final class WorkflowAdminServiceTest extends TestCase {
 			),
 			7
 		);
-		$value = $definition->to_array();
+		$value      = $definition->to_array();
 
 		self::assertSame( array( 'brief', 'title', 'content' ), $value['input_schema']['required'] );
 		self::assertSame( '{{input.brief}}', $value['steps'][0]['arguments']['brief'] );
 		self::assertSame( '{{input.title}}', $value['steps'][1]['arguments']['title'] );
 		self::assertSame( '{{input.content}}', $value['steps'][1]['arguments']['content'] );
 		self::assertSame( 'draft', $value['steps'][1]['arguments']['status'] );
+	}
+
+	public function test_custom_post_type_template_binds_the_selected_public_type(): void {
+		$GLOBALS['aculect_ai_companion_test_post_types'] = array(
+			'book' => array( 'label' => 'Books' ),
+		);
+
+		$definition = ( new WorkflowAdminService() )->definition_from_input(
+			array(
+				'workflow_id' => 'book_template_defaults',
+				'template_id' => 'custom_post_type_creation',
+				'post_types'  => 'book',
+			),
+			7
+		);
+		$value      = $definition->to_array();
+
+		self::assertSame( array( 'book' ), $value['content_target']['post_types'] );
+		self::assertSame( 'book', $value['steps'][0]['arguments']['post_type'] );
+		self::assertSame( 'book', $value['steps'][1]['arguments']['post_type'] );
 	}
 
 	public function test_missing_required_adapter_argument_is_rejected_before_persistence(): void {
@@ -109,6 +131,57 @@ final class WorkflowAdminServiceTest extends TestCase {
 		self::assertArrayHasKey( 'errors', $result );
 		$errors = (array) ( $result['errors'] ?? array() );
 		self::assertSame( 'Choose only registered non-administrator roles.', (string) ( $errors['allowed_roles'] ?? '' ) );
+	}
+
+	public function test_submitting_an_empty_role_selector_removes_stale_stored_roles(): void {
+		$base_service   = new WorkflowAdminService();
+		$fields         = array(
+			'workflow_id'    => 'role_cleanup',
+			'template_id'    => 'blank',
+			'name'           => 'Role cleanup',
+			'description'    => 'Remove a role that is no longer registered.',
+			'target_mode'    => 'existing',
+			'post_types'     => 'post',
+			'input_fields'   => 'post_id:integer:required',
+			'step_abilities' => 'content/get-item',
+			'write_policy'   => 'proposal_only',
+			'status'         => 'draft',
+		);
+		$definition     = $base_service->definition_from_input( $fields, 7 );
+		$record         = new WorkflowDefinitionRecord(
+			1,
+			'role_cleanup',
+			'draft',
+			1,
+			0,
+			'blank',
+			1,
+			7,
+			7,
+			1,
+			'2026-08-29 00:00:00',
+			'2026-08-29 00:00:00',
+			$definition,
+			array( 'editor', 'deleted_role' )
+		);
+		$captured_roles = array();
+		$repository     = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repository->method( 'get' )->willReturn( $record );
+		$repository->expects( self::once() )->method( 'update' )->willReturnCallback(
+			static function ( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null, ?array $allowed_roles = null, ?string $approved_migration_id = null ) use ( &$captured_roles, $record ): WorkflowDefinitionRecord {
+				unset( $definition, $expected_version, $template_id, $template_version, $approved_migration_id );
+				$captured_roles = null === $allowed_roles ? array() : $allowed_roles;
+
+				return $record;
+			}
+		);
+
+		$fields['expected_version'] = 1;
+		$fields['allowed_roles']    = array();
+		$result                     = ( new WorkflowAdminService( $repository ) )->save( $fields, 7 );
+
+		self::assertTrue( $result['ok'] );
+		self::assertSame( array(), $captured_roles );
 	}
 
 	public function test_migration_preview_returns_a_stable_plan_for_an_edit(): void {

@@ -207,6 +207,18 @@ final class WorkflowRunner {
 
 			$running = $this->running_step( $steps );
 			if ( null !== $running ) {
+				if ( $this->lease_expired( $running ) ) {
+					$uncertain = $this->store->fail_step( $run_id, $running->step_id(), $running->fence(), 'execution_uncertain', $actor_id );
+					if ( null === $uncertain ) {
+						throw new WorkflowRunnerException( 'step_claim_lost' );
+					}
+
+					$current = $this->require_run( $run_id );
+					$this->audit_event( $current, 'step_failed', $actor_id, $uncertain, null, 'execution_uncertain' );
+
+					return $this->fail_run( $current, $plan, 'execution_uncertain', $actor_id, $uncertain );
+				}
+
 				return new WorkflowRunExecutionResult( $record, $running, null, false );
 			}
 
@@ -219,11 +231,31 @@ final class WorkflowRunner {
 			return new WorkflowRunExecutionResult( $record, $this->find_step( $current, $next->step_id() ), null, false );
 		}
 
-		$arguments = $this->arguments_for_step( $definition, $next->step_id() );
+		try {
+			$arguments = $this->arguments_for_step( $definition, $next->step_id(), $plan, $steps );
+		} catch ( WorkflowRunnerException $exception ) {
+			$stored_step = $this->store->fail_step( $run_id, $next->step_id(), $claimed->fence(), $exception->error_code(), $actor_id );
+			if ( null === $stored_step ) {
+				throw new WorkflowRunnerException( 'step_claim_lost' );
+			}
+
+			return $this->fail_run( $record, $plan, $exception->error_code(), $actor_id, $stored_step );
+		}
 		try {
 			$result = $this->adapters->execute( $plan, $next->step_id(), $arguments, $auth );
 		} catch ( Throwable ) {
 			$result = WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_EXECUTION_NOT_AVAILABLE );
+		}
+		if ( $this->lease_expired( $claimed ) ) {
+			$uncertain = $this->store->fail_step( $run_id, $next->step_id(), $claimed->fence(), 'execution_uncertain', $actor_id );
+			if ( null === $uncertain ) {
+				throw new WorkflowRunnerException( 'step_claim_lost' );
+			}
+
+			$current = $this->require_run( $run_id );
+			$this->audit_event( $current, 'step_failed', $actor_id, $uncertain, null, 'execution_uncertain' );
+
+			return $this->fail_run( $current, $plan, 'execution_uncertain', $actor_id, $uncertain );
 		}
 		if ( $result->succeeded() ) {
 			$stored_step = $this->store->complete_step( $run_id, $next->step_id(), $claimed->fence(), $result, $actor_id );
@@ -405,6 +437,18 @@ final class WorkflowRunner {
 		return null;
 	}
 
+	/** Return whether a durable step lease has expired. */
+	private function lease_expired( WorkflowStepRecord $step ): bool {
+		$expires = $step->lease_expires_at();
+		if ( null === $expires || '' === $expires ) {
+			return false;
+		}
+
+		$date = strtotime( $expires . ' UTC' );
+
+		return false !== $date && $date <= time();
+	}
+
 	/** Fail the run with exact execution evidence. */
 	private function fail_run( WorkflowRunRecord $record, WorkflowPlan $plan, string $code, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowAdapterResult $result = null ): WorkflowRunExecutionResult {
 		$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'failed', $code );
@@ -472,11 +516,18 @@ final class WorkflowRunner {
 	}
 
 	/**
-	 * Extract one validated static argument object from the immutable definition.
+	 * Resolve one validated argument object from the immutable definition,
+	 * normalized workflow input, and completed step outputs.
 	 *
+	 * @param WorkflowDefinitionRecord $definition Definition that owns arguments.
+	 * @param string                   $step_id     Exact step ID.
+	 * @param WorkflowPlan             $plan        Exact normalized plan.
+	 * @param array                    $steps       Persisted step records.
+	 * @phpstan-param list<WorkflowStepRecord> $steps
 	 * @return array<string, mixed>
 	 */
-	private function arguments_for_step( WorkflowDefinitionRecord $definition, string $step_id ): array {
+	private function arguments_for_step( WorkflowDefinitionRecord $definition, string $step_id, WorkflowPlan $plan, array $steps ): array {
+		$arguments = null;
 		foreach ( $definition->definition()->to_array()['steps'] as $raw_step ) {
 			$step = $raw_step instanceof stdClass ? get_object_vars( $raw_step ) : $raw_step;
 			if ( ! is_array( $step ) || (string) ( $step['step_id'] ?? '' ) !== $step_id ) {
@@ -484,14 +535,101 @@ final class WorkflowRunner {
 			}
 			$arguments = $step['arguments'] ?? array();
 			if ( $arguments instanceof stdClass ) {
-				return get_object_vars( $arguments );
+				$arguments = get_object_vars( $arguments );
+				break;
 			}
-			if ( is_array( $arguments ) && ! array_is_list( $arguments ) ) {
-				return $arguments;
+			if ( is_array( $arguments ) && ( array() === $arguments || ! array_is_list( $arguments ) ) ) {
+				break;
 			}
 		}
 
-		throw new WorkflowRunnerException( 'step_arguments_invalid' );
+		if ( ! is_array( $arguments ) || ( array() !== $arguments && array_is_list( $arguments ) ) ) {
+			throw new WorkflowRunnerException( 'step_arguments_invalid' );
+		}
+
+		return $this->resolve_argument_value( $arguments, $plan, $steps );
+	}
+
+	/**
+	 * Resolve exact, typed bindings without interpolating untrusted strings.
+	 *
+	 * Supported forms are {{input.field}} and
+	 * {{steps.step_id.output.field}}. Missing or unavailable bindings fail
+	 * closed so a write adapter never receives an accidental empty argument.
+	 *
+	 * @param mixed        $value Candidate argument value.
+	 * @param WorkflowPlan $plan  Exact normalized plan.
+	 * @param array        $steps Persisted step records.
+	 * @phpstan-param list<WorkflowStepRecord> $steps
+	 * @return mixed
+	 */
+	private function resolve_argument_value( mixed $value, WorkflowPlan $plan, array $steps ): mixed {
+		if ( $value instanceof stdClass ) {
+			$value = get_object_vars( $value );
+		}
+		if ( is_array( $value ) ) {
+			$resolved = array();
+			foreach ( $value as $key => $item ) {
+				$resolved[ $key ] = $this->resolve_argument_value( $item, $plan, $steps );
+			}
+
+			return $resolved;
+		}
+		if ( ! is_string( $value ) ) {
+			return $value;
+		}
+
+		if ( 1 === preg_match( '/^\{\{input\.([a-z][a-z0-9_.]{0,127})\}\}$/D', $value, $matches ) ) {
+			[ $found, $resolved ] = $this->lookup_path( $plan->input_contract()->value(), explode( '.', $matches[1] ) );
+			if ( ! $found ) {
+				throw new WorkflowRunnerException( 'step_arguments_invalid' );
+			}
+
+			return $resolved;
+		}
+
+		if ( 1 === preg_match( '/^\{\{steps\.([a-z][a-z0-9_]{0,63})\.output\.([a-z][a-z0-9_.-]{0,127})\}\}$/D', $value, $matches ) ) {
+			$step = $this->find_step( $steps, $matches[1] );
+			if ( null === $step || WorkflowStepState::COMPLETED !== $step->state() || null === $step->output_json() ) {
+				throw new WorkflowRunnerException( 'step_arguments_invalid' );
+			}
+			try {
+				$output = json_decode( $step->output_json(), true, WorkflowInputContract::MAX_DEPTH, JSON_THROW_ON_ERROR );
+			} catch ( Throwable ) {
+				throw new WorkflowRunnerException( 'step_arguments_invalid' );
+			}
+			[ $found, $resolved ] = $this->lookup_path( $output, explode( '.', $matches[2] ) );
+			if ( ! $found ) {
+				throw new WorkflowRunnerException( 'step_arguments_invalid' );
+			}
+
+			return $resolved;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Look up a bounded dotted path in an object/array map.
+	 *
+	 * @param mixed $value Root value.
+	 * @param array $path Path segments.
+	 * @phpstan-param list<string> $path
+	 * @return array{0:bool,1:mixed}
+	 */
+	private function lookup_path( mixed $value, array $path ): array {
+		$current = $value;
+		foreach ( $path as $segment ) {
+			if ( $current instanceof stdClass ) {
+				$current = get_object_vars( $current );
+			}
+			if ( ! is_array( $current ) || ! array_key_exists( $segment, $current ) ) {
+				return array( false, null );
+			}
+			$current = $current[ $segment ];
+		}
+
+		return array( true, $current );
 	}
 
 	/**

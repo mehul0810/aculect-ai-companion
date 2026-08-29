@@ -279,9 +279,16 @@ final class WorkflowDefinitionRepository {
 		$resolved_roles = null === $allowed_roles ? $current->allowed_roles() : $allowed_roles;
 		$this->validate_roles( $resolved_roles );
 		try {
-			$migration = ( new WorkflowMigrationPlanner() )->preview( $current->definition(), $definition );
+			// Rehydrate the candidate through its canonical JSON so persisted
+			// object/list semantics match the stored immutable snapshot before
+			// compatibility is evaluated.
+			$migration_target = WorkflowDefinition::from_json( $definition->canonical_json() );
+			$migration        = ( new WorkflowMigrationPlanner() )->preview( $current->definition(), $migration_target );
 		} catch ( WorkflowDefinitionValidationException ) {
 			throw new WorkflowDefinitionRepositoryException( 'migration_preview_invalid' );
+		}
+		if ( ! $migration->can_apply() && ! $this->is_initial_publication( $current->definition(), $definition, $migration ) ) {
+			throw new WorkflowDefinitionRepositoryException( 'migration_blocked' );
 		}
 
 		$resolved_template_id      = null === $template_id ? (string) $catalog['template_id'] : $template_id;
@@ -587,6 +594,31 @@ final class WorkflowDefinitionRepository {
 			}
 			$previous = $role;
 		}
+	}
+
+	/**
+	 * Allow the draft-to-published lifecycle transition when no behavior
+	 * migration is present. Publication is the repository's initial catalog
+	 * activation, not an implicit rewrite of the workflow contract.
+	 *
+	 * @param WorkflowDefinition    $source    Existing definition.
+	 * @param WorkflowDefinition    $target    Candidate definition.
+	 * @param WorkflowMigrationPlan $migration Compatibility plan.
+	 */
+	private function is_initial_publication( WorkflowDefinition $source, WorkflowDefinition $target, WorkflowMigrationPlan $migration ): bool {
+		$source_status = (string) ( $source->to_array()['status'] ?? '' );
+		$target_status = (string) ( $target->to_array()['status'] ?? '' );
+		if ( 'draft' !== $source_status || 'published' !== $target_status ) {
+			return false;
+		}
+
+		foreach ( $migration->actions() as $action ) {
+			if ( 'publication_status_changed' !== (string) $action['code'] ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

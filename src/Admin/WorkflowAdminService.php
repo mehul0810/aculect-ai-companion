@@ -22,6 +22,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
+use JsonException;
 use Throwable;
 
 /**
@@ -167,8 +168,37 @@ final class WorkflowAdminService {
 				'errors' => array( 'workflow_id' => 'The workflow could not be found for this versioned edit.' ),
 			);
 		}
-		$role_errors   = array();
-		$allowed_roles = $this->normalize_roles( $submitted['allowed_roles'] ?? ( $existing?->allowed_roles() ?? array() ), $role_errors );
+		$role_errors               = array();
+		$has_submitted_roles       = array_key_exists( 'allowed_roles', $submitted );
+		$role_value                = $has_submitted_roles ? $submitted['allowed_roles'] : ( $existing?->allowed_roles() ?? array() );
+		$unknown_roles             = null === $existing ? array() : $this->unknown_stored_roles( $existing->allowed_roles() );
+		$role_value_for_validation = $role_value;
+		if ( null !== $existing && is_array( $role_value ) && array() !== $unknown_roles ) {
+			$known                     = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
+			$role_value_for_validation = array();
+			foreach ( $role_value as $role ) {
+				if ( ! is_scalar( $role ) ) {
+					if ( $has_submitted_roles ) {
+						$role_errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
+						break;
+					}
+					continue;
+				}
+				if ( ! isset( $known[ sanitize_key( (string) $role ) ] ) ) {
+					if ( ! $has_submitted_roles ) {
+						continue;
+					}
+					$role_errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
+					break;
+				}
+				$role_value_for_validation[] = $role;
+			}
+		}
+		$allowed_roles = $this->normalize_roles( $role_value_for_validation, $role_errors );
+		if ( array() === $role_errors && array() !== $unknown_roles ) {
+			$allowed_roles = array_values( array_unique( array_merge( $allowed_roles, $unknown_roles ) ) );
+			sort( $allowed_roles, SORT_STRING );
+		}
 		if ( array() !== $role_errors ) {
 			return array(
 				'ok'     => false,
@@ -203,6 +233,7 @@ final class WorkflowAdminService {
 				'workflow_already_exists'   => 'That workflow ID is already in use.',
 				'workflow_disabled'          => 'Disabled workflows must be restored outside this guided editor.',
 				'invalid_role_access'       => 'Choose only registered non-administrator roles.',
+				'migration_blocked'         => 'Review the migration preview; behavior changes require an explicit migration.',
 				default                     => 'The workflow could not be saved right now.',
 			};
 
@@ -320,13 +351,14 @@ final class WorkflowAdminService {
 		$description  = $this->bounded_text( $submitted['description'] ?? ( $template['description'] ?? '' ), 1000 );
 		$status_value = (string) ( $submitted['status'] ?? 'draft' );
 		$status       = in_array( $status_value, array( 'draft', 'published' ), true ) ? $status_value : 'draft';
+		$write_value  = (string) ( $submitted['write_policy'] ?? ( $template['write_policy'] ?? 'proposal_only' ) );
+		$write_mode   = in_array( $write_value, array( 'proposal_only', 'draft_only', 'approved_update' ), true ) ? $write_value : 'proposal_only';
 		$mode_value   = (string) ( $submitted['target_mode'] ?? ( $template['target_mode'] ?? 'either' ) );
 		$mode         = in_array( $mode_value, array( 'new', 'existing', 'either' ), true ) ? $mode_value : 'either';
 		$post_types   = $this->post_types( $submitted['post_types'] ?? ( $template['post_types'] ?? array() ) );
 		$fields       = $this->input_fields( $submitted['input_fields'] ?? ( $template['input_fields'] ?? array() ), $errors );
-		$steps        = $this->steps( $submitted['step_abilities'] ?? ( $template['step_abilities'] ?? array() ), $errors );
-		$write_value  = (string) ( $submitted['write_policy'] ?? ( $template['write_policy'] ?? 'proposal_only' ) );
-		$write_mode   = in_array( $write_value, array( 'proposal_only', 'draft_only', 'approved_update' ), true ) ? $write_value : 'proposal_only';
+		$step_args    = $this->step_arguments( $submitted['step_arguments'] ?? ( $template['step_arguments'] ?? array() ), $errors );
+		$steps        = $this->steps( $submitted['step_abilities'] ?? ( $template['step_abilities'] ?? array() ), $errors, $fields, $post_types, $write_mode, $step_args );
 
 		if ( '' === $workflow_id ) {
 			$errors['workflow_id'] = 'Use 3–64 lowercase letters, numbers, underscores, or hyphens.';
@@ -457,9 +489,14 @@ final class WorkflowAdminService {
 	 *
 	 * @param mixed                $value Ability lines.
 	 * @param array<string,string> $errors Validation errors by field.
+	 * @param array<string,mixed>  $input_schema Workflow input schema.
+	 * @param array<string>        $post_types Allowed post types.
+	 * @phpstan-param list<string> $post_types
+	 * @param string               $write_mode Write policy mode.
+	 * @param array<string,mixed>  $explicit_arguments Optional static arguments.
 	 * @return list<array<string,mixed>>
 	 */
-	private function steps( mixed $value, array &$errors ): array {
+	private function steps( mixed $value, array &$errors, array $input_schema = array(), array $post_types = array(), string $write_mode = 'proposal_only', array $explicit_arguments = array() ): array {
 		$lines       = is_array( $value ) ? $value : preg_split( '/\r?\n|,/', (string) $value );
 		$descriptors = array();
 		foreach ( WorkflowAdapterCatalog::descriptors() as $descriptor ) {
@@ -477,19 +514,101 @@ final class WorkflowAdminService {
 				$errors['step_abilities'] = 'Every step must use an ability from the supported catalog.';
 				continue;
 			}
-			$step_id = 'step_' . ( count( $steps ) + 1 );
+			$step_id   = 'step_' . ( count( $steps ) + 1 );
+			$ordinal   = (string) ( count( $steps ) + 1 );
+			$arguments = $explicit_arguments[ $step_id ] ?? $explicit_arguments[ $ordinal ] ?? $explicit_arguments[ $descriptor->ability_id() ] ?? null;
+			if ( null === $arguments ) {
+				$arguments = $this->default_step_arguments( $descriptor, $input_schema, $post_types, $write_mode );
+			}
+			if ( ! is_array( $arguments ) || ( array() !== $arguments && array_is_list( $arguments ) ) ) {
+				$errors['step_arguments'] = 'Step arguments must be an object keyed by step ID, position, or ability ID.';
+				$arguments                = array();
+			}
 			$steps[] = array(
 				'step_id'         => $step_id,
 				'adapter_id'      => $descriptor->adapter_id(),
 				'adapter_version' => $descriptor->adapter_version(),
 				'ability_id'      => $descriptor->ability_id(),
 				'kind'            => $descriptor->kind(),
-				'arguments'       => array(),
+				'arguments'       => $arguments,
 				'depends_on'      => 0 === count( $steps ) ? array() : array( 'step_' . count( $steps ) ),
 			);
 		}
 
 		return $steps;
+	}
+
+	/**
+	 * Parse optional static step arguments from the guided editor.
+	 *
+	 * @param mixed                $value  JSON object, array, or empty value.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @return array<string,mixed>
+	 */
+	private function step_arguments( mixed $value, array &$errors ): array {
+		if ( null === $value || '' === $value || array() === $value ) {
+			return array();
+		}
+		if ( is_array( $value ) && ! array_is_list( $value ) ) {
+			return $value;
+		}
+		if ( ! is_string( $value ) || strlen( $value ) > 32768 ) {
+			$errors['step_arguments'] = 'Step arguments must be a bounded JSON object.';
+			return array();
+		}
+		try {
+			$decoded = json_decode( $value, true, 16, JSON_THROW_ON_ERROR );
+		} catch ( JsonException ) {
+			$errors['step_arguments'] = 'Step arguments must be valid JSON.';
+			return array();
+		}
+		if ( ! is_array( $decoded ) || array_is_list( $decoded ) ) {
+			$errors['step_arguments'] = 'Step arguments must be a JSON object keyed by step ID, position, or ability ID.';
+			return array();
+		}
+
+		return $decoded;
+	}
+
+	/**
+	 * Generate safe bindings from workflow inputs for a selected adapter.
+	 *
+	 * @param WorkflowAdapterDescriptor $descriptor Selected adapter descriptor.
+	 * @param array<string,mixed>       $input_schema Workflow input schema.
+	 * @param array<string>             $post_types Allowed post types.
+	 * @param string                    $write_mode Write policy mode.
+	 * @phpstan-param list<string>      $post_types
+	 * @return array<string,mixed>
+	 */
+	private function default_step_arguments( WorkflowAdapterDescriptor $descriptor, array $input_schema, array $post_types, string $write_mode ): array {
+		$input_properties = is_array( $input_schema['properties'] ?? null ) ? $input_schema['properties'] : array();
+		$adapter_schema   = $descriptor->input_schema();
+		$properties       = is_array( $adapter_schema['properties'] ?? null ) ? $adapter_schema['properties'] : array();
+		$arguments        = array();
+		foreach ( array_keys( $properties ) as $property ) {
+			$property = (string) $property;
+			if ( array_key_exists( $property, $input_properties ) ) {
+				$arguments[ $property ] = '{{input.' . $property . '}}';
+				continue;
+			}
+			if ( 'id' === $property && array_key_exists( 'post_id', $input_properties ) ) {
+				$arguments[ $property ] = '{{input.post_id}}';
+				continue;
+			}
+			if ( 'post_id' === $property && array_key_exists( 'id', $input_properties ) ) {
+				$arguments[ $property ] = '{{input.id}}';
+				continue;
+			}
+			if ( 'post_type' === $property && 1 === count( $post_types ) ) {
+				$arguments[ $property ] = (string) $post_types[0];
+				continue;
+			}
+			if ( 'status' === $property && 'proposal_only' !== $write_mode ) {
+				$arguments[ $property ] = 'draft';
+			}
+		}
+
+		return $arguments;
 	}
 
 	/**
@@ -554,5 +673,28 @@ final class WorkflowAdminService {
 		}
 
 		return $this->role_access->normalize( $value );
+	}
+
+	/**
+	 * Preserve stored roles that are no longer registered instead of silently
+	 * turning an explicit allowlist into inherited/global access.
+	 *
+	 * @param array<string> $roles Stored role slugs.
+	 * @phpstan-param list<string> $roles
+	 * @return list<string>
+	 */
+	private function unknown_stored_roles( array $roles ): array {
+		$known   = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
+		$unknown = array();
+		foreach ( $roles as $role ) {
+			$role = sanitize_key( (string) $role );
+			if ( '' !== $role && ! isset( $known[ $role ] ) && 'administrator' !== $role ) {
+				$unknown[] = $role;
+			}
+		}
+
+		sort( $unknown, SORT_STRING );
+
+		return array_values( array_unique( $unknown ) );
 	}
 }

@@ -187,24 +187,48 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		}
 
 		global $wpdb;
-		$updated = $wpdb->update(
-			RunInstaller::table_names()['runs'],
-			array(
-				'state'              => $next_state->value,
-				'state_version'      => $expected_version + 1,
-				'outcome_code'       => $outcome_code ?? '',
-				'waiting_expires_at' => $waiting_expires_at,
-				'updated_by'         => $actor_id,
-				'updated_at'         => $this->now_sql(),
-			),
-			array(
-				'run_id'        => $run_id,
-				'state'         => $expected_state->value,
-				'state_version' => $expected_version,
-			),
-			array( '%s', '%d', '%s', '%s', '%d', '%s' ),
-			array( '%s', '%s', '%d' )
-		);
+		$tables = RunInstaller::table_names();
+		if ( WorkflowRunState::CANCELLED === $next_state && WorkflowRunState::RUNNING === $expected_state ) {
+			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = %s, updated_by = %d, updated_at = %s WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND s.state = %s)';
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
+					$query,
+					$tables['runs'],
+					$next_state->value,
+					$expected_version + 1,
+					$outcome_code ?? '',
+					$waiting_expires_at ?? '',
+					$actor_id,
+					$this->now_sql(),
+					$run_id,
+					$expected_state->value,
+					$expected_version,
+					$tables['steps'],
+					WorkflowStepState::RUNNING->value
+				)
+			);
+		} else {
+			$updated = $wpdb->update(
+				$tables['runs'],
+				array(
+					'state'              => $next_state->value,
+					'state_version'      => $expected_version + 1,
+					'outcome_code'       => $outcome_code ?? '',
+					'waiting_expires_at' => $waiting_expires_at,
+					'updated_by'         => $actor_id,
+					'updated_at'         => $this->now_sql(),
+				),
+				array(
+					'run_id'        => $run_id,
+					'state'         => $expected_state->value,
+					'state_version' => $expected_version,
+				),
+				array( '%s', '%d', '%s', '%s', '%d', '%s' ),
+				array( '%s', '%s', '%d' )
+			);
+		}
 		if ( 1 !== (int) $updated ) {
 			return null;
 		}
@@ -264,19 +288,21 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		}
 
 		global $wpdb;
-		$now       = time();
+		$now       = ( $this->clock )();
 		$now_sql   = gmdate( 'Y-m-d H:i:s', $now );
 		$lease_sql = gmdate( 'Y-m-d H:i:s', $now + self::STEP_LEASE_SECONDS );
 		$updated   = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE %i SET state = 'running', attempt = attempt + 1, fence = fence + 1, lease_expires_at = %s, started_at = COALESCE(started_at, %s), updated_at = %s WHERE run_pk = %d AND step_id = %s AND (state = 'pending' OR (state = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= %s))",
+				"UPDATE %i AS s SET state = 'running', attempt = attempt + 1, fence = fence + 1, lease_expires_at = %s, started_at = COALESCE(started_at, %s), updated_at = %s WHERE s.run_pk = %d AND s.step_id = %s AND (s.state = 'pending' OR (s.state = 'running' AND s.lease_expires_at IS NOT NULL AND s.lease_expires_at <= %s)) AND EXISTS (SELECT 1 FROM %i AS r WHERE r.id = s.run_pk AND r.state = %s)",
 				RunInstaller::table_names()['steps'],
 				$lease_sql,
 				$now_sql,
 				$now_sql,
 				(int) $run['id'],
 				$step_id,
-				$now_sql
+				$now_sql,
+				RunInstaller::table_names()['runs'],
+				WorkflowRunState::RUNNING->value
 			)
 		);
 		if ( 1 !== (int) $updated ) {
@@ -381,30 +407,48 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 	/** Finish one claimed step through an exact fence. */
 	private function finish_step( string $run_id, string $step_id, int $fence, int $actor_id, WorkflowStepState $state, string $result_code, string $error_code, string $ciphertext, string $output_hash ): ?WorkflowStepRecord {
 		$run = $this->run_row( $run_id );
-		if ( null === $run ) {
+		if ( null === $run || WorkflowRunState::RUNNING->value !== (string) ( $run['state'] ?? '' ) ) {
 			return null;
 		}
 		global $wpdb;
-		$now     = $this->now_sql();
-		$updated = $wpdb->query(
-			$wpdb->prepare(
-				'UPDATE %i SET state = %s, result_code = %s, error_code = %s, output_ciphertext = %s, output_hash = %s, lease_expires_at = NULL, completed_at = %s, updated_at = %s WHERE run_pk = %d AND step_id = %s AND state = %s AND fence = %d',
-				RunInstaller::table_names()['steps'],
-				$state->value,
-				$result_code,
-				$error_code,
-				$ciphertext,
-				$output_hash,
-				$now,
-				$now,
-				(int) $run['id'],
-				$step_id,
-				WorkflowStepState::RUNNING->value,
-				$fence
-			)
+		$now       = $this->now_sql();
+		$query     = 'UPDATE %i AS s SET state = %s, result_code = %s, error_code = %s, output_ciphertext = %s, output_hash = %s, lease_expires_at = NULL, completed_at = %s, updated_at = %s WHERE s.run_pk = %d AND s.step_id = %s AND s.state = %s AND s.fence = %d AND EXISTS (SELECT 1 FROM %i AS r WHERE r.id = s.run_pk AND r.state = %s)';
+		$arguments = array(
+			RunInstaller::table_names()['steps'],
+			$state->value,
+			$result_code,
+			$error_code,
+			$ciphertext,
+			$output_hash,
+			$now,
+			$now,
+			(int) $run['id'],
+			$step_id,
+			WorkflowStepState::RUNNING->value,
+			$fence,
+			RunInstaller::table_names()['runs'],
+			WorkflowRunState::RUNNING->value,
 		);
+		if ( WorkflowStepState::COMPLETED === $state || ( WorkflowStepState::FAILED === $state && 'execution_uncertain' !== $error_code ) ) {
+			$query      .= ' AND (s.lease_expires_at IS NULL OR s.lease_expires_at > %s)';
+			$arguments[] = $now;
+		}
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape contains only fixed fragments and all values use placeholders.
+		$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
 		if ( 1 !== (int) $updated ) {
-			return $this->step( $run_id, $step_id );
+			$current_run = $this->run_row( $run_id );
+			if ( null === $current_run || WorkflowRunState::RUNNING->value !== (string) ( $current_run['state'] ?? '' ) ) {
+				return null;
+			}
+			$current = $this->step( $run_id, $step_id );
+			if ( null === $current || $current->fence() !== $fence ) {
+				return null;
+			}
+			if ( WorkflowStepState::RUNNING === $current->state() && $this->lease_expired( $current ) ) {
+				return null;
+			}
+
+			return $current;
 		}
 
 		$record = $this->step( $run_id, $step_id );
@@ -480,6 +524,18 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private function now_sql(): string {
 		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() ); }
+
+	/** Return whether a step lease has expired against the store clock. */
+	private function lease_expired( WorkflowStepRecord $step ): bool {
+		$lease = $step->lease_expires_at();
+		if ( null === $lease || '' === $lease ) {
+			return false;
+		}
+		$expires = strtotime( $lease . ' UTC' );
+
+		return false !== $expires && $expires <= ( $this->clock )();
+	}
+
 	private function begin(): void {
 		global $wpdb;
 		$wpdb->query( 'START TRANSACTION' ); }

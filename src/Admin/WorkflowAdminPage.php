@@ -166,6 +166,7 @@ final class WorkflowAdminPage {
 			'post_types'       => (string) ( $_POST['post_types'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'input_fields'     => (string) ( $_POST['input_fields'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'step_abilities'   => (string) ( $_POST['step_abilities'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+			'step_arguments'   => isset( $_POST['step_arguments'] ) ? substr( (string) wp_unslash( $_POST['step_arguments'] ), 0, 32768 ) : '', // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'write_policy'     => sanitize_key( (string) ( $_POST['write_policy'] ?? 'proposal_only' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'allowed_roles'    => $allowed_roles,
 		);
@@ -242,6 +243,7 @@ final class WorkflowAdminPage {
 		$this->field( 'post_types', __( 'Content target', 'aculect-ai-companion' ), $values['post_types'] ?? '', 'Comma- or line-separated public post types, for example post or page.' );
 		$this->field( 'input_fields', __( 'Inputs', 'aculect-ai-companion' ), $values['input_fields'] ?? '', 'One per line: field:type[:required]. Types: string, integer, number, boolean.' );
 		$this->field( 'step_abilities', __( 'Steps', 'aculect-ai-companion' ), $values['step_abilities'] ?? '', 'One supported ability per line, in execution order. Dependencies are generated from this order.' );
+		$this->field( 'step_arguments', __( 'Step arguments (optional JSON)', 'aculect-ai-companion' ), $values['step_arguments'] ?? '', 'Optional object keyed by step_1, position, or ability ID. Use {{input.field}} and {{steps.step_id.output.field}} for typed runtime bindings. Empty values receive safe input bindings automatically.' );
 		echo '<tr><th><span>' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</span></th><td><fieldset><legend class="screen-reader-text">' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</legend>';
 		foreach ( $roles as $role ) {
 			$id = (string) $role['id'];
@@ -283,7 +285,7 @@ final class WorkflowAdminPage {
 	 */
 	private function field( string $name, string $label, mixed $value, string $description ): void {
 		echo '<tr><th><label for="aculect-' . esc_attr( $name ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $name, array( 'description', 'post_types', 'input_fields', 'step_abilities' ), true ) ) {
+		if ( in_array( $name, array( 'description', 'post_types', 'input_fields', 'step_abilities', 'step_arguments' ), true ) ) {
 			$textarea_value = function_exists( 'esc_textarea' ) ? esc_textarea( (string) $value ) : esc_html( (string) $value );
 			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Value is escaped by esc_textarea or esc_html above.
 			echo '<textarea class="large-text" rows="' . ( 'description' === $name ? '3' : '4' ) . '" id="aculect-' . esc_attr( $name ) . '" name="' . esc_attr( $name ) . '">' . $textarea_value . '</textarea>';
@@ -312,6 +314,7 @@ final class WorkflowAdminPage {
 				'post_types'       => implode( ', ', $template['post_types'] ),
 				'input_fields'     => implode( "\n", $template['input_fields'] ),
 				'step_abilities'   => implode( "\n", $template['step_abilities'] ),
+				'step_arguments'   => '',
 				'write_policy'     => $template['write_policy'],
 				'allowed_roles'    => array(),
 				'status'           => 'draft',
@@ -326,12 +329,18 @@ final class WorkflowAdminPage {
 			$type     = is_array( $schema ) ? (string) ( $schema['type'] ?? 'string' ) : 'string';
 			$fields[] = (string) $name . ':' . $type . ( in_array( (string) $name, $required, true ) ? ':required' : '' );
 		}
-		$steps = array();
+		$steps          = array();
+		$step_arguments = array();
 		foreach ( (array) ( $value['steps'] ?? array() ) as $step ) {
 			if ( is_array( $step ) ) {
 				$steps[] = (string) ( $step['ability_id'] ?? '' );
+				$step_id = (string) ( $step['step_id'] ?? '' );
+				if ( '' !== $step_id && is_array( $step['arguments'] ?? null ) ) {
+					$step_arguments[ $step_id ] = $step['arguments'];
+				}
 			}
 		}
+		$step_arguments_json = function_exists( 'wp_json_encode' ) ? wp_json_encode( $step_arguments ) : '{}';
 
 		return array(
 			'workflow_id'      => $record->workflow_id(),
@@ -343,6 +352,7 @@ final class WorkflowAdminPage {
 			'post_types'       => implode( ', ', array_map( 'strval', (array) ( $value['content_target']['post_types'] ?? array() ) ) ),
 			'input_fields'     => implode( "\n", $fields ),
 			'step_abilities'   => implode( "\n", $steps ),
+			'step_arguments'   => is_string( $step_arguments_json ) ? $step_arguments_json : '{}',
 			'write_policy'     => $value['write_policy']['mode'] ?? 'proposal_only',
 			'allowed_roles'    => $record->allowed_roles(),
 			'status'           => $value['status'] ?? 'draft',

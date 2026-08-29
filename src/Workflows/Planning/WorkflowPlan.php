@@ -19,11 +19,12 @@ final readonly class WorkflowPlan {
 	/**
 	 * Create an immutable plan from an already verified projection.
 	 *
-	 * @param array<string, mixed> $identity      Canonical plan identity.
-	 * @param array                $missing_paths Missing required input paths.
-	 * @param array                $invalid_paths Invalid input paths.
-	 * @param string               $canonical     Canonical plan JSON.
-	 * @param string               $plan_hash     SHA-256 plan hash.
+	 * @param array<string, mixed>  $identity      Canonical plan identity.
+	 * @param array                 $missing_paths Missing required input paths.
+	 * @param array                 $invalid_paths Invalid input paths.
+	 * @param string                $canonical     Canonical plan JSON.
+	 * @param string                $plan_hash     SHA-256 plan hash.
+	 * @param WorkflowInputContract $input        Normalized workflow input.
 	 * @phpstan-param list<string> $missing_paths
 	 * @phpstan-param list<string> $invalid_paths
 	 */
@@ -32,7 +33,8 @@ final readonly class WorkflowPlan {
 		private array $missing_paths,
 		private array $invalid_paths,
 		private string $canonical,
-		private string $plan_hash
+		private string $plan_hash,
+		private WorkflowInputContract $input
 	) {
 	}
 
@@ -51,7 +53,32 @@ final readonly class WorkflowPlan {
 			$projection['missing_paths'],
 			$projection['invalid_paths'],
 			$projection['canonical'],
-			$projection['plan_hash']
+			$projection['plan_hash'],
+			$input
+		);
+	}
+
+	/** Return the normalized input for internal, bound argument resolution. */
+	public function input_contract(): WorkflowInputContract {
+		return $this->input;
+	}
+
+	/**
+	 * Keep the normalized request payload out of serialized preparation results.
+	 *
+	 * The input contract is an execution-time implementation detail. It is retained
+	 * for argument binding, but must never be exposed when a plan/result is logged,
+	 * cached, or otherwise serialized for transport.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function __serialize(): array {
+		return array(
+			'identity'      => $this->identity,
+			'missing_paths' => $this->missing_paths,
+			'invalid_paths' => $this->invalid_paths,
+			'canonical'     => $this->canonical,
+			'plan_hash'     => $this->plan_hash,
 		);
 	}
 

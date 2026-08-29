@@ -18,6 +18,7 @@ use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunStoreException;
+use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
@@ -131,6 +132,105 @@ final class WorkflowRunStoreTest extends TestCase {
 		} catch ( WorkflowRunStoreException $exception ) {
 			self::assertSame( 'stored_output_invalid', $exception->error_code() );
 		}
+	}
+
+	public function test_late_step_completion_is_rejected_after_run_cancellation(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$store->create( 'run-store-cancel', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$running = $store->transition( 'run-store-cancel', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		self::assertNotNull( $running );
+		$claimed = $store->claim_step( 'run-store-cancel', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		self::assertNull(
+			$store->transition( 'run-store-cancel', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' ),
+			'Cancellation must not cross an active durable step lease.'
+		);
+		self::assertNotNull( $store->fail_step( 'run-store-cancel', 'read_content', $claimed?->fence() ?? 0, 'execution_uncertain', 7 ) );
+		$cancelled = $store->transition( 'run-store-cancel', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' );
+		self::assertNotNull( $cancelled );
+
+		self::assertNull(
+			$store->complete_step(
+				'run-store-cancel',
+				'read_content',
+				$claimed?->fence() ?? 0,
+				WorkflowAdapterResult::success( array( 'late' => true ) ),
+				7
+			),
+			'An adapter completion arriving after cancellation must be fenced out.'
+		);
+	}
+
+	public function test_late_step_completion_is_rejected_after_its_lease_expires(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-store-lease', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$running = $store->transition( 'run-store-lease', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		self::assertNotNull( $running );
+		$claimed = $store->claim_step( 'run-store-lease', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		self::assertNotNull( $claimed?->lease_expires_at() );
+
+		$now += 31;
+		self::assertNull(
+			$store->complete_step(
+				'run-store-lease',
+				'read_content',
+				$claimed?->fence() ?? 0,
+				WorkflowAdapterResult::success( array( 'late' => true ) ),
+				7
+			),
+			'An adapter completion arriving after lease expiry must be fenced out.'
+		);
+		$reclaimed = $store->claim_step( 'run-store-lease', 'read_content', 7 );
+		self::assertNotNull( $reclaimed );
+		self::assertGreaterThan( $claimed?->fence() ?? 0, $reclaimed?->fence() ?? 0 );
+
+		self::assertNull(
+			$store->complete_step(
+				'run-store-lease',
+				'read_content',
+				$claimed?->fence() ?? 0,
+				WorkflowAdapterResult::success( array( 'late' => true ) ),
+				7
+			),
+			'An adapter completion arriving after lease expiry must be fenced out.'
+		);
+	}
+
+	public function test_only_execution_uncertain_can_close_an_expired_step_claim(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-store-expired-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		self::assertNotNull( $store->transition( 'run-store-expired-failure', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 ) );
+		$claimed = $store->claim_step( 'run-store-expired-failure', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		$now += 31;
+
+		self::assertNull(
+			$store->fail_step( 'run-store-expired-failure', 'read_content', $claimed?->fence() ?? 0, 'execution_not_available', 7 ),
+			'An expired claim must not accept a late adapter failure code.'
+		);
+		$uncertain = $store->fail_step( 'run-store-expired-failure', 'read_content', $claimed?->fence() ?? 0, 'execution_uncertain', 7 );
+		self::assertNotNull( $uncertain );
+		self::assertSame( WorkflowStepState::FAILED, $uncertain?->state() );
+		self::assertSame( 'execution_uncertain', $uncertain?->error_code() );
 	}
 
 	public function test_run_schema_has_separate_run_and_step_fencing_fields(): void {

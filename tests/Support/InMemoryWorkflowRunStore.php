@@ -105,6 +105,13 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( null === $record || $record->state() !== $expected_state || $record->state_version() !== $expected_version ) {
 			return null;
 		}
+		if ( WorkflowRunState::RUNNING === $expected_state && WorkflowRunState::CANCELLED === $next_state ) {
+			foreach ( $this->steps[ $run_id ] ?? array() as $step ) {
+				if ( WorkflowStepState::RUNNING === $step->state() ) {
+					return null;
+				}
+			}
+		}
 
 		$updated               = new WorkflowRunRecord(
 			$record->id(),
@@ -228,6 +235,10 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 	}
 
 	private function finish( string $run_id, string $step_id, int $fence, WorkflowStepState $state, string $result_code, ?string $error_code, ?stdClass $output ): ?WorkflowStepRecord {
+		$run = $this->runs[ $run_id ] ?? null;
+		if ( null === $run || WorkflowRunState::RUNNING !== $run->state() ) {
+			return null;
+		}
 		foreach ( $this->steps[ $run_id ] ?? array() as $index => $step ) {
 			if ( $step->step_id() !== $step_id || WorkflowStepState::RUNNING !== $step->state() || $step->fence() !== $fence ) {
 				continue;

@@ -154,6 +154,62 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( WorkflowRunState::COMPLETED, $completed->run()->state() );
 	}
 
+	public function test_step_arguments_bind_input_and_completed_prior_output(): void {
+		$base                           = $this->record( 'ordered-multi-step-v1.json' );
+		$value                          = json_decode( $base->definition()->canonical_json(), true, 512, JSON_THROW_ON_ERROR );
+		$value['steps'][1]['arguments'] = array(
+			'brief'         => '{{input.brief}}',
+			'context_title' => '{{steps.read_context.output.title}}',
+		);
+		$definition                     = WorkflowDefinition::from_array( $value );
+		$record                         = $this->record_from_definition( $definition );
+		$plan                           = $this->plan( $record, '{"brief":"Bound brief"}' );
+		$prepare_args                   = array();
+		$adapters                       = array(
+			$this->adapter(
+				'wordpress',
+				2,
+				'content/get-item',
+				'read',
+				static fn (): WorkflowAdapterResult => WorkflowAdapterResult::success( array( 'title' => 'Context title' ) )
+			),
+			$this->adapter(
+				'content_planner',
+				1,
+				'content/prepare-draft',
+				'proposal',
+				static function ( WorkflowPlan $unused_plan, string $unused_step, array $arguments ) use ( &$prepare_args ): WorkflowAdapterResult {
+					unset( $unused_plan, $unused_step );
+					$prepare_args = $arguments;
+
+					return WorkflowAdapterResult::success( array( 'ready' => true ) );
+				}
+			),
+			$this->adapter( 'wordpress', 1, 'content/create-draft', 'write' ),
+		);
+		$runner                         = $this->runner( $adapters );
+		$run                            = $runner->create( $record, $plan, WorkflowInputContract::from_json( '{"brief":"Bound brief"}' ), 7 );
+		$runner->build_dry_run( $run->run_id(), $plan, 7 );
+		$runner->request_approval( $run->run_id(), $plan, 7 );
+		$runner->start(
+			$run->run_id(),
+			$plan,
+			WorkflowReadinessEvidence::from_evaluation( $plan, array(), true ),
+			7,
+			new WorkflowApprovalEvidence( $plan->hash(), array( 'create_draft' ), 'approval-bindings', true )
+		);
+		$runner->execute_next( $record, $run->run_id(), $plan, array(), 7 );
+		$runner->execute_next( $record, $run->run_id(), $plan, array(), 7 );
+
+		self::assertSame(
+			array(
+				'brief'         => 'Bound brief',
+				'context_title' => 'Context title',
+			),
+			$prepare_args
+		);
+	}
+
 	public function test_incomplete_input_can_resume_against_the_same_definition_revision(): void {
 		$definition = $this->record( 'ordered-multi-step-v1.json' );
 		$incomplete = $this->plan( $definition, '{}' );
@@ -263,6 +319,28 @@ final class WorkflowRunnerTest extends TestCase {
 		$value      = $definition->to_array();
 		$status     = (string) $value['status'];
 		$version    = (int) $value['workflow_version'];
+
+		return new WorkflowDefinitionRecord(
+			1,
+			(string) $value['workflow_id'],
+			$status,
+			$version,
+			'published' === $status ? $version : 0,
+			'',
+			0,
+			(int) $value['created_by'],
+			(int) $value['updated_by'],
+			1,
+			'2026-08-29 00:00:00',
+			'2026-08-29 00:00:00',
+			$definition
+		);
+	}
+
+	private function record_from_definition( WorkflowDefinition $definition ): WorkflowDefinitionRecord {
+		$value   = $definition->to_array();
+		$status  = (string) $value['status'];
+		$version = (int) $value['workflow_version'];
 
 		return new WorkflowDefinitionRecord(
 			1,

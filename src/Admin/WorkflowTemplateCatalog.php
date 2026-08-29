@@ -40,7 +40,7 @@ final class WorkflowTemplateCatalog {
 				'target_mode'    => 'new',
 				'post_types'     => array( 'post' ),
 				'input_fields'   => array( 'brief:string:required' ),
-				'step_abilities' => array( 'content/prepare-draft', 'content/create-draft' ),
+				'step_abilities' => array( 'content/prepare-draft', 'content/create-item' ),
 				'write_policy'   => 'draft_only',
 			),
 			'seo_rewrite'               => array(
@@ -67,7 +67,7 @@ final class WorkflowTemplateCatalog {
 				'target_mode'    => 'new',
 				'post_types'     => array( 'post' ),
 				'input_fields'   => array( 'brief:string:required' ),
-				'step_abilities' => array( 'content/prepare-draft', 'content/create-draft' ),
+				'step_abilities' => array( 'content/prepare-draft', 'content/create-item' ),
 				'write_policy'   => 'draft_only',
 			),
 			'blank'                     => array(

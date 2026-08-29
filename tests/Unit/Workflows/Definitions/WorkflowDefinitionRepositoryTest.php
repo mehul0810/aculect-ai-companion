@@ -162,6 +162,23 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		}
 	}
 
+	public function test_repository_does_not_persist_a_blocked_behavior_migration(): void {
+		$repository = new WorkflowDefinitionRepository();
+		$repository->create( WorkflowDefinition::from_array( $this->definition() ) );
+		$next                     = $this->definition();
+		$next['workflow_version'] = 2;
+		$next['write_policy']     = array( 'mode' => 'draft_only' );
+
+		try {
+			$repository->update( WorkflowDefinition::from_array( $next ), 1 );
+			self::fail( 'A blocked write-policy migration must not be persisted.' );
+		} catch ( WorkflowDefinitionRepositoryException $exception ) {
+			self::assertSame( 'migration_blocked', $exception->error_code() );
+		}
+
+		self::assertSame( 1, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflow_versions' ) );
+	}
+
 	public function test_repository_rejects_malformed_role_metadata(): void {
 		$repository = new WorkflowDefinitionRepository();
 

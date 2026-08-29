@@ -36,6 +36,7 @@ final readonly class WorkflowStepRecord {
 	 * @param string|null       $started_at      UTC start timestamp.
 	 * @param string|null       $completed_at    UTC completion timestamp.
 	 * @param string            $updated_at      UTC update timestamp.
+	 * @param string|null       $lease_expires_at UTC lease expiry timestamp.
 	 */
 	public function __construct(
 		private int $id,
@@ -54,7 +55,8 @@ final readonly class WorkflowStepRecord {
 		private ?string $output_json,
 		private ?string $started_at,
 		private ?string $completed_at,
-		private string $updated_at
+		private string $updated_at,
+		private ?string $lease_expires_at = null
 	) {
 	}
 
@@ -92,6 +94,8 @@ final readonly class WorkflowStepRecord {
 		return $this->completed_at; }
 	public function updated_at(): string {
 		return $this->updated_at; }
+	public function lease_expires_at(): ?string {
+		return $this->lease_expires_at; }
 
 	/**
 	 * Return a public-safe representation without output values.

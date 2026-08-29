@@ -281,16 +281,11 @@ final class CustomWorkflowAbilityModules {
 		return array(
 			'type'                 => 'object',
 			'properties'           => array(
-				'reference'      => array(
-					'type'      => 'string',
-					'maxLength' => 128,
+				'approval_token' => array(
+					'type'        => 'string',
+					'maxLength'   => 64,
+					'description' => 'One-time approval token issued by content_workflow.execute after reviewing the dry run.',
 				),
-				'approved_gates' => array(
-					'type'     => 'array',
-					'maxItems' => 50,
-					'items'    => array( 'type' => 'string' ),
-				),
-				'approved'       => array( 'type' => 'boolean' ),
 			),
 			'additionalProperties' => false,
 		);

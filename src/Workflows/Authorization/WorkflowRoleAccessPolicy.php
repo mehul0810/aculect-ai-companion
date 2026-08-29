@@ -90,6 +90,13 @@ final class WorkflowRoleAccessPolicy {
 			return true;
 		}
 
+		$known = array_fill_keys( array_column( $this->available_roles(), 'id' ), true );
+		foreach ( $allowed_roles as $allowed_role ) {
+			if ( ! is_string( $allowed_role ) || ! isset( $known[ $allowed_role ] ) ) {
+				return false;
+			}
+		}
+
 		$roles = array();
 		if ( isset( $auth['roles'] ) && is_array( $auth['roles'] ) ) {
 			$roles = $this->role_slugs( $auth['roles'] );

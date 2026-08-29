@@ -13,6 +13,8 @@ use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Workflows\Authorization\WorkflowRoleAccessPolicy;
+use Aculect\AICompanion\Workflows\Authorization\WorkflowApprovalAuthority;
+use Aculect\AICompanion\Workflows\Authorization\WorkflowExecutionAuthorization;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
@@ -28,7 +30,6 @@ use Aculect\AICompanion\Workflows\Execution\WorkflowRunnerException;
 use Aculect\AICompanion\Workflows\Execution\WorkflowStepRecord;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowDryRun;
-use Aculect\AICompanion\Workflows\Planning\WorkflowExecutionEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowAvailabilitySnapshot;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
@@ -49,9 +50,7 @@ use stdClass;
  * OAuth scopes, WordPress capabilities, and write safety remain authoritative.
  */
 final class WorkflowAbilityConnector {
-
 	private const MAX_LIST = 50;
-
 	private WorkflowDefinitionRepository $definitions;
 	private WorkflowAdapterRegistry $adapters;
 	private WorkflowRunStoreInterface $runs;
@@ -59,6 +58,9 @@ final class WorkflowAbilityConnector {
 	private WorkflowPlanBuilder $plans;
 	private WorkflowPlanReadinessEvaluator $readiness;
 	private WorkflowRoleAccessPolicy $role_access;
+	private WorkflowApprovalAuthority $approval_authority;
+	private WorkflowExecutionGuard $execution_guard;
+	private ?WorkflowExecutionAuthorization $execution_authorization = null;
 
 	/**
 	 * Provides the authenticated request context for connector calls.
@@ -78,6 +80,7 @@ final class WorkflowAbilityConnector {
 	 * @param WorkflowPlanReadinessEvaluator|null $readiness Readiness evaluator.
 	 * @param Closure|null                        $auth_provider Request auth provider.
 	 * @param WorkflowRoleAccessPolicy|null       $role_access Workflow role policy.
+	 * @param WorkflowApprovalAuthority|null      $approval_authority Server-issued approval authority.
 	 */
 	public function __construct(
 		?WorkflowDefinitionRepository $definitions = null,
@@ -87,16 +90,19 @@ final class WorkflowAbilityConnector {
 		?WorkflowPlanBuilder $plans = null,
 		?WorkflowPlanReadinessEvaluator $readiness = null,
 		?Closure $auth_provider = null,
-		?WorkflowRoleAccessPolicy $role_access = null
+		?WorkflowRoleAccessPolicy $role_access = null,
+		?WorkflowApprovalAuthority $approval_authority = null
 	) {
-		$this->definitions   = $definitions ?? new WorkflowDefinitionRepository();
-		$this->adapters      = $adapters ?? WorkflowAdapterRegistry::from_catalog();
-		$this->runs          = $runs ?? new WorkflowRunStore();
-		$this->audit         = $audit ?? new WorkflowAuditStore();
-		$this->plans         = $plans ?? new WorkflowPlanBuilder();
-		$this->readiness     = $readiness ?? new WorkflowPlanReadinessEvaluator();
-		$this->role_access   = $role_access ?? new WorkflowRoleAccessPolicy();
-		$this->auth_provider = $auth_provider ?? static fn (): array => AbilityExecutionGateway::current_request_auth();
+		$this->definitions        = $definitions ?? new WorkflowDefinitionRepository();
+		$this->adapters           = $adapters ?? WorkflowAdapterRegistry::from_catalog();
+		$this->runs               = $runs ?? new WorkflowRunStore();
+		$this->audit              = $audit ?? new WorkflowAuditStore();
+		$this->plans              = $plans ?? new WorkflowPlanBuilder();
+		$this->readiness          = $readiness ?? new WorkflowPlanReadinessEvaluator();
+		$this->role_access        = $role_access ?? new WorkflowRoleAccessPolicy();
+		$this->approval_authority = $approval_authority ?? new WorkflowApprovalAuthority();
+		$this->execution_guard    = new WorkflowExecutionGuard( $this->approval_authority );
+		$this->auth_provider      = $auth_provider ?? static fn (): array => AbilityExecutionGateway::current_request_auth();
 	}
 
 	/**
@@ -257,6 +263,9 @@ final class WorkflowAbilityConnector {
 			$updated = $this->runner()->build_dry_run( $run->run_id(), $plan, $auth['user_id'] );
 			$dry_run = WorkflowDryRun::from_plan( $plan );
 		} catch ( WorkflowRunnerException $exception ) {
+			if ( 'approval_required' === $exception->error_code() ) {
+				return $this->approval_required( $run, $plan, $auth );
+			}
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_dry_run_failed', 'The workflow dry-run could not be built.' );
@@ -305,9 +314,12 @@ final class WorkflowAbilityConnector {
 		if ( ! $evidence instanceof WorkflowReadinessEvidence ) {
 			return $this->error( 'workflow_readiness_unavailable', 'Workflow requirements could not be evaluated.' );
 		}
-		$approval = $this->approval( $args['approval'] ?? null, $plan );
+		$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
 		if ( is_array( $approval ) ) {
 			return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
+		}
+		if ( WorkflowRunState::RUNNING === $run->state() && array() !== $plan->approval_gate_step_ids() && null === $approval ) {
+			return $this->approval_required( $run, $plan, $auth );
 		}
 
 		try {
@@ -315,7 +327,7 @@ final class WorkflowAbilityConnector {
 			$run    = $this->start_if_needed( $runner, $run, $plan, $evidence, $auth['user_id'], $approval );
 		} catch ( WorkflowRunnerException $exception ) {
 			if ( 'approval_required' === $exception->error_code() ) {
-				return $this->approval_required( $run, $plan );
+				return $this->approval_required( $run, $plan, $auth );
 			}
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
@@ -323,13 +335,18 @@ final class WorkflowAbilityConnector {
 		}
 
 		if ( WorkflowRunState::WAITING_FOR_APPROVAL === $run->state() ) {
-			return $this->approval_required( $run, $plan );
+			return $this->approval_required( $run, $plan, $auth );
 		}
 
 		try {
-			$execution_auth                             = $auth;
-			$execution_auth['write_permission_enabled'] = true;
-			$progress                                   = $this->runner()->execute_next( $record, $run->run_id(), $plan, $execution_auth, $auth['user_id'] );
+			$runner   = $this->runner();
+			$execute  = fn (): WorkflowRunExecutionResult => $runner->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] );
+			$progress = null !== $this->execution_authorization
+				? AbilityExecutionGateway::with_workflow_authorization( $this->execution_authorization, $execute )
+				: $execute();
+			if ( ! $progress instanceof WorkflowRunExecutionResult ) {
+				return $this->error( 'workflow_execution_failed', 'The workflow step could not be executed.' );
+			}
 		} catch ( WorkflowRunnerException $exception ) {
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
@@ -373,7 +390,7 @@ final class WorkflowAbilityConnector {
 				if ( null !== ( $readiness['error'] ?? null ) ) {
 					return $readiness['error'];
 				}
-				$approval = $this->approval( $args['approval'] ?? null, $plan );
+				$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
 				if ( is_array( $approval ) ) {
 					return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
 				}
@@ -384,11 +401,22 @@ final class WorkflowAbilityConnector {
 			}
 
 			if ( WorkflowRunState::RUNNING === $run->state() ) {
-				$execution_auth                             = $auth;
-				$execution_auth['write_permission_enabled'] = true;
-				return $this->execution_payload( $runner->execute_next( $record, $run->run_id(), $plan, $execution_auth, $auth['user_id'] ), $plan );
+				if ( array() !== $plan->approval_gate_step_ids() && null === $this->execution_authorization ) {
+					return $this->approval_required( $run, $plan, $auth );
+				}
+				$execute  = fn (): WorkflowRunExecutionResult => $runner->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] );
+				$progress = null !== $this->execution_authorization
+					? AbilityExecutionGateway::with_workflow_authorization( $this->execution_authorization, $execute )
+					: $execute();
+				return $this->execution_payload( $progress, $plan );
+			}
+			if ( WorkflowRunState::WAITING_FOR_APPROVAL === $run->state() ) {
+				return $this->approval_required( $run, $plan, $auth );
 			}
 		} catch ( WorkflowRunnerException $exception ) {
+			if ( 'approval_required' === $exception->error_code() ) {
+				return $this->approval_required( $run, $plan, $auth );
+			}
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_resume_failed', 'The workflow could not be resumed.' );
@@ -419,16 +447,9 @@ final class WorkflowAbilityConnector {
 			return $context;
 		}
 		[ $run, , $plan ] = $context;
-		$evidence         = null;
-		if ( WorkflowRunState::RUNNING === $run->state() ) {
-			if ( true !== ( $args['safe_stop'] ?? false ) ) {
-				return $this->error( 'cancel_not_allowed', 'Set safe_stop after the current step reaches a safe boundary.' );
-			}
-			try {
-				$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'cancelled', 'safe_stop', true );
-			} catch ( Throwable ) {
-				return $this->error( 'cancel_not_allowed', 'The run is not at a proven safe boundary.' );
-			}
+		$evidence         = $this->execution_guard->cancellation_evidence( $run, $plan, $args, $this->runs );
+		if ( is_array( $evidence ) ) {
+			return $evidence;
 		}
 
 		try {
@@ -725,29 +746,17 @@ final class WorkflowAbilityConnector {
 	/**
 	 * Parse caller-supplied approval and bind it to the exact plan.
 	 *
-	 * @param mixed        $value Approval object.
-	 * @param WorkflowPlan $plan Exact plan.
+	 * @param mixed               $value Approval object.
+	 * @param string              $run_id Run ID bound to the approval.
+	 * @param WorkflowPlan        $plan Exact plan.
+	 * @param array<string,mixed> $auth Authenticated request context.
 	 * @return WorkflowApprovalEvidence|array<string,mixed>|null
 	 */
-	private function approval( mixed $value, WorkflowPlan $plan ): WorkflowApprovalEvidence|array|null {
-		if ( null === $value ) {
-			return null;
-		}
-		$value = $this->map( $value );
-		if ( null === $value || ! isset( $value['reference'], $value['approved_gates'], $value['approved'] ) || ! is_string( $value['reference'] ) || ! is_array( $value['approved_gates'] ) || ! is_bool( $value['approved'] ) ) {
-			return array(
-				'error'   => 'invalid_approval',
-				'message' => 'Approval evidence must include reference, approved_gates, and approved.',
-			);
-		}
-		try {
-			return new WorkflowApprovalEvidence( $plan->hash(), array_values( array_map( 'strval', $value['approved_gates'] ) ), $value['reference'], $value['approved'] );
-		} catch ( Throwable ) {
-			return array(
-				'error'   => 'invalid_approval',
-				'message' => 'Approval evidence is invalid for this workflow plan.',
-			);
-		}
+	private function approval( mixed $value, string $run_id, WorkflowPlan $plan, array $auth ): WorkflowApprovalEvidence|array|null {
+		$resolution                    = $this->execution_guard->resolve_approval( $value, $run_id, $plan, $auth );
+		$this->execution_authorization = $resolution['authorization'];
+
+		return null !== $resolution['error'] ? $resolution['error'] : $resolution['approval'];
 	}
 
 	/**
@@ -985,12 +994,14 @@ final class WorkflowAbilityConnector {
 	/**
 	 * Return an approval-required response.
 	 *
-	 * @param WorkflowRunRecord $run Run record.
-	 * @param WorkflowPlan      $plan Exact workflow plan.
+	 * @param WorkflowRunRecord   $run Run record.
+	 * @param WorkflowPlan        $plan Exact workflow plan.
+	 * @param array<string,mixed> $auth Authenticated request context.
 	 * @return array<string,mixed>
 	 */
-	private function approval_required( WorkflowRunRecord $run, WorkflowPlan $plan ): array {
-		return array(
+	private function approval_required( WorkflowRunRecord $run, WorkflowPlan $plan, array $auth ): array {
+		$token   = $this->approval_authority->issue( $run->run_id(), $plan, $auth );
+		$payload = array(
 			'status'            => 'blocked',
 			'error'             => 'approval_required',
 			'message'           => 'Explicit approval is required for the planned write steps.',
@@ -999,6 +1010,13 @@ final class WorkflowAbilityConnector {
 			'dry_run'           => WorkflowDryRun::from_plan( $plan )->to_array(),
 			'bounded'           => true,
 		);
+		if ( '' !== $token ) {
+			$payload['approval_token']        = $token;
+			$payload['approval_expires_in']   = $this->approval_authority->ttl();
+			$payload['approval_instructions'] = 'Repeat the same workflow call with approval.approval_token before it expires.';
+		}
+
+		return $payload;
 	}
 
 	/**

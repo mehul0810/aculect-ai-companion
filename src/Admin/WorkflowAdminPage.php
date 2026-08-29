@@ -9,8 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Admin;
 
-use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionCompatibilityEvaluator;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
 use Throwable;
 
 defined( 'ABSPATH' ) || exit;
@@ -72,6 +72,8 @@ final class WorkflowAdminPage {
 		$values    = null !== $this->form_values ? $this->form_values : $this->values_for_record( $record );
 		$templates = $this->service->templates();
 		$adapters  = $this->service->adapters();
+		$roles     = $this->service->roles();
+		$audit     = $this->service->recent_audit();
 
 		echo '<div class="wrap">';
 		echo '<h1>' . esc_html__( 'Content Workflows', 'aculect-ai-companion' ) . '</h1>';
@@ -80,7 +82,8 @@ final class WorkflowAdminPage {
 		$this->render_notice( $this->notice );
 
 		$this->render_list( $list['records'] );
-		$this->render_editor( $values, $templates, $adapters, $record );
+		$this->render_audit( $audit['events'], $audit['error'] ?? null );
+		$this->render_editor( $values, $templates, $adapters, $roles, $record );
 		echo '</div>';
 	}
 
@@ -145,6 +148,14 @@ final class WorkflowAdminPage {
 	 * @return array<string,mixed>
 	 */
 	private function submitted_values(): array {
+		$allowed_roles = $_POST['allowed_roles'] ?? array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+		if ( is_array( $allowed_roles ) ) {
+			$allowed_roles = array_map(
+				static fn ( mixed $role ): mixed => is_scalar( $role ) ? sanitize_key( (string) $role ) : $role,
+				$allowed_roles
+			);
+		}
+
 		return array(
 			'workflow_id'      => sanitize_key( (string) ( $_POST['workflow_id'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'expected_version' => absint( $_POST['expected_version'] ?? 0 ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
@@ -156,6 +167,7 @@ final class WorkflowAdminPage {
 			'input_fields'     => (string) ( $_POST['input_fields'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'step_abilities'   => (string) ( $_POST['step_abilities'] ?? '' ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
 			'write_policy'     => sanitize_key( (string) ( $_POST['write_policy'] ?? 'proposal_only' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by caller.
+			'allowed_roles'    => $allowed_roles,
 		);
 	}
 
@@ -188,22 +200,23 @@ final class WorkflowAdminPage {
 	/**
 	 * Render the guided editor.
 	 *
-	 * @param array<string,mixed>               $values Form values.
-	 * @param array<string,array<string,mixed>> $templates Templates.
-	 * @param list<array<string,mixed>>         $adapters Adapter descriptors.
-	 * @param WorkflowDefinitionRecord|null     $record Existing record.
+	 * @param array<string,mixed>                 $values Form values.
+	 * @param array<string,array<string,mixed>>   $templates Templates.
+	 * @param list<array<string,mixed>>           $adapters Adapter descriptors.
+	 * @param list<array{id:string,label:string}> $roles Registered roles.
+	 * @param WorkflowDefinitionRecord|null       $record Existing record.
 	 */
-	private function render_editor( array $values, array $templates, array $adapters, ?WorkflowDefinitionRecord $record ): void {
+	private function render_editor( array $values, array $templates, array $adapters, array $roles, ?WorkflowDefinitionRecord $record ): void {
 		echo '<hr><h2>' . esc_html( null === $record ? __( 'Add workflow', 'aculect-ai-companion' ) : __( 'Edit workflow', 'aculect-ai-companion' ) ) . '</h2>';
 		if ( null !== $record && $record->published_version() > 0 ) {
 			echo '<div class="notice notice-info inline"><p>' . esc_html__( 'Saving creates the next immutable version. Existing runs stay pinned to their original checksum; review compatibility before publishing.', 'aculect-ai-companion' ) . '</p></div>';
-			$preview = $this->service->compatibility_preview( $values, get_current_user_id(), $record );
+			$preview = $this->service->migration_preview( $values, get_current_user_id(), $record );
 			if ( is_array( $preview ) ) {
 				$change_codes = array_map(
 					static fn ( mixed $change ): string => is_array( $change ) ? (string) ( $change['code'] ?? '' ) : '',
-					(array) ( $preview['changes'] ?? array() )
+					(array) ( $preview['actions'] ?? array() )
 				);
-				echo '<p><strong>' . esc_html__( 'Compatibility preview:', 'aculect-ai-companion' ) . '</strong> ' . esc_html( (string) ( $preview['classification'] ?? 'unavailable' ) ) . ( array() !== array_filter( $change_codes ) ? ' — ' . esc_html( implode( ', ', array_filter( $change_codes ) ) ) : '' ) . '</p>';
+				echo '<p><strong>' . esc_html__( 'Migration preview:', 'aculect-ai-companion' ) . '</strong> ' . esc_html( (string) ( $preview['status'] ?? 'unavailable' ) ) . ( isset( $preview['migration_id'] ) ? ' · ' . esc_html( substr( (string) $preview['migration_id'], 0, 12 ) ) : '' ) . ( array() !== array_filter( $change_codes ) ? ' — ' . esc_html( implode( ', ', array_filter( $change_codes ) ) ) : '' ) . '</p>';
 			}
 		}
 		if ( array() !== $this->form_errors ) {
@@ -229,6 +242,12 @@ final class WorkflowAdminPage {
 		$this->field( 'post_types', __( 'Content target', 'aculect-ai-companion' ), $values['post_types'] ?? '', 'Comma- or line-separated public post types, for example post or page.' );
 		$this->field( 'input_fields', __( 'Inputs', 'aculect-ai-companion' ), $values['input_fields'] ?? '', 'One per line: field:type[:required]. Types: string, integer, number, boolean.' );
 		$this->field( 'step_abilities', __( 'Steps', 'aculect-ai-companion' ), $values['step_abilities'] ?? '', 'One supported ability per line, in execution order. Dependencies are generated from this order.' );
+		echo '<tr><th><span>' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</span></th><td><fieldset><legend class="screen-reader-text">' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</legend>';
+		foreach ( $roles as $role ) {
+			$id = (string) $role['id'];
+			echo '<label style="display:block"><input type="checkbox" name="allowed_roles[]" value="' . esc_attr( $id ) . '"' . ( in_array( $id, (array) ( $values['allowed_roles'] ?? array() ), true ) ? ' checked' : '' ) . '> ' . esc_html( (string) $role['label'] ) . '</label>';
+		}
+		echo '<p class="description">' . esc_html__( 'Leave every role unchecked to inherit the existing Aculect ability policy. Administrators remain subject to the same ability, capability, scope, and approval checks.', 'aculect-ai-companion' ) . '</p></fieldset></td></tr>';
 		echo '<tr><th><label for="aculect-target-mode">' . esc_html__( 'Target mode', 'aculect-ai-companion' ) . '</label></th><td><select id="aculect-target-mode" name="target_mode">';
 		foreach ( array(
 			'new'      => 'New content',
@@ -294,6 +313,7 @@ final class WorkflowAdminPage {
 				'input_fields'     => implode( "\n", $template['input_fields'] ),
 				'step_abilities'   => implode( "\n", $template['step_abilities'] ),
 				'write_policy'     => $template['write_policy'],
+				'allowed_roles'    => array(),
 				'status'           => 'draft',
 			);
 		}
@@ -324,8 +344,36 @@ final class WorkflowAdminPage {
 			'input_fields'     => implode( "\n", $fields ),
 			'step_abilities'   => implode( "\n", $steps ),
 			'write_policy'     => $value['write_policy']['mode'] ?? 'proposal_only',
+			'allowed_roles'    => $record->allowed_roles(),
 			'status'           => $value['status'] ?? 'draft',
 		);
+	}
+
+	/**
+	 * Render recent summary-only workflow events.
+	 *
+	 * @param array<int,WorkflowAuditRecord> $events Recent events.
+	 * @param string|null                    $error  Storage error, if any.
+	 * @phpstan-param list<WorkflowAuditRecord> $events
+	 */
+	private function render_audit( array $events, ?string $error ): void {
+		echo '<h2>' . esc_html__( 'Recent workflow activity', 'aculect-ai-companion' ) . '</h2>';
+		if ( null !== $error && '' !== $error ) {
+			echo '<p>' . esc_html( $error ) . '</p>';
+			return;
+		}
+		if ( array() === $events ) {
+			echo '<p>' . esc_html__( 'No workflow events have been recorded yet.', 'aculect-ai-companion' ) . '</p>';
+			return;
+		}
+		echo '<table class="widefat striped"><thead><tr><th>Workflow</th><th>Event</th><th>Outcome</th><th>Changed fields</th><th>When</th></tr></thead><tbody>';
+		foreach ( $events as $event ) {
+			if ( ! $event instanceof WorkflowAuditRecord ) {
+				continue;
+			}
+			echo '<tr><td><code>' . esc_html( $event->workflow_id() ) . '</code> v' . esc_html( (string) $event->workflow_version() ) . '</td><td>' . esc_html( $event->event_type() ) . ( '' !== $event->step_id() ? ' · ' . esc_html( $event->step_id() ) : '' ) . '</td><td>' . esc_html( $event->outcome_code() ?? '—' ) . '</td><td>' . esc_html( implode( ', ', $event->changed_fields() ) ) . '</td><td>' . esc_html( $event->created_at() ) . '</td></tr>';
+		}
+		echo '</tbody></table>';
 	}
 
 	/**

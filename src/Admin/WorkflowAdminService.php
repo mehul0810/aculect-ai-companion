@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Admin;
 
+use Aculect\AICompanion\Workflows\Authorization\WorkflowRoleAccessPolicy;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterCatalog;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterDescriptor;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
@@ -17,6 +18,10 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionValidationException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStore;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
 use Throwable;
 
 /**
@@ -30,16 +35,22 @@ final class WorkflowAdminService {
 
 	private WorkflowTemplateCatalog $templates;
 	private WorkflowDefinitionRepository $repository;
+	private WorkflowRoleAccessPolicy $role_access;
+	private WorkflowAuditStoreInterface $audit;
 
 	/**
 	 * Create the service with repository and template collaborators.
 	 *
-	 * @param WorkflowDefinitionRepository|null $repository Definition repository.
-	 * @param WorkflowTemplateCatalog|null      $templates Starter catalog.
+	 * @param WorkflowDefinitionRepository|null $repository  Definition repository.
+	 * @param WorkflowTemplateCatalog|null      $templates   Starter catalog.
+	 * @param WorkflowRoleAccessPolicy|null     $role_access Workflow role policy.
+	 * @param WorkflowAuditStoreInterface|null  $audit       Summary-only audit store.
 	 */
-	public function __construct( ?WorkflowDefinitionRepository $repository = null, ?WorkflowTemplateCatalog $templates = null ) {
-		$this->repository = $repository ?? new WorkflowDefinitionRepository();
-		$this->templates  = $templates ?? new WorkflowTemplateCatalog();
+	public function __construct( ?WorkflowDefinitionRepository $repository = null, ?WorkflowTemplateCatalog $templates = null, ?WorkflowRoleAccessPolicy $role_access = null, ?WorkflowAuditStoreInterface $audit = null ) {
+		$this->repository  = $repository ?? new WorkflowDefinitionRepository();
+		$this->templates   = $templates ?? new WorkflowTemplateCatalog();
+		$this->role_access = $role_access ?? new WorkflowRoleAccessPolicy();
+		$this->audit       = $audit ?? new WorkflowAuditStore();
 	}
 
 	/**
@@ -61,6 +72,34 @@ final class WorkflowAdminService {
 			static fn ( WorkflowAdapterDescriptor $descriptor ): array => $descriptor->to_array(),
 			WorkflowAdapterCatalog::descriptors()
 		);
+	}
+
+	/**
+	 * Return registered roles available for workflow-level narrowing.
+	 *
+	 * @return list<array{id:string,label:string}>
+	 */
+	public function roles(): array {
+		return $this->role_access->available_roles();
+	}
+
+	/**
+	 * Return recent summary-only workflow events for admin inspection.
+	 *
+	 * @return array{events:list<WorkflowAuditRecord>,error:string|null}
+	 */
+	public function recent_audit(): array {
+		try {
+			return array(
+				'events' => $this->audit->recent( 25 ),
+				'error'  => null,
+			);
+		} catch ( Throwable ) {
+			return array(
+				'events' => array(),
+				'error'  => 'Workflow audit events are temporarily unavailable.',
+			);
+		}
 	}
 
 	/**
@@ -128,13 +167,21 @@ final class WorkflowAdminService {
 				'errors' => array( 'workflow_id' => 'The workflow could not be found for this versioned edit.' ),
 			);
 		}
+		$role_errors   = array();
+		$allowed_roles = $this->normalize_roles( $submitted['allowed_roles'] ?? ( $existing?->allowed_roles() ?? array() ), $role_errors );
+		if ( array() !== $role_errors ) {
+			return array(
+				'ok'     => false,
+				'errors' => $role_errors,
+			);
+		}
 
 		try {
 			$definition = $this->definition_from_input( $submitted, $actor_id, $existing );
 			$template   = $this->template_key( $submitted['template_id'] ?? '', $existing );
 			$record     = null === $existing
-				? $this->repository->create( $definition, $template, 1 )
-				: $this->repository->update( $definition, $expected, $template, 1 );
+				? $this->repository->create( $definition, $template, 1, $allowed_roles )
+				: $this->repository->update( $definition, $expected, $template, 1, $allowed_roles );
 
 			return array(
 				'ok'     => true,
@@ -155,6 +202,7 @@ final class WorkflowAdminService {
 				'workflow_version_conflict' => 'Someone else saved this workflow. Reload it before saving again.',
 				'workflow_already_exists'   => 'That workflow ID is already in use.',
 				'workflow_disabled'          => 'Disabled workflows must be restored outside this guided editor.',
+				'invalid_role_access'       => 'Choose only registered non-administrator roles.',
 				default                     => 'The workflow could not be saved right now.',
 			};
 
@@ -229,6 +277,24 @@ final class WorkflowAdminService {
 			$target = $this->definition_from_input( $submitted, $actor_id, $existing );
 
 			return ( new WorkflowDefinitionCompatibilityEvaluator() )->evaluate( $existing->definition(), $target )->to_array();
+		} catch ( Throwable ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Preview migration actions and the deterministic plan identifier for an edit.
+	 *
+	 * @param array<string,mixed>      $submitted Guided form values.
+	 * @param int                      $actor_id Acting administrator.
+	 * @param WorkflowDefinitionRecord $existing Existing latest record.
+	 * @return array<string,mixed>|null Migration preview, or null when invalid.
+	 */
+	public function migration_preview( array $submitted, int $actor_id, WorkflowDefinitionRecord $existing ): ?array {
+		try {
+			$target = $this->definition_from_input( $submitted, $actor_id, $existing );
+
+			return ( new WorkflowMigrationPlanner() )->preview( $existing->definition(), $target )->to_array();
 		} catch ( Throwable ) {
 			return null;
 		}
@@ -471,5 +537,22 @@ final class WorkflowAdminService {
 		$value = sanitize_text_field( (string) $value );
 
 		return '' === $value ? '' : substr( $value, 0, $max );
+	}
+
+	/**
+	 * Normalize the admin role selector and fail closed on malformed input.
+	 *
+	 * @param mixed                $value Candidate role list.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @return list<string>
+	 */
+	private function normalize_roles( mixed $value, array &$errors ): array {
+		if ( ! is_array( $value ) || ! $this->role_access->is_valid( $value ) ) {
+			$errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
+
+			return array();
+		}
+
+		return $this->role_access->normalize( $value );
 	}
 }

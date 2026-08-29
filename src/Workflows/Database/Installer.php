@@ -16,7 +16,7 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned workflow definition tables require controlled schema changes.
 
-	private const DB_VERSION                = '2026.08.19.1';
+	private const DB_VERSION                = '2026.08.29.1';
 	private const OPTION_DB_VERSION         = 'aculect_ai_companion_workflows_db_version';
 	private const OPTION_VERIFICATION_STATE = 'aculect_ai_companion_workflows_db_verification';
 	private const FAILURE_RETRY_INTERVAL    = 5 * 60;
@@ -236,6 +236,7 @@ final class Installer {
             definition_json longtext NOT NULL,
             migrated_from_version int(10) unsigned NOT NULL DEFAULT 0,
             migration_id varchar(64) NOT NULL DEFAULT '',
+            allowed_roles_json varchar(2048) NOT NULL DEFAULT '[]',
             created_by bigint(20) unsigned NOT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),

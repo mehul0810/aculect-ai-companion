@@ -29,12 +29,14 @@ final class WorkflowDefinitionRepository {
 	 * @param WorkflowDefinition $definition      Validated v1 definition.
 	 * @param string             $template_id      Optional built-in template ID.
 	 * @param int                $template_version Optional template revision.
-	 * @throws WorkflowDefinitionRepositoryException When storage or definition state is invalid.
+	 * @param array<int,string>  $allowed_roles    Optional role allowlist.
+	 * @phpstan-param list<string> $allowed_roles
 	 * @throws WorkflowDefinitionRepositoryException When storage or the definition state is invalid.
 	 */
-	public function create( WorkflowDefinition $definition, string $template_id = '', int $template_version = 0 ): WorkflowDefinitionRecord {
+	public function create( WorkflowDefinition $definition, string $template_id = '', int $template_version = 0, array $allowed_roles = array() ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
 		$this->validate_template( $template_id, $template_version );
+		$this->validate_roles( $allowed_roles );
 		$value = $definition->to_array();
 		if ( 1 !== (int) $value['workflow_version'] ) {
 			throw new WorkflowDefinitionRepositoryException( 'initial_version_must_be_one' );
@@ -70,7 +72,7 @@ final class WorkflowDefinitionRepository {
 			if ( $catalog_id < 1 ) {
 				throw new WorkflowDefinitionRepositoryException( 'catalog_identity_missing' );
 			}
-			$this->insert_version( $catalog_id, $definition );
+			$this->insert_version( $catalog_id, $definition, $allowed_roles );
 			$this->commit_transaction();
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
 			$this->rollback_transaction();
@@ -98,7 +100,6 @@ final class WorkflowDefinitionRepository {
 	 * @param string   $workflow_id      Stable workflow identifier.
 	 * @param int|null $version        Immutable version, or null for latest.
 	 * @param bool     $include_disabled Whether disabled catalog rows are visible.
-	 * @throws WorkflowDefinitionRepositoryException When storage or a stored definition is invalid.
 	 * @throws WorkflowDefinitionRepositoryException When storage or a stored definition is invalid.
 	 */
 	public function get( string $workflow_id, ?int $version = null, bool $include_disabled = false ): ?WorkflowDefinitionRecord {
@@ -169,6 +170,7 @@ final class WorkflowDefinitionRepository {
 			$wpdb->prepare(
 				"SELECT c.*, v.definition_json, v.definition_status, v.definition_checksum,
 				v.definition_schema_version, v.input_contract_version, v.output_contract_version,
+				v.allowed_roles_json, v.migrated_from_version, v.migration_id,
 				v.workflow_version AS stored_workflow_version
 				FROM %i c INNER JOIN %i v ON v.workflow_pk = c.id AND v.workflow_version = c.published_version
 				WHERE c.status <> 'disabled' AND c.published_version > 0 AND v.definition_status = 'published'
@@ -211,6 +213,7 @@ final class WorkflowDefinitionRepository {
 		$tables   = Installer::table_names();
 		$sql      = "SELECT c.*, v.definition_json, v.definition_status, v.definition_checksum,
 			v.definition_schema_version, v.input_contract_version, v.output_contract_version,
+			v.allowed_roles_json, v.migrated_from_version, v.migration_id,
 			v.workflow_version AS stored_workflow_version
 			FROM %i c INNER JOIN %i v ON v.workflow_pk = c.id AND v.workflow_version = c.latest_version
 			{$where['sql']} ORDER BY c.updated_at DESC, c.id DESC LIMIT %d OFFSET %d";
@@ -241,14 +244,15 @@ final class WorkflowDefinitionRepository {
 	 * The definition must use the next version number. The expected version
 	 * prevents two writers from silently publishing competing revisions.
 	 *
-	 * @param WorkflowDefinition $definition      Next validated definition.
-	 * @param int                $expected_version Current latest version.
-	 * @param string|null        $template_id      Template override, or null to retain the origin.
-	 * @param int|null           $template_version Template revision override.
-	 * @throws WorkflowDefinitionRepositoryException When the version or storage state is invalid.
+	 * @param WorkflowDefinition     $definition      Next validated definition.
+	 * @param int                    $expected_version Current latest version.
+	 * @param string|null            $template_id      Template override, or null to retain the origin.
+	 * @param int|null               $template_version Template revision override.
+	 * @param array<int,string>|null $allowed_roles Role allowlist override, or null to retain the prior version.
+	 * @phpstan-param list<string>|null $allowed_roles
 	 * @throws WorkflowDefinitionRepositoryException When the version or storage state is invalid.
 	 */
-	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null ): WorkflowDefinitionRecord {
+	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null, ?array $allowed_roles = null ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
 		$value       = $definition->to_array();
 		$workflow_id = (string) $value['workflow_id'];
@@ -268,6 +272,17 @@ final class WorkflowDefinitionRepository {
 		if ( (int) $catalog['created_by'] !== (int) $value['created_by'] ) {
 			throw new WorkflowDefinitionRepositoryException( 'creator_is_immutable' );
 		}
+		$current = $this->get( $workflow_id, $expected_version, true );
+		if ( null === $current ) {
+			throw new WorkflowDefinitionRepositoryException( 'workflow_version_missing' );
+		}
+		$resolved_roles = null === $allowed_roles ? $current->allowed_roles() : $allowed_roles;
+		$this->validate_roles( $resolved_roles );
+		try {
+			$migration = ( new WorkflowMigrationPlanner() )->preview( $current->definition(), $definition );
+		} catch ( WorkflowDefinitionValidationException ) {
+			throw new WorkflowDefinitionRepositoryException( 'migration_preview_invalid' );
+		}
 
 		$resolved_template_id      = null === $template_id ? (string) $catalog['template_id'] : $template_id;
 		$resolved_template_version = null === $template_version ? (int) $catalog['template_version'] : $template_version;
@@ -277,7 +292,13 @@ final class WorkflowDefinitionRepository {
 		$tables = Installer::table_names();
 		$this->begin_transaction();
 		try {
-			$this->insert_version( (int) $catalog['id'], $definition );
+			$this->insert_version(
+				(int) $catalog['id'],
+				$definition,
+				$resolved_roles,
+				$current->latest_version(),
+				$migration->migration_id()
+			);
 			$published_version = 'published' === $value['status']
 				? (int) $value['workflow_version']
 				: (int) $catalog['published_version'];
@@ -328,7 +349,6 @@ final class WorkflowDefinitionRepository {
 	 * @param string   $workflow_id      Stable workflow identifier.
 	 * @param int      $actor_id         User performing the disable action.
 	 * @param int|null $expected_version Optional optimistic version check.
-	 * @throws WorkflowDefinitionRepositoryException When the actor or concurrency state is invalid.
 	 * @throws WorkflowDefinitionRepositoryException When the actor or concurrency state is invalid.
 	 */
 	public function disable( string $workflow_id, int $actor_id, ?int $expected_version = null ): ?WorkflowDefinitionRecord {
@@ -453,7 +473,18 @@ final class WorkflowDefinitionRepository {
 			throw new WorkflowDefinitionRepositoryException( 'stored_definition_invalid' );
 		}
 
-		$value          = $definition->to_array();
+		$value         = $definition->to_array();
+		$allowed_roles = $this->decode_roles( $version['allowed_roles_json'] ?? '[]' );
+		$migration_id  = (string) ( $version['migration_id'] ?? '' );
+		$migrated_from = (int) ( $version['migrated_from_version'] ?? 0 );
+		if (
+			$migrated_from < 0
+			|| $migrated_from >= (int) $value['workflow_version']
+			|| ( '' !== $migration_id && 1 !== preg_match( '/^[a-f0-9]{64}$/D', $migration_id ) )
+			|| ( ( 0 === $migrated_from ) !== ( '' === $migration_id ) )
+		) {
+			throw new WorkflowDefinitionRepositoryException( 'stored_definition_mismatch' );
+		}
 		$stored_version = $version['workflow_version'] ?? $version['stored_workflow_version'] ?? 0;
 		if ( (string) $catalog['workflow_id'] !== (string) $value['workflow_id']
 			|| (int) $stored_version !== (int) $value['workflow_version']
@@ -475,18 +506,25 @@ final class WorkflowDefinitionRepository {
 			(int) $catalog['lock_version'],
 			(string) $catalog['created_at'],
 			(string) $catalog['updated_at'],
-			$definition
+			$definition,
+			$allowed_roles,
+			$migrated_from,
+			$migration_id
 		);
 	}
 
 	/**
 	 * Insert one immutable definition version.
 	 *
-	 * @param int                $catalog_id Catalog primary key.
-	 * @param WorkflowDefinition $definition Validated definition snapshot.
+	 * @param int                $catalog_id    Catalog primary key.
+	 * @param WorkflowDefinition $definition    Validated definition snapshot.
+	 * @param array<int,string>  $allowed_roles Normalized role allowlist.
+	 * @phpstan-param list<string> $allowed_roles
+	 * @param int                $migrated_from Optional source revision.
+	 * @param string             $migration_id  Optional migration preview ID.
 	 * @throws WorkflowDefinitionRepositoryException When the version cannot be stored.
 	 */
-	private function insert_version( int $catalog_id, WorkflowDefinition $definition ): void {
+	private function insert_version( int $catalog_id, WorkflowDefinition $definition, array $allowed_roles = array(), int $migrated_from = 0, string $migration_id = '' ): void {
 		global $wpdb;
 		$value    = $definition->to_array();
 		$metadata = ( new WorkflowDefinitionCompatibilityMetadata() )->for_definition( $definition );
@@ -501,12 +539,13 @@ final class WorkflowDefinitionRepository {
 				'input_contract_version'    => (int) $metadata['input_contract_version'],
 				'output_contract_version'   => (int) $metadata['output_contract_version'],
 				'definition_json'           => $definition->canonical_json(),
-				'migrated_from_version'     => 0,
-				'migration_id'              => '',
+				'migrated_from_version'     => $migrated_from,
+				'migration_id'              => $migration_id,
+				'allowed_roles_json'        => $this->encode_roles( $allowed_roles ),
 				'created_by'                => (int) $value['updated_by'],
 				'created_at'                => gmdate( 'Y-m-d H:i:s' ),
 			),
-			array( '%d', '%d', '%d', '%s', '%s', '%d', '%d', '%s', '%d', '%s', '%d', '%s' )
+			array( '%d', '%d', '%d', '%s', '%s', '%d', '%d', '%s', '%d', '%s', '%s', '%d', '%s' )
 		);
 		if ( false === $inserted ) {
 			throw new WorkflowDefinitionRepositoryException( 'version_create_failed' );
@@ -527,6 +566,73 @@ final class WorkflowDefinitionRepository {
 		if ( $template_version < 0 || $template_version > 4294967295 ) {
 			throw new WorkflowDefinitionRepositoryException( 'invalid_template_version' );
 		}
+	}
+
+	/**
+	 * Validate the normalized role metadata before it reaches storage.
+	 *
+	 * @param array<int,string> $allowed_roles Role allowlist.
+	 * @phpstan-param list<string> $allowed_roles
+	 * @throws WorkflowDefinitionRepositoryException When metadata is invalid.
+	 */
+	private function validate_roles( array $allowed_roles ): void {
+		if ( ! array_is_list( $allowed_roles ) || count( $allowed_roles ) > 20 ) {
+			throw new WorkflowDefinitionRepositoryException( 'invalid_role_access' );
+		}
+
+		$previous = '';
+		foreach ( $allowed_roles as $role ) {
+			if ( ! is_string( $role ) || 1 !== preg_match( '/^[a-z][a-z0-9_-]{0,63}$/D', $role ) || 'administrator' === $role || ( '' !== $previous && $role <= $previous ) ) {
+				throw new WorkflowDefinitionRepositoryException( 'invalid_role_access' );
+			}
+			$previous = $role;
+		}
+	}
+
+	/**
+	 * Encode role metadata as a bounded JSON list.
+	 *
+	 * @param array<int,string> $allowed_roles Role allowlist.
+	 * @phpstan-param list<string> $allowed_roles
+	 * @throws WorkflowDefinitionRepositoryException When encoding fails or exceeds the storage bound.
+	 */
+	private function encode_roles( array $allowed_roles ): string {
+		$encoded = wp_json_encode( array_values( $allowed_roles ) );
+		if ( ! is_string( $encoded ) ) {
+			throw new WorkflowDefinitionRepositoryException( 'role_access_encoding_failed' );
+		}
+		if ( strlen( $encoded ) > 2048 ) {
+			throw new WorkflowDefinitionRepositoryException( 'role_access_encoding_failed' );
+		}
+
+		return $encoded;
+	}
+
+	/**
+	 * Decode and validate role metadata from storage.
+	 *
+	 * @param mixed $encoded Stored JSON.
+	 * @return list<string>
+	 * @throws WorkflowDefinitionRepositoryException When stored metadata is invalid.
+	 */
+	private function decode_roles( mixed $encoded ): array {
+		if ( is_string( $encoded ) && '' === trim( $encoded ) ) {
+			return array();
+		}
+		$value = is_string( $encoded ) ? json_decode( $encoded, true ) : null;
+		if ( ! is_array( $value ) || ! array_is_list( $value ) ) {
+			throw new WorkflowDefinitionRepositoryException( 'stored_definition_mismatch' );
+		}
+		$roles = array();
+		foreach ( $value as $role ) {
+			if ( ! is_string( $role ) ) {
+				throw new WorkflowDefinitionRepositoryException( 'stored_definition_mismatch' );
+			}
+			$roles[] = $role;
+		}
+		$this->validate_roles( $roles );
+
+		return $roles;
 	}
 
 	/**

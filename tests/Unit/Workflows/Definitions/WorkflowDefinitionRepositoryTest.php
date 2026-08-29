@@ -36,7 +36,7 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		$this->original_wpdb                          = $GLOBALS['wpdb'] ?? null;
 		$GLOBALS['wpdb']                              = new WorkflowDefinitionSqliteWpdb();
 		$GLOBALS['aculect_ai_companion_test_options'] = array(
-			'aculect_ai_companion_workflows_db_version' => '2026.08.19.1',
+			'aculect_ai_companion_workflows_db_version' => '2026.08.29.1',
 		);
 	}
 
@@ -52,7 +52,7 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 
 	public function test_create_read_and_list_return_a_validated_latest_record(): void {
 		$repository = new WorkflowDefinitionRepository();
-		$record     = $repository->create( WorkflowDefinition::from_array( $this->definition() ), 'content_audit', 3 );
+		$record     = $repository->create( WorkflowDefinition::from_array( $this->definition() ), 'content_audit', 3, array( 'editor' ) );
 
 		self::assertSame( 1, $record->id() );
 		self::assertSame( 'sample_workflow', $record->workflow_id() );
@@ -61,24 +61,31 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		self::assertSame( 0, $record->published_version() );
 		self::assertSame( 'content_audit', $record->template_id() );
 		self::assertSame( 3, $record->template_version() );
+		self::assertSame( array( 'editor' ), $record->allowed_roles() );
+		self::assertSame( 0, $record->migrated_from_version() );
+		self::assertSame( '', $record->migration_id() );
 		self::assertSame( $record->definition()->checksum(), $record->definition()->checksum() );
 
 		$read = $repository->get( 'sample_workflow' );
 		self::assertNotNull( $read );
 		self::assertSame( $record->definition()->canonical_json(), $read->definition()->canonical_json() );
+		self::assertSame( array( 'editor' ), $read->allowed_roles() );
+		$row = $this->wpdb()->get_row( 'SELECT allowed_roles_json FROM wp_aculect_ai_workflow_versions LIMIT 1', ARRAY_A );
+		self::assertIsArray( $row );
+		self::assertSame( '["editor"]', (string) $row['allowed_roles_json'] );
 		self::assertCount( 1, $repository->list() );
 	}
 
 	public function test_update_of_a_published_workflow_appends_an_immutable_version(): void {
 		$repository = new WorkflowDefinitionRepository();
-		$repository->create( WorkflowDefinition::from_array( $this->definition() ) );
+		$repository->create( WorkflowDefinition::from_array( $this->definition() ), '', 0, array( 'editor' ) );
 
 		$next                     = $this->definition();
 		$next['workflow_version'] = 2;
 		$next['name']             = 'Published sample workflow';
 		$next['status']           = 'published';
 		$next['updated_by']       = 8;
-		$updated                  = $repository->update( WorkflowDefinition::from_array( $next ), 1 );
+		$updated                  = $repository->update( WorkflowDefinition::from_array( $next ), 1, null, null, array( 'author' ) );
 
 		self::assertSame( 2, $updated->latest_version() );
 		self::assertSame( 2, $updated->published_version() );
@@ -90,6 +97,10 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		self::assertInstanceOf( WorkflowDefinitionRecord::class, $second_version );
 		self::assertSame( 'Sample workflow', $first_version->definition()->to_array()['name'] );
 		self::assertSame( 'Published sample workflow', $second_version->definition()->to_array()['name'] );
+		self::assertSame( array( 'editor' ), $first_version->allowed_roles() );
+		self::assertSame( array( 'author' ), $second_version->allowed_roles() );
+		self::assertSame( 1, $second_version->migrated_from_version() );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $second_version->migration_id() );
 		self::assertSame( 2, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflow_versions' ) );
 	}
 
@@ -148,6 +159,19 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 			self::fail( 'The catalog creator must remain stable across versions.' );
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
 			self::assertSame( 'creator_is_immutable', $exception->error_code() );
+		}
+	}
+
+	public function test_repository_rejects_malformed_role_metadata(): void {
+		$repository = new WorkflowDefinitionRepository();
+
+		foreach ( array( array( 'administrator' ) ) as $roles ) {
+			try {
+				$repository->create( WorkflowDefinition::from_array( $this->definition() ), '', 0, $roles );
+				self::fail( 'Malformed workflow role metadata must fail closed.' );
+			} catch ( WorkflowDefinitionRepositoryException $exception ) {
+				self::assertSame( 'invalid_role_access', $exception->error_code() );
+			}
 		}
 	}
 
@@ -274,6 +298,7 @@ final class WorkflowDefinitionSqliteWpdb {
 				definition_json TEXT NOT NULL,
 				migrated_from_version INTEGER NOT NULL DEFAULT 0,
 				migration_id TEXT NOT NULL DEFAULT \'\',
+				allowed_roles_json TEXT NOT NULL DEFAULT \'[]\',
 				created_by INTEGER NOT NULL,
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				UNIQUE (workflow_pk, workflow_version)

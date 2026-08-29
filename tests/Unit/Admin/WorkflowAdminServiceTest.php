@@ -11,8 +11,10 @@ namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\WorkflowAdminService;
 use Aculect\AICompanion\Admin\WorkflowAdminValidationException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
 use PHPUnit\Framework\TestCase;
-use PHPUnitFrameworkTestCase;
 
 /**
  * Verifies templates resolve only to bounded, validated workflow definitions.
@@ -38,6 +40,112 @@ final class WorkflowAdminServiceTest extends TestCase {
 			),
 			array_keys( $templates )
 		);
+	}
+
+	public function test_roles_are_exposed_without_the_administrator_bypass_role(): void {
+		$GLOBALS['aculect_ai_companion_test_roles'] = array(
+			'administrator' => array( 'name' => 'Administrator' ),
+			'editor'        => array( 'name' => 'Editor' ),
+			'author'        => array( 'name' => 'Author' ),
+		);
+
+		self::assertSame( array( 'author', 'editor' ), array_column( ( new WorkflowAdminService() )->roles(), 'id' ) );
+	}
+
+	public function test_invalid_role_selection_is_rejected_before_storage(): void {
+		$result = ( new WorkflowAdminService() )->save(
+			array(
+				'workflow_id'   => '',
+				'allowed_roles' => array( 'administrator' ),
+			),
+			7
+		);
+
+		self::assertFalse( $result['ok'] );
+		self::assertArrayHasKey( 'errors', $result );
+		$errors = (array) ( $result['errors'] ?? array() );
+		self::assertSame( 'Choose only registered non-administrator roles.', (string) ( $errors['allowed_roles'] ?? '' ) );
+	}
+
+	public function test_migration_preview_returns_a_stable_plan_for_an_edit(): void {
+		$service    = new WorkflowAdminService();
+		$fields     = array(
+			'workflow_id'    => 'migration_preview',
+			'template_id'    => 'blank',
+			'name'           => 'Migration preview',
+			'description'    => 'Initial workflow.',
+			'target_mode'    => 'existing',
+			'post_types'     => 'post',
+			'input_fields'   => 'brief:string',
+			'step_abilities' => 'content/get-item',
+			'write_policy'   => 'proposal_only',
+			'status'         => 'published',
+		);
+		$definition = $service->definition_from_input( $fields, 7 );
+		$record     = new WorkflowDefinitionRecord(
+			1,
+			'migration_preview',
+			'published',
+			1,
+			1,
+			'blank',
+			1,
+			7,
+			7,
+			1,
+			'2026-08-29 00:00:00',
+			'2026-08-29 00:00:00',
+			$definition
+		);
+
+		$fields['description'] = 'Updated workflow.';
+		$preview               = $service->migration_preview( $fields, 7, $record );
+
+		self::assertIsArray( $preview );
+		self::assertSame( 1, $preview['source_version'] );
+		self::assertSame( 2, $preview['target_version'] );
+		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', (string) $preview['migration_id'] );
+	}
+
+	public function test_recent_audit_is_bounded_and_fail_closed(): void {
+		$event = new WorkflowAuditRecord(
+			'run_123',
+			'workflow_audit',
+			1,
+			str_repeat( 'a', 64 ),
+			'workflow_completed',
+			'',
+			7,
+			'completed',
+			null,
+			array( 'status' ),
+			'',
+			'2026-08-29 00:00:00'
+		);
+		$audit = new class( $event ) implements WorkflowAuditStoreInterface {
+			public function __construct( private WorkflowAuditRecord $event ) {}
+
+			public function append( WorkflowAuditRecord $event ): void {
+				$this->event = $event;
+			}
+
+			public function for_run( string $run_id ): array {
+				unset( $run_id );
+
+				return array( $this->event );
+			}
+
+			public function recent( int $limit = 25 ): array {
+				unset( $limit );
+
+				return array( $this->event );
+			}
+		};
+
+		$result = ( new WorkflowAdminService( null, null, null, $audit ) )->recent_audit();
+
+		self::assertNull( $result['error'] );
+		self::assertSame( $event, $result['events'][0] );
 	}
 
 	public function test_guided_fields_build_a_valid_versioned_definition(): void {

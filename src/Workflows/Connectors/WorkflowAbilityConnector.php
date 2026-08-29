@@ -12,6 +12,7 @@ namespace Aculect\AICompanion\Workflows\Connectors;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Workflows\Authorization\WorkflowRoleAccessPolicy;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
@@ -57,6 +58,7 @@ final class WorkflowAbilityConnector {
 	private WorkflowAuditStoreInterface $audit;
 	private WorkflowPlanBuilder $plans;
 	private WorkflowPlanReadinessEvaluator $readiness;
+	private WorkflowRoleAccessPolicy $role_access;
 
 	/**
 	 * Provides the authenticated request context for connector calls.
@@ -75,6 +77,7 @@ final class WorkflowAbilityConnector {
 	 * @param WorkflowPlanBuilder|null            $plans Deterministic plan builder.
 	 * @param WorkflowPlanReadinessEvaluator|null $readiness Readiness evaluator.
 	 * @param Closure|null                        $auth_provider Request auth provider.
+	 * @param WorkflowRoleAccessPolicy|null       $role_access Workflow role policy.
 	 */
 	public function __construct(
 		?WorkflowDefinitionRepository $definitions = null,
@@ -83,7 +86,8 @@ final class WorkflowAbilityConnector {
 		?WorkflowAuditStoreInterface $audit = null,
 		?WorkflowPlanBuilder $plans = null,
 		?WorkflowPlanReadinessEvaluator $readiness = null,
-		?Closure $auth_provider = null
+		?Closure $auth_provider = null,
+		?WorkflowRoleAccessPolicy $role_access = null
 	) {
 		$this->definitions   = $definitions ?? new WorkflowDefinitionRepository();
 		$this->adapters      = $adapters ?? WorkflowAdapterRegistry::from_catalog();
@@ -91,6 +95,7 @@ final class WorkflowAbilityConnector {
 		$this->audit         = $audit ?? new WorkflowAuditStore();
 		$this->plans         = $plans ?? new WorkflowPlanBuilder();
 		$this->readiness     = $readiness ?? new WorkflowPlanReadinessEvaluator();
+		$this->role_access   = $role_access ?? new WorkflowRoleAccessPolicy();
 		$this->auth_provider = $auth_provider ?? static fn (): array => AbilityExecutionGateway::current_request_auth();
 	}
 
@@ -117,6 +122,9 @@ final class WorkflowAbilityConnector {
 
 		$items = array();
 		foreach ( $records as $record ) {
+			if ( ! $this->role_access->is_allowed( $record->allowed_roles(), $auth ) ) {
+				continue;
+			}
 			$items[] = $this->summary( $record );
 		}
 
@@ -152,7 +160,8 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function get( array $args ): array {
-		if ( null === $this->auth() ) {
+		$auth = $this->auth();
+		if ( null === $auth ) {
 			return $this->auth_error();
 		}
 		$id = $this->identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
@@ -173,6 +182,9 @@ final class WorkflowAbilityConnector {
 		if ( null === $record || ! $this->is_published( $record ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
 		}
+		if ( ! $this->role_access->is_allowed( $record->allowed_roles(), $auth ) ) {
+			return $this->error( 'workflow_forbidden', 'This workflow is not available to the connected user.' );
+		}
 
 		return array(
 			'status'   => 'ok',
@@ -192,7 +204,7 @@ final class WorkflowAbilityConnector {
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
-		$record = $this->published_record( $args );
+		$record = $this->published_record( $args, $auth );
 		if ( is_array( $record ) ) {
 			return $record;
 		}
@@ -511,10 +523,11 @@ final class WorkflowAbilityConnector {
 	/**
 	 * Load an allowed published definition.
 	 *
-	 * @param array<string, mixed> $args Connector arguments.
+	 * @param array<string, mixed> $args  Connector arguments.
+	 * @param array<string, mixed> $auth Authenticated request context.
 	 * @return WorkflowDefinitionRecord|array<string, mixed>
 	 */
-	private function published_record( array $args ): WorkflowDefinitionRecord|array {
+	private function published_record( array $args, array $auth ): WorkflowDefinitionRecord|array {
 		$id = $this->identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
 		if ( '' === $id ) {
 			return $this->error( 'invalid_workflow_id', 'Provide a workflow_id returned by content_workflow_list.' );
@@ -532,6 +545,9 @@ final class WorkflowAbilityConnector {
 
 		if ( null === $record || ! $this->is_published( $record ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
+		}
+		if ( ! $this->role_access->is_allowed( $record->allowed_roles(), $auth ) ) {
+			return $this->error( 'workflow_forbidden', 'This workflow is not available to the connected user.' );
 		}
 
 		return $record;
@@ -576,6 +592,9 @@ final class WorkflowAbilityConnector {
 		}
 		if ( null === $record ) {
 			return $this->error( 'workflow_definition_missing', 'The pinned workflow definition is no longer available.' );
+		}
+		if ( ! $this->role_access->is_allowed( $record->allowed_roles(), $auth ) ) {
+			return $this->error( 'workflow_forbidden', 'This workflow is not available to the connected user.' );
 		}
 		$input = $this->input( $args['input'] ?? null );
 		if ( is_array( $input ) ) {
@@ -853,6 +872,11 @@ final class WorkflowAbilityConnector {
 			'published_version' => $record->published_version(),
 			'template_id'       => $record->template_id(),
 			'template_version'  => $record->template_version(),
+			'allowed_roles'     => $record->allowed_roles(),
+			'migration'         => array(
+				'migrated_from_version' => $record->migrated_from_version(),
+				'migration_id'          => $record->migration_id(),
+			),
 			'definition'        => $value,
 			'checksum'          => $record->definition()->checksum(),
 		);
@@ -876,6 +900,8 @@ final class WorkflowAbilityConnector {
 			'template_id'      => $record->template_id(),
 			'write_policy'     => $this->map( $value['write_policy'] ?? array() ) ?? array(),
 			'approval_gates'   => array_values( (array) ( $value['approval_gates'] ?? array() ) ),
+			'allowed_roles'    => $record->allowed_roles(),
+			'migration_id'     => $record->migration_id(),
 			'status'           => 'published',
 		);
 	}

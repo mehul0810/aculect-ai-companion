@@ -606,7 +606,10 @@ JS;
 		$raw_required   = $input_schema['required'] ?? array();
 		$required       = is_array( $raw_required ) ? array_map( 'strval', $raw_required ) : array();
 		$fields         = array();
-		foreach ( $properties as $name => $schema ) {
+		$property_names = array_keys( $properties );
+		$ordered_names  = array_values( array_unique( array_merge( $required, array_diff( $property_names, $required ) ) ) );
+		foreach ( $ordered_names as $name ) {
+			$schema   = $properties[ $name ] ?? array();
 			$schema   = $schema instanceof stdClass ? get_object_vars( $schema ) : $schema;
 			$type     = is_array( $schema ) ? (string) ( $schema['type'] ?? 'string' ) : 'string';
 			$fields[] = (string) $name . ':' . $type . ( in_array( (string) $name, $required, true ) ? ':required' : '' );

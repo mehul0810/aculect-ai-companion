@@ -55,7 +55,7 @@ final class WorkflowAdminPageTest extends TestCase {
 			'description'    => 'Render a persisted workflow record.',
 			'target_mode'    => 'existing',
 			'post_types'     => 'post',
-			'input_fields'   => 'post_id:integer:required',
+			'input_fields'   => "title:string:required\npost_id:integer:required",
 			'step_abilities' => 'content/get-item',
 			'step_arguments' => '{"step_1":{"id":"{{input.post_id}}"}}',
 			'write_policy'   => 'proposal_only',
@@ -97,6 +97,7 @@ final class WorkflowAdminPageTest extends TestCase {
 		}
 
 		self::assertStringContainsString( 'id="aculect-workflow-template"', $html );
+		self::assertStringContainsString( ">title:string:required\npost_id:integer:required</textarea>", $html );
 		self::assertStringContainsString( '>content/get-item</textarea>', $html );
 		self::assertStringContainsString( 'value="proposal_only" selected', $html );
 	}

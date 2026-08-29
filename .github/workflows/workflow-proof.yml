@@ -136,6 +136,7 @@ jobs:
           git clone --depth 1 --branch v3.0.1 https://github.com/WordPress/sqlite-database-integration.git .wp-env/sqlite-source
           mkdir -p .wp-env/sqlite-plugin
           cp -R .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/. .wp-env/sqlite-plugin/
+          rm -f .wp-env/sqlite-plugin/wp-includes/database
           mkdir -p .wp-env/sqlite-plugin/wp-includes/database
           cp -R .wp-env/sqlite-source/packages/mysql-on-sqlite/src/. .wp-env/sqlite-plugin/wp-includes/database/
           cp .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/db.copy .wp-env/sqlite-db.php

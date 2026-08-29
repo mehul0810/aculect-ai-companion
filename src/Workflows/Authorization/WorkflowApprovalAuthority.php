@@ -119,6 +119,94 @@ final class WorkflowApprovalAuthority {
 	}
 
 	/**
+	 * Remove approval transients and one-time-consume markers during opt-in uninstall.
+	 *
+	 * WordPress stores ordinary transients as option rows when an external object
+	 * cache is not active. Enumerate those rows first so the normal transient API
+	 * can invalidate any matching cache entries, then run a scoped SQL cleanup for
+	 * rows that may have been left behind by an interrupted uninstall.
+	 */
+	public static function uninstall(): void {
+		if ( ! function_exists( 'delete_option' ) ) {
+			return;
+		}
+
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_col' ) || ! method_exists( $wpdb, 'query' ) || ! method_exists( $wpdb, 'esc_like' ) || ! isset( $wpdb->options ) ) {
+			return;
+		}
+
+		$option_prefixes = array(
+			'_transient_' . self::PREFIX,
+			'_transient_timeout_' . self::PREFIX,
+			self::CONSUMED_PREFIX,
+		);
+		$patterns        = array_map(
+			fn ( string $prefix ): string => $wpdb->esc_like( $prefix ) . '%',
+			$option_prefixes
+		);
+		$names           = array();
+		try {
+			$names = $wpdb->get_col(
+				$wpdb->prepare(
+					'SELECT option_name FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
+					(string) $wpdb->options,
+					$patterns[0],
+					$patterns[1],
+					$patterns[2]
+				)
+			);
+		} catch ( \Throwable $exception ) {
+			unset( $exception );
+			$names = array();
+		}
+
+		if ( is_array( $names ) ) {
+			foreach ( $names as $name ) {
+				if ( ! is_string( $name ) ) {
+					continue;
+				}
+				if ( str_starts_with( $name, '_transient_timeout_' . self::PREFIX ) ) {
+					$transient = substr( $name, strlen( '_transient_timeout_' ) );
+					if ( function_exists( 'delete_transient' ) ) {
+						delete_transient( $transient );
+					} else {
+						delete_option( $name );
+					}
+					continue;
+				}
+				if ( str_starts_with( $name, '_transient_' . self::PREFIX ) ) {
+					$transient = substr( $name, strlen( '_transient_' ) );
+					if ( function_exists( 'delete_transient' ) ) {
+						delete_transient( $transient );
+					} else {
+						delete_option( $name );
+					}
+					continue;
+				}
+				if ( str_starts_with( $name, self::CONSUMED_PREFIX ) ) {
+					delete_option( $name );
+				}
+			}
+		}
+
+		try {
+			$wpdb->query(
+				$wpdb->prepare(
+					'DELETE FROM %i WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s',
+					(string) $wpdb->options,
+					$patterns[0],
+					$patterns[1],
+					$patterns[2]
+				)
+			);
+		} catch ( \Throwable $exception ) {
+			unset( $exception );
+			// Uninstall remains best effort when an optional options table is unavailable.
+		}
+	}
+
+	/**
 	 * Build the transient key without storing the raw token in the key.
 	 *
 	 * @param string $token Opaque approval token.

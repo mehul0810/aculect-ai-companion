@@ -44,6 +44,10 @@ final class RunInstaller {
 			return false;
 		}
 
+		if ( ! self::ensure_transactional_tables() ) {
+			return false;
+		}
+
 		if ( self::DB_VERSION !== $stored ) {
 			$updated = update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
 			if ( ! $updated && self::DB_VERSION !== (string) get_option( self::OPTION_DB_VERSION, '0' ) ) {
@@ -141,7 +145,7 @@ final class RunInstaller {
             UNIQUE KEY run_id (run_id),
             KEY workflow_state (workflow_id, state, updated_at, id),
             KEY state_updated (state, updated_at, id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 				"CREATE TABLE {$steps} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             run_pk bigint(20) unsigned NOT NULL,
@@ -167,7 +171,7 @@ final class RunInstaller {
             UNIQUE KEY run_step (run_pk, step_id),
             KEY run_state_position (run_pk, state, step_position, id),
             KEY lease_state (state, lease_expires_at, id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 			)
 		);
 	}
@@ -181,5 +185,62 @@ final class RunInstaller {
 		}
 
 		dbDelta( self::schema_sql( self::table_names(), $wpdb->get_charset_collate() ) );
+	}
+
+	/**
+	 * Require InnoDB for the run and step tables, repairing legacy engines.
+	 *
+	 * Retention deletes parent and child rows in one transaction. Treating an
+	 * unknown or non-transactional engine as healthy would make that contract
+	 * false on older sites where MyISAM is still the default.
+	 *
+	 * @return bool Whether every table is authoritatively transactional.
+	 */
+	private static function ensure_transactional_tables(): bool {
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_var' ) || ! method_exists( $wpdb, 'query' ) ) {
+			return false;
+		}
+
+		foreach ( self::table_names() as $table ) {
+			$engine = self::table_engine( $table );
+			if ( 'INNODB' !== $engine ) {
+				try {
+					$altered = $wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ENGINE=InnoDB', $table ) );
+				} catch ( \Throwable ) {
+					return false;
+				}
+				if ( false === $altered ) {
+					return false;
+				}
+			}
+
+			if ( 'INNODB' !== self::table_engine( $table ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Read one table engine from the authoritative MySQL metadata surface.
+	 *
+	 * @param string $table Site-scoped table name.
+	 */
+	private static function table_engine( string $table ): string {
+		global $wpdb;
+		try {
+			$value = $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+					$table
+				)
+			);
+		} catch ( \Throwable ) {
+			return '';
+		}
+
+		return strtoupper( trim( (string) $value ) );
 	}
 }

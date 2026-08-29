@@ -373,6 +373,56 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertNull( $store->get( 'run-start-failure' ) );
 	}
 
+	public function test_run_tables_are_repaired_to_innodb_before_use(): void {
+		$wpdb = $this->wpdb();
+		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
+		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
+
+		self::assertTrue( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+		self::assertSame( 'InnoDB', $wpdb->table_engines['wp_aculect_ai_workflow_runs'] );
+		self::assertSame( 'InnoDB', $wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] );
+	}
+
+	public function test_run_tables_fail_closed_when_engine_repair_fails(): void {
+		$wpdb = $this->wpdb();
+		$wpdb->table_engines['wp_aculect_ai_workflow_runs'] = 'MyISAM';
+		$wpdb->fail_query_containing                        = 'ALTER TABLE';
+
+		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+	}
+
+	public function test_waiting_transition_cas_rechecks_expiry_in_sql(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-expiry-transition', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::WAITING_FOR_INPUT, 7, null, gmdate( 'Y-m-d H:i:s', $now + 10 ) );
+		$now += 11;
+
+		self::assertNull( $store->transition( 'run-expiry-transition', WorkflowRunState::WAITING_FOR_INPUT, 1, WorkflowRunState::PREPARED, 7 ) );
+	}
+
+	public function test_waiting_plan_replacement_cas_rechecks_expiry_in_sql(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-expiry-replacement', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::WAITING_FOR_INPUT, 7, null, gmdate( 'Y-m-d H:i:s', $now + 10 ) );
+		$now += 11;
+
+		self::assertNull( $store->replace_plan( 'run-expiry-replacement', 1, $plan, $input, 7 ) );
+	}
+
 	public function test_run_schema_has_separate_run_and_step_fencing_fields(): void {
 		$method = new ReflectionMethod( \Aculect\AICompanion\Workflows\Database\RunInstaller::class, 'schema_sql' );
 		$sql    = (string) $method->invoke(
@@ -390,6 +440,7 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertStringContainsString( 'output_hash char(64) NOT NULL DEFAULT', $sql );
 		self::assertStringContainsString( 'lease_expires_at datetime NULL', $sql );
 		self::assertStringContainsString( 'UNIQUE KEY run_step (run_pk, step_id)', $sql );
+		self::assertStringContainsString( 'ENGINE=InnoDB', $sql );
 		self::assertStringNotContainsStringIgnoringCase( 'foreign key', $sql );
 	}
 

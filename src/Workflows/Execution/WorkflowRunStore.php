@@ -190,7 +190,8 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		}
 
 		global $wpdb;
-		$tables = RunInstaller::table_names();
+		$tables  = RunInstaller::table_names();
+		$now_sql = $this->now_sql();
 		if ( WorkflowRunState::CANCELLED === $next_state && WorkflowRunState::RUNNING === $expected_state ) {
 			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND (s.state = %s OR (s.state = %s AND s.error_code = %s)))';
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
@@ -203,7 +204,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 					$expected_version + 1,
 					$outcome_code ?? '',
 					$actor_id,
-					$this->now_sql(),
+					$now_sql,
 					$run_id,
 					$expected_state->value,
 					$expected_version,
@@ -211,6 +212,22 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 					WorkflowStepState::RUNNING->value,
 					WorkflowStepState::FAILED->value,
 					'execution_uncertain'
+				)
+			);
+		} elseif ( in_array( $expected_state, array( WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) ) {
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					'UPDATE %i SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s',
+					$tables['runs'],
+					$next_state->value,
+					$expected_version + 1,
+					$outcome_code ?? '',
+					$actor_id,
+					$now_sql,
+					$run_id,
+					$expected_state->value,
+					$expected_version,
+					$now_sql
 				)
 			);
 		} else {
@@ -222,7 +239,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 					'outcome_code'       => $outcome_code ?? '',
 					'waiting_expires_at' => $waiting_expires_at,
 					'updated_by'         => $actor_id,
-					'updated_at'         => $this->now_sql(),
+					'updated_at'         => $now_sql,
 				),
 				array(
 					'run_id'        => $run_id,
@@ -258,24 +275,23 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 		$input_ciphertext = $this->seal( $input->canonical_json() );
 		global $wpdb;
-		$updated = $wpdb->update(
-			RunInstaller::table_names()['runs'],
-			array(
-				'plan_hash'        => $plan->hash(),
-				'input_hash'       => $input->hash(),
-				'input_ciphertext' => $input_ciphertext,
-				'state'            => WorkflowRunState::PREPARED->value,
-				'state_version'    => $expected_version + 1,
-				'updated_by'       => $actor_id,
-				'updated_at'       => $this->now_sql(),
-			),
-			array(
-				'run_id'        => $run_id,
-				'state'         => WorkflowRunState::WAITING_FOR_INPUT->value,
-				'state_version' => $expected_version,
-			),
-			array( '%s', '%s', '%s', '%s', '%d', '%d', '%s' ),
-			array( '%s', '%s', '%d' )
+		$now_sql = $this->now_sql();
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i SET plan_hash = %s, input_hash = %s, input_ciphertext = %s, state = %s, state_version = %d, updated_by = %d, updated_at = %s, waiting_expires_at = NULL WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s',
+				RunInstaller::table_names()['runs'],
+				$plan->hash(),
+				$input->hash(),
+				$input_ciphertext,
+				WorkflowRunState::PREPARED->value,
+				$expected_version + 1,
+				$actor_id,
+				$now_sql,
+				$run_id,
+				WorkflowRunState::WAITING_FOR_INPUT->value,
+				$expected_version,
+				$now_sql
+			)
 		);
 
 		return 1 === (int) $updated ? $this->get( $run_id ) : null;

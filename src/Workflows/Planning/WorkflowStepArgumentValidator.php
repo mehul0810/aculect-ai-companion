@@ -33,7 +33,7 @@ final class WorkflowStepArgumentValidator {
 	 */
 	public function validate( array $arguments, array $schema, array $input_schema, array $prior_output_schemas = array() ): array {
 		$errors = array();
-		$this->validate_node( $arguments, $schema, '$.arguments', $input_schema, $prior_output_schemas, false, $errors );
+		$this->validate_node( $arguments, $schema, '$.arguments', $input_schema, $prior_output_schemas, $errors );
 
 		$errors = array_values( array_unique( $errors ) );
 		sort( $errors, SORT_STRING );
@@ -49,10 +49,9 @@ final class WorkflowStepArgumentValidator {
 	 * @param string                            $path           Validation path.
 	 * @param array<string,mixed>               $input_schema   Workflow input schema.
 	 * @param array<string,array<string,mixed>> $prior_outputs  Prior output schemas.
-	 * @param bool                              $required       Whether the target member is required.
 	 * @param array<string>                     $errors         Invalid paths.
 	 */
-	private function validate_node( mixed $value, array|stdClass $schema, string $path, array $input_schema, array $prior_outputs, bool $required, array &$errors ): void {
+	private function validate_node( mixed $value, array|stdClass $schema, string $path, array $input_schema, array $prior_outputs, array &$errors ): void {
 		if ( count( $errors ) >= self::MAX_ERRORS ) {
 			return;
 		}
@@ -61,7 +60,7 @@ final class WorkflowStepArgumentValidator {
 		if ( is_string( $value ) ) {
 			$binding = $this->binding( $value );
 			if ( null !== $binding ) {
-				$this->validate_binding( $binding, $schema_map, $path, $input_schema, $prior_outputs, $required, $errors );
+				$this->validate_binding( $binding, $schema_map, $path, $input_schema, $prior_outputs, $errors );
 
 				return;
 			}
@@ -124,13 +123,13 @@ final class WorkflowStepArgumentValidator {
 		foreach ( $values as $key => $item ) {
 			$key_path = $path . '.' . $key;
 			if ( array_key_exists( $key, $properties ) && ( is_array( $properties[ $key ] ) || $properties[ $key ] instanceof stdClass ) ) {
-				$this->validate_node( $item, $properties[ $key ], $key_path, $input_schema, $prior_outputs, in_array( $key, $required, true ), $errors );
+				$this->validate_node( $item, $properties[ $key ], $key_path, $input_schema, $prior_outputs, $errors );
 				continue;
 			}
 			if ( false === $additional ) {
 				$this->record( $errors, $key_path );
 			} elseif ( is_array( $additional ) || $additional instanceof stdClass ) {
-				$this->validate_node( $item, $additional, $key_path, $input_schema, $prior_outputs, false, $errors );
+				$this->validate_node( $item, $additional, $key_path, $input_schema, $prior_outputs, $errors );
 			}
 		}
 
@@ -182,7 +181,7 @@ final class WorkflowStepArgumentValidator {
 		$items = $schema['items'] ?? null;
 		if ( is_array( $items ) || $items instanceof stdClass ) {
 			foreach ( $value as $index => $item ) {
-				$this->validate_node( $item, $items, $path . '[' . $index . ']', $input_schema, $prior_outputs, false, $errors );
+				$this->validate_node( $item, $items, $path . '[' . $index . ']', $input_schema, $prior_outputs, $errors );
 			}
 		}
 	}
@@ -242,13 +241,12 @@ final class WorkflowStepArgumentValidator {
 	 * @param string                            $path          Validation path.
 	 * @param array<string,mixed>               $input_schema  Workflow input schema.
 	 * @param array<string,array<string,mixed>> $prior_outputs Prior output schemas.
-	 * @param bool                              $required      Whether the target is required.
 	 * @param array<string>                     $errors        Invalid paths.
 	 * @phpstan-param array{source:string,step_id?:string,path:list<string>} $binding
 	 */
-	private function validate_binding( array $binding, array $target_schema, string $path, array $input_schema, array $prior_outputs, bool $required, array &$errors ): void {
+	private function validate_binding( array $binding, array $target_schema, string $path, array $input_schema, array $prior_outputs, array &$errors ): void {
 		$source = $this->source_schema( $binding, $input_schema, $prior_outputs );
-		if ( null === $source || ( $required && ! $source['guaranteed'] ) || ! $this->compatible( $source['schema'], $target_schema ) ) {
+		if ( null === $source || ! $source['guaranteed'] || ! $this->compatible( $source['schema'], $target_schema ) ) {
 			$this->record( $errors, $path );
 		}
 	}
@@ -329,37 +327,211 @@ final class WorkflowStepArgumentValidator {
 		if ( '' === $source_type || '' === $target_type ) {
 			return false;
 		}
-		if ( $source_type === $target_type || ( 'number' === $target_type && 'integer' === $source_type ) ) {
-			if ( 'object' === $source_type && 'object' === $target_type ) {
-				$source_properties = $this->map( $source['properties'] ?? array() );
-				$target_properties = $this->map( $target['properties'] ?? array() );
-				$source_additional = $source['additionalProperties'] ?? false;
-				$source_required   = is_array( $source['required'] ?? null ) ? $source['required'] : array();
-				$target_required   = is_array( $target['required'] ?? null ) ? $target['required'] : array();
-				foreach ( $target_required as $key ) {
-					if ( ! array_key_exists( $key, $source_properties ) && false === $source_additional ) {
-						return false;
-					}
-					if ( ! in_array( $key, $source_required, true ) && false === $source_additional ) {
-						return false;
-					}
+		if ( $source_type !== $target_type && ( 'number' !== $target_type || 'integer' !== $source_type ) ) {
+			return false;
+		}
+
+		$finite_values = $this->finite_values( $source );
+		if ( null !== $finite_values ) {
+			foreach ( $finite_values as $value ) {
+				if ( ! $this->accepts( $value, $target ) ) {
+					return false;
 				}
-				foreach ( $target_properties as $key => $target_property ) {
-					if ( array_key_exists( $key, $source_properties ) && ( is_array( $target_property ) || $target_property instanceof stdClass ) && ( is_array( $source_properties[ $key ] ) || $source_properties[ $key ] instanceof stdClass ) && ! $this->compatible( $this->map( $source_properties[ $key ] ), $this->map( $target_property ) ) ) {
-						return false;
-					}
-				}
-			}
-			$source_items = $source['items'] ?? null;
-			$target_items = $target['items'] ?? null;
-			if ( 'array' === $source_type && 'array' === $target_type && ( is_array( $source_items ) || $source_items instanceof stdClass ) && ( is_array( $target_items ) || $target_items instanceof stdClass ) ) {
-				return $this->compatible( $this->map( $source_items ), $this->map( $target_items ) );
 			}
 
 			return true;
 		}
+		if ( array_key_exists( 'enum', $target ) || array_key_exists( 'const', $target ) ) {
+			return false;
+		}
 
-		return false;
+		return match ( $target_type ) {
+			'object' => $this->compatible_object( $source, $target ),
+			'array' => $this->compatible_array( $source, $target ),
+			'string' => $this->compatible_string( $source, $target ),
+			'integer', 'number' => $this->compatible_number( $source, $target ),
+			default => true,
+		};
+	}
+
+	/**
+	 * Return finite values that make a source schema exactly enumerable.
+	 *
+	 * @param array<string,mixed> $schema Source schema.
+	 * @return list<mixed>|null
+	 */
+	private function finite_values( array $schema ): ?array {
+		if ( array_key_exists( 'const', $schema ) ) {
+			return array( $schema['const'] );
+		}
+		if ( is_array( $schema['enum'] ?? null ) ) {
+			return array_values( $schema['enum'] );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Validate one finite source value against a target schema.
+	 *
+	 * @param mixed               $value  Finite source value.
+	 * @param array<string,mixed> $schema Target schema.
+	 */
+	private function accepts( mixed $value, array $schema ): bool {
+		$errors = array();
+		$this->validate_node( $value, $schema, '$', array(), array(), $errors );
+
+		return array() === $errors;
+	}
+
+	/**
+	 * Compare object constraints conservatively.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 */
+	private function compatible_object( array $source, array $target ): bool {
+		if ( ! $this->bounded_lower( $source, $target, 'minProperties' ) || ! $this->bounded_upper( $source, $target, 'maxProperties' ) ) {
+			return false;
+		}
+
+		$source_properties = $this->map( $source['properties'] ?? array() );
+		$target_properties = $this->map( $target['properties'] ?? array() );
+		$source_required   = is_array( $source['required'] ?? null ) ? $source['required'] : array();
+		$target_required   = is_array( $target['required'] ?? null ) ? $target['required'] : array();
+		$source_additional = $source['additionalProperties'] ?? true;
+		$target_additional = $target['additionalProperties'] ?? true;
+
+		if ( false === $target_additional && false !== $source_additional ) {
+			return false;
+		}
+		foreach ( $target_required as $key ) {
+			if ( ! is_string( $key ) || ! in_array( $key, $source_required, true ) || ! array_key_exists( $key, $source_properties ) ) {
+				return false;
+			}
+		}
+		foreach ( $target_properties as $key => $target_property ) {
+			if ( ! is_array( $target_property ) && ! $target_property instanceof stdClass ) {
+				return false;
+			}
+			if ( array_key_exists( $key, $source_properties ) ) {
+				$source_property = $source_properties[ $key ];
+				if ( ( ! is_array( $source_property ) && ! $source_property instanceof stdClass ) || ! $this->compatible( $this->map( $source_property ), $this->map( $target_property ) ) ) {
+					return false;
+				}
+			} elseif ( false !== $source_additional && ! $this->additional_schema_compatible( $source_additional, $target_property ) ) {
+				return false;
+			}
+		}
+
+		foreach ( $source_properties as $key => $source_property ) {
+			if ( array_key_exists( $key, $target_properties ) ) {
+				continue;
+			}
+			if ( false === $target_additional ) {
+				return false;
+			}
+			$target_has_schema = is_array( $target_additional ) || $target_additional instanceof stdClass;
+			$source_has_schema = is_array( $source_property ) || $source_property instanceof stdClass;
+			if ( $target_has_schema ) {
+				if ( ! $source_has_schema || ! $this->compatible( $this->map( $source_property ), $this->map( $target_additional ) ) ) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Compare array constraints conservatively.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 */
+	private function compatible_array( array $source, array $target ): bool {
+		if ( ! $this->bounded_lower( $source, $target, 'minItems' ) || ! $this->bounded_upper( $source, $target, 'maxItems' ) ) {
+			return false;
+		}
+		if ( true === ( $target['uniqueItems'] ?? false ) && true !== ( $source['uniqueItems'] ?? false ) ) {
+			return false;
+		}
+		$target_items = $target['items'] ?? null;
+		if ( null === $target_items ) {
+			return true;
+		}
+		$source_items = $source['items'] ?? null;
+		if ( ( ! is_array( $source_items ) && ! $source_items instanceof stdClass ) || ( ! is_array( $target_items ) && ! $target_items instanceof stdClass ) ) {
+			return false;
+		}
+
+		return $this->compatible( $this->map( $source_items ), $this->map( $target_items ) );
+	}
+
+	/**
+	 * Compare string constraints conservatively.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 */
+	private function compatible_string( array $source, array $target ): bool {
+		if ( ! $this->bounded_lower( $source, $target, 'minLength' ) || ! $this->bounded_upper( $source, $target, 'maxLength' ) ) {
+			return false;
+		}
+		if ( isset( $target['pattern'] ) && ( ! isset( $source['pattern'] ) || $source['pattern'] !== $target['pattern'] ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Compare numeric constraints conservatively.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 */
+	private function compatible_number( array $source, array $target ): bool {
+		return $this->bounded_lower( $source, $target, 'minimum' ) && $this->bounded_upper( $source, $target, 'maximum' );
+	}
+
+	/**
+	 * Compare a lower bound where the target must be no stricter than source.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 * @param string              $key    Bound key.
+	 */
+	private function bounded_lower( array $source, array $target, string $key ): bool {
+		return ! array_key_exists( $key, $target ) || ( array_key_exists( $key, $source ) && $source[ $key ] >= $target[ $key ] );
+	}
+
+	/**
+	 * Compare an upper bound where the target must be no stricter than source.
+	 *
+	 * @param array<string,mixed> $source Source schema.
+	 * @param array<string,mixed> $target Target schema.
+	 * @param string              $key    Bound key.
+	 */
+	private function bounded_upper( array $source, array $target, string $key ): bool {
+		return ! array_key_exists( $key, $target ) || ( array_key_exists( $key, $source ) && $source[ $key ] <= $target[ $key ] );
+	}
+
+	/**
+	 * Compare an additional-properties declaration with one target property.
+	 *
+	 * @param mixed $source_additional Source declaration.
+	 * @param mixed $target_property   Target property schema.
+	 */
+	private function additional_schema_compatible( mixed $source_additional, mixed $target_property ): bool {
+		if ( ! is_array( $source_additional ) && ! $source_additional instanceof stdClass ) {
+			return false;
+		}
+		if ( ! is_array( $target_property ) && ! $target_property instanceof stdClass ) {
+			return false;
+		}
+
+		return $this->compatible( $this->map( $source_additional ), $this->map( $target_property ) );
 	}
 
 	/**

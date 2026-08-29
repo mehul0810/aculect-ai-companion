@@ -284,7 +284,7 @@ final class WorkflowRunner {
 			}
 
 			$current = $this->require_run( $run_id );
-			$this->audit_event( $current, 'step_completed', $actor_id, $stored_step, null, $result->code() );
+			$this->audit_event( $current, 'step_completed', $actor_id, $stored_step, null, $result->code(), array_keys( $arguments ) );
 			return new WorkflowRunExecutionResult( $current, $stored_step, $result, true );
 		}
 
@@ -293,7 +293,7 @@ final class WorkflowRunner {
 			throw new WorkflowRunnerException( 'step_claim_lost' );
 		}
 
-		return $this->fail_run( $record, $plan, $result->code(), $actor_id, $stored_step, $result );
+		return $this->fail_run( $record, $plan, $result->code(), $actor_id, $stored_step, $result, array_keys( $arguments ) );
 	}
 
 	/** Cancel a run, requiring a safe execution boundary when running. */
@@ -498,15 +498,26 @@ final class WorkflowRunner {
 		}
 	}
 
-	/** Fail the run with exact execution evidence. */
-	private function fail_run( WorkflowRunRecord $record, WorkflowPlan $plan, string $code, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowAdapterResult $result = null ): WorkflowRunExecutionResult {
+	/**
+	 * Fail the run with exact execution evidence.
+	 *
+	 * @param WorkflowRunRecord          $record      Durable run record.
+	 * @param WorkflowPlan               $plan        Exact workflow plan.
+	 * @param string                     $code        Closed failure code.
+	 * @param int                        $actor_id    Current actor.
+	 * @param WorkflowStepRecord|null    $step        Optional failed step.
+	 * @param WorkflowAdapterResult|null $result     Optional adapter result.
+	 * @param array|null                 $field_names Names of arguments requested by a write step.
+	 * @phpstan-param list<string>|null $field_names
+	 */
+	private function fail_run( WorkflowRunRecord $record, WorkflowPlan $plan, string $code, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowAdapterResult $result = null, ?array $field_names = null ): WorkflowRunExecutionResult {
 		$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'failed', $code );
 		$this->guard->transition( $this->snapshot( $record, $plan ), new WorkflowTransitionRequest( WorkflowTransitionAction::FAIL, plan: $plan, execution: $evidence ) );
 		$failed = $this->persist_transition( $record, WorkflowRunState::FAILED, $actor_id, $code );
 		if ( null !== $step ) {
-			$this->audit_event( $record, 'step_failed', $actor_id, $step, null, $code );
+			$this->audit_event( $record, 'step_failed', $actor_id, $step, null, $code, $field_names );
 		}
-		$this->audit_event( $failed, 'run_failed', $actor_id, $step, null, $code );
+		$this->audit_event( $failed, 'run_failed', $actor_id, $step, null, $code, $field_names );
 
 		return new WorkflowRunExecutionResult( $failed, $step, $result, true );
 	}
@@ -523,15 +534,17 @@ final class WorkflowRunner {
 	 * @param WorkflowStepRecord|null       $step      Optional step summary.
 	 * @param WorkflowApprovalEvidence|null $approval  Optional approval evidence.
 	 * @param string|null                   $outcome   Optional outcome code.
+	 * @param array|null                    $field_names Names of arguments requested by a write step.
+	 * @phpstan-param list<string>|null $field_names
 	 */
-	private function audit_event( WorkflowRunRecord $run, string $event_type, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowApprovalEvidence $approval = null, ?string $outcome = null ): void {
+	private function audit_event( WorkflowRunRecord $run, string $event_type, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowApprovalEvidence $approval = null, ?string $outcome = null, ?array $field_names = null ): void {
 		$changed_fields = array();
 		$rollback_note  = '';
 		$step_id        = '';
 		if ( null !== $step ) {
 			$step_id = $step->step_id();
 			if ( 'write' === $step->kind() ) {
-				$changed_fields = array( 'step.' . $step_id );
+				$changed_fields = $this->write_changed_fields( $step, $field_names );
 				$rollback_note  = 'Use the WordPress revision or the workflow rollback procedure to restore this change.';
 			}
 		}
@@ -562,6 +575,37 @@ final class WorkflowRunner {
 			unset( $exception );
 			// The durable run state remains authoritative when the audit sink is unavailable.
 		}
+	}
+
+	/**
+	 * Return names-only evidence for one write step.
+	 *
+	 * Argument keys describe the requested mutation without persisting values.
+	 * When a step has no arguments (or the keys are not bounded identifiers),
+	 * the ability identity remains a useful, stable fallback.
+	 *
+	 * @param WorkflowStepRecord $step        Durable step summary.
+	 * @param array|null         $field_names  Requested argument names.
+	 * @phpstan-param list<string>|null $field_names
+	 * @return list<string>
+	 */
+	private function write_changed_fields( WorkflowStepRecord $step, ?array $field_names ): array {
+		$changed = array();
+		foreach ( $field_names ?? array() as $field_name ) {
+			if ( ! is_string( $field_name ) || 1 !== preg_match( '/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/D', $field_name ) ) {
+				continue;
+			}
+			$changed[] = 'field.' . $field_name;
+		}
+
+		if ( array() !== $changed ) {
+			return array_values( array_unique( array_slice( $changed, 0, 32 ) ) );
+		}
+
+		$ability = preg_replace( '/[^A-Za-z0-9_.-]+/', '.', $step->ability_id() );
+		$ability = is_string( $ability ) ? trim( $ability, '.' ) : '';
+
+		return array( 'ability.' . ( '' === $ability ? 'unknown' : substr( $ability, 0, 88 ) ) );
 	}
 
 	/**

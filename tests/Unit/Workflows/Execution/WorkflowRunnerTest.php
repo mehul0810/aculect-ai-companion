@@ -117,6 +117,51 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( array(), $events[2]->changed_fields() );
 	}
 
+	public function test_write_audit_records_requested_field_names_instead_of_only_the_step_id(): void {
+		$definition = $this->record( 'ordered-multi-step-v1.json' );
+		$plan       = $this->plan( $definition, '{"brief":"Audit the requested mutation"}' );
+		$events     = array();
+		$audit      = $this->createMock( WorkflowAuditStoreInterface::class );
+		$audit->method( 'append' )->willReturnCallback(
+			static function ( WorkflowAuditRecord $event ) use ( &$events ): void {
+				$events[] = $event;
+			}
+		);
+		$runner = new WorkflowRunner(
+			new InMemoryWorkflowRunStore(),
+			new WorkflowAdapterRegistry(
+				array(
+					$this->adapter( 'wordpress', 2, 'content/get-item', 'read' ),
+					$this->adapter( 'content_planner', 1, 'content/prepare-draft', 'proposal' ),
+					$this->adapter( 'wordpress', 1, 'content/create-draft', 'write' ),
+				)
+			),
+			audit: $audit
+		);
+		$record = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"brief":"Audit the requested mutation"}' ), 7 );
+		$runner->build_dry_run( $record->run_id(), $plan, 7 );
+		$runner->request_approval( $record->run_id(), $plan, 7 );
+		$runner->start(
+			$record->run_id(),
+			$plan,
+			WorkflowReadinessEvidence::from_evaluation( $plan, array(), true ),
+			7,
+			new WorkflowApprovalEvidence( $plan->hash(), array( 'create_draft' ), 'approval-audit', true )
+		);
+		for ( $index = 0; $index < 3; ++$index ) {
+			$runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
+		}
+
+		$write_events = array_values(
+			array_filter(
+				$events,
+				static fn ( WorkflowAuditRecord $event ): bool => 'step_completed' === $event->event_type() && 'create_draft' === $event->step_id()
+			)
+		);
+		self::assertCount( 1, $write_events );
+		self::assertSame( array( 'field.status' ), $write_events[0]->changed_fields() );
+	}
+
 	public function test_approval_gated_dependencies_execute_in_plan_order_then_complete(): void {
 		$definition = $this->record( 'ordered-multi-step-v1.json' );
 		$plan       = $this->plan( $definition, '{"brief":"Run this safely"}' );
@@ -242,8 +287,8 @@ final class WorkflowRunnerTest extends TestCase {
 				return $now;
 			}
 		);
-		$record = $runner->create( $definition, $incomplete, WorkflowInputContract::from_json( '{}' ), 7 );
-		$now   += 604801;
+		$record     = $runner->create( $definition, $incomplete, WorkflowInputContract::from_json( '{}' ), 7 );
+		$now       += 604801;
 
 		try {
 			$runner->resume_with_input( $record->run_id(), $complete, WorkflowInputContract::from_json( '{"brief":"Now complete"}' ), 7 );
@@ -264,7 +309,7 @@ final class WorkflowRunnerTest extends TestCase {
 				return $now;
 			}
 		);
-		$record = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"brief":"Approval deadline"}' ), 7 );
+		$record     = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"brief":"Approval deadline"}' ), 7 );
 		$runner->build_dry_run( $record->run_id(), $plan, 7 );
 		$waiting = $runner->request_approval( $record->run_id(), $plan, 7 );
 		$now    += 604801;

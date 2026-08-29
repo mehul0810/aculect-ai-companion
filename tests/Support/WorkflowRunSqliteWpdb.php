@@ -25,6 +25,15 @@ final class WorkflowRunSqliteWpdb {
 	public int $insert_id                = 0;
 	public string $fail_query_containing = '';
 	public bool $fail_query_once         = false;
+	/**
+	 * Simulated MySQL table engines used by installer contract tests.
+	 *
+	 * @var array<string,string>
+	 */
+	public array $table_engines = array(
+		'wp_aculect_ai_workflow_runs'      => 'InnoDB',
+		'wp_aculect_ai_workflow_run_steps' => 'InnoDB',
+	);
 
 	private PDO $pdo;
 
@@ -140,6 +149,11 @@ final class WorkflowRunSqliteWpdb {
 
 			return false;
 		}
+		if ( 1 === preg_match( '/^ALTER TABLE "([A-Za-z0-9_]+)" ENGINE=InnoDB$/i', trim( $query ), $matches ) ) {
+			$this->table_engines[ $matches[1] ] = 'InnoDB';
+
+			return 0;
+		}
 		try {
 			$query = match ( strtoupper( trim( $query ) ) ) {
 				'START TRANSACTION' => 'BEGIN',
@@ -171,6 +185,11 @@ final class WorkflowRunSqliteWpdb {
 	}
 
 	public function get_var( string $query ): int|string|null {
+		if ( false !== stripos( $query, 'FROM information_schema.TABLES' ) ) {
+			preg_match( '/TABLE_NAME\s*=\s*["\']([^"\']+)["\']/i', $query, $matches );
+
+			return $this->table_engines[ $matches[1] ?? '' ] ?? null;
+		}
 		if ( false !== stripos( $query, 'SHOW TABLES LIKE' ) ) {
 			preg_match( '/LIKE\s+["\']([^"\']+)["\']/i', $query, $matches );
 			$table_name = str_replace( array( '\\_', '\\%', '\\\\' ), array( '_', '%', '\\' ), $matches[1] ?? '' );

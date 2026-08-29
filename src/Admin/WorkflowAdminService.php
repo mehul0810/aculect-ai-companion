@@ -17,6 +17,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionCompatibilityEva
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionSchema;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionValidationException;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
@@ -352,19 +353,23 @@ final class WorkflowAdminService {
 		if ( null === $template ) {
 			$template = $this->templates->get( 'blank' ) ?? array();
 		}
-		$workflow_id  = $this->identifier( $submitted['workflow_id'] ?? ( $existing?->workflow_id() ?? '' ) );
-		$name         = $this->bounded_text( $submitted['name'] ?? ( $template['label'] ?? '' ), 120 );
-		$description  = $this->bounded_text( $submitted['description'] ?? ( $template['description'] ?? '' ), 1000 );
-		$status_value = (string) ( $submitted['status'] ?? 'draft' );
-		$status       = in_array( $status_value, array( 'draft', 'published' ), true ) ? $status_value : 'draft';
-		$write_value  = (string) ( $submitted['write_policy'] ?? ( $template['write_policy'] ?? 'proposal_only' ) );
-		$write_mode   = in_array( $write_value, array( 'proposal_only', 'draft_only', 'approved_update' ), true ) ? $write_value : 'proposal_only';
-		$mode_value   = (string) ( $submitted['target_mode'] ?? ( $template['target_mode'] ?? 'either' ) );
-		$mode         = in_array( $mode_value, array( 'new', 'existing', 'either' ), true ) ? $mode_value : 'either';
-		$post_types   = $this->post_types( $submitted['post_types'] ?? ( $template['post_types'] ?? array() ) );
-		$fields       = $this->input_fields( $submitted['input_fields'] ?? ( $template['input_fields'] ?? array() ), $errors );
-		$step_args    = $this->step_arguments( $submitted['step_arguments'] ?? ( $template['step_arguments'] ?? array() ), $errors );
-		$steps        = $this->steps( $submitted['step_abilities'] ?? ( $template['step_abilities'] ?? array() ), $errors, $fields, $post_types, $write_mode, $step_args );
+		$workflow_id   = $this->identifier( $submitted['workflow_id'] ?? ( $existing?->workflow_id() ?? '' ) );
+		$name          = $this->bounded_text( $submitted['name'] ?? ( $template['label'] ?? '' ), 120 );
+		$description   = $this->bounded_text( $submitted['description'] ?? ( $template['description'] ?? '' ), 1000 );
+		$status_value  = (string) ( $submitted['status'] ?? 'draft' );
+		$status        = in_array( $status_value, array( 'draft', 'published' ), true ) ? $status_value : 'draft';
+		$write_value   = (string) ( $submitted['write_policy'] ?? ( $template['write_policy'] ?? 'proposal_only' ) );
+		$write_mode    = in_array( $write_value, array( 'proposal_only', 'draft_only', 'approved_update' ), true ) ? $write_value : 'proposal_only';
+		$mode_value    = (string) ( $submitted['target_mode'] ?? ( $template['target_mode'] ?? 'either' ) );
+		$mode          = in_array( $mode_value, array( 'new', 'existing', 'either' ), true ) ? $mode_value : 'either';
+		$post_types    = $this->post_types( $submitted['post_types'] ?? ( $template['post_types'] ?? array() ) );
+		$fields        = $this->input_fields( $submitted['input_fields'] ?? ( $template['input_fields'] ?? array() ), $errors );
+		$step_args     = $this->step_arguments( $submitted['step_arguments'] ?? ( $template['step_arguments'] ?? array() ), $errors );
+		$step_value    = $submitted['step_abilities'] ?? ( $template['step_abilities'] ?? array() );
+		$step_errors   = array();
+		$initial_steps = $this->steps( $step_value, $step_errors, $fields, $post_types, $write_mode, $step_args );
+		$fields        = $this->tighten_input_schema( $fields, $initial_steps );
+		$steps         = $this->steps( $step_value, $errors, $fields, $post_types, $write_mode, $step_args );
 
 		if ( '' === $workflow_id ) {
 			$errors['workflow_id'] = 'Use 3–64 lowercase letters, numbers, underscores, or hyphens.';
@@ -562,6 +567,139 @@ final class WorkflowAdminService {
 		}
 
 		return $steps;
+	}
+
+	/**
+	 * Tighten guided input fields to every adapter constraint they feed.
+	 *
+	 * A guided field can be bound to an adapter value with a smaller range or
+	 * length than the primitive field editor exposes. Copying those constraints
+	 * into the durable input schema makes the source contract executable instead
+	 * of relying on the later adapter validation as a surprise failure.
+	 *
+	 * @param array<string,mixed>       $input_schema Guided input schema.
+	 * @param list<array<string,mixed>> $steps       Candidate steps.
+	 * @return array<string,mixed>
+	 */
+	private function tighten_input_schema( array $input_schema, array $steps ): array {
+		$descriptors = array();
+		foreach ( WorkflowAdapterCatalog::descriptors() as $descriptor ) {
+			$descriptors[ $descriptor->ability_id() ] = $descriptor;
+		}
+
+		foreach ( $steps as $step ) {
+			$ability_id = (string) ( $step['ability_id'] ?? '' );
+			$descriptor = $descriptors[ $ability_id ] ?? null;
+			$arguments  = $step['arguments'] ?? array();
+			if ( ! $descriptor instanceof WorkflowAdapterDescriptor || ! is_array( $arguments ) ) {
+				continue;
+			}
+			$this->tighten_argument_bindings( $arguments, $descriptor->input_schema(), $input_schema );
+		}
+
+		return $input_schema;
+	}
+
+	/**
+	 * Find input bindings recursively and merge their target constraints.
+	 *
+	 * @param mixed               $value        Candidate argument value.
+	 * @param array<string,mixed> $target_schema Adapter schema at this value.
+	 * @param array<string,mixed> $input_schema  Mutable guided input schema.
+	 */
+	private function tighten_argument_bindings( mixed $value, array $target_schema, array &$input_schema ): void {
+		if ( is_string( $value ) && 1 === preg_match( '/^\{\{input\.([a-z][a-z0-9_.]{0,127})\}\}$/D', $value, $matches ) ) {
+			$this->tighten_input_path( $input_schema, explode( '.', $matches[1] ), $target_schema );
+
+			return;
+		}
+		if ( ! is_array( $value ) ) {
+			return;
+		}
+
+		if ( array_is_list( $value ) ) {
+			$items = $target_schema['items'] ?? null;
+			if ( is_array( $items ) ) {
+				foreach ( $value as $item ) {
+					$this->tighten_argument_bindings( $item, $items, $input_schema );
+				}
+			}
+
+			return;
+		}
+
+		$properties = is_array( $target_schema['properties'] ?? null ) ? $target_schema['properties'] : array();
+		$additional = $target_schema['additionalProperties'] ?? null;
+		foreach ( $value as $key => $item ) {
+			$child = $properties[ $key ] ?? $additional;
+			if ( is_array( $child ) ) {
+				$this->tighten_argument_bindings( $item, $child, $input_schema );
+			}
+		}
+	}
+
+	/**
+	 * Merge one adapter schema node into a dotted guided input property.
+	 *
+	 * @param array<string,mixed> $input_schema Mutable input schema.
+	 * @param array<string>       $path         Dotted input path.
+	 * @param array<string,mixed> $target       Adapter target schema.
+	 * @phpstan-param list<string> $path
+	 */
+	private function tighten_input_path( array &$input_schema, array $path, array $target ): void {
+		$current =& $input_schema;
+		$last    = count( $path ) - 1;
+		foreach ( $path as $index => $segment ) {
+			if ( ! is_array( $current['properties'] ?? null ) || ! is_array( $current['properties'][ $segment ] ?? null ) ) {
+				unset( $current );
+
+				return;
+			}
+			if ( $index === $last ) {
+				$this->merge_schema_constraints( $current['properties'][ $segment ], $target );
+				unset( $current );
+
+				return;
+			}
+			$current =& $current['properties'][ $segment ];
+		}
+		unset( $current );
+	}
+
+	/**
+	 * Merge constraints conservatively so every target remains executable.
+	 *
+	 * @param array<string,mixed> $source Mutable source schema.
+	 * @param array<string,mixed> $target Adapter target schema.
+	 */
+	private function merge_schema_constraints( array &$source, array $target ): void {
+		foreach ( array( 'minimum', 'minLength', 'minItems', 'minProperties' ) as $key ) {
+			if ( array_key_exists( $key, $target ) && ( ! array_key_exists( $key, $source ) || $source[ $key ] < $target[ $key ] ) ) {
+				$source[ $key ] = $target[ $key ];
+			}
+		}
+		foreach ( array( 'maximum', 'maxLength', 'maxItems', 'maxProperties' ) as $key ) {
+			$target_value = $target[ $key ] ?? null;
+			if ( 'maxLength' === $key && is_int( $target_value ) ) {
+				$target_value = min( $target_value, WorkflowDefinitionSchema::MAX_SCHEMA_STRING_LENGTH );
+			}
+			if ( array_key_exists( $key, $target ) && ( ! array_key_exists( $key, $source ) || $source[ $key ] > $target_value ) ) {
+				$source[ $key ] = $target_value;
+			}
+		}
+		if ( array_key_exists( 'pattern', $target ) && ! array_key_exists( 'pattern', $source ) ) {
+			$source['pattern'] = $target['pattern'];
+		}
+		if ( is_array( $target['enum'] ?? null ) ) {
+			$source['enum'] = is_array( $source['enum'] ?? null ) ? array_values( array_intersect( $source['enum'], $target['enum'] ) ) : $target['enum'];
+		}
+		if ( array_key_exists( 'const', $target ) && ! array_key_exists( 'const', $source ) ) {
+			$source['const'] = $target['const'];
+		}
+
+		if ( is_array( $target['items'] ?? null ) && is_array( $source['items'] ?? null ) ) {
+			$this->merge_schema_constraints( $source['items'], $target['items'] );
+		}
 	}
 
 	/**

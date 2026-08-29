@@ -284,6 +284,7 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
 			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
+			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
 			'aculect_ai_companion_workflows_db_verification' => array(
 				'status'        => 'valid',
 				'db_version'    => '2026.08.19.1',
@@ -293,7 +294,18 @@ final class InstallerTest extends TestCase {
 		);
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
 			$wpdb->db_delta_queries[] = $sql;
-			$wpdb->existing_tables[]  = 'wp_aculect_ai_workflow_versions';
+			$wpdb->existing_tables    = array_values(
+				array_unique(
+					array_merge(
+						$wpdb->existing_tables,
+						array(
+							'wp_aculect_ai_workflow_versions',
+							'wp_aculect_ai_workflow_runs',
+							'wp_aculect_ai_workflow_run_steps',
+						)
+					)
+				)
+			);
 
 			return array( 'created versions table' );
 		};

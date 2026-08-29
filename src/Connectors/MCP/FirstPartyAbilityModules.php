@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\MCP\Modules\FixedWorkflowAbilityModules;
+use Aculect\AICompanion\Connectors\MCP\Modules\CustomWorkflowAbilityModules;
 use Closure;
 use RuntimeException;
 
@@ -28,8 +29,9 @@ final class FirstPartyAbilityModules {
 	 * @throws RuntimeException When two providers declare the same internal ID.
 	 */
 	public function all(): array {
-		$fixed_workflows = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
-		$modules         = array(
+		$fixed_workflows  = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
+		$custom_workflows = ( new CustomWorkflowAbilityModules( $this->module_factory ) )->all();
+		$modules          = array(
 			$this->module(
 				'search',
 				'Search WordPress Content',
@@ -63,6 +65,7 @@ final class FirstPartyAbilityModules {
 			),
 			$fixed_workflows['workflow_session.start'],
 			...array_values( array_slice( $fixed_workflows, 2 ) ),
+			...array_values( $custom_workflows ),
 			$this->module(
 				'site_editor.get_context',
 				'Read Site Editor Intelligence',

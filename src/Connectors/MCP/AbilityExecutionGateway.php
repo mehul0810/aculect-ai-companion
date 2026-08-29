@@ -27,6 +27,13 @@ final class AbilityExecutionGateway {
 	public const OUTCOME_TOOL_ERROR     = 'tool_error';
 	public const OUTCOME_AUTH_CHALLENGE = 'auth_challenge';
 
+	/**
+	 * Request-local authenticated context for nested, gateway-owned operations.
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private static ?array $current_request_auth = null;
+
 	private AbilitiesRegistry $registry;
 	private IntelligenceRegistry $intelligence;
 	private McpInputValidator $input_validator;
@@ -93,11 +100,28 @@ final class AbilityExecutionGateway {
 			return $this->unavailable_authenticated_actor_outcome();
 		}
 
+		$previous_request_auth       = self::$current_request_auth;
+		self::$current_request_auth = $request->auth;
 		try {
 			return AbilityExecutionOutcome::from_array( $this->execute_params( $request->params, $request->auth, $request->rest_request ) );
 		} finally {
+			self::$current_request_auth = $previous_request_auth;
 			$this->set_wordpress_user_id( $previous_actor_id );
 		}
+	}
+
+	/**
+	 * Return the current authenticated context for a nested gateway-owned operation.
+	 *
+	 * Custom workflow connector callbacks use this only to preserve the outer
+	 * token's scopes, provider, and write policy while dispatching each native
+	 * workflow step through a second gateway boundary. Direct callers receive an
+	 * empty context and therefore fail closed.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function current_request_auth(): array {
+		return self::$current_request_auth ?? array();
 	}
 
 	/**

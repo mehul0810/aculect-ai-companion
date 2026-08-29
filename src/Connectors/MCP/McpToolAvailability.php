@@ -269,6 +269,15 @@ final class McpToolAvailability {
 			'workflows'          => $this->operation_group(
 				array(
 					'route_request'       => 'workflow.route_request',
+					'list'                => 'content_workflow.list',
+					'get'                 => 'content_workflow.get',
+					'prepare'             => 'content_workflow.prepare',
+					'dry_run'             => 'content_workflow.dry_run',
+					'execute'             => 'content_workflow.execute',
+					'resume'              => 'content_workflow.resume',
+					'cancel'              => 'content_workflow.cancel',
+					'status'              => 'content_workflow.status',
+					'result'              => 'content_workflow.result',
 					'prepare_post'        => 'content_workflow.prepare_post',
 					'create_draft'        => 'content_workflow.create_draft',
 					'update_post'         => 'content_workflow.update_post',

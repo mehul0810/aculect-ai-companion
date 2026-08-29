@@ -42,6 +42,10 @@ final class WorkflowRunRecordMapper {
 
 		$outcome_code       = (string) ( $row['outcome_code'] ?? '' );
 		$waiting_expires_at = isset( $row['waiting_expires_at'] ) ? (string) $row['waiting_expires_at'] : '';
+		$approval_hash      = (string) ( $row['approval_reference_hash'] ?? '' );
+		if ( '' !== $approval_hash && 1 !== preg_match( '/^[a-f0-9]{64}$/D', $approval_hash ) ) {
+			throw new WorkflowRunStoreException( 'stored_run_invalid' );
+		}
 
 		return new WorkflowRunRecord(
 			(int) $row['id'],
@@ -55,6 +59,7 @@ final class WorkflowRunRecordMapper {
 			(int) $row['state_version'],
 			'' === $outcome_code ? null : $outcome_code,
 			'' === $waiting_expires_at ? null : $waiting_expires_at,
+			'' === $approval_hash ? null : $approval_hash,
 			(int) $row['created_by'],
 			(int) $row['updated_by'],
 			(string) $row['created_at'],

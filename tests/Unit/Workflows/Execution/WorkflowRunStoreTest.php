@@ -45,7 +45,7 @@ final class WorkflowRunStoreTest extends TestCase {
 		$this->original_wpdb                          = $GLOBALS['wpdb'] ?? null;
 		$GLOBALS['wpdb']                              = new WorkflowRunSqliteWpdb();
 		$GLOBALS['aculect_ai_companion_test_options'] = array(
-			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
+			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.2',
 			'aculect_ai_companion_secret_storage_key' => str_repeat( 'k', 64 ),
 		);
 	}
@@ -100,6 +100,22 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertStringStartsWith( 'v1:', (string) $step_raw['output_ciphertext'] );
 		self::assertStringNotContainsString( 'never plaintext', (string) $step_raw['output_ciphertext'] );
 		self::assertSame( WorkflowRunState::RUNNING, $store->get( 'run-store-1' )?->state() );
+	}
+
+	public function test_approval_reference_hash_is_persisted_across_lifecycle_cas(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$store->create( 'run-approval-hash', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$hash    = hash( 'sha256', 'approval-reference' );
+		$running = $store->transition( 'run-approval-hash', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7, null, null, $hash );
+
+		self::assertNotNull( $running );
+		self::assertSame( $hash, $running?->approval_reference_hash() );
+		self::assertTrue( $running?->to_array()['approval_recorded'] ?? false );
+		self::assertArrayNotHasKey( 'approval_reference_hash', $running?->to_array() ?? array() );
+		$raw = $this->wpdb()->get_row( $this->wpdb()->prepare( 'SELECT * FROM %i WHERE run_id = %s', 'wp_aculect_ai_workflow_runs', 'run-approval-hash' ), 'ARRAY_A' );
+		self::assertSame( $hash, $raw['approval_reference_hash'] ?? null );
 	}
 
 	public function test_store_rejects_input_hash_mismatch_and_invalid_stored_output(): void {
@@ -374,8 +390,7 @@ final class WorkflowRunStoreTest extends TestCase {
 	}
 
 	public function test_run_tables_are_repaired_to_innodb_before_use(): void {
-		$wpdb           = $this->wpdb();
-		$wpdb->is_mysql = true;
+		$wpdb = $this->wpdb();
 		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
 		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
 
@@ -385,20 +400,40 @@ final class WorkflowRunStoreTest extends TestCase {
 	}
 
 	public function test_run_tables_fail_closed_when_engine_repair_fails(): void {
-		$wpdb           = $this->wpdb();
-		$wpdb->is_mysql = true;
+		$wpdb = $this->wpdb();
 		$wpdb->table_engines['wp_aculect_ai_workflow_runs'] = 'MyISAM';
 		$wpdb->fail_query_containing                        = 'ALTER TABLE';
 
 		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
 	}
 
-	public function test_sqlite_backend_uses_native_transactionality_without_mysql_engine_queries(): void {
+	public function test_engine_repair_failure_is_retry_throttled_until_backoff_expires(): void {
 		$wpdb = $this->wpdb();
 		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
 		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
+		$wpdb->fail_query_containing                             = 'ALTER TABLE';
+		$wpdb->fail_query_once                                   = true;
 
+		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+		$retry_after = (int) get_option( 'aculect_ai_companion_workflow_runs_engine_repair_retry_after', 0 );
+		self::assertGreaterThan( time(), $retry_after );
+		self::assertSame( 0, $wpdb->alter_count );
+
+		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+		self::assertSame( 0, $wpdb->alter_count, 'A failed repair must not synchronously retry on every boot.' );
+
+		update_option( 'aculect_ai_companion_workflow_runs_engine_repair_retry_after', time() - 1, false );
 		self::assertTrue( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
+		self::assertSame( 2, $wpdb->alter_count );
+	}
+
+	public function test_false_is_mysql_does_not_claim_sqlite_transactionality(): void {
+		$wpdb           = $this->wpdb();
+		$wpdb->is_mysql = false;
+		$wpdb->table_engines['wp_aculect_ai_workflow_runs']      = 'MyISAM';
+		$wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] = 'MyISAM';
+
+		self::assertFalse( \Aculect\AICompanion\Workflows\Database\RunInstaller::install() );
 		self::assertSame( 'MyISAM', $wpdb->table_engines['wp_aculect_ai_workflow_runs'] );
 		self::assertSame( 'MyISAM', $wpdb->table_engines['wp_aculect_ai_workflow_run_steps'] );
 	}
@@ -451,6 +486,7 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertStringContainsString( 'output_ciphertext longtext NOT NULL', $sql );
 		self::assertStringContainsString( 'output_hash char(64) NOT NULL DEFAULT', $sql );
 		self::assertStringContainsString( 'lease_expires_at datetime NULL', $sql );
+		self::assertStringContainsString( 'approval_reference_hash char(64) NOT NULL DEFAULT', $sql );
 		self::assertStringContainsString( 'UNIQUE KEY run_step (run_pk, step_id)', $sql );
 		self::assertStringContainsString( 'ENGINE=InnoDB', $sql );
 		self::assertStringNotContainsStringIgnoringCase( 'foreign key', $sql );

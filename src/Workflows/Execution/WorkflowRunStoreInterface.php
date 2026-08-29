@@ -64,7 +64,8 @@ interface WorkflowRunStoreInterface {
 		WorkflowRunState $next_state,
 		int $actor_id,
 		?string $outcome_code = null,
-		?string $waiting_expires_at = null
+		?string $waiting_expires_at = null,
+		?string $approval_reference_hash = null
 	): ?WorkflowRunRecord;
 
 	/**

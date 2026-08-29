@@ -160,6 +160,7 @@ final class WorkflowRunnerTest extends TestCase {
 		);
 		self::assertCount( 1, $write_events );
 		self::assertSame( array( 'field.status' ), $write_events[0]->changed_fields() );
+		self::assertSame( hash( 'sha256', 'approval-audit' ), $write_events[0]->approval_reference_hash() );
 	}
 
 	public function test_approval_gated_dependencies_execute_in_plan_order_then_complete(): void {

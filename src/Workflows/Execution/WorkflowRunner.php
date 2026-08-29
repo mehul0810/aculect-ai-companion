@@ -179,7 +179,8 @@ final class WorkflowRunner {
 		$request = new WorkflowTransitionRequest( WorkflowTransitionAction::START, plan: $plan, approval: $approval, readiness: $readiness );
 		$result  = $this->guard->transition( $this->snapshot( $record, $plan ), $request );
 
-		$updated = $this->persist_transition( $record, $result->snapshot()->state(), $actor_id );
+		$approval_hash = null !== $approval ? hash( 'sha256', $approval->reference() ) : null;
+		$updated       = $this->persist_transition( $record, $result->snapshot()->state(), $actor_id, null, null, $approval_hash );
 		$this->audit_event( $updated, 'run_started', $actor_id, null, $approval );
 
 		return $updated;
@@ -372,9 +373,9 @@ final class WorkflowRunner {
 	}
 
 	/** Persist a guarded lifecycle transition through the run CAS fence. */
-	private function persist_transition( WorkflowRunRecord $record, WorkflowRunState $next, int $actor_id, ?string $outcome_code = null, ?string $waiting_expires_at = null ): WorkflowRunRecord {
+	private function persist_transition( WorkflowRunRecord $record, WorkflowRunState $next, int $actor_id, ?string $outcome_code = null, ?string $waiting_expires_at = null, ?string $approval_reference_hash = null ): WorkflowRunRecord {
 		try {
-			$updated = $this->store->transition( $record->run_id(), $record->state(), $record->state_version(), $next, $actor_id, $outcome_code, $waiting_expires_at );
+			$updated = $this->store->transition( $record->run_id(), $record->state(), $record->state_version(), $next, $actor_id, $outcome_code, $waiting_expires_at, $approval_reference_hash );
 		} catch ( WorkflowRunStoreException $exception ) {
 			throw new WorkflowRunnerException( $exception->error_code() );
 		}
@@ -552,6 +553,8 @@ final class WorkflowRunner {
 		$approval_hash = null;
 		if ( null !== $approval ) {
 			$approval_hash = hash( 'sha256', $approval->reference() );
+		} elseif ( null !== $step && 'write' === $step->kind() ) {
+			$approval_hash = $run->approval_reference_hash();
 		}
 
 		try {

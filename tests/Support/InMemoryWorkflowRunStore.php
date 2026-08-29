@@ -70,6 +70,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			1,
 			null,
 			$waiting_expires_at,
+			null,
 			$actor_id,
 			$actor_id,
 			'2026-08-29 00:00:00',
@@ -99,7 +100,8 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		WorkflowRunState $next_state,
 		int $actor_id,
 		?string $outcome_code = null,
-		?string $waiting_expires_at = null
+		?string $waiting_expires_at = null,
+		?string $approval_reference_hash = null
 	): ?WorkflowRunRecord {
 		$record = $this->runs[ $run_id ] ?? null;
 		if ( null === $record || $record->state() !== $expected_state || $record->state_version() !== $expected_version ) {
@@ -125,6 +127,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$expected_version + 1,
 			$outcome_code,
 			$waiting_expires_at,
+			null !== $approval_reference_hash ? $approval_reference_hash : $record->approval_reference_hash(),
 			$record->created_by(),
 			$actor_id,
 			$record->created_at(),
@@ -159,6 +162,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$expected_version + 1,
 			null,
 			null,
+			$record->approval_reference_hash(),
 			$record->created_by(),
 			$actor_id,
 			$record->created_at(),

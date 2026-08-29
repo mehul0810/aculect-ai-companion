@@ -87,23 +87,24 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			$inserted = $wpdb->insert(
 				$tables['runs'],
 				array(
-					'run_id'              => $run_id,
-					'workflow_id'         => $workflow_id,
-					'workflow_version'    => $workflow_version,
-					'definition_checksum' => $definition_checksum,
-					'plan_hash'           => $plan->hash(),
-					'input_hash'          => $input->hash(),
-					'input_ciphertext'    => $input_ciphertext,
-					'state'               => $state->value,
-					'state_version'       => 1,
-					'outcome_code'        => '',
-					'waiting_expires_at'  => $waiting_expires_at,
-					'created_by'          => $actor_id,
-					'updated_by'          => $actor_id,
-					'created_at'          => $now,
-					'updated_at'          => $now,
+					'run_id'                  => $run_id,
+					'workflow_id'             => $workflow_id,
+					'workflow_version'        => $workflow_version,
+					'definition_checksum'     => $definition_checksum,
+					'plan_hash'               => $plan->hash(),
+					'input_hash'              => $input->hash(),
+					'input_ciphertext'        => $input_ciphertext,
+					'state'                   => $state->value,
+					'state_version'           => 1,
+					'outcome_code'            => '',
+					'waiting_expires_at'      => $waiting_expires_at,
+					'approval_reference_hash' => '',
+					'created_by'              => $actor_id,
+					'updated_by'              => $actor_id,
+					'created_at'              => $now,
+					'updated_at'              => $now,
 				),
-				array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
+				array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%s' )
 			);
 			if ( false === $inserted ) {
 				throw new WorkflowRunStoreException( 'run_create_failed' );
@@ -176,7 +177,8 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		WorkflowRunState $next_state,
 		int $actor_id,
 		?string $outcome_code = null,
-		?string $waiting_expires_at = null
+		?string $waiting_expires_at = null,
+		?string $approval_reference_hash = null
 	): ?WorkflowRunRecord {
 		$this->ensure_storage();
 		if ( $actor_id < 1 || $expected_version < 1 || ( $next_state->is_terminal() && null === $outcome_code ) || ( ! $next_state->is_terminal() && null !== $outcome_code ) ) {
@@ -188,65 +190,87 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( null !== $waiting_expires_at && 1 !== preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $waiting_expires_at ) ) {
 			throw new WorkflowRunStoreException( 'invalid_waiting_expiry' );
 		}
+		if ( null !== $approval_reference_hash && 1 !== preg_match( '/^[a-f0-9]{64}$/D', $approval_reference_hash ) ) {
+			throw new WorkflowRunStoreException( 'invalid_approval_reference_hash' );
+		}
 
 		global $wpdb;
 		$tables  = RunInstaller::table_names();
 		$now_sql = $this->now_sql();
 		if ( WorkflowRunState::CANCELLED === $next_state && WorkflowRunState::RUNNING === $expected_state ) {
-			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND (s.state = %s OR (s.state = %s AND s.error_code = %s)))';
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
-			$updated = $wpdb->query(
-				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and every value is supplied through placeholders.
-					$query,
-					$tables['runs'],
-					$next_state->value,
-					$expected_version + 1,
-					$outcome_code ?? '',
-					$actor_id,
-					$now_sql,
+			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s';
+			if ( null !== $approval_reference_hash ) {
+				$query .= ', approval_reference_hash = %s';
+			}
+			$query    .= ' WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND (s.state = %s OR (s.state = %s AND s.error_code = %s)))';
+			$arguments = array(
+				$tables['runs'],
+				$next_state->value,
+				$expected_version + 1,
+				$outcome_code ?? '',
+				$actor_id,
+				$now_sql,
+			);
+			if ( null !== $approval_reference_hash ) {
+				$arguments[] = $approval_reference_hash;
+			}
+			$arguments = array_merge(
+				$arguments,
+				array(
 					$run_id,
 					$expected_state->value,
 					$expected_version,
 					$tables['steps'],
 					WorkflowStepState::RUNNING->value,
 					WorkflowStepState::FAILED->value,
-					'execution_uncertain'
+					'execution_uncertain',
 				)
 			);
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and all values are supplied through placeholders.
+			$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
 		} elseif ( in_array( $expected_state, array( WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) ) {
-			$updated = $wpdb->query(
-				$wpdb->prepare(
-					'UPDATE %i SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s',
-					$tables['runs'],
-					$next_state->value,
-					$expected_version + 1,
-					$outcome_code ?? '',
-					$actor_id,
-					$now_sql,
-					$run_id,
-					$expected_state->value,
-					$expected_version,
-					$now_sql
-				)
+			$query = 'UPDATE %i SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s';
+			if ( null !== $approval_reference_hash ) {
+				$query .= ', approval_reference_hash = %s';
+			}
+			$query    .= ' WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s';
+			$arguments = array(
+				$tables['runs'],
+				$next_state->value,
+				$expected_version + 1,
+				$outcome_code ?? '',
+				$actor_id,
+				$now_sql,
 			);
+			if ( null !== $approval_reference_hash ) {
+				$arguments[] = $approval_reference_hash;
+			}
+			$arguments = array_merge( $arguments, array( $run_id, $expected_state->value, $expected_version, $now_sql ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and all values are supplied through placeholders.
+			$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
 		} else {
+			$data    = array(
+				'state'              => $next_state->value,
+				'state_version'      => $expected_version + 1,
+				'outcome_code'       => $outcome_code ?? '',
+				'waiting_expires_at' => $waiting_expires_at,
+				'updated_by'         => $actor_id,
+				'updated_at'         => $now_sql,
+			);
+			$formats = array( '%s', '%d', '%s', '%s', '%d', '%s' );
+			if ( null !== $approval_reference_hash ) {
+				$data['approval_reference_hash'] = $approval_reference_hash;
+				$formats[]                       = '%s';
+			}
 			$updated = $wpdb->update(
 				$tables['runs'],
-				array(
-					'state'              => $next_state->value,
-					'state_version'      => $expected_version + 1,
-					'outcome_code'       => $outcome_code ?? '',
-					'waiting_expires_at' => $waiting_expires_at,
-					'updated_by'         => $actor_id,
-					'updated_at'         => $now_sql,
-				),
+				$data,
 				array(
 					'run_id'        => $run_id,
 					'state'         => $expected_state->value,
 					'state_version' => $expected_version,
 				),
-				array( '%s', '%d', '%s', '%s', '%d', '%s' ),
+				$formats,
 				array( '%s', '%s', '%d' )
 			);
 		}

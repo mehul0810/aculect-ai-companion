@@ -25,7 +25,8 @@ final class WorkflowRunSqliteWpdb {
 	public int $insert_id                = 0;
 	public string $fail_query_containing = '';
 	public bool $fail_query_once         = false;
-	public bool $is_mysql                = false;
+	public bool $is_mysql                = true;
+	public int $alter_count              = 0;
 	/**
 	 * Simulated MySQL table engines used by installer contract tests.
 	 *
@@ -55,6 +56,7 @@ final class WorkflowRunSqliteWpdb {
 				state_version INTEGER NOT NULL DEFAULT 1,
 				outcome_code TEXT NOT NULL DEFAULT \'\',
 				waiting_expires_at TEXT NULL,
+				approval_reference_hash TEXT NOT NULL DEFAULT \'\',
 				created_by INTEGER NOT NULL,
 				updated_by INTEGER NOT NULL,
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -151,6 +153,7 @@ final class WorkflowRunSqliteWpdb {
 			return false;
 		}
 		if ( 1 === preg_match( '/^ALTER TABLE "([A-Za-z0-9_]+)" ENGINE=InnoDB$/i', trim( $query ), $matches ) ) {
+			++$this->alter_count;
 			$this->table_engines[ $matches[1] ] = 'InnoDB';
 
 			return 0;

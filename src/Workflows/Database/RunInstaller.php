@@ -19,8 +19,12 @@ final class RunInstaller {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned workflow run tables require controlled schema changes.
 
-	private const DB_VERSION        = '2026.08.29.1';
-	private const OPTION_DB_VERSION = 'aculect_ai_companion_workflow_runs_db_version';
+	private const DB_VERSION                           = '2026.08.29.2';
+	private const OPTION_DB_VERSION                    = 'aculect_ai_companion_workflow_runs_db_version';
+	private const OPTION_ENGINE_REPAIR_LOCK            = 'aculect_ai_companion_workflow_runs_engine_repair_lock';
+	private const OPTION_ENGINE_REPAIR_RETRY_AFTER     = 'aculect_ai_companion_workflow_runs_engine_repair_retry_after';
+	private const ENGINE_REPAIR_LOCK_TTL               = 5 * 60;
+	private const ENGINE_REPAIR_FAILURE_RETRY_INTERVAL = 5 * 60;
 
 	/**
 	 * Create or repair the workflow run tables.
@@ -77,6 +81,8 @@ final class RunInstaller {
 		$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $tables['runs'] ) );
 
 		delete_option( self::OPTION_DB_VERSION );
+		delete_option( self::OPTION_ENGINE_REPAIR_LOCK );
+		delete_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
 	}
 
 	/**
@@ -137,6 +143,7 @@ final class RunInstaller {
             state_version bigint(20) unsigned NOT NULL DEFAULT 1,
             outcome_code varchar(64) NOT NULL DEFAULT '',
             waiting_expires_at datetime NULL,
+            approval_reference_hash char(64) NOT NULL DEFAULT '',
             created_by bigint(20) unsigned NOT NULL,
             updated_by bigint(20) unsigned NOT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -200,32 +207,74 @@ final class RunInstaller {
 		global $wpdb;
 		if ( self::is_sqlite_backend() ) {
 			// SQLite provides transactional DDL/DML semantics without MySQL table engines.
+			delete_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
 			return true;
+		}
+		if ( ! self::is_known_mysql_backend() ) {
+			// A false or missing wpdb::is_mysql value is not proof of SQLite. An
+			// unknown adapter must not be allowed to claim transactional semantics.
+			return false;
 		}
 
 		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_var' ) || ! method_exists( $wpdb, 'query' ) ) {
 			return false;
 		}
 
+		$engines = array();
 		foreach ( self::table_names() as $table ) {
 			$engine = self::table_engine( $table );
-			if ( 'INNODB' !== $engine ) {
+			if ( '' === $engine ) {
+				return false;
+			}
+			$engines[ $table ] = $engine;
+		}
+
+		$needs_repair = array_filter(
+			$engines,
+			static fn ( string $engine ): bool => 'INNODB' !== $engine
+		);
+		if ( array() === $needs_repair ) {
+			delete_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
+			return true;
+		}
+
+		$now = time();
+		if ( self::repair_lock_is_active( (string) get_option( self::OPTION_ENGINE_REPAIR_LOCK, '' ), $now ) ) {
+			return false;
+		}
+		$current_lock = self::read_repair_lock();
+		if ( '' !== $current_lock && self::repair_lock_expires_at( $current_lock ) >= $now ) {
+			return false;
+		}
+		if ( (int) get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, 0 ) > $now ) {
+			return false;
+		}
+
+		$lock_token = self::acquire_repair_lock( $now );
+		if ( '' === $lock_token ) {
+			return false;
+		}
+		$owned_token = $lock_token;
+		try {
+			foreach ( $needs_repair as $table => $engine ) {
+				unset( $engine );
 				try {
 					$altered = $wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ENGINE=InnoDB', $table ) );
 				} catch ( \Throwable ) {
+					$owned_token = self::publish_repair_failure( $lock_token, $now );
 					return false;
 				}
-				if ( false === $altered ) {
+				if ( false === $altered || 'INNODB' !== self::table_engine( $table ) ) {
+					$owned_token = self::publish_repair_failure( $lock_token, $now );
 					return false;
 				}
 			}
 
-			if ( 'INNODB' !== self::table_engine( $table ) ) {
-				return false;
-			}
+			delete_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
+			return true;
+		} finally {
+			self::delete_repair_lock_if_value( $owned_token );
 		}
-
-		return true;
 	}
 
 	/**
@@ -250,7 +299,191 @@ final class RunInstaller {
 			return true;
 		}
 
-		return property_exists( $wpdb, 'is_mysql' ) && false === $wpdb->is_mysql;
+		return false;
+	}
+
+	/** Return whether wpdb explicitly identifies the supported MySQL backend. */
+	private static function is_known_mysql_backend(): bool {
+		global $wpdb;
+
+		return isset( $wpdb ) && is_object( $wpdb ) && property_exists( $wpdb, 'is_mysql' ) && true === $wpdb->is_mysql;
+	}
+
+	/**
+	 * Acquire an expiring engine-repair lease.
+	 *
+	 * @param int $now Current Unix timestamp.
+	 */
+	private static function acquire_repair_lock( int $now ): string {
+		$lock_token = self::repair_lock_token( $now + self::ENGINE_REPAIR_LOCK_TTL );
+		if ( self::add_repair_lock( $lock_token ) ) {
+			return $lock_token;
+		}
+
+		$current = self::read_repair_lock();
+		if ( '' === $current || self::repair_lock_expires_at( $current ) >= $now ) {
+			return '';
+		}
+
+		return self::update_repair_lock_if_value( $current, $lock_token ) ? $lock_token : '';
+	}
+
+	/**
+	 * Publish a bounded retry delay while retaining exact lease ownership.
+	 *
+	 * @param string $lock_token Exact lease owner.
+	 * @param int    $now        Current Unix timestamp.
+	 */
+	private static function publish_repair_failure( string $lock_token, int $now ): string {
+		$retry_after = $now + self::ENGINE_REPAIR_FAILURE_RETRY_INTERVAL;
+		$outcome     = 'failure:' . self::repair_lock_token( $retry_after );
+		if ( ! self::update_repair_lock_if_value( $lock_token, $outcome ) ) {
+			return $lock_token;
+		}
+		update_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, $retry_after, false );
+
+		return $outcome;
+	}
+
+	/**
+	 * Add a unique engine-repair lease row.
+	 *
+	 * @param string $lock_token Unique expiring lease.
+	 */
+	private static function add_repair_lock( string $lock_token ): bool {
+		if ( self::uses_test_options() ) {
+			return add_option( self::OPTION_ENGINE_REPAIR_LOCK, $lock_token, '', false );
+		}
+
+		global $wpdb;
+		$added = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				self::OPTION_ENGINE_REPAIR_LOCK,
+				$lock_token
+			)
+		);
+
+		return 1 === (int) $added;
+	}
+
+	/** Read the authoritative current engine-repair lease. */
+	private static function read_repair_lock(): string {
+		if ( self::uses_test_options() ) {
+			return (string) get_option( self::OPTION_ENGINE_REPAIR_LOCK, '' );
+		}
+
+		global $wpdb;
+		$value = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				self::OPTION_ENGINE_REPAIR_LOCK
+			)
+		);
+
+		return is_string( $value ) ? $value : '';
+	}
+
+	/**
+	 * Replace a lease only when the exact previous owner still holds it.
+	 *
+	 * @param string $old_value Expected owner token.
+	 * @param string $new_value Replacement owner token.
+	 */
+	private static function update_repair_lock_if_value( string $old_value, string $new_value ): bool {
+		if ( self::uses_test_options() ) {
+			$current = (string) get_option( self::OPTION_ENGINE_REPAIR_LOCK, '' );
+			if ( ! hash_equals( $old_value, $current ) ) {
+				return false;
+			}
+
+			return update_option( self::OPTION_ENGINE_REPAIR_LOCK, $new_value, false );
+		}
+
+		global $wpdb;
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+				$new_value,
+				self::OPTION_ENGINE_REPAIR_LOCK,
+				$old_value
+			)
+		);
+
+		return 1 === (int) $updated;
+	}
+
+	/**
+	 * Release a lease only when the exact owner still holds it.
+	 *
+	 * @param string $lock_token Expected owner token.
+	 */
+	private static function delete_repair_lock_if_value( string $lock_token ): bool {
+		if ( self::uses_test_options() ) {
+			$current = (string) get_option( self::OPTION_ENGINE_REPAIR_LOCK, '' );
+			if ( '' === $lock_token || ! hash_equals( $lock_token, $current ) ) {
+				return false;
+			}
+
+			return delete_option( self::OPTION_ENGINE_REPAIR_LOCK );
+		}
+
+		global $wpdb;
+		$deleted = $wpdb->delete(
+			$wpdb->options,
+			array(
+				'option_name'  => self::OPTION_ENGINE_REPAIR_LOCK,
+				'option_value' => $lock_token,
+			),
+			array( '%s', '%s' )
+		);
+
+		return 1 === (int) $deleted;
+	}
+
+	/**
+	 * Return an expiring lease token suffix, including failure outcomes.
+	 *
+	 * @param string $lock_token Lease token.
+	 */
+	private static function repair_lock_expires_at( string $lock_token ): int {
+		$parts = explode( ':', $lock_token );
+		$last  = end( $parts );
+
+		return is_string( $last ) && ctype_digit( $last ) ? (int) $last : 0;
+	}
+
+	/**
+	 * Validate a cached lease before trusting its expiry.
+	 *
+	 * @param string $lock_token Cached lease token.
+	 * @param int    $now        Current Unix timestamp.
+	 */
+	private static function repair_lock_is_active( string $lock_token, int $now ): bool {
+		$parts = explode( ':', $lock_token );
+		if ( 2 === count( $parts ) ) {
+			$valid = 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[0] ) && ctype_digit( $parts[1] );
+		} elseif ( 3 === count( $parts ) ) {
+			$valid = 'failure' === $parts[0] && 1 === preg_match( '/^[a-f0-9]{32}$/D', $parts[1] ) && ctype_digit( $parts[2] );
+		} else {
+			$valid = false;
+		}
+
+		return $valid && self::repair_lock_expires_at( $lock_token ) >= $now;
+	}
+
+	/**
+	 * Create a unique expiring lease token.
+	 *
+	 * @param int $expires_at Unix expiry timestamp.
+	 */
+	private static function repair_lock_token( int $expires_at ): string {
+		return bin2hex( random_bytes( 16 ) ) . ':' . $expires_at;
+	}
+
+	/** Check whether the lightweight PHPUnit option store is active. */
+	private static function uses_test_options(): bool {
+		return isset( $GLOBALS['aculect_ai_companion_test_options'] ) && is_array( $GLOBALS['aculect_ai_companion_test_options'] );
 	}
 
 	/**

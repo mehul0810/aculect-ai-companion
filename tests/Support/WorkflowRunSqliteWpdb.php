@@ -73,6 +73,23 @@ final class WorkflowRunSqliteWpdb {
 				UNIQUE (run_pk, step_id)
 			)'
 		);
+		$this->pdo->exec(
+			'CREATE TABLE wp_aculect_ai_workflow_audit (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				run_id TEXT NOT NULL,
+				workflow_id TEXT NOT NULL,
+				workflow_version INTEGER NOT NULL,
+				definition_checksum TEXT NOT NULL,
+				event_type TEXT NOT NULL,
+				step_id TEXT NOT NULL DEFAULT \'\',
+				actor_id INTEGER NOT NULL DEFAULT 0,
+				outcome_code TEXT NOT NULL DEFAULT \'\',
+				approval_reference_hash TEXT NOT NULL DEFAULT \'\',
+				changed_fields TEXT NOT NULL,
+				rollback_note TEXT NOT NULL DEFAULT \'\',
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)'
+		);
 	}
 
 	public function prepare( string $query, mixed ...$args ): string {

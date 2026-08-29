@@ -24,6 +24,7 @@ use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller;
 use Aculect\AICompanion\Workflows\Database\Installer as WorkflowInstaller;
 use Aculect\AICompanion\Workflows\Database\RunInstaller as WorkflowRunInstaller;
+use Aculect\AICompanion\Workflows\Database\AuditInstaller as WorkflowAuditInstaller;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -71,6 +72,7 @@ final class Plugin {
 		IntelligenceInstaller::activate();
 		WorkflowInstaller::activate();
 		WorkflowRunInstaller::activate();
+		WorkflowAuditInstaller::activate();
 		LocalSampleData::ensure_first_installed_at();
 		self::add_rewrite_rules();
 		flush_rewrite_rules();
@@ -124,6 +126,7 @@ final class Plugin {
 		IntelligenceInstaller::install();
 		WorkflowInstaller::install();
 		WorkflowRunInstaller::install();
+		WorkflowAuditInstaller::install();
 		LocalSampleData::ensure_first_installed_at();
 		OAuthStorageMaintenance::maybe_prune();
 	}

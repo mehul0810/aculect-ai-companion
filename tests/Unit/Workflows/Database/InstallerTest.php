@@ -285,6 +285,7 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
 			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
 			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
+			'aculect_ai_companion_workflow_audit_db_version' => '2026.08.29.1',
 			'aculect_ai_companion_workflows_db_verification' => array(
 				'status'        => 'valid',
 				'db_version'    => '2026.08.19.1',
@@ -302,6 +303,7 @@ final class InstallerTest extends TestCase {
 							'wp_aculect_ai_workflow_versions',
 							'wp_aculect_ai_workflow_runs',
 							'wp_aculect_ai_workflow_run_steps',
+							'wp_aculect_ai_workflow_audit',
 						)
 					)
 				)

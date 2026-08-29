@@ -40,7 +40,8 @@ final class WorkflowRunner {
 	public function __construct(
 		private WorkflowRunStoreInterface $store,
 		private WorkflowAdapterRegistry $adapters = new WorkflowAdapterRegistry(),
-		private WorkflowTransitionGuard $guard = new WorkflowTransitionGuard()
+		private WorkflowTransitionGuard $guard = new WorkflowTransitionGuard(),
+		private WorkflowAuditStoreInterface $audit = new NullWorkflowAuditStore()
 	) {
 	}
 
@@ -74,7 +75,7 @@ final class WorkflowRunner {
 		$until = WorkflowRunState::WAITING_FOR_INPUT === $state ? $this->waiting_expiry() : null;
 
 		try {
-			return $this->store->create(
+			$created = $this->store->create(
 				$id,
 				$definition->workflow_id(),
 				$definition->definition()->to_array()['workflow_version'],
@@ -86,6 +87,9 @@ final class WorkflowRunner {
 				$dry_run,
 				$until
 			);
+			$this->audit_event( $created, 'run_created', $actor_id );
+
+			return $created;
 		} catch ( WorkflowRunStoreException $exception ) {
 			throw new WorkflowRunnerException( $exception->error_code() );
 		}
@@ -108,7 +112,10 @@ final class WorkflowRunner {
 			return $record;
 		}
 
-		return $this->persist_transition( $record, WorkflowRunState::DRY_RUN_READY, $actor_id );
+		$updated = $this->persist_transition( $record, WorkflowRunState::DRY_RUN_READY, $actor_id );
+		$this->audit_event( $updated, 'run_dry_run_ready', $actor_id );
+
+		return $updated;
 	}
 
 	/** Move an exact dry run into approval waiting. */
@@ -121,7 +128,10 @@ final class WorkflowRunner {
 			new WorkflowTransitionRequest( WorkflowTransitionAction::REQUEST_APPROVAL, plan: $plan, dry_run: $dry_run )
 		);
 
-		return $this->persist_transition( $record, $result->snapshot()->state(), $actor_id, null, $this->waiting_expiry() );
+		$updated = $this->persist_transition( $record, $result->snapshot()->state(), $actor_id, null, $this->waiting_expiry() );
+		$this->audit_event( $updated, 'approval_requested', $actor_id );
+
+		return $updated;
 	}
 
 	/** Replace incomplete input while retaining the exact definition version. */
@@ -145,6 +155,8 @@ final class WorkflowRunner {
 			throw new WorkflowRunnerException( 'state_conflict' );
 		}
 
+		$this->audit_event( $updated, 'run_input_resumed', $actor_id );
+
 		return $updated;
 	}
 
@@ -155,7 +167,10 @@ final class WorkflowRunner {
 		$request = new WorkflowTransitionRequest( WorkflowTransitionAction::START, plan: $plan, approval: $approval, readiness: $readiness );
 		$result  = $this->guard->transition( $this->snapshot( $record, $plan ), $request );
 
-		return $this->persist_transition( $record, $result->snapshot()->state(), $actor_id );
+		$updated = $this->persist_transition( $record, $result->snapshot()->state(), $actor_id );
+		$this->audit_event( $updated, 'run_started', $actor_id, null, $approval );
+
+		return $updated;
 	}
 
 	/**
@@ -185,6 +200,7 @@ final class WorkflowRunner {
 				$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'completed', 'completed' );
 				$this->guard->transition( $this->snapshot( $record, $plan ), new WorkflowTransitionRequest( WorkflowTransitionAction::COMPLETE, plan: $plan, execution: $evidence ) );
 				$completed = $this->persist_transition( $record, WorkflowRunState::COMPLETED, $actor_id, 'completed' );
+				$this->audit_event( $completed, 'run_completed', $actor_id, null, null, 'completed' );
 
 				return new WorkflowRunExecutionResult( $completed, null, null, true );
 			}
@@ -216,6 +232,7 @@ final class WorkflowRunner {
 			}
 
 			$current = $this->require_run( $run_id );
+			$this->audit_event( $current, 'step_completed', $actor_id, $stored_step, null, $result->code() );
 			return new WorkflowRunExecutionResult( $current, $stored_step, $result, true );
 		}
 
@@ -237,7 +254,10 @@ final class WorkflowRunner {
 		$request = new WorkflowTransitionRequest( WorkflowTransitionAction::CANCEL, plan: $plan, execution: $execution );
 		$result  = $this->guard->transition( $this->snapshot( $record, $plan ), $request );
 
-		return $this->persist_transition( $record, WorkflowRunState::CANCELLED, $actor_id, $result->snapshot()->outcome_code() );
+		$cancelled = $this->persist_transition( $record, WorkflowRunState::CANCELLED, $actor_id, $result->snapshot()->outcome_code() );
+		$this->audit_event( $cancelled, 'run_cancelled', $actor_id, null, null, $result->snapshot()->outcome_code() );
+
+		return $cancelled;
 	}
 
 	/** Return a persisted run or throw a bounded error. */
@@ -390,8 +410,65 @@ final class WorkflowRunner {
 		$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'failed', $code );
 		$this->guard->transition( $this->snapshot( $record, $plan ), new WorkflowTransitionRequest( WorkflowTransitionAction::FAIL, plan: $plan, execution: $evidence ) );
 		$failed = $this->persist_transition( $record, WorkflowRunState::FAILED, $actor_id, $code );
+		if ( null !== $step ) {
+			$this->audit_event( $record, 'step_failed', $actor_id, $step, null, $code );
+		}
+		$this->audit_event( $failed, 'run_failed', $actor_id, $step, null, $code );
 
 		return new WorkflowRunExecutionResult( $failed, $step, $result, true );
+	}
+
+	/**
+	 * Append one bounded audit event without allowing observability to leak raw data.
+	 *
+	 * Audit persistence is best effort after the guarded state transition. A
+	 * storage outage must not turn a completed write into an ambiguous retry.
+	 *
+	 * @param WorkflowRunRecord             $run       Durable run metadata.
+	 * @param string                        $event_type Closed event type.
+	 * @param int                           $actor_id  Current actor.
+	 * @param WorkflowStepRecord|null       $step      Optional step summary.
+	 * @param WorkflowApprovalEvidence|null $approval  Optional approval evidence.
+	 * @param string|null                   $outcome   Optional outcome code.
+	 */
+	private function audit_event( WorkflowRunRecord $run, string $event_type, int $actor_id, ?WorkflowStepRecord $step = null, ?WorkflowApprovalEvidence $approval = null, ?string $outcome = null ): void {
+		$changed_fields = array();
+		$rollback_note  = '';
+		$step_id        = '';
+		if ( null !== $step ) {
+			$step_id = $step->step_id();
+			if ( 'write' === $step->kind() ) {
+				$changed_fields = array( 'step.' . $step_id );
+				$rollback_note  = 'Use the WordPress revision or the workflow rollback procedure to restore this change.';
+			}
+		}
+
+		$approval_hash = null;
+		if ( null !== $approval ) {
+			$approval_hash = hash( 'sha256', $approval->reference() );
+		}
+
+		try {
+			$this->audit->append(
+				new WorkflowAuditRecord(
+					$run->run_id(),
+					$run->workflow_id(),
+					$run->workflow_version(),
+					$run->definition_checksum(),
+					$event_type,
+					$step_id,
+					$actor_id,
+					$outcome,
+					$approval_hash,
+					$changed_fields,
+					$rollback_note,
+					gmdate( 'Y-m-d H:i:s' )
+				)
+			);
+		} catch ( Throwable $exception ) {
+			unset( $exception );
+			// The durable run state remains authoritative when the audit sink is unavailable.
+		}
 	}
 
 	/**

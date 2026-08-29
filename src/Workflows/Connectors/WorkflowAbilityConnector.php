@@ -60,7 +60,6 @@ final class WorkflowAbilityConnector {
 	private WorkflowRoleAccessPolicy $role_access;
 	private WorkflowApprovalAuthority $approval_authority;
 	private WorkflowExecutionGuard $execution_guard;
-	private ?WorkflowExecutionAuthorization $execution_authorization = null;
 
 	/**
 	 * Provides the authenticated request context for connector calls.
@@ -289,8 +288,7 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function execute( array $args ): array {
-		$this->execution_authorization = null;
-		$auth                          = $this->auth();
+		$auth = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
@@ -306,7 +304,6 @@ final class WorkflowAbilityConnector {
 		if ( WorkflowRunState::WAITING_FOR_INPUT === $run->state() ) {
 			return $this->input_required( $run, $plan );
 		}
-
 		$readiness = $this->readiness_evidence( $plan, $auth );
 		if ( null !== ( $readiness['error'] ?? null ) ) {
 			return $readiness['error'];
@@ -315,14 +312,16 @@ final class WorkflowAbilityConnector {
 		if ( ! $evidence instanceof WorkflowReadinessEvidence ) {
 			return $this->error( 'workflow_readiness_unavailable', 'Workflow requirements could not be evaluated.' );
 		}
-		$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
-		if ( is_array( $approval ) ) {
-			return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
+		$approval_resolution = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
+		if ( null !== $approval_resolution['error'] ) {
+			$error = $approval_resolution['error'];
+			return $this->error( (string) ( $error['error'] ?? 'invalid_approval' ), (string) ( $error['message'] ?? 'Approval evidence is invalid.' ) );
 		}
+		$approval                = $approval_resolution['approval'];
+		$execution_authorization = $approval_resolution['authorization'];
 		if ( WorkflowRunState::RUNNING === $run->state() && array() !== $plan->approval_gate_step_ids() && null === $approval ) {
 			return $this->approval_required( $run, $plan, $auth );
 		}
-
 		try {
 			$runner = $this->runner();
 			$run    = $this->start_if_needed( $runner, $run, $plan, $evidence, $auth['user_id'], $approval );
@@ -334,16 +333,14 @@ final class WorkflowAbilityConnector {
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_start_failed', 'The workflow could not be started.' );
 		}
-
 		if ( WorkflowRunState::WAITING_FOR_APPROVAL === $run->state() ) {
 			return $this->approval_required( $run, $plan, $auth );
 		}
-
 		try {
 			$runner   = $this->runner();
 			$execute  = fn (): WorkflowRunExecutionResult => $runner->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] );
-			$progress = null !== $this->execution_authorization
-				? AbilityExecutionGateway::with_workflow_authorization( $this->execution_authorization, $execute )
+			$progress = null !== $execution_authorization
+				? AbilityExecutionGateway::with_workflow_authorization( $execution_authorization, $execute )
 				: $execute();
 			if ( ! $progress instanceof WorkflowRunExecutionResult ) {
 				return $this->error( 'workflow_execution_failed', 'The workflow step could not be executed.' );
@@ -364,8 +361,7 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function resume( array $args ): array {
-		$this->execution_authorization = null;
-		$auth                          = $this->auth();
+		$auth = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
@@ -378,12 +374,16 @@ final class WorkflowAbilityConnector {
 		$runner                  = $this->runner();
 
 		try {
-			$approval = null;
+			$approval                = null;
+			$execution_authorization = null;
 			if ( WorkflowRunState::RUNNING === $run->state() ) {
-				$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
-				if ( is_array( $approval ) ) {
-					return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
+				$approval_resolution = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
+				if ( null !== $approval_resolution['error'] ) {
+					$error = $approval_resolution['error'];
+					return $this->error( (string) ( $error['error'] ?? 'invalid_approval' ), (string) ( $error['message'] ?? 'Approval evidence is invalid.' ) );
 				}
+				$approval                = $approval_resolution['approval'];
+				$execution_authorization = $approval_resolution['authorization'];
 			}
 			if ( WorkflowRunState::WAITING_FOR_INPUT === $run->state() ) {
 				$input = $this->input( $args['input'] ?? null );
@@ -399,10 +399,13 @@ final class WorkflowAbilityConnector {
 				if ( null !== ( $readiness['error'] ?? null ) ) {
 					return $readiness['error'];
 				}
-				$approval = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
-				if ( is_array( $approval ) ) {
-					return $this->error( (string) ( $approval['error'] ?? 'invalid_approval' ), (string) ( $approval['message'] ?? 'Approval evidence is invalid.' ) );
+				$approval_resolution = $this->approval( $args['approval'] ?? null, $run->run_id(), $plan, $auth );
+				if ( null !== $approval_resolution['error'] ) {
+					$error = $approval_resolution['error'];
+					return $this->error( (string) ( $error['error'] ?? 'invalid_approval' ), (string) ( $error['message'] ?? 'Approval evidence is invalid.' ) );
 				}
+				$approval                = $approval_resolution['approval'];
+				$execution_authorization = $approval_resolution['authorization'];
 				if ( ! isset( $readiness['evidence'] ) || ! $readiness['evidence'] instanceof WorkflowReadinessEvidence ) {
 					return $this->error( 'workflow_readiness_unavailable', 'Workflow requirements could not be evaluated.' );
 				}
@@ -410,12 +413,12 @@ final class WorkflowAbilityConnector {
 			}
 
 			if ( WorkflowRunState::RUNNING === $run->state() ) {
-				if ( array() !== $plan->approval_gate_step_ids() && null === $this->execution_authorization ) {
+				if ( array() !== $plan->approval_gate_step_ids() && null === $execution_authorization ) {
 					return $this->approval_required( $run, $plan, $auth );
 				}
 				$execute  = fn (): WorkflowRunExecutionResult => $runner->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] );
-				$progress = null !== $this->execution_authorization
-					? AbilityExecutionGateway::with_workflow_authorization( $this->execution_authorization, $execute )
+				$progress = null !== $execution_authorization
+					? AbilityExecutionGateway::with_workflow_authorization( $execution_authorization, $execute )
 					: $execute();
 				return $this->execution_payload( $progress, $plan );
 			}
@@ -758,13 +761,10 @@ final class WorkflowAbilityConnector {
 	 * @param string              $run_id Run ID bound to the approval.
 	 * @param WorkflowPlan        $plan Exact plan.
 	 * @param array<string,mixed> $auth Authenticated request context.
-	 * @return WorkflowApprovalEvidence|array<string,mixed>|null
+	 * @return array{approval:WorkflowApprovalEvidence|null,authorization:WorkflowExecutionAuthorization|null,error:array<string,mixed>|null}
 	 */
-	private function approval( mixed $value, string $run_id, WorkflowPlan $plan, array $auth ): WorkflowApprovalEvidence|array|null {
-		$resolution                    = $this->execution_guard->resolve_approval( $value, $run_id, $plan, $auth );
-		$this->execution_authorization = $resolution['authorization'];
-
-		return null !== $resolution['error'] ? $resolution['error'] : $resolution['approval'];
+	private function approval( mixed $value, string $run_id, WorkflowPlan $plan, array $auth ): array {
+		return $this->execution_guard->resolve_approval( $value, $run_id, $plan, $auth );
 	}
 
 	/**
@@ -1081,11 +1081,11 @@ final class WorkflowAbilityConnector {
 			'input_incomplete'       => 'The workflow input is incomplete.',
 			'approval_required'      => 'Explicit approval is required for the planned write steps.',
 			'approval_mismatch'      => 'Approval evidence does not match this workflow plan.',
+			'waiting_expired'        => 'The workflow input or approval window has expired; prepare a new run.',
 			'requirements_unchecked' => 'Workflow requirements have not been verified.',
 			'requirements_blocked'   => 'One or more workflow requirements are unavailable.',
 			'invalid_state'          => 'The workflow is not in a state that supports this operation.',
 		);
-
 		return $this->error( 'workflow_' . $code, $messages[ $code ] ?? 'The workflow operation could not be completed.' );
 	}
 

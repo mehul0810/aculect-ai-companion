@@ -82,8 +82,8 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		$now              = $this->now_sql();
 		global $wpdb;
 		$tables = RunInstaller::table_names();
-		$this->begin();
 		try {
+			$this->begin();
 			$inserted = $wpdb->insert(
 				$tables['runs'],
 				array(
@@ -531,20 +531,26 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			return;
 		}
 
-		$cutoff = gmdate( 'Y-m-d H:i:s', ( $this->clock )() - self::RETENTION_SECONDS );
-		$tables = RunInstaller::table_names();
+		$now     = ( $this->clock )();
+		$now_sql = gmdate( 'Y-m-d H:i:s', $now );
+		$cutoff  = gmdate( 'Y-m-d H:i:s', $now - self::RETENTION_SECONDS );
+		$tables  = RunInstaller::table_names();
+		$this->fence_abandoned_running( $tables, $cutoff, $now_sql );
 		try {
 			$run_ids = $wpdb->get_col(
 				$wpdb->prepare(
-					'SELECT id FROM %i WHERE ((state IN (%s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at < %s)) ORDER BY updated_at ASC, id ASC LIMIT %d',
+					'SELECT id FROM %i WHERE ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s)) ORDER BY updated_at ASC, id ASC LIMIT %d',
 					$tables['runs'],
+					WorkflowRunState::CREATED->value,
+					WorkflowRunState::PREPARED->value,
+					WorkflowRunState::DRY_RUN_READY->value,
 					WorkflowRunState::COMPLETED->value,
 					WorkflowRunState::FAILED->value,
 					WorkflowRunState::CANCELLED->value,
 					$cutoff,
 					WorkflowRunState::WAITING_FOR_INPUT->value,
 					WorkflowRunState::WAITING_FOR_APPROVAL->value,
-					$cutoff,
+					$now_sql,
 					self::PRUNE_LIMIT
 				)
 			);
@@ -560,24 +566,33 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			if ( $run_id < 1 ) {
 				continue;
 			}
-			$this->begin();
 			try {
+				$this->begin();
 				$deleted = $wpdb->query(
 					$wpdb->prepare(
-						'DELETE FROM %i WHERE id = %d AND ((state IN (%s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at < %s))',
+						'DELETE FROM %i WHERE id = %d AND ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s))',
 						$tables['runs'],
 						$run_id,
+						WorkflowRunState::CREATED->value,
+						WorkflowRunState::PREPARED->value,
+						WorkflowRunState::DRY_RUN_READY->value,
 						WorkflowRunState::COMPLETED->value,
 						WorkflowRunState::FAILED->value,
 						WorkflowRunState::CANCELLED->value,
 						$cutoff,
 						WorkflowRunState::WAITING_FOR_INPUT->value,
 						WorkflowRunState::WAITING_FOR_APPROVAL->value,
-						$cutoff
+						$now_sql
 					)
 				);
+				if ( false === $deleted ) {
+					throw new WorkflowRunStoreException( 'retention_delete_failed' );
+				}
 				if ( 1 === (int) $deleted ) {
-					$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
+					$steps_deleted = $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
+					if ( false === $steps_deleted ) {
+						throw new WorkflowRunStoreException( 'retention_steps_delete_failed' );
+					}
 				}
 				$this->commit();
 			} catch ( Throwable ) {
@@ -585,6 +600,40 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 				// Retention is best effort; a storage outage must not block a new run.
 				continue;
 			}
+		}
+	}
+
+	/**
+	 * Fence stale running rows into an explicitly uncertain terminal state.
+	 *
+	 * @param array<string,string> $tables Table names.
+	 * @param string               $cutoff Retention cutoff.
+	 * @param string               $now_sql Current UTC timestamp.
+	 */
+	private function fence_abandoned_running( array $tables, string $cutoff, string $now_sql ): void {
+		global $wpdb;
+		try {
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					'UPDATE %i AS r SET state = %s, state_version = state_version + 1, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.state = %s AND r.updated_at < %s AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND s.state = %s AND (s.lease_expires_at IS NULL OR s.lease_expires_at > %s))',
+					$tables['runs'],
+					WorkflowRunState::FAILED->value,
+					'execution_uncertain',
+					0,
+					$now_sql,
+					WorkflowRunState::RUNNING->value,
+					$cutoff,
+					$tables['steps'],
+					WorkflowStepState::RUNNING->value,
+					$now_sql
+				)
+			);
+			if ( false === $updated ) {
+				return;
+			}
+		} catch ( Throwable $exception ) {
+			unset( $exception );
+			// Retention is best effort; an unavailable store must not block a new run.
 		}
 	}
 
@@ -598,7 +647,8 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 	}
 
 	private function now_sql(): string {
-		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() ); }
+		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() );
+	}
 
 	/** Return whether a step lease has expired against the store clock. */
 	private function lease_expired( WorkflowStepRecord $step ): bool {
@@ -613,11 +663,20 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private function begin(): void {
 		global $wpdb;
-		$wpdb->query( 'START TRANSACTION' ); }
+		if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
+			throw new WorkflowRunStoreException( 'transaction_failed' );
+		}
+	}
+
 	private function commit(): void {
 		global $wpdb;
-		$wpdb->query( 'COMMIT' ); }
+		if ( false === $wpdb->query( 'COMMIT' ) ) {
+			throw new WorkflowRunStoreException( 'transaction_failed' );
+		}
+	}
+
 	private function rollback(): void {
 		global $wpdb;
-		$wpdb->query( 'ROLLBACK' ); }
+		$wpdb->query( 'ROLLBACK' );
+	}
 }

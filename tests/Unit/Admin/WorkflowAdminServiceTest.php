@@ -42,6 +42,7 @@ final class WorkflowAdminServiceTest extends TestCase {
 		);
 		self::assertContains( 'title:string:required', $templates['blog_post_draft']['input_fields'] );
 		self::assertContains( 'content:string:required', $templates['blog_post_draft']['input_fields'] );
+		self::assertContains( 'post_id:integer:required', $templates['blank']['input_fields'] );
 		self::assertSame( '{{input.title}}', $templates['blog_post_draft']['step_arguments']['step_2']['title'] );
 		self::assertSame( '{{input.meta_title}}', $templates['seo_rewrite']['step_arguments']['step_2']['meta_title'] );
 	}
@@ -119,7 +120,7 @@ final class WorkflowAdminServiceTest extends TestCase {
 			'description'    => 'Initial workflow.',
 			'target_mode'    => 'existing',
 			'post_types'     => 'post',
-			'input_fields'   => 'brief:string',
+			'input_fields'   => "post_id:integer:required\nbrief:string:required",
 			'step_abilities' => 'content/get-item',
 			'write_policy'   => 'proposal_only',
 			'status'         => 'published',
@@ -200,7 +201,7 @@ final class WorkflowAdminServiceTest extends TestCase {
 				'description'    => 'Refresh existing editorial content.',
 				'target_mode'    => 'existing',
 				'post_types'     => 'page, post',
-				'input_fields'   => "post_id:integer:required\nbrief:string",
+				'input_fields'   => "post_id:integer:required\nbrief:string:required\ntitle:string:required\ncontent:string:required",
 				'step_abilities' => "content/get-item\ncontent/prepare-draft\ncontent/update-item",
 				'write_policy'   => 'draft_only',
 				'status'         => 'published',
@@ -212,7 +213,7 @@ final class WorkflowAdminServiceTest extends TestCase {
 		self::assertSame( 'editorial_refresh', $value['workflow_id'] );
 		self::assertSame( 1, $value['workflow_version'] );
 		self::assertSame( array( 'page', 'post' ), $value['content_target']['post_types'] );
-		self::assertSame( array( 'post_id' ), $value['input_schema']['required'] );
+		self::assertSame( array( 'post_id', 'brief', 'title', 'content' ), $value['input_schema']['required'] );
 		self::assertSame( array( 'step_3' ), $value['approval_gates'] );
 		self::assertSame( 'published', $value['status'] );
 		self::assertSame( 'content/update-item', $value['steps'][2]['ability_id'] );
@@ -277,6 +278,51 @@ final class WorkflowAdminServiceTest extends TestCase {
 			self::fail( 'Expected malformed input syntax to be rejected.' );
 		} catch ( WorkflowAdminValidationException $exception ) {
 			self::assertSame( 'Inputs must use field:type[:required] with a supported primitive type.', $exception->errors()['input_fields'] );
+		}
+	}
+
+	public function test_invalid_static_adapter_argument_type_is_rejected_before_persistence(): void {
+		$service = new WorkflowAdminService();
+
+		try {
+			$service->definition_from_input(
+				array(
+					'workflow_id'    => 'invalid_static_argument',
+					'name'           => 'Invalid argument',
+					'description'    => 'Static argument type test.',
+					'post_types'     => 'post',
+					'input_fields'   => 'post_id:integer:required',
+					'step_abilities' => 'content/get-item',
+					'step_arguments' => '{"step_1":{"id":"not-an-integer"}}',
+				),
+				7
+			);
+			self::fail( 'An adapter argument with the wrong type must be rejected.' );
+		} catch ( WorkflowAdminValidationException $exception ) {
+			self::assertSame( 'Provide valid typed arguments and bindings for each selected ability.', $exception->errors()['step_arguments'] );
+		}
+	}
+
+	public function test_binding_to_optional_input_cannot_satisfy_required_adapter_argument(): void {
+		$service = new WorkflowAdminService();
+
+		try {
+			$service->definition_from_input(
+				array(
+					'workflow_id'    => 'optional_binding_argument',
+					'template_id'    => 'blank',
+					'name'           => 'Optional binding',
+					'description'    => 'Optional binding test.',
+					'post_types'     => 'post',
+					'input_fields'   => 'post_id:integer',
+					'step_abilities' => 'content/get-item',
+					'step_arguments' => '{"step_1":{"id":"{{input.post_id}}"}}',
+				),
+				7
+			);
+			self::fail( 'An optional input must not feed a required adapter argument.' );
+		} catch ( WorkflowAdminValidationException $exception ) {
+			self::assertSame( 'Provide valid typed arguments and bindings for each selected ability.', $exception->errors()['step_arguments'] );
 		}
 	}
 }

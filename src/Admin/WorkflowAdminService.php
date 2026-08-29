@@ -22,6 +22,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
+use Aculect\AICompanion\Workflows\Planning\WorkflowStepArgumentValidator;
 use JsonException;
 use Throwable;
 
@@ -38,6 +39,7 @@ final class WorkflowAdminService {
 	private WorkflowDefinitionRepository $repository;
 	private WorkflowRoleAccessPolicy $role_access;
 	private WorkflowAuditStoreInterface $audit;
+	private WorkflowStepArgumentValidator $argument_validator;
 
 	/**
 	 * Create the service with repository and template collaborators.
@@ -48,10 +50,11 @@ final class WorkflowAdminService {
 	 * @param WorkflowAuditStoreInterface|null  $audit       Summary-only audit store.
 	 */
 	public function __construct( ?WorkflowDefinitionRepository $repository = null, ?WorkflowTemplateCatalog $templates = null, ?WorkflowRoleAccessPolicy $role_access = null, ?WorkflowAuditStoreInterface $audit = null ) {
-		$this->repository  = $repository ?? new WorkflowDefinitionRepository();
-		$this->templates   = $templates ?? new WorkflowTemplateCatalog();
-		$this->role_access = $role_access ?? new WorkflowRoleAccessPolicy();
-		$this->audit       = $audit ?? new WorkflowAuditStore();
+		$this->repository         = $repository ?? new WorkflowDefinitionRepository();
+		$this->templates          = $templates ?? new WorkflowTemplateCatalog();
+		$this->role_access        = $role_access ?? new WorkflowRoleAccessPolicy();
+		$this->audit              = $audit ?? new WorkflowAuditStore();
+		$this->argument_validator = new WorkflowStepArgumentValidator();
 	}
 
 	/**
@@ -506,7 +509,8 @@ final class WorkflowAdminService {
 			$descriptors[ $descriptor->ability_id() ] ??= $descriptor;
 		}
 
-		$steps = array();
+		$steps         = array();
+		$prior_outputs = array();
 		foreach ( is_array( $lines ) ? $lines : array() as $line ) {
 			$ability_id = strtolower( trim( (string) $line ) );
 			if ( '' === $ability_id ) {
@@ -528,8 +532,8 @@ final class WorkflowAdminService {
 				$arguments                = array();
 			}
 			$required = $descriptor->input_schema()['required'] ?? array();
+			$missing  = array();
 			if ( is_array( $required ) ) {
-				$missing = array();
 				foreach ( $required as $required_key ) {
 					if ( is_string( $required_key ) && ! array_key_exists( $required_key, $arguments ) ) {
 						$missing[] = $required_key;
@@ -539,7 +543,13 @@ final class WorkflowAdminService {
 					$errors['step_arguments'] = 'Provide arguments for required adapter fields: ' . implode( ', ', $missing ) . '.';
 				}
 			}
-			$steps[] = array(
+			if ( array() === $missing && is_array( $arguments ) ) {
+				$argument_errors = $this->argument_validator->validate( $arguments, $descriptor->input_schema(), $input_schema, $prior_outputs );
+				if ( array() !== $argument_errors ) {
+					$errors['step_arguments'] = 'Provide valid typed arguments and bindings for each selected ability.';
+				}
+			}
+			$steps[]                   = array(
 				'step_id'         => $step_id,
 				'adapter_id'      => $descriptor->adapter_id(),
 				'adapter_version' => $descriptor->adapter_version(),
@@ -548,6 +558,7 @@ final class WorkflowAdminService {
 				'arguments'       => $arguments,
 				'depends_on'      => 0 === count( $steps ) ? array() : array( 'step_' . count( $steps ) ),
 			);
+			$prior_outputs[ $step_id ] = $descriptor->output_schema();
 		}
 
 		return $steps;

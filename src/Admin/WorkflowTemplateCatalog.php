@@ -134,7 +134,7 @@ final class WorkflowTemplateCatalog {
 				'description'    => 'Start with a read-only content inspection and add only adapters exposed below.',
 				'target_mode'    => 'either',
 				'post_types'     => array( 'post' ),
-				'input_fields'   => array( 'post_id:integer' ),
+				'input_fields'   => array( 'post_id:integer:required' ),
 				'step_abilities' => array( 'content/get-item' ),
 				'step_arguments' => array( 'step_1' => array( 'id' => '{{input.post_id}}' ) ),
 				'write_policy'   => 'proposal_only',

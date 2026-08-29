@@ -230,6 +230,59 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( 2, $resumed->state_version() );
 	}
 
+	public function test_waiting_for_input_cannot_resume_after_its_deadline(): void {
+		$now        = 1724889600;
+		$definition = $this->record( 'ordered-multi-step-v1.json' );
+		$incomplete = $this->plan( $definition, '{}' );
+		$complete   = $this->plan( $definition, '{"brief":"Now complete"}' );
+		$runner     = new WorkflowRunner(
+			new InMemoryWorkflowRunStore(),
+			new WorkflowAdapterRegistry( array() ),
+			clock: static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$record = $runner->create( $definition, $incomplete, WorkflowInputContract::from_json( '{}' ), 7 );
+		$now   += 604801;
+
+		try {
+			$runner->resume_with_input( $record->run_id(), $complete, WorkflowInputContract::from_json( '{"brief":"Now complete"}' ), 7 );
+			self::fail( 'Expired input waiting must not be resumed.' );
+		} catch ( WorkflowRunnerException $exception ) {
+			self::assertSame( 'waiting_expired', $exception->error_code() );
+		}
+	}
+
+	public function test_waiting_for_approval_cannot_start_after_its_deadline(): void {
+		$now        = 1724889600;
+		$definition = $this->record( 'ordered-multi-step-v1.json' );
+		$plan       = $this->plan( $definition, '{"brief":"Approval deadline"}' );
+		$runner     = new WorkflowRunner(
+			new InMemoryWorkflowRunStore(),
+			new WorkflowAdapterRegistry( array() ),
+			clock: static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$record = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"brief":"Approval deadline"}' ), 7 );
+		$runner->build_dry_run( $record->run_id(), $plan, 7 );
+		$waiting = $runner->request_approval( $record->run_id(), $plan, 7 );
+		$now    += 604801;
+
+		try {
+			$runner->start(
+				$waiting->run_id(),
+				$plan,
+				WorkflowReadinessEvidence::from_evaluation( $plan, array(), true ),
+				7,
+				new WorkflowApprovalEvidence( $plan->hash(), array( 'create_draft' ), 'approval-expired', true )
+			);
+			self::fail( 'Expired approval waiting must not start execution.' );
+		} catch ( WorkflowRunnerException $exception ) {
+			self::assertSame( 'waiting_expired', $exception->error_code() );
+		}
+	}
+
 	public function test_adapter_failure_fails_step_and_run_with_a_closed_code(): void {
 		$definition = $this->record( 'proposal-only-v1.json' );
 		$plan       = $this->plan( $definition, '{"post_id":9}' );

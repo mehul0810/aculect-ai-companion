@@ -25,6 +25,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowStateSnapshot;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionAction;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionGuard;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionRequest;
+use Closure;
 use Throwable;
 use stdClass;
 
@@ -41,9 +42,18 @@ final class WorkflowRunner {
 		private WorkflowRunStoreInterface $store,
 		private WorkflowAdapterRegistry $adapters = new WorkflowAdapterRegistry(),
 		private WorkflowTransitionGuard $guard = new WorkflowTransitionGuard(),
-		private WorkflowAuditStoreInterface $audit = new NullWorkflowAuditStore()
+		private WorkflowAuditStoreInterface $audit = new NullWorkflowAuditStore(),
+		?Closure $clock = null
 	) {
+		$this->clock = $clock ?? static fn (): int => time();
 	}
+
+	/**
+	 * Controlled UTC clock used for waiting and lease expiry decisions.
+	 *
+	 * @var Closure(): int
+	 */
+	private Closure $clock;
 
 	/**
 	 * Create a durable run pinned to one exact definition and plan.
@@ -141,6 +151,7 @@ final class WorkflowRunner {
 		if ( WorkflowRunState::WAITING_FOR_INPUT !== $record->state() ) {
 			throw new WorkflowRunnerException( 'invalid_state' );
 		}
+		$this->assert_waiting_not_expired( $record );
 		if ( ! $plan->is_input_ready() ) {
 			throw new WorkflowRunnerException( 'input_incomplete' );
 		}
@@ -164,6 +175,7 @@ final class WorkflowRunner {
 	public function start( string $run_id, WorkflowPlan $plan, WorkflowReadinessEvidence $readiness, int $actor_id, ?WorkflowApprovalEvidence $approval = null ): WorkflowRunRecord {
 		$record = $this->require_run( $run_id );
 		$this->assert_record_plan( $record, $plan );
+		$this->assert_waiting_not_expired( $record );
 		$request = new WorkflowTransitionRequest( WorkflowTransitionAction::START, plan: $plan, approval: $approval, readiness: $readiness );
 		$result  = $this->guard->transition( $this->snapshot( $record, $plan ), $request );
 
@@ -445,7 +457,12 @@ final class WorkflowRunner {
 		return null;
 	}
 
-	/** Return a durable step whose adapter result cannot be safely inferred. */
+	/**
+	 * Return a durable step whose adapter result cannot be safely inferred.
+	 *
+	 * @param array $steps Persisted steps.
+	 * @phpstan-param list<WorkflowStepRecord> $steps
+	 */
 	private function uncertain_step( array $steps ): ?WorkflowStepRecord {
 		foreach ( $steps as $step ) {
 			if ( WorkflowStepState::FAILED === $step->state() && 'execution_uncertain' === $step->error_code() ) {
@@ -465,7 +482,20 @@ final class WorkflowRunner {
 
 		$date = strtotime( $expires . ' UTC' );
 
-		return false !== $date && $date <= time();
+		return false !== $date && $date <= ( $this->clock )();
+	}
+
+	/** Reject input or approval continuation after its durable deadline. */
+	private function assert_waiting_not_expired( WorkflowRunRecord $record ): void {
+		if ( ! in_array( $record->state(), array( WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) ) {
+			return;
+		}
+
+		$expires = $record->waiting_expires_at();
+		$until   = null === $expires || '' === $expires ? false : strtotime( $expires . ' UTC' );
+		if ( false === $until || $until <= ( $this->clock )() ) {
+			throw new WorkflowRunnerException( 'waiting_expired' );
+		}
 	}
 
 	/** Fail the run with exact execution evidence. */
@@ -669,7 +699,7 @@ final class WorkflowRunner {
 
 	/** Return a bounded waiting expiry seven days from now. */
 	private function waiting_expiry(): string {
-		return gmdate( 'Y-m-d H:i:s', time() + self::WAITING_SECONDS );
+		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() + self::WAITING_SECONDS );
 	}
 
 	/** Create a collision-resistant bounded run identifier. */

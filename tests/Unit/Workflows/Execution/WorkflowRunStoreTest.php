@@ -250,6 +250,129 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertSame( 'execution_uncertain', $uncertain?->error_code() );
 	}
 
+	public function test_retention_prunes_expired_waiting_and_stale_prepared_rows(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+
+		$store->create( 'run-retention-waiting', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::WAITING_FOR_INPUT, 7, null, gmdate( 'Y-m-d H:i:s', $now - 1 ) );
+		$now += 8 * 86400;
+		$store->create( 'run-retention-waiting-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		self::assertNull( $store->get( 'run-retention-waiting' ), 'An expired waiting window must not be extended by the retention cutoff.' );
+
+		$store->create( 'run-retention-prepared', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$dry_run = $store->create( 'run-retention-dry-run', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		self::assertNotNull( $store->transition( $dry_run->run_id(), WorkflowRunState::PREPARED, 1, WorkflowRunState::DRY_RUN_READY, 7 ) );
+		$now += 2592001;
+		$store->create( 'run-retention-terminal-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		self::assertNull( $store->get( 'run-retention-prepared' ) );
+		self::assertNull( $store->get( 'run-retention-dry-run' ) );
+		self::assertNotNull( $store->get( 'run-retention-terminal-new' ) );
+	}
+
+	public function test_retention_fences_stale_running_rows_before_they_can_be_deleted(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-retention-abandoned', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		self::assertNotNull( $store->transition( 'run-retention-abandoned', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 ) );
+		$now += 2592001;
+		$store->create( 'run-retention-abandoned-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		$abandoned = $store->get( 'run-retention-abandoned' );
+		self::assertNotNull( $abandoned );
+		self::assertSame( WorkflowRunState::FAILED, $abandoned?->state() );
+		self::assertSame( 'execution_uncertain', $abandoned?->outcome_code() );
+	}
+
+	public function test_retention_rolls_back_parent_when_child_delete_returns_false(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-retention-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$now                                += 2592001;
+		$this->wpdb()->fail_query_containing = 'workflow_run_steps';
+		$store->create( 'run-retention-failure-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		self::assertNotNull( $store->get( 'run-retention-failure' ), 'A failed child delete must roll back the parent delete.' );
+		self::assertCount( 1, $store->steps( 'run-retention-failure' ) );
+		self::assertNotNull( $store->get( 'run-retention-failure-new' ) );
+	}
+
+	public function test_retention_rolls_back_parent_when_parent_delete_returns_false(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-retention-parent-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$now                                += 2592001;
+		$this->wpdb()->fail_query_containing = 'DELETE FROM "wp_aculect_ai_workflow_runs"';
+		$store->create( 'run-retention-parent-failure-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		self::assertNotNull( $store->get( 'run-retention-parent-failure' ) );
+		self::assertCount( 1, $store->steps( 'run-retention-parent-failure' ) );
+	}
+
+	public function test_retention_rolls_back_parent_when_commit_returns_false(): void {
+		$now   = 1724889600;
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore(
+			null,
+			static function () use ( &$now ): int {
+				return $now;
+			}
+		);
+		$store->create( 'run-retention-commit-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$now                                += 2592001;
+		$this->wpdb()->fail_query_containing = 'COMMIT';
+		$this->wpdb()->fail_query_once       = true;
+		$store->create( 'run-retention-commit-failure-new', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		self::assertNotNull( $store->get( 'run-retention-commit-failure' ) );
+		self::assertCount( 1, $store->steps( 'run-retention-commit-failure' ) );
+	}
+
+	public function test_create_fails_closed_when_start_transaction_returns_false(): void {
+		$plan                                = $this->plan( '{"post_id":9}' );
+		$input                               = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store                               = new WorkflowRunStore();
+		$this->wpdb()->fail_query_containing = 'START TRANSACTION';
+		$this->wpdb()->fail_query_once       = true;
+
+		try {
+			$store->create( 'run-start-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+			self::fail( 'A failed transaction start must not persist a run.' );
+		} catch ( WorkflowRunStoreException $exception ) {
+			self::assertSame( 'transaction_failed', $exception->error_code() );
+		}
+		self::assertNull( $store->get( 'run-start-failure' ) );
+	}
+
 	public function test_run_schema_has_separate_run_and_step_fencing_fields(): void {
 		$method = new ReflectionMethod( \Aculect\AICompanion\Workflows\Database\RunInstaller::class, 'schema_sql' );
 		$sql    = (string) $method->invoke(

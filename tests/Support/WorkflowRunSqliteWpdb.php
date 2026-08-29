@@ -19,9 +19,12 @@ use PDO;
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test infrastructure is intentionally kept with its focused adapter.
 final class WorkflowRunSqliteWpdb {
 
-	public string $prefix     = 'wp_';
-	public string $last_error = '';
-	public int $insert_id     = 0;
+	public string $prefix                = 'wp_';
+	public string $options               = 'wp_options';
+	public string $last_error            = '';
+	public int $insert_id                = 0;
+	public string $fail_query_containing = '';
+	public bool $fail_query_once         = false;
 
 	private PDO $pdo;
 
@@ -128,12 +131,38 @@ final class WorkflowRunSqliteWpdb {
 	}
 
 	public function query( string $query ): int|false {
+		if ( '' !== $this->fail_query_containing && false !== stripos( $query, $this->fail_query_containing ) ) {
+			if ( $this->fail_query_once ) {
+				$this->fail_query_containing = '';
+				$this->fail_query_once       = false;
+			}
+			$this->last_error = 'Injected SQLite test query failure.';
+
+			return false;
+		}
 		try {
 			$query = match ( strtoupper( trim( $query ) ) ) {
 				'START TRANSACTION' => 'BEGIN',
 				default             => $query,
 			};
 			return $this->pdo->exec( $query );
+		} catch ( \Throwable $exception ) {
+			$this->last_error = $exception->getMessage();
+
+			return false;
+		}
+	}
+
+	/** Return the first column from every result row. */
+	public function get_col( string $query ): array|false {
+		try {
+			$statement = $this->pdo->query( $query );
+			if ( false === $statement ) {
+				return false;
+			}
+			$values = $statement->fetchAll( PDO::FETCH_COLUMN, 0 );
+
+			return array_values( array_map( 'strval', $values ) );
 		} catch ( \Throwable $exception ) {
 			$this->last_error = $exception->getMessage();
 

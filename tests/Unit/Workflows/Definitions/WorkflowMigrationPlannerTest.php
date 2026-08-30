@@ -132,6 +132,101 @@ final class WorkflowMigrationPlannerTest extends TestCase {
 		self::assertNotContains( 'ability_removed', array_column( $plan->actions(), 'code' ) );
 	}
 
+	public function test_unused_ability_alias_does_not_cover_an_affected_step(): void {
+		$source = $this->fixture();
+		$target = $this->target(
+			$source,
+			static function ( array &$value ): void {
+				$value['allowed_abilities']    = array( 'content/prepare-draft', 'content/read-item', 'content/create-draft' );
+				$value['steps'][0]->ability_id = 'content/prepare-draft';
+			}
+		);
+
+		$plan = ( new WorkflowMigrationPlanner() )->preview(
+			$source,
+			$target,
+			array(),
+			array( 'content/get-item' => 'content/read-item' )
+		);
+
+		self::assertSame( WorkflowMigrationPlan::BLOCKED, $plan->status() );
+		self::assertContains( 'ability_removed', array_column( $plan->actions(), 'code' ) );
+		self::assertNotContains( 'ability_alias_applied', array_column( $plan->actions(), 'code' ) );
+	}
+
+	public function test_write_step_and_mandatory_gate_rename_remains_review_required(): void {
+		$source = $this->fixture();
+		$target = $this->target(
+			$source,
+			static function ( array &$value ): void {
+				$value['steps'][2]->step_id = 'create_content';
+				$value['approval_gates']    = array( 'create_content' );
+			}
+		);
+
+		$plan = ( new WorkflowMigrationPlanner() )->preview(
+			$source,
+			$target,
+			array( 'create_draft' => 'create_content' )
+		);
+
+		self::assertSame( WorkflowMigrationPlan::REVIEW_REQUIRED, $plan->status() );
+		self::assertContains( 'step_alias_applied', array_column( $plan->actions(), 'code' ) );
+		self::assertNotContains( 'approval_gates_changed', array_column( $plan->actions(), 'code' ) );
+	}
+
+	public function test_write_step_alias_does_not_cover_an_added_mandatory_gate(): void {
+		$source = $this->fixture();
+		$target = $this->target(
+			$source,
+			static function ( array &$value ): void {
+				$value['steps'][2]->step_id   = 'create_content';
+				$value['steps'][]             = (object) array(
+					'step_id'         => 'update_content',
+					'adapter_id'      => 'wordpress',
+					'adapter_version' => 1,
+					'ability_id'      => 'content/update-item',
+					'kind'            => 'write',
+					'arguments'       => new stdClass(),
+					'depends_on'      => array( 'create_content' ),
+				);
+				$value['allowed_abilities'][] = 'content/update-item';
+				$value['approval_gates']      = array( 'create_content', 'update_content' );
+			}
+		);
+
+		$plan = ( new WorkflowMigrationPlanner() )->preview(
+			$source,
+			$target,
+			array( 'create_draft' => 'create_content' )
+		);
+
+		self::assertSame( WorkflowMigrationPlan::BLOCKED, $plan->status() );
+		self::assertContains( 'approval_gates_changed', array_column( $plan->actions(), 'code' ) );
+	}
+
+	public function test_contradictory_ready_plan_is_rejected(): void {
+		$source  = $this->fixture();
+		$target  = $this->target(
+			$source,
+			static function ( array &$value ): void {
+				$value['write_policy']->mode = 'approved_update';
+			}
+		);
+		$blocked = ( new WorkflowMigrationPlanner() )->preview( $source, $target );
+
+		$this->expectException( WorkflowDefinitionValidationException::class );
+		$this->expectExceptionMessage( 'invalid_migration_plan' );
+		new WorkflowMigrationPlan(
+			$blocked->report(),
+			WorkflowMigrationPlan::READY,
+			$blocked->actions(),
+			array(),
+			array(),
+			$blocked->migration_id()
+		);
+	}
+
 	public function test_invalid_alias_fails_closed(): void {
 		$this->expectException( WorkflowDefinitionValidationException::class );
 		$this->expectExceptionMessage( 'invalid_alias' );

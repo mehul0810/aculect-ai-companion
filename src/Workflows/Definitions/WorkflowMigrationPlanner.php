@@ -36,14 +36,15 @@ final class WorkflowMigrationPlanner {
 		array $step_aliases = array(),
 		array $ability_aliases = array()
 	): WorkflowMigrationPlan {
-		$report          = ( new WorkflowDefinitionCompatibilityEvaluator() )->evaluate( $source, $target );
-		$step_aliases    = $this->normalize_aliases( $step_aliases, 'step' );
-		$ability_aliases = $this->normalize_aliases( $ability_aliases, 'ability' );
-		$actions         = array();
+		$report                 = ( new WorkflowDefinitionCompatibilityEvaluator() )->evaluate( $source, $target );
+		$step_aliases           = $this->normalize_aliases( $step_aliases, 'step' );
+		$ability_aliases        = $this->normalize_aliases( $ability_aliases, 'ability' );
+		$validated_step_aliases = $this->validated_step_aliases( $source, $target, $step_aliases, $ability_aliases );
+		$actions                = array();
 
-		$this->add_step_actions( $source, $target, $step_aliases, $ability_aliases, $actions );
-		$this->add_ability_actions( $source, $target, $ability_aliases, $actions );
-		$this->add_report_actions( $report, $actions );
+		$this->add_step_actions( $source, $target, $validated_step_aliases, $actions );
+		$this->add_ability_actions( $source, $target, $ability_aliases, $validated_step_aliases, $actions );
+		$this->add_report_actions( $report, $source, $target, $validated_step_aliases, $actions );
 		usort( $actions, static fn ( array $left, array $right ): int => array( $left['path'], $left['code'] ) <=> array( $right['path'], $right['code'] ) );
 
 		$status = $this->status( $actions );
@@ -64,19 +65,17 @@ final class WorkflowMigrationPlanner {
 	 *
 	 * @param WorkflowDefinition                                        $source         Existing definition.
 	 * @param WorkflowDefinition                                        $target         Candidate definition.
-	 * @param array<string, string>                                     $step_aliases   Step aliases.
-	 * @param array<string, string>                                     $ability_aliases Ability aliases.
+	 * @param array<string, string>                                     $validated_aliases Validated step aliases.
 	 * @param list<array{code: string, path: string, guidance: string}> $actions Actions.
 	 */
-	private function add_step_actions( WorkflowDefinition $source, WorkflowDefinition $target, array $step_aliases, array $ability_aliases, array &$actions ): void {
+	private function add_step_actions( WorkflowDefinition $source, WorkflowDefinition $target, array $validated_aliases, array &$actions ): void {
 		$source_steps = $this->steps_by_id( $source );
 		$target_steps = $this->steps_by_id( $target );
 		foreach ( $source_steps as $step_id => $step ) {
 			if ( isset( $target_steps[ $step_id ] ) ) {
 				continue;
 			}
-			$alias = $step_aliases[ $step_id ] ?? '';
-			if ( '' !== $alias && isset( $target_steps[ $alias ] ) && $this->same_step_except_identity( $step, $target_steps[ $alias ], $step_aliases, $ability_aliases ) ) {
+			if ( isset( $validated_aliases[ $step_id ] ) ) {
 				$this->add_action(
 					$actions,
 					array(
@@ -104,18 +103,23 @@ final class WorkflowMigrationPlanner {
 	 * @param WorkflowDefinition                                        $source  Existing definition.
 	 * @param WorkflowDefinition                                        $target  Candidate definition.
 	 * @param array<string, string>                                     $aliases Ability aliases.
+	 * @param array<string, string>                                     $validated_step_aliases Behavior-validated step aliases.
 	 * @param list<array{code: string, path: string, guidance: string}> $actions Actions.
 	 */
-	private function add_ability_actions( WorkflowDefinition $source, WorkflowDefinition $target, array $aliases, array &$actions ): void {
+	private function add_ability_actions( WorkflowDefinition $source, WorkflowDefinition $target, array $aliases, array $validated_step_aliases, array &$actions ): void {
 		$source_value = $source->to_array();
 		$target_value = $target->to_array();
 		$target_ids   = array_fill_keys( $target_value['allowed_abilities'], true );
+		$source_steps = $this->steps_by_id( $source );
+		$target_steps = $this->steps_by_id( $target );
 		foreach ( $source_value['allowed_abilities'] as $ability_id ) {
 			if ( isset( $target_ids[ $ability_id ] ) ) {
 				continue;
 			}
 			$alias = $aliases[ $ability_id ] ?? '';
-			if ( '' !== $alias && isset( $target_ids[ $alias ] ) ) {
+			if ( '' !== $alias
+				&& isset( $target_ids[ $alias ] )
+				&& $this->ability_alias_covers_steps( $ability_id, $alias, $source_steps, $target_steps, $validated_step_aliases ) ) {
 				$this->add_action(
 					$actions,
 					array(
@@ -141,12 +145,18 @@ final class WorkflowMigrationPlanner {
 	 * Convert evaluator changes into bounded human-actionable guidance.
 	 *
 	 * @param WorkflowDefinitionCompatibilityReport                     $report  Compatibility report.
+	 * @param WorkflowDefinition                                        $source  Existing definition.
+	 * @param WorkflowDefinition                                        $target  Candidate definition.
+	 * @param array<string, string>                                     $validated_step_aliases Behavior-validated step aliases.
 	 * @param list<array{code: string, path: string, guidance: string}> $actions Actions.
 	 */
-	private function add_report_actions( WorkflowDefinitionCompatibilityReport $report, array &$actions ): void {
+	private function add_report_actions( WorkflowDefinitionCompatibilityReport $report, WorkflowDefinition $source, WorkflowDefinition $target, array $validated_step_aliases, array &$actions ): void {
 		$blocked = array( 'write_policy_changed', 'approval_gates_changed', 'publication_status_changed', 'creation_identity_changed' );
 		$review  = array( 'required_input_changed', 'input_schema_changed', 'output_contract_changed', 'contract_versions_changed', 'content_target_changed', 'validation_rules_changed', 'step_graph_changed', 'allowed_abilities_changed' );
 		foreach ( $report->changes() as $change ) {
+			if ( 'approval_gates_changed' === $change['code'] && $this->approval_gates_match_after_alias( $source, $target, $validated_step_aliases ) ) {
+				continue;
+			}
 			if ( in_array( $change['code'], $blocked, true ) ) {
 					$this->add_action(
 						$actions,
@@ -169,6 +179,86 @@ final class WorkflowMigrationPlanner {
 				);
 			}
 		}
+	}
+
+	/**
+	 * Return step aliases that point to a behavior-equivalent renamed step.
+	 *
+	 * @param WorkflowDefinition    $source          Existing definition.
+	 * @param WorkflowDefinition    $target          Candidate definition.
+	 * @param array<string, string> $step_aliases    Normalized step aliases.
+	 * @param array<string, string> $ability_aliases Normalized ability aliases.
+	 * @return array<string, string>
+	 */
+	private function validated_step_aliases( WorkflowDefinition $source, WorkflowDefinition $target, array $step_aliases, array $ability_aliases ): array {
+		$source_steps = $this->steps_by_id( $source );
+		$target_steps = $this->steps_by_id( $target );
+		$validated    = array();
+
+		foreach ( $step_aliases as $from => $to ) {
+			if ( ! isset( $source_steps[ $from ] ) || isset( $target_steps[ $from ] ) || ! isset( $target_steps[ $to ] ) ) {
+				continue;
+			}
+			if ( $this->same_step_except_identity( $source_steps[ $from ], $target_steps[ $to ], $step_aliases, $ability_aliases ) ) {
+				$validated[ $from ] = $to;
+			}
+		}
+
+		return $validated;
+	}
+
+	/**
+	 * Verify every source step using a removed ability uses its replacement.
+	 *
+	 * @param string                $source_ability         Removed ability ID.
+	 * @param string                $target_ability         Replacement ability ID.
+	 * @param array<string, mixed>  $source_steps           Source steps by ID.
+	 * @param array<string, mixed>  $target_steps           Target steps by ID.
+	 * @param array<string, string> $validated_step_aliases Behavior-validated step aliases.
+	 */
+	private function ability_alias_covers_steps( string $source_ability, string $target_ability, array $source_steps, array $target_steps, array $validated_step_aliases ): bool {
+		$affected = 0;
+		foreach ( $source_steps as $source_id => $source_step ) {
+			if ( $source_step['ability_id'] !== $source_ability ) {
+				continue;
+			}
+
+			++$affected;
+			$target_id = isset( $target_steps[ $source_id ] ) ? $source_id : ( $validated_step_aliases[ $source_id ] ?? '' );
+			if ( '' === $target_id || ! isset( $target_steps[ $target_id ] ) || $target_steps[ $target_id ]['ability_id'] !== $target_ability ) {
+				return false;
+			}
+		}
+
+		return $affected > 0;
+	}
+
+	/**
+	 * Verify mandatory approval gates survive a validated step rename.
+	 *
+	 * @param WorkflowDefinition    $source                 Existing definition.
+	 * @param WorkflowDefinition    $target                 Candidate definition.
+	 * @param array<string, string> $validated_step_aliases Behavior-validated step aliases.
+	 */
+	private function approval_gates_match_after_alias( WorkflowDefinition $source, WorkflowDefinition $target, array $validated_step_aliases ): bool {
+		$source_gates = $source->to_array()['approval_gates'];
+		$target_gates = $target->to_array()['approval_gates'];
+		$mapped       = false;
+
+		$source_gates = array_map(
+			static function ( string $gate ) use ( $validated_step_aliases, &$mapped ): string {
+				if ( isset( $validated_step_aliases[ $gate ] ) ) {
+					$mapped = true;
+				}
+
+				return $validated_step_aliases[ $gate ] ?? $gate;
+			},
+			$source_gates
+		);
+		sort( $source_gates, SORT_STRING );
+		sort( $target_gates, SORT_STRING );
+
+		return $mapped && $source_gates === $target_gates;
 	}
 
 	/**

@@ -62,7 +62,7 @@ final class FirstPartyAbilityModules {
 				static fn (): array => ( new CoreSchemaDiscovery() )->manifest()
 			),
 			$fixed_workflows['workflow_session.start'],
-			...array_values( array_slice( $fixed_workflows, 2 ) ),
+			...array_values( array_merge( array_slice( $fixed_workflows, 2 ), ( new \Aculect\AICompanion\Connectors\MCP\Modules\CustomWorkflowAbilityModules( $this->module_factory ) )->all() ) ),
 			$this->module(
 				'site_editor.get_context',
 				'Read Site Editor Intelligence',

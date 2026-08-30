@@ -1,0 +1,68 @@
+<?php
+/**
+ * Tests for custom workflow MCP declarations and auth boundaries.
+ *
+ * @package Aculect\AICompanion\Tests\Unit\Connectors\MCP
+ */
+
+declare(strict_types=1);
+
+namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
+
+use Aculect\AICompanion\Connectors\MCP\AbilityModuleContract;
+use Aculect\AICompanion\Connectors\MCP\AbilityModuleFactory;
+use Aculect\AICompanion\Connectors\MCP\Modules\CustomWorkflowAbilityModules;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilityConnector;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilitySupport;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Keeps connector operations discoverable while preserving direct-call denial.
+ */
+final class CustomWorkflowAbilityModulesTest extends TestCase {
+
+	public function test_custom_workflow_surface_has_nine_closed_modules(): void {
+		$modules = ( new CustomWorkflowAbilityModules( new AbilityModuleFactory() ) )->all();
+
+		self::assertSame(
+			array(
+				'content_workflow.list',
+				'content_workflow.get',
+				'content_workflow.prepare',
+				'content_workflow.dry_run',
+				'content_workflow.execute',
+				'content_workflow.resume',
+				'content_workflow.cancel',
+				'content_workflow.status',
+				'content_workflow.result',
+			),
+			array_keys( $modules )
+		);
+
+		AbilityModuleContract::validate( $modules );
+		self::assertFalse( $modules['content_workflow.execute']->is_read_only() );
+		self::assertFalse( $modules['content_workflow.cancel']->is_read_only() );
+		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.execute']->input_schema()['required'] ?? array() );
+		self::assertSame( 'integer', $modules['content_workflow.list']->input_schema()['properties']['page']['type'] ?? null );
+		self::assertSame( array( 'run_id' ), $modules['content_workflow.cancel']->input_schema()['required'] ?? array() );
+		self::assertArrayHasKey( 'dry_run', $modules['content_workflow.execute']->input_schema()['properties'] ?? array() );
+		self::assertSame( 'boolean', $modules['content_workflow.cancel']->input_schema()['properties']['dry_run']['type'] ?? null );
+	}
+
+	public function test_connector_fails_closed_when_called_without_gateway_auth(): void {
+		$connector = new WorkflowAbilityConnector( auth_provider: static fn (): array => array() );
+
+		$result = $connector->list_workflows( array() );
+
+		self::assertSame( 'error', $result['status'] ?? null );
+		self::assertSame( 'auth_unavailable', $result['error'] ?? null );
+		self::assertTrue( (bool) ( $result['bounded'] ?? false ) );
+	}
+
+	public function test_catalog_slash_ids_use_explicit_internal_ability_mappings(): void {
+		self::assertSame( 'content_search.items', WorkflowAbilitySupport::internal_ability_id( 'content/search-items' ) );
+		self::assertSame( 'content_find.related', WorkflowAbilitySupport::internal_ability_id( 'content/find-related' ) );
+		self::assertSame( 'content_workflow.prepare_post', WorkflowAbilitySupport::internal_ability_id( 'content/prepare-draft' ) );
+		self::assertSame( '', WorkflowAbilitySupport::internal_ability_id( 'content/unknown' ) );
+	}
+}

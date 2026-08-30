@@ -267,15 +267,7 @@ final class McpToolAvailability {
 				$wp_abilities
 			),
 			'workflows'          => $this->operation_group(
-				array(
-					'route_request'       => 'workflow.route_request',
-					'prepare_post'        => 'content_workflow.prepare_post',
-					'create_draft'        => 'content_workflow.create_draft',
-					'update_post'         => 'content_workflow.update_post',
-					'apply_image'         => 'content_media.apply_image',
-					'update_rankmath_seo' => 'seo_workflow.update_rankmath',
-					'site_audit'          => 'site_workflow.audit',
-				),
+				WorkflowOperationCatalog::map(),
 				$policy,
 				$registry,
 				$wp_abilities

@@ -270,6 +270,15 @@ final class WorkflowRunner {
 		if ( $record->state()->is_terminal() ) {
 			return $record;
 		}
+		if ( WorkflowRunState::RUNNING === $record->state() ) {
+			try {
+				if ( null !== $this->running_step( $this->store->steps( $run_id ) ) ) {
+					throw new WorkflowRunnerException( 'cancel_not_allowed' );
+				}
+			} catch ( WorkflowRunStoreException $exception ) {
+				throw new WorkflowRunnerException( $exception->error_code() );
+			}
+		}
 		$request = new WorkflowTransitionRequest( WorkflowTransitionAction::CANCEL, plan: $plan, execution: $execution );
 		$result  = $this->guard->transition( $this->snapshot( $record, $plan ), $request );
 

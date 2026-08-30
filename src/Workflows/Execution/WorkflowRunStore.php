@@ -139,6 +139,30 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		return null === $row ? null : $this->mapper->run( $row );
 	}
 
+	/**
+	 * Return the normalized input retained for one run.
+	 *
+	 * This is an internal reconstruction boundary for operations such as
+	 * cancellation and status reads that must rebuild the pinned plan without
+	 * requiring callers to resend the original input object. The value is
+	 * decrypted only in memory and is never included in a public run payload.
+	 *
+	 * @throws WorkflowRunStoreException When the stored input cannot be opened.
+	 */
+	public function input( string $run_id ): ?WorkflowInputContract {
+		$this->ensure_storage();
+		$row = $this->run_row( $run_id );
+		if ( null === $row ) {
+			return null;
+		}
+
+		try {
+			return WorkflowInputContract::from_json( $this->vault->open( (string) ( $row['input_ciphertext'] ?? '' ) ) );
+		} catch ( Throwable ) {
+			throw new WorkflowRunStoreException( 'stored_input_invalid' );
+		}
+	}
+
 	public function steps( string $run_id ): array {
 		$this->ensure_storage();
 		$run = $this->run_row( $run_id );

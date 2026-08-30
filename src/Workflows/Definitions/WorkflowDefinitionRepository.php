@@ -134,6 +134,72 @@ final class WorkflowDefinitionRepository {
 	}
 
 	/**
+	 * Read the currently published immutable version.
+	 *
+	 * A catalog may contain a newer draft while assistants must continue to
+	 * discover the last published snapshot. Keeping this lookup here prevents
+	 * connector and admin callers from accidentally exposing the draft row.
+	 *
+	 * @param string $workflow_id Stable workflow identifier.
+	 * @return WorkflowDefinitionRecord|null Published record, when present.
+	 */
+	public function get_published( string $workflow_id ): ?WorkflowDefinitionRecord {
+		$this->ensure_storage();
+		$catalog = $this->catalog_row( $workflow_id, false );
+		if ( null === $catalog || (int) $catalog['published_version'] < 1 ) {
+			return null;
+		}
+
+		return $this->get( $workflow_id, (int) $catalog['published_version'], false );
+	}
+
+	/**
+	 * List published snapshots, excluding newer unpublished drafts.
+	 *
+	 * @param array<string, mixed> $filters List filters: page and per_page. An
+	 *                                optional page_stride keeps lookahead fetches
+	 *                                from changing the requested page offset.
+	 * @return list<WorkflowDefinitionRecord>
+	 */
+	public function list_published( array $filters = array() ): array {
+		$this->ensure_storage();
+		global $wpdb;
+
+		$page        = max( 1, absint( $filters['page'] ?? 1 ) );
+		$per_page    = min( self::MAX_LIMIT, max( 1, absint( $filters['per_page'] ?? self::DEFAULT_LIMIT ) ) );
+		$page_stride = min( self::MAX_LIMIT, max( 1, absint( $filters['page_stride'] ?? $per_page ) ) );
+		$tables      = Installer::table_names();
+		$rows        = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT c.*, v.definition_json, v.definition_status, v.definition_checksum,
+				v.definition_schema_version, v.input_contract_version, v.output_contract_version,
+				v.workflow_version AS stored_workflow_version
+				FROM %i c INNER JOIN %i v ON v.workflow_pk = c.id AND v.workflow_version = c.published_version
+				WHERE c.status <> 'disabled' AND c.published_version > 0 AND v.definition_status = 'published'
+				ORDER BY c.updated_at DESC, c.id DESC LIMIT %d OFFSET %d",
+				$tables['catalog'],
+				$tables['versions'],
+				$per_page,
+				( $page - 1 ) * $page_stride
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$records = array();
+		foreach ( $rows as $row ) {
+			if ( is_array( $row ) ) {
+				$records[] = $this->record_from_rows( $row, $row );
+			}
+		}
+
+		return $records;
+	}
+
+	/**
 	 * List latest records using bounded, deterministic pagination.
 	 *
 	 * @param array<string, mixed> $filters List filters: status, template_id, page, per_page, include_disabled.

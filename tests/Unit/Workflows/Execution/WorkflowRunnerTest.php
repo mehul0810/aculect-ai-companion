@@ -98,6 +98,22 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( WorkflowRunState::COMPLETED, $terminal->run()->state() );
 	}
 
+	public function test_ungated_dry_run_ready_run_can_start_and_advance(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$runner     = $this->runner( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) );
+		$created    = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		$ready      = $runner->build_dry_run( $created->run_id(), $plan, 7 );
+		self::assertSame( WorkflowRunState::DRY_RUN_READY, $ready->state() );
+
+		$started = $runner->start( $created->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+		self::assertSame( WorkflowRunState::RUNNING, $started->state() );
+
+		$progress = $runner->execute_next( $definition, $created->run_id(), $plan, array(), 7 );
+		self::assertTrue( $progress->progressed() );
+		self::assertSame( WorkflowStepState::COMPLETED, $progress->step()?->state() );
+	}
+
 	public function test_completion_audit_requires_the_current_claimed_step_record(): void {
 		$definition = $this->record( 'proposal-only-v1.json' );
 		$plan       = $this->plan( $definition, '{"post_id":9}' );
@@ -439,6 +455,31 @@ final class WorkflowRunnerTest extends TestCase {
 		);
 		self::assertSame( WorkflowRunState::CANCELLED, $cancelled->state() );
 		self::assertSame( 'safe_stop', $cancelled->outcome_code() );
+	}
+
+	public function test_running_cancellation_rejects_a_claimed_step_even_with_safe_stop_flag(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$store      = new InMemoryWorkflowRunStore();
+		$runner     = new WorkflowRunner( $store, new WorkflowAdapterRegistry( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) ) );
+		$record     = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		$running    = $runner->start( $record->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+		$claimed    = $store->claim_step( $running->run_id(), 'read_content', 7 );
+		self::assertNotNull( $claimed );
+
+		try {
+			$runner->cancel(
+				$running->run_id(),
+				$plan,
+				7,
+				new \Aculect\AICompanion\Workflows\Planning\WorkflowExecutionEvidence( $plan->hash(), 'cancelled', 'safe_stop', true )
+			);
+			self::fail( 'A claimed running step must block cancellation until its lease is resolved.' );
+		} catch ( WorkflowRunnerException $exception ) {
+			self::assertSame( 'cancel_not_allowed', $exception->error_code() );
+		}
+
+		self::assertSame( WorkflowRunState::RUNNING, $store->get( $running->run_id() )?->state() );
 	}
 
 	public function test_plan_mismatch_and_invalid_actor_are_rejected_before_dispatch(): void {

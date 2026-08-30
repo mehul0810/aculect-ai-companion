@@ -105,6 +105,19 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertSame( WorkflowRunState::RUNNING, $store->get( 'run-store-1' )?->state() );
 	}
 
+	public function test_input_reconstructs_from_encrypted_storage_without_exposing_ciphertext(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$store->create( 'run-input-read', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+
+		$stored = $store->input( 'run-input-read' );
+
+		self::assertInstanceOf( WorkflowInputContract::class, $stored );
+		self::assertSame( $input->canonical_json(), $stored?->canonical_json() );
+		self::assertSame( $input->hash(), $stored?->hash() );
+	}
+
 	public function test_store_rejects_input_hash_mismatch_and_invalid_stored_output(): void {
 		$plan  = $this->plan( '{"post_id":9}' );
 		$store = new WorkflowRunStore();

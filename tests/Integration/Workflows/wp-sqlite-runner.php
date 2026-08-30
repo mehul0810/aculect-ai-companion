@@ -8,6 +8,7 @@
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Database\RunInstaller;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
+use Aculect\AICompanion\Workflows\Execution\WorkflowApprovalTokenStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
@@ -98,6 +99,79 @@ if ( false !== $invalid || false === $wpdb->query( 'ROLLBACK' ) ) {
 $remaining = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_id = %s', $tables['runs'], 'sqlite-rollback-proof' ) );
 if ( 0 !== $remaining ) {
 	throw new RuntimeException( 'SQLite rollback left a durable workflow row behind.' );
+}
+
+// Prove the server-issued workflow approval boundary against the real
+// WP_SQLite_DB adapter. The adapter translates the MySQL-shaped atomic claim
+// and cleanup queries; this catches dialect regressions that lightweight tests
+// cannot observe.
+$approval_fixture_path = dirname( __DIR__, 3 ) . '/tests/fixtures/workflows/definitions/ordered-multi-step-v1.json';
+$approval_fixture_json = file_get_contents( $approval_fixture_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Repository-owned proof fixture.
+if ( ! is_string( $approval_fixture_json ) ) {
+	throw new RuntimeException( 'Could not load the approval proof fixture.' );
+}
+
+$approval_definition = WorkflowDefinition::from_json( $approval_fixture_json );
+$approval_input      = WorkflowInputContract::from_json( '{"brief":"SQLite approval proof"}' );
+$approval_plan       = ( new WorkflowPlanBuilder() )->build( $approval_definition, $approval_input );
+$approval_auth       = array(
+	'user_id'   => 7,
+	'client_id' => 'sqlite-proof',
+	'provider'  => 'mcp',
+);
+$approval_store      = new WorkflowApprovalTokenStore();
+$approval_reflector  = new ReflectionMethod( WorkflowApprovalTokenStore::class, 'key' );
+$approval_reflector->setAccessible( true );
+$claim_reflector = new ReflectionMethod( WorkflowApprovalTokenStore::class, 'consumed_key' );
+$claim_reflector->setAccessible( true );
+
+$approval_token = $approval_store->issue( 'sqlite-approval-proof', $approval_plan, $approval_auth );
+if ( ! $approval_store->consume( $approval_token, 'sqlite-approval-proof', $approval_plan, $approval_auth ) ) {
+	throw new RuntimeException( 'SQLite approval token was not consumed.' );
+}
+if ( $approval_store->consume( $approval_token, 'sqlite-approval-proof', $approval_plan, $approval_auth ) ) {
+	throw new RuntimeException( 'SQLite approval token replay unexpectedly succeeded.' );
+}
+
+$expired_token          = $approval_store->issue( 'sqlite-expiry-proof', $approval_plan, $approval_auth );
+$expired_key            = (string) $approval_reflector->invoke( $approval_store, $expired_token );
+$expired_timeout_option = '_transient_timeout_' . $expired_key;
+update_option( $expired_timeout_option, time() - 1, false );
+wp_cache_delete( $expired_timeout_option, 'options' );
+wp_cache_delete( '_transient_' . $expired_key, 'options' );
+if ( $approval_store->consume( $expired_token, 'sqlite-expiry-proof', $approval_plan, $approval_auth ) ) {
+	throw new RuntimeException( 'Expired SQLite approval token unexpectedly succeeded.' );
+}
+
+$cleanup_token = $approval_store->issue( 'sqlite-cleanup-proof', $approval_plan, $approval_auth );
+if ( ! $approval_store->consume( $cleanup_token, 'sqlite-cleanup-proof', $approval_plan, $approval_auth ) ) {
+	throw new RuntimeException( 'SQLite cleanup proof token was not consumed.' );
+}
+$cleanup_claim_key = (string) $claim_reflector->invoke( $approval_store, $cleanup_token );
+update_option( $cleanup_claim_key, (string) ( time() - 1 ), false );
+$approval_store->issue( 'sqlite-cleanup-trigger', $approval_plan, $approval_auth );
+$cleanup_claims = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE option_name = %s', $wpdb->options, $cleanup_claim_key ) );
+if ( 0 !== $cleanup_claims ) {
+	throw new RuntimeException( 'Expired SQLite approval claim was not pruned.' );
+}
+
+// A storage failure must deny the claim. A pre-transient filter keeps the
+// server-issued record available while the claim target is deliberately made
+// unavailable, exercising the real adapter's query-failure path.
+$failure_token          = $approval_store->issue( 'sqlite-failure-proof', $approval_plan, $approval_auth );
+$failure_key            = (string) $approval_reflector->invoke( $approval_store, $failure_token );
+$failure_payload        = get_transient( $failure_key );
+$original_options_table = $wpdb->options;
+$failure_filter         = static function () use ( $failure_payload ): mixed {
+	return $failure_payload;
+};
+add_filter( 'pre_transient_' . $failure_key, $failure_filter, 10, 3 );
+$wpdb->options  = 'wp_aculect_missing_options';
+$failure_result = $approval_store->consume( $failure_token, 'sqlite-failure-proof', $approval_plan, $approval_auth );
+$wpdb->options  = $original_options_table;
+remove_filter( 'pre_transient_' . $failure_key, $failure_filter, 10 );
+if ( $failure_result ) {
+	throw new RuntimeException( 'SQLite approval query failure unexpectedly succeeded.' );
 }
 
 echo 'PASS WP_SQLite_DB workflow runner and transaction proof (' . get_class( $wpdb ) . ')' . PHP_EOL;

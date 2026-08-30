@@ -152,25 +152,14 @@ final class WorkflowApprovalTokenStore {
 		}
 
 		try {
-			if ( $this->uses_sqlite_options( $wpdb ) ) {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- SQLite unique insert is the single-use approval CAS.
-				$added = $wpdb->query(
-					$wpdb->prepare(
-						"INSERT OR IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
-						$consumed_key,
-						(string) $expires_at
-					)
-				);
-			} else {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- INSERT IGNORE is the single-use approval CAS; Core add_option() can overwrite on a duplicate-key race.
-				$added = $wpdb->query(
-					$wpdb->prepare(
-						"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
-						$consumed_key,
-						(string) $expires_at
-					)
-				);
-			}
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- INSERT IGNORE is the single-use approval CAS; WordPress's SQLite adapter translates this MySQL form for native SQLite.
+			$added = $wpdb->query(
+				$wpdb->prepare(
+					"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+					$consumed_key,
+					(string) $expires_at
+				)
+			);
 		} catch ( Throwable ) {
 			return false;
 		}
@@ -215,45 +204,20 @@ final class WorkflowApprovalTokenStore {
 
 		$like = $wpdb->esc_like( self::CLAIM_OPTION_PREFIX ) . '%';
 		try {
-			if ( $this->uses_sqlite_options( $wpdb ) ) {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Bounded SQLite cleanup only removes expired, plugin-owned non-autoloaded claim markers.
-				$wpdb->query(
-					$wpdb->prepare(
-						"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS INTEGER) > 0 AND CAST(option_value AS INTEGER) < %d LIMIT %d",
-						$like,
-						$now,
-						self::CLAIM_PRUNE_BATCH
-					)
-				);
-			} else {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Bounded cleanup only removes expired, plugin-owned non-autoloaded claim markers.
-				$wpdb->query(
-					$wpdb->prepare(
-						"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) > 0 AND CAST(option_value AS UNSIGNED) < %d LIMIT %d",
-						$like,
-						$now,
-						self::CLAIM_PRUNE_BATCH
-					)
-				);
-			}
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Bounded cleanup only removes expired, plugin-owned non-autoloaded claim markers; the SQLite adapter translates the MySQL cast.
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) > 0 AND CAST(option_value AS UNSIGNED) < %d LIMIT %d",
+					$like,
+					$now,
+					self::CLAIM_PRUNE_BATCH
+				)
+			);
 		} catch ( Throwable $exception ) {
 			unset( $exception );
 		}
 
 		$this->invalidate_option_caches( array() );
-	}
-
-	/**
-	 * Check whether the authoritative options backend is SQLite.
-	 *
-	 * @param object $wpdb WordPress database adapter.
-	 */
-	private function uses_sqlite_options( object $wpdb ): bool {
-		if ( isset( $wpdb->is_mysql ) && false === (bool) $wpdb->is_mysql ) {
-			return true;
-		}
-
-		return class_exists( 'WP_SQLite_DB', false ) && $wpdb instanceof \WP_SQLite_DB;
 	}
 
 	/**

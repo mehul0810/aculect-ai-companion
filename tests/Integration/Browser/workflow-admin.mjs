@@ -227,11 +227,11 @@ try {
 
 	// Selecting a write-capable starter must expose a migration preview and an
 	// explicit plan approval before the immutable version can be changed.
-	await page.selectOption( '#aculect-workflow-template', 'blog_post_draft' );
+	await page.selectOption( '#aculect-workflow-template', 'seo_rewrite' );
 	if (
 		! (
 			await page.locator( '#aculect-live-steps' ).textContent()
-		).includes( 'content/create-item' )
+		).includes( 'content/update-seo' )
 	) {
 		throw new Error(
 			'Template editing did not update the live step preview.'

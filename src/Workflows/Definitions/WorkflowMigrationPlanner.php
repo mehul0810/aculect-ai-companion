@@ -203,12 +203,23 @@ final class WorkflowMigrationPlanner {
 		}
 		$normalized = array();
 		foreach ( $aliases as $from => $to ) {
-			if ( ! is_string( $from ) || ! is_string( $to ) || strlen( $from ) > 128 || strlen( $to ) > 128 || 1 !== preg_match( $pattern, $from ) || 1 !== preg_match( $pattern, $to ) || $from === $to || isset( $normalized[ $to ] ) ) {
+			if ( ! is_string( $from ) || ! is_string( $to ) || strlen( $from ) > 128 || strlen( $to ) > 128 || 1 !== preg_match( $pattern, $from ) || 1 !== preg_match( $pattern, $to ) || $from === $to ) {
 					throw new WorkflowDefinitionValidationException( 'invalid_alias', '$' );
 			}
 			$normalized[ $from ] = $to;
 		}
 		ksort( $normalized, SORT_STRING );
+
+		$destinations = array();
+		foreach ( $normalized as $from => $to ) {
+			if ( isset( $normalized[ $to ] ) || isset( $destinations[ $to ] ) ) {
+				// Aliases are one-hop mappings. Reject chains, cycles, and
+				// converging destinations from the complete map so validation
+				// cannot depend on insertion order.
+				throw new WorkflowDefinitionValidationException( 'invalid_alias', '$' );
+			}
+			$destinations[ $to ] = $from;
+		}
 
 		return $normalized;
 	}

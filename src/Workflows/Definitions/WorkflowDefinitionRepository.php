@@ -34,6 +34,7 @@ final class WorkflowDefinitionRepository {
 	 */
 	public function create( WorkflowDefinition $definition, string $template_id = '', int $template_version = 0 ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
+		$this->ensure_transactional_storage();
 		$this->validate_template( $template_id, $template_version );
 		$value = $definition->to_array();
 		if ( 1 !== (int) $value['workflow_version'] ) {
@@ -187,6 +188,7 @@ final class WorkflowDefinitionRepository {
 	 */
 	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
+		$this->ensure_transactional_storage();
 		$value       = $definition->to_array();
 		$workflow_id = (string) $value['workflow_id'];
 		$catalog     = $this->catalog_row( $workflow_id, true );
@@ -314,6 +316,17 @@ final class WorkflowDefinitionRepository {
 	 */
 	private function ensure_storage(): void {
 		if ( ! Installer::install() ) {
+			throw new WorkflowDefinitionRepositoryException( 'storage_unavailable' );
+		}
+	}
+
+	/**
+	 * Ensure both definition tables can uphold the write transaction contract.
+	 *
+	 * @throws WorkflowDefinitionRepositoryException When storage transactionality cannot be verified.
+	 */
+	private function ensure_transactional_storage(): void {
+		if ( ! Installer::transactional_tables_available() ) {
 			throw new WorkflowDefinitionRepositoryException( 'storage_unavailable' );
 		}
 	}

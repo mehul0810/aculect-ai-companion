@@ -248,6 +248,41 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		self::assertSame( 'sample_workflow', $repository->create( WorkflowDefinition::from_array( $this->definition() ) )->workflow_id() );
 	}
 
+	public function test_create_fails_closed_before_writes_when_one_definition_table_is_nontransactional(): void {
+		$repository = new WorkflowDefinitionRepository();
+		$this->wpdb()->table_engines['wp_aculect_ai_workflow_versions'] = 'MyISAM';
+
+		try {
+			$repository->create( WorkflowDefinition::from_array( $this->definition() ) );
+			self::fail( 'A nontransactional definition table must block create before any row write.' );
+		} catch ( WorkflowDefinitionRepositoryException $exception ) {
+			self::assertSame( 'storage_unavailable', $exception->error_code() );
+		}
+
+		self::assertSame( 0, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflows' ) );
+		self::assertSame( 0, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflow_versions' ) );
+	}
+
+	public function test_update_fails_closed_before_writes_when_engine_metadata_is_unknown(): void {
+		$repository = new WorkflowDefinitionRepository();
+		$repository->create( WorkflowDefinition::from_array( $this->definition() ) );
+
+		$this->wpdb()->table_engines['wp_aculect_ai_workflows'] = '';
+		$next                     = $this->definition();
+		$next['workflow_version'] = 2;
+		$next['name']             = 'Updated sample workflow';
+
+		try {
+			$repository->update( WorkflowDefinition::from_array( $next ), 1 );
+			self::fail( 'Unknown table engine metadata must block update before any row write.' );
+		} catch ( WorkflowDefinitionRepositoryException $exception ) {
+			self::assertSame( 'storage_unavailable', $exception->error_code() );
+		}
+
+		self::assertSame( 1, $this->wpdb()->scalar( 'SELECT latest_version FROM wp_aculect_ai_workflows' ) );
+		self::assertSame( 1, $this->wpdb()->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_workflow_versions' ) );
+	}
+
 	/**
 	 * Return the smallest valid read-only workflow definition.
 	 *
@@ -310,10 +345,21 @@ final class WorkflowDefinitionSqliteWpdb {
 	public string $prefix               = 'wp_';
 	public string $last_error           = '';
 	public int $insert_id               = 0;
+	public bool $is_mysql               = true;
 	public bool $fail_start_transaction = false;
 	public bool $fail_commit            = false;
 	public bool $fail_version_insert    = false;
 	public bool $fail_catalog_update    = false;
+
+	/**
+	 * Simulated MySQL table engines used by storage capability tests.
+	 *
+	 * @var array<string, string>
+	 */
+	public array $table_engines = array(
+		'wp_aculect_ai_workflows'         => 'InnoDB',
+		'wp_aculect_ai_workflow_versions' => 'InnoDB',
+	);
 
 	private PDO $pdo;
 
@@ -413,6 +459,11 @@ final class WorkflowDefinitionSqliteWpdb {
 	}
 
 	public function get_var( string $query ): int|string|null {
+		if ( false !== stripos( $query, 'FROM information_schema.TABLES' ) ) {
+			preg_match( '/TABLE_NAME\s*=\s*["\']([^"\']+)["\']/i', $query, $matches );
+
+			return $this->table_engines[ $matches[1] ?? '' ] ?? null;
+		}
 		if ( false !== stripos( $query, 'SHOW TABLES LIKE' ) ) {
 			preg_match( '/LIKE\s+["\']([^"\']+)["\']/i', $query, $matches );
 			$table_name = str_replace( array( '\\_', '\\%', '\\\\' ), array( '_', '%', '\\' ), $matches[1] ?? '' );

@@ -359,15 +359,16 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			$inserted = $wpdb->insert(
 				RunInstaller::table_names()['steps'],
 				array(
-					'run_pk'          => $run_pk,
-					'step_id'         => (string) ( $step['step_id'] ?? '' ),
-					'step_position'   => (int) $position,
-					'adapter_id'      => (string) ( $step['adapter_id'] ?? '' ),
-					'adapter_version' => (int) ( $step['adapter_version'] ?? 0 ),
-					'ability_id'      => (string) ( $step['ability_id'] ?? '' ),
-					'kind'            => (string) ( $step['kind'] ?? '' ),
-					'created_at'      => $now,
-					'updated_at'      => $now,
+					'run_pk'            => $run_pk,
+					'step_id'           => (string) ( $step['step_id'] ?? '' ),
+					'step_position'     => (int) $position,
+					'adapter_id'        => (string) ( $step['adapter_id'] ?? '' ),
+					'adapter_version'   => (int) ( $step['adapter_version'] ?? 0 ),
+					'ability_id'        => (string) ( $step['ability_id'] ?? '' ),
+					'kind'              => (string) ( $step['kind'] ?? '' ),
+					'output_ciphertext' => '',
+					'created_at'        => $now,
+					'updated_at'        => $now,
 				),
 				array( '%d', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s' )
 			);

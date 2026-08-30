@@ -5,8 +5,6 @@
  * @package Aculect\AICompanion\Tests\Integration\Workflows
  */
 
-declare(strict_types=1);
-
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Database\RunInstaller;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;

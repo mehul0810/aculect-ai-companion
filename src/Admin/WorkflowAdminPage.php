@@ -239,6 +239,7 @@ final class WorkflowAdminPage {
 		echo '.aculect-workflow-admin,.aculect-workflow-admin *{box-sizing:border-box}';
 		echo '.aculect-workflow-admin .widefat{display:block;box-sizing:border-box;max-width:100%;overflow-x:auto}';
 		echo '.aculect-workflow-admin code{overflow-wrap:anywhere}';
+		echo '.aculect-workflow-admin .aculect-workflow-form-table{max-width:100%;overflow-x:auto}';
 		echo '.aculect-workflow-admin .form-table{border-collapse:collapse;border-spacing:0}';
 		echo '.aculect-workflow-admin .aculect-live-preview{box-sizing:border-box;max-width:100%;border:1px solid #dcdcde;padding:16px;margin:16px 0;background:#fff}';
 		echo '.aculect-workflow-admin .aculect-live-preview dl{display:grid;grid-template-columns:minmax(120px,180px) 1fr;gap:8px;margin:0}';
@@ -284,7 +285,7 @@ final class WorkflowAdminPage {
 		if ( is_array( $migration_preview ) && isset( $migration_preview['migration_id'] ) ) {
 			echo '<input type="hidden" name="migration_id" value="' . esc_attr( (string) $migration_preview['migration_id'] ) . '">';
 		}
-		echo '<table class="form-table"><tbody>';
+		echo '<div class="aculect-workflow-form-table"><table class="form-table"><tbody>';
 		$this->field( 'workflow_id', __( 'Workflow ID', 'aculect-ai-companion' ), $values['workflow_id'] ?? '', 'Stable lowercase ID; leave blank only for a new workflow.' );
 		echo '<tr><th><label for="aculect-workflow-template">' . esc_html__( 'Starter template', 'aculect-ai-companion' ) . '</label></th><td><select id="aculect-workflow-template" name="template_id">';
 		foreach ( $templates as $id => $template ) {
@@ -320,7 +321,7 @@ final class WorkflowAdminPage {
 		) as $key => $label ) {
 			echo '<option value="' . esc_attr( $key ) . '"' . ( (string) ( $values['write_policy'] ?? 'proposal_only' ) === $key ? ' selected' : '' ) . '>' . esc_html( $label ) . '</option>';
 		}
-		echo '</select><p class="description">' . esc_html__( 'Every write step automatically receives an approval gate. Publish, schedule, and delete are not available.', 'aculect-ai-companion' ) . '</p></td></tr></tbody></table>';
+		echo '</select><p class="description">' . esc_html__( 'Every write step automatically receives an approval gate. Publish, schedule, and delete are not available.', 'aculect-ai-companion' ) . '</p></td></tr></tbody></table></div>';
 		$this->render_live_target_preview( $values );
 		echo '<h3>' . esc_html__( 'Supported step catalog', 'aculect-ai-companion' ) . '</h3><p>' . esc_html__( 'Use the exact ability IDs below in the Steps field. Availability still depends on the connected user’s scopes, roles, capabilities, and global policy.', 'aculect-ai-companion' ) . '</p><table class="widefat striped"><thead><tr><th scope="col">Ability</th><th scope="col">Adapter</th><th scope="col">Kind</th><th scope="col">Capabilities</th></tr></thead><tbody>';
 		foreach ( $adapters as $adapter ) {

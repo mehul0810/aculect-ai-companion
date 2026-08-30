@@ -56,15 +56,27 @@ const assertA11y = async () => {
 };
 
 const assertNoMobileOverflow = async () => {
-	const dimensions = await page
-		.locator( '.aculect-workflow-admin' )
-		.evaluate( ( element ) => ( {
+	const dimensions = await page.locator( '.aculect-workflow-admin' ).evaluate( ( element ) => {
+		const offenders = [ element, ...element.querySelectorAll( '*' ) ]
+			.filter( ( candidate ) => candidate.scrollWidth > candidate.clientWidth + 1 )
+			.slice( 0, 8 )
+			.map( ( candidate ) => ( {
+				tag: candidate.tagName.toLowerCase(),
+				id: candidate.id || '',
+				className: candidate.className || '',
+				clientWidth: candidate.clientWidth,
+				scrollWidth: candidate.scrollWidth,
+			} ) );
+
+		return {
 			clientWidth: element.clientWidth,
 			scrollWidth: element.scrollWidth,
-		} ) );
+			offenders,
+		};
+	} );
 	if ( dimensions.scrollWidth > dimensions.clientWidth + 1 ) {
 		throw new Error(
-			`Workflow admin overflows at mobile width (${ dimensions.scrollWidth } > ${ dimensions.clientWidth }).`
+			`Workflow admin overflows at mobile width (${ dimensions.scrollWidth } > ${ dimensions.clientWidth }): ${ JSON.stringify( dimensions.offenders ) }`
 		);
 	}
 };

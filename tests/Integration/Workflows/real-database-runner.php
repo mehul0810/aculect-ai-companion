@@ -62,6 +62,18 @@ function update_option( string $option, mixed $value, mixed $autoload = null ): 
 	return true;
 }
 
+/**
+ * Delete one process-local option.
+ *
+ * @param string $option Option name.
+ */
+function delete_option( string $option ): bool {
+	global $aculect_workflow_options;
+	unset( $aculect_workflow_options[ $option ] );
+
+	return true;
+}
+
 function wp_json_encode( mixed $value ): string|false {
 	return json_encode( $value ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Implements the WordPress compatibility function itself.
 }

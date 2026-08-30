@@ -70,43 +70,59 @@ const assertA11y = async () => {
 };
 
 const assertNoMobileOverflow = async () => {
-	const dimensions = await page.locator( '.aculect-workflow-admin' ).evaluate( ( element ) => {
-		const rootRect = element.getBoundingClientRect();
-		const offenders = [ element, ...element.querySelectorAll( '*' ) ]
-			.filter( ( candidate ) => candidate.scrollWidth > candidate.clientWidth + 1 )
-			.slice( 0, 8 )
-			.map( ( candidate ) => ( {
-				tag: candidate.tagName.toLowerCase(),
-				id: candidate.id || '',
-				className: candidate.className || '',
-				clientWidth: candidate.clientWidth,
-				scrollWidth: candidate.scrollWidth,
-			} ) );
-		const outOfBounds = [ ...element.querySelectorAll( '*' ) ]
-			.filter( ( candidate ) => candidate.getBoundingClientRect().right > rootRect.right + 1 )
-			.slice( 0, 8 )
-			.map( ( candidate ) => {
-				const rect = candidate.getBoundingClientRect();
-				return {
+	const dimensions = await page
+		.locator( '.aculect-workflow-admin' )
+		.evaluate( ( element ) => {
+			const rootRect = element.getBoundingClientRect();
+			const offenders = [ element, ...element.querySelectorAll( '*' ) ]
+				.filter(
+					( candidate ) =>
+						candidate.scrollWidth > candidate.clientWidth + 1
+				)
+				.slice( 0, 8 )
+				.map( ( candidate ) => ( {
 					tag: candidate.tagName.toLowerCase(),
 					id: candidate.id || '',
 					className: candidate.className || '',
-					right: Math.round( rect.right ),
-					rootRight: Math.round( rootRect.right ),
-					text: ( candidate.textContent || '' ).trim().slice( 0, 120 ),
-				};
-			} );
+					clientWidth: candidate.clientWidth,
+					scrollWidth: candidate.scrollWidth,
+				} ) );
+			const outOfBounds = [ ...element.querySelectorAll( '*' ) ]
+				.filter(
+					( candidate ) =>
+						candidate.getBoundingClientRect().right >
+						rootRect.right + 1
+				)
+				.slice( 0, 8 )
+				.map( ( candidate ) => {
+					const rect = candidate.getBoundingClientRect();
+					return {
+						tag: candidate.tagName.toLowerCase(),
+						id: candidate.id || '',
+						className: candidate.className || '',
+						right: Math.round( rect.right ),
+						rootRight: Math.round( rootRect.right ),
+						text: ( candidate.textContent || '' )
+							.trim()
+							.slice( 0, 120 ),
+					};
+				} );
 
-		return {
-			clientWidth: element.clientWidth,
-			scrollWidth: element.scrollWidth,
-			offenders,
-			outOfBounds,
-		};
-	} );
+			return {
+				clientWidth: element.clientWidth,
+				scrollWidth: element.scrollWidth,
+				offenders,
+				outOfBounds,
+			};
+		} );
 	if ( dimensions.scrollWidth > dimensions.clientWidth + 1 ) {
 		throw new Error(
-			`Workflow admin overflows at mobile width (${ dimensions.scrollWidth } > ${ dimensions.clientWidth }): ${ JSON.stringify( { offenders: dimensions.offenders, outOfBounds: dimensions.outOfBounds } ) }`
+			`Workflow admin overflows at mobile width (${
+				dimensions.scrollWidth
+			} > ${ dimensions.clientWidth }): ${ JSON.stringify( {
+				offenders: dimensions.offenders,
+				outOfBounds: dimensions.outOfBounds,
+			} ) }`
 		);
 	}
 };
@@ -173,16 +189,19 @@ try {
 	// The custom-post-type starter intentionally hydrates an empty JSON object;
 	// exercise the real selector and save path so an empty array cannot reach the
 	// service as an invalid list contract.
-	await page.selectOption( '#aculect-workflow-template', 'custom_post_type_creation' );
+	await page.selectOption(
+		'#aculect-workflow-template',
+		'custom_post_type_creation'
+	);
 	if ( ( await page.inputValue( '#aculect-step_arguments' ) ) !== '{}' ) {
 		throw new Error(
 			'Custom post type starter did not hydrate an empty object for step arguments.'
 		);
 	}
 	if (
-		!( await page.locator( '#aculect-live-steps' ).textContent() ).includes(
-			'content/create-item'
-		)
+		! (
+			await page.locator( '#aculect-live-steps' ).textContent()
+		).includes( 'content/create-item' )
 	) {
 		throw new Error(
 			'Custom post type starter did not expose its create step.'
@@ -212,17 +231,30 @@ try {
 	);
 	const editorHeading = page.locator( 'h1' ).first();
 	if ( ( await editorHeading.count() ) !== 1 ) {
-		const diagnosticBody = ( await page.locator( 'body' ).textContent() ) || '';
+		const diagnosticBody =
+			( await page.locator( 'body' ).textContent() ) || '';
 		const visibleBody = ( await page.locator( 'body' ).innerText() ) || '';
 		throw new Error(
-			`The saved workflow editor could not be reopened (URL: ${ page.url() }; title: ${ await page.title() }; visible: ${ visibleBody.trim().slice( 0, 600 ) }; body-tail: ${ diagnosticBody.trim().slice( -3000 ) }).`
+			`The saved workflow editor could not be reopened (URL: ${ page.url() }; title: ${ await page.title() }; visible: ${ visibleBody
+				.trim()
+				.slice( 0, 600 ) }; body-tail: ${ diagnosticBody
+				.trim()
+				.slice( -3000 ) }).`
 		);
 	}
-	if ( ( await editorHeading.textContent() )?.trim() !== 'Content Workflows' ) {
-		throw new Error( `The saved workflow editor returned an unexpected heading at ${ page.url() }.` );
+	if (
+		( await editorHeading.textContent() )?.trim() !== 'Content Workflows'
+	) {
+		throw new Error(
+			`The saved workflow editor returned an unexpected heading at ${ page.url() }.`
+		);
 	}
-	if ( ( await page.locator( '#aculect-workflow-template' ).count() ) !== 1 ) {
-		throw new Error( 'The saved workflow editor is missing its starter template control.' );
+	if (
+		( await page.locator( '#aculect-workflow-template' ).count() ) !== 1
+	) {
+		throw new Error(
+			'The saved workflow editor is missing its starter template control.'
+		);
 	}
 
 	// Selecting a write-capable starter must expose a migration preview and an

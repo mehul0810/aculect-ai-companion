@@ -11,7 +11,15 @@ const page = await browser.newPage( {
 } );
 const pageErrors = [];
 
-page.on( 'pageerror', ( error ) => pageErrors.push( error.message ) );
+page.on( 'pageerror', ( error ) => {
+	// WordPress may cancel a view transition while an admin form redirect is
+	// already navigating. Treat that browser-level cancellation as expected;
+	// every other page error remains a hard browser-proof failure.
+	if ( 'Transition was skipped' === error.message ) {
+		return;
+	}
+	pageErrors.push( error.message );
+} );
 
 const workflowUrl = `${ baseUrl }/wp-admin/options-general.php?page=aculect-ai-companion-workflows`;
 

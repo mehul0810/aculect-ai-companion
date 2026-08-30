@@ -34,6 +34,7 @@ final class WorkflowDefinitionRepository {
 	 */
 	public function create( WorkflowDefinition $definition, string $template_id = '', int $template_version = 0 ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
+		$this->ensure_transactional_storage();
 		$this->validate_template( $template_id, $template_version );
 		$value = $definition->to_array();
 		if ( 1 !== (int) $value['workflow_version'] ) {
@@ -46,7 +47,7 @@ final class WorkflowDefinitionRepository {
 			throw new WorkflowDefinitionRepositoryException( 'workflow_already_exists' );
 		}
 
-		$this->begin_transaction();
+		WorkflowDefinitionTransaction::begin();
 		try {
 			$now  = gmdate( 'Y-m-d H:i:s' );
 			$data = array(
@@ -71,13 +72,13 @@ final class WorkflowDefinitionRepository {
 				throw new WorkflowDefinitionRepositoryException( 'catalog_identity_missing' );
 			}
 			$this->insert_version( $catalog_id, $definition );
-			$this->commit_transaction();
+			WorkflowDefinitionTransaction::commit();
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception code is bounded by the repository exception constructor.
 			throw new WorkflowDefinitionRepositoryException( $exception->error_code() );
 		} catch ( Throwable ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 
 			throw new WorkflowDefinitionRepositoryException( 'workflow_create_failed' );
 		}
@@ -187,6 +188,7 @@ final class WorkflowDefinitionRepository {
 	 */
 	public function update( WorkflowDefinition $definition, int $expected_version, ?string $template_id = null, ?int $template_version = null ): WorkflowDefinitionRecord {
 		$this->ensure_storage();
+		$this->ensure_transactional_storage();
 		$value       = $definition->to_array();
 		$workflow_id = (string) $value['workflow_id'];
 		$catalog     = $this->catalog_row( $workflow_id, true );
@@ -212,7 +214,7 @@ final class WorkflowDefinitionRepository {
 
 		global $wpdb;
 		$tables = Installer::table_names();
-		$this->begin_transaction();
+		WorkflowDefinitionTransaction::begin();
 		try {
 			$this->insert_version( (int) $catalog['id'], $definition );
 			$published_version = 'published' === $value['status']
@@ -240,13 +242,13 @@ final class WorkflowDefinitionRepository {
 			if ( 1 !== (int) $updated ) {
 				throw new WorkflowDefinitionRepositoryException( 'workflow_version_conflict' );
 			}
-			$this->commit_transaction();
+			WorkflowDefinitionTransaction::commit();
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception code is bounded by the repository exception constructor.
 			throw new WorkflowDefinitionRepositoryException( $exception->error_code() );
 		} catch ( Throwable ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 
 			throw new WorkflowDefinitionRepositoryException( 'workflow_update_failed' );
 		}
@@ -314,6 +316,17 @@ final class WorkflowDefinitionRepository {
 	 */
 	private function ensure_storage(): void {
 		if ( ! Installer::install() ) {
+			throw new WorkflowDefinitionRepositoryException( 'storage_unavailable' );
+		}
+	}
+
+	/**
+	 * Ensure both definition tables can uphold the write transaction contract.
+	 *
+	 * @throws WorkflowDefinitionRepositoryException When storage transactionality cannot be verified.
+	 */
+	private function ensure_transactional_storage(): void {
+		if ( ! Installer::transactional_tables_available() ) {
 			throw new WorkflowDefinitionRepositoryException( 'storage_unavailable' );
 		}
 	}
@@ -473,23 +486,5 @@ final class WorkflowDefinitionRepository {
 	 */
 	private function catalog_formats(): array {
 		return array( '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s' );
-	}
-
-	/** Start a storage transaction. */
-	private function begin_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'START TRANSACTION' );
-	}
-
-	/** Commit a storage transaction. */
-	private function commit_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'COMMIT' );
-	}
-
-	/** Roll back a storage transaction after a failed write. */
-	private function rollback_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'ROLLBACK' );
 	}
 }

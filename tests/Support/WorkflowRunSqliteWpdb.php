@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Support;
 
+use Closure;
 use PDO;
 
 /**
@@ -22,6 +23,15 @@ final class WorkflowRunSqliteWpdb {
 	public string $prefix     = 'wp_';
 	public string $last_error = '';
 	public int $insert_id     = 0;
+	public bool $is_mysql     = false;
+	public bool $fail_begin   = false;
+	public bool $fail_commit  = false;
+	public bool $fail_child   = false;
+	public bool $fail_finish  = false;
+	/** @var list<string> */
+	public array $last_insert_formats = array();
+	/** @var Closure(self): void|null */
+	public ?Closure $before_claim = null;
 
 	private PDO $pdo;
 
@@ -112,6 +122,17 @@ final class WorkflowRunSqliteWpdb {
 
 	public function query( string $query ): int|false {
 		try {
+			if ( null !== $this->before_claim && str_contains( $query, "SET state = 'running'" ) ) {
+				$callback           = $this->before_claim;
+				$this->before_claim = null;
+				$callback( $this );
+			}
+			if ( ( $this->fail_begin && 'START TRANSACTION' === $query ) || ( $this->fail_commit && 'COMMIT' === $query ) ) {
+				return false;
+			}
+			if ( $this->fail_finish && str_contains( $query, 'result_code =' ) ) {
+				return false;
+			}
 			$query = match ( strtoupper( trim( $query ) ) ) {
 				'START TRANSACTION' => 'BEGIN',
 				default             => $query,
@@ -180,7 +201,15 @@ final class WorkflowRunSqliteWpdb {
 	 * @param list<string>         $formats WordPress format tokens.
 	 */
 	public function insert( string $table, array $data, array $formats ): int|false {
-		unset( $formats );
+		$this->last_insert_formats = array_values( $formats );
+		if ( count( $formats ) !== count( $data ) ) {
+			$this->last_error = 'Insert format count does not match data count.';
+
+			return false;
+		}
+		if ( $this->fail_child && str_ends_with( $table, '_steps' ) ) {
+			return false;
+		}
 		$columns      = array_keys( $data );
 		$placeholders = array_map( static fn ( string $column ): string => ':' . $column, $columns );
 		$sql          = sprintf( 'INSERT INTO "%s" ("%s") VALUES (%s)', $table, implode( '", "', $columns ), implode( ', ', $placeholders ) );

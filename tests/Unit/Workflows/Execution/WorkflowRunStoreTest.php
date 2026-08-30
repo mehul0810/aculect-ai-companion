@@ -67,6 +67,10 @@ final class WorkflowRunStoreTest extends TestCase {
 
 		self::assertSame( WorkflowRunState::PREPARED, $run->state() );
 		self::assertSame( 1, $run->state_version() );
+		self::assertCount( 10, $this->wpdb()->last_insert_formats );
+		self::assertSame( '%s', $this->wpdb()->last_insert_formats[9] );
+		self::assertSame( gmdate( 'Y-m-d H:i:s', 1724889600 ), $run->created_at() );
+		self::assertSame( gmdate( 'Y-m-d H:i:s', 1724889600 ), $run->updated_at() );
 		$raw = $this->wpdb()->get_row( $this->wpdb()->prepare( 'SELECT * FROM %i WHERE run_id = %s', 'wp_aculect_ai_workflow_runs', 'run-store-1' ), 'ARRAY_A' );
 		self::assertIsArray( $raw );
 		self::assertStringStartsWith( 'v1:', (string) $raw['input_ciphertext'] );
@@ -131,6 +135,113 @@ final class WorkflowRunStoreTest extends TestCase {
 		} catch ( WorkflowRunStoreException $exception ) {
 			self::assertSame( 'stored_output_invalid', $exception->error_code() );
 		}
+	}
+
+	public function test_transaction_failures_do_not_report_or_leave_partial_runs(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$wpdb  = $this->wpdb();
+
+		$wpdb->fail_begin = true;
+		try {
+			$store->create( 'run-begin-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+			self::fail( 'A failed transaction start must not persist a parent row.' );
+		} catch ( WorkflowRunStoreException $exception ) {
+			self::assertSame( 'transaction_begin_failed', $exception->error_code() );
+		}
+		self::assertSame( 0, (int) $wpdb->scalar( 'SELECT count(*) FROM wp_aculect_ai_workflow_runs' ) );
+
+		$wpdb->fail_begin  = false;
+		$wpdb->fail_commit = true;
+		try {
+			$store->create( 'run-commit-failure', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+			self::fail( 'A failed commit must not report a created run.' );
+		} catch ( WorkflowRunStoreException $exception ) {
+			self::assertSame( 'transaction_commit_failed', $exception->error_code() );
+		}
+		self::assertSame( 0, (int) $wpdb->scalar( 'SELECT count(*) FROM wp_aculect_ai_workflow_runs' ) );
+		self::assertSame( 0, (int) $wpdb->scalar( 'SELECT count(*) FROM wp_aculect_ai_workflow_run_steps' ) );
+	}
+
+	public function test_parent_cancellation_fences_claims_and_late_completion(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$wpdb  = $this->wpdb();
+		$store->create( 'run-cancel-race', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$store->transition( 'run-cancel-race', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		$wpdb->before_claim = static function ( WorkflowRunSqliteWpdb $inner ): void {
+			$inner->query( "UPDATE wp_aculect_ai_workflow_runs SET state = 'cancelled', state_version = 3, outcome_code = 'safe_stop' WHERE run_id = 'run-cancel-race'" );
+		};
+
+		self::assertNull( $store->claim_step( 'run-cancel-race', 'read_content', 7 ) );
+		self::assertSame( WorkflowRunState::CANCELLED, $store->get( 'run-cancel-race' )?->state() );
+
+		$store->create( 'run-cancel-active', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$store->transition( 'run-cancel-active', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		$claimed = $store->claim_step( 'run-cancel-active', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		self::assertNull( $store->transition( 'run-cancel-active', WorkflowRunState::RUNNING, 2, WorkflowRunState::CANCELLED, 7, 'safe_stop' ) );
+		$wpdb->query( "UPDATE wp_aculect_ai_workflow_runs SET state = 'cancelled', state_version = 3, outcome_code = 'safe_stop' WHERE run_id = 'run-cancel-active'" );
+		self::assertNull( $store->complete_step( 'run-cancel-active', 'read_content', $claimed?->fence() ?? 0, WorkflowAdapterResult::success( array( 'ok' => true ) ), 7 ) );
+	}
+
+	public function test_lost_step_fences_and_sql_failures_fail_closed(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724889600 );
+		$wpdb  = $this->wpdb();
+		$store->create( 'run-lost-fence', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+		$store->transition( 'run-lost-fence', WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		$claimed = $store->claim_step( 'run-lost-fence', 'read_content', 7 );
+		self::assertNotNull( $claimed );
+		$wpdb->query( "UPDATE wp_aculect_ai_workflow_run_steps SET fence = 3 WHERE step_id = 'read_content'" );
+
+		self::assertNull( $store->fail_step( 'run-lost-fence', 'read_content', 2, 'execution_failed', 7 ) );
+		$wpdb->fail_finish = true;
+		try {
+			$store->complete_step( 'run-lost-fence', 'read_content', 3, WorkflowAdapterResult::success( array( 'ok' => true ) ), 7 );
+			self::fail( 'A failed finish query must not acknowledge a saved result.' );
+		} catch ( WorkflowRunStoreException $exception ) {
+			self::assertSame( 'step_finish_failed', $exception->error_code() );
+		}
+	}
+
+	public function test_waiting_deadline_is_required_and_cleared_when_input_resumes(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724976000 );
+
+		$store->create( 'run-expired-input', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::WAITING_FOR_INPUT, 7, null, '2000-01-01 00:00:00' );
+		try {
+			$store->replace_plan( 'run-expired-input', 1, $plan, $input, 7 );
+			self::fail( 'Expired waiting input must not resume.' );
+		} catch ( WorkflowRunStoreException $exception ) {
+			self::assertSame( 'input_expired', $exception->error_code() );
+		}
+
+		$live  = $store->create( 'run-live-input', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::WAITING_FOR_INPUT, 7, null, '2030-01-01 00:00:00' );
+		$ready = $store->replace_plan( 'run-live-input', $live->state_version(), $plan, $input, 7 );
+		self::assertNotNull( $ready );
+		self::assertNull( $ready?->waiting_expires_at() );
+	}
+
+	public function test_waiting_approval_deadline_is_enforced_and_cleared_when_execution_starts(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724976000 );
+
+		$expired = $store->create( 'run-expired-approval', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::DRY_RUN_READY, 7 );
+		$waiting = $store->transition( 'run-expired-approval', WorkflowRunState::DRY_RUN_READY, $expired->state_version(), WorkflowRunState::WAITING_FOR_APPROVAL, 7, null, '2000-01-01 00:00:00' );
+		self::assertNotNull( $waiting );
+		self::assertNull( $store->transition( 'run-expired-approval', WorkflowRunState::WAITING_FOR_APPROVAL, $waiting?->state_version() ?? 0, WorkflowRunState::RUNNING, 7 ) );
+
+		$live         = $store->create( 'run-live-approval', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::DRY_RUN_READY, 7 );
+		$waiting_live = $store->transition( 'run-live-approval', WorkflowRunState::DRY_RUN_READY, $live->state_version(), WorkflowRunState::WAITING_FOR_APPROVAL, 7, null, '2030-01-01 00:00:00' );
+		$running      = $store->transition( 'run-live-approval', WorkflowRunState::WAITING_FOR_APPROVAL, $waiting_live?->state_version() ?? 0, WorkflowRunState::RUNNING, 7 );
+		self::assertNotNull( $running );
+		self::assertNull( $running?->waiting_expires_at() );
 	}
 
 	public function test_run_schema_has_separate_run_and_step_fencing_fields(): void {

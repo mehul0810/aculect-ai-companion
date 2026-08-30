@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Database;
 
 use Aculect\AICompanion\Plugin;
 use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
+use Aculect\AICompanion\Workflows\Database\AuditInstaller;
 use Aculect\AICompanion\Workflows\Database\Installer;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -70,6 +71,7 @@ final class InstallerTest extends TestCase {
 		self::assertStringContainsString( 'lock_version bigint(20) unsigned NOT NULL DEFAULT 1', $sql );
 		self::assertStringContainsString( 'UNIQUE KEY workflow_id (workflow_id)', $sql );
 		self::assertStringContainsString( 'KEY status_updated (status, updated_at, id)', $sql );
+		self::assertStringContainsString( 'ENGINE=InnoDB', $sql );
 
 		self::assertStringContainsString( 'CREATE TABLE wp_aculect_ai_workflow_versions', $sql );
 		self::assertStringContainsString( 'workflow_pk bigint(20) unsigned NOT NULL', $sql );
@@ -83,6 +85,27 @@ final class InstallerTest extends TestCase {
 		self::assertStringNotContainsStringIgnoringCase( ' enum(', $sql );
 		self::assertStringNotContainsStringIgnoringCase( ' json ', $sql );
 		self::assertStringNotContainsStringIgnoringCase( ' generated ', $sql );
+	}
+
+	public function test_transactional_storage_requires_innodb_for_both_definition_tables(): void {
+		$wpdb            = new WorkflowInstallerWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		self::assertTrue( Installer::transactional_tables_available() );
+
+		$wpdb->table_engines['wp_aculect_ai_workflow_versions'] = 'MyISAM';
+		self::assertFalse( Installer::transactional_tables_available() );
+
+		$wpdb->table_engines['wp_aculect_ai_workflow_versions'] = '';
+		self::assertFalse( Installer::transactional_tables_available() );
+	}
+
+	public function test_transactional_storage_rejects_unknown_database_adapters(): void {
+		$wpdb            = new WorkflowInstallerWpdb();
+		$wpdb->is_mysql  = false;
+		$GLOBALS['wpdb'] = $wpdb;
+
+		self::assertFalse( Installer::transactional_tables_available() );
 	}
 
 	public function test_stale_schema_creates_both_tables_and_records_version_only_after_verification(): void {
@@ -319,6 +342,16 @@ final class InstallerTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
 	}
 
+	public function test_audit_installer_reuses_the_first_table_probe_when_schema_is_current(): void {
+		$wpdb                  = new WorkflowInstallerWpdb();
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflow_audit' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_workflow_audit_db_version', '2026.08.29.1', false );
+
+		self::assertTrue( AuditInstaller::install() );
+		self::assertSame( 1, $wpdb->get_var_calls );
+	}
+
 	public function test_table_names_follow_the_current_site_prefix(): void {
 		$wpdb            = new WorkflowInstallerWpdb();
 		$wpdb->prefix    = 'wp_42_';
@@ -354,6 +387,17 @@ final class InstallerTest extends TestCase {
 final class WorkflowInstallerWpdb {
 
 	public string $prefix = 'wp_';
+	public bool $is_mysql = true;
+
+	/**
+	 * Simulated MySQL table engines.
+	 *
+	 * @var array<string, string>
+	 */
+	public array $table_engines = array(
+		'wp_aculect_ai_workflows'         => 'InnoDB',
+		'wp_aculect_ai_workflow_versions' => 'InnoDB',
+	);
 
 	/**
 	 * Existing table names.
@@ -389,7 +433,15 @@ final class WorkflowInstallerWpdb {
 	}
 
 	public function get_var( string $query ): string {
-		unset( $query );
+		if ( false !== stripos( $query, 'FROM information_schema.TABLES' ) ) {
+			$table = (string) ( $this->last_args[0] ?? '' );
+			if ( '' === $table ) {
+				preg_match( '/TABLE_NAME\s*=\s*["\']([^"\']+)["\']/i', $query, $matches );
+				$table = (string) ( $matches[1] ?? '' );
+			}
+
+			return $this->table_engines[ $table ] ?? '';
+		}
 
 		++$this->get_var_calls;
 		$table = (string) ( $this->last_args[0] ?? '' );

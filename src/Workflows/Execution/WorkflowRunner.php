@@ -25,6 +25,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowStateSnapshot;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionAction;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionGuard;
 use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionRequest;
+use Closure;
 use Throwable;
 use stdClass;
 
@@ -41,9 +42,18 @@ final class WorkflowRunner {
 		private WorkflowRunStoreInterface $store,
 		private WorkflowAdapterRegistry $adapters = new WorkflowAdapterRegistry(),
 		private WorkflowTransitionGuard $guard = new WorkflowTransitionGuard(),
+		?Closure $clock = null,
 		private WorkflowAuditStoreInterface $audit = new NullWorkflowAuditStore()
 	) {
+		$this->clock = $clock ?? static fn (): int => time();
 	}
+
+	/**
+	 * Controlled UTC clock used for waiting and lease deadlines.
+	 *
+	 * @var Closure(): int
+	 */
+	private Closure $clock;
 
 	/**
 	 * Create a durable run pinned to one exact definition and plan.
@@ -193,8 +203,17 @@ final class WorkflowRunner {
 			throw new WorkflowRunnerException( 'run_not_started' );
 		}
 
-		$steps = $this->store->steps( $run_id );
-		$next  = $this->next_step( $plan, $steps );
+		$steps   = $this->store->steps( $run_id );
+		$running = $this->running_step( $steps );
+		if ( null !== $running ) {
+			if ( $this->lease_expired( $running ) ) {
+				return $this->fail_run( $record, $plan, 'step_execution_uncertain', $actor_id, $running );
+			}
+
+			return new WorkflowRunExecutionResult( $record, $running, null, false );
+		}
+
+		$next = $this->next_step( $plan, $steps );
 		if ( null === $next ) {
 			if ( $this->all_steps_complete( $steps ) ) {
 				$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'completed', 'completed' );
@@ -203,11 +222,6 @@ final class WorkflowRunner {
 				$this->audit_event( $completed, 'run_completed', $actor_id, null, null, 'completed' );
 
 				return new WorkflowRunExecutionResult( $completed, null, null, true );
-			}
-
-			$running = $this->running_step( $steps );
-			if ( null !== $running ) {
-				return new WorkflowRunExecutionResult( $record, $running, null, false );
 			}
 
 			return $this->fail_run( $record, $plan, 'step_dependency_deadlock', $actor_id );
@@ -227,7 +241,12 @@ final class WorkflowRunner {
 		}
 		if ( $result->succeeded() ) {
 			$stored_step = $this->store->complete_step( $run_id, $next->step_id(), $claimed->fence(), $result, $actor_id );
-			if ( null === $stored_step ) {
+			if (
+				null === $stored_step
+				|| WorkflowStepState::COMPLETED !== $stored_step->state()
+				|| $claimed->fence() !== $stored_step->fence()
+				|| $result->code() !== $stored_step->result_code()
+			) {
 				throw new WorkflowRunnerException( 'step_claim_lost' );
 			}
 
@@ -486,6 +505,12 @@ final class WorkflowRunner {
 			if ( $arguments instanceof stdClass ) {
 				return get_object_vars( $arguments );
 			}
+			if ( is_array( $arguments ) && array() === $arguments ) {
+				// An empty JSON object is represented as an empty PHP array by
+				// normalized workflow definitions. Preserve that object semantics;
+				// non-empty list roots remain invalid below.
+				return array();
+			}
 			if ( is_array( $arguments ) && ! array_is_list( $arguments ) ) {
 				return $arguments;
 			}
@@ -512,7 +537,17 @@ final class WorkflowRunner {
 
 	/** Return a bounded waiting expiry seven days from now. */
 	private function waiting_expiry(): string {
-		return gmdate( 'Y-m-d H:i:s', time() + self::WAITING_SECONDS );
+		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() + self::WAITING_SECONDS );
+	}
+
+	/** Return whether a claimed step has crossed its authoritative lease. */
+	private function lease_expired( WorkflowStepRecord $step ): bool {
+		$expires_at = $step->lease_expires_at();
+		if ( null === $expires_at || '' === $expires_at ) {
+			return true;
+		}
+
+		return $expires_at <= gmdate( 'Y-m-d H:i:s', ( $this->clock )() );
 	}
 
 	/** Create a collision-resistant bounded run identifier. */

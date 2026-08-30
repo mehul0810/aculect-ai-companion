@@ -59,6 +59,9 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 			),
 			ARRAY_A
 		);
+		if ( '' !== (string) $wpdb->last_error ) {
+			throw new WorkflowRunStoreException( 'audit_query_failed' );
+		}
 
 		return $this->map_rows( is_array( $rows ) ? $rows : array() );
 	}
@@ -75,6 +78,9 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 			),
 			ARRAY_A
 		);
+		if ( '' !== (string) $wpdb->last_error ) {
+			throw new WorkflowRunStoreException( 'audit_query_failed' );
+		}
 
 		return $this->map_rows( is_array( $rows ) ? $rows : array() );
 	}

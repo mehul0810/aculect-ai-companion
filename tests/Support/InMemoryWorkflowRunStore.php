@@ -174,7 +174,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 				continue;
 			}
 
-			$claimed                          = $this->copy_step( $step, WorkflowStepState::RUNNING, $step->attempt() + 1, $step->fence() + 1, '', null, null, null );
+			$claimed                          = $this->copy_step( $step, WorkflowStepState::RUNNING, $step->attempt() + 1, $step->fence() + 1, '', null, null, null, gmdate( 'Y-m-d H:i:s', time() + 30 ) );
 			$this->steps[ $run_id ][ $index ] = $claimed;
 
 			return $claimed;
@@ -242,7 +242,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		return null;
 	}
 
-	private function copy_step( WorkflowStepRecord $step, WorkflowStepState $state, int $attempt, int $fence, string $result_code, ?string $error_code, ?string $output_json, ?string $completed_at ): WorkflowStepRecord {
+	private function copy_step( WorkflowStepRecord $step, WorkflowStepState $state, int $attempt, int $fence, string $result_code, ?string $error_code, ?string $output_json, ?string $completed_at, ?string $lease_expires_at = null ): WorkflowStepRecord {
 		return new WorkflowStepRecord(
 			$step->id(),
 			$step->run_id(),
@@ -260,7 +260,8 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$output_json,
 			$step->started_at() ?? '2026-08-29 00:00:01',
 			$completed_at,
-			'2026-08-29 00:00:02'
+			'2026-08-29 00:00:02',
+			$lease_expires_at
 		);
 	}
 }

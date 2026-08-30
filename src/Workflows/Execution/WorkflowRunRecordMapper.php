@@ -104,7 +104,8 @@ final class WorkflowRunRecordMapper {
 			$output_json,
 			isset( $row['started_at'] ) && '' !== (string) $row['started_at'] ? (string) $row['started_at'] : null,
 			isset( $row['completed_at'] ) && '' !== (string) $row['completed_at'] ? (string) $row['completed_at'] : null,
-			(string) $row['updated_at']
+			(string) $row['updated_at'],
+			isset( $row['lease_expires_at'] ) && '' !== (string) $row['lease_expires_at'] ? (string) $row['lease_expires_at'] : null
 		);
 	}
 }

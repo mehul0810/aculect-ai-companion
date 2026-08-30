@@ -8,12 +8,15 @@
 declare(strict_types=1);
 
 // phpcs:disable WordPress.WP.CapitalPDangit.MisspelledInText -- Exact adapter identity fixtures use the lowercase machine token.
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused lease tests replace wpdb with an isolated adapter.
 
 namespace Aculect\AICompanion\Tests\Unit\Workflows\Execution;
 
 require_once dirname( __DIR__, 3 ) . '/Support/InMemoryWorkflowRunStore.php';
+require_once dirname( __DIR__, 3 ) . '/Support/WorkflowRunSqliteWpdb.php';
 
 use Aculect\AICompanion\Tests\Support\InMemoryWorkflowRunStore;
+use Aculect\AICompanion\Tests\Support\WorkflowRunSqliteWpdb;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterInterface;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
@@ -21,6 +24,7 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunnerException;
+use Aculect\AICompanion\Workflows\Execution\WorkflowRunStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
@@ -29,6 +33,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningException;
 use Aculect\AICompanion\Workflows\Planning\WorkflowReadinessEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowRunState;
+use Aculect\AICompanion\Workflows\Planning\WorkflowTransitionGuard;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -209,6 +214,48 @@ final class WorkflowRunnerTest extends TestCase {
 		}
 	}
 
+	public function test_expired_running_step_fails_closed_and_rejects_late_result(): void {
+		if ( ! extension_loaded( 'pdo_sqlite' ) ) {
+			self::markTestSkipped( 'pdo_sqlite is required for lease fencing tests.' );
+		}
+
+		$original_wpdb                                = $GLOBALS['wpdb'] ?? null;
+		$GLOBALS['wpdb']                              = new WorkflowRunSqliteWpdb();
+		$GLOBALS['aculect_ai_companion_test_options'] = array(
+			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
+			'aculect_ai_companion_secret_storage_key' => str_repeat( 'k', 64 ),
+		);
+		$now   = 1724889600;
+		$clock = static function () use ( &$now ): int {
+			return $now;
+		};
+
+		try {
+			$definition = $this->record( 'proposal-only-v1.json' );
+			$plan       = $this->plan( $definition, '{"post_id":9}' );
+			$store      = new WorkflowRunStore( null, $clock );
+			$runner     = new WorkflowRunner( $store, new WorkflowAdapterRegistry( array() ), new WorkflowTransitionGuard(), $clock );
+			$record     = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+			$runner->start( $record->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+			$claimed = $store->claim_step( $record->run_id(), 'read_content', 7 );
+			self::assertNotNull( $claimed );
+
+			$now     += 31;
+			$progress = $runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
+			self::assertSame( WorkflowRunState::FAILED, $progress->run()->state() );
+			self::assertSame( 'step_execution_uncertain', $progress->run()->outcome_code() );
+			self::assertSame( WorkflowStepState::RUNNING, $progress->step()?->state() );
+			self::assertTrue( $progress->progressed() );
+			self::assertNull( $store->complete_step( $record->run_id(), 'read_content', $claimed?->fence() ?? 0, WorkflowAdapterResult::success( array( 'ok' => true ) ), 7 ) );
+		} finally {
+			if ( null === $original_wpdb ) {
+				unset( $GLOBALS['wpdb'] );
+			} else {
+				$GLOBALS['wpdb'] = $original_wpdb;
+			}
+		}
+	}
+
 	/**
 	 * Compose a runner with an isolated in-memory store.
 	 *
@@ -269,8 +316,9 @@ final class WorkflowRunnerTest extends TestCase {
 	/**
 	 * Create a callback that records and verifies one expected step.
 	 *
-	 * @param string       $expected_step Expected step ID.
-	 * @param list<string> $executions
+	 * @param string $expected_step Expected step ID.
+	 * @param array  $executions    Executed step IDs.
+	 * @phpstan-param list<string> $executions
 	 */
 	private function execution_callback( string $expected_step, array &$executions ): callable {
 		return static function ( WorkflowPlan $plan, string $step_id, array $arguments, array $auth ) use ( $expected_step, &$executions ): WorkflowAdapterResult {

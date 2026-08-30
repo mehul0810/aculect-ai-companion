@@ -70,6 +70,7 @@ final class InstallerTest extends TestCase {
 		self::assertStringContainsString( 'lock_version bigint(20) unsigned NOT NULL DEFAULT 1', $sql );
 		self::assertStringContainsString( 'UNIQUE KEY workflow_id (workflow_id)', $sql );
 		self::assertStringContainsString( 'KEY status_updated (status, updated_at, id)', $sql );
+		self::assertStringContainsString( 'ENGINE=InnoDB', $sql );
 
 		self::assertStringContainsString( 'CREATE TABLE wp_aculect_ai_workflow_versions', $sql );
 		self::assertStringContainsString( 'workflow_pk bigint(20) unsigned NOT NULL', $sql );
@@ -83,6 +84,27 @@ final class InstallerTest extends TestCase {
 		self::assertStringNotContainsStringIgnoringCase( ' enum(', $sql );
 		self::assertStringNotContainsStringIgnoringCase( ' json ', $sql );
 		self::assertStringNotContainsStringIgnoringCase( ' generated ', $sql );
+	}
+
+	public function test_transactional_storage_requires_innodb_for_both_definition_tables(): void {
+		$wpdb            = new WorkflowInstallerWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		self::assertTrue( Installer::transactional_tables_available() );
+
+		$wpdb->table_engines['wp_aculect_ai_workflow_versions'] = 'MyISAM';
+		self::assertFalse( Installer::transactional_tables_available() );
+
+		$wpdb->table_engines['wp_aculect_ai_workflow_versions'] = '';
+		self::assertFalse( Installer::transactional_tables_available() );
+	}
+
+	public function test_transactional_storage_rejects_unknown_database_adapters(): void {
+		$wpdb            = new WorkflowInstallerWpdb();
+		$wpdb->is_mysql  = false;
+		$GLOBALS['wpdb'] = $wpdb;
+
+		self::assertFalse( Installer::transactional_tables_available() );
 	}
 
 	public function test_stale_schema_creates_both_tables_and_records_version_only_after_verification(): void {
@@ -340,6 +362,17 @@ final class InstallerTest extends TestCase {
 final class WorkflowInstallerWpdb {
 
 	public string $prefix = 'wp_';
+	public bool $is_mysql = true;
+
+	/**
+	 * Simulated MySQL table engines.
+	 *
+	 * @var array<string, string>
+	 */
+	public array $table_engines = array(
+		'wp_aculect_ai_workflows'         => 'InnoDB',
+		'wp_aculect_ai_workflow_versions' => 'InnoDB',
+	);
 
 	/**
 	 * Existing table names.
@@ -375,7 +408,15 @@ final class WorkflowInstallerWpdb {
 	}
 
 	public function get_var( string $query ): string {
-		unset( $query );
+		if ( false !== stripos( $query, 'FROM information_schema.TABLES' ) ) {
+			$table = (string) ( $this->last_args[0] ?? '' );
+			if ( '' === $table ) {
+				preg_match( '/TABLE_NAME\s*=\s*["\']([^"\']+)["\']/i', $query, $matches );
+				$table = (string) ( $matches[1] ?? '' );
+			}
+
+			return $this->table_engines[ $table ] ?? '';
+		}
 
 		++$this->get_var_calls;
 		$table = (string) ( $this->last_args[0] ?? '' );

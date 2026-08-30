@@ -177,22 +177,28 @@ final class WorkflowAdminPage {
 			);
 		}
 
-		return array(
-			'workflow_id'         => sanitize_key( (string) $this->post_value( 'workflow_id', '' ) ),
-			'expected_version'    => absint( $this->post_value( 'expected_version', 0 ) ),
-			'template_id'         => sanitize_key( (string) $this->post_value( 'template_id', 'blank' ) ),
-			'name'                => sanitize_text_field( (string) $this->post_value( 'name', '' ) ),
-			'description'         => sanitize_text_field( (string) $this->post_value( 'description', '' ) ),
-			'target_mode'         => sanitize_key( (string) $this->post_value( 'target_mode', 'either' ) ),
-			'post_types'          => (string) $this->post_value( 'post_types', '' ),
-			'input_fields'        => (string) $this->post_value( 'input_fields', '' ),
-			'step_abilities'      => (string) $this->post_value( 'step_abilities', '' ),
-			'step_arguments'      => substr( (string) $this->post_value( 'step_arguments', '' ), 0, 32768 ),
-			'write_policy'        => sanitize_key( (string) $this->post_value( 'write_policy', 'proposal_only' ) ),
-			'allowed_roles'       => $allowed_roles,
-			'migration_id'        => sanitize_key( (string) $this->post_value( 'migration_id', '' ) ),
-			'migration_confirmed' => '1' === (string) $this->post_value( 'migration_confirmed', '' ),
+		$values = array(
+			'workflow_id'           => sanitize_key( (string) $this->post_value( 'workflow_id', '' ) ),
+			'expected_version'      => absint( $this->post_value( 'expected_version', 0 ) ),
+			'template_id'           => sanitize_key( (string) $this->post_value( 'template_id', 'blank' ) ),
+			'name'                  => sanitize_text_field( (string) $this->post_value( 'name', '' ) ),
+			'description'           => sanitize_text_field( (string) $this->post_value( 'description', '' ) ),
+			'target_mode'           => sanitize_key( (string) $this->post_value( 'target_mode', 'either' ) ),
+			'post_types'            => (string) $this->post_value( 'post_types', '' ),
+			'input_fields'          => (string) $this->post_value( 'input_fields', '' ),
+			'step_abilities'        => (string) $this->post_value( 'step_abilities', '' ),
+			'step_arguments'        => substr( (string) $this->post_value( 'step_arguments', '' ), 0, 32768 ),
+			'write_policy'          => sanitize_key( (string) $this->post_value( 'write_policy', 'proposal_only' ) ),
+			'allowed_roles_present' => '1' === (string) $this->post_value( 'allowed_roles_present', '' ),
+			'migration_id'          => sanitize_key( (string) $this->post_value( 'migration_id', '' ) ),
+			'migration_confirmed'   => '1' === (string) $this->post_value( 'migration_confirmed', '' ),
 		);
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- The mutation handler verifies the nonce before extracting the request.
+		if ( array_key_exists( 'allowed_roles', $_POST ) ) {
+			$values['allowed_roles'] = $allowed_roles;
+		}
+
+		return $values;
 	}
 
 	/**
@@ -299,12 +305,26 @@ final class WorkflowAdminPage {
 		$this->field( 'input_fields', __( 'Inputs', 'aculect-ai-companion' ), $values['input_fields'] ?? '', 'One per line: field:type[:required]. Types: string, integer, number, boolean.' );
 		$this->field( 'step_abilities', __( 'Steps', 'aculect-ai-companion' ), $values['step_abilities'] ?? '', 'One supported ability per line, in execution order. Dependencies are generated from this order.' );
 		$this->field( 'step_arguments', __( 'Step arguments (optional JSON)', 'aculect-ai-companion' ), $values['step_arguments'] ?? '', 'Optional object keyed by step_1, position, or ability ID. Use {{input.field}} and {{steps.step_id.output.field}} for typed runtime bindings. Empty values receive safe input bindings automatically.' );
-		echo '<tr><th><span>' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</span></th><td><fieldset><legend class="screen-reader-text">' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</legend>';
+		echo '<tr><th><span>' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</span></th><td><fieldset><legend class="screen-reader-text">' . esc_html__( 'Role access', 'aculect-ai-companion' ) . '</legend><input type="hidden" name="allowed_roles_present" value="1">';
+		$selected_role_ids = array();
+		foreach ( (array) ( $values['allowed_roles'] ?? array() ) as $role_id ) {
+			if ( is_scalar( $role_id ) ) {
+				$role_id = sanitize_key( (string) $role_id );
+				if ( '' !== $role_id ) {
+					$selected_role_ids[] = $role_id;
+				}
+			}
+		}
+		$known_role_ids = array_map( 'strval', array_column( $roles, 'id' ) );
 		foreach ( $roles as $role ) {
 			$id = (string) $role['id'];
-			echo '<label style="display:block"><input type="checkbox" name="allowed_roles[]" value="' . esc_attr( $id ) . '"' . ( in_array( $id, (array) ( $values['allowed_roles'] ?? array() ), true ) ? ' checked' : '' ) . '> ' . esc_html( (string) $role['label'] ) . '</label>';
+			echo '<label style="display:block"><input type="checkbox" name="allowed_roles[]" value="' . esc_attr( $id ) . '"' . ( in_array( $id, $selected_role_ids, true ) ? ' checked' : '' ) . '> ' . esc_html( (string) $role['label'] ) . '</label>';
 		}
-		echo '<p class="description">' . esc_html__( 'Leave every role unchecked to inherit the existing Aculect ability policy. Administrators remain subject to the same ability, capability, scope, and approval checks.', 'aculect-ai-companion' ) . '</p></fieldset></td></tr>';
+		foreach ( array_values( array_diff( $selected_role_ids, $known_role_ids ) ) as $stale_role ) {
+			/* translators: %s: unregistered WordPress role slug. */
+			echo '<label style="display:block"><input type="checkbox" name="allowed_roles[]" value="' . esc_attr( $stale_role ) . '" checked> ' . esc_html( sprintf( __( 'Unregistered role: %s (remove to resolve)', 'aculect-ai-companion' ), $stale_role ) ) . '</label>';
+		}
+		echo '<p class="description">' . esc_html__( 'Leave every registered role unchecked to inherit the existing Aculect ability policy. If an unregistered role is shown, remove it explicitly before saving. Administrators remain subject to the same ability, capability, scope, and approval checks.', 'aculect-ai-companion' ) . '</p></fieldset></td></tr>';
 		echo '<tr><th><label for="aculect-target-mode">' . esc_html__( 'Target mode', 'aculect-ai-companion' ) . '</label></th><td><select id="aculect-target-mode" name="target_mode">';
 		foreach ( array(
 			'new'      => 'New content',
@@ -532,7 +552,7 @@ JS;
 	private function render_template_defaults_script( array $templates ): void {
 		$defaults = array();
 		foreach ( $templates as $id => $template ) {
-			$arguments       = function_exists( 'wp_json_encode' ) ? wp_json_encode( $template['step_arguments'] ?? array() ) : '{}';
+			$arguments       = $this->encode_step_arguments( $template['step_arguments'] ?? array() );
 			$defaults[ $id ] = array(
 				'name'           => (string) ( $template['label'] ?? $id ),
 				'description'    => (string) ( $template['description'] ?? '' ),
@@ -540,7 +560,7 @@ JS;
 				'post_types'     => implode( ",\n", array_map( 'strval', (array) ( $template['post_types'] ?? array() ) ) ),
 				'input_fields'   => implode( "\n", array_map( 'strval', (array) ( $template['input_fields'] ?? array() ) ) ),
 				'step_abilities' => implode( "\n", array_map( 'strval', (array) ( $template['step_abilities'] ?? array() ) ) ),
-				'step_arguments' => is_string( $arguments ) ? $arguments : '{}',
+				'step_arguments' => $arguments,
 				'write_policy'   => (string) ( $template['write_policy'] ?? 'proposal_only' ),
 			);
 		}
@@ -583,7 +603,7 @@ JS;
 	private function values_for_record( ?WorkflowDefinitionRecord $record ): array {
 		if ( null === $record ) {
 			$template            = $this->service->templates()['blank'];
-			$step_arguments_json = function_exists( 'wp_json_encode' ) ? wp_json_encode( $template['step_arguments'] ?? array() ) : '{}';
+			$step_arguments_json = $this->encode_step_arguments( $template['step_arguments'] ?? array() );
 			return array(
 				'workflow_id'         => '',
 				'expected_version'    => 0,
@@ -594,7 +614,7 @@ JS;
 				'post_types'          => implode( ', ', $template['post_types'] ),
 				'input_fields'        => implode( "\n", $template['input_fields'] ),
 				'step_abilities'      => implode( "\n", $template['step_abilities'] ),
-				'step_arguments'      => is_string( $step_arguments_json ) ? $step_arguments_json : '{}',
+				'step_arguments'      => $step_arguments_json,
 				'write_policy'        => $template['write_policy'],
 				'allowed_roles'       => array(),
 				'migration_id'        => '',
@@ -632,7 +652,7 @@ JS;
 				}
 			}
 		}
-		$step_arguments_json = function_exists( 'wp_json_encode' ) ? wp_json_encode( $step_arguments ) : '{}';
+		$step_arguments_json = $this->encode_step_arguments( $step_arguments );
 		$content_target      = $value['content_target'] ?? array();
 		$content_target      = $content_target instanceof stdClass ? get_object_vars( $content_target ) : ( is_array( $content_target ) ? $content_target : array() );
 		$target_post_types   = $content_target['post_types'] ?? array();
@@ -650,13 +670,31 @@ JS;
 			'post_types'          => implode( ', ', array_map( 'strval', $target_post_types ) ),
 			'input_fields'        => implode( "\n", $fields ),
 			'step_abilities'      => implode( "\n", $steps ),
-			'step_arguments'      => is_string( $step_arguments_json ) ? $step_arguments_json : '{}',
+			'step_arguments'      => $step_arguments_json,
 			'write_policy'        => $write_policy['mode'] ?? 'proposal_only',
 			'allowed_roles'       => $record->allowed_roles(),
 			'migration_id'        => '',
 			'migration_confirmed' => false,
 			'status'              => $value['status'] ?? 'draft',
 		);
+	}
+
+	/**
+	 * Encode the guided arguments as an object, including the empty contract.
+	 *
+	 * @param mixed $arguments Step argument defaults or a saved argument map.
+	 */
+	private function encode_step_arguments( mixed $arguments ): string {
+		if ( null === $arguments || '' === $arguments || array() === $arguments ) {
+			return '{}';
+		}
+		if ( ! function_exists( 'wp_json_encode' ) ) {
+			return '{}';
+		}
+
+		$encoded = wp_json_encode( $arguments );
+
+		return is_string( $encoded ) ? $encoded : '{}';
 	}
 
 	/**

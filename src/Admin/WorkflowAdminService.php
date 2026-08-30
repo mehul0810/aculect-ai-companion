@@ -177,13 +177,18 @@ final class WorkflowAdminService {
 			);
 		}
 		$role_errors         = array();
-		$has_submitted_roles = array_key_exists( 'allowed_roles', $submitted );
-		$role_value          = $has_submitted_roles ? $submitted['allowed_roles'] : ( $existing?->allowed_roles() ?? array() );
-		if ( null !== $existing && ! $has_submitted_roles ) {
-			// A role can disappear between versions (for example after a plugin
-			// is removed). Keep only currently registered roles when the form did
-			// not submit a selector, so stale access entries are not resurrected.
-			$role_value = $this->registered_roles_only( $existing->allowed_roles() );
+		$has_submitted_roles = array_key_exists( 'allowed_roles_present', $submitted )
+			? ( true === $submitted['allowed_roles_present'] || '1' === (string) $submitted['allowed_roles_present'] )
+			: array_key_exists( 'allowed_roles', $submitted );
+		$role_value          = $has_submitted_roles ? ( $submitted['allowed_roles'] ?? array() ) : ( $existing?->allowed_roles() ?? array() );
+		if ( null !== $existing && ! $has_submitted_roles && $this->has_unregistered_role( $existing->allowed_roles() ) ) {
+			// Never turn an orphaned stored allowlist into an empty allowlist:
+			// empty means inherited/global access. Require an explicit selector
+			// submission so stale access cannot widen during an unrelated edit.
+			return array(
+				'ok'     => false,
+				'errors' => array( 'allowed_roles' => 'Stored role access includes an unregistered role; select the current roles explicitly before saving.' ),
+			);
 		}
 		$allowed_roles = $this->normalize_roles( $role_value, $role_errors );
 		if ( array() !== $role_errors ) {
@@ -703,13 +708,26 @@ final class WorkflowAdminService {
 			$errors['step_arguments'] = 'Step arguments must be a bounded JSON object.';
 			return array();
 		}
+		$value = trim( $value );
+		if ( '' === $value || '{}' === $value || '[]' === $value ) {
+			// Empty object and list encodings both represent the unbound starter
+			// contract. The service derives safe input bindings below.
+			return array();
+		}
 		try {
 			$decoded = json_decode( $value, true, 16, JSON_THROW_ON_ERROR );
 		} catch ( JsonException ) {
 			$errors['step_arguments'] = 'Step arguments must be valid JSON.';
 			return array();
 		}
-		if ( ! is_array( $decoded ) || array_is_list( $decoded ) ) {
+		if ( ! is_array( $decoded ) ) {
+			$errors['step_arguments'] = 'Step arguments must be a JSON object keyed by step ID, position, or ability ID.';
+			return array();
+		}
+		if ( array() === $decoded ) {
+			return array();
+		}
+		if ( array_is_list( $decoded ) ) {
 			$errors['step_arguments'] = 'Step arguments must be a JSON object keyed by step ID, position, or ability ID.';
 			return array();
 		}
@@ -834,25 +852,23 @@ final class WorkflowAdminService {
 	}
 
 	/**
-	 * Drop stored role slugs that no longer exist in the current WordPress role registry.
+	 * Detect stored role slugs that no longer exist in the current WordPress role registry.
 	 *
 	 * @param array<string> $roles Stored role slugs.
 	 * @phpstan-param list<string> $roles
-	 * @return list<string>
 	 */
-	private function registered_roles_only( array $roles ): array {
+	private function has_unregistered_role( array $roles ): bool {
 		$known = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
-		$valid = array();
 		foreach ( $roles as $role ) {
+			if ( ! is_scalar( $role ) ) {
+				return true;
+			}
 			$role = sanitize_key( (string) $role );
-			if ( '' !== $role && isset( $known[ $role ] ) ) {
-				$valid[] = $role;
+			if ( '' === $role || ! isset( $known[ $role ] ) ) {
+				return true;
 			}
 		}
 
-		$valid = array_values( array_unique( $valid ) );
-		sort( $valid, SORT_STRING );
-
-		return $valid;
+		return false;
 	}
 }

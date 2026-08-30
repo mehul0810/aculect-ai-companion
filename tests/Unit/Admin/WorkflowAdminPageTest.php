@@ -75,7 +75,8 @@ final class WorkflowAdminPageTest extends TestCase {
 			1,
 			'2026-08-29 00:00:00',
 			'2026-08-29 00:00:00',
-			$definition
+			$definition,
+			array( 'deleted_role' )
 		);
 		$repository = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
 		$repository->method( 'list' )->willReturn( array( $record ) );
@@ -100,5 +101,9 @@ final class WorkflowAdminPageTest extends TestCase {
 		self::assertStringContainsString( ">title:string:required\npost_id:integer:required</textarea>", $html );
 		self::assertStringContainsString( '>content/get-item</textarea>', $html );
 		self::assertStringContainsString( 'value="proposal_only" selected', $html );
+		self::assertStringContainsString( 'name="allowed_roles_present" value="1"', $html );
+		self::assertStringContainsString( 'Unregistered role: deleted_role (remove to resolve)', $html );
+		self::assertStringContainsString( '"custom_post_type_creation":{"name":"Custom post type content creation"', $html );
+		self::assertStringContainsString( '"step_arguments":"{}"', $html );
 	}
 }

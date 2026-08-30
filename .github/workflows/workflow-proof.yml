@@ -255,7 +255,8 @@ jobs:
             "testsEnvironment": false,
             "plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
             "mappings": {
-              "wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}"
+              "wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}",
+              "wp-content/aculect-workflow-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Workflows"
             }
           }
           JSON
@@ -279,6 +280,9 @@ jobs:
           wp-env run cli wp plugin activate aculect-ai-companion
           wp-env run cli wp plugin check aculect-ai-companion --format=json --ignore-warnings --exclude-files=.wp-env.json --slug=aculect-ai-companion --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
           cat "${RUNNER_TEMP}/plugin-check-results.txt"
+
+      - name: Prove workflow retry lease with WordPress Options API
+        run: wp-env run cli wp eval-file wp-content/aculect-workflow-proofs/wp-options-retry-cache.php
 
       - name: Install Chromium for browser proof
         run: npx playwright install --with-deps chromium

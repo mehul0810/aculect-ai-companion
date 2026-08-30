@@ -170,6 +170,25 @@ try {
 		);
 	}
 
+	// The custom-post-type starter intentionally hydrates an empty JSON object;
+	// exercise the real selector and save path so an empty array cannot reach the
+	// service as an invalid list contract.
+	await page.selectOption( '#aculect-workflow-template', 'custom_post_type_creation' );
+	if ( ( await page.inputValue( '#aculect-step_arguments' ) ) !== '{}' ) {
+		throw new Error(
+			'Custom post type starter did not hydrate an empty object for step arguments.'
+		);
+	}
+	if (
+		!( await page.locator( '#aculect-live-steps' ).textContent() ).includes(
+			'content/create-item'
+		)
+	) {
+		throw new Error(
+			'Custom post type starter did not expose its create step.'
+		);
+	}
+
 	// Create a disposable draft so the browser proof exercises the real edit,
 	// migration-approval, and publish paths rather than only static markup.
 	const workflowId = `browser_workflow_${ Date.now() }`;

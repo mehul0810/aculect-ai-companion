@@ -244,6 +244,7 @@ final class RunInstaller {
 			return false;
 		}
 
+		self::invalidate_option_cache( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
 		$retry_after = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
 		if ( null !== $retry_after ) {
 			if ( self::repair_retry_is_active( $retry_after, $now ) ) {
@@ -253,6 +254,7 @@ final class RunInstaller {
 				// A concurrent writer may have replaced the invalid value with a
 				// valid backoff while this request was cleaning it up. Re-read the
 				// authoritative option before deciding whether repair is allowed.
+				self::invalidate_option_cache( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
 				$current_retry = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
 				if ( null !== $current_retry ) {
 					if ( self::repair_retry_is_active( $current_retry, $now ) ) {
@@ -359,9 +361,45 @@ final class RunInstaller {
 		if ( ! self::update_repair_lock_if_value( $lock_token, $outcome ) ) {
 			return $lock_token;
 		}
-		update_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, $retry_after, false );
+		if ( ! self::persist_repair_retry_after( $retry_after ) ) {
+			// Keep the failure lease until it expires when the durable retry
+			// option could not be written. Deleting it would permit a hot loop.
+			return $lock_token;
+		}
 
 		return $outcome;
+	}
+
+	/**
+	 * Persist a retry timestamp without trusting a stale options cache.
+	 *
+	 * @param int $retry_after Retry timestamp.
+	 */
+	private static function persist_repair_retry_after( int $retry_after ): bool {
+		self::invalidate_option_cache( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
+		$current = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
+		if ( null !== $current && self::repair_retry_is_active( $current, time() ) ) {
+			// A concurrent writer already installed a valid backoff; preserve it.
+			return true;
+		}
+
+		$stored = null === $current
+			? add_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, $retry_after, '', false )
+			: update_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, $retry_after, false );
+		if ( $stored ) {
+			return true;
+		}
+
+		// add_option/update_option may lose a race or report false when the
+		// value is unchanged. Re-read after invalidation before declaring the
+		// backoff absent; never overwrite a replacement that is now active.
+		self::invalidate_option_cache( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
+		$current = get_option( self::OPTION_ENGINE_REPAIR_RETRY_AFTER, null );
+		if ( null !== $current && self::repair_retry_is_active( $current, time() ) ) {
+			return true;
+		}
+
+		return null !== $current && self::same_retry_timestamp( $current, $retry_after );
 	}
 
 	/**
@@ -483,8 +521,43 @@ final class RunInstaller {
 				self::option_storage_value( $retry_after )
 			)
 		);
+		// The SQL CAS bypasses wp_options' object cache. Clear it even when the
+		// row was replaced or already absent so every following read is fresh.
+		self::invalidate_option_cache( self::OPTION_ENGINE_REPAIR_RETRY_AFTER );
 
 		return 1 === (int) $deleted;
+	}
+
+	/**
+	 * Invalidate one site option and aggregate caches after a direct query.
+	 *
+	 * @param string $option Option name.
+	 */
+	private static function invalidate_option_cache( string $option ): void {
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( $option, 'options' );
+			// Direct SQL can bypass either aggregate cache when an older row was
+			// autoloaded or when the option was previously marked as missing.
+			wp_cache_delete( 'alloptions', 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+	}
+
+	/**
+	 * Compare a retry timestamp without coercing malformed values.
+	 *
+	 * @param mixed $value    Stored option value.
+	 * @param int   $expected Expected timestamp.
+	 */
+	private static function same_retry_timestamp( mixed $value, int $expected ): bool {
+		if ( is_int( $value ) ) {
+			return $value === $expected;
+		}
+		if ( ! is_string( $value ) || 1 !== preg_match( '/^(?:0|[1-9][0-9]*)$/D', $value ) ) {
+			return false;
+		}
+
+		return (string) $expected === $value;
 	}
 
 	/**

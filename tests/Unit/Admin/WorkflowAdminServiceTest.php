@@ -86,6 +86,23 @@ final class WorkflowAdminServiceTest extends TestCase {
 		self::assertSame( 'book', $value['steps'][1]['arguments']['post_type'] );
 	}
 
+	public function test_empty_json_step_arguments_use_safe_unbound_defaults(): void {
+		foreach ( array( '[]', '{}', " \n{ }\n" ) as $encoded ) {
+			$definition = ( new WorkflowAdminService() )->definition_from_input(
+				array(
+					'workflow_id'    => 'empty_arguments_' . md5( $encoded ),
+					'template_id'    => 'custom_post_type_creation',
+					'step_arguments' => $encoded,
+				),
+				7
+			);
+			$value      = $definition->to_array();
+
+			self::assertSame( 'post', $value['steps'][0]['arguments']['post_type'] );
+			self::assertSame( '{{input.title}}', $value['steps'][1]['arguments']['title'] );
+		}
+	}
+
 	public function test_missing_required_adapter_argument_is_rejected_before_persistence(): void {
 		$service = new WorkflowAdminService();
 
@@ -176,12 +193,64 @@ final class WorkflowAdminServiceTest extends TestCase {
 			}
 		);
 
-		$fields['expected_version'] = 1;
-		$fields['allowed_roles']    = array();
-		$result                     = ( new WorkflowAdminService( $repository ) )->save( $fields, 7 );
+		$fields['expected_version']      = 1;
+		$fields['allowed_roles_present'] = true;
+		$result                          = ( new WorkflowAdminService( $repository ) )->save( $fields, 7 );
 
 		self::assertTrue( $result['ok'] );
 		self::assertSame( array(), $captured_roles );
+	}
+
+	public function test_omitting_a_selector_with_stale_roles_fails_closed(): void {
+		$GLOBALS['aculect_ai_companion_test_roles'] = array(
+			'administrator' => array( 'name' => 'Administrator' ),
+			'editor'        => array( 'name' => 'Editor' ),
+			'author'        => array( 'name' => 'Author' ),
+		);
+		$base_fields                                = array(
+			'workflow_id'      => 'role_stale_guard',
+			'expected_version' => 1,
+			'template_id'      => 'blank',
+			'name'             => 'Role stale guard',
+			'description'      => 'Require explicit stale-role resolution.',
+			'target_mode'      => 'existing',
+			'post_types'       => 'post',
+			'input_fields'     => 'post_id:integer:required',
+			'step_abilities'   => 'content/get-item',
+			'write_policy'     => 'proposal_only',
+			'status'           => 'draft',
+		);
+
+		foreach ( array( array( 'deleted_role' ), array( 'editor', 'deleted_role' ) ) as $stored_roles ) {
+			$definition = ( new WorkflowAdminService() )->definition_from_input( $base_fields, 7 );
+			$record     = new WorkflowDefinitionRecord(
+				1,
+				'role_stale_guard',
+				'draft',
+				1,
+				0,
+				'blank',
+				1,
+				7,
+				7,
+				1,
+				'2026-08-29 00:00:00',
+				'2026-08-29 00:00:00',
+				$definition,
+				$stored_roles
+			);
+			$repository = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+			$repository->method( 'get' )->willReturn( $record );
+			$repository->expects( self::never() )->method( 'update' );
+
+			$result = ( new WorkflowAdminService( $repository ) )->save( $base_fields, 7 );
+
+			self::assertFalse( $result['ok'] );
+			self::assertSame(
+				'Stored role access includes an unregistered role; select the current roles explicitly before saving.',
+				$result['errors']['allowed_roles'] ?? ''
+			);
+		}
 	}
 
 	public function test_migration_preview_returns_a_stable_plan_for_an_edit(): void {

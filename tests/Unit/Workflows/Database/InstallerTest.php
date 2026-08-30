@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Database;
 
 use Aculect\AICompanion\Plugin;
 use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
+use Aculect\AICompanion\Workflows\Database\AuditInstaller;
 use Aculect\AICompanion\Workflows\Database\Installer;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -307,6 +308,7 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
 			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
 			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
+			'aculect_ai_companion_workflow_audit_db_version' => '2026.08.29.1',
 			'aculect_ai_companion_workflows_db_verification' => array(
 				'status'        => 'valid',
 				'db_version'    => '2026.08.19.1',
@@ -324,6 +326,7 @@ final class InstallerTest extends TestCase {
 							'wp_aculect_ai_workflow_versions',
 							'wp_aculect_ai_workflow_runs',
 							'wp_aculect_ai_workflow_run_steps',
+							'wp_aculect_ai_workflow_audit',
 						)
 					)
 				)
@@ -337,6 +340,16 @@ final class InstallerTest extends TestCase {
 		self::assertSame( array(), Installer::missing_table_keys() );
 		self::assertCount( 1, $wpdb->db_delta_queries );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
+	}
+
+	public function test_audit_installer_reuses_the_first_table_probe_when_schema_is_current(): void {
+		$wpdb                  = new WorkflowInstallerWpdb();
+		$wpdb->existing_tables = array( 'wp_aculect_ai_workflow_audit' );
+		$GLOBALS['wpdb']       = $wpdb;
+		update_option( 'aculect_ai_companion_workflow_audit_db_version', '2026.08.29.1', false );
+
+		self::assertTrue( AuditInstaller::install() );
+		self::assertSame( 1, $wpdb->get_var_calls );
 	}
 
 	public function test_table_names_follow_the_current_site_prefix(): void {

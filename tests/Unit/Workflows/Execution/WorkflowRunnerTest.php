@@ -27,9 +27,12 @@ use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunnerException;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunStore;
+use Aculect\AICompanion\Workflows\Execution\WorkflowRunStoreInterface;
 use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
@@ -93,6 +96,79 @@ final class WorkflowRunnerTest extends TestCase {
 		$terminal = $runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
 		self::assertFalse( $terminal->progressed() );
 		self::assertSame( WorkflowRunState::COMPLETED, $terminal->run()->state() );
+	}
+
+	public function test_completion_audit_requires_the_current_claimed_step_record(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$inner      = new InMemoryWorkflowRunStore();
+		$created    = $inner->create(
+			'run-stale-completion',
+			$definition->workflow_id(),
+			(int) $definition->definition()->to_array()['workflow_version'],
+			$definition->definition()->checksum(),
+			$plan,
+			WorkflowInputContract::from_json( '{"post_id":9}' ),
+			WorkflowRunState::PREPARED,
+			7
+		);
+		$started    = $inner->transition( $created->run_id(), WorkflowRunState::PREPARED, 1, WorkflowRunState::RUNNING, 7 );
+		$pending    = $inner->steps( $created->run_id() );
+		$claimed    = $inner->claim_step( $created->run_id(), 'read_content', 7 );
+		self::assertNotNull( $started );
+		self::assertNotNull( $claimed );
+
+		$store = $this->createMock( WorkflowRunStoreInterface::class );
+		$store->method( 'create' )->willReturn( $created );
+		$store->method( 'get' )->willReturnOnConsecutiveCalls( $created, $started, $started );
+		$store->method( 'steps' )->willReturn( $pending );
+		$store->method( 'transition' )->willReturn( $started );
+		$store->method( 'claim_step' )->willReturn( $claimed );
+		$store->method( 'complete_step' )->willReturn( $claimed );
+
+		$runner = new WorkflowRunner(
+			$store,
+			new WorkflowAdapterRegistry( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) )
+		);
+		$runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		$runner->start( $created->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+
+		try {
+			$runner->execute_next( $definition, $created->run_id(), $plan, array(), 7 );
+			self::fail( 'A stale completion record must not emit a step-completed audit event.' );
+		} catch ( WorkflowRunnerException $exception ) {
+			self::assertSame( 'step_claim_lost', $exception->getMessage() );
+		}
+	}
+
+	public function test_runner_emits_bounded_lifecycle_audit_events(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$events     = array();
+		$audit      = $this->createMock( WorkflowAuditStoreInterface::class );
+		$audit->expects( self::exactly( 4 ) )
+			->method( 'append' )
+			->willReturnCallback(
+				static function ( WorkflowAuditRecord $event ) use ( &$events ): void {
+					$events[] = $event;
+				}
+			);
+		$runner = new WorkflowRunner(
+			new InMemoryWorkflowRunStore(),
+			new WorkflowAdapterRegistry( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) ),
+			audit: $audit
+		);
+		$record = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		$runner->start( $record->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+		$runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
+		$runner->execute_next( $definition, $record->run_id(), $plan, array(), 7 );
+
+		self::assertSame(
+			array( 'run_created', 'run_started', 'step_completed', 'run_completed' ),
+			array_map( static fn ( WorkflowAuditRecord $event ): string => $event->event_type(), $events )
+		);
+		self::assertSame( 'read_content', $events[2]->step_id() );
+		self::assertSame( array(), $events[2]->changed_fields() );
 	}
 
 	public function test_approval_gated_dependencies_execute_in_plan_order_then_complete(): void {

@@ -8,7 +8,6 @@ use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimDecision;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Diagnostics\Logger;
-use Aculect\AICompanion\Workflows\Authorization\WorkflowExecutionAuthorization;
 use Closure;
 use WP_REST_Request;
 
@@ -34,13 +33,6 @@ final class AbilityExecutionGateway {
 	 * @var array<string, mixed>|null
 	 */
 	private static ?array $current_request_auth = null;
-
-	/**
-	 * Request-local marker issued by the workflow connector for nested writes.
-	 *
-	 * @var WorkflowExecutionAuthorization|null
-	 */
-	private static ?WorkflowExecutionAuthorization $current_workflow_authorization = null;
 
 	private AbilitiesRegistry $registry;
 	private IntelligenceRegistry $intelligence;
@@ -108,14 +100,12 @@ final class AbilityExecutionGateway {
 			return $this->unavailable_authenticated_actor_outcome();
 		}
 
-		$previous_request_auth           = self::$current_request_auth;
-		$previous_workflow_authorization = self::$current_workflow_authorization;
-		self::$current_request_auth      = $request->auth;
+		$previous_request_auth      = self::$current_request_auth;
+		self::$current_request_auth = $request->auth;
 		try {
 			return AbilityExecutionOutcome::from_array( $this->execute_params( $request->params, $request->auth, $request->rest_request ) );
 		} finally {
-			self::$current_request_auth           = $previous_request_auth;
-			self::$current_workflow_authorization = $previous_workflow_authorization;
+			self::$current_request_auth = $previous_request_auth;
 			$this->set_wordpress_user_id( $previous_actor_id );
 		}
 	}
@@ -132,26 +122,6 @@ final class AbilityExecutionGateway {
 	 */
 	public static function current_request_auth(): array {
 		return self::$current_request_auth ?? array();
-	}
-
-	/**
-	 * Run a connector-owned callback with a server-issued workflow marker.
-	 *
-	 * The marker never crosses the MCP/JSON boundary and is restored even when
-	 * an adapter throws, so one request cannot authorize a later request.
-	 *
-	 * @param WorkflowExecutionAuthorization $authorization Server-issued marker.
-	 * @param Closure                        $callback       Native workflow tick.
-	 * @return mixed
-	 */
-	public static function with_workflow_authorization( WorkflowExecutionAuthorization $authorization, Closure $callback ): mixed {
-		$previous                             = self::$current_workflow_authorization;
-		self::$current_workflow_authorization = $authorization;
-		try {
-			return $callback();
-		} finally {
-			self::$current_workflow_authorization = $previous;
-		}
 	}
 
 	/**
@@ -548,6 +518,35 @@ final class AbilityExecutionGateway {
 	}
 
 	/**
+	 * Return whether a workflow mutation must never preview by callback.
+	 *
+	 * Workflow callbacks can advance durable runs. Generic dry-run and
+	 * confirmation requests therefore receive metadata only; callers use the
+	 * dedicated workflow dry-run operation for a step-level preview.
+	 *
+	 * @param string $tool Internal workflow ability ID.
+	 */
+	private function is_workflow_mutation_tool( string $tool ): bool {
+		return in_array( $tool, array( 'content_workflow.execute', 'content_workflow.resume', 'content_workflow.cancel' ), true );
+	}
+
+	/**
+	 * Build a metadata-only preview for a workflow mutation.
+	 *
+	 * @param string $tool Internal workflow tool ID.
+	 * @return array<string,mixed>
+	 */
+	private function workflow_preview_payload( string $tool ): array {
+		return array(
+			'status'           => 'preview',
+			'action'           => $tool,
+			'preview_only'     => true,
+			'mutation_blocked' => true,
+			'message'          => 'Workflow mutation previews are metadata-only. Use content_workflow.dry_run for the planned steps.',
+		);
+	}
+
+	/**
 	 * Execute a resolved module without allowing callers to bypass the gateway.
 	 *
 	 * @param string               $tool Internal tool ID.
@@ -710,43 +709,11 @@ final class AbilityExecutionGateway {
 	 * @param bool                 $is_intelligence_tool Whether the tool belongs to intelligence.
 	 */
 	private function write_permission_unblocks_tool( string $tool, array $auth, bool $is_intelligence_tool ): bool {
-		if ( null !== self::$current_workflow_authorization && self::$current_workflow_authorization->allows( $tool, $auth ) ) {
-			return true;
-		}
-
 		$enabled   = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
 			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
 		$read_only = $is_intelligence_tool ? $this->intelligence->is_read_only( $tool ) : $this->registry->is_read_only( $tool );
 
 		return ! $read_only && $enabled;
-	}
-
-	/**
-	 * Return whether a custom workflow mutation must never preview by callback.
-	 *
-	 * @param string $tool Internal workflow ability ID.
-	 */
-	private function is_workflow_mutation_tool( string $tool ): bool {
-		return in_array( $tool, array( 'content_workflow.execute', 'content_workflow.resume', 'content_workflow.cancel' ), true );
-	}
-
-	/**
-	 * Return metadata-only preview for workflow mutations.
-	 *
-	 * Workflow connector callbacks can advance durable runs and therefore must
-	 * not be invoked from a generic dry-run or confirmation preview.
-	 *
-	 * @param string $tool Internal workflow tool ID.
-	 * @return array<string,mixed>
-	 */
-	private function workflow_preview_payload( string $tool ): array {
-		return array(
-			'status'           => 'preview',
-			'action'           => $tool,
-			'preview_only'     => true,
-			'mutation_blocked' => true,
-			'message'          => 'Workflow mutation previews are metadata-only. Use content_workflow.dry_run for the planned steps.',
-		);
 	}
 
 	/**

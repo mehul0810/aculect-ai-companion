@@ -36,7 +36,7 @@ final readonly class WorkflowStepRecord {
 	 * @param string|null       $started_at      UTC start timestamp.
 	 * @param string|null       $completed_at    UTC completion timestamp.
 	 * @param string            $updated_at      UTC update timestamp.
-	 * @param string|null       $lease_expires_at UTC lease expiry timestamp.
+	 * @param string|null       $lease_expires_at UTC lease deadline.
 	 */
 	public function __construct(
 		private int $id,
@@ -104,22 +104,23 @@ final readonly class WorkflowStepRecord {
 	 */
 	public function to_array(): array {
 		return array(
-			'id'              => $this->id,
-			'run_id'          => $this->run_id,
-			'step_id'         => $this->step_id,
-			'position'        => $this->position,
-			'adapter_id'      => $this->adapter_id,
-			'adapter_version' => $this->adapter_version,
-			'ability_id'      => $this->ability_id,
-			'kind'            => $this->kind,
-			'state'           => $this->state->value,
-			'attempt'         => $this->attempt,
-			'fence'           => $this->fence,
-			'result_code'     => $this->result_code,
-			'error_code'      => $this->error_code,
-			'started_at'      => $this->started_at,
-			'completed_at'    => $this->completed_at,
-			'updated_at'      => $this->updated_at,
+			'id'               => $this->id,
+			'run_id'           => $this->run_id,
+			'step_id'          => $this->step_id,
+			'position'         => $this->position,
+			'adapter_id'       => $this->adapter_id,
+			'adapter_version'  => $this->adapter_version,
+			'ability_id'       => $this->ability_id,
+			'kind'             => $this->kind,
+			'state'            => $this->state->value,
+			'attempt'          => $this->attempt,
+			'fence'            => $this->fence,
+			'result_code'      => $this->result_code,
+			'error_code'       => $this->error_code,
+			'started_at'       => $this->started_at,
+			'completed_at'     => $this->completed_at,
+			'lease_expires_at' => $this->lease_expires_at,
+			'updated_at'       => $this->updated_at,
 		);
 	}
 }

@@ -267,7 +267,7 @@ final class McpToolAvailability {
 				$wp_abilities
 			),
 			'workflows'          => $this->operation_group(
-				$this->workflow_operations(),
+				WorkflowOperationCatalog::map(),
 				$policy,
 				$registry,
 				$wp_abilities
@@ -426,32 +426,6 @@ final class McpToolAvailability {
 	 */
 	public function operations_manifest_for_current_user( ?AbilitiesRegistry $registry = null ): array {
 		return $this->operations_manifest_for_user( $this->current_user_id(), $registry, self::$current_granted_scopes );
-	}
-
-	/**
-	 * Return the workflow operation mapping used by the availability manifest.
-	 *
-	 * @return array<string, string>
-	 */
-	private function workflow_operations(): array {
-		return array(
-			'route_request'       => 'workflow.route_request',
-			'list'                => 'content_workflow.list',
-			'get'                 => 'content_workflow.get',
-			'prepare'             => 'content_workflow.prepare',
-			'dry_run'             => 'content_workflow.dry_run',
-			'execute'             => 'content_workflow.execute',
-			'resume'              => 'content_workflow.resume',
-			'cancel'              => 'content_workflow.cancel',
-			'status'              => 'content_workflow.status',
-			'result'              => 'content_workflow.result',
-			'prepare_post'        => 'content_workflow.prepare_post',
-			'create_draft'        => 'content_workflow.create_draft',
-			'update_post'         => 'content_workflow.update_post',
-			'apply_image'         => 'content_media.apply_image',
-			'update_rankmath_seo' => 'seo_workflow.update_rankmath',
-			'site_audit'          => 'site_workflow.audit',
-		);
 	}
 
 	/**

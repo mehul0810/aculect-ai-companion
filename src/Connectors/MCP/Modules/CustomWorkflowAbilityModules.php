@@ -75,7 +75,9 @@ final class CustomWorkflowAbilityModules {
 				'content:draft',
 				false,
 				$this->execute_schema(),
-				static fn ( array $args ): array => ( new WorkflowAbilityConnector() )->execute( $args )
+				static fn ( array $args ): array => true === ( $args['dry_run'] ?? false )
+					? ( new WorkflowAbilityConnector() )->preview_execute( $args )
+					: ( new WorkflowAbilityConnector() )->execute( $args )
 			),
 			$this->factory->create(
 				'content_workflow.resume',
@@ -85,7 +87,9 @@ final class CustomWorkflowAbilityModules {
 				'content:draft',
 				false,
 				$this->resume_schema(),
-				static fn ( array $args ): array => ( new WorkflowAbilityConnector() )->resume( $args )
+				static fn ( array $args ): array => true === ( $args['dry_run'] ?? false )
+					? ( new WorkflowAbilityConnector() )->preview_execute( $args )
+					: ( new WorkflowAbilityConnector() )->resume( $args )
 			),
 			$this->factory->create(
 				'content_workflow.cancel',
@@ -139,6 +143,12 @@ final class CustomWorkflowAbilityModules {
 					'type'    => 'integer',
 					'minimum' => 1,
 					'maximum' => 50,
+				),
+				'page'  => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 1000,
+					'description' => 'One-based page of published custom workflows.',
 				),
 			)
 		);
@@ -227,7 +237,7 @@ final class CustomWorkflowAbilityModules {
 				'input'    => $this->input_schema(),
 				'approval' => $this->approval_schema(),
 			),
-			array( 'run_id', 'input' )
+			array( 'run_id' )
 		);
 	}
 
@@ -241,12 +251,16 @@ final class CustomWorkflowAbilityModules {
 			array(
 				'run_id'    => array( 'type' => 'string' ),
 				'input'     => $this->input_schema(),
+				'dry_run'   => array(
+					'type'        => 'boolean',
+					'description' => 'Return a non-mutating cancellation preview without changing the workflow run.',
+				),
 				'safe_stop' => array(
 					'type'        => 'boolean',
 					'description' => 'Required when stopping a running workflow at a proven safe boundary.',
 				),
 			),
-			array( 'run_id', 'input' )
+			array( 'run_id' )
 		);
 	}
 
@@ -281,11 +295,16 @@ final class CustomWorkflowAbilityModules {
 		return array(
 			'type'                 => 'object',
 			'properties'           => array(
-				'approval_token' => array(
-					'type'        => 'string',
-					'maxLength'   => 64,
-					'description' => 'One-time approval token issued by content_workflow.execute after reviewing the dry run.',
+				'reference'      => array(
+					'type'      => 'string',
+					'maxLength' => 128,
 				),
+				'approved_gates' => array(
+					'type'     => 'array',
+					'maxItems' => 50,
+					'items'    => array( 'type' => 'string' ),
+				),
+				'approved'       => array( 'type' => 'boolean' ),
 			),
 			'additionalProperties' => false,
 		);

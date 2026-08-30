@@ -44,7 +44,6 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Activity\Database\Installer::uninstall();
 \Aculect\AICompanion\Intelligence\Database\Installer::uninstall();
 \Aculect\AICompanion\Workflows\Database\AuditInstaller::uninstall();
-\Aculect\AICompanion\Workflows\Authorization\WorkflowApprovalAuthority::uninstall();
 \Aculect\AICompanion\Workflows\Database\RunInstaller::uninstall();
 \Aculect\AICompanion\Workflows\Database\Installer::uninstall();
 \Aculect\AICompanion\Brand\BrandProfile::delete();

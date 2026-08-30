@@ -25,16 +25,19 @@ final class AuditInstaller {
 	 * @return bool Whether the table is available at the expected version.
 	 */
 	public static function install(): bool {
-		$stored = (string) get_option( self::OPTION_DB_VERSION, '0' );
-		if ( version_compare( $stored, self::DB_VERSION, '<' ) || array() !== self::missing_table_keys() ) {
+		$stored  = (string) get_option( self::OPTION_DB_VERSION, '0' );
+		$missing = self::missing_table_keys();
+		if ( version_compare( $stored, self::DB_VERSION, '<' ) || array() !== $missing ) {
 			try {
 				self::create_table();
 			} catch ( \Throwable ) {
 				return false;
 			}
+
+			$missing = self::missing_table_keys();
 		}
 
-		if ( array() !== self::missing_table_keys() ) {
+		if ( array() !== $missing ) {
 			return false;
 		}
 

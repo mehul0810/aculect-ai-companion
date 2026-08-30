@@ -28,8 +28,8 @@ final class UninstallTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new FakeUninstallWpdb();
 
-		$GLOBALS['wpdb']                                 = $this->wpdb;
-		$GLOBALS['aculect_ai_companion_test_options']    = array(
+		$GLOBALS['wpdb']                              = $this->wpdb;
+		$GLOBALS['aculect_ai_companion_test_options'] = array(
 			'aculect_ai_companion_remove_data_on_uninstall' => '1',
 			'aculect_ai_companion_brand_profile'          => array( 'site_name' => 'Delete Me' ),
 			'aculect_ai_companion_learning_suggestions'   => array( array( 'id' => 'learn_test' ) ),
@@ -50,18 +50,6 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_workflows_db_version'   => '2026.08.19.1',
 			'aculect_ai_companion_workflows_db_verification' => array( 'status' => 'valid' ),
 			'aculect_ai_companion_workflow_audit_db_version' => '2026.08.29.1',
-			'aculect_wf_approval_consumed_fixture'        => time() + 600,
-		);
-		$GLOBALS['aculect_ai_companion_test_transients'] = array(
-			'aculect_wf_approval_fixture' => array(
-				'value'      => array( 'consumed' => false ),
-				'expires_at' => time() + 600,
-			),
-		);
-		$this->wpdb->option_names                        = array(
-			'_transient_aculect_wf_approval_fixture',
-			'_transient_timeout_aculect_wf_approval_fixture',
-			'aculect_wf_approval_consumed_fixture',
 		);
 	}
 
@@ -99,10 +87,6 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflow_audit_db_version', 'missing' ) );
-		self::assertFalse( get_transient( 'aculect_wf_approval_fixture' ) );
-		self::assertSame( 'missing', get_option( 'aculect_wf_approval_consumed_fixture', 'missing' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( '\\_transient\\_aculect\\_wf\\_approval\\_' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'aculect\\_wf\\_approval\\_consumed\\_' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_remove_data_on_uninstall', 'missing' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_execution_claims' ) );
@@ -129,15 +113,7 @@ final class UninstallTest extends TestCase {
  */
 final class FakeUninstallWpdb {
 
-	public string $prefix  = 'wp_';
-	public string $options = 'wp_options';
-
-	/**
-	 * Option names returned by the focused cleanup query.
-	 *
-	 * @var string[]
-	 */
-	public array $option_names = array();
+	public string $prefix = 'wp_';
 
 	/**
 	 * Recorded SQL queries.
@@ -153,46 +129,9 @@ final class FakeUninstallWpdb {
 	 * @param mixed  ...$args Placeholder args.
 	 */
 	public function prepare( string $query, mixed ...$args ): string {
-		$position        = 0;
-		$prepared        = preg_replace_callback(
-			'/%[isd]/',
-			static function ( array $match ) use ( $args, &$position ): string {
-				$value = $args[ $position ] ?? null;
-				++$position;
-				if ( '%i' === $match[0] ) {
-					return (string) $value;
-				}
-				if ( '%d' === $match[0] ) {
-					return (string) (int) $value;
-				}
-
-				return "'" . str_replace( "'", "''", (string) $value ) . "'";
-			},
-			$query
-		);
-		$this->queries[] = is_string( $prepared ) ? $prepared : $query;
+		$this->queries[] = str_replace( '%i', (string) ( $args[0] ?? '' ), $query );
 
 		return $this->queries[ array_key_last( $this->queries ) ];
-	}
-
-	/**
-	 * Escape a LIKE prefix for the focused test query.
-	 *
-	 * @param string $text Candidate prefix.
-	 */
-	public function esc_like( string $text ): string {
-		return addcslashes( $text, '_%\\' );
-	}
-
-	/**
-	 * Return the configured option names and record the query.
-	 *
-	 * @param string $query SQL query.
-	 */
-	public function get_col( string $query ): array {
-		$this->queries[] = $query;
-
-		return $this->option_names;
 	}
 
 	/**

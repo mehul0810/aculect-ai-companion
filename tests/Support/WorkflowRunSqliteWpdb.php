@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Support;
 
+use Closure;
 use PDO;
 
 /**
@@ -19,23 +20,18 @@ use PDO;
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test infrastructure is intentionally kept with its focused adapter.
 final class WorkflowRunSqliteWpdb {
 
-	public string $prefix                = 'wp_';
-	public string $options               = 'wp_options';
-	public string $last_error            = '';
-	public int $insert_id                = 0;
-	public string $fail_query_containing = '';
-	public bool $fail_query_once         = false;
-	public bool $is_mysql                = true;
-	public int $alter_count              = 0;
-	/**
-	 * Simulated MySQL table engines used by installer contract tests.
-	 *
-	 * @var array<string,string>
-	 */
-	public array $table_engines = array(
-		'wp_aculect_ai_workflow_runs'      => 'InnoDB',
-		'wp_aculect_ai_workflow_run_steps' => 'InnoDB',
-	);
+	public string $prefix     = 'wp_';
+	public string $last_error = '';
+	public int $insert_id     = 0;
+	public bool $is_mysql     = false;
+	public bool $fail_begin   = false;
+	public bool $fail_commit  = false;
+	public bool $fail_child   = false;
+	public bool $fail_finish  = false;
+	/** @var list<string> */
+	public array $last_insert_formats = array();
+	/** @var Closure(self): void|null */
+	public ?Closure $before_claim = null;
 
 	private PDO $pdo;
 
@@ -56,7 +52,6 @@ final class WorkflowRunSqliteWpdb {
 				state_version INTEGER NOT NULL DEFAULT 1,
 				outcome_code TEXT NOT NULL DEFAULT \'\',
 				waiting_expires_at TEXT NULL,
-				approval_reference_hash TEXT NOT NULL DEFAULT \'\',
 				created_by INTEGER NOT NULL,
 				updated_by INTEGER NOT NULL,
 				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -143,22 +138,18 @@ final class WorkflowRunSqliteWpdb {
 	}
 
 	public function query( string $query ): int|false {
-		if ( '' !== $this->fail_query_containing && false !== stripos( $query, $this->fail_query_containing ) ) {
-			if ( $this->fail_query_once ) {
-				$this->fail_query_containing = '';
-				$this->fail_query_once       = false;
-			}
-			$this->last_error = 'Injected SQLite test query failure.';
-
-			return false;
-		}
-		if ( 1 === preg_match( '/^ALTER TABLE "([A-Za-z0-9_]+)" ENGINE=InnoDB$/i', trim( $query ), $matches ) ) {
-			++$this->alter_count;
-			$this->table_engines[ $matches[1] ] = 'InnoDB';
-
-			return 0;
-		}
 		try {
+			if ( null !== $this->before_claim && str_contains( $query, "SET state = 'running'" ) ) {
+				$callback           = $this->before_claim;
+				$this->before_claim = null;
+				$callback( $this );
+			}
+			if ( ( $this->fail_begin && 'START TRANSACTION' === $query ) || ( $this->fail_commit && 'COMMIT' === $query ) ) {
+				return false;
+			}
+			if ( $this->fail_finish && str_contains( $query, 'result_code =' ) ) {
+				return false;
+			}
 			$query = match ( strtoupper( trim( $query ) ) ) {
 				'START TRANSACTION' => 'BEGIN',
 				default             => $query,
@@ -171,29 +162,7 @@ final class WorkflowRunSqliteWpdb {
 		}
 	}
 
-	/** Return the first column from every result row. */
-	public function get_col( string $query ): array|false {
-		try {
-			$statement = $this->pdo->query( $query );
-			if ( false === $statement ) {
-				return false;
-			}
-			$values = $statement->fetchAll( PDO::FETCH_COLUMN, 0 );
-
-			return array_values( array_map( 'strval', $values ) );
-		} catch ( \Throwable $exception ) {
-			$this->last_error = $exception->getMessage();
-
-			return false;
-		}
-	}
-
 	public function get_var( string $query ): int|string|null {
-		if ( false !== stripos( $query, 'FROM information_schema.TABLES' ) ) {
-			preg_match( '/TABLE_NAME\s*=\s*["\']([^"\']+)["\']/i', $query, $matches );
-
-			return $this->table_engines[ $matches[1] ?? '' ] ?? null;
-		}
 		if ( false !== stripos( $query, 'SHOW TABLES LIKE' ) ) {
 			preg_match( '/LIKE\s+["\']([^"\']+)["\']/i', $query, $matches );
 			$table_name = str_replace( array( '\\_', '\\%', '\\\\' ), array( '_', '%', '\\' ), $matches[1] ?? '' );
@@ -249,7 +218,15 @@ final class WorkflowRunSqliteWpdb {
 	 * @param list<string>         $formats WordPress format tokens.
 	 */
 	public function insert( string $table, array $data, array $formats ): int|false {
-		unset( $formats );
+		$this->last_insert_formats = array_values( $formats );
+		if ( count( $formats ) !== count( $data ) ) {
+			$this->last_error = 'Insert format count does not match data count.';
+
+			return false;
+		}
+		if ( $this->fail_child && str_ends_with( $table, '_steps' ) ) {
+			return false;
+		}
 		$columns      = array_keys( $data );
 		$placeholders = array_map( static fn ( string $column ): string => ':' . $column, $columns );
 		$sql          = sprintf( 'INSERT INTO "%s" ("%s") VALUES (%s)', $table, implode( '", "', $columns ), implode( ', ', $placeholders ) );

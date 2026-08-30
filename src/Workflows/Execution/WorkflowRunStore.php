@@ -30,8 +30,6 @@ use stdClass;
 final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private const STEP_LEASE_SECONDS = 30;
-	private const RETENTION_SECONDS  = 2592000;
-	private const PRUNE_LIMIT        = 25;
 
 	/**
 	 * Controlled UTC clock.
@@ -40,11 +38,15 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 	 */
 	private Closure $clock;
 	private WorkflowRunRecordMapper $mapper;
+	private WorkflowRunStateTransition $transitioner;
+	private WorkflowRunTransaction $transaction;
 
 	public function __construct( ?WorkflowPayloadVault $vault = null, ?Closure $clock = null ) {
-		$this->vault  = $vault ?? new WorkflowPayloadVault();
-		$this->mapper = new WorkflowRunRecordMapper( $this->vault );
-		$this->clock  = $clock ?? static fn (): int => time();
+		$this->clock        = $clock ?? static fn (): int => time();
+		$this->vault        = $vault ?? new WorkflowPayloadVault();
+		$this->mapper       = new WorkflowRunRecordMapper( $this->vault );
+		$this->transitioner = new WorkflowRunStateTransition( $this->clock );
+		$this->transaction  = new WorkflowRunTransaction();
 	}
 
 	private WorkflowPayloadVault $vault;
@@ -76,35 +78,33 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( $input->hash() !== $plan->input_hash() ) {
 			throw new WorkflowRunStoreException( 'input_plan_mismatch' );
 		}
-		$this->prune_retention();
 
 		$input_ciphertext = $this->seal( $input->canonical_json() );
 		$now              = $this->now_sql();
 		global $wpdb;
 		$tables = RunInstaller::table_names();
 		try {
-			$this->begin();
+			$this->transaction->begin();
 			$inserted = $wpdb->insert(
 				$tables['runs'],
 				array(
-					'run_id'                  => $run_id,
-					'workflow_id'             => $workflow_id,
-					'workflow_version'        => $workflow_version,
-					'definition_checksum'     => $definition_checksum,
-					'plan_hash'               => $plan->hash(),
-					'input_hash'              => $input->hash(),
-					'input_ciphertext'        => $input_ciphertext,
-					'state'                   => $state->value,
-					'state_version'           => 1,
-					'outcome_code'            => '',
-					'waiting_expires_at'      => $waiting_expires_at,
-					'approval_reference_hash' => '',
-					'created_by'              => $actor_id,
-					'updated_by'              => $actor_id,
-					'created_at'              => $now,
-					'updated_at'              => $now,
+					'run_id'              => $run_id,
+					'workflow_id'         => $workflow_id,
+					'workflow_version'    => $workflow_version,
+					'definition_checksum' => $definition_checksum,
+					'plan_hash'           => $plan->hash(),
+					'input_hash'          => $input->hash(),
+					'input_ciphertext'    => $input_ciphertext,
+					'state'               => $state->value,
+					'state_version'       => 1,
+					'outcome_code'        => '',
+					'waiting_expires_at'  => $waiting_expires_at,
+					'created_by'          => $actor_id,
+					'updated_by'          => $actor_id,
+					'created_at'          => $now,
+					'updated_at'          => $now,
 				),
-				array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%s' )
+				array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 			);
 			if ( false === $inserted ) {
 				throw new WorkflowRunStoreException( 'run_create_failed' );
@@ -115,12 +115,12 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 				throw new WorkflowRunStoreException( 'run_identity_missing' );
 			}
 			$this->insert_steps( $run_pk, $plan, $now );
-			$this->commit();
+			$this->transaction->commit();
 		} catch ( WorkflowRunStoreException $exception ) {
-			$this->rollback();
+			$this->transaction->rollback();
 			throw $exception;
 		} catch ( Throwable ) {
-			$this->rollback();
+			$this->transaction->rollback();
 			throw new WorkflowRunStoreException( 'run_create_failed' );
 		}
 
@@ -137,6 +137,30 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		$row = $this->run_row( $run_id );
 
 		return null === $row ? null : $this->mapper->run( $row );
+	}
+
+	/**
+	 * Return the normalized input retained for one run.
+	 *
+	 * This is an internal reconstruction boundary for operations such as
+	 * cancellation and status reads that must rebuild the pinned plan without
+	 * requiring callers to resend the original input object. The value is
+	 * decrypted only in memory and is never included in a public run payload.
+	 *
+	 * @throws WorkflowRunStoreException When the stored input cannot be opened.
+	 */
+	public function input( string $run_id ): ?WorkflowInputContract {
+		$this->ensure_storage();
+		$row = $this->run_row( $run_id );
+		if ( null === $row ) {
+			return null;
+		}
+
+		try {
+			return WorkflowInputContract::from_json( $this->vault->open( (string) ( $row['input_ciphertext'] ?? '' ) ) );
+		} catch ( Throwable ) {
+			throw new WorkflowRunStoreException( 'stored_input_invalid' );
+		}
 	}
 
 	public function steps( string $run_id ): array {
@@ -177,8 +201,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		WorkflowRunState $next_state,
 		int $actor_id,
 		?string $outcome_code = null,
-		?string $waiting_expires_at = null,
-		?string $approval_reference_hash = null
+		?string $waiting_expires_at = null
 	): ?WorkflowRunRecord {
 		$this->ensure_storage();
 		if ( $actor_id < 1 || $expected_version < 1 || ( $next_state->is_terminal() && null === $outcome_code ) || ( ! $next_state->is_terminal() && null !== $outcome_code ) ) {
@@ -190,89 +213,10 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( null !== $waiting_expires_at && 1 !== preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $waiting_expires_at ) ) {
 			throw new WorkflowRunStoreException( 'invalid_waiting_expiry' );
 		}
-		if ( null !== $approval_reference_hash && 1 !== preg_match( '/^[a-f0-9]{64}$/D', $approval_reference_hash ) ) {
-			throw new WorkflowRunStoreException( 'invalid_approval_reference_hash' );
-		}
 
-		global $wpdb;
-		$tables  = RunInstaller::table_names();
-		$now_sql = $this->now_sql();
-		if ( WorkflowRunState::CANCELLED === $next_state && WorkflowRunState::RUNNING === $expected_state ) {
-			$query = 'UPDATE %i AS r SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s';
-			if ( null !== $approval_reference_hash ) {
-				$query .= ', approval_reference_hash = %s';
-			}
-			$query    .= ' WHERE r.run_id = %s AND r.state = %s AND r.state_version = %d AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND (s.state = %s OR (s.state = %s AND s.error_code = %s)))';
-			$arguments = array(
-				$tables['runs'],
-				$next_state->value,
-				$expected_version + 1,
-				$outcome_code ?? '',
-				$actor_id,
-				$now_sql,
-			);
-			if ( null !== $approval_reference_hash ) {
-				$arguments[] = $approval_reference_hash;
-			}
-			$arguments = array_merge(
-				$arguments,
-				array(
-					$run_id,
-					$expected_state->value,
-					$expected_version,
-					$tables['steps'],
-					WorkflowStepState::RUNNING->value,
-					WorkflowStepState::FAILED->value,
-					'execution_uncertain',
-				)
-			);
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and all values are supplied through placeholders.
-			$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
-		} elseif ( in_array( $expected_state, array( WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) ) {
-			$query = 'UPDATE %i SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s';
-			if ( null !== $approval_reference_hash ) {
-				$query .= ', approval_reference_hash = %s';
-			}
-			$query    .= ' WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s';
-			$arguments = array(
-				$tables['runs'],
-				$next_state->value,
-				$expected_version + 1,
-				$outcome_code ?? '',
-				$actor_id,
-				$now_sql,
-			);
-			if ( null !== $approval_reference_hash ) {
-				$arguments[] = $approval_reference_hash;
-			}
-			$arguments = array_merge( $arguments, array( $run_id, $expected_state->value, $expected_version, $now_sql ) );
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape is fixed and all values are supplied through placeholders.
-			$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
-		} else {
-			$data    = array(
-				'state'              => $next_state->value,
-				'state_version'      => $expected_version + 1,
-				'outcome_code'       => $outcome_code ?? '',
-				'waiting_expires_at' => $waiting_expires_at,
-				'updated_by'         => $actor_id,
-				'updated_at'         => $now_sql,
-			);
-			$formats = array( '%s', '%d', '%s', '%s', '%d', '%s' );
-			if ( null !== $approval_reference_hash ) {
-				$data['approval_reference_hash'] = $approval_reference_hash;
-				$formats[]                       = '%s';
-			}
-			$updated = $wpdb->update(
-				$tables['runs'],
-				$data,
-				array(
-					'run_id'        => $run_id,
-					'state'         => $expected_state->value,
-					'state_version' => $expected_version,
-				),
-				$formats,
-				array( '%s', '%s', '%d' )
-			);
+		$updated = $this->transitioner->apply( $run_id, $expected_state, $expected_version, $next_state, $actor_id, $outcome_code, $waiting_expires_at );
+		if ( false === $updated ) {
+			throw new WorkflowRunStoreException( 'run_transition_failed' );
 		}
 		if ( 1 !== (int) $updated ) {
 			return null;
@@ -293,13 +237,16 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( null === $run || WorkflowRunState::WAITING_FOR_INPUT->value !== (string) $run['state'] || $expected_version !== (int) $run['state_version'] ) {
 			return null;
 		}
+		$now = $this->now_sql();
+		if ( ! WorkflowRunStateTransition::waiting_deadline_is_live( $run['waiting_expires_at'] ?? null, $now ) ) {
+			throw new WorkflowRunStoreException( 'input_expired' );
+		}
 		if ( (string) $run['workflow_id'] !== $plan->identity()['workflow_id'] || (int) $run['workflow_version'] !== $plan->definition_revision() || (string) $run['definition_checksum'] !== $plan->definition_checksum() ) {
 			throw new WorkflowRunStoreException( 'plan_definition_mismatch' );
 		}
 
 		$input_ciphertext = $this->seal( $input->canonical_json() );
 		global $wpdb;
-		$now_sql = $this->now_sql();
 		$updated = $wpdb->query(
 			$wpdb->prepare(
 				'UPDATE %i SET plan_hash = %s, input_hash = %s, input_ciphertext = %s, state = %s, state_version = %d, updated_by = %d, updated_at = %s, waiting_expires_at = NULL WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s',
@@ -310,13 +257,16 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 				WorkflowRunState::PREPARED->value,
 				$expected_version + 1,
 				$actor_id,
-				$now_sql,
+				$now,
 				$run_id,
 				WorkflowRunState::WAITING_FOR_INPUT->value,
 				$expected_version,
-				$now_sql
+				$now
 			)
 		);
+		if ( false === $updated ) {
+			throw new WorkflowRunStoreException( 'run_replace_failed' );
+		}
 
 		return 1 === (int) $updated ? $this->get( $run_id ) : null;
 	}
@@ -337,18 +287,21 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		$lease_sql = gmdate( 'Y-m-d H:i:s', $now + self::STEP_LEASE_SECONDS );
 		$updated   = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE %i AS s SET state = 'running', attempt = attempt + 1, fence = fence + 1, lease_expires_at = %s, started_at = COALESCE(started_at, %s), updated_at = %s WHERE s.run_pk = %d AND s.step_id = %s AND (s.state = 'pending' OR (s.state = 'running' AND s.lease_expires_at IS NOT NULL AND s.lease_expires_at <= %s)) AND EXISTS (SELECT 1 FROM %i AS r WHERE r.id = s.run_pk AND r.state = %s)",
+				"UPDATE %i SET state = 'running', attempt = attempt + 1, fence = fence + 1, lease_expires_at = %s, started_at = COALESCE(started_at, %s), updated_at = %s WHERE run_pk = %d AND step_id = %s AND state = 'pending' AND EXISTS (SELECT 1 FROM %i AS parent_run WHERE parent_run.id = run_pk AND parent_run.run_id = %s AND parent_run.state = 'running' AND parent_run.state_version = %d)",
 				RunInstaller::table_names()['steps'],
 				$lease_sql,
 				$now_sql,
 				$now_sql,
 				(int) $run['id'],
 				$step_id,
-				$now_sql,
 				RunInstaller::table_names()['runs'],
-				WorkflowRunState::RUNNING->value
+				$run_id,
+				(int) $run['state_version']
 			)
 		);
+		if ( false === $updated ) {
+			throw new WorkflowRunStoreException( 'step_claim_failed' );
+		}
 		if ( 1 !== (int) $updated ) {
 			return null;
 		}
@@ -430,17 +383,18 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			$inserted = $wpdb->insert(
 				RunInstaller::table_names()['steps'],
 				array(
-					'run_pk'          => $run_pk,
-					'step_id'         => (string) ( $step['step_id'] ?? '' ),
-					'step_position'   => (int) $position,
-					'adapter_id'      => (string) ( $step['adapter_id'] ?? '' ),
-					'adapter_version' => (int) ( $step['adapter_version'] ?? 0 ),
-					'ability_id'      => (string) ( $step['ability_id'] ?? '' ),
-					'kind'            => (string) ( $step['kind'] ?? '' ),
-					'created_at'      => $now,
-					'updated_at'      => $now,
+					'run_pk'            => $run_pk,
+					'step_id'           => (string) ( $step['step_id'] ?? '' ),
+					'step_position'     => (int) $position,
+					'adapter_id'        => (string) ( $step['adapter_id'] ?? '' ),
+					'adapter_version'   => (int) ( $step['adapter_version'] ?? 0 ),
+					'ability_id'        => (string) ( $step['ability_id'] ?? '' ),
+					'kind'              => (string) ( $step['kind'] ?? '' ),
+					'output_ciphertext' => '',
+					'created_at'        => $now,
+					'updated_at'        => $now,
 				),
-				array( '%d', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s' )
+				array( '%d', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 			);
 			if ( false === $inserted ) {
 				throw new WorkflowRunStoreException( 'step_create_failed' );
@@ -451,48 +405,38 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 	/** Finish one claimed step through an exact fence. */
 	private function finish_step( string $run_id, string $step_id, int $fence, int $actor_id, WorkflowStepState $state, string $result_code, string $error_code, string $ciphertext, string $output_hash ): ?WorkflowStepRecord {
 		$run = $this->run_row( $run_id );
-		if ( null === $run || WorkflowRunState::RUNNING->value !== (string) ( $run['state'] ?? '' ) ) {
+		if ( null === $run ) {
 			return null;
 		}
 		global $wpdb;
-		$now       = $this->now_sql();
-		$query     = 'UPDATE %i AS s SET state = %s, result_code = %s, error_code = %s, output_ciphertext = %s, output_hash = %s, lease_expires_at = NULL, completed_at = %s, updated_at = %s WHERE s.run_pk = %d AND s.step_id = %s AND s.state = %s AND s.fence = %d AND EXISTS (SELECT 1 FROM %i AS r WHERE r.id = s.run_pk AND r.state = %s)';
-		$arguments = array(
-			RunInstaller::table_names()['steps'],
-			$state->value,
-			$result_code,
-			$error_code,
-			$ciphertext,
-			$output_hash,
-			$now,
-			$now,
-			(int) $run['id'],
-			$step_id,
-			WorkflowStepState::RUNNING->value,
-			$fence,
-			RunInstaller::table_names()['runs'],
-			WorkflowRunState::RUNNING->value,
+		$now     = $this->now_sql();
+		$updated = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i SET state = %s, result_code = %s, error_code = %s, output_ciphertext = %s, output_hash = %s, lease_expires_at = NULL, completed_at = %s, updated_at = %s WHERE run_pk = %d AND step_id = %s AND state = %s AND fence = %d AND lease_expires_at IS NOT NULL AND lease_expires_at > %s AND EXISTS (SELECT 1 FROM %i AS parent_run WHERE parent_run.id = run_pk AND parent_run.run_id = %s AND parent_run.state = %s AND parent_run.state_version = %d)',
+				RunInstaller::table_names()['steps'],
+				$state->value,
+				$result_code,
+				$error_code,
+				$ciphertext,
+				$output_hash,
+				$now,
+				$now,
+				(int) $run['id'],
+				$step_id,
+				WorkflowStepState::RUNNING->value,
+				$fence,
+				$now,
+				RunInstaller::table_names()['runs'],
+				$run_id,
+				WorkflowRunState::RUNNING->value,
+				(int) $run['state_version']
+			)
 		);
-		if ( WorkflowStepState::COMPLETED === $state || ( WorkflowStepState::FAILED === $state && 'execution_uncertain' !== $error_code ) ) {
-			$query      .= ' AND (s.lease_expires_at IS NULL OR s.lease_expires_at > %s)';
-			$arguments[] = $now;
+		if ( false === $updated ) {
+			throw new WorkflowRunStoreException( 'step_finish_failed' );
 		}
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query shape contains only fixed fragments and all values use placeholders.
-		$updated = $wpdb->query( $wpdb->prepare( $query, ...$arguments ) );
 		if ( 1 !== (int) $updated ) {
-			$current_run = $this->run_row( $run_id );
-			if ( null === $current_run || WorkflowRunState::RUNNING->value !== (string) ( $current_run['state'] ?? '' ) ) {
-				return null;
-			}
-			$current = $this->step( $run_id, $step_id );
-			if ( null === $current || $current->fence() !== $fence ) {
-				return null;
-			}
-			if ( WorkflowStepState::RUNNING === $current->state() && $this->lease_expired( $current ) ) {
-				return null;
-			}
-
-			return $current;
+			return null;
 		}
 
 		$record = $this->step( $run_id, $step_id );
@@ -557,126 +501,6 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		);
 	}
 
-	/**
-	 * Delete a bounded batch of stale terminal or expired waiting runs.
-	 *
-	 * Run and step tables intentionally have no foreign key so the plugin can
-	 * install safely on existing WordPress databases. Delete child steps first
-	 * and only after selecting exact run identities, keeping output retention
-	 * bounded without touching active runs.
-	 */
-	private function prune_retention(): void {
-		global $wpdb;
-		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_col' ) || ! method_exists( $wpdb, 'query' ) ) {
-			return;
-		}
-
-		$now     = ( $this->clock )();
-		$now_sql = gmdate( 'Y-m-d H:i:s', $now );
-		$cutoff  = gmdate( 'Y-m-d H:i:s', $now - self::RETENTION_SECONDS );
-		$tables  = RunInstaller::table_names();
-		$this->fence_abandoned_running( $tables, $cutoff, $now_sql );
-		try {
-			$run_ids = $wpdb->get_col(
-				$wpdb->prepare(
-					'SELECT id FROM %i WHERE ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s)) ORDER BY updated_at ASC, id ASC LIMIT %d',
-					$tables['runs'],
-					WorkflowRunState::CREATED->value,
-					WorkflowRunState::PREPARED->value,
-					WorkflowRunState::DRY_RUN_READY->value,
-					WorkflowRunState::COMPLETED->value,
-					WorkflowRunState::FAILED->value,
-					WorkflowRunState::CANCELLED->value,
-					$cutoff,
-					WorkflowRunState::WAITING_FOR_INPUT->value,
-					WorkflowRunState::WAITING_FOR_APPROVAL->value,
-					$now_sql,
-					self::PRUNE_LIMIT
-				)
-			);
-		} catch ( Throwable ) {
-			return;
-		}
-		if ( ! is_array( $run_ids ) ) {
-			return;
-		}
-
-		foreach ( $run_ids as $run_id ) {
-			$run_id = (int) $run_id;
-			if ( $run_id < 1 ) {
-				continue;
-			}
-			try {
-				$this->begin();
-				$deleted = $wpdb->query(
-					$wpdb->prepare(
-						'DELETE FROM %i WHERE id = %d AND ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s))',
-						$tables['runs'],
-						$run_id,
-						WorkflowRunState::CREATED->value,
-						WorkflowRunState::PREPARED->value,
-						WorkflowRunState::DRY_RUN_READY->value,
-						WorkflowRunState::COMPLETED->value,
-						WorkflowRunState::FAILED->value,
-						WorkflowRunState::CANCELLED->value,
-						$cutoff,
-						WorkflowRunState::WAITING_FOR_INPUT->value,
-						WorkflowRunState::WAITING_FOR_APPROVAL->value,
-						$now_sql
-					)
-				);
-				if ( false === $deleted ) {
-					throw new WorkflowRunStoreException( 'retention_delete_failed' );
-				}
-				if ( 1 === (int) $deleted ) {
-					$steps_deleted = $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
-					if ( false === $steps_deleted ) {
-						throw new WorkflowRunStoreException( 'retention_steps_delete_failed' );
-					}
-				}
-				$this->commit();
-			} catch ( Throwable ) {
-				$this->rollback();
-				// Retention is best effort; a storage outage must not block a new run.
-				continue;
-			}
-		}
-	}
-
-	/**
-	 * Fence stale running rows into an explicitly uncertain terminal state.
-	 *
-	 * @param array<string,string> $tables Table names.
-	 * @param string               $cutoff Retention cutoff.
-	 * @param string               $now_sql Current UTC timestamp.
-	 */
-	private function fence_abandoned_running( array $tables, string $cutoff, string $now_sql ): void {
-		global $wpdb;
-		try {
-			$updated = $wpdb->query(
-				$wpdb->prepare(
-					'UPDATE %i AS r SET state = %s, state_version = state_version + 1, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.state = %s AND r.updated_at < %s AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND s.state = %s AND (s.lease_expires_at IS NULL OR s.lease_expires_at > %s))',
-					$tables['runs'],
-					WorkflowRunState::FAILED->value,
-					'execution_uncertain',
-					0,
-					$now_sql,
-					WorkflowRunState::RUNNING->value,
-					$cutoff,
-					$tables['steps'],
-					WorkflowStepState::RUNNING->value,
-					$now_sql
-				)
-			);
-			if ( false === $updated ) {
-				return;
-			}
-		} catch ( Throwable $exception ) {
-			unset( $exception );
-			// Retention is best effort; an unavailable store must not block a new run.
-		}
-	}
-
 	/** Seal one bounded JSON payload. */
 	private function seal( string $json ): string {
 		try {
@@ -688,35 +512,5 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private function now_sql(): string {
 		return gmdate( 'Y-m-d H:i:s', ( $this->clock )() );
-	}
-
-	/** Return whether a step lease has expired against the store clock. */
-	private function lease_expired( WorkflowStepRecord $step ): bool {
-		$lease = $step->lease_expires_at();
-		if ( null === $lease || '' === $lease ) {
-			return false;
-		}
-		$expires = strtotime( $lease . ' UTC' );
-
-		return false !== $expires && $expires <= ( $this->clock )();
-	}
-
-	private function begin(): void {
-		global $wpdb;
-		if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
-			throw new WorkflowRunStoreException( 'transaction_failed' );
-		}
-	}
-
-	private function commit(): void {
-		global $wpdb;
-		if ( false === $wpdb->query( 'COMMIT' ) ) {
-			throw new WorkflowRunStoreException( 'transaction_failed' );
-		}
-	}
-
-	private function rollback(): void {
-		global $wpdb;
-		$wpdb->query( 'ROLLBACK' );
 	}
 }

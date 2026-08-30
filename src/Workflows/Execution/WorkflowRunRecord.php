@@ -32,12 +32,10 @@ final readonly class WorkflowRunRecord {
 	 * @param int              $state_version       Optimistic state fence.
 	 * @param string|null      $outcome_code        Bounded terminal outcome code.
 	 * @param string|null      $waiting_expires_at  UTC expiry for waiting states.
-	 * @param string|null      $approval_reference_hash One-way hash of approval evidence.
 	 * @param int              $created_by          Creating actor.
 	 * @param int              $updated_by          Last actor.
 	 * @param string           $created_at          UTC creation timestamp.
 	 * @param string           $updated_at          UTC update timestamp.
-	 * @throws WorkflowRunStoreException When the stored approval hash is malformed.
 	 */
 	public function __construct(
 		private int $id,
@@ -51,15 +49,11 @@ final readonly class WorkflowRunRecord {
 		private int $state_version,
 		private ?string $outcome_code,
 		private ?string $waiting_expires_at,
-		private ?string $approval_reference_hash,
 		private int $created_by,
 		private int $updated_by,
 		private string $created_at,
 		private string $updated_at
 	) {
-		if ( null !== $this->approval_reference_hash && 1 !== preg_match( '/^[a-f0-9]{64}$/D', $this->approval_reference_hash ) ) {
-			throw new WorkflowRunStoreException( 'stored_run_invalid' );
-		}
 	}
 
 	public function id(): int {
@@ -84,8 +78,6 @@ final readonly class WorkflowRunRecord {
 		return $this->outcome_code; }
 	public function waiting_expires_at(): ?string {
 		return $this->waiting_expires_at; }
-	public function approval_reference_hash(): ?string {
-		return $this->approval_reference_hash; }
 	public function created_by(): int {
 		return $this->created_by; }
 	public function updated_by(): int {
@@ -113,7 +105,6 @@ final readonly class WorkflowRunRecord {
 			'state_version'       => $this->state_version,
 			'outcome_code'        => $this->outcome_code,
 			'waiting_expires_at'  => $this->waiting_expires_at,
-			'approval_recorded'   => null !== $this->approval_reference_hash,
 			'created_by'          => $this->created_by,
 			'updated_by'          => $this->updated_by,
 			'created_at'          => $this->created_at,

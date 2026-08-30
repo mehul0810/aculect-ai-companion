@@ -70,7 +70,6 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			1,
 			null,
 			$waiting_expires_at,
-			null,
 			$actor_id,
 			$actor_id,
 			'2026-08-29 00:00:00',
@@ -100,19 +99,11 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		WorkflowRunState $next_state,
 		int $actor_id,
 		?string $outcome_code = null,
-		?string $waiting_expires_at = null,
-		?string $approval_reference_hash = null
+		?string $waiting_expires_at = null
 	): ?WorkflowRunRecord {
 		$record = $this->runs[ $run_id ] ?? null;
 		if ( null === $record || $record->state() !== $expected_state || $record->state_version() !== $expected_version ) {
 			return null;
-		}
-		if ( WorkflowRunState::RUNNING === $expected_state && WorkflowRunState::CANCELLED === $next_state ) {
-			foreach ( $this->steps[ $run_id ] ?? array() as $step ) {
-				if ( WorkflowStepState::RUNNING === $step->state() || ( WorkflowStepState::FAILED === $step->state() && 'execution_uncertain' === $step->error_code() ) ) {
-					return null;
-				}
-			}
 		}
 
 		$updated               = new WorkflowRunRecord(
@@ -127,7 +118,6 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$expected_version + 1,
 			$outcome_code,
 			$waiting_expires_at,
-			null !== $approval_reference_hash ? $approval_reference_hash : $record->approval_reference_hash(),
 			$record->created_by(),
 			$actor_id,
 			$record->created_at(),
@@ -162,7 +152,6 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$expected_version + 1,
 			null,
 			null,
-			$record->approval_reference_hash(),
 			$record->created_by(),
 			$actor_id,
 			$record->created_at(),
@@ -185,7 +174,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 				continue;
 			}
 
-			$claimed                          = $this->copy_step( $step, WorkflowStepState::RUNNING, $step->attempt() + 1, $step->fence() + 1, '', null, null, null );
+			$claimed                          = $this->copy_step( $step, WorkflowStepState::RUNNING, $step->attempt() + 1, $step->fence() + 1, '', null, null, null, gmdate( 'Y-m-d H:i:s', time() + 30 ) );
 			$this->steps[ $run_id ][ $index ] = $claimed;
 
 			return $claimed;
@@ -239,10 +228,6 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 	}
 
 	private function finish( string $run_id, string $step_id, int $fence, WorkflowStepState $state, string $result_code, ?string $error_code, ?stdClass $output ): ?WorkflowStepRecord {
-		$run = $this->runs[ $run_id ] ?? null;
-		if ( null === $run || WorkflowRunState::RUNNING !== $run->state() ) {
-			return null;
-		}
 		foreach ( $this->steps[ $run_id ] ?? array() as $index => $step ) {
 			if ( $step->step_id() !== $step_id || WorkflowStepState::RUNNING !== $step->state() || $step->fence() !== $fence ) {
 				continue;
@@ -257,7 +242,7 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 		return null;
 	}
 
-	private function copy_step( WorkflowStepRecord $step, WorkflowStepState $state, int $attempt, int $fence, string $result_code, ?string $error_code, ?string $output_json, ?string $completed_at ): WorkflowStepRecord {
+	private function copy_step( WorkflowStepRecord $step, WorkflowStepState $state, int $attempt, int $fence, string $result_code, ?string $error_code, ?string $output_json, ?string $completed_at, ?string $lease_expires_at = null ): WorkflowStepRecord {
 		return new WorkflowStepRecord(
 			$step->id(),
 			$step->run_id(),
@@ -275,7 +260,8 @@ final class InMemoryWorkflowRunStore implements WorkflowRunStoreInterface {
 			$output_json,
 			$step->started_at() ?? '2026-08-29 00:00:01',
 			$completed_at,
-			'2026-08-29 00:00:02'
+			'2026-08-29 00:00:02',
+			$lease_expires_at
 		);
 	}
 }

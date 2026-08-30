@@ -113,6 +113,33 @@ final class Installer {
 	}
 
 	/**
+	 * Whether both workflow definition tables provide transactional storage.
+	 *
+	 * Native SQLite adapters use the database transaction boundary instead of a
+	 * per-table engine. MySQL and MariaDB must report InnoDB for both tables;
+	 * unknown adapters and unknown engines fail closed so callers never assume
+	 * atomic catalog/version writes without authoritative evidence.
+	 */
+	public static function transactional_tables_available(): bool {
+		global $wpdb;
+
+		if ( self::is_sqlite_backend() ) {
+			return true;
+		}
+		if ( ! self::is_known_mysql_backend() || ! isset( $wpdb ) || ! is_object( $wpdb ) ) {
+			return false;
+		}
+
+		foreach ( self::table_names() as $table ) {
+			if ( 'INNODB' !== self::table_engine( $table ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Remove workflow definition storage and its schema option.
 	 *
 	 * The plugin's uninstall entry point calls this method only after the site
@@ -223,7 +250,7 @@ final class Installer {
             UNIQUE KEY workflow_id (workflow_id),
             KEY status_updated (status, updated_at, id),
             KEY template_id (template_id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 			"CREATE TABLE {$versions} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             workflow_pk bigint(20) unsigned NOT NULL,
@@ -243,9 +270,61 @@ final class Installer {
             UNIQUE KEY workflow_version (workflow_pk, workflow_version),
             KEY workflow_created (workflow_pk, created_at, id),
             KEY definition_schema (definition_schema_version, id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 		);
 
 		return implode( "\n", $sql );
+	}
+
+	/**
+	 * Detect a supported native SQLite WordPress database adapter.
+	 */
+	private static function is_sqlite_backend(): bool {
+		foreach ( array( 'DB_ENGINE', 'DATABASE_TYPE' ) as $constant ) {
+			if ( defined( $constant ) && 'SQLITE' === strtoupper( (string) constant( $constant ) ) ) {
+				return true;
+			}
+		}
+
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) ) {
+			return false;
+		}
+
+		return class_exists( 'WP_SQLite_DB', false ) && $wpdb instanceof \WP_SQLite_DB;
+	}
+
+	/**
+	 * Return whether wpdb explicitly identifies the supported MySQL backend.
+	 */
+	private static function is_known_mysql_backend(): bool {
+		global $wpdb;
+
+		return isset( $wpdb )
+			&& is_object( $wpdb )
+			&& property_exists( $wpdb, 'is_mysql' )
+			&& true === $wpdb->is_mysql;
+	}
+
+	/**
+	 * Read one table engine from authoritative MySQL metadata.
+	 *
+	 * @param string $table Site-scoped table name.
+	 */
+	private static function table_engine( string $table ): string {
+		global $wpdb;
+
+		try {
+			$value = $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+					$table
+				)
+			);
+		} catch ( \Throwable ) {
+			return '';
+		}
+
+		return strtoupper( trim( (string) $value ) );
 	}
 }

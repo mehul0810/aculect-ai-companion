@@ -17,9 +17,6 @@ use Throwable;
  */
 final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 
-	private const RETENTION_SECONDS = 2592000;
-	private const PRUNE_LIMIT       = 100;
-
 	public function append( WorkflowAuditRecord $event ): void {
 		$this->ensure_storage();
 		$changed_fields = wp_json_encode( $event->changed_fields() );
@@ -49,7 +46,6 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 		if ( false === $inserted ) {
 			throw new WorkflowRunStoreException( 'audit_write_failed' );
 		}
-		$this->prune_retention();
 	}
 
 	public function for_run( string $run_id ): array {
@@ -57,13 +53,15 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT * FROM %i WHERE run_id = %s ORDER BY created_at ASC, id ASC LIMIT %d',
+				'SELECT * FROM %i WHERE run_id = %s ORDER BY created_at ASC, id ASC',
 				AuditInstaller::table_name(),
-				$run_id,
-				self::PRUNE_LIMIT
+				$run_id
 			),
 			ARRAY_A
 		);
+		if ( '' !== (string) $wpdb->last_error ) {
+			throw new WorkflowRunStoreException( 'audit_query_failed' );
+		}
 
 		return $this->map_rows( is_array( $rows ) ? $rows : array() );
 	}
@@ -80,6 +78,9 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 			),
 			ARRAY_A
 		);
+		if ( '' !== (string) $wpdb->last_error ) {
+			throw new WorkflowRunStoreException( 'audit_query_failed' );
+		}
 
 		return $this->map_rows( is_array( $rows ) ? $rows : array() );
 	}
@@ -141,43 +142,6 @@ final class WorkflowAuditStore implements WorkflowAuditStoreInterface {
 	private function ensure_storage(): void {
 		if ( ! AuditInstaller::install() ) {
 			throw new WorkflowRunStoreException( 'audit_storage_unavailable' );
-		}
-	}
-
-	/** Remove a bounded batch of audit rows older than the retention window. */
-	private function prune_retention(): void {
-		global $wpdb;
-		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_col' ) || ! method_exists( $wpdb, 'query' ) ) {
-			return;
-		}
-
-		$cutoff = gmdate( 'Y-m-d H:i:s', time() - self::RETENTION_SECONDS );
-		try {
-			$ids = $wpdb->get_col(
-				$wpdb->prepare(
-					'SELECT id FROM %i WHERE created_at < %s ORDER BY created_at ASC, id ASC LIMIT %d',
-					AuditInstaller::table_name(),
-					$cutoff,
-					self::PRUNE_LIMIT
-				)
-			);
-		} catch ( Throwable ) {
-			return;
-		}
-		if ( ! is_array( $ids ) ) {
-			return;
-		}
-
-		foreach ( $ids as $id ) {
-			$id = (int) $id;
-			if ( $id < 1 ) {
-				continue;
-			}
-			try {
-				$wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE id = %d', AuditInstaller::table_name(), $id ) );
-			} catch ( Throwable ) {
-				continue;
-			}
 		}
 	}
 }

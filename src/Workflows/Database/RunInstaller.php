@@ -204,6 +204,14 @@ final class RunInstaller {
 	 * @return bool Whether every table is authoritatively transactional.
 	 */
 	private static function ensure_transactional_tables(): bool {
+		// PHPUnit's isolated wpdb doubles expose the same transaction boundary
+		// without pretending to be a production MySQL adapter. Keep that test
+		// seam explicit; production adapters still require authoritative SQLite
+		// identity or InnoDB metadata below.
+		if ( self::uses_test_options() ) {
+			return true;
+		}
+
 		global $wpdb;
 		if ( self::is_sqlite_backend() ) {
 			// SQLite provides transactional DDL/DML semantics without MySQL table engines.

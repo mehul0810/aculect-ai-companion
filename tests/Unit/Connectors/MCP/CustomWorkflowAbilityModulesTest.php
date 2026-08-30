@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\MCP\AbilityModuleContract;
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleFactory;
 use Aculect\AICompanion\Connectors\MCP\Modules\CustomWorkflowAbilityModules;
 use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilityConnector;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilitySupport;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -42,8 +43,10 @@ final class CustomWorkflowAbilityModulesTest extends TestCase {
 		self::assertFalse( $modules['content_workflow.execute']->is_read_only() );
 		self::assertFalse( $modules['content_workflow.cancel']->is_read_only() );
 		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.execute']->input_schema()['required'] ?? array() );
-		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.resume']->input_schema()['required'] ?? array() );
-		self::assertSame( array( 'run_id', 'input' ), $modules['content_workflow.cancel']->input_schema()['required'] ?? array() );
+		self::assertSame( 'integer', $modules['content_workflow.list']->input_schema()['properties']['page']['type'] ?? null );
+		self::assertSame( array( 'run_id' ), $modules['content_workflow.cancel']->input_schema()['required'] ?? array() );
+		self::assertArrayHasKey( 'dry_run', $modules['content_workflow.execute']->input_schema()['properties'] ?? array() );
+		self::assertSame( 'boolean', $modules['content_workflow.cancel']->input_schema()['properties']['dry_run']['type'] ?? null );
 	}
 
 	public function test_connector_fails_closed_when_called_without_gateway_auth(): void {
@@ -54,5 +57,12 @@ final class CustomWorkflowAbilityModulesTest extends TestCase {
 		self::assertSame( 'error', $result['status'] ?? null );
 		self::assertSame( 'auth_unavailable', $result['error'] ?? null );
 		self::assertTrue( (bool) ( $result['bounded'] ?? false ) );
+	}
+
+	public function test_catalog_slash_ids_use_explicit_internal_ability_mappings(): void {
+		self::assertSame( 'content_search.items', WorkflowAbilitySupport::internal_ability_id( 'content/search-items' ) );
+		self::assertSame( 'content_find.related', WorkflowAbilitySupport::internal_ability_id( 'content/find-related' ) );
+		self::assertSame( 'content_workflow.prepare_post', WorkflowAbilitySupport::internal_ability_id( 'content/prepare-draft' ) );
+		self::assertSame( '', WorkflowAbilitySupport::internal_ability_id( 'content/unknown' ) );
 	}
 }

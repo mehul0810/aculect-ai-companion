@@ -107,7 +107,7 @@ final class WorkflowAuditStoreTest extends TestCase {
 				'rollback_note'           => '',
 				'created_at'              => '2026-08-29 00:00:00',
 			),
-			array()
+			array( '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		try {
@@ -115,6 +115,26 @@ final class WorkflowAuditStoreTest extends TestCase {
 			self::fail( 'Malformed audit rows must not be returned.' );
 		} catch ( WorkflowRunStoreException $exception ) {
 			self::assertSame( 'audit_row_invalid', $exception->error_code() );
+		}
+	}
+
+	public function test_query_failures_are_not_reported_as_empty_histories(): void {
+		$store = new WorkflowAuditStore();
+		$wpdb  = $this->wpdb();
+
+		foreach ( array( 'for_run', 'recent' ) as $query ) {
+			$wpdb->last_error = 'audit query failed';
+
+			try {
+				if ( 'for_run' === $query ) {
+					$store->for_run( 'run-audit-error' );
+				} else {
+					$store->recent();
+				}
+				self::fail( 'Audit query failures must not look like empty histories.' );
+			} catch ( WorkflowRunStoreException $exception ) {
+				self::assertSame( 'audit_query_failed', $exception->error_code() );
+			}
 		}
 	}
 

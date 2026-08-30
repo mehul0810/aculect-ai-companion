@@ -46,7 +46,7 @@ final class WorkflowDefinitionRepository {
 			throw new WorkflowDefinitionRepositoryException( 'workflow_already_exists' );
 		}
 
-		$this->begin_transaction();
+		WorkflowDefinitionTransaction::begin();
 		try {
 			$now  = gmdate( 'Y-m-d H:i:s' );
 			$data = array(
@@ -71,13 +71,13 @@ final class WorkflowDefinitionRepository {
 				throw new WorkflowDefinitionRepositoryException( 'catalog_identity_missing' );
 			}
 			$this->insert_version( $catalog_id, $definition );
-			$this->commit_transaction();
+			WorkflowDefinitionTransaction::commit();
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception code is bounded by the repository exception constructor.
 			throw new WorkflowDefinitionRepositoryException( $exception->error_code() );
 		} catch ( Throwable ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 
 			throw new WorkflowDefinitionRepositoryException( 'workflow_create_failed' );
 		}
@@ -212,7 +212,7 @@ final class WorkflowDefinitionRepository {
 
 		global $wpdb;
 		$tables = Installer::table_names();
-		$this->begin_transaction();
+		WorkflowDefinitionTransaction::begin();
 		try {
 			$this->insert_version( (int) $catalog['id'], $definition );
 			$published_version = 'published' === $value['status']
@@ -240,13 +240,13 @@ final class WorkflowDefinitionRepository {
 			if ( 1 !== (int) $updated ) {
 				throw new WorkflowDefinitionRepositoryException( 'workflow_version_conflict' );
 			}
-			$this->commit_transaction();
+			WorkflowDefinitionTransaction::commit();
 		} catch ( WorkflowDefinitionRepositoryException $exception ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception code is bounded by the repository exception constructor.
 			throw new WorkflowDefinitionRepositoryException( $exception->error_code() );
 		} catch ( Throwable ) {
-			$this->rollback_transaction();
+			WorkflowDefinitionTransaction::rollback();
 
 			throw new WorkflowDefinitionRepositoryException( 'workflow_update_failed' );
 		}
@@ -473,23 +473,5 @@ final class WorkflowDefinitionRepository {
 	 */
 	private function catalog_formats(): array {
 		return array( '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%s', '%s' );
-	}
-
-	/** Start a storage transaction. */
-	private function begin_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'START TRANSACTION' );
-	}
-
-	/** Commit a storage transaction. */
-	private function commit_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'COMMIT' );
-	}
-
-	/** Roll back a storage transaction after a failed write. */
-	private function rollback_transaction(): void {
-		global $wpdb;
-		$wpdb->query( 'ROLLBACK' );
 	}
 }

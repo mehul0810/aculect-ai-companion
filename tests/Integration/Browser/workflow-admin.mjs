@@ -44,13 +44,19 @@ const assertA11y = async () => {
 			document.querySelector( '.aculect-workflow-admin' ),
 			{ resultTypes: [ 'violations' ] }
 		);
-		return result.violations.map(
-			( violation ) => `${ violation.id }: ${ violation.help }`
-		);
+		return result.violations.map( ( violation ) => ( {
+			id: violation.id,
+			help: violation.help,
+			nodes: violation.nodes.slice( 0, 5 ).map( ( node ) => ( {
+				target: node.target,
+				html: node.html,
+				failureSummary: node.failureSummary,
+			} ) ),
+		} ) );
 	} );
 	if ( violations.length > 0 ) {
 		throw new Error(
-			`Accessibility violations: ${ violations.join( '; ' ) }`
+			`Accessibility violations: ${ JSON.stringify( violations ) }`
 		);
 	}
 };

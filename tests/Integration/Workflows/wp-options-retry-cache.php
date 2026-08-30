@@ -5,8 +5,6 @@
  * @package Aculect\AICompanion\Tests\Integration\Workflows
  */
 
-declare(strict_types=1);
-
 use Aculect\AICompanion\Workflows\Database\RunInstaller;
 
 defined( 'ABSPATH' ) || exit;

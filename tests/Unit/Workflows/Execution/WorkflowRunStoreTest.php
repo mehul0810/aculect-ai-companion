@@ -223,6 +223,23 @@ final class WorkflowRunStoreTest extends TestCase {
 		self::assertNull( $ready?->waiting_expires_at() );
 	}
 
+	public function test_waiting_approval_deadline_is_enforced_and_cleared_when_execution_starts(): void {
+		$plan  = $this->plan( '{"post_id":9}' );
+		$input = WorkflowInputContract::from_json( '{"post_id":9}' );
+		$store = new WorkflowRunStore( null, static fn (): int => 1724976000 );
+
+		$expired = $store->create( 'run-expired-approval', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::DRY_RUN_READY, 7 );
+		$waiting = $store->transition( 'run-expired-approval', WorkflowRunState::DRY_RUN_READY, $expired->state_version(), WorkflowRunState::WAITING_FOR_APPROVAL, 7, null, '2000-01-01 00:00:00' );
+		self::assertNotNull( $waiting );
+		self::assertNull( $store->transition( 'run-expired-approval', WorkflowRunState::WAITING_FOR_APPROVAL, $waiting?->state_version() ?? 0, WorkflowRunState::RUNNING, 7 ) );
+
+		$live         = $store->create( 'run-live-approval', 'proposal_only_fixture', 1, $plan->definition_checksum(), $plan, $input, WorkflowRunState::DRY_RUN_READY, 7 );
+		$waiting_live = $store->transition( 'run-live-approval', WorkflowRunState::DRY_RUN_READY, $live->state_version(), WorkflowRunState::WAITING_FOR_APPROVAL, 7, null, '2030-01-01 00:00:00' );
+		$running      = $store->transition( 'run-live-approval', WorkflowRunState::WAITING_FOR_APPROVAL, $waiting_live?->state_version() ?? 0, WorkflowRunState::RUNNING, 7 );
+		self::assertNotNull( $running );
+		self::assertNull( $running?->waiting_expires_at() );
+	}
+
 	public function test_run_schema_has_separate_run_and_step_fencing_fields(): void {
 		$method = new ReflectionMethod( \Aculect\AICompanion\Workflows\Database\RunInstaller::class, 'schema_sql' );
 		$sql    = (string) $method->invoke(

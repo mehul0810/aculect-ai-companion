@@ -64,7 +64,7 @@ final class WorkflowRunStateTransition {
 			);
 		}
 
-		if ( WorkflowRunState::WAITING_FOR_INPUT === $expected_state ) {
+		if ( in_array( $expected_state, array( WorkflowRunState::WAITING_FOR_INPUT, WorkflowRunState::WAITING_FOR_APPROVAL ), true ) ) {
 			return $wpdb->query(
 				$wpdb->prepare(
 					'UPDATE %i SET state = %s, state_version = %d, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE run_id = %s AND state = %s AND state_version = %d AND waiting_expires_at IS NOT NULL AND waiting_expires_at > %s',

@@ -28,6 +28,8 @@ final class WorkflowRunSqliteWpdb {
 	public bool $fail_commit  = false;
 	public bool $fail_child   = false;
 	public bool $fail_finish  = false;
+	/** @var list<string> */
+	public array $last_insert_formats = array();
 	/** @var Closure(self): void|null */
 	public ?Closure $before_claim = null;
 
@@ -199,7 +201,12 @@ final class WorkflowRunSqliteWpdb {
 	 * @param list<string>         $formats WordPress format tokens.
 	 */
 	public function insert( string $table, array $data, array $formats ): int|false {
-		unset( $formats );
+		$this->last_insert_formats = array_values( $formats );
+		if ( count( $formats ) !== count( $data ) ) {
+			$this->last_error = 'Insert format count does not match data count.';
+
+			return false;
+		}
 		if ( $this->fail_child && str_ends_with( $table, '_steps' ) ) {
 			return false;
 		}

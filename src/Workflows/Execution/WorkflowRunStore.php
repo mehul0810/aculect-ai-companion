@@ -370,7 +370,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 					'created_at'        => $now,
 					'updated_at'        => $now,
 				),
-				array( '%d', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s' )
+				array( '%d', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 			);
 			if ( false === $inserted ) {
 				throw new WorkflowRunStoreException( 'step_create_failed' );

@@ -67,6 +67,10 @@ final class WorkflowRunStoreTest extends TestCase {
 
 		self::assertSame( WorkflowRunState::PREPARED, $run->state() );
 		self::assertSame( 1, $run->state_version() );
+		self::assertCount( 10, $this->wpdb()->last_insert_formats );
+		self::assertSame( '%s', $this->wpdb()->last_insert_formats[9] );
+		self::assertSame( gmdate( 'Y-m-d H:i:s', 1724889600 ), $run->created_at() );
+		self::assertSame( gmdate( 'Y-m-d H:i:s', 1724889600 ), $run->updated_at() );
 		$raw = $this->wpdb()->get_row( $this->wpdb()->prepare( 'SELECT * FROM %i WHERE run_id = %s', 'wp_aculect_ai_workflow_runs', 'run-store-1' ), 'ARRAY_A' );
 		self::assertIsArray( $raw );
 		self::assertStringStartsWith( 'v1:', (string) $raw['input_ciphertext'] );

@@ -423,6 +423,12 @@ final class WorkflowRunner {
 			if ( $arguments instanceof stdClass ) {
 				return get_object_vars( $arguments );
 			}
+			if ( is_array( $arguments ) && array() === $arguments ) {
+				// An empty JSON object is represented as an empty PHP array by
+				// normalized workflow definitions. Preserve that object semantics;
+				// non-empty list roots remain invalid below.
+				return array();
+			}
 			if ( is_array( $arguments ) && ! array_is_list( $arguments ) ) {
 				return $arguments;
 			}

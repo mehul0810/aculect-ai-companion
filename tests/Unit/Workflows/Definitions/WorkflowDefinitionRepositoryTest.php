@@ -69,6 +69,58 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 		self::assertCount( 1, $repository->list() );
 	}
 
+	public function test_published_lookahead_does_not_change_page_stride(): void {
+		$repository = new WorkflowDefinitionRepository();
+		foreach ( array( 'workflow_a', 'workflow_b', 'workflow_c' ) as $workflow_id ) {
+			$definition                = $this->definition();
+			$definition['workflow_id'] = $workflow_id;
+			$definition['name']        = $workflow_id;
+			$definition['status']      = 'published';
+			$repository->create( WorkflowDefinition::from_array( $definition ) );
+		}
+
+		$page_one   = $repository->list_published(
+			array(
+				'per_page'    => 2,
+				'page'        => 1,
+				'page_stride' => 1,
+			)
+		);
+		$page_two   = $repository->list_published(
+			array(
+				'per_page'    => 2,
+				'page'        => 2,
+				'page_stride' => 1,
+			)
+		);
+		$page_three = $repository->list_published(
+			array(
+				'per_page'    => 2,
+				'page'        => 3,
+				'page_stride' => 1,
+			)
+		);
+		$traversed  = array(
+			$page_one[0]?->workflow_id(),
+			$page_two[0]?->workflow_id(),
+			$page_three[0]?->workflow_id(),
+		);
+
+		self::assertCount( 3, array_unique( $traversed ) );
+		self::assertSame( $page_one[1]?->workflow_id(), $page_two[0]?->workflow_id() );
+		self::assertSame( $page_two[1]?->workflow_id(), $page_three[0]?->workflow_id() );
+		self::assertCount(
+			3,
+			$repository->list_published(
+				array(
+					'per_page'    => 51,
+					'page'        => 1,
+					'page_stride' => 50,
+				)
+			)
+		);
+	}
+
 	public function test_update_of_a_published_workflow_appends_an_immutable_version(): void {
 		$repository = new WorkflowDefinitionRepository();
 		$repository->create( WorkflowDefinition::from_array( $this->definition() ) );

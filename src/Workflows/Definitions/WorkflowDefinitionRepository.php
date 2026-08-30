@@ -156,17 +156,20 @@ final class WorkflowDefinitionRepository {
 	/**
 	 * List published snapshots, excluding newer unpublished drafts.
 	 *
-	 * @param array<string, mixed> $filters List filters: page and per_page.
+	 * @param array<string, mixed> $filters List filters: page and per_page. An
+	 *                                optional page_stride keeps lookahead fetches
+	 *                                from changing the requested page offset.
 	 * @return list<WorkflowDefinitionRecord>
 	 */
 	public function list_published( array $filters = array() ): array {
 		$this->ensure_storage();
 		global $wpdb;
 
-		$page     = max( 1, absint( $filters['page'] ?? 1 ) );
-		$per_page = min( self::MAX_LIMIT, max( 1, absint( $filters['per_page'] ?? self::DEFAULT_LIMIT ) ) );
-		$tables   = Installer::table_names();
-		$rows     = $wpdb->get_results(
+		$page        = max( 1, absint( $filters['page'] ?? 1 ) );
+		$per_page    = min( self::MAX_LIMIT, max( 1, absint( $filters['per_page'] ?? self::DEFAULT_LIMIT ) ) );
+		$page_stride = min( self::MAX_LIMIT, max( 1, absint( $filters['page_stride'] ?? $per_page ) ) );
+		$tables      = Installer::table_names();
+		$rows        = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT c.*, v.definition_json, v.definition_status, v.definition_checksum,
 				v.definition_schema_version, v.input_contract_version, v.output_contract_version,
@@ -177,7 +180,7 @@ final class WorkflowDefinitionRepository {
 				$tables['catalog'],
 				$tables['versions'],
 				$per_page,
-				( $page - 1 ) * $per_page
+				( $page - 1 ) * $page_stride
 			),
 			ARRAY_A
 		);

@@ -251,6 +251,10 @@ final class CustomWorkflowAbilityModules {
 			array(
 				'run_id'    => array( 'type' => 'string' ),
 				'input'     => $this->input_schema(),
+				'dry_run'   => array(
+					'type'        => 'boolean',
+					'description' => 'Return a non-mutating cancellation preview without changing the workflow run.',
+				),
 				'safe_stop' => array(
 					'type'        => 'boolean',
 					'description' => 'Required when stopping a running workflow at a proven safe boundary.',

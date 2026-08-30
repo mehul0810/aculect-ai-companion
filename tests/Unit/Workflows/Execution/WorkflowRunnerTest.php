@@ -98,6 +98,22 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( WorkflowRunState::COMPLETED, $terminal->run()->state() );
 	}
 
+	public function test_ungated_dry_run_ready_run_can_start_and_advance(): void {
+		$definition = $this->record( 'proposal-only-v1.json' );
+		$plan       = $this->plan( $definition, '{"post_id":9}' );
+		$runner     = $this->runner( array( $this->adapter( 'wordpress', 1, 'content/get-item', 'read' ) ) );
+		$created    = $runner->create( $definition, $plan, WorkflowInputContract::from_json( '{"post_id":9}' ), 7 );
+		$ready      = $runner->build_dry_run( $created->run_id(), $plan, 7 );
+		self::assertSame( WorkflowRunState::DRY_RUN_READY, $ready->state() );
+
+		$started = $runner->start( $created->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 7 );
+		self::assertSame( WorkflowRunState::RUNNING, $started->state() );
+
+		$progress = $runner->execute_next( $definition, $created->run_id(), $plan, array(), 7 );
+		self::assertTrue( $progress->progressed() );
+		self::assertSame( WorkflowStepState::COMPLETED, $progress->step()?->state() );
+	}
+
 	public function test_completion_audit_requires_the_current_claimed_step_record(): void {
 		$definition = $this->record( 'proposal-only-v1.json' );
 		$plan       = $this->plan( $definition, '{"post_id":9}' );

@@ -46,6 +46,7 @@ final class CustomWorkflowAbilityModulesTest extends TestCase {
 		self::assertSame( 'integer', $modules['content_workflow.list']->input_schema()['properties']['page']['type'] ?? null );
 		self::assertSame( array( 'run_id' ), $modules['content_workflow.cancel']->input_schema()['required'] ?? array() );
 		self::assertArrayHasKey( 'dry_run', $modules['content_workflow.execute']->input_schema()['properties'] ?? array() );
+		self::assertSame( 'boolean', $modules['content_workflow.cancel']->input_schema()['properties']['dry_run']['type'] ?? null );
 	}
 
 	public function test_connector_fails_closed_when_called_without_gateway_auth(): void {

@@ -1,0 +1,152 @@
+name: Workflow Runner Storage Proof
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/workflow-runner-proof.yml"
+      - "src/Workflows/**"
+      - "tests/Integration/Workflows/**"
+      - "composer.json"
+      - "composer.lock"
+  push:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/workflow-runner-proof.yml"
+      - "src/Workflows/**"
+      - "tests/Integration/Workflows/**"
+      - "composer.json"
+      - "composer.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-runner-proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-database:
+    name: ${{ matrix.engine }} workflow runner proof
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: MySQL 8.0 / InnoDB
+            image: mysql:8.0
+          - engine: MariaDB 10.11 / InnoDB
+            image: mariadb:10.11
+
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: workflow-runner-proof
+          MYSQL_DATABASE: aculect_workflow_runner
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=workflow-runner-proof --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          extensions: mysqli
+          tools: composer:v2
+
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Prove real transactional workflow runner
+        env:
+          ACULECT_WORKFLOW_DB_HOST: 127.0.0.1
+          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports[3306] }}
+          ACULECT_WORKFLOW_DB_NAME: aculect_workflow_runner
+          ACULECT_WORKFLOW_DB_USER: root
+          ACULECT_WORKFLOW_DB_PASSWORD: workflow-runner-proof
+        run: php tests/Integration/Workflows/real-database-runner.php
+
+  wordpress-sqlite:
+    name: WP 7.1 WP_SQLite_DB workflow runner proof
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          tools: composer:v2
+
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20.19.0"
+
+      - name: Prepare WordPress SQLite drop-in
+        run: |
+          git clone --depth 1 --branch v3.0.1 https://github.com/WordPress/sqlite-database-integration.git .wp-env/sqlite-source
+          mkdir -p .wp-env/sqlite-plugin
+          cp -R .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/. .wp-env/sqlite-plugin/
+          rm -f .wp-env/sqlite-plugin/wp-includes/database
+          mkdir -p .wp-env/sqlite-plugin/wp-includes/database
+          cp -R .wp-env/sqlite-source/packages/mysql-on-sqlite/src/. .wp-env/sqlite-plugin/wp-includes/database/
+          cp .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/db.copy .wp-env/sqlite-db.php
+          sed -i "s#'{SQLITE_IMPLEMENTATION_FOLDER_PATH}'#__DIR__.'/plugins/sqlite-database-integration'#g; s#{SQLITE_PLUGIN}#sqlite-database-integration/load.php#g" .wp-env/sqlite-db.php
+
+      - name: Configure wp-env
+        run: |
+          cat > .wp-env.json <<JSON
+          {
+            "core": "https://wordpress.org/wordpress-7.1.zip",
+            "port": 8883,
+            "testsEnvironment": false,
+            "plugins": [],
+            "mappings": {
+              "wp-content/plugins/aculect-ai-companion": "${GITHUB_WORKSPACE}",
+              "wp-content/plugins/sqlite-database-integration": "${GITHUB_WORKSPACE}/.wp-env/sqlite-plugin",
+              "wp-content/db.php": "${GITHUB_WORKSPACE}/.wp-env/sqlite-db.php"
+            }
+          }
+          JSON
+          npm install --global @wordpress/env@11.6.0
+
+      - name: Start WordPress with SQLite
+        run: wp-env start --update
+
+      - name: Wait for SQLite WordPress
+        run: |
+          for attempt in $(seq 1 12); do
+            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          wp-env run cli wp core is-installed
+
+      - name: Activate plugin and run WP_SQLite_DB proof
+        run: |
+          wp-env run cli wp plugin activate aculect-ai-companion
+          wp-env run cli wp eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/Workflows/wp-sqlite-runner.php
+
+      - name: Stop WordPress
+        if: always()
+        run: wp-env stop

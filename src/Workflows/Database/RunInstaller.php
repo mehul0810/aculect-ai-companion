@@ -43,6 +43,9 @@ final class RunInstaller {
 		if ( array() !== $missing ) {
 			return false;
 		}
+		if ( ! self::ensure_transactional_tables() ) {
+			return false;
+		}
 
 		if ( self::DB_VERSION !== $stored ) {
 			$updated = update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
@@ -141,7 +144,7 @@ final class RunInstaller {
             UNIQUE KEY run_id (run_id),
             KEY workflow_state (workflow_id, state, updated_at, id),
             KEY state_updated (state, updated_at, id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 				"CREATE TABLE {$steps} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             run_pk bigint(20) unsigned NOT NULL,
@@ -167,7 +170,7 @@ final class RunInstaller {
             UNIQUE KEY run_step (run_pk, step_id),
             KEY run_state_position (run_pk, state, step_position, id),
             KEY lease_state (state, lease_expires_at, id)
-        ) {$charset};",
+        ) ENGINE=InnoDB {$charset};",
 			)
 		);
 	}
@@ -181,5 +184,89 @@ final class RunInstaller {
 		}
 
 		dbDelta( self::schema_sql( self::table_names(), $wpdb->get_charset_collate() ) );
+	}
+
+	/**
+	 * Require InnoDB for MySQL tables and recognize native SQLite adapters.
+	 *
+	 * Run and step writes depend on atomic parent/child transactions. Unknown
+	 * database adapters remain fail-closed instead of claiming that contract.
+	 *
+	 * @return bool Whether every table has an authoritative transaction boundary.
+	 */
+	private static function ensure_transactional_tables(): bool {
+		if ( self::uses_test_options() || self::is_sqlite_backend() ) {
+			return true;
+		}
+
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_var' ) || ! method_exists( $wpdb, 'query' ) ) {
+			return false;
+		}
+
+		foreach ( self::table_names() as $table ) {
+			$engine = self::table_engine( $table );
+			if ( 'INNODB' !== $engine ) {
+				try {
+					$altered = $wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ENGINE=InnoDB', $table ) );
+				} catch ( \Throwable ) {
+					return false;
+				}
+				if ( false === $altered ) {
+					return false;
+				}
+			}
+
+			if ( 'INNODB' !== self::table_engine( $table ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/** Detect supported native SQLite WordPress adapters. */
+	private static function is_sqlite_backend(): bool {
+		foreach ( array( 'DB_ENGINE', 'DATABASE_TYPE' ) as $constant ) {
+			if ( defined( $constant ) && 'SQLITE' === strtoupper( (string) constant( $constant ) ) ) {
+				return true;
+			}
+		}
+
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) ) {
+			return false;
+		}
+		if ( class_exists( 'WP_SQLite_DB', false ) && $wpdb instanceof \WP_SQLite_DB ) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/** Check whether the lightweight PHPUnit option store is active. */
+	private static function uses_test_options(): bool {
+		return isset( $GLOBALS['aculect_ai_companion_test_options'] ) && is_array( $GLOBALS['aculect_ai_companion_test_options'] );
+	}
+
+	/**
+	 * Read one table engine from authoritative MySQL metadata.
+	 *
+	 * @param string $table Site-scoped table name.
+	 */
+	private static function table_engine( string $table ): string {
+		global $wpdb;
+		try {
+			$value = $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+					$table
+				)
+			);
+		} catch ( \Throwable ) {
+			return '';
+		}
+
+		return strtoupper( trim( (string) $value ) );
 	}
 }

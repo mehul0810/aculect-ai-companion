@@ -37,8 +37,6 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 		'confirmation_required',
 		'blocked',
 		'uncertain',
-		'pending',
-		'queued',
 	);
 
 	private AbilitiesRegistry $abilities;

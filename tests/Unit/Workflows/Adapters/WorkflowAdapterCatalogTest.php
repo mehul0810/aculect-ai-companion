@@ -144,6 +144,25 @@ final class WorkflowAdapterCatalogTest extends TestCase {
 		self::assertSame( 123, $result->output()->id ?? null );
 	}
 
+	public function test_authorized_native_write_preserves_pending_post_status(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][123]->post_status = 'pending';
+
+		$result = $this->native_update_adapter()->execute(
+			$this->native_update_plan(),
+			'update_item',
+			array(
+				'id'    => 123,
+				'title' => 'Committed pending title',
+			),
+			$this->native_auth( true )
+		);
+
+		self::assertTrue( $result->succeeded() );
+		self::assertSame( WorkflowAdapterResult::CODE_SUCCESS, $result->code() );
+		self::assertSame( 'Committed pending title', get_post( 123 )?->post_title );
+		self::assertSame( 'pending', $result->output()->status ?? null );
+	}
+
 	private function native_update_adapter(): NativeAbilityWorkflowAdapter {
 		return new NativeAbilityWorkflowAdapter(
 			'wordpress_content_update',

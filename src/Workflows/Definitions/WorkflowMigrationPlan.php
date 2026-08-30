@@ -37,12 +37,12 @@ final readonly class WorkflowMigrationPlan {
 	/**
 	 * Create a migration plan from validated preview data.
 	 *
-	 * @param WorkflowDefinitionCompatibilityReport                     $report       Compatibility report.
-	 * @param string                                                    $status       Migration decision.
-	 * @param list<array<string, mixed>>                              $actions Bounded actions.
-	 * @param array<string, string>                                     $step_aliases Step rename aliases.
-	 * @param array<string, string>                                     $ability_aliases Ability aliases.
-	 * @param string                                                    $migration_id Stable plan identifier.
+	 * @param WorkflowDefinitionCompatibilityReport $report       Compatibility report.
+	 * @param string                                $status       Migration decision.
+	 * @param list<array<string, mixed>>            $actions Bounded actions.
+	 * @param array<string, string>                 $step_aliases Step rename aliases.
+	 * @param array<string, string>                 $ability_aliases Ability aliases.
+	 * @param string                                $migration_id Stable plan identifier.
 	 * @throws WorkflowDefinitionValidationException When the preview is invalid.
 	 */
 	public function __construct(
@@ -110,7 +110,11 @@ final readonly class WorkflowMigrationPlan {
 	 * @return list<array{code: string, path: string, guidance: string}>
 	 */
 	public function actions(): array {
-		/** @var list<array{code: string, path: string, guidance: string}> $detached */
+		/**
+		 * Detached validated actions.
+		 *
+		 * @var list<array{code: string, path: string, guidance: string}> $detached
+		 */
 		$detached = array_map( static fn ( array $action ): array => $action, $this->actions );
 
 		return $detached;
@@ -147,8 +151,8 @@ final readonly class WorkflowMigrationPlan {
 	 * other incompatible report changes remain blocking even when an untrusted
 	 * caller omits the corresponding action.
 	 *
-	 * @param WorkflowDefinitionCompatibilityReport                     $report  Compatibility report.
-	 * @param list<array<string, mixed>>                              $actions Migration actions.
+	 * @param WorkflowDefinitionCompatibilityReport $report  Compatibility report.
+	 * @param list<array<string, mixed>>            $actions Migration actions.
 	 */
 	private function expected_status( WorkflowDefinitionCompatibilityReport $report, array $actions ): string {
 		$action_codes                  = array_column( $actions, 'code' );

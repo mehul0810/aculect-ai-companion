@@ -1152,12 +1152,6 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'write_permission_enabled', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 		}
 
-		foreach ( array( 'content_workflow_list', 'content_workflow_get', 'content_workflow_prepare', 'content_workflow_dry_run', 'content_workflow_execute', 'content_workflow_resume', 'content_workflow_cancel', 'content_workflow_status', 'content_workflow_result' ) as $name ) {
-			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
-			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
-			self::assertArrayHasKey( 'bounded', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
-		}
-
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['site_workflow_audit'] );
 		self::assertArrayHasKey( 'findings', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'summary', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );

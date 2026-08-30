@@ -25,6 +25,8 @@ use Aculect\AICompanion\Workflows\Execution\WorkflowRunStoreInterface;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunner;
 use Aculect\AICompanion\Workflows\Execution\WorkflowRunnerException;
 use Aculect\AICompanion\Workflows\Execution\WorkflowStepRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowStepState;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilitySupport;
 use Aculect\AICompanion\Workflows\Planning\WorkflowApprovalEvidence;
 use Aculect\AICompanion\Workflows\Planning\WorkflowDryRun;
 use Aculect\AICompanion\Workflows\Planning\WorkflowExecutionEvidence;
@@ -48,8 +50,6 @@ use stdClass;
  * OAuth scopes, WordPress capabilities, and write safety remain authoritative.
  */
 final class WorkflowAbilityConnector {
-
-	private const MAX_LIST = 50;
 
 	private WorkflowDefinitionRepository $definitions;
 	private WorkflowAdapterRegistry $adapters;
@@ -106,13 +106,24 @@ final class WorkflowAbilityConnector {
 			return $this->auth_error();
 		}
 
-		$limit = $this->bounded_limit( $args['limit'] ?? self::MAX_LIST );
+		$limit = WorkflowAbilitySupport::bounded_limit( $args['limit'] ?? WorkflowAbilitySupport::MAX_LIST );
+		$page  = WorkflowAbilitySupport::bounded_page( $args['page'] ?? 1 );
 		try {
-			$records = $this->definitions->list_published( array( 'per_page' => $limit ) );
+			$records = $this->definitions->list_published(
+				array(
+					'per_page' => $limit + 1,
+					'page'     => $page,
+				)
+			);
 		} catch ( WorkflowDefinitionRepositoryException ) {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
+		}
+
+		$has_more = count( $records ) > $limit;
+		if ( $has_more ) {
+			$records = array_slice( $records, 0, $limit );
 		}
 
 		$items = array();
@@ -137,10 +148,18 @@ final class WorkflowAbilityConnector {
 			'status'           => 'ok',
 			'custom_workflows' => $items,
 			'fixed_guides'     => $guides,
+			'pagination'       => array(
+				'page'      => $page,
+				'per_page'  => $limit,
+				'returned'  => count( $items ),
+				'has_more'  => $has_more,
+				'next_page' => $has_more ? $page + 1 : null,
+			),
 			'bounded'          => true,
 			'next_actions'     => array(
 				'Call content_workflow_get for one published workflow before preparing a run.',
 				'Use content_workflow_prepare with an input object; missing fields are returned without mutation.',
+				...( $has_more ? array( 'Call content_workflow_list with page=' . ( $page + 1 ) . ' to continue.' ) : array() ),
 			),
 		);
 	}
@@ -155,7 +174,7 @@ final class WorkflowAbilityConnector {
 		if ( null === $this->auth() ) {
 			return $this->auth_error();
 		}
-		$id = $this->identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
+		$id = WorkflowAbilitySupport::identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
 		if ( '' === $id ) {
 			return $this->error( 'invalid_workflow_id', 'Provide a workflow_id returned by content_workflow_list.' );
 		}
@@ -170,7 +189,7 @@ final class WorkflowAbilityConnector {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
 		}
 
-		if ( null === $record || ! $this->is_published( $record ) ) {
+		if ( null === $record || ! WorkflowAbilitySupport::is_published( $record ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
 		}
 
@@ -243,21 +262,75 @@ final class WorkflowAbilityConnector {
 
 		try {
 			$updated = $this->runner()->build_dry_run( $run->run_id(), $plan, $auth['user_id'] );
-			$dry_run = WorkflowDryRun::from_plan( $plan );
 		} catch ( WorkflowRunnerException $exception ) {
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_dry_run_failed', 'The workflow dry-run could not be built.' );
 		}
 
+		return $this->dry_run_payload(
+			$updated,
+			$plan,
+			$auth,
+			'Review the planned steps and provide approval evidence before content_workflow_execute.'
+		);
+	}
+
+	/**
+	 * Return an execute preview without changing durable run state.
+	 *
+	 * The shared MCP safety schema exposes dry_run on write modules. An execute
+	 * preview must therefore stop before runner transitions or native dispatch;
+	 * callers can use content_workflow_dry_run when they intentionally want to
+	 * persist the dry-run-ready lifecycle state.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<int|string, mixed>
+	 */
+	public function preview_execute( array $args ): array {
+		$auth = $this->auth();
+		if ( null === $auth ) {
+			return $this->auth_error();
+		}
+		$context = $this->run_context( $args );
+		if ( isset( $context['error'] ) ) {
+			/* @var array<string,mixed> $context */
+			return $context;
+		}
+		[ $run, , $plan ] = $context;
+		if ( $run->state()->is_terminal() ) {
+			return $this->terminal_payload( $run, $plan );
+		}
+		if ( WorkflowRunState::WAITING_FOR_INPUT === $run->state() ) {
+			return $this->input_required( $run, $plan );
+		}
+
+		return $this->dry_run_payload(
+			$run,
+			$plan,
+			$auth,
+			'Review this non-mutating preview, then call content_workflow_execute without dry_run to advance the run.'
+		);
+	}
+
+	/**
+	 * Build a dry-run response from an exact plan and run record.
+	 *
+	 * @param WorkflowRunRecord   $run         Run record to project.
+	 * @param WorkflowPlan        $plan        Exact pinned plan.
+	 * @param array<string,mixed> $auth       Auth context.
+	 * @param string              $next_action Bounded follow-up instruction.
+	 * @return array<string,mixed>
+	 */
+	private function dry_run_payload( WorkflowRunRecord $run, WorkflowPlan $plan, array $auth, string $next_action ): array {
 		return array(
 			'status'       => 'ok',
-			'run'          => $this->run_payload( $updated, $plan ),
-			'dry_run'      => $dry_run->to_array(),
+			'run'          => $this->run_payload( $run, $plan ),
+			'dry_run'      => WorkflowDryRun::from_plan( $plan )->to_array(),
 			'readiness'    => $this->readiness_payload( $plan, $auth ),
 			'risks'        => $this->risk_payload( $plan ),
 			'bounded'      => true,
-			'next_actions' => array( 'Review the planned steps and provide approval evidence before content_workflow_execute.' ),
+			'next_actions' => array( $next_action ),
 		);
 	}
 
@@ -271,6 +344,9 @@ final class WorkflowAbilityConnector {
 		$auth = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
+		}
+		if ( true === ( $args['dry_run'] ?? false ) ) {
+			return $this->preview_execute( $args );
 		}
 		$context = $this->run_context( $args );
 		if ( isset( $context['error'] ) ) {
@@ -315,9 +391,7 @@ final class WorkflowAbilityConnector {
 		}
 
 		try {
-			$execution_auth                             = $auth;
-			$execution_auth['write_permission_enabled'] = true;
-			$progress                                   = $this->runner()->execute_next( $record, $run->run_id(), $plan, $execution_auth, $auth['user_id'] );
+			$progress = $this->runner()->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] );
 		} catch ( WorkflowRunnerException $exception ) {
 			return $this->runner_error( $exception );
 		} catch ( Throwable ) {
@@ -337,6 +411,9 @@ final class WorkflowAbilityConnector {
 		$auth = $this->auth();
 		if ( null === $auth ) {
 			return $this->auth_error();
+		}
+		if ( true === ( $args['dry_run'] ?? false ) ) {
+			return $this->preview_execute( $args );
 		}
 		$context = $this->run_context( $args, true );
 		if ( isset( $context['error'] ) ) {
@@ -372,9 +449,7 @@ final class WorkflowAbilityConnector {
 			}
 
 			if ( WorkflowRunState::RUNNING === $run->state() ) {
-				$execution_auth                             = $auth;
-				$execution_auth['write_permission_enabled'] = true;
-				return $this->execution_payload( $runner->execute_next( $record, $run->run_id(), $plan, $execution_auth, $auth['user_id'] ), $plan );
+				return $this->execution_payload( $runner->execute_next( $record, $run->run_id(), $plan, $auth, $auth['user_id'] ), $plan );
 			}
 		} catch ( WorkflowRunnerException $exception ) {
 			return $this->runner_error( $exception );
@@ -413,6 +488,11 @@ final class WorkflowAbilityConnector {
 				return $this->error( 'cancel_not_allowed', 'Set safe_stop after the current step reaches a safe boundary.' );
 			}
 			try {
+				foreach ( $this->runs->steps( $run->run_id() ) as $step ) {
+					if ( $step instanceof WorkflowStepRecord && WorkflowStepState::RUNNING === $step->state() ) {
+						return $this->error( 'cancel_not_allowed', 'The run still has a claimed step; wait for its safe boundary before cancelling.' );
+					}
+				}
 				$evidence = new WorkflowExecutionEvidence( $plan->hash(), 'cancelled', 'safe_stop', true );
 			} catch ( Throwable ) {
 				return $this->error( 'cancel_not_allowed', 'The run is not at a proven safe boundary.' );
@@ -515,7 +595,7 @@ final class WorkflowAbilityConnector {
 	 * @return WorkflowDefinitionRecord|array<string, mixed>
 	 */
 	private function published_record( array $args ): WorkflowDefinitionRecord|array {
-		$id = $this->identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
+		$id = WorkflowAbilitySupport::identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
 		if ( '' === $id ) {
 			return $this->error( 'invalid_workflow_id', 'Provide a workflow_id returned by content_workflow_list.' );
 		}
@@ -530,7 +610,7 @@ final class WorkflowAbilityConnector {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
 		}
 
-		if ( null === $record || ! $this->is_published( $record ) ) {
+		if ( null === $record || ! WorkflowAbilitySupport::is_published( $record ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
 		}
 
@@ -553,7 +633,7 @@ final class WorkflowAbilityConnector {
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
-		$run_id = $this->run_id( $args['run_id'] ?? $args['id'] ?? '' );
+		$run_id = WorkflowAbilitySupport::run_id( $args['run_id'] ?? $args['id'] ?? '' );
 		if ( '' === $run_id ) {
 			return $this->error( 'invalid_run_id', 'Provide the run_id returned by content_workflow_prepare.' );
 		}
@@ -565,7 +645,7 @@ final class WorkflowAbilityConnector {
 		if ( null === $run ) {
 			return $this->error( 'run_not_found', 'No workflow run exists for that run_id.' );
 		}
-		if ( ! $this->can_view( $run, $auth ) ) {
+		if ( ! WorkflowAbilitySupport::can_view( $run, $auth ) ) {
 			return $this->error( 'run_forbidden', 'This workflow run is not available to the connected user.' );
 		}
 
@@ -580,6 +660,18 @@ final class WorkflowAbilityConnector {
 		$input = $this->input( $args['input'] ?? null );
 		if ( is_array( $input ) ) {
 			if ( $allow_missing_input && 'input_required' === ( $input['error'] ?? '' ) ) {
+				if ( $this->runs instanceof WorkflowRunStore ) {
+					try {
+						$stored_input = $this->runs->input( $run_id );
+						if ( $stored_input instanceof WorkflowInputContract ) {
+							$stored_plan = $this->plans->build( $record->definition(), $stored_input );
+
+							return array( $run, $record, $stored_plan );
+						}
+					} catch ( Throwable ) {
+						return $this->error( 'workflow_storage_unavailable', 'Workflow run input is temporarily unavailable.' );
+					}
+				}
 				try {
 					$empty_plan = $this->plans->build( $record->definition(), WorkflowInputContract::from_value( (object) array() ) );
 					return array( $run, $record, $empty_plan );
@@ -653,7 +745,7 @@ final class WorkflowAbilityConnector {
 
 		$bindings = array();
 		foreach ( $this->adapters->descriptors() as $descriptor ) {
-			$internal = $this->internal_ability_id( $descriptor->ability_id() );
+			$internal = WorkflowAbilitySupport::internal_ability_id( $descriptor->ability_id() );
 			$module   = $registry->module( $internal );
 			if ( null === $module || null === $allowed || ! isset( $allowed[ $internal ] ) ) {
 				continue;
@@ -714,7 +806,7 @@ final class WorkflowAbilityConnector {
 		if ( null === $value ) {
 			return null;
 		}
-		$value = $this->map( $value );
+		$value = WorkflowAbilitySupport::map( $value );
 		if ( null === $value || ! isset( $value['reference'], $value['approved_gates'], $value['approved'] ) || ! is_string( $value['reference'] ) || ! is_array( $value['approved_gates'] ) || ! is_bool( $value['approved'] ) ) {
 			return array(
 				'error'   => 'invalid_approval',
@@ -791,7 +883,7 @@ final class WorkflowAbilityConnector {
 		$identity = $plan->identity();
 		$steps    = array();
 		foreach ( (array) ( $identity['steps'] ?? array() ) as $raw ) {
-			$step = $this->map( $raw );
+			$step = WorkflowAbilitySupport::map( $raw );
 			if ( null === $step ) {
 				continue;
 			}
@@ -831,7 +923,7 @@ final class WorkflowAbilityConnector {
 		$value = $record->definition()->to_array();
 		$steps = array();
 		foreach ( (array) ( $value['steps'] ?? array() ) as $raw ) {
-			$step = $this->map( $raw );
+			$step = WorkflowAbilitySupport::map( $raw );
 			if ( null !== $step ) {
 				$steps[] = array(
 					'step_id'         => (string) ( $step['step_id'] ?? '' ),
@@ -874,7 +966,7 @@ final class WorkflowAbilityConnector {
 			'workflow_version' => (int) ( $value['workflow_version'] ?? 0 ),
 			'checksum'         => $record->definition()->checksum(),
 			'template_id'      => $record->template_id(),
-			'write_policy'     => $this->map( $value['write_policy'] ?? array() ) ?? array(),
+			'write_policy'     => WorkflowAbilitySupport::map( $value['write_policy'] ?? array() ) ?? array(),
 			'approval_gates'   => array_values( (array) ( $value['approval_gates'] ?? array() ) ),
 			'status'           => 'published',
 		);
@@ -924,7 +1016,7 @@ final class WorkflowAbilityConnector {
 			'write'    => 0,
 		);
 		foreach ( (array) ( $plan->identity()['steps'] ?? array() ) as $raw ) {
-			$step = $this->map( $raw );
+			$step = WorkflowAbilitySupport::map( $raw );
 			$kind = null === $step ? '' : (string) ( $step['kind'] ?? '' );
 			if ( isset( $counts[ $kind ] ) ) {
 				++$counts[ $kind ];
@@ -1034,6 +1126,7 @@ final class WorkflowAbilityConnector {
 			'requirements_unchecked' => 'Workflow requirements have not been verified.',
 			'requirements_blocked'   => 'One or more workflow requirements are unavailable.',
 			'invalid_state'          => 'The workflow is not in a state that supports this operation.',
+			'cancel_not_allowed'     => 'The workflow is not at a proven safe cancellation boundary.',
 		);
 
 		return $this->error( 'workflow_' . $code, $messages[ $code ] ?? 'The workflow operation could not be completed.' );
@@ -1060,19 +1153,6 @@ final class WorkflowAbilityConnector {
 	}
 
 	/**
-	 * Normalize a workflow identifier.
-	 *
-	 * @param mixed $value Candidate identifier.
-	 * @return string Normalized identifier or an empty string.
-	 */
-	private function identifier( mixed $value ): string {
-		$value = strtolower( trim( (string) $value ) );
-		$value = (string) preg_replace( '/[^a-z0-9_-]/', '', $value );
-
-		return 1 === preg_match( '/^[a-z0-9][a-z0-9_-]{2,63}$/D', $value ) ? $value : '';
-	}
-
-	/**
 	 * Convert a public input value to a validated contract.
 	 *
 	 * @param mixed $value Candidate input object.
@@ -1095,62 +1175,5 @@ final class WorkflowAbilityConnector {
 		}
 
 		return $this->error( 'input_required', 'Provide the workflow input object.' );
-	}
-
-	private function run_id( mixed $value ): string {
-		$value = trim( (string) $value );
-
-		return 1 === preg_match( '/^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$/D', $value ) ? $value : '';
-	}
-
-	/**
-	 * Convert a public slash-separated workflow ability ID to its internal ID.
-	 *
-	 * @param string $ability_id Public ability identifier.
-	 * @return string Internal ability identifier.
-	 */
-	private function internal_ability_id( string $ability_id ): string {
-		return str_replace( array( '/', '-' ), array( '.', '_' ), strtolower( $ability_id ) );
-	}
-
-	private function bounded_limit( mixed $value ): int {
-		$value = is_int( $value ) ? $value : self::MAX_LIST;
-
-		return max( 1, min( self::MAX_LIST, $value ) );
-	}
-
-	/**
-	 * Convert an object-like value to an associative array.
-	 *
-	 * @param mixed $value Candidate map.
-	 * @return array<string,mixed>|null
-	 */
-	private function map( mixed $value ): ?array {
-		if ( $value instanceof stdClass ) {
-			$value = get_object_vars( $value );
-		}
-
-		return is_array( $value ) && ! array_is_list( $value ) ? $value : null;
-	}
-
-	private function is_published( WorkflowDefinitionRecord $record ): bool {
-		return 'disabled' !== $record->status() && 'published' === (string) ( $record->definition()->to_array()['status'] ?? '' );
-	}
-
-	/**
-	 * Determine whether the current user may view a run.
-	 *
-	 * @param WorkflowRunRecord   $run Run record.
-	 * @param array<string,mixed> $auth Auth context.
-	 */
-	private function can_view( WorkflowRunRecord $run, array $auth ): bool {
-		if ( $run->created_by() === (int) $auth['user_id'] ) {
-			return true;
-		}
-		if ( in_array( 'manage_options', (array) ( $auth['capabilities'] ?? array() ), true ) ) {
-			return true;
-		}
-
-		return function_exists( 'current_user_can' ) && current_user_can( 'manage_options' );
 	}
 }

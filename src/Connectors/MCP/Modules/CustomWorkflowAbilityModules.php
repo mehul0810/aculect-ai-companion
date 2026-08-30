@@ -75,7 +75,9 @@ final class CustomWorkflowAbilityModules {
 				'content:draft',
 				false,
 				$this->execute_schema(),
-				static fn ( array $args ): array => ( new WorkflowAbilityConnector() )->execute( $args )
+				static fn ( array $args ): array => true === ( $args['dry_run'] ?? false )
+					? ( new WorkflowAbilityConnector() )->preview_execute( $args )
+					: ( new WorkflowAbilityConnector() )->execute( $args )
 			),
 			$this->factory->create(
 				'content_workflow.resume',
@@ -85,7 +87,9 @@ final class CustomWorkflowAbilityModules {
 				'content:draft',
 				false,
 				$this->resume_schema(),
-				static fn ( array $args ): array => ( new WorkflowAbilityConnector() )->resume( $args )
+				static fn ( array $args ): array => true === ( $args['dry_run'] ?? false )
+					? ( new WorkflowAbilityConnector() )->preview_execute( $args )
+					: ( new WorkflowAbilityConnector() )->resume( $args )
 			),
 			$this->factory->create(
 				'content_workflow.cancel',
@@ -139,6 +143,12 @@ final class CustomWorkflowAbilityModules {
 					'type'    => 'integer',
 					'minimum' => 1,
 					'maximum' => 50,
+				),
+				'page'  => array(
+					'type'        => 'integer',
+					'minimum'     => 1,
+					'maximum'     => 1000,
+					'description' => 'One-based page of published custom workflows.',
 				),
 			)
 		);

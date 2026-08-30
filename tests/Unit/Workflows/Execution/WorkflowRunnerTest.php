@@ -14,12 +14,14 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Execution;
 
 require_once dirname( __DIR__, 3 ) . '/Support/InMemoryWorkflowRunStore.php';
 require_once dirname( __DIR__, 3 ) . '/Support/WorkflowRunSqliteWpdb.php';
+require_once dirname( __DIR__, 3 ) . '/fixtures/site-workflow-stubs.php';
 
 use Aculect\AICompanion\Tests\Support\InMemoryWorkflowRunStore;
 use Aculect\AICompanion\Tests\Support\WorkflowRunSqliteWpdb;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterInterface;
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterCatalog;
 use Aculect\AICompanion\Workflows\Adapters\NativeAbilityWorkflowAdapter;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
@@ -280,6 +282,65 @@ final class WorkflowRunnerTest extends TestCase {
 		}
 	}
 
+	public function test_runner_completes_optional_only_native_read_with_empty_arguments(): void {
+		$original_posts                                  = $GLOBALS['aculect_ai_companion_test_posts'] ?? array();
+		$original_types                                  = $GLOBALS['aculect_ai_companion_test_post_types'] ?? array();
+		$GLOBALS['aculect_ai_companion_test_posts']      = array(
+			123 => new \WP_Post(
+				array(
+					'ID'           => 123,
+					'post_type'    => 'post',
+					'post_status'  => 'draft',
+					'post_title'   => 'Optional list item',
+					'post_content' => '<!-- wp:paragraph --><p>Optional content.</p><!-- /wp:paragraph -->',
+				)
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_post_types'] = array();
+		AbilitiesRegistry::reset_module_cache();
+
+		try {
+			$definition = $this->native_optional_read_definition();
+			$record     = $this->record_from_definition( $definition );
+			$plan       = $this->plan( $record, '{}' );
+			$adapter    = null;
+			foreach ( WorkflowAdapterCatalog::adapters() as $candidate ) {
+				if ( $candidate instanceof NativeAbilityWorkflowAdapter && 'wordpress_content_list' === $candidate->adapter_id() ) {
+					$adapter = $candidate;
+					break;
+				}
+			}
+			self::assertInstanceOf( NativeAbilityWorkflowAdapter::class, $adapter );
+
+			$runner  = new WorkflowRunner( new InMemoryWorkflowRunStore(), new WorkflowAdapterRegistry( array( $adapter ) ) );
+			$created = $runner->create( $record, $plan, WorkflowInputContract::from_json( '{}' ), 1 );
+			$runner->start( $created->run_id(), $plan, WorkflowReadinessEvidence::from_evaluation( $plan, array() ), 1 );
+			$progress = $runner->execute_next(
+				$record,
+				$created->run_id(),
+				$plan,
+				array(
+					'user_id'   => 1,
+					'client_id' => 'native-optional-read-test',
+					'provider'  => 'chatgpt',
+					'scopes'    => array( 'content:read' ),
+					'profile'   => 'full_access',
+				),
+				1
+			);
+
+			self::assertTrue( $progress->progressed() );
+			self::assertSame( WorkflowStepState::COMPLETED, $progress->step()?->state() );
+			self::assertSame( WorkflowRunState::RUNNING, $progress->run()->state() );
+			$completed = $runner->execute_next( $record, $created->run_id(), $plan, array(), 1 );
+			self::assertSame( WorkflowRunState::COMPLETED, $completed->run()->state() );
+		} finally {
+			$GLOBALS['aculect_ai_companion_test_posts']      = $original_posts;
+			$GLOBALS['aculect_ai_companion_test_post_types'] = $original_types;
+			AbilitiesRegistry::reset_module_cache();
+		}
+	}
+
 	public function test_running_cancellation_requires_safe_execution_evidence(): void {
 		$definition = $this->record( 'proposal-only-v1.json' );
 		$plan       = $this->plan( $definition, '{"post_id":9}' );
@@ -413,6 +474,52 @@ final class WorkflowRunnerTest extends TestCase {
 				'allowed_abilities'         => array( 'content/update-item', 'content/get-item' ),
 				'write_policy'              => array( 'mode' => 'draft_only' ),
 				'approval_gates'            => array( 'update_item' ),
+				'output_contract'           => array( 'type' => 'object' ),
+				'validation_rules'          => array(),
+				'status'                    => 'draft',
+				'created_by'                => 1,
+				'updated_by'                => 1,
+				'compatibility'             => array(
+					'input_contract_version'  => 1,
+					'output_contract_version' => 1,
+				),
+			)
+		);
+	}
+
+	/**
+	 * Build a single optional-only native list step for runner object semantics.
+	 */
+	private function native_optional_read_definition(): WorkflowDefinition {
+		return WorkflowDefinition::from_array(
+			array(
+				'definition_schema_version' => 1,
+				'workflow_id'               => 'native_optional_read_test',
+				'workflow_version'          => 1,
+				'name'                      => 'Native optional read test',
+				'description'               => 'Verifies empty object arguments reach optional-only native reads.',
+				'content_target'            => array(
+					'mode'       => 'either',
+					'post_types' => array( 'post' ),
+				),
+				'input_schema'              => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+				),
+				'steps'                     => array(
+					array(
+						'step_id'         => 'list_items',
+						'adapter_id'      => 'wordpress_content_list',
+						'adapter_version' => 1,
+						'ability_id'      => 'content/list-items',
+						'kind'            => 'read',
+						'arguments'       => array(),
+						'depends_on'      => array(),
+					),
+				),
+				'allowed_abilities'         => array( 'content/list-items' ),
+				'write_policy'              => array( 'mode' => 'proposal_only' ),
+				'approval_gates'            => array(),
 				'output_contract'           => array( 'type' => 'object' ),
 				'validation_rules'          => array(),
 				'status'                    => 'draft',

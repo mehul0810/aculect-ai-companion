@@ -10,11 +10,13 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Workflows\Adapters;
 
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionRequest;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowInputValidator;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
+use Aculect\AICompanion\Workflows\Planning\WorkflowPlanningCanonicalizer;
 use Throwable;
 
 /**
@@ -60,6 +62,7 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 	 * @param array                     $capabilities   Capability intents.
 	 * @param array<string, mixed>|null $output_schema Output schema override.
 	 * @param AbilitiesRegistry|null    $abilities Existing ability registry.
+	 * @param non-empty-string|null     $native_contract_hash Pinned native contract fingerprint.
 	 * @phpstan-param list<string> $capabilities
 	 */
 	public function __construct(
@@ -71,7 +74,8 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 		private bool $read_only,
 		private array $capabilities = array(),
 		?array $output_schema = null,
-		?AbilitiesRegistry $abilities = null
+		?AbilitiesRegistry $abilities = null,
+		private ?string $native_contract_hash = null
 	) {
 		$this->abilities     = $abilities ?? new AbilitiesRegistry();
 		$this->gateway       = new AbilityExecutionGateway( $this->abilities );
@@ -132,12 +136,19 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 		}
 
 		$module = $this->abilities->module( $this->internal_ability_id );
-		if ( null === $module || $module->id() !== $this->internal_ability_id || $module->is_read_only() !== $this->read_only ) {
+		if (
+			null === $module
+			|| $module->id() !== $this->internal_ability_id
+			|| $module->is_read_only() !== $this->read_only
+			|| ! $this->native_contract_is_current( $module )
+		) {
 			return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH );
 		}
 
 		try {
-			$input      = WorkflowInputContract::from_value( $arguments );
+			// The runner represents a JSON empty object as an empty PHP array. Preserve
+			// that object semantics while continuing to reject non-empty list roots.
+			$input      = WorkflowInputContract::from_value( array() === $arguments ? new \stdClass() : $arguments );
 			$validation = ( new WorkflowInputValidator() )->validate( $input, $this->input_schema() );
 			if ( array() !== $validation->missing_paths() || array() !== $validation->invalid_paths() ) {
 				return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_INVALID_ARGUMENTS );
@@ -213,5 +224,33 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 		$status = isset( $output['status'] ) && is_string( $output['status'] ) ? $output['status'] : '';
 
 		return in_array( $status, self::NON_COMPLETING_STATUSES, true );
+	}
+
+	/**
+	 * Ensure a versioned catalog mapping still targets the pinned native contract.
+	 *
+	 * @param AbilityModuleInterface $module Resolved native module.
+	 */
+	private function native_contract_is_current( AbilityModuleInterface $module ): bool {
+		if ( null === $this->native_contract_hash ) {
+			return true;
+		}
+
+		try {
+			$contract = array(
+				'id'              => $module->id(),
+				'read_only'       => $module->is_read_only(),
+				'required_scopes' => $module->required_scopes(),
+				'input_schema'    => AbilityExecutionGateway::input_schema_for_module( $module ),
+				'output_schema'   => $this->output_schema,
+			);
+			$json     = ( new WorkflowPlanningCanonicalizer() )->normalize_and_encode( $contract )['json'];
+
+			return hash_equals( $this->native_contract_hash, hash( 'sha256', $json ) );
+		} catch ( Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 	}
 }

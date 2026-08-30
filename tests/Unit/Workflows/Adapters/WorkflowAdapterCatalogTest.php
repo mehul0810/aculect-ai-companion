@@ -9,7 +9,10 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Workflows\Adapters;
 
+require_once dirname( __DIR__, 3 ) . '/fixtures/site-workflow-stubs.php';
+
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\CallbackAbilityModule;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Workflows\Adapters\NativeAbilityWorkflowAdapter;
@@ -22,6 +25,7 @@ use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlan;
 use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 
 /**
  * Proves adapters declare bounded contracts and reuse native ability policy.
@@ -161,6 +165,145 @@ final class WorkflowAdapterCatalogTest extends TestCase {
 		self::assertSame( WorkflowAdapterResult::CODE_SUCCESS, $result->code() );
 		self::assertSame( 'Committed pending title', get_post( 123 )?->post_title );
 		self::assertSame( 'pending', $result->output()->status ?? null );
+	}
+
+	public function test_optional_only_native_read_accepts_empty_object_arguments(): void {
+		$adapter = $this->catalog_native_adapter( 'wordpress_content_list' );
+
+		$result = $adapter->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array(),
+			$this->native_auth()
+		);
+
+		self::assertTrue( $result->succeeded() );
+		self::assertIsArray( $result->output()->items ?? null );
+
+		$invalid = $adapter->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array( 'not', 'an', 'object' ),
+			$this->native_auth()
+		);
+
+		self::assertSame( WorkflowAdapterResult::CODE_INVALID_ARGUMENTS, $invalid->code() );
+	}
+
+	public function test_pinned_native_contract_mismatch_fails_closed_before_dispatch(): void {
+		$adapter = new NativeAbilityWorkflowAdapter(
+			'wordpress_content_list',
+			1,
+			'content/list-items',
+			'content.list_items',
+			'read',
+			true,
+			array( 'read_post' ),
+			null,
+			new AbilitiesRegistry(),
+			str_repeat( '0', 64 )
+		);
+
+		$result = $adapter->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array(),
+			$this->native_auth()
+		);
+
+		self::assertSame( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH, $result->code() );
+		self::assertFalse( $result->succeeded() );
+	}
+
+	public function test_catalog_native_contract_pin_rejects_input_schema_drift(): void {
+		$registry = new AbilitiesRegistry();
+		$module   = $registry->module( 'content.list_items' );
+		self::assertNotNull( $module );
+		$schema                                    = $module->input_schema();
+		$schema['properties']['post_type']['type'] = 'integer';
+		$this->replace_native_module( $module, $schema );
+
+		$result = $this->catalog_native_adapter( 'wordpress_content_list' )->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array(),
+			$this->native_auth()
+		);
+
+		self::assertSame( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH, $result->code() );
+	}
+
+	public function test_catalog_native_contract_pin_rejects_scope_drift(): void {
+		$registry = new AbilitiesRegistry();
+		$module   = $registry->module( 'content.list_items' );
+		self::assertNotNull( $module );
+		$this->replace_native_module( $module, null, array( 'content:draft' ) );
+
+		$result = $this->catalog_native_adapter( 'wordpress_content_list' )->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array(),
+			$this->native_auth()
+		);
+
+		self::assertSame( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH, $result->code() );
+	}
+
+	public function test_catalog_native_contract_pin_rejects_output_schema_drift(): void {
+		$adapter                        = $this->catalog_native_adapter( 'wordpress_content_list' );
+		$property                       = new ReflectionProperty( NativeAbilityWorkflowAdapter::class, 'output_schema' );
+		$output                         = $property->getValue( $adapter );
+		$output['additionalProperties'] = false;
+		$property->setValue( $adapter, $output );
+
+		$result = $adapter->execute(
+			$this->plan_for( 'wordpress_content_list', 'content/list-items', 'read' ),
+			'missing_step',
+			array(),
+			$this->native_auth()
+		);
+
+		self::assertSame( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH, $result->code() );
+	}
+
+	private function catalog_native_adapter( string $adapter_id ): NativeAbilityWorkflowAdapter {
+		foreach ( WorkflowAdapterCatalog::adapters() as $adapter ) {
+			if ( $adapter instanceof NativeAbilityWorkflowAdapter && $adapter_id === $adapter->adapter_id() ) {
+				return $adapter;
+			}
+		}
+
+		self::fail( 'Expected catalog native adapter was not registered.' );
+	}
+
+	/**
+	 * Replace one process-local native module for drift tests.
+	 *
+	 * @param \Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface $module Original module.
+	 * @param array<string, mixed>|null                                  $schema Replacement input schema.
+	 * @param list<string>|null                                          $scopes Replacement OAuth scopes.
+	 */
+	private function replace_native_module( \Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface $module, ?array $schema = null, ?array $scopes = null ): void {
+		$modules                  = ( new AbilitiesRegistry() )->modules();
+		$modules[ $module->id() ] = new CallbackAbilityModule(
+			$module->id(),
+			$module->title(),
+			$module->description(),
+			$module->group(),
+			$scopes ?? $module->required_scopes(),
+			$module->is_read_only(),
+			$schema ?? $module->input_schema(),
+			static function ( array $args ): array {
+				unset( $args );
+
+				return array(
+					'items' => array(),
+					'total' => 0,
+				);
+			}
+		);
+
+		( new ReflectionProperty( AbilitiesRegistry::class, 'shared_modules' ) )->setValue( null, $modules );
 	}
 
 	private function native_update_adapter(): NativeAbilityWorkflowAdapter {

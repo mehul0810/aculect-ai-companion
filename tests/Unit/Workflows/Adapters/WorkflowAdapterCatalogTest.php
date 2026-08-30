@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Workflows\Adapters;
 
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
+use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Workflows\Adapters\NativeAbilityWorkflowAdapter;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterCatalog;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterDescriptor;
@@ -29,6 +31,37 @@ final class WorkflowAdapterCatalogTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		AbilitiesRegistry::reset_module_cache();
+		$GLOBALS['aculect_ai_companion_test_options']             = array();
+		$GLOBALS['aculect_ai_companion_test_transients']          = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
+		$GLOBALS['aculect_ai_companion_test_current_user_id']     = 1;
+		$GLOBALS['aculect_ai_companion_test_users']               = array(
+			1 => (object) array(
+				'ID'           => 1,
+				'roles'        => array( 'administrator' ),
+				'display_name' => 'Ada Admin',
+				'user_login'   => 'ada',
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_posts']               = array(
+			123 => new \WP_Post(
+				array(
+					'ID'           => 123,
+					'post_type'    => 'post',
+					'post_status'  => 'draft',
+					'post_title'   => 'Original title',
+					'post_content' => '<!-- wp:paragraph --><p>Original content.</p><!-- /wp:paragraph -->',
+				)
+			),
+		);
+	}
+
+	protected function tearDown(): void {
+		AbilitiesRegistry::reset_module_cache();
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
+
+		parent::tearDown();
 	}
 
 	public function test_catalog_declares_content_seo_media_and_discovery_contracts(): void {
@@ -75,6 +108,123 @@ final class WorkflowAdapterCatalogTest extends TestCase {
 
 		self::assertSame( WorkflowAdapterResult::CODE_ABILITY_CONTRACT_MISMATCH, $result->code() );
 		self::assertFalse( $result->succeeded() );
+	}
+
+	public function test_confirmation_required_native_preview_cannot_complete_a_step(): void {
+		( new ToolSafety() )->save_confirmation_groups( array( 'Content' ) );
+		$result = $this->native_update_adapter()->execute(
+			$this->native_update_plan(),
+			'update_item',
+			array(
+				'id'    => 123,
+				'title' => 'Preview title',
+			),
+			$this->native_auth()
+		);
+
+		self::assertFalse( $result->succeeded() );
+		self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $result->code() );
+		self::assertSame( 'Original title', get_post( 123 )?->post_title );
+	}
+
+	public function test_authorized_native_write_result_completes_after_gateway_commit(): void {
+		$result = $this->native_update_adapter()->execute(
+			$this->native_update_plan(),
+			'update_item',
+			array(
+				'id'    => 123,
+				'title' => 'Committed title',
+			),
+			$this->native_auth( true )
+		);
+
+		self::assertTrue( $result->succeeded() );
+		self::assertSame( WorkflowAdapterResult::CODE_SUCCESS, $result->code() );
+		self::assertSame( 'Committed title', get_post( 123 )?->post_title );
+		self::assertSame( 123, $result->output()->id ?? null );
+	}
+
+	private function native_update_adapter(): NativeAbilityWorkflowAdapter {
+		return new NativeAbilityWorkflowAdapter(
+			'wordpress_content_update',
+			1,
+			'content/update-item',
+			'content.update_item',
+			'write',
+			false,
+			array( 'edit_post' ),
+			null,
+			new AbilitiesRegistry()
+		);
+	}
+
+	/**
+	 * Return an exact plan binding for the native update adapter.
+	 */
+	private function native_update_plan(): WorkflowPlan {
+		$definition = WorkflowDefinition::from_array(
+			array(
+				'definition_schema_version' => 1,
+				'workflow_id'               => 'native_adapter_test',
+				'workflow_version'          => 1,
+				'name'                      => 'Native adapter test',
+				'description'               => 'Verifies completion only follows a committed gateway result.',
+				'content_target'            => array(
+					'mode'       => 'either',
+					'post_types' => array( 'post' ),
+				),
+				'input_schema'              => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+				),
+				'steps'                     => array(
+					array(
+						'step_id'         => 'update_item',
+						'adapter_id'      => 'wordpress_content_update',
+						'adapter_version' => 1,
+						'ability_id'      => 'content/update-item',
+						'kind'            => 'write',
+						'arguments'       => array(
+							'id'    => 123,
+							'title' => 'Planned title',
+						),
+						'depends_on'      => array(),
+					),
+				),
+				'allowed_abilities'         => array( 'content/update-item' ),
+				'write_policy'              => array( 'mode' => 'draft_only' ),
+				'approval_gates'            => array( 'update_item' ),
+				'output_contract'           => array( 'type' => 'object' ),
+				'validation_rules'          => array(),
+				'status'                    => 'draft',
+				'created_by'                => 1,
+				'updated_by'                => 1,
+				'compatibility'             => array(
+					'input_contract_version'  => 1,
+					'output_contract_version' => 1,
+				),
+			)
+		);
+
+		return ( new WorkflowPlanBuilder() )->build( $definition, WorkflowInputContract::from_value( new \stdClass() ) );
+	}
+
+	/**
+	 * Return a normal or trusted direct-write auth context.
+	 *
+	 * @param bool $direct_write Whether the trusted direct-write permission is enabled.
+	 * @return array<string, mixed>
+	 */
+	private function native_auth( bool $direct_write = false ): array {
+		return array(
+			'user_id'                  => 1,
+			'client_id'                => 'native-adapter-test-client',
+			'provider'                 => 'chatgpt',
+			'scopes'                   => array( 'content:read', 'content:draft' ),
+			'profile'                  => 'full_access',
+			'access_level'             => $direct_write ? ConnectionAccessLevel::WRITE : '',
+			'write_permission_enabled' => $direct_write,
+		);
 	}
 
 	private function plan_for( string $adapter_id, string $ability_id, string $kind ): WorkflowPlan {

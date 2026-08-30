@@ -17,7 +17,10 @@ require_once dirname( __DIR__, 3 ) . '/Support/WorkflowRunSqliteWpdb.php';
 
 use Aculect\AICompanion\Tests\Support\InMemoryWorkflowRunStore;
 use Aculect\AICompanion\Tests\Support\WorkflowRunSqliteWpdb;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterInterface;
+use Aculect\AICompanion\Workflows\Adapters\NativeAbilityWorkflowAdapter;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterResult;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
@@ -168,6 +171,115 @@ final class WorkflowRunnerTest extends TestCase {
 		self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $failed->step()?->error_code() );
 	}
 
+	public function test_confirmation_preview_fails_native_step_without_dispatching_dependents(): void {
+		$original_options             = $GLOBALS['aculect_ai_companion_test_options'] ?? array();
+		$original_transients          = $GLOBALS['aculect_ai_companion_test_transients'] ?? array();
+		$original_users               = $GLOBALS['aculect_ai_companion_test_users'] ?? array();
+		$original_posts               = $GLOBALS['aculect_ai_companion_test_posts'] ?? array();
+		$original_current_user        = $GLOBALS['aculect_ai_companion_test_current_user_id'] ?? 0;
+		$original_capability_callback = $GLOBALS['aculect_ai_companion_test_capability_callback'] ?? null;
+		AbilitiesRegistry::reset_module_cache();
+		$GLOBALS['aculect_ai_companion_test_options']             = array( ToolSafety::OPTION_CONFIRMATION_GROUPS => array( 'Content' ) );
+		$GLOBALS['aculect_ai_companion_test_transients']          = array();
+		$GLOBALS['aculect_ai_companion_test_current_user_id']     = 1;
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = null;
+		$GLOBALS['aculect_ai_companion_test_users']               = array(
+			1 => (object) array(
+				'ID'           => 1,
+				'roles'        => array( 'administrator' ),
+				'display_name' => 'Ada Admin',
+				'user_login'   => 'ada',
+			),
+		);
+		$GLOBALS['aculect_ai_companion_test_posts']               = array(
+			123 => new \WP_Post(
+				array(
+					'ID'           => 123,
+					'post_type'    => 'post',
+					'post_status'  => 'draft',
+					'post_title'   => 'Original title',
+					'post_content' => '<!-- wp:paragraph --><p>Original content.</p><!-- /wp:paragraph -->',
+				)
+			),
+		);
+
+		$dependent_dispatches = 0;
+		$definition           = $this->native_update_chain_definition();
+		$record               = $this->record_from_definition( $definition );
+		$plan                 = $this->plan( $record, '{}' );
+		$native               = new NativeAbilityWorkflowAdapter(
+			'wordpress_content_update',
+			1,
+			'content/update-item',
+			'content.update_item',
+			'write',
+			false,
+			array( 'edit_post' ),
+			null,
+			new AbilitiesRegistry()
+		);
+		$dependent            = $this->adapter(
+			'wordpress',
+			1,
+			'content/get-item',
+			'read',
+			static function () use ( &$dependent_dispatches ): WorkflowAdapterResult {
+				++$dependent_dispatches;
+
+				return WorkflowAdapterResult::success( array( 'ok' => true ) );
+			}
+		);
+		$runner               = new WorkflowRunner(
+			new InMemoryWorkflowRunStore(),
+			new WorkflowAdapterRegistry( array( $native, $dependent ) )
+		);
+
+		try {
+			$created = $runner->create( $record, $plan, WorkflowInputContract::from_json( '{}' ), 1 );
+			$runner->build_dry_run( $created->run_id(), $plan, 1 );
+			$runner->request_approval( $created->run_id(), $plan, 1 );
+			$runner->start(
+				$created->run_id(),
+				$plan,
+				WorkflowReadinessEvidence::from_evaluation( $plan, array() ),
+				1,
+				new WorkflowApprovalEvidence( $plan->hash(), array( 'update_item' ), 'approval-preview-test', true )
+			);
+
+			$progress = $runner->execute_next(
+				$record,
+				$created->run_id(),
+				$plan,
+				array(
+					'user_id'                  => 1,
+					'client_id'                => 'native-adapter-runner-test',
+					'provider'                 => 'chatgpt',
+					'scopes'                   => array( 'content:read', 'content:draft' ),
+					'profile'                  => 'full_access',
+					'access_level'             => '',
+					'write_permission_enabled' => false,
+				),
+				1
+			);
+
+			self::assertTrue( $progress->progressed() );
+			self::assertSame( WorkflowRunState::FAILED, $progress->run()->state() );
+			self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $progress->run()->outcome_code() );
+			self::assertSame( WorkflowStepState::FAILED, $progress->step()?->state() );
+			self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $progress->step()?->error_code() );
+			self::assertSame( 0, $dependent_dispatches );
+			self::assertSame( 'Original title', get_post( 123 )?->post_title );
+		} finally {
+			$GLOBALS['aculect_ai_companion_test_options']             = $original_options;
+			$GLOBALS['aculect_ai_companion_test_transients']          = $original_transients;
+			$GLOBALS['aculect_ai_companion_test_users']               = $original_users;
+			$GLOBALS['aculect_ai_companion_test_posts']               = $original_posts;
+			$GLOBALS['aculect_ai_companion_test_current_user_id']     = $original_current_user;
+			$GLOBALS['aculect_ai_companion_test_capability_callback'] = $original_capability_callback;
+			AbilitiesRegistry::reset_module_cache();
+		}
+	}
+
 	public function test_running_cancellation_requires_safe_execution_evidence(): void {
 		$definition = $this->record( 'proposal-only-v1.json' );
 		$plan       = $this->plan( $definition, '{"post_id":9}' );
@@ -254,6 +366,84 @@ final class WorkflowRunnerTest extends TestCase {
 				$GLOBALS['wpdb'] = $original_wpdb;
 			}
 		}
+	}
+
+	/**
+	 * Build a two-step plan whose write preview must not unlock a dependent read.
+	 */
+	private function native_update_chain_definition(): WorkflowDefinition {
+		return WorkflowDefinition::from_array(
+			array(
+				'definition_schema_version' => 1,
+				'workflow_id'               => 'native_update_chain_test',
+				'workflow_version'          => 1,
+				'name'                      => 'Native update chain test',
+				'description'               => 'Verifies confirmation previews fail the workflow before dependent dispatch.',
+				'content_target'            => array(
+					'mode'       => 'either',
+					'post_types' => array( 'post' ),
+				),
+				'input_schema'              => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+				),
+				'steps'                     => array(
+					array(
+						'step_id'         => 'update_item',
+						'adapter_id'      => 'wordpress_content_update',
+						'adapter_version' => 1,
+						'ability_id'      => 'content/update-item',
+						'kind'            => 'write',
+						'arguments'       => array(
+							'id'    => 123,
+							'title' => 'Planned title',
+						),
+						'depends_on'      => array(),
+					),
+					array(
+						'step_id'         => 'read_item',
+						'adapter_id'      => 'wordpress',
+						'adapter_version' => 1,
+						'ability_id'      => 'content/get-item',
+						'kind'            => 'read',
+						'arguments'       => array( 'id' => 123 ),
+						'depends_on'      => array( 'update_item' ),
+					),
+				),
+				'allowed_abilities'         => array( 'content/update-item', 'content/get-item' ),
+				'write_policy'              => array( 'mode' => 'draft_only' ),
+				'approval_gates'            => array( 'update_item' ),
+				'output_contract'           => array( 'type' => 'object' ),
+				'validation_rules'          => array(),
+				'status'                    => 'draft',
+				'created_by'                => 1,
+				'updated_by'                => 1,
+				'compatibility'             => array(
+					'input_contract_version'  => 1,
+					'output_contract_version' => 1,
+				),
+			)
+		);
+	}
+
+	private function record_from_definition( WorkflowDefinition $definition ): WorkflowDefinitionRecord {
+		$value = $definition->to_array();
+
+		return new WorkflowDefinitionRecord(
+			1,
+			(string) $value['workflow_id'],
+			(string) $value['status'],
+			(int) $value['workflow_version'],
+			0,
+			'',
+			0,
+			(int) $value['created_by'],
+			(int) $value['updated_by'],
+			1,
+			'2026-08-29 00:00:00',
+			'2026-08-29 00:00:00',
+			$definition
+		);
 	}
 
 	/**

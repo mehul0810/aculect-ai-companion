@@ -26,6 +26,21 @@ use Throwable;
  */
 final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 
+	/**
+	 * Gateway result statuses that describe an unfinished or non-authoritative
+	 * operation rather than a completed ability execution.
+	 *
+	 * @var list<string>
+	 */
+	private const NON_COMPLETING_STATUSES = array(
+		'preview',
+		'confirmation_required',
+		'blocked',
+		'uncertain',
+		'pending',
+		'queued',
+	);
+
 	private AbilitiesRegistry $abilities;
 	private AbilityExecutionGateway $gateway;
 	/**
@@ -163,6 +178,9 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 		if ( isset( $output['error'] ) ) {
 			return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_ABILITY_FAILED );
 		}
+		if ( $this->is_non_completing_output( $output ) ) {
+			return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_GATEWAY_REJECTED );
+		}
 
 		try {
 			$contract   = WorkflowInputContract::from_value( $output );
@@ -177,5 +195,25 @@ final class NativeAbilityWorkflowAdapter implements WorkflowAdapterInterface {
 
 			return WorkflowAdapterResult::failure( WorkflowAdapterResult::CODE_OUTPUT_NOT_AVAILABLE );
 		}
+	}
+
+	/**
+	 * Do not let previews or policy hand-offs become completed workflow steps.
+	 *
+	 * The gateway deliberately uses a successful transport outcome for
+	 * confirmation-required previews so MCP callers can inspect the payload.
+	 * A workflow adapter has a stricter contract: only a committed, bounded
+	 * ability result may complete a step and unlock dependent dispatch.
+	 *
+	 * @param array<string, mixed> $output Gateway result payload.
+	 */
+	private function is_non_completing_output( array $output ): bool {
+		if ( true === ( $output['dry_run'] ?? false ) || true === ( $output['confirmation_required'] ?? false ) ) {
+			return true;
+		}
+
+		$status = isset( $output['status'] ) && is_string( $output['status'] ) ? $output['status'] : '';
+
+		return in_array( $status, self::NON_COMPLETING_STATUSES, true );
 	}
 }

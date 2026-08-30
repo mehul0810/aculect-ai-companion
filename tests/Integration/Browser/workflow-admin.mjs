@@ -57,6 +57,7 @@ const assertA11y = async () => {
 
 const assertNoMobileOverflow = async () => {
 	const dimensions = await page.locator( '.aculect-workflow-admin' ).evaluate( ( element ) => {
+		const rootRect = element.getBoundingClientRect();
 		const offenders = [ element, ...element.querySelectorAll( '*' ) ]
 			.filter( ( candidate ) => candidate.scrollWidth > candidate.clientWidth + 1 )
 			.slice( 0, 8 )
@@ -67,16 +68,31 @@ const assertNoMobileOverflow = async () => {
 				clientWidth: candidate.clientWidth,
 				scrollWidth: candidate.scrollWidth,
 			} ) );
+		const outOfBounds = [ ...element.querySelectorAll( '*' ) ]
+			.filter( ( candidate ) => candidate.getBoundingClientRect().right > rootRect.right + 1 )
+			.slice( 0, 8 )
+			.map( ( candidate ) => {
+				const rect = candidate.getBoundingClientRect();
+				return {
+					tag: candidate.tagName.toLowerCase(),
+					id: candidate.id || '',
+					className: candidate.className || '',
+					right: Math.round( rect.right ),
+					rootRight: Math.round( rootRect.right ),
+					text: ( candidate.textContent || '' ).trim().slice( 0, 120 ),
+				};
+			} );
 
 		return {
 			clientWidth: element.clientWidth,
 			scrollWidth: element.scrollWidth,
 			offenders,
+			outOfBounds,
 		};
 	} );
 	if ( dimensions.scrollWidth > dimensions.clientWidth + 1 ) {
 		throw new Error(
-			`Workflow admin overflows at mobile width (${ dimensions.scrollWidth } > ${ dimensions.clientWidth }): ${ JSON.stringify( dimensions.offenders ) }`
+			`Workflow admin overflows at mobile width (${ dimensions.scrollWidth } > ${ dimensions.clientWidth }): ${ JSON.stringify( { offenders: dimensions.offenders, outOfBounds: dimensions.outOfBounds } ) }`
 		);
 	}
 };

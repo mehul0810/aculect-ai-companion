@@ -89,6 +89,58 @@ final class WorkflowAbilityConnectorTest extends TestCase {
 		self::assertSame( array( 1, 2, 3 ), array_column( $calls, 'page' ) );
 	}
 
+	/**
+	 * Follow visible pages to exhaustion when denied rows surround allowed rows.
+	 *
+	 * The mock applies the repository's limit+1/page_stride contract, including
+	 * the one-row overlap that prevents an unfiltered lookahead from being
+	 * skipped. The connector must expose a duplicate-free filtered sequence for
+	 * both supported page sizes.
+	 */
+	public function test_filtered_pagination_follows_next_page_without_duplicates_at_limits_one_and_two(): void {
+		$source = array(
+			$this->record( 'denied_leading', array( 'editor' ) ),
+			$this->record( 'allowed_one', array( 'author' ) ),
+			$this->record( 'denied_interleaved', array( 'editor' ) ),
+			$this->record( 'allowed_two', array( 'author' ) ),
+			$this->record( 'allowed_three', array( 'author' ) ),
+			$this->record( 'denied_trailing', array( 'editor' ) ),
+		);
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		foreach ( array( 1, 2 ) as $limit ) {
+			$ids  = array();
+			$page = 1;
+			do {
+				$result = $connector->list_workflows(
+					array(
+						'limit' => $limit,
+						'page'  => $page,
+					)
+				);
+				self::assertSame( 'ok', $result['status'] ?? null );
+				$ids  = array_merge( $ids, array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+				$next = $result['pagination']['next_page'] ?? null;
+				$page = $next;
+			} while ( is_int( $page ) );
+
+			self::assertSame( array( 'allowed_one', 'allowed_two', 'allowed_three' ), $ids, 'Filtered pagination must not repeat or skip visible rows at limit ' . $limit );
+		}
+	}
+
 	public function test_get_and_prepare_hide_a_workflow_from_an_excluded_role(): void {
 		$restricted = $this->record( 'editor_workflow', array( 'editor' ) );
 		$repo       = $this->createMock( WorkflowDefinitionRepositoryInterface::class );

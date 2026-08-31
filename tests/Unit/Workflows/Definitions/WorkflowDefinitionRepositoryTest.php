@@ -14,6 +14,8 @@ use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilityConnector;
 use PDO;
 use PHPUnit\Framework\TestCase;
 
@@ -127,6 +129,61 @@ final class WorkflowDefinitionRepositoryTest extends TestCase {
 				)
 			)
 		);
+	}
+
+	/**
+	 * Follow the connector's filtered pages against the real repository double.
+	 *
+	 * Denied rows lead, interrupt, and trail the visible sequence. The
+	 * repository still returns limit+1 rows with page_stride=limit, while the
+	 * connector must advance visible offsets without repeating a promoted
+	 * lookahead row.
+	 */
+	public function test_filtered_connector_pagination_reaches_exhaustion_at_limits_one_and_two(): void {
+		$source     = array(
+			array( 'workflow_denied_leading', array( 'editor' ) ),
+			array( 'workflow_allowed_one', array( 'author' ) ),
+			array( 'workflow_denied_interleaved', array( 'editor' ) ),
+			array( 'workflow_allowed_two', array( 'author' ) ),
+			array( 'workflow_allowed_three', array( 'author' ) ),
+			array( 'workflow_denied_trailing', array( 'editor' ) ),
+		);
+		$repository = new WorkflowDefinitionRepository();
+		foreach ( array_reverse( $source ) as $row ) {
+			[ $workflow_id, $allowed_roles ] = $row;
+			$definition                      = $this->definition();
+			$definition['workflow_id']       = $workflow_id;
+			$definition['status']            = 'published';
+			$repository->create( WorkflowDefinition::from_array( $definition ), '', 0, $allowed_roles );
+		}
+
+		$connector = new WorkflowAbilityConnector(
+			$repository,
+			new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array(
+				'user_id' => 7,
+				'roles'   => array( 'author' ),
+			)
+		);
+		$expected  = array( 'workflow_allowed_one', 'workflow_allowed_two', 'workflow_allowed_three' );
+
+		foreach ( array( 1, 2 ) as $limit ) {
+			$ids  = array();
+			$page = 1;
+			do {
+				$result = $connector->list_workflows(
+					array(
+						'limit' => $limit,
+						'page'  => $page,
+					)
+				);
+				self::assertSame( 'ok', $result['status'] ?? null );
+				$ids  = array_merge( $ids, array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+				$page = $result['pagination']['next_page'] ?? null;
+			} while ( is_int( $page ) );
+
+			self::assertSame( $expected, $ids, 'Real repository filtered pagination must be duplicate-free at limit ' . $limit );
+		}
 	}
 
 	public function test_update_of_a_published_workflow_appends_an_immutable_version(): void {

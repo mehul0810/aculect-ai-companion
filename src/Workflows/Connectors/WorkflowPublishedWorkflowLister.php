@@ -66,20 +66,28 @@ final class WorkflowPublishedWorkflowLister {
 	}
 
 	/**
-	 * Scan source pages until one complete filtered page or the source ends.
+	 * Scan source pages from the beginning of the visible sequence.
+	 *
+	 * Role filtering can promote a lookahead row into the current page. Starting
+	 * each request from page one makes the public page number a visible filtered
+	 * offset, so the next page cannot restart at a source row already returned.
+	 * The bounded scan still uses the repository's page_stride lookahead and
+	 * stops as soon as the requested page has one lookahead row.
 	 *
 	 * @param int                 $limit Page size.
-	 * @param int                 $page  Requested source page.
+	 * @param int                 $page  Requested visible page.
 	 * @param array<string,mixed> $auth  Trusted authenticated actor context.
 	 * @return array{0:list<WorkflowDefinitionRecord>,1:bool}
 	 * @throws WorkflowDefinitionRepositoryException When storage is unavailable.
 	 */
 	private function published_records( int $limit, int $page, array $auth ): array {
 		$records         = array();
-		$source_page     = $page;
+		$source_page     = 1;
 		$source_has_more = false;
 		$scanned_pages   = 0;
 		$seen_records    = array();
+		$target_start    = ( $page - 1 ) * $limit;
+		$target_end      = $target_start + $limit;
 
 		while ( $scanned_pages < WorkflowAbilitySupport::MAX_PAGE ) {
 			$batch           = $this->definitions->list_published(
@@ -102,15 +110,15 @@ final class WorkflowPublishedWorkflowLister {
 				$records[]            = $record;
 			}
 
-			if ( count( $records ) > $limit || ! $source_has_more ) {
+			if ( count( $records ) > $target_end || ! $source_has_more ) {
 				break;
 			}
 			++$source_page;
 			++$scanned_pages;
 		}
 
-		$has_more = count( $records ) > $limit || ( $source_has_more && $scanned_pages >= WorkflowAbilitySupport::MAX_PAGE );
-		return array( $has_more ? array_slice( $records, 0, $limit ) : $records, $has_more );
+		$has_more = count( $records ) > $target_end || ( $source_has_more && $scanned_pages >= WorkflowAbilitySupport::MAX_PAGE );
+		return array( array_slice( $records, $target_start, $limit ), $has_more );
 	}
 
 	/**

@@ -250,6 +250,87 @@ final class WorkflowAbilityConnectorTest extends TestCase {
 		self::assertNull( $result['pagination']['next_page'] ?? null );
 	}
 
+	/**
+	 * A lookahead at the public page ceiling must not advertise page MAX+1.
+	 * Page MAX+1 is clamped to the same bounded page and must remain non-terminal.
+	 */
+	public function test_public_max_page_with_lookahead_returns_incomplete_error(): void {
+		$source = $this->source_records( WorkflowAbilitySupport::MAX_PAGE + 1 );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$page_before_ceiling = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => WorkflowAbilitySupport::MAX_PAGE - 1,
+			)
+		);
+		self::assertSame( 'ok', $page_before_ceiling['status'] ?? null );
+		self::assertSame( array( 'visible_0999' ), array_column( $page_before_ceiling['custom_workflows'] ?? array(), 'workflow_id' ) );
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $page_before_ceiling['pagination']['next_page'] ?? null );
+
+		foreach ( array( WorkflowAbilitySupport::MAX_PAGE, WorkflowAbilitySupport::MAX_PAGE + 1 ) as $requested_page ) {
+			$result = $connector->list_workflows(
+				array(
+					'limit' => 1,
+					'page'  => $requested_page,
+				)
+			);
+
+			self::assertSame( 'error', $result['status'] ?? null );
+			self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+			self::assertTrue( (bool) ( $result['incomplete'] ?? false ) );
+			self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $result['pagination']['page'] ?? null );
+			self::assertTrue( (bool) ( $result['pagination']['has_more'] ?? false ) );
+			self::assertNull( $result['pagination']['next_page'] ?? null );
+		}
+	}
+
+	/**
+	 * A source that ends exactly at MAX_PAGE remains a valid terminal page.
+	 */
+	public function test_public_max_page_without_lookahead_remains_terminal(): void {
+		$source = $this->source_records( WorkflowAbilitySupport::MAX_PAGE );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => WorkflowAbilitySupport::MAX_PAGE,
+			)
+		);
+
+		self::assertSame( 'ok', $result['status'] ?? null );
+		self::assertSame( array( 'visible_1000' ), array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+		self::assertFalse( (bool) ( $result['pagination']['has_more'] ?? true ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
+	}
+
 	public function test_get_and_prepare_hide_a_workflow_from_an_excluded_role(): void {
 		$restricted = $this->record( 'editor_workflow', array( 'editor' ) );
 		$repo       = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
@@ -380,5 +461,20 @@ final class WorkflowAbilityConnectorTest extends TestCase {
 			$definition,
 			$allowed_roles
 		);
+	}
+
+	/**
+	 * Build a bounded ordered source for pagination-ceiling tests.
+	 *
+	 * @param int $count Number of visible records.
+	 * @return list<WorkflowDefinitionRecord>
+	 */
+	private function source_records( int $count ): array {
+		$records = array();
+		for ( $index = 1; $index <= $count; ++$index ) {
+			$records[] = $this->record( sprintf( 'visible_%04d', $index ), array( 'author' ) );
+		}
+
+		return $records;
 	}
 }

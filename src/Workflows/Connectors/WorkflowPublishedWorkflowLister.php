@@ -43,7 +43,7 @@ final class WorkflowPublishedWorkflowLister {
 		$limit  = WorkflowAbilitySupport::bounded_limit( $args['limit'] ?? WorkflowAbilitySupport::MAX_LIST );
 		$page   = WorkflowAbilitySupport::bounded_page( $args['page'] ?? 1 );
 		$result = $this->published_records( $limit, $page, $auth );
-		if ( $result['scan_limited'] ) {
+		if ( $result['scan_limited'] || ( $result['has_more'] && $page >= WorkflowAbilitySupport::MAX_PAGE ) ) {
 			return $this->scan_limit_error( $page, $limit );
 		}
 		$records  = $result['records'];
@@ -159,7 +159,7 @@ final class WorkflowPublishedWorkflowLister {
 		return array(
 			'status'       => 'error',
 			'error'        => 'workflow_list_scan_limit',
-			'message'      => 'The workflow list exceeds the bounded scan window; no complete page can be returned safely.',
+			'message'      => 'The workflow list exceeds the bounded pagination window; no complete continuation can be returned safely.',
 			'bounded'      => true,
 			'incomplete'   => true,
 			'pagination'   => array(

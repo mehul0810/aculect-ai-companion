@@ -38,6 +38,21 @@ interface WorkflowDefinitionRepositoryInterface {
 	public function get( string $workflow_id, ?int $version = null, bool $include_disabled = false ): ?WorkflowDefinitionRecord;
 
 	/**
+	 * Read the currently published immutable version.
+	 *
+	 * @param string $workflow_id Stable workflow identifier.
+	 */
+	public function get_published( string $workflow_id ): ?WorkflowDefinitionRecord;
+
+	/**
+	 * List published immutable snapshots.
+	 *
+	 * @param array<string,mixed> $filters Bounded page and lookahead filters.
+	 * @return list<WorkflowDefinitionRecord>
+	 */
+	public function list_published( array $filters = array() ): array;
+
+	/**
 	 * List latest workflow records.
 	 *
 	 * @param array<string,mixed> $filters Bounded list filters.

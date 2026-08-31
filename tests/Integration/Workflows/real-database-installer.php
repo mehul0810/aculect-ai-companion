@@ -279,9 +279,9 @@ $inserted = $wpdb->query(
 aculect_workflow_assert( false !== $inserted, 'Could not insert the transactional parent row.' );
 $run_pk = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM %i WHERE run_id = %s', $tables['runs'], $run_id ) );
 aculect_workflow_assert( $run_pk > 0, 'Transactional parent identity was not generated.' );
-$wpdb->query(
+$step_inserted = $wpdb->query(
 	$wpdb->prepare(
-		'INSERT INTO %i (run_pk, step_id, step_position, adapter_id, adapter_version, ability_id, kind) VALUES (%d, %s, %d, %s, %d, %s, %s)',
+		'INSERT INTO %i (run_pk, step_id, step_position, adapter_id, adapter_version, ability_id, kind, output_ciphertext) VALUES (%d, %s, %d, %s, %d, %s, %s, %s)',
 		$tables['steps'],
 		$run_pk,
 		'real_step',
@@ -289,14 +289,19 @@ $wpdb->query(
 		'proof_adapter',
 		1,
 		'proof/ability',
-		'read'
+		'read',
+		''
 	)
 );
+
+aculect_workflow_assert( false !== $step_inserted, 'Could not insert the transactional child row.' );
 $invalid = $wpdb->query( $wpdb->prepare( 'INSERT INTO %i (not_a_real_column) VALUES (1)', $tables['steps'] ) );
 aculect_workflow_assert( false === $invalid, 'The injected transaction failure unexpectedly succeeded.' );
 aculect_workflow_assert( false !== $wpdb->query( 'ROLLBACK' ), 'The transaction rollback failed.' );
 $remaining = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_id = %s', $tables['runs'], $run_id ) );
 aculect_workflow_assert( 0 === $remaining, 'The parent row survived a failed transaction rollback.' );
+$remaining_steps = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_pk = %d', $tables['steps'], $run_pk ) );
+aculect_workflow_assert( 0 === $remaining_steps, 'The child row survived a failed transaction rollback.' );
 
 foreach ( $tables as $table ) {
 	aculect_workflow_assert( false !== $wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ENGINE=MyISAM', $table ) ), 'Could not prepare the legacy engine repair scenario.' );

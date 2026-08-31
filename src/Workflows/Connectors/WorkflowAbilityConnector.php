@@ -13,8 +13,10 @@ use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
+use Aculect\AICompanion\Workflows\Authorization\WorkflowRoleAccessPolicy;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStore;
 use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
@@ -52,13 +54,15 @@ use stdClass;
  */
 final class WorkflowAbilityConnector {
 
-	private WorkflowDefinitionRepository $definitions;
+	private WorkflowDefinitionRepositoryInterface $definitions;
 	private WorkflowAdapterRegistry $adapters;
 	private WorkflowRunStoreInterface $runs;
 	private WorkflowAuditStoreInterface $audit;
 	private WorkflowPlanBuilder $plans;
 	private WorkflowPlanReadinessEvaluator $readiness;
 	private WorkflowApprovalService $approvals;
+	private WorkflowRoleAccessPolicy $role_access;
+	private WorkflowPublishedWorkflowLister $workflow_lister;
 
 	/**
 	 * Provides the authenticated request context for connector calls.
@@ -70,33 +74,37 @@ final class WorkflowAbilityConnector {
 	/**
 	 * Create a connector with replaceable storage/composition collaborators.
 	 *
-	 * @param WorkflowDefinitionRepository|null   $definitions Definition repository.
-	 * @param WorkflowAdapterRegistry|null        $adapters Closed adapter registry.
-	 * @param WorkflowRunStoreInterface|null      $runs Durable run store.
-	 * @param WorkflowAuditStoreInterface|null    $audit Durable audit store.
-	 * @param WorkflowPlanBuilder|null            $plans Deterministic plan builder.
-	 * @param WorkflowPlanReadinessEvaluator|null $readiness Readiness evaluator.
-	 * @param Closure|null                        $auth_provider Request auth provider.
-	 * @param WorkflowApprovalTokenStore|null     $approval_tokens Server approval store.
+	 * @param WorkflowDefinitionRepositoryInterface|null $definitions Definition repository.
+	 * @param WorkflowAdapterRegistry|null               $adapters Closed adapter registry.
+	 * @param WorkflowRunStoreInterface|null             $runs Durable run store.
+	 * @param WorkflowAuditStoreInterface|null           $audit Durable audit store.
+	 * @param WorkflowPlanBuilder|null                   $plans Deterministic plan builder.
+	 * @param WorkflowPlanReadinessEvaluator|null        $readiness Readiness evaluator.
+	 * @param Closure|null                               $auth_provider Request auth provider.
+	 * @param WorkflowApprovalTokenStore|null            $approval_tokens Server approval store.
+	 * @param WorkflowRoleAccessPolicy|null              $role_access Workflow role policy.
 	 */
 	public function __construct(
-		?WorkflowDefinitionRepository $definitions = null,
+		?WorkflowDefinitionRepositoryInterface $definitions = null,
 		?WorkflowAdapterRegistry $adapters = null,
 		?WorkflowRunStoreInterface $runs = null,
 		?WorkflowAuditStoreInterface $audit = null,
 		?WorkflowPlanBuilder $plans = null,
 		?WorkflowPlanReadinessEvaluator $readiness = null,
 		?Closure $auth_provider = null,
-		?WorkflowApprovalTokenStore $approval_tokens = null
+		?WorkflowApprovalTokenStore $approval_tokens = null,
+		?WorkflowRoleAccessPolicy $role_access = null
 	) {
-		$this->definitions   = $definitions ?? new WorkflowDefinitionRepository();
-		$this->adapters      = $adapters ?? WorkflowAdapterRegistry::from_catalog();
-		$this->runs          = $runs ?? new WorkflowRunStore();
-		$this->audit         = $audit ?? new WorkflowAuditStore();
-		$this->plans         = $plans ?? new WorkflowPlanBuilder();
-		$this->readiness     = $readiness ?? new WorkflowPlanReadinessEvaluator();
-		$this->auth_provider = $auth_provider ?? static fn (): array => AbilityExecutionGateway::current_request_auth();
-		$this->approvals     = new WorkflowApprovalService( $approval_tokens ?? new WorkflowApprovalTokenStore() );
+		$this->definitions     = $definitions ?? new WorkflowDefinitionRepository();
+		$this->adapters        = $adapters ?? WorkflowAdapterRegistry::from_catalog();
+		$this->runs            = $runs ?? new WorkflowRunStore();
+		$this->audit           = $audit ?? new WorkflowAuditStore();
+		$this->plans           = $plans ?? new WorkflowPlanBuilder();
+		$this->readiness       = $readiness ?? new WorkflowPlanReadinessEvaluator();
+		$this->auth_provider   = $auth_provider ?? static fn (): array => AbilityExecutionGateway::current_request_auth();
+		$this->approvals       = new WorkflowApprovalService( $approval_tokens ?? new WorkflowApprovalTokenStore() );
+		$this->role_access     = $role_access ?? new WorkflowRoleAccessPolicy();
+		$this->workflow_lister = new WorkflowPublishedWorkflowLister( $this->definitions, $this->role_access );
 	}
 
 	/**
@@ -110,64 +118,13 @@ final class WorkflowAbilityConnector {
 		if ( null === $auth ) {
 			return $this->auth_error();
 		}
-
-		$limit = WorkflowAbilitySupport::bounded_limit( $args['limit'] ?? WorkflowAbilitySupport::MAX_LIST );
-		$page  = WorkflowAbilitySupport::bounded_page( $args['page'] ?? 1 );
 		try {
-			$records = $this->definitions->list_published(
-				array(
-					'per_page'    => $limit + 1,
-					'page'        => $page,
-					'page_stride' => $limit,
-				)
-			);
+			return $this->workflow_lister->list( $args, $auth );
 		} catch ( WorkflowDefinitionRepositoryException ) {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
 		} catch ( Throwable ) {
 			return $this->error( 'workflow_storage_unavailable', 'Workflow definitions are temporarily unavailable.' );
 		}
-
-		$has_more = count( $records ) > $limit;
-		if ( $has_more ) {
-			$records = array_slice( $records, 0, $limit );
-		}
-
-		$items = array();
-		foreach ( $records as $record ) {
-			$items[] = $this->summary( $record );
-		}
-
-		$guides = array();
-		try {
-			$guide_payload = ( new \Aculect\AICompanion\Connectors\MCP\WorkflowGuideRegistry() )->list_guides(
-				array(
-					'detail'         => 'summary',
-					'available_only' => false,
-				)
-			);
-			$guides        = is_array( $guide_payload['items'] ?? null ) ? array_slice( $guide_payload['items'], 0, $limit ) : array();
-		} catch ( Throwable ) {
-			$guides = array();
-		}
-
-		return array(
-			'status'           => 'ok',
-			'custom_workflows' => $items,
-			'fixed_guides'     => $guides,
-			'pagination'       => array(
-				'page'      => $page,
-				'per_page'  => $limit,
-				'returned'  => count( $items ),
-				'has_more'  => $has_more,
-				'next_page' => $has_more ? $page + 1 : null,
-			),
-			'bounded'          => true,
-			'next_actions'     => array(
-				'Call content_workflow_get for one published workflow before preparing a run.',
-				'Use content_workflow_prepare with an input object; missing fields are returned without mutation.',
-				...( $has_more ? array( 'Call content_workflow_list with page=' . ( $page + 1 ) . ' to continue.' ) : array() ),
-			),
-		);
 	}
 
 	/**
@@ -177,7 +134,8 @@ final class WorkflowAbilityConnector {
 	 * @return array<int|string, mixed>
 	 */
 	public function get( array $args ): array {
-		if ( null === $this->auth() ) {
+		$auth = $this->auth();
+		if ( null === $auth ) {
 			return $this->auth_error();
 		}
 		$id = WorkflowAbilitySupport::identifier( $args['workflow_id'] ?? $args['id'] ?? '' );
@@ -196,6 +154,9 @@ final class WorkflowAbilityConnector {
 		}
 
 		if ( null === $record || ! WorkflowAbilitySupport::is_published( $record ) ) {
+			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
+		}
+		if ( ! $this->role_allowed( $record, $auth ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
 		}
 
@@ -603,6 +564,20 @@ final class WorkflowAbilityConnector {
 	}
 
 	/**
+	 * Check the stored workflow role narrowing against the trusted request actor.
+	 *
+	 * The role policy is an additional narrowing layer. Native ability policy,
+	 * OAuth scopes, WordPress capabilities, ownership, and approval evidence are
+	 * still evaluated by their existing boundaries after this check.
+	 *
+	 * @param WorkflowDefinitionRecord $record Published workflow record.
+	 * @param array<string,mixed>      $auth   Authenticated request context.
+	 */
+	private function role_allowed( WorkflowDefinitionRecord $record, array $auth ): bool {
+		return $this->role_access->is_allowed( $record->allowed_roles(), $auth );
+	}
+
+	/**
 	 * Load an allowed published definition.
 	 *
 	 * @param array<string, mixed> $args Connector arguments.
@@ -625,6 +600,10 @@ final class WorkflowAbilityConnector {
 		}
 
 		if ( null === $record || ! WorkflowAbilitySupport::is_published( $record ) ) {
+			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
+		}
+		$auth = $this->auth();
+		if ( null === $auth || ! $this->role_allowed( $record, $auth ) ) {
 			return $this->error( 'workflow_not_found', 'No published workflow exists for that ID.' );
 		}
 
@@ -670,6 +649,9 @@ final class WorkflowAbilityConnector {
 		}
 		if ( null === $record ) {
 			return $this->error( 'workflow_definition_missing', 'The pinned workflow definition is no longer available.' );
+		}
+		if ( ! $this->role_allowed( $record, $auth ) ) {
+			return $this->error( 'workflow_forbidden', 'This workflow is not available to the connected user.' );
 		}
 		$input = $this->input( $args['input'] ?? null );
 		if ( is_array( $input ) ) {
@@ -946,28 +928,6 @@ final class WorkflowAbilityConnector {
 			'template_version'  => $record->template_version(),
 			'definition'        => $value,
 			'checksum'          => $record->definition()->checksum(),
-		);
-	}
-
-	/**
-	 * Return a bounded workflow summary.
-	 *
-	 * @param WorkflowDefinitionRecord $record Published definition record.
-	 * @return array<string,mixed>
-	 */
-	private function summary( WorkflowDefinitionRecord $record ): array {
-		$value = $record->definition()->to_array();
-
-		return array(
-			'workflow_id'      => $record->workflow_id(),
-			'name'             => (string) ( $value['name'] ?? '' ),
-			'description'      => (string) ( $value['description'] ?? '' ),
-			'workflow_version' => (int) ( $value['workflow_version'] ?? 0 ),
-			'checksum'         => $record->definition()->checksum(),
-			'template_id'      => $record->template_id(),
-			'write_policy'     => WorkflowAbilitySupport::map( $value['write_policy'] ?? array() ) ?? array(),
-			'approval_gates'   => array_values( (array) ( $value['approval_gates'] ?? array() ) ),
-			'status'           => 'published',
 		);
 	}
 

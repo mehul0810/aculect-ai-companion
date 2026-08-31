@@ -78,6 +78,7 @@ final class InstallerTest extends TestCase {
 		self::assertStringContainsString( 'definition_schema_version smallint(5) unsigned NOT NULL', $sql );
 		self::assertStringContainsString( 'definition_checksum char(64) NOT NULL', $sql );
 		self::assertStringContainsString( 'definition_json longtext NOT NULL', $sql );
+		self::assertStringContainsString( "allowed_roles_json varchar(2048) NOT NULL DEFAULT '[]'", $sql );
 		self::assertStringContainsString( 'UNIQUE KEY workflow_version (workflow_pk, workflow_version)', $sql );
 		self::assertStringContainsString( 'KEY definition_schema (definition_schema_version, id)', $sql );
 
@@ -119,7 +120,7 @@ final class InstallerTest extends TestCase {
 		};
 
 		self::assertTrue( Installer::install() );
-		self::assertSame( '2026.08.19.1', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
+		self::assertSame( '2026.08.29.1', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
 		self::assertSame( array(), Installer::missing_table_keys() );
 		self::assertCount( 1, $wpdb->db_delta_queries );
 	}
@@ -306,12 +307,12 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_logs_db_version'         => '2026.05.17.1',
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
 			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
-			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
-			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.1',
+			'aculect_ai_companion_workflows_db_version'    => '2026.08.29.1',
+			'aculect_ai_companion_workflow_runs_db_version' => '2026.08.29.2',
 			'aculect_ai_companion_workflow_audit_db_version' => '2026.08.29.1',
 			'aculect_ai_companion_workflows_db_verification' => array(
 				'status'        => 'valid',
-				'db_version'    => '2026.08.19.1',
+				'db_version'    => '2026.08.29.1',
 				'next_check_at' => time() + 9 * 3600,
 			),
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 'outcome:success:0123456789abcdef0123456789abcdef:' . ( time() + 3600 ),

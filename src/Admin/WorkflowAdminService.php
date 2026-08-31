@@ -1,0 +1,874 @@
+<?php
+/**
+ * Application service for the template-first workflow admin surface.
+ *
+ * @package Aculect\AICompanion\Admin
+ */
+
+declare(strict_types=1);
+
+namespace Aculect\AICompanion\Admin;
+
+use Aculect\AICompanion\Workflows\Authorization\WorkflowRoleAccessPolicy;
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterCatalog;
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterDescriptor;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionCompatibilityEvaluator;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepository;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionSchema;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionValidationException;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowMigrationPlanner;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStore;
+use Aculect\AICompanion\Workflows\Execution\WorkflowAuditStoreInterface;
+use Aculect\AICompanion\Workflows\Planning\WorkflowStepArgumentValidator;
+use JsonException;
+use Throwable;
+
+/**
+ * Translates guided admin fields into validated immutable workflow versions.
+ *
+ * This service deliberately accepts only a closed adapter catalog. It does
+ * not evaluate arbitrary PHP/JS, permit publish/delete abilities, or bypass
+ * the definition validator and repository concurrency checks.
+ */
+final class WorkflowAdminService {
+
+	private WorkflowTemplateCatalog $templates;
+	private WorkflowDefinitionRepositoryInterface $repository;
+	private WorkflowRoleAccessPolicy $role_access;
+	private WorkflowAuditStoreInterface $audit;
+	private WorkflowStepArgumentValidator $argument_validator;
+
+	/**
+	 * Create the service with repository and template collaborators.
+	 *
+	 * @param WorkflowDefinitionRepositoryInterface|null $repository  Definition repository.
+	 * @param WorkflowTemplateCatalog|null               $templates   Starter catalog.
+	 * @param WorkflowRoleAccessPolicy|null              $role_access Workflow role policy.
+	 * @param WorkflowAuditStoreInterface|null           $audit       Summary-only audit store.
+	 */
+	public function __construct( ?WorkflowDefinitionRepositoryInterface $repository = null, ?WorkflowTemplateCatalog $templates = null, ?WorkflowRoleAccessPolicy $role_access = null, ?WorkflowAuditStoreInterface $audit = null ) {
+		$this->repository         = $repository ?? new WorkflowDefinitionRepository();
+		$this->templates          = $templates ?? new WorkflowTemplateCatalog();
+		$this->role_access        = $role_access ?? new WorkflowRoleAccessPolicy();
+		$this->audit              = $audit ?? new WorkflowAuditStore();
+		$this->argument_validator = new WorkflowStepArgumentValidator();
+	}
+
+	/**
+	 * Return starter templates for the page.
+	 *
+	 * @return array<string,array<string,mixed>>
+	 */
+	public function templates(): array {
+		return $this->templates->all();
+	}
+
+	/**
+	 * Return the closed adapter catalog for guided step selection.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	public function adapters(): array {
+		return array_map(
+			static fn ( WorkflowAdapterDescriptor $descriptor ): array => $descriptor->to_array(),
+			WorkflowAdapterCatalog::descriptors()
+		);
+	}
+
+	/**
+	 * Return registered roles available for workflow-level narrowing.
+	 *
+	 * @return list<array{id:string,label:string}>
+	 */
+	public function roles(): array {
+		return $this->role_access->available_roles();
+	}
+
+	/**
+	 * Return recent summary-only workflow events for admin inspection.
+	 *
+	 * @return array{events:list<WorkflowAuditRecord>,error:string|null}
+	 */
+	public function recent_audit(): array {
+		try {
+			return array(
+				'events' => $this->audit->recent( 25 ),
+				'error'  => null,
+			);
+		} catch ( Throwable ) {
+			return array(
+				'events' => array(),
+				'error'  => 'Workflow audit events are temporarily unavailable.',
+			);
+		}
+	}
+
+	/**
+	 * List latest workflow versions for the admin table.
+	 *
+	 * @return array{records:list<WorkflowDefinitionRecord>,error:string|null}
+	 */
+	public function list_records(): array {
+		try {
+			return array(
+				'records' => $this->repository->list(
+					array(
+						'per_page'         => 100,
+						'include_disabled' => true,
+					)
+				),
+				'error'   => null,
+			);
+		} catch ( Throwable ) {
+			return array(
+				'records' => array(),
+				'error'   => 'Workflow definitions are temporarily unavailable.',
+			);
+		}
+	}
+
+	/**
+	 * Read one latest definition for editing.
+	 *
+	 * @param string $workflow_id Stable workflow identifier.
+	 * @return WorkflowDefinitionRecord|null
+	 */
+	public function record( string $workflow_id ): ?WorkflowDefinitionRecord {
+		try {
+			return $this->repository->get( $workflow_id, null, true );
+		} catch ( Throwable ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Validate guided fields and persist a new immutable version.
+	 *
+	 * @param array<string,mixed> $submitted Sanitized form values.
+	 * @param int                 $actor_id Acting administrator.
+	 * @return array{ok:bool,record?:WorkflowDefinitionRecord,errors?:array<string,string>,error?:string}
+	 */
+	public function save( array $submitted, int $actor_id ): array {
+		if ( $actor_id < 1 ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => 'A valid administrator is required.' ),
+			);
+		}
+
+		$workflow_id = $this->identifier( $submitted['workflow_id'] ?? '' );
+		$existing    = '' === $workflow_id ? null : $this->record( $workflow_id );
+		$expected    = max( 0, (int) ( $submitted['expected_version'] ?? 0 ) );
+		if ( null !== $existing && 0 === $expected ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'workflow_id' => 'That workflow ID is already in use; edit the existing workflow instead.' ),
+			);
+		}
+		if ( null === $existing && $expected > 0 ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'workflow_id' => 'The workflow could not be found for this versioned edit.' ),
+			);
+		}
+		$role_errors         = array();
+		$has_submitted_roles = array_key_exists( 'allowed_roles_present', $submitted )
+			? ( true === $submitted['allowed_roles_present'] || '1' === (string) $submitted['allowed_roles_present'] )
+			: array_key_exists( 'allowed_roles', $submitted );
+		$role_value          = $has_submitted_roles ? ( $submitted['allowed_roles'] ?? array() ) : ( $existing?->allowed_roles() ?? array() );
+		if ( null !== $existing && ! $has_submitted_roles && $this->has_unregistered_role( $existing->allowed_roles() ) ) {
+			// Never turn an orphaned stored allowlist into an empty allowlist:
+			// empty means inherited/global access. Require an explicit selector
+			// submission so stale access cannot widen during an unrelated edit.
+			return array(
+				'ok'     => false,
+				'errors' => array( 'allowed_roles' => 'Stored role access includes an unregistered role; select the current roles explicitly before saving.' ),
+			);
+		}
+		$allowed_roles = $this->normalize_roles( $role_value, $role_errors );
+		if ( array() !== $role_errors ) {
+			return array(
+				'ok'     => false,
+				'errors' => $role_errors,
+			);
+		}
+
+		try {
+			$definition            = $this->definition_from_input( $submitted, $actor_id, $existing );
+			$template              = $this->template_key( $submitted['template_id'] ?? '', $existing );
+			$approved_migration_id = true === ( $submitted['migration_confirmed'] ?? false )
+				? $this->migration_id( $submitted['migration_id'] ?? '' )
+				: null;
+			$record                = null === $existing
+				? $this->repository->create( $definition, $template, 1, $allowed_roles )
+				: $this->repository->update( $definition, $expected, $template, 1, $allowed_roles, $approved_migration_id );
+
+			return array(
+				'ok'     => true,
+				'record' => $record,
+			);
+		} catch ( WorkflowAdminValidationException $exception ) {
+			return array(
+				'ok'     => false,
+				'errors' => $exception->errors(),
+			);
+		} catch ( WorkflowDefinitionValidationException $exception ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => 'Definition validation failed at ' . $exception->error_path() . '.' ),
+			);
+		} catch ( WorkflowDefinitionRepositoryException $exception ) {
+			$message = match ( $exception->error_code() ) {
+				'workflow_version_conflict' => 'Someone else saved this workflow. Reload it before saving again.',
+				'workflow_already_exists'   => 'That workflow ID is already in use.',
+				'workflow_disabled'          => 'Disabled workflows must be restored outside this guided editor.',
+				'invalid_role_access'       => 'Choose only registered non-administrator roles.',
+				'migration_blocked'         => 'Review the migration preview; behavior changes require an explicit migration.',
+				default                     => 'The workflow could not be saved right now.',
+			};
+
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => $message ),
+			);
+		} catch ( Throwable ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => 'The workflow could not be saved right now.' ),
+			);
+		}
+	}
+
+	/**
+	 * Disable a workflow using an optimistic version check.
+	 *
+	 * @param string $workflow_id Stable workflow identifier.
+	 * @param int    $actor_id Acting administrator.
+	 * @param int    $expected_version Latest version shown by the form.
+	 * @return array{ok:bool,record?:WorkflowDefinitionRecord,errors?:array<string,string>}
+	 */
+	public function disable( string $workflow_id, int $actor_id, int $expected_version ): array {
+		$workflow_id = $this->identifier( $workflow_id );
+		if ( '' === $workflow_id || $actor_id < 1 || $expected_version < 1 ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => 'The workflow identity or version is invalid.' ),
+			);
+		}
+
+		try {
+			$record = $this->repository->disable( $workflow_id, $actor_id, $expected_version );
+			if ( null === $record ) {
+				return array(
+					'ok'     => false,
+					'errors' => array( 'form' => 'The workflow could not be found.' ),
+				);
+			}
+
+			return array(
+				'ok'     => true,
+				'record' => $record,
+			);
+		} catch ( WorkflowDefinitionRepositoryException $exception ) {
+			$message = 'workflow_version_conflict' === $exception->error_code()
+				? 'Someone else changed this workflow. Reload it before disabling.'
+				: 'The workflow could not be disabled right now.';
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => $message ),
+			);
+		} catch ( Throwable ) {
+			return array(
+				'ok'     => false,
+				'errors' => array( 'form' => 'The workflow could not be disabled right now.' ),
+			);
+		}
+	}
+
+	/**
+	 * Preview the bounded compatibility impact of an edit.
+	 *
+	 * @param array<string,mixed>      $submitted Guided form values.
+	 * @param int                      $actor_id Acting administrator.
+	 * @param WorkflowDefinitionRecord $existing Existing latest record.
+	 * @return array<string,mixed>|null Compatibility report, or null when invalid.
+	 */
+	public function compatibility_preview( array $submitted, int $actor_id, WorkflowDefinitionRecord $existing ): ?array {
+		try {
+			$target = $this->definition_from_input( $submitted, $actor_id, $existing );
+
+			return ( new WorkflowDefinitionCompatibilityEvaluator() )->evaluate( $existing->definition(), $target )->to_array();
+		} catch ( Throwable ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Preview migration actions and the deterministic plan identifier for an edit.
+	 *
+	 * @param array<string,mixed>      $submitted Guided form values.
+	 * @param int                      $actor_id Acting administrator.
+	 * @param WorkflowDefinitionRecord $existing Existing latest record.
+	 * @return array<string,mixed>|null Migration preview, or null when invalid.
+	 */
+	public function migration_preview( array $submitted, int $actor_id, WorkflowDefinitionRecord $existing ): ?array {
+		try {
+			$target = $this->definition_from_input( $submitted, $actor_id, $existing );
+
+			return ( new WorkflowMigrationPlanner() )->preview( $existing->definition(), $target )->to_array();
+		} catch ( Throwable ) {
+			return null;
+		}
+	}
+
+	/**
+	 * Build and validate one definition from guided fields.
+	 *
+	 * @param array<string,mixed>           $submitted Guided form values.
+	 * @param int                           $actor_id Acting administrator.
+	 * @param WorkflowDefinitionRecord|null $existing Existing latest record.
+	 * @throws WorkflowAdminValidationException When guided fields or the closed definition contract rejects values.
+	 */
+	public function definition_from_input( array $submitted, int $actor_id, ?WorkflowDefinitionRecord $existing = null ): WorkflowDefinition {
+		$errors      = array();
+		$template_id = $this->template_key( $submitted['template_id'] ?? '', $existing );
+		$template    = $this->templates->get( $template_id );
+		if ( null === $template ) {
+			$template = $this->templates->get( 'blank' ) ?? array();
+		}
+		$workflow_id   = $this->identifier( $submitted['workflow_id'] ?? ( $existing?->workflow_id() ?? '' ) );
+		$name          = $this->bounded_text( $submitted['name'] ?? ( $template['label'] ?? '' ), 120 );
+		$description   = $this->bounded_text( $submitted['description'] ?? ( $template['description'] ?? '' ), 1000 );
+		$status_value  = (string) ( $submitted['status'] ?? 'draft' );
+		$status        = in_array( $status_value, array( 'draft', 'published' ), true ) ? $status_value : 'draft';
+		$write_value   = (string) ( $submitted['write_policy'] ?? ( $template['write_policy'] ?? 'proposal_only' ) );
+		$write_mode    = in_array( $write_value, array( 'proposal_only', 'draft_only', 'approved_update' ), true ) ? $write_value : 'proposal_only';
+		$mode_value    = (string) ( $submitted['target_mode'] ?? ( $template['target_mode'] ?? 'either' ) );
+		$mode          = in_array( $mode_value, array( 'new', 'existing', 'either' ), true ) ? $mode_value : 'either';
+		$post_types    = $this->post_types( $submitted['post_types'] ?? ( $template['post_types'] ?? array() ) );
+		$fields        = $this->input_fields( $submitted['input_fields'] ?? ( $template['input_fields'] ?? array() ), $errors );
+		$step_args     = $this->step_arguments( $submitted['step_arguments'] ?? ( $template['step_arguments'] ?? array() ), $errors );
+		$step_value    = $submitted['step_abilities'] ?? ( $template['step_abilities'] ?? array() );
+		$step_errors   = array();
+		$initial_steps = $this->steps( $step_value, $step_errors, $fields, $post_types, $write_mode, $step_args );
+		$fields        = $this->tighten_input_schema( $fields, $initial_steps );
+		$steps         = $this->steps( $step_value, $errors, $fields, $post_types, $write_mode, $step_args );
+
+		if ( '' === $workflow_id ) {
+			$errors['workflow_id'] = 'Use 3–64 lowercase letters, numbers, underscores, or hyphens.';
+		}
+		if ( '' === $name ) {
+			$errors['name'] = 'Add a workflow name.';
+		}
+		if ( '' === $description ) {
+			$errors['description'] = 'Add a short description.';
+		}
+		if ( array() === $post_types ) {
+			$errors['post_types'] = 'Choose at least one public post type.';
+		}
+		if ( array() === $steps && ! isset( $errors['step_abilities'] ) ) {
+			$errors['step_abilities'] = 'Choose at least one supported ability.';
+		}
+		if ( 'proposal_only' === $write_mode && $this->has_write_step( $steps ) ) {
+			$errors['write_policy'] = 'Proposal-only workflows cannot include write abilities.';
+		}
+		if ( array() !== $errors ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Errors are bounded field keys and fixed messages.
+			throw new WorkflowAdminValidationException( $errors );
+		}
+
+		$version    = null === $existing ? 1 : $existing->latest_version() + 1;
+		$created_by = null === $existing ? $actor_id : (int) ( $existing->definition()->to_array()['created_by'] ?? $existing->created_by() );
+		$definition = array(
+			'definition_schema_version' => 1,
+			'workflow_id'               => $workflow_id,
+			'workflow_version'          => $version,
+			'name'                      => $name,
+			'description'               => $description,
+			'content_target'            => array(
+				'mode'       => $mode,
+				'post_types' => $post_types,
+			),
+			'input_schema'              => $fields,
+			'steps'                     => $steps,
+			'allowed_abilities'         => array_values( array_unique( array_map( static fn ( array $step ): string => (string) $step['ability_id'], $steps ) ) ),
+			'write_policy'              => array( 'mode' => $write_mode ),
+			'approval_gates'            => array_values( array_map( static fn ( array $step ): string => (string) $step['step_id'], array_filter( $steps, static fn ( array $step ): bool => 'write' === $step['kind'] ) ) ),
+			'output_contract'           => array(
+				'type'                 => 'object',
+				'additionalProperties' => false,
+				'properties'           => array(
+					'status'          => array( 'type' => 'string' ),
+					'summary'         => array(
+						'type'      => 'string',
+						'maxLength' => 1000,
+					),
+					'steps_completed' => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+					),
+				),
+			),
+			'validation_rules'          => array(),
+			'status'                    => $status,
+			'created_by'                => $created_by,
+			'updated_by'                => $actor_id,
+			'compatibility'             => array(
+				'input_contract_version'  => 1,
+				'output_contract_version' => 1,
+			),
+		);
+
+		return WorkflowDefinition::from_array( $definition );
+	}
+
+	/**
+	 * Resolve a safe template key.
+	 *
+	 * @param mixed                         $value Submitted key.
+	 * @param WorkflowDefinitionRecord|null $existing Existing record.
+	 */
+	private function template_key( mixed $value, ?WorkflowDefinitionRecord $existing ): string {
+		$key = sanitize_key( (string) $value );
+		if ( null !== $existing && '' === $key ) {
+			$key = sanitize_key( $existing->template_id() );
+		}
+
+		return null !== $this->templates->get( $key ) ? $key : 'blank';
+	}
+
+	/**
+	 * Convert a field list into a bounded object schema.
+	 *
+	 * @param mixed                $value Field lines or a list of field lines.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @return array<string,mixed>
+	 */
+	private function input_fields( mixed $value, array &$errors ): array {
+		$lines    = is_array( $value ) ? $value : preg_split( '/\r?\n/', (string) $value );
+		$schema   = array(
+			'type'                 => 'object',
+			'additionalProperties' => false,
+			'properties'           => array(),
+		);
+		$required = array();
+		foreach ( is_array( $lines ) ? $lines : array() as $line ) {
+			$line = trim( (string) $line );
+			if ( '' === $line ) {
+				continue;
+			}
+			$parts = array_map( 'trim', explode( ':', $line ) );
+			if ( count( $parts ) < 2 || 1 !== preg_match( '/^[a-z][a-z0-9_]{1,63}$/D', $parts[0] ) || ! in_array( $parts[1], array( 'string', 'integer', 'number', 'boolean' ), true ) ) {
+				$errors['input_fields'] = 'Inputs must use field:type[:required] with a supported primitive type.';
+				continue;
+			}
+			if ( isset( $schema['properties'][ $parts[0] ] ) ) {
+				$errors['input_fields'] = 'Each input field may appear only once.';
+				continue;
+			}
+			$schema['properties'][ $parts[0] ] = array( 'type' => $parts[1] );
+			if ( isset( $parts[2] ) && 'required' === strtolower( $parts[2] ) ) {
+				$required[] = $parts[0];
+			}
+		}
+		if ( array() !== $required ) {
+			$schema['required'] = array_values( array_unique( $required ) );
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Resolve ordered step abilities from the closed adapter catalog.
+	 *
+	 * @param mixed                $value Ability lines.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @param array<string,mixed>  $input_schema Workflow input schema.
+	 * @param array<string>        $post_types Allowed post types.
+	 * @phpstan-param list<string> $post_types
+	 * @param string               $write_mode Write policy mode.
+	 * @param array<string,mixed>  $explicit_arguments Optional static arguments.
+	 * @return list<array<string,mixed>>
+	 */
+	private function steps( mixed $value, array &$errors, array $input_schema = array(), array $post_types = array(), string $write_mode = 'proposal_only', array $explicit_arguments = array() ): array {
+		$lines       = is_array( $value ) ? $value : preg_split( '/\r?\n|,/', (string) $value );
+		$descriptors = array();
+		foreach ( WorkflowAdapterCatalog::descriptors() as $descriptor ) {
+			$descriptors[ $descriptor->ability_id() ] ??= $descriptor;
+		}
+
+		$steps         = array();
+		$prior_outputs = array();
+		foreach ( is_array( $lines ) ? $lines : array() as $line ) {
+			$ability_id = strtolower( trim( (string) $line ) );
+			if ( '' === $ability_id ) {
+				continue;
+			}
+			$descriptor = $descriptors[ $ability_id ] ?? null;
+			if ( ! $descriptor instanceof WorkflowAdapterDescriptor ) {
+				$errors['step_abilities'] = 'Every step must use an ability from the supported catalog.';
+				continue;
+			}
+			$step_id   = 'step_' . ( count( $steps ) + 1 );
+			$ordinal   = (string) ( count( $steps ) + 1 );
+			$arguments = $explicit_arguments[ $step_id ] ?? $explicit_arguments[ $ordinal ] ?? $explicit_arguments[ $descriptor->ability_id() ] ?? null;
+			if ( null === $arguments ) {
+				$arguments = $this->default_step_arguments( $descriptor, $input_schema, $post_types, $write_mode );
+			}
+			if ( ! is_array( $arguments ) || ( array() !== $arguments && array_is_list( $arguments ) ) ) {
+				$errors['step_arguments'] = 'Step arguments must be an object keyed by step ID, position, or ability ID.';
+				$arguments                = array();
+			}
+			$required = $descriptor->input_schema()['required'] ?? array();
+			$missing  = array();
+			if ( is_array( $required ) ) {
+				foreach ( $required as $required_key ) {
+					if ( is_string( $required_key ) && ! array_key_exists( $required_key, $arguments ) ) {
+						$missing[] = $required_key;
+					}
+				}
+				if ( array() !== $missing ) {
+					$errors['step_arguments'] = 'Provide arguments for required adapter fields: ' . implode( ', ', $missing ) . '.';
+				}
+			}
+			if ( array() === $missing && is_array( $arguments ) ) {
+				$argument_errors = $this->argument_validator->validate( $arguments, $descriptor->input_schema(), $input_schema, $prior_outputs );
+				if ( array() !== $argument_errors ) {
+					$errors['step_arguments'] = 'Provide valid typed arguments and bindings for each selected ability.';
+				}
+			}
+			$steps[]                   = array(
+				'step_id'         => $step_id,
+				'adapter_id'      => $descriptor->adapter_id(),
+				'adapter_version' => $descriptor->adapter_version(),
+				'ability_id'      => $descriptor->ability_id(),
+				'kind'            => $descriptor->kind(),
+				'arguments'       => $arguments,
+				'depends_on'      => 0 === count( $steps ) ? array() : array( 'step_' . count( $steps ) ),
+			);
+			$prior_outputs[ $step_id ] = $descriptor->output_schema();
+		}
+
+		return $steps;
+	}
+
+	/**
+	 * Tighten guided input fields to every adapter constraint they feed.
+	 *
+	 * A guided field can be bound to an adapter value with a smaller range or
+	 * length than the primitive field editor exposes. Copying those constraints
+	 * into the durable input schema makes the source contract executable instead
+	 * of relying on the later adapter validation as a surprise failure.
+	 *
+	 * @param array<string,mixed>       $input_schema Guided input schema.
+	 * @param list<array<string,mixed>> $steps       Candidate steps.
+	 * @return array<string,mixed>
+	 */
+	private function tighten_input_schema( array $input_schema, array $steps ): array {
+		$descriptors = array();
+		foreach ( WorkflowAdapterCatalog::descriptors() as $descriptor ) {
+			$descriptors[ $descriptor->ability_id() ] = $descriptor;
+		}
+
+		foreach ( $steps as $step ) {
+			$ability_id = (string) ( $step['ability_id'] ?? '' );
+			$descriptor = $descriptors[ $ability_id ] ?? null;
+			$arguments  = $step['arguments'] ?? array();
+			if ( ! $descriptor instanceof WorkflowAdapterDescriptor || ! is_array( $arguments ) ) {
+				continue;
+			}
+			$this->tighten_argument_bindings( $arguments, $descriptor->input_schema(), $input_schema );
+		}
+
+		return $input_schema;
+	}
+
+	/**
+	 * Find input bindings recursively and merge their target constraints.
+	 *
+	 * @param mixed               $value        Candidate argument value.
+	 * @param array<string,mixed> $target_schema Adapter schema at this value.
+	 * @param array<string,mixed> $input_schema  Mutable guided input schema.
+	 */
+	private function tighten_argument_bindings( mixed $value, array $target_schema, array &$input_schema ): void {
+		if ( is_string( $value ) && 1 === preg_match( '/^\{\{input\.([a-z][a-z0-9_.]{0,127})\}\}$/D', $value, $matches ) ) {
+			$this->tighten_input_path( $input_schema, explode( '.', $matches[1] ), $target_schema );
+
+			return;
+		}
+		if ( ! is_array( $value ) ) {
+			return;
+		}
+
+		if ( array_is_list( $value ) ) {
+			$items = $target_schema['items'] ?? null;
+			if ( is_array( $items ) ) {
+				foreach ( $value as $item ) {
+					$this->tighten_argument_bindings( $item, $items, $input_schema );
+				}
+			}
+
+			return;
+		}
+
+		$properties = is_array( $target_schema['properties'] ?? null ) ? $target_schema['properties'] : array();
+		$additional = $target_schema['additionalProperties'] ?? null;
+		foreach ( $value as $key => $item ) {
+			$child = $properties[ $key ] ?? $additional;
+			if ( is_array( $child ) ) {
+				$this->tighten_argument_bindings( $item, $child, $input_schema );
+			}
+		}
+	}
+
+	/**
+	 * Merge one adapter schema node into a dotted guided input property.
+	 *
+	 * @param array<string,mixed> $input_schema Mutable input schema.
+	 * @param array<string>       $path         Dotted input path.
+	 * @param array<string,mixed> $target       Adapter target schema.
+	 * @phpstan-param list<string> $path
+	 */
+	private function tighten_input_path( array &$input_schema, array $path, array $target ): void {
+		$current =& $input_schema;
+		$last    = count( $path ) - 1;
+		foreach ( $path as $index => $segment ) {
+			if ( ! is_array( $current['properties'] ?? null ) || ! is_array( $current['properties'][ $segment ] ?? null ) ) {
+				unset( $current );
+
+				return;
+			}
+			if ( $index === $last ) {
+				$this->merge_schema_constraints( $current['properties'][ $segment ], $target );
+				unset( $current );
+
+				return;
+			}
+			$current =& $current['properties'][ $segment ];
+		}
+		unset( $current );
+	}
+
+	/**
+	 * Merge constraints conservatively so every target remains executable.
+	 *
+	 * @param array<string,mixed> $source Mutable source schema.
+	 * @param array<string,mixed> $target Adapter target schema.
+	 */
+	private function merge_schema_constraints( array &$source, array $target ): void {
+		foreach ( array( 'minimum', 'minLength', 'minItems', 'minProperties' ) as $key ) {
+			if ( array_key_exists( $key, $target ) && ( ! array_key_exists( $key, $source ) || $source[ $key ] < $target[ $key ] ) ) {
+				$source[ $key ] = $target[ $key ];
+			}
+		}
+		foreach ( array( 'maximum', 'maxLength', 'maxItems', 'maxProperties' ) as $key ) {
+			$target_value = $target[ $key ] ?? null;
+			if ( 'maxLength' === $key && is_int( $target_value ) ) {
+				$target_value = min( $target_value, WorkflowDefinitionSchema::MAX_SCHEMA_STRING_LENGTH );
+			}
+			if ( array_key_exists( $key, $target ) && ( ! array_key_exists( $key, $source ) || $source[ $key ] > $target_value ) ) {
+				$source[ $key ] = $target_value;
+			}
+		}
+		if ( array_key_exists( 'pattern', $target ) && ! array_key_exists( 'pattern', $source ) ) {
+			$source['pattern'] = $target['pattern'];
+		}
+		if ( is_array( $target['enum'] ?? null ) ) {
+			$source['enum'] = is_array( $source['enum'] ?? null ) ? array_values( array_intersect( $source['enum'], $target['enum'] ) ) : $target['enum'];
+		}
+		if ( array_key_exists( 'const', $target ) && ! array_key_exists( 'const', $source ) ) {
+			$source['const'] = $target['const'];
+		}
+
+		if ( is_array( $target['items'] ?? null ) && is_array( $source['items'] ?? null ) ) {
+			$this->merge_schema_constraints( $source['items'], $target['items'] );
+		}
+	}
+
+	/**
+	 * Parse optional static step arguments from the guided editor.
+	 *
+	 * @param mixed                $value  JSON object, array, or empty value.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @return array<string,mixed>
+	 */
+	private function step_arguments( mixed $value, array &$errors ): array {
+		if ( null === $value || '' === $value || array() === $value ) {
+			return array();
+		}
+		if ( is_array( $value ) && ! array_is_list( $value ) ) {
+			return $value;
+		}
+		if ( ! is_string( $value ) || strlen( $value ) > 32768 ) {
+			$errors['step_arguments'] = 'Step arguments must be a bounded JSON object.';
+			return array();
+		}
+		$value = trim( $value );
+		if ( '' === $value || '{}' === $value || '[]' === $value ) {
+			// Empty object and list encodings both represent the unbound starter
+			// contract. The service derives safe input bindings below.
+			return array();
+		}
+		try {
+			$decoded = json_decode( $value, true, 16, JSON_THROW_ON_ERROR );
+		} catch ( JsonException ) {
+			$errors['step_arguments'] = 'Step arguments must be valid JSON.';
+			return array();
+		}
+		if ( ! is_array( $decoded ) ) {
+			$errors['step_arguments'] = 'Step arguments must be a JSON object keyed by step ID, position, or ability ID.';
+			return array();
+		}
+		if ( array() === $decoded ) {
+			return array();
+		}
+		if ( array_is_list( $decoded ) ) {
+			$errors['step_arguments'] = 'Step arguments must be a JSON object keyed by step ID, position, or ability ID.';
+			return array();
+		}
+
+		return $decoded;
+	}
+
+	/**
+	 * Generate safe bindings from workflow inputs for a selected adapter.
+	 *
+	 * @param WorkflowAdapterDescriptor $descriptor Selected adapter descriptor.
+	 * @param array<string,mixed>       $input_schema Workflow input schema.
+	 * @param array<string>             $post_types Allowed post types.
+	 * @param string                    $write_mode Write policy mode.
+	 * @phpstan-param list<string>      $post_types
+	 * @return array<string,mixed>
+	 */
+	private function default_step_arguments( WorkflowAdapterDescriptor $descriptor, array $input_schema, array $post_types, string $write_mode ): array {
+		$input_properties = is_array( $input_schema['properties'] ?? null ) ? $input_schema['properties'] : array();
+		$adapter_schema   = $descriptor->input_schema();
+		$properties       = is_array( $adapter_schema['properties'] ?? null ) ? $adapter_schema['properties'] : array();
+		$arguments        = array();
+		foreach ( array_keys( $properties ) as $property ) {
+			$property = (string) $property;
+			if ( array_key_exists( $property, $input_properties ) ) {
+				$arguments[ $property ] = '{{input.' . $property . '}}';
+				continue;
+			}
+			if ( 'id' === $property && array_key_exists( 'post_id', $input_properties ) ) {
+				$arguments[ $property ] = '{{input.post_id}}';
+				continue;
+			}
+			if ( 'post_id' === $property && array_key_exists( 'id', $input_properties ) ) {
+				$arguments[ $property ] = '{{input.id}}';
+				continue;
+			}
+			if ( 'post_type' === $property && 1 === count( $post_types ) ) {
+				$arguments[ $property ] = (string) $post_types[0];
+				continue;
+			}
+			if ( 'status' === $property && 'proposal_only' !== $write_mode ) {
+				$arguments[ $property ] = 'draft';
+			}
+		}
+
+		return $arguments;
+	}
+
+	/**
+	 * Normalize post types without permitting arbitrary object access.
+	 *
+	 * @param mixed $value Post-type list or CSV.
+	 * @return list<string>
+	 */
+	private function post_types( mixed $value ): array {
+		$values = is_array( $value ) ? $value : preg_split( '/\r?\n|,/', (string) $value );
+		$known  = function_exists( 'get_post_types' ) ? array_map( 'strval', (array) get_post_types( array( 'public' => true ), 'names' ) ) : array();
+		$result = array();
+		foreach ( is_array( $values ) ? $values : array() as $item ) {
+			$key = sanitize_key( trim( (string) $item ) );
+			if ( '' !== $key && ( array() === $known || in_array( $key, $known, true ) ) ) {
+				$result[] = $key;
+			}
+		}
+
+		return array_values( array_unique( $result ) );
+	}
+
+	/**
+	 * Determine whether a step list contains a write adapter.
+	 *
+	 * @param list<array<string,mixed>> $steps Workflow steps.
+	 */
+	private function has_write_step( array $steps ): bool {
+		foreach ( $steps as $step ) {
+			if ( 'write' === (string) ( $step['kind'] ?? '' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function identifier( mixed $value ): string {
+		$value = sanitize_key( trim( (string) $value ) );
+
+		return 1 === preg_match( '/^[a-z][a-z0-9_-]{2,63}$/D', $value ) ? $value : '';
+	}
+
+	/**
+	 * Normalize a submitted migration preview identifier.
+	 *
+	 * @param mixed $value Candidate migration identifier.
+	 */
+	private function migration_id( mixed $value ): ?string {
+		$value = strtolower( trim( (string) $value ) );
+
+		return 1 === preg_match( '/^[a-f0-9]{64}$/D', $value ) ? $value : null;
+	}
+
+	private function bounded_text( mixed $value, int $max ): string {
+		$value = sanitize_text_field( (string) $value );
+
+		return '' === $value ? '' : substr( $value, 0, $max );
+	}
+
+	/**
+	 * Normalize the admin role selector and fail closed on malformed input.
+	 *
+	 * @param mixed                $value Candidate role list.
+	 * @param array<string,string> $errors Validation errors by field.
+	 * @return list<string>
+	 */
+	private function normalize_roles( mixed $value, array &$errors ): array {
+		if ( ! is_array( $value ) || ! $this->role_access->is_valid( $value ) ) {
+			$errors['allowed_roles'] = 'Choose only registered non-administrator roles.';
+
+			return array();
+		}
+
+		return $this->role_access->normalize( $value );
+	}
+
+	/**
+	 * Detect stored role slugs that no longer exist in the current WordPress role registry.
+	 *
+	 * @param array<string> $roles Stored role slugs.
+	 * @phpstan-param list<string> $roles
+	 */
+	private function has_unregistered_role( array $roles ): bool {
+		$known = array_fill_keys( array_column( $this->role_access->available_roles(), 'id' ), true );
+		foreach ( $roles as $role ) {
+			if ( ! is_scalar( $role ) ) {
+				return true;
+			}
+			$role = sanitize_key( (string) $role );
+			if ( '' === $role || ! isset( $known[ $role ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}

@@ -30,6 +30,8 @@ use stdClass;
 final class WorkflowRunStore implements WorkflowRunStoreInterface {
 
 	private const STEP_LEASE_SECONDS = 30;
+	private const RETENTION_SECONDS  = 2592000;
+	private const PRUNE_LIMIT        = 25;
 
 	/**
 	 * Controlled UTC clock.
@@ -78,6 +80,7 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 		if ( $input->hash() !== $plan->input_hash() ) {
 			throw new WorkflowRunStoreException( 'input_plan_mismatch' );
 		}
+		$this->prune_retention();
 
 		$input_ciphertext = $this->seal( $input->canonical_json() );
 		$now              = $this->now_sql();
@@ -499,6 +502,126 @@ final class WorkflowRunStore implements WorkflowRunStoreInterface {
 			array( '%d', '%s' ),
 			array( '%s' )
 		);
+	}
+
+	/**
+	 * Delete a bounded batch of stale terminal or expired waiting runs.
+	 *
+	 * Run and step tables intentionally have no foreign key so the plugin can
+	 * install safely on existing WordPress databases. Delete child steps first
+	 * and only after selecting exact run identities, keeping output retention
+	 * bounded without touching active runs.
+	 */
+	private function prune_retention(): void {
+		global $wpdb;
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_col' ) || ! method_exists( $wpdb, 'query' ) ) {
+			return;
+		}
+
+		$now     = ( $this->clock )();
+		$now_sql = gmdate( 'Y-m-d H:i:s', $now );
+		$cutoff  = gmdate( 'Y-m-d H:i:s', $now - self::RETENTION_SECONDS );
+		$tables  = RunInstaller::table_names();
+		$this->fence_abandoned_running( $tables, $cutoff, $now_sql );
+		try {
+			$run_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					'SELECT id FROM %i WHERE ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s)) ORDER BY updated_at ASC, id ASC LIMIT %d',
+					$tables['runs'],
+					WorkflowRunState::CREATED->value,
+					WorkflowRunState::PREPARED->value,
+					WorkflowRunState::DRY_RUN_READY->value,
+					WorkflowRunState::COMPLETED->value,
+					WorkflowRunState::FAILED->value,
+					WorkflowRunState::CANCELLED->value,
+					$cutoff,
+					WorkflowRunState::WAITING_FOR_INPUT->value,
+					WorkflowRunState::WAITING_FOR_APPROVAL->value,
+					$now_sql,
+					self::PRUNE_LIMIT
+				)
+			);
+		} catch ( Throwable ) {
+			return;
+		}
+		if ( ! is_array( $run_ids ) ) {
+			return;
+		}
+
+		foreach ( $run_ids as $run_id ) {
+			$run_id = (int) $run_id;
+			if ( $run_id < 1 ) {
+				continue;
+			}
+			try {
+				$this->transaction->begin();
+				$deleted = $wpdb->query(
+					$wpdb->prepare(
+						'DELETE FROM %i WHERE id = %d AND ((state IN (%s, %s, %s, %s, %s, %s) AND updated_at < %s) OR (state IN (%s, %s) AND waiting_expires_at IS NOT NULL AND waiting_expires_at <= %s))',
+						$tables['runs'],
+						$run_id,
+						WorkflowRunState::CREATED->value,
+						WorkflowRunState::PREPARED->value,
+						WorkflowRunState::DRY_RUN_READY->value,
+						WorkflowRunState::COMPLETED->value,
+						WorkflowRunState::FAILED->value,
+						WorkflowRunState::CANCELLED->value,
+						$cutoff,
+						WorkflowRunState::WAITING_FOR_INPUT->value,
+						WorkflowRunState::WAITING_FOR_APPROVAL->value,
+						$now_sql
+					)
+				);
+				if ( false === $deleted ) {
+					throw new WorkflowRunStoreException( 'retention_delete_failed' );
+				}
+				if ( 1 === (int) $deleted ) {
+					$steps_deleted = $wpdb->query( $wpdb->prepare( 'DELETE FROM %i WHERE run_pk = %d', $tables['steps'], $run_id ) );
+					if ( false === $steps_deleted ) {
+						throw new WorkflowRunStoreException( 'retention_steps_delete_failed' );
+					}
+				}
+				$this->transaction->commit();
+			} catch ( Throwable ) {
+				$this->transaction->rollback();
+				// Retention is best effort; a storage outage must not block a new run.
+				continue;
+			}
+		}
+	}
+
+	/**
+	 * Fence stale running rows into an explicitly uncertain terminal state.
+	 *
+	 * @param array<string,string> $tables Table names.
+	 * @param string               $cutoff Retention cutoff.
+	 * @param string               $now_sql Current UTC timestamp.
+	 */
+	private function fence_abandoned_running( array $tables, string $cutoff, string $now_sql ): void {
+		global $wpdb;
+		try {
+			$updated = $wpdb->query(
+				$wpdb->prepare(
+					'UPDATE %i AS r SET state = %s, state_version = state_version + 1, outcome_code = %s, waiting_expires_at = NULL, updated_by = %d, updated_at = %s WHERE r.state = %s AND r.updated_at < %s AND NOT EXISTS (SELECT 1 FROM %i AS s WHERE s.run_pk = r.id AND s.state = %s AND (s.lease_expires_at IS NULL OR s.lease_expires_at > %s))',
+					$tables['runs'],
+					WorkflowRunState::FAILED->value,
+					'execution_uncertain',
+					0,
+					$now_sql,
+					WorkflowRunState::RUNNING->value,
+					$cutoff,
+					$tables['steps'],
+					WorkflowStepState::RUNNING->value,
+					$now_sql
+				)
+			);
+			if ( false === $updated ) {
+				return;
+			}
+		} catch ( Throwable $exception ) {
+			unset( $exception );
+			// Retention is best effort; an unavailable store must not block a new run.
+		}
 	}
 
 	/** Seal one bounded JSON payload. */

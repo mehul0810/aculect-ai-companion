@@ -326,6 +326,36 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertSame( 'Committed once', get_post( 123 )?->post_title );
 	}
 
+	public function test_workflow_mutation_confirmation_preview_never_dispatches_connector_callback(): void {
+		$safety = new ToolSafety( new InMemoryExecutionClaimStore() );
+		$safety->save_confirmation_groups( array( 'Custom Content Workflows' ) );
+		$gateway = new AbilityExecutionGateway( null, null, null, $safety );
+		$result  = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'content_workflow_execute',
+					'arguments' => array(
+						'run_id' => 'run-preview-only',
+						'input'  => array(),
+					),
+				),
+				array_merge(
+					$this->trusted_write_auth( 1 ),
+					array(
+						'access_level'             => '',
+						'write_permission_enabled' => false,
+					)
+				)
+			)
+		);
+
+		self::assertSame( AbilityExecutionGateway::OUTCOME_SUCCESS, $result->type );
+		self::assertSame( 'confirmation_required', $result->data['result']['status'] ?? '' );
+		self::assertTrue( $result->data['result']['preview']['preview_only'] ?? false );
+		self::assertTrue( $result->data['result']['preview']['mutation_blocked'] ?? false );
+		self::assertSame( 'content_workflow.execute', $result->data['result']['preview']['action'] ?? '' );
+	}
+
 	public function test_atomic_claim_returns_bounded_in_progress_without_dispatching_the_contender(): void {
 		$store  = new InMemoryExecutionClaimStore();
 		$safety = new ToolSafety( $store );

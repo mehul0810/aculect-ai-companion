@@ -9,6 +9,7 @@ use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
 use Aculect\AICompanion\Admin\LocalSampleData;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
+use Aculect\AICompanion\Admin\WorkflowAdminPage;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
@@ -101,6 +102,9 @@ final class Plugin {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin' ) );
 		add_action( 'admin_init', array( $this, 'register_user_access_controls' ) );
+		// admin-post.php does not build the admin menu before dispatching a
+		// mutation, so register workflow handlers during plugin boot as well.
+		( new WorkflowAdminPage() )->register_mutation_handlers();
 		add_filter( 'plugin_action_links_' . plugin_basename( ACULECT_AI_COMPANION_PLUGIN_FILE ), array( $this, 'add_plugin_action_links' ) );
 		( new WordPressAbilitiesRegistrar() )->register_hooks();
 		$this->register_settings_actions();
@@ -284,6 +288,7 @@ final class Plugin {
 	 */
 	public function register_admin(): void {
 		( new SettingsPage() )->register();
+		( new WorkflowAdminPage() )->register();
 	}
 
 	/**

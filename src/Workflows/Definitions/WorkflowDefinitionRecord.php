@@ -30,6 +30,10 @@ final readonly class WorkflowDefinitionRecord {
 	 * @param string             $created_at       Catalog creation timestamp.
 	 * @param string             $updated_at       Catalog update timestamp.
 	 * @param WorkflowDefinition $definition       Immutable definition snapshot.
+	 * @param array<int,string>  $allowed_roles    Optional workflow role allowlist.
+	 * @param int                $migrated_from_version Source revision for the stored migration preview.
+	 * @param string             $migration_id     Deterministic migration preview identifier.
+	 * @phpstan-param list<string> $allowed_roles
 	 */
 	public function __construct(
 		private int $id,
@@ -44,7 +48,10 @@ final readonly class WorkflowDefinitionRecord {
 		private int $lock_version,
 		private string $created_at,
 		private string $updated_at,
-		private WorkflowDefinition $definition
+		private WorkflowDefinition $definition,
+		private array $allowed_roles = array(),
+		private int $migrated_from_version = 0,
+		private string $migration_id = ''
 	) {
 	}
 
@@ -114,25 +121,49 @@ final readonly class WorkflowDefinitionRecord {
 	}
 
 	/**
+	 * Return the optional role allowlist for this immutable version.
+	 *
+	 * An empty list means the version inherits the existing ability policy.
+	 *
+	 * @return list<string>
+	 */
+	public function allowed_roles(): array {
+		return array_values( $this->allowed_roles );
+	}
+
+	/** Return the source version recorded for a migration preview. */
+	public function migrated_from_version(): int {
+		return $this->migrated_from_version;
+	}
+
+	/** Return the deterministic migration preview identifier. */
+	public function migration_id(): string {
+		return $this->migration_id;
+	}
+
+	/**
 	 * Return an admin/API-safe detached representation.
 	 *
 	 * @return array<string, mixed>
 	 */
 	public function to_array(): array {
 		return array(
-			'id'                => $this->id,
-			'workflow_id'       => $this->workflow_id,
-			'status'            => $this->status,
-			'latest_version'    => $this->latest_version,
-			'published_version' => $this->published_version,
-			'template_id'       => $this->template_id,
-			'template_version'  => $this->template_version,
-			'created_by'        => $this->created_by,
-			'updated_by'        => $this->updated_by,
-			'lock_version'      => $this->lock_version,
-			'created_at'        => $this->created_at,
-			'updated_at'        => $this->updated_at,
-			'definition'        => $this->definition->to_array(),
+			'id'                    => $this->id,
+			'workflow_id'           => $this->workflow_id,
+			'status'                => $this->status,
+			'latest_version'        => $this->latest_version,
+			'published_version'     => $this->published_version,
+			'template_id'           => $this->template_id,
+			'template_version'      => $this->template_version,
+			'created_by'            => $this->created_by,
+			'updated_by'            => $this->updated_by,
+			'lock_version'          => $this->lock_version,
+			'created_at'            => $this->created_at,
+			'updated_at'            => $this->updated_at,
+			'allowed_roles'         => $this->allowed_roles(),
+			'migrated_from_version' => $this->migrated_from_version,
+			'migration_id'          => $this->migration_id,
+			'definition'            => $this->definition->to_array(),
 		);
 	}
 }

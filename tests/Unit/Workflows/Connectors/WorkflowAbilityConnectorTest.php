@@ -1,0 +1,480 @@
+<?php
+/**
+ * Tests for the public custom workflow connector policy boundary.
+ *
+ * @package Aculect\AICompanion\Tests\Unit\Workflows\Connectors
+ */
+
+declare(strict_types=1);
+
+namespace Aculect\AICompanion\Tests\Unit\Workflows\Connectors;
+
+use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilityConnector;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilitySupport;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
+use Aculect\AICompanion\Workflows\Execution\WorkflowRunRecord;
+use Aculect\AICompanion\Workflows\Execution\WorkflowRunStoreInterface;
+use Aculect\AICompanion\Workflows\Planning\WorkflowRunState;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Verifies saved role narrowing is enforced by the live connector methods,
+ * while empty allowlists continue to inherit the existing global policy.
+ */
+final class WorkflowAbilityConnectorTest extends TestCase {
+
+	protected function setUp(): void {
+		parent::setUp();
+		$GLOBALS['aculect_ai_companion_test_roles'] = array(
+			'administrator' => array( 'name' => 'Administrator' ),
+			'editor'        => array( 'name' => 'Editor' ),
+			'author'        => array( 'name' => 'Author' ),
+		);
+		$GLOBALS['aculect_ai_companion_test_users'] = array(
+			7 => (object) array(
+				'ID'    => 7,
+				'roles' => array( 'editor' ),
+			),
+			8 => (object) array(
+				'ID'    => 8,
+				'roles' => array( 'author' ),
+			),
+			9 => (object) array(
+				'ID'    => 9,
+				'roles' => array( 'administrator' ),
+			),
+		);
+	}
+
+	public function test_list_filters_restricted_records_and_preserves_repository_lookahead(): void {
+		$records = array(
+			$this->record( 'author_workflow', array( 'author' ) ),
+			$this->record( 'editor_workflow', array( 'editor' ) ),
+			$this->record( 'open_workflow', array( 'author' ) ),
+		);
+		$pages   = array(
+			1 => array_slice( $records, 0, 2 ),
+			2 => array_slice( $records, 1, 2 ),
+			3 => array(),
+		);
+		$calls   = array();
+		$repo    = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( &$calls, $pages ): array {
+				$calls[] = $filters;
+
+				return $pages[ (int) ( $filters['page'] ?? 0 ) ] ?? array();
+			}
+		);
+
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 7 )
+		);
+		$result    = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => 1,
+			)
+		);
+
+		self::assertSame( 'ok', $result['status'] ?? null );
+		self::assertSame( array( 'editor_workflow' ), array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+		self::assertFalse( (bool) ( $result['pagination']['has_more'] ?? true ) );
+		self::assertSame( 1, $calls[0]['page_stride'] ?? null );
+		self::assertSame( 2, $calls[0]['per_page'] ?? null );
+		self::assertSame( array( 1, 2, 3 ), array_column( $calls, 'page' ) );
+	}
+
+	/**
+	 * Follow visible pages to exhaustion when denied rows surround allowed rows.
+	 *
+	 * The mock applies the repository's limit+1/page_stride contract, including
+	 * the one-row overlap that prevents an unfiltered lookahead from being
+	 * skipped. The connector must expose a duplicate-free filtered sequence for
+	 * both supported page sizes.
+	 */
+	public function test_filtered_pagination_follows_next_page_without_duplicates_at_limits_one_and_two(): void {
+		$source = array(
+			$this->record( 'denied_leading', array( 'editor' ) ),
+			$this->record( 'allowed_one', array( 'author' ) ),
+			$this->record( 'denied_interleaved', array( 'editor' ) ),
+			$this->record( 'allowed_two', array( 'author' ) ),
+			$this->record( 'allowed_three', array( 'author' ) ),
+			$this->record( 'denied_trailing', array( 'editor' ) ),
+		);
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		foreach ( array( 1, 2 ) as $limit ) {
+			$ids  = array();
+			$page = 1;
+			do {
+				$result = $connector->list_workflows(
+					array(
+						'limit' => $limit,
+						'page'  => $page,
+					)
+				);
+				self::assertSame( 'ok', $result['status'] ?? null );
+				$ids  = array_merge( $ids, array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+				$next = $result['pagination']['next_page'] ?? null;
+				$page = $next;
+			} while ( is_int( $page ) );
+
+			self::assertSame( array( 'allowed_one', 'allowed_two', 'allowed_three' ), $ids, 'Filtered pagination must not repeat or skip visible rows at limit ' . $limit );
+		}
+	}
+
+	/**
+	 * A sparse visible sequence must fail closed when the bounded source scan is
+	 * exhausted instead of returning a successful page with a looping next_page.
+	 */
+	public function test_scan_ceiling_returns_incomplete_error_without_continuation(): void {
+		$denied  = $this->record( 'denied_workflow', array( 'editor' ) );
+		$allowed = $this->record( 'boundary_workflow', array( 'author' ) );
+		$calls   = 0;
+		$repo    = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( &$calls, $denied, $allowed ): array {
+				++$calls;
+				if ( WorkflowAbilitySupport::MAX_PAGE === (int) ( $filters['page'] ?? 0 ) ) {
+					return array( $denied, $allowed );
+				}
+
+				return array( $denied, $denied );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => 1,
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] ?? null );
+		self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+		self::assertTrue( (bool) ( $result['bounded'] ?? false ) );
+		self::assertTrue( (bool) ( $result['incomplete'] ?? false ) );
+		self::assertTrue( (bool) ( $result['pagination']['has_more'] ?? false ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
+		self::assertSame( 0, $result['pagination']['returned'] ?? null );
+		self::assertArrayNotHasKey( 'custom_workflows', $result );
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $calls );
+	}
+
+	/**
+	 * MAX_PAGE and a clamped one-beyond request must have the same explicit
+	 * bounded result and must never create an actionable continuation.
+	 */
+	public function test_scan_ceiling_at_max_page_and_one_beyond_is_non_terminal(): void {
+		$denied = $this->record( 'denied_workflow', array( 'editor' ) );
+		$calls  = 0;
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function () use ( &$calls, $denied ): array {
+				++$calls;
+
+				return array( $denied, $denied );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		foreach ( array( WorkflowAbilitySupport::MAX_PAGE, WorkflowAbilitySupport::MAX_PAGE + 1 ) as $requested_page ) {
+			$result = $connector->list_workflows(
+				array(
+					'limit' => 1,
+					'page'  => $requested_page,
+				)
+			);
+
+			self::assertSame( 'error', $result['status'] ?? null );
+			self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+			self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $result['pagination']['page'] ?? null );
+			self::assertNull( $result['pagination']['next_page'] ?? null );
+		}
+
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE * 2, $calls );
+	}
+
+	/**
+	 * A completely denied but finite source is a valid empty result, not a
+	 * scan-limit error or a false continuation.
+	 */
+	public function test_all_denied_source_exhaustion_returns_empty_terminal_page(): void {
+		$denied = $this->record( 'denied_workflow', array( 'editor' ) );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturn( array( $denied ) );
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => 1,
+			)
+		);
+
+		self::assertSame( 'ok', $result['status'] ?? null );
+		self::assertSame( array(), $result['custom_workflows'] ?? null );
+		self::assertFalse( (bool) ( $result['pagination']['has_more'] ?? true ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
+	}
+
+	/**
+	 * A lookahead at the public page ceiling must not advertise page MAX+1.
+	 * Page MAX+1 is clamped to the same bounded page and must remain non-terminal.
+	 */
+	public function test_public_max_page_with_lookahead_returns_incomplete_error(): void {
+		$source = $this->source_records( WorkflowAbilitySupport::MAX_PAGE + 1 );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$page_before_ceiling = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => WorkflowAbilitySupport::MAX_PAGE - 1,
+			)
+		);
+		self::assertSame( 'ok', $page_before_ceiling['status'] ?? null );
+		self::assertSame( array( 'visible_0999' ), array_column( $page_before_ceiling['custom_workflows'] ?? array(), 'workflow_id' ) );
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $page_before_ceiling['pagination']['next_page'] ?? null );
+
+		foreach ( array( WorkflowAbilitySupport::MAX_PAGE, WorkflowAbilitySupport::MAX_PAGE + 1 ) as $requested_page ) {
+			$result = $connector->list_workflows(
+				array(
+					'limit' => 1,
+					'page'  => $requested_page,
+				)
+			);
+
+			self::assertSame( 'error', $result['status'] ?? null );
+			self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+			self::assertTrue( (bool) ( $result['incomplete'] ?? false ) );
+			self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $result['pagination']['page'] ?? null );
+			self::assertTrue( (bool) ( $result['pagination']['has_more'] ?? false ) );
+			self::assertNull( $result['pagination']['next_page'] ?? null );
+		}
+	}
+
+	/**
+	 * A source that ends exactly at MAX_PAGE remains a valid terminal page.
+	 */
+	public function test_public_max_page_without_lookahead_remains_terminal(): void {
+		$source = $this->source_records( WorkflowAbilitySupport::MAX_PAGE );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( $source ): array {
+				$stride = max( 1, (int) ( $filters['page_stride'] ?? 1 ) );
+				$page   = max( 1, (int) ( $filters['page'] ?? 1 ) );
+
+				return array_slice( $source, ( $page - 1 ) * $stride, (int) ( $filters['per_page'] ?? $stride ) );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => WorkflowAbilitySupport::MAX_PAGE,
+			)
+		);
+
+		self::assertSame( 'ok', $result['status'] ?? null );
+		self::assertSame( array( 'visible_1000' ), array_column( $result['custom_workflows'] ?? array(), 'workflow_id' ) );
+		self::assertFalse( (bool) ( $result['pagination']['has_more'] ?? true ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
+	}
+
+	public function test_get_and_prepare_hide_a_workflow_from_an_excluded_role(): void {
+		$restricted = $this->record( 'editor_workflow', array( 'editor' ) );
+		$repo       = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'get_published' )->with( 'editor_workflow' )->willReturn( $restricted );
+		$runs = $this->createMock( WorkflowRunStoreInterface::class );
+		$runs->expects( self::never() )->method( 'create' );
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			runs: $runs,
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$get = $connector->get( array( 'workflow_id' => 'editor_workflow' ) );
+		self::assertSame( 'workflow_not_found', $get['error'] ?? null );
+
+		$prepare = $connector->prepare(
+			array(
+				'workflow_id' => 'editor_workflow',
+				'input'       => (object) array(),
+			)
+		);
+		self::assertSame( 'workflow_not_found', $prepare['error'] ?? null );
+	}
+
+	public function test_empty_allowlist_and_administrator_inherit_global_access(): void {
+		$open       = $this->record( 'open_workflow' );
+		$restricted = $this->record( 'editor_workflow', array( 'editor' ) );
+		$repo       = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'get_published' )->willReturnMap(
+			array(
+				array( 'open_workflow', $open ),
+				array( 'editor_workflow', $restricted ),
+			)
+		);
+
+		$author_connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+		$admin_connector  = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 9 )
+		);
+
+		self::assertSame( 'ok', $author_connector->get( array( 'workflow_id' => 'open_workflow' ) )['status'] ?? null );
+		self::assertSame( 'workflow_not_found', $author_connector->get( array( 'workflow_id' => 'editor_workflow' ) )['error'] ?? null );
+		self::assertSame( 'ok', $admin_connector->get( array( 'workflow_id' => 'editor_workflow' ) )['status'] ?? null );
+	}
+
+	/**
+	 * Every run operation must apply the role check before planning or mutation.
+	 */
+	public function test_all_run_operations_reject_a_stale_or_excluded_role(): void {
+		$restricted = $this->record( 'editor_workflow', array( 'editor' ) );
+		$repo       = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'get' )->with( 'editor_workflow', 1, true )->willReturn( $restricted );
+		$run  = new WorkflowRunRecord(
+			1,
+			'role-run',
+			'editor_workflow',
+			1,
+			$restricted->definition()->checksum(),
+			str_repeat( 'a', 64 ),
+			str_repeat( 'b', 64 ),
+			WorkflowRunState::PREPARED,
+			1,
+			null,
+			null,
+			8,
+			8,
+			'2026-08-31 00:00:00',
+			'2026-08-31 00:00:00'
+		);
+		$runs = $this->createMock( WorkflowRunStoreInterface::class );
+		$runs->method( 'get' )->with( 'role-run' )->willReturn( $run );
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			runs: $runs,
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$args = array(
+			'run_id' => 'role-run',
+			'input'  => (object) array(),
+		);
+		foreach ( array( 'dry_run', 'execute', 'resume', 'cancel', 'status', 'result' ) as $operation ) {
+			$result = $connector->{$operation}( $args );
+
+			self::assertSame( 'error', $result['status'] ?? null, $operation );
+			self::assertSame( 'workflow_forbidden', $result['error'] ?? null, $operation );
+		}
+	}
+
+	/**
+	 * Build a published record with the requested workflow-level role policy.
+	 *
+	 * @param string            $workflow_id Stable workflow identifier.
+	 * @param array<int,string> $allowed_roles Stored role allowlist.
+	 * @phpstan-param list<string> $allowed_roles
+	 */
+	private function record( string $workflow_id, array $allowed_roles = array() ): WorkflowDefinitionRecord {
+		$json = file_get_contents( dirname( __DIR__, 3 ) . '/fixtures/workflows/definitions/proposal-only-v1.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Repository-owned fixture.
+		self::assertIsString( $json );
+		$value                = json_decode( $json, true );
+		$value['workflow_id'] = $workflow_id;
+		$value['status']      = 'published';
+		$value['created_by']  = 7;
+		$value['updated_by']  = 7;
+		$definition           = WorkflowDefinition::from_array( $value );
+
+		return new WorkflowDefinitionRecord(
+			1,
+			$workflow_id,
+			'published',
+			1,
+			1,
+			'',
+			0,
+			7,
+			7,
+			1,
+			'2026-08-31 00:00:00',
+			'2026-08-31 00:00:00',
+			$definition,
+			$allowed_roles
+		);
+	}
+
+	/**
+	 * Build a bounded ordered source for pagination-ceiling tests.
+	 *
+	 * @param int $count Number of visible records.
+	 * @return list<WorkflowDefinitionRecord>
+	 */
+	private function source_records( int $count ): array {
+		$records = array();
+		for ( $index = 1; $index <= $count; ++$index ) {
+			$records[] = $this->record( sprintf( 'visible_%04d', $index ), array( 'author' ) );
+		}
+
+		return $records;
+	}
+}

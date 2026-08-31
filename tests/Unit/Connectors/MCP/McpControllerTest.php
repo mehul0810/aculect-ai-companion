@@ -1099,7 +1099,6 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'resources', $result['capabilities'] );
 		self::assertFalse( $result['capabilities']['resources']['listChanged'] );
 	}
-
 	public function test_intelligence_tools_advertise_output_schemas(): void {
 		$result = $this->list_tools_manifest();
 
@@ -1131,7 +1130,6 @@ final class McpControllerTest extends TestCase {
 	public function test_operational_and_workflow_tools_advertise_output_schemas(): void {
 		$result        = $this->list_tools_manifest();
 		$tools_by_name = array_column( $result['tools'], null, 'name' );
-
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['search'] );
 		self::assertArrayHasKey( 'results', $tools_by_name['search']['outputSchema']['properties'] );
 		self::assertSame( array( 'results' ), $tools_by_name['search']['outputSchema']['required'] );
@@ -1142,7 +1140,6 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'text', $tools_by_name['fetch']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'url', $tools_by_name['fetch']['outputSchema']['properties'] );
 		self::assertFalse( $tools_by_name['fetch']['outputSchema']['additionalProperties'] );
-
 		foreach ( array( 'content_create_item', 'content_update_item', 'content_update_block', 'content_update_seo', 'content_workflow_create_draft', 'seo_workflow_update_rankmath' ) as $name ) {
 			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
 			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
@@ -1151,12 +1148,15 @@ final class McpControllerTest extends TestCase {
 			self::assertArrayHasKey( 'confirmation_policy', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 			self::assertArrayHasKey( 'write_permission_enabled', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
 		}
-
+		foreach ( array( 'content_workflow_list', 'content_workflow_get', 'content_workflow_prepare', 'content_workflow_dry_run', 'content_workflow_execute', 'content_workflow_resume', 'content_workflow_cancel', 'content_workflow_status', 'content_workflow_result' ) as $name ) {
+			self::assertArrayHasKey( 'outputSchema', $tools_by_name[ $name ], $name );
+			self::assertArrayHasKey( 'status', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+			self::assertArrayHasKey( 'bounded', $tools_by_name[ $name ]['outputSchema']['properties'], $name );
+		}
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['site_workflow_audit'] );
 		self::assertArrayHasKey( 'findings', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'summary', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'operation_entries', $tools_by_name['site_workflow_audit']['outputSchema']['properties'] );
-
 		self::assertArrayHasKey( 'outputSchema', $tools_by_name['content_list_items'] );
 		self::assertArrayHasKey( 'items', $tools_by_name['content_list_items']['outputSchema']['properties'] );
 		self::assertArrayHasKey( 'total', $tools_by_name['content_list_items']['outputSchema']['properties'] );

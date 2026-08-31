@@ -1,0 +1,145 @@
+<?php
+/**
+ * WordPress SQLite integration proof for workflow run storage.
+ *
+ * @package Aculect\AICompanion\Tests\Integration\Workflows
+ */
+
+use Aculect\AICompanion\Workflows\Database\RunInstaller;
+use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
+use Aculect\AICompanion\Workflows\Execution\WorkflowRunStore;
+use Aculect\AICompanion\Workflows\Planning\WorkflowInputContract;
+use Aculect\AICompanion\Workflows\Planning\WorkflowPlanBuilder;
+use Aculect\AICompanion\Workflows\Planning\WorkflowRunState;
+
+defined( 'ABSPATH' ) || exit;
+
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped, WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI-only bounded proof output.
+// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The SQLite transaction boundary is the subject under proof.
+
+global $wpdb;
+if ( ! class_exists( 'WP_SQLite_DB' ) || ! $wpdb instanceof \WP_SQLite_DB ) {
+	throw new RuntimeException( 'The WordPress SQLite integration adapter is not active.' );
+}
+
+if ( ! RunInstaller::install() ) {
+	throw new RuntimeException( 'RunInstaller failed on WP_SQLite_DB.' );
+}
+
+$tables = RunInstaller::table_names();
+
+$run_id        = 'sqlite-proof-run';
+$approval_hash = str_repeat( 'd', 64 );
+if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
+	throw new RuntimeException( 'SQLite transaction did not start.' );
+}
+$inserted = $wpdb->insert(
+	$tables['runs'],
+	array(
+		'run_id'                  => $run_id,
+		'workflow_id'             => 'sqlite_workflow_proof',
+		'workflow_version'        => 1,
+		'definition_checksum'     => str_repeat( 'a', 64 ),
+		'plan_hash'               => str_repeat( 'b', 64 ),
+		'input_hash'              => str_repeat( 'c', 64 ),
+		'input_ciphertext'        => 'v1:proof',
+		'state'                   => 'running',
+		'state_version'           => 1,
+		'approval_reference_hash' => $approval_hash,
+		'created_by'              => 1,
+		'updated_by'              => 1,
+	),
+	array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%d' )
+);
+if ( false === $inserted ) {
+	$wpdb->query( 'ROLLBACK' );
+	throw new RuntimeException( 'SQLite parent insert failed (approval column/schema translation).' );
+}
+$stored_approval_hash = (string) $wpdb->get_var( $wpdb->prepare( 'SELECT approval_reference_hash FROM %i WHERE run_id = %s', $tables['runs'], $run_id ) );
+if ( $approval_hash !== $stored_approval_hash ) {
+	$wpdb->query( 'ROLLBACK' );
+	throw new RuntimeException( 'SQLite approval_reference_hash did not round-trip through the translated schema.' );
+}
+$run_pk        = (int) $wpdb->insert_id;
+$step_inserted = $wpdb->insert(
+	$tables['steps'],
+	array(
+		'run_pk'          => $run_pk,
+		'step_id'         => 'sqlite_step',
+		'step_position'   => 0,
+		'adapter_id'      => 'proof_adapter',
+		'adapter_version' => 1,
+		'ability_id'      => 'proof/ability',
+		'kind'            => 'read',
+	),
+	array( '%d', '%s', '%d', '%s', '%d', '%s', '%s' )
+);
+if ( false === $step_inserted || false === $wpdb->query( 'ROLLBACK' ) ) {
+	throw new RuntimeException( 'SQLite child insert or rollback failed.' );
+}
+
+$remaining = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_id = %s', $tables['runs'], $run_id ) );
+if ( 0 !== $remaining ) {
+	throw new RuntimeException( 'SQLite rollback left durable workflow rows behind.' );
+}
+
+$fixture_path = dirname( __DIR__, 3 ) . '/tests/fixtures/workflows/definitions/proposal-only-v1.json';
+$fixture_json = file_get_contents( $fixture_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Repository-owned proof fixture.
+if ( ! is_string( $fixture_json ) ) {
+	throw new RuntimeException( 'Could not load the bounded retention proof fixture.' );
+}
+$definition = WorkflowDefinition::from_json( $fixture_json );
+$input      = WorkflowInputContract::from_json( '{"post_id":9}' );
+$plan       = ( new WorkflowPlanBuilder() )->build( $definition, $input );
+
+$stale_run_id   = 'sqlite-retention-run';
+$stale_inserted = $wpdb->insert(
+	$tables['runs'],
+	array(
+		'run_id'              => $stale_run_id,
+		'workflow_id'         => 'proposal_only_fixture',
+		'workflow_version'    => 1,
+		'definition_checksum' => $definition->checksum(),
+		'plan_hash'           => $plan->hash(),
+		'input_hash'          => $input->hash(),
+		'input_ciphertext'    => 'v1:retention-proof',
+		'state'               => 'completed',
+		'state_version'       => 2,
+		'outcome_code'        => 'completed',
+		'created_by'          => 7,
+		'updated_by'          => 7,
+		'created_at'          => '2020-01-01 00:00:00',
+		'updated_at'          => '2020-01-01 00:00:00',
+	),
+	array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%d', '%d', '%s', '%s' )
+);
+if ( false === $stale_inserted ) {
+	throw new RuntimeException( 'Could not seed the stale SQLite retention run.' );
+}
+$stale_pk            = (int) $wpdb->insert_id;
+$stale_step_inserted = $wpdb->insert(
+	$tables['steps'],
+	array(
+		'run_pk'          => $stale_pk,
+		'step_id'         => 'sqlite_retention_step',
+		'step_position'   => 0,
+		'adapter_id'      => 'proof_adapter',
+		'adapter_version' => 1,
+		'ability_id'      => 'proof/ability',
+		'kind'            => 'read',
+	),
+	array( '%d', '%s', '%d', '%s', '%d', '%s', '%s' )
+);
+if ( false === $stale_step_inserted || $stale_pk < 1 ) {
+	throw new RuntimeException( 'Could not seed the stale SQLite retention step.' );
+}
+
+$retention_store = new WorkflowRunStore( null, static fn (): int => strtotime( '2026-08-29 00:00:00 UTC' ) );
+$retention_store->create( 'sqlite-retention-trigger', 'proposal_only_fixture', 1, $definition->checksum(), $plan, $input, WorkflowRunState::PREPARED, 7 );
+$stale_parent_count = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_id = %s', $tables['runs'], $stale_run_id ) );
+$stale_step_count   = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE run_pk = %d', $tables['steps'], $stale_pk ) );
+if ( 0 !== $stale_parent_count || 0 !== $stale_step_count ) {
+	throw new RuntimeException( 'SQLite retention did not remove the stale parent and child rows transactionally.' );
+}
+
+echo 'PASS WP_SQLite_DB workflow installer and transaction proof (' . get_class( $wpdb ) . ')' . PHP_EOL;

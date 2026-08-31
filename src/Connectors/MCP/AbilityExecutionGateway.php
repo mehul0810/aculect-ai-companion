@@ -443,7 +443,9 @@ final class AbilityExecutionGateway {
 		if ( null !== $claim_result ) {
 			$result = $claim_result;
 		} elseif ( $is_dry_run ) {
-			$result = $this->execute_tool( $tool, $args, $is_intelligence_tool, $auth );
+			$result = $this->is_workflow_mutation_tool( $tool )
+				? $this->workflow_preview_payload( $tool )
+				: $this->execute_tool( $tool, $args, $is_intelligence_tool, $auth );
 			if ( ! isset( $result['error'] ) ) {
 				if ( $write_permission_unblocked ) {
 					$result = $this->write_permission_preview_payload( $result );
@@ -456,7 +458,9 @@ final class AbilityExecutionGateway {
 		} elseif ( $needs_confirmation_gate ) {
 			$preview_args            = $this->safety->strip_control_args( $args );
 			$preview_args['dry_run'] = true;
-			$preview                 = $this->execute_tool( $tool, $preview_args, $is_intelligence_tool, $auth );
+			$preview                 = $this->is_workflow_mutation_tool( $tool )
+				? $this->workflow_preview_payload( $tool )
+				: $this->execute_tool( $tool, $preview_args, $is_intelligence_tool, $auth );
 			$result                  = isset( $preview['error'] )
 				? $preview
 					: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
@@ -510,6 +514,35 @@ final class AbilityExecutionGateway {
 			'result'                 => $result,
 			'args'                   => $args,
 			'trusted_write_executed' => $trusted_write_executed,
+		);
+	}
+
+	/**
+	 * Return whether a workflow mutation must never preview by callback.
+	 *
+	 * Workflow callbacks can advance durable runs. Generic dry-run and
+	 * confirmation requests therefore receive metadata only; callers use the
+	 * dedicated workflow dry-run operation for a step-level preview.
+	 *
+	 * @param string $tool Internal workflow ability ID.
+	 */
+	private function is_workflow_mutation_tool( string $tool ): bool {
+		return in_array( $tool, array( 'content_workflow.execute', 'content_workflow.resume', 'content_workflow.cancel' ), true );
+	}
+
+	/**
+	 * Build a metadata-only preview for a workflow mutation.
+	 *
+	 * @param string $tool Internal workflow tool ID.
+	 * @return array<string,mixed>
+	 */
+	private function workflow_preview_payload( string $tool ): array {
+		return array(
+			'status'           => 'preview',
+			'action'           => $tool,
+			'preview_only'     => true,
+			'mutation_blocked' => true,
+			'message'          => 'Workflow mutation previews are metadata-only. Use content_workflow.dry_run for the planned steps.',
 		);
 	}
 

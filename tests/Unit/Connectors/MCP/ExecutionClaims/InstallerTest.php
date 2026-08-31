@@ -190,8 +190,9 @@ final class ExecutionClaimsInstallerWpdb {
 		return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
 	}
 	public function query( string $query ): int {
-		unset( $query );
-		$this->table_exists = false;
+		if ( str_contains( strtoupper( $query ), 'DROP TABLE' ) ) {
+			$this->table_exists = false;
+		}
 		return 1;
 	}
 }

@@ -27,6 +27,7 @@ final class CustomWorkflowOutputSchema {
 				'error'               => array( 'type' => 'string' ),
 				'message'             => array( 'type' => 'string' ),
 				'bounded'             => array( 'type' => 'boolean' ),
+				'incomplete'          => array( 'type' => 'boolean' ),
 				'custom_workflows'    => array( 'type' => 'array' ),
 				'fixed_guides'        => array( 'type' => 'array' ),
 				'workflow'            => array( 'type' => 'object' ),

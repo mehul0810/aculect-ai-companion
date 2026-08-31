@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Workflows\Connectors;
 
 use Aculect\AICompanion\Workflows\Adapters\WorkflowAdapterRegistry;
 use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilityConnector;
+use Aculect\AICompanion\Workflows\Connectors\WorkflowAbilitySupport;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinition;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRecord;
 use Aculect\AICompanion\Workflows\Definitions\WorkflowDefinitionRepositoryInterface;
@@ -139,6 +140,114 @@ final class WorkflowAbilityConnectorTest extends TestCase {
 
 			self::assertSame( array( 'allowed_one', 'allowed_two', 'allowed_three' ), $ids, 'Filtered pagination must not repeat or skip visible rows at limit ' . $limit );
 		}
+	}
+
+	/**
+	 * A sparse visible sequence must fail closed when the bounded source scan is
+	 * exhausted instead of returning a successful page with a looping next_page.
+	 */
+	public function test_scan_ceiling_returns_incomplete_error_without_continuation(): void {
+		$denied  = $this->record( 'denied_workflow', array( 'editor' ) );
+		$allowed = $this->record( 'boundary_workflow', array( 'author' ) );
+		$calls   = 0;
+		$repo    = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function ( array $filters ) use ( &$calls, $denied, $allowed ): array {
+				++$calls;
+				if ( WorkflowAbilitySupport::MAX_PAGE === (int) ( $filters['page'] ?? 0 ) ) {
+					return array( $denied, $allowed );
+				}
+
+				return array( $denied, $denied );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => 1,
+			)
+		);
+
+		self::assertSame( 'error', $result['status'] ?? null );
+		self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+		self::assertTrue( (bool) ( $result['bounded'] ?? false ) );
+		self::assertTrue( (bool) ( $result['incomplete'] ?? false ) );
+		self::assertTrue( (bool) ( $result['pagination']['has_more'] ?? false ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
+		self::assertSame( 0, $result['pagination']['returned'] ?? null );
+		self::assertArrayNotHasKey( 'custom_workflows', $result );
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $calls );
+	}
+
+	/**
+	 * MAX_PAGE and a clamped one-beyond request must have the same explicit
+	 * bounded result and must never create an actionable continuation.
+	 */
+	public function test_scan_ceiling_at_max_page_and_one_beyond_is_non_terminal(): void {
+		$denied = $this->record( 'denied_workflow', array( 'editor' ) );
+		$calls  = 0;
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturnCallback(
+			static function () use ( &$calls, $denied ): array {
+				++$calls;
+
+				return array( $denied, $denied );
+			}
+		);
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		foreach ( array( WorkflowAbilitySupport::MAX_PAGE, WorkflowAbilitySupport::MAX_PAGE + 1 ) as $requested_page ) {
+			$result = $connector->list_workflows(
+				array(
+					'limit' => 1,
+					'page'  => $requested_page,
+				)
+			);
+
+			self::assertSame( 'error', $result['status'] ?? null );
+			self::assertSame( 'workflow_list_scan_limit', $result['error'] ?? null );
+			self::assertSame( WorkflowAbilitySupport::MAX_PAGE, $result['pagination']['page'] ?? null );
+			self::assertNull( $result['pagination']['next_page'] ?? null );
+		}
+
+		self::assertSame( WorkflowAbilitySupport::MAX_PAGE * 2, $calls );
+	}
+
+	/**
+	 * A completely denied but finite source is a valid empty result, not a
+	 * scan-limit error or a false continuation.
+	 */
+	public function test_all_denied_source_exhaustion_returns_empty_terminal_page(): void {
+		$denied = $this->record( 'denied_workflow', array( 'editor' ) );
+		$repo   = $this->createMock( WorkflowDefinitionRepositoryInterface::class );
+		$repo->method( 'list_published' )->willReturn( array( $denied ) );
+		$connector = new WorkflowAbilityConnector(
+			definitions: $repo,
+			adapters: new WorkflowAdapterRegistry( array() ),
+			auth_provider: static fn (): array => array( 'user_id' => 8 )
+		);
+
+		$result = $connector->list_workflows(
+			array(
+				'limit' => 1,
+				'page'  => 1,
+			)
+		);
+
+		self::assertSame( 'ok', $result['status'] ?? null );
+		self::assertSame( array(), $result['custom_workflows'] ?? null );
+		self::assertFalse( (bool) ( $result['pagination']['has_more'] ?? true ) );
+		self::assertNull( $result['pagination']['next_page'] ?? null );
 	}
 
 	public function test_get_and_prepare_hide_a_workflow_from_an_excluded_role(): void {

@@ -278,7 +278,7 @@ Composer dependencies for production releases are installed with:
 = 0.8.0 =
 
 * Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.
-* Added internal custom-workflow foundations for immutable definitions, deterministic planning and readiness, private read/proposal adapters, and Phase-A definition-storage schema/installer groundwork. No definition rows, runner, custom-workflow administration, or public connector tools are included yet.
+* Added custom-workflow definitions, deterministic planning and readiness, private read/proposal adapters, Phase-A definition-storage schema/installer groundwork, a durable runner, native adapter catalog, bounded audit trail, guarded administration, and a public workflow connector surface. Runtime execution remains permission-aware and approval-gated.
 * Improved eligible public third-party WordPress Ability exposure with explicit administrator policy, safe read-only/non-destructive defaults, and fail-closed malformed metadata.
 * Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.
 * Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.

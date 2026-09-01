@@ -16,6 +16,7 @@
 - `SettingsPage` owns settings-page orchestration, tab hydration, sample-data application, actions, routes, and permissions. Focused read-only payload builders may own one tab's query, filtering, and response projection without registering hooks or changing the public payload contract.
 - `SettingsActivityPayloadBuilder` owns only the Activity tab's bounded filters, repository reads, empty shape, and pagination URLs. It must not query Activity storage for other tabs or own sample-data, action, nonce, REST, persistence, or asset behavior.
 - `SettingsConnectionPayloadBuilder` owns only the effective-ability projection for active and revoked connection rows. It must not own session persistence, tab hydration, sample-data, actions, nonces, REST routes, or asset behavior.
+- `SettingsDiagnosticsPayloadBuilder` owns only the diagnostics tab's bounded OAuth-capacity and log pagination reads, empty log shape, and navigation URLs. It receives the settings base URL and must not own sample-data, actions, nonces, REST routes, persistence, or asset behavior.
 
 ## Release Expectations
 - Design-visible changes need screenshot proof or an explicit proof gap recorded in the issue or PR.

@@ -17,7 +17,7 @@
 - `0.8.0` is the final metadata candidate on `release/0.8.0`, which was created at exact superseded `release/0.7.3` tip `3c9108c5a518cd64d0681e052e2a0f8296f2e498` so every reviewed 0.7.3 change is inherited without replay or tree drift.
 - The inherited scope includes safe WordPress Abilities controls, MCP 2026-07-28 transport and schema compatibility, provider interoperability, dependency/tooling remediation, and bounded reliability hardening.
 - The train includes packaged WordPress 7.1 final compatibility proof for native Abilities lifecycle execution, client-safe schema preparation, editor integration, and Connect keyboard behavior.
-- The final candidate includes the reviewed OAuth issuer/DCR boundary and internal custom-workflow definition, planning, readiness, private read/proposal adapter, and Phase-A schema/installer foundations. Workflow runner, administration, approvals/audit, and public workflow connector work remain separately owner-gated and are not part of 0.8.0.
+- The release branch includes the reviewed OAuth issuer/DCR boundary and the custom-workflow definition, planning, readiness, private read/proposal adapter, Phase-A schema/installer foundations, durable runner, native adapter catalog, bounded audit trail, guarded administration, and public workflow connector surfaces. These capabilities remain permission-aware and approval-gated at runtime.
 - Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`; do not claim it in 0.8.0.
 - The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog are synchronized to the `0.8.0` metadata candidate. Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.
 

@@ -261,7 +261,7 @@ final class SettingsPage {
 			'connectionRequests' => $this->connection_requests(),
 			'providers'          => $this->providers(),
 			'status'             => $this->status(),
-			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
+			'diagnostics'        => ( new SettingsDiagnosticsPayloadBuilder( $this->settings_url() ) )->build( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
 			'roleAbilities'      => $this->role_abilities_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
@@ -1214,90 +1214,6 @@ final class SettingsPage {
 			'status'              => 'disabled',
 			'pendingCount'        => 0,
 			'items'               => array(),
-		);
-	}
-
-	/**
-	 * Return diagnostic settings and the current log page for the React app.
-	 *
-	 * @param bool $include_logs Whether to load paginated log rows.
-	 * @return array<string, mixed>
-	 */
-	private function diagnostics( bool $include_logs = false ): array {
-		$enabled  = LogSettings::is_enabled();
-		$oauth    = new ClientRepository();
-		$capacity = $oauth->capacity_status();
-
-		return array(
-			'loggingEnabled' => $enabled,
-			'retentionDays'  => LogSettings::retention_days(),
-			'oauthClients'   => array(
-				'capacity'    => $capacity,
-				'recoverable' => $capacity['recoverable'] > 0
-					? $oauth->list_recoverable_clients()
-					: array(),
-			),
-			'logs'           => $enabled && $include_logs
-				? $this->logs_payload()
-				: $this->empty_logs_payload(),
-		);
-	}
-
-	/**
-	 * Return a paginated diagnostic log payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function logs_payload(): array {
-		$repository = new LogRepository();
-		$per_page   = 50;
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination parameter.
-		$page        = isset( $_GET['logs_page'] ) ? max( 1, absint( $_GET['logs_page'] ) ) : 1;
-		$total       = $repository->count();
-		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
-		$page        = min( $page, $total_pages );
-
-		return array(
-			'items'      => $repository->list( $page, $per_page ),
-			'total'      => $total,
-			'page'       => $page,
-			'perPage'    => $per_page,
-			'totalPages' => $total_pages,
-			'prevUrl'    => $page > 1 ? $this->logs_page_url( $page - 1 ) : '',
-			'nextUrl'    => $page < $total_pages ? $this->logs_page_url( $page + 1 ) : '',
-		);
-	}
-
-	/**
-	 * Return an empty log payload when logging is disabled.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function empty_logs_payload(): array {
-		return array(
-			'items'      => array(),
-			'total'      => 0,
-			'page'       => 1,
-			'perPage'    => 50,
-			'totalPages' => 1,
-			'prevUrl'    => '',
-			'nextUrl'    => '',
-		);
-	}
-
-	/**
-	 * Build a Logs tab pagination URL.
-	 *
-	 * @param int $page Log page.
-	 */
-	private function logs_page_url( int $page ): string {
-		return add_query_arg(
-			array(
-				'page'      => 'aculect-ai-companion',
-				'tab'       => 'logs',
-				'logs_page' => max( 1, $page ),
-			),
-			$this->settings_url()
 		);
 	}
 

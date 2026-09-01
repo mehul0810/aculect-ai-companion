@@ -7432,9 +7432,6 @@ function SettingsApp() {
 		data.sampleData && typeof data.sampleData === 'object'
 			? data.sampleData
 			: {};
-	const sampleDataTabs = Array.isArray( sampleData.tabs )
-		? sampleData.tabs
-		: EMPTY_ARRAY;
 	const activeSessionCount = Number( data.activeSessionCount || 0 );
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
@@ -7556,10 +7553,11 @@ function SettingsApp() {
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
 		! sameStringSet( confirmationGroups, originalConfirmationGroups );
 	const helpLinks = uniqueHelpLinks( providers, pluginMetadata );
-	const shouldShowAccessControl = Boolean(
-		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
-	);
 	const hasRealActiveConnections = activeSessionCount > 0;
+	const { setLockdownAction, setLockdownNonce } = data.actions || {};
+	const shouldShowAccessControl =
+		hasRealActiveConnections &&
+		Boolean( setLockdownAction && setLockdownNonce );
 	let accessStatusLabel = 'No active AI access';
 	let accessStatusDescription =
 		'Connect a real assistant to enable live connection controls. Preview rows do not change site access.';
@@ -7695,9 +7693,10 @@ function SettingsApp() {
 	const activeTabName = useActiveTabName( tabs );
 	const activeTab =
 		tabs.find( ( tab ) => tab.name === activeTabName ) || tabs[ 0 ];
-	const sampleDataActive = Boolean(
-		sampleData.enabled && sampleDataTabs.includes( activeTab.name )
-	);
+	const sampleDataActive =
+		Boolean( sampleData.enabled ) &&
+		Array.isArray( sampleData.appliedTabs ) &&
+		sampleData.appliedTabs.includes( activeTab.name );
 	const hydratedTabKey = Array.isArray( data.hydratedTabs )
 		? data.hydratedTabs.join( '|' )
 		: '';

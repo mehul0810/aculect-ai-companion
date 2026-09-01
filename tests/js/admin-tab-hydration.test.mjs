@@ -268,18 +268,15 @@ test( 'diagnostics expose bounded OAuth capacity recovery without rendering clie
 	assert.doesNotMatch( ADMIN_APP_SOURCE, /client_secret_hash/ );
 } );
 
-test( 'sample connection rows render preview badges and hide real action controls', () => {
+test( 'connections never use local preview rows or preview-only actions', () => {
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /sample-session-/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/session\.isSample && <SampleBadge label="Preview" \/>/
+		/const sampleDataActive =\s*\n\s*Boolean\( sampleData\.enabled \) &&/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/if \( session\.isSample \) \{\s*return renderUnavailableAction\( 'Preview only' \);\s*\}/s
-	);
-	assert.match(
-		ADMIN_APP_SOURCE,
-		/const canManage =\s*! session\.isSample &&\s*session\.status !== 'revoked'/s
+		/Array\.isArray\( sampleData\.appliedTabs \)[\s\S]*sampleData\.appliedTabs\.includes\( activeTab\.name \)/s
 	);
 } );
 
@@ -287,6 +284,10 @@ test( 'real connection state stays separate from sample rows in the connections 
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/const hasRealActiveConnections = activeSessionCount > 0;/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const shouldShowAccessControl =\s*\n\s*hasRealActiveConnections &&\s*\n\s*Boolean\(/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,

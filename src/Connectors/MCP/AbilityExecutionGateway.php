@@ -721,6 +721,10 @@ final class AbilityExecutionGateway {
 	 * @param bool                 $is_intelligence_tool Whether the tool belongs to intelligence.
 	 */
 	private function write_permission_unblocks_tool( string $tool, array $auth, bool $is_intelligence_tool ): bool {
+		if ( $this->is_plugin_lifecycle_write( $tool ) ) {
+			return false;
+		}
+
 		$enabled   = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
 			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
 		$read_only = $is_intelligence_tool ? $this->intelligence->is_read_only( $tool ) : $this->registry->is_read_only( $tool );
@@ -755,6 +759,28 @@ final class AbilityExecutionGateway {
 			array(
 				'plugin_lifecycle.install_plugin',
 				'plugin_lifecycle.update_plugin',
+			),
+			true
+		);
+	}
+
+	/**
+	 * Identify lifecycle writes that always require an explicit confirmation.
+	 *
+	 * Plugin installation, updates, and activation changes can affect site
+	 * availability, so the trusted-connection direct-write bypass never applies.
+	 *
+	 * @param string $tool Internal tool ID.
+	 * @return bool
+	 */
+	private function is_plugin_lifecycle_write( string $tool ): bool {
+		return in_array(
+			$tool,
+			array(
+				'plugin_lifecycle.install_plugin',
+				'plugin_lifecycle.update_plugin',
+				'plugin_lifecycle.activate_plugin',
+				'plugin_lifecycle.deactivate_plugin',
 			),
 			true
 		);

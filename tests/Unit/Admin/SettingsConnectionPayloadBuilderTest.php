@@ -35,9 +35,9 @@ final class SettingsConnectionPayloadBuilderTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->original_users  = $GLOBALS['aculect_ai_companion_test_users'] ?? null;
-		$this->original_options = $GLOBALS['aculect_ai_companion_test_options'] ?? null;
-		$GLOBALS['aculect_ai_companion_test_users'] = array(
+		$this->original_users                         = $GLOBALS['aculect_ai_companion_test_users'] ?? null;
+		$this->original_options                       = $GLOBALS['aculect_ai_companion_test_options'] ?? null;
+		$GLOBALS['aculect_ai_companion_test_users']   = array(
 			7 => (object) array(
 				'ID'           => 7,
 				'roles'        => array( 'administrator' ),

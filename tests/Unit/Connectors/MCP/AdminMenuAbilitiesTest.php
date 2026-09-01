@@ -23,6 +23,8 @@ final class AdminMenuAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_options']             = array();
 		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
 		$GLOBALS['aculect_ai_companion_test_is_multisite']        = false;
+		$GLOBALS['aculect_ai_companion_test_is_main_site']        = true;
+		$GLOBALS['aculect_ai_companion_test_site']                = (object) array( 'deleted' => '0' );
 		$GLOBALS['aculect_ai_companion_test_registered_settings'] = array(
 			'blogname'                  => array(
 				'group'        => 'general',
@@ -163,6 +165,38 @@ final class AdminMenuAbilitiesTest extends TestCase {
 
 		self::assertContains( 'my-sites.php', $slugs );
 		self::assertNotContains( 'update-core.php', $slugs );
+	}
+
+	public function test_main_multisite_does_not_expose_delete_site(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = true;
+		$GLOBALS['aculect_ai_companion_test_is_main_site'] = true;
+
+		$tools = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$slugs = array_column( $tools['items'], 'slug' );
+
+		self::assertNotContains( 'ms-delete-site.php', $slugs );
+	}
+
+	public function test_active_non_main_multisite_exposes_delete_site(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = true;
+		$GLOBALS['aculect_ai_companion_test_is_main_site'] = false;
+		$GLOBALS['aculect_ai_companion_test_site']         = (object) array( 'deleted' => '0' );
+
+		$tools = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$slugs = array_column( $tools['items'], 'slug' );
+
+		self::assertContains( 'ms-delete-site.php', $slugs );
+	}
+
+	public function test_deleted_non_main_multisite_does_not_expose_delete_site(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = true;
+		$GLOBALS['aculect_ai_companion_test_is_main_site'] = false;
+		$GLOBALS['aculect_ai_companion_test_site']         = (object) array( 'deleted' => '1' );
+
+		$tools = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$slugs = array_column( $tools['items'], 'slug' );
+
+		self::assertNotContains( 'ms-delete-site.php', $slugs );
 	}
 
 	public function test_dynamic_core_submenu_metadata_takes_precedence_over_fallback(): void {

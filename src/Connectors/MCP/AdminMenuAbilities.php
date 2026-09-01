@@ -466,7 +466,7 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 			$items[] = $this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'tools.php', 'tools', 81 );
 		}
 
-		if ( $this->is_multisite() && function_exists( 'is_main_site' ) && ! is_main_site() ) {
+		if ( $this->is_multisite() && function_exists( 'is_main_site' ) && ! is_main_site() && ! $this->is_deleted_site() ) {
 			$items[] = $this->admin_page( 'Delete Site', 'Delete Site', 'ms-delete-site.php', 'delete_site', 'tools.php', 'tools', 82 );
 		}
 
@@ -529,6 +529,19 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 	 */
 	private function is_multisite(): bool {
 		return function_exists( 'is_multisite' ) && is_multisite();
+	}
+
+	/**
+	 * Return whether the current multisite is marked deleted.
+	 */
+	private function is_deleted_site(): bool {
+		if ( ! function_exists( 'get_site' ) ) {
+			return false;
+		}
+
+		$site = get_site();
+
+		return is_object( $site ) && property_exists( $site, 'deleted' ) && '1' === (string) $site->deleted;
 	}
 
 	/**

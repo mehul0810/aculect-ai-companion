@@ -890,46 +890,7 @@ final class FirstPartyAbilityModules {
 				$this->empty_schema(),
 				static fn (): array => ( new SiteAbilities() )->list_plugins()
 			),
-			$this->module(
-				'plugin_lifecycle.list_plugins',
-				'List Plugin Lifecycle Status',
-				'List installed WordPress plugins with lifecycle-oriented status, active/network-active state, cached update availability, recovery pause state, multisite context, and capability blockers. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
-				'Plugin Lifecycle',
-				'content:read',
-				true,
-				$this->plugin_lifecycle_list_schema(),
-				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->list_plugins( $args )
-			),
-			$this->module(
-				'plugin_lifecycle.get_plugin',
-				'Get Plugin Lifecycle Status',
-				'Read one installed WordPress plugin lifecycle status record with safe update and recovery metadata. This tool is read-only and never installs, updates, activates, deactivates, deletes, edits, or executes plugins.',
-				'Plugin Lifecycle',
-				'content:read',
-				true,
-				$this->plugin_lifecycle_get_schema(),
-				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->get_plugin( $args )
-			),
-			$this->module(
-				'plugin_lifecycle.activate_plugin',
-				'Activate an Installed Plugin',
-				'Activate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not install plugins, update plugins, delete plugins, or perform network-wide activation.',
-				'Plugin Lifecycle',
-				'content:draft',
-				false,
-				$this->plugin_lifecycle_mutation_schema(),
-				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->activate_plugin( $args )
-			),
-			$this->module(
-				'plugin_lifecycle.deactivate_plugin',
-				'Deactivate an Installed Plugin',
-				'Deactivate one already-installed WordPress plugin on the current site with dry-run preview, confirmation-token gating, capability checks, and structured results. This first beta slice does not delete plugins or perform network-wide deactivation.',
-				'Plugin Lifecycle',
-				'content:draft',
-				false,
-				$this->plugin_lifecycle_mutation_schema(),
-				static fn ( array $args ): array => ( new PluginLifecycleAbilities() )->deactivate_plugin( $args )
-			),
+			...PluginLifecycleAbilityModules::all( $this->module_factory ),
 			$this->module(
 				'theme_lifecycle.list_themes',
 				'List Theme Lifecycle Status',
@@ -1264,68 +1225,6 @@ final class FirstPartyAbilityModules {
 					'description' => 'Maximum findings to return. Defaults to 10 and caps at 20.',
 				),
 			)
-		);
-	}
-
-	/**
-	 * Build the plugin lifecycle list schema.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function plugin_lifecycle_list_schema(): array {
-		return $this->object_schema(
-			array(
-				'status'   => array(
-					'type'        => 'string',
-					'enum'        => array( 'all', 'active', 'inactive', 'network_active', 'update_available', 'paused' ),
-					'description' => 'Optional lifecycle status filter. Defaults to all.',
-				),
-				'page'     => array(
-					'type'        => 'integer',
-					'minimum'     => 1,
-					'description' => 'One-based result page. Defaults to 1.',
-				),
-				'per_page' => array(
-					'type'        => 'integer',
-					'minimum'     => 1,
-					'maximum'     => 100,
-					'description' => 'Maximum plugins to return. Defaults to 50 and caps at 100.',
-				),
-			)
-		);
-	}
-
-	/**
-	 * Build the plugin lifecycle get schema.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function plugin_lifecycle_get_schema(): array {
-		return $this->object_schema(
-			array(
-				'plugin' => array(
-					'type'        => 'string',
-					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
-				),
-			),
-			array( 'plugin' )
-		);
-	}
-
-	/**
-	 * Build the plugin lifecycle mutation schema.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function plugin_lifecycle_mutation_schema(): array {
-		return $this->object_schema(
-			array(
-				'plugin' => array(
-					'type'        => 'string',
-					'description' => 'Installed plugin basename, for example example-plugin/example-plugin.php.',
-				),
-			),
-			array( 'plugin' )
 		);
 	}
 

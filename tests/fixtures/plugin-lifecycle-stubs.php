@@ -20,6 +20,24 @@ if ( ! function_exists( 'get_plugins' ) ) {
 	}
 }
 
+if ( ! function_exists( 'plugins_api' ) ) {
+	/**
+	 * Return configured WordPress.org plugin information for tests.
+	 *
+	 * @param string               $action API action.
+	 * @param array<string, mixed> $args   API arguments.
+	 * @return mixed
+	 */
+	function plugins_api( string $action, array $args = array() ): mixed {
+		unset( $args );
+		if ( 'plugin_information' !== $action ) {
+			return new WP_Error( 'unsupported_action', 'Unsupported plugin API action.' );
+		}
+
+		return $GLOBALS['aculect_ai_companion_test_plugin_api'] ?? new WP_Error( 'plugin_not_found', 'Plugin not found.' );
+	}
+}
+
 if ( ! function_exists( 'is_plugin_active' ) ) {
 	/**
 	 * Return whether a test plugin is active on the current site or network.
@@ -101,9 +119,9 @@ if ( ! function_exists( 'activate_plugin' ) ) {
 			$active[] = $plugin;
 		}
 
-		$GLOBALS['aculect_ai_companion_test_active_plugins'] = array_values( $active );
+		$GLOBALS['aculect_ai_companion_test_active_plugins']            = array_values( $active );
 		$GLOBALS['aculect_ai_companion_test_options']['active_plugins'] = array_values( $active );
-		$GLOBALS['aculect_ai_companion_test_last_plugin_activation'] = $plugin;
+		$GLOBALS['aculect_ai_companion_test_last_plugin_activation']    = $plugin;
 
 		return null;
 	}
@@ -122,13 +140,13 @@ if ( ! function_exists( 'deactivate_plugins' ) ) {
 			$active = array();
 		}
 
-		$GLOBALS['aculect_ai_companion_test_active_plugins'] = array_values(
+		$GLOBALS['aculect_ai_companion_test_active_plugins']            = array_values(
 			array_filter(
 				$active,
 				static fn ( mixed $plugin ): bool => ! in_array( (string) $plugin, $targets, true )
 			)
 		);
 		$GLOBALS['aculect_ai_companion_test_options']['active_plugins'] = $GLOBALS['aculect_ai_companion_test_active_plugins'];
-		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = $targets;
+		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation']  = $targets;
 	}
 }

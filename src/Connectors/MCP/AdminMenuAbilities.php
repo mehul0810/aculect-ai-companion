@@ -420,10 +420,15 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 		$is_block_theme = $this->is_block_theme();
 		$items          = array(
 			$this->admin_page( 'Home', 'Dashboard Home', 'index.php', 'read', 'index.php', 'dashboard', 2 ),
-			$this->admin_page( 'Updates', 'WordPress Updates', 'update-core.php', $this->core_update_capability(), 'index.php', 'dashboard', 4 ),
 			$this->admin_page( 'Themes', 'Themes', 'themes.php', $this->appearance_capability(), 'themes.php', 'appearance', 60 ),
 			$this->admin_page( 'Editor', 'Site Editor', 'site-editor.php', 'edit_theme_options', 'themes.php', 'appearance', 61 ),
 		);
+
+		if ( $this->is_multisite() ) {
+			$items[] = $this->admin_page( 'My Sites', 'My Sites', 'my-sites.php', 'read', 'index.php', 'dashboard', 3 );
+		} else {
+			$items[] = $this->admin_page( 'Updates', 'WordPress Updates', 'update-core.php', $this->core_update_capability(), 'index.php', 'dashboard', 4 );
+		}
 
 		if ( $this->customize_surface_available( $is_block_theme ) ) {
 			$items[] = $this->admin_page( 'Customize', 'Customize', 'customize.php', 'customize', 'themes.php', 'appearance', 62 );

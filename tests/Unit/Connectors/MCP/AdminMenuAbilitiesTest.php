@@ -22,6 +22,7 @@ final class AdminMenuAbilitiesTest extends TestCase {
 
 		$GLOBALS['aculect_ai_companion_test_options']             = array();
 		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
+		$GLOBALS['aculect_ai_companion_test_is_multisite']        = false;
 		$GLOBALS['aculect_ai_companion_test_registered_settings'] = array(
 			'blogname'                  => array(
 				'group'        => 'general',
@@ -152,6 +153,16 @@ final class AdminMenuAbilitiesTest extends TestCase {
 		self::assertSame( 'erase_others_personal_data', $tool_by_slug['erase-personal-data.php'] );
 		self::assertCount( 1, $update_item );
 		self::assertSame( 'update_plugins', $update_item[0]['capability'] );
+	}
+
+	public function test_fallback_respects_multisite_dashboard_routes(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = true;
+
+		$dashboard = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'dashboard' ) );
+		$slugs     = array_column( $dashboard['items'], 'slug' );
+
+		self::assertContains( 'my-sites.php', $slugs );
+		self::assertNotContains( 'update-core.php', $slugs );
 	}
 
 	public function test_dynamic_core_submenu_metadata_takes_precedence_over_fallback(): void {

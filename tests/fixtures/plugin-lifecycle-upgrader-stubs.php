@@ -30,6 +30,45 @@ if ( ! class_exists( 'Plugin_Upgrader' ) ) {
 	 * Test double for the WordPress core plugin upgrader.
 	 */
 	class Plugin_Upgrader {
+		/** @var bool|WP_Error|null */
+		public bool|WP_Error|null $result = null;
+
+		/**
+		 * Initialize the test upgrader.
+		 */
+		public function init(): void {
+		}
+
+		/**
+		 * Initialize update strings for the test upgrader.
+		 */
+		public function upgrade_strings(): void {
+		}
+
+		public function deactivate_plugin_before_upgrade( mixed $response, array $hook_extra = array() ): mixed {
+			unset( $hook_extra );
+
+			return $response;
+		}
+
+		public function active_before( mixed $response, array $hook_extra = array() ): mixed {
+			unset( $hook_extra );
+
+			return $response;
+		}
+
+		public function delete_old_plugin( mixed $removed, string $local_source = '', string $remote_source = '', array $hook_extra = array() ): mixed {
+			unset( $local_source, $remote_source, $hook_extra );
+
+			return $removed;
+		}
+
+		public function active_after( mixed $response, array $hook_extra = array() ): mixed {
+			unset( $hook_extra );
+
+			return $response;
+		}
+
 		/**
 		 * Construct a quiet upgrader with the supplied test skin.
 		 *
@@ -81,6 +120,35 @@ if ( ! class_exists( 'Plugin_Upgrader' ) ) {
 			if ( is_scalar( $version ) && isset( $GLOBALS['aculect_ai_companion_test_plugins'][ $plugin ]['Version'] ) ) {
 				$GLOBALS['aculect_ai_companion_test_plugins'][ $plugin ]['Version'] = (string) $version;
 			}
+
+			return true;
+		}
+
+		/**
+		 * Run an explicitly resolved test package without consulting update metadata.
+		 *
+		 * @param array<string, mixed> $options Upgrader options.
+		 * @return bool|WP_Error
+		 */
+		public function run( array $options ): bool|WP_Error {
+			$package = isset( $options['package'] ) && is_scalar( $options['package'] ) ? (string) $options['package'] : '';
+			$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade_package'] = $package;
+			$plugin = isset( $options['hook_extra']['plugin'] ) && is_scalar( $options['hook_extra']['plugin'] )
+				? (string) $options['hook_extra']['plugin']
+				: '';
+			$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade'] = $plugin;
+			$result = $GLOBALS['aculect_ai_companion_test_plugin_update_result'] ?? true;
+			if ( $result instanceof WP_Error || false === $result ) {
+				$this->result = $result;
+				return $result;
+			}
+
+			$version = $GLOBALS['aculect_ai_companion_test_plugin_update_versions'][ $plugin ] ?? null;
+			if ( is_scalar( $version ) && isset( $GLOBALS['aculect_ai_companion_test_plugins'][ $plugin ]['Version'] ) ) {
+				$GLOBALS['aculect_ai_companion_test_plugins'][ $plugin ]['Version'] = (string) $version;
+			}
+
+			$this->result = true;
 
 			return true;
 		}

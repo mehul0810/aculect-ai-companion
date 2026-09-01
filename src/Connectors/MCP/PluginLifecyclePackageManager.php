@@ -57,16 +57,82 @@ final class PluginLifecyclePackageManager {
 	/**
 	 * Update one installed plugin with the WordPress core plugin upgrader.
 	 *
-	 * @param string $plugin Installed plugin basename.
+	 * @param string $plugin  Installed plugin basename.
+	 * @param string $package Exact package URL resolved during the preview.
 	 * @return bool|\WP_Error
 	 */
-	public function update( string $plugin ): bool|\WP_Error {
+	public function update( string $plugin, string $package ): bool|\WP_Error {
 		$upgrader = $this->upgrader();
 		if ( $upgrader instanceof \WP_Error ) {
 			return $upgrader;
 		}
 
-		return $upgrader->upgrade( $plugin, array( 'clear_update_cache' => true ) );
+		if ( ! method_exists( $upgrader, 'run' ) || ! method_exists( $upgrader, 'init' ) || ! method_exists( $upgrader, 'upgrade_strings' ) ) {
+			return new \WP_Error( 'plugin_upgrader_unavailable', 'WordPress plugin upgrader APIs are unavailable.' );
+		}
+
+		$destination = defined( 'WP_PLUGIN_DIR' )
+			? WP_PLUGIN_DIR
+			: rtrim( (string) ABSPATH, '/' ) . '/wp-content/plugins';
+		$hook_extra  = array(
+			'plugin' => $plugin,
+			'type'   => 'plugin',
+			'action' => 'update',
+		);
+		$directory   = dirname( $plugin );
+		if ( '.' !== $directory && '' !== $directory ) {
+			$hook_extra['temp_backup'] = array(
+				'slug' => $directory,
+				'src'  => $destination,
+				'dir'  => 'plugins',
+			);
+		}
+
+		$upgrader->init();
+		$upgrader->upgrade_strings();
+		add_filter( 'upgrader_pre_install', array( $upgrader, 'deactivate_plugin_before_upgrade' ), 10, 2 );
+		add_filter( 'upgrader_pre_install', array( $upgrader, 'active_before' ), 10, 2 );
+		add_filter( 'upgrader_clear_destination', array( $upgrader, 'delete_old_plugin' ), 10, 4 );
+		add_filter( 'upgrader_post_install', array( $upgrader, 'active_after' ), 10, 2 );
+		if ( function_exists( 'wp_clean_plugins_cache' ) ) {
+			add_action( 'upgrader_process_complete', 'wp_clean_plugins_cache', 9, 0 );
+		}
+
+		try {
+			$upgrader->run(
+				array(
+					'package'           => $package,
+					'destination'       => $destination,
+					'clear_destination' => true,
+					'clear_working'     => true,
+					'hook_extra'        => $hook_extra,
+				)
+			);
+			$result = $upgrader->result;
+		} finally {
+			if ( function_exists( 'wp_clean_plugins_cache' ) ) {
+				remove_action( 'upgrader_process_complete', 'wp_clean_plugins_cache', 9 );
+			}
+			if ( function_exists( 'remove_filter' ) ) {
+				remove_filter( 'upgrader_pre_install', array( $upgrader, 'deactivate_plugin_before_upgrade' ) );
+				remove_filter( 'upgrader_pre_install', array( $upgrader, 'active_before' ) );
+				remove_filter( 'upgrader_clear_destination', array( $upgrader, 'delete_old_plugin' ) );
+				remove_filter( 'upgrader_post_install', array( $upgrader, 'active_after' ) );
+			}
+		}
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		if ( array() === $result ) {
+			return new \WP_Error( 'plugin_update_failed', 'WordPress could not update the plugin.' );
+		}
+
+		if ( function_exists( 'wp_clean_plugins_cache' ) ) {
+			wp_clean_plugins_cache( true );
+		}
+
+		return true;
 	}
 
 	/**

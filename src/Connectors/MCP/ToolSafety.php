@@ -19,7 +19,7 @@ final class ToolSafety {
 	private const CONFIRMATION_TTL    = 600;
 	private const CONSUMED_RESULT_TTL = 3600;
 	private const IDEMPOTENCY_TTL     = 86400;
-	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key' );
+	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key', '_aculect_confirmation_binding' );
 
 	private ExecutionClaimStoreInterface $claim_store;
 
@@ -344,9 +344,10 @@ final class ToolSafety {
 	 *
 	 * @param string               $tool Internal ability ID.
 	 * @param array<mixed>         $args Tool arguments.
-	 * @param array<string, mixed> $auth OAuth context.
+	 * @param array<string, mixed> $auth    OAuth context.
+	 * @param array<string, mixed> $binding Server-resolved execution binding.
 	 */
-	public function issue_confirmation_token( string $tool, array $args, array $auth ): string {
+	public function issue_confirmation_token( string $tool, array $args, array $auth, array $binding = array() ): string {
 		$token = bin2hex( random_bytes( 16 ) );
 
 		set_transient(
@@ -357,6 +358,7 @@ final class ToolSafety {
 				'user_id'      => (int) ( $auth['user_id'] ?? 0 ),
 				'client_id'    => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
 				'provider'     => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+				'binding'      => $this->sanitize_binding( $binding ),
 				'expires_at'   => time() + self::CONFIRMATION_TTL,
 			),
 			self::CONFIRMATION_TTL
@@ -385,6 +387,21 @@ final class ToolSafety {
 	}
 
 	/**
+	 * Return a server-resolved binding stored with a confirmation token.
+	 *
+	 * The execution gateway calls this only after validating the token against
+	 * the caller, tool, and original arguments.
+	 *
+	 * @param array<mixed> $args Tool arguments containing the confirmation token.
+	 * @return array<string, mixed>
+	 */
+	public function confirmation_binding( array $args ): array {
+		$stored = $this->stored_confirmation( $args );
+
+		return is_array( $stored['binding'] ?? null ) ? $stored['binding'] : array();
+	}
+
+	/**
 	 * Mark a confirmation token consumed and remember the successful result.
 	 *
 	 * @param string               $tool   Internal ability ID.
@@ -398,6 +415,8 @@ final class ToolSafety {
 			return;
 		}
 
+		$stored  = $this->stored_confirmation( $args );
+		$binding = is_array( $stored['binding'] ?? null ) ? $stored['binding'] : array();
 		set_transient(
 			$this->transient_key( $token ),
 			array(
@@ -406,6 +425,7 @@ final class ToolSafety {
 				'user_id'      => (int) ( $auth['user_id'] ?? 0 ),
 				'client_id'    => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
 				'provider'     => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+				'binding'      => $binding,
 				'consumed'     => true,
 				'result'       => $result,
 			),
@@ -634,6 +654,39 @@ final class ToolSafety {
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Keep server-issued bindings small, scalar, and deterministic.
+	 *
+	 * @param mixed $value Candidate binding value.
+	 * @param int   $depth Current recursion depth.
+	 * @return mixed
+	 */
+	private function sanitize_binding( mixed $value, int $depth = 0 ): mixed {
+		if ( $depth > 2 ) {
+			return null;
+		}
+		if ( is_array( $value ) ) {
+			$sanitized = array();
+			foreach ( array_slice( $value, 0, 24, true ) as $key => $item ) {
+				if ( ! is_scalar( $key ) ) {
+					continue;
+				}
+				$normalized = $this->sanitize_binding( $item, $depth + 1 );
+				if ( null !== $normalized ) {
+					$sanitized[ substr( sanitize_key( (string) $key ), 0, 64 ) ] = $normalized;
+				}
+			}
+			ksort( $sanitized );
+
+			return $sanitized;
+		}
+		if ( ! is_scalar( $value ) ) {
+			return null;
+		}
+
+		return substr( sanitize_text_field( (string) $value ), 0, 512 );
 	}
 
 	/**

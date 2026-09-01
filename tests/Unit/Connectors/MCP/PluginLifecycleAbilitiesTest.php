@@ -37,6 +37,8 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_network_active_plugins']   = array( 'network-tool/network-tool.php' );
 		$GLOBALS['aculect_ai_companion_test_paused_plugins']           = array( 'paused-plugin/paused-plugin.php' );
 		$GLOBALS['aculect_ai_companion_test_activate_plugin_errors']   = array();
+		$GLOBALS['aculect_ai_companion_test_activation_noop']           = false;
+		$GLOBALS['aculect_ai_companion_test_deactivation_noop']         = false;
 		$GLOBALS['aculect_ai_companion_test_last_plugin_activation']   = '';
 		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = array();
 		$GLOBALS['aculect_ai_companion_test_plugin_api']               = (object) array(
@@ -58,6 +60,7 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_plugin_update_versions']   = array( 'acme/acme.php' => '2.0.0' );
 		$GLOBALS['aculect_ai_companion_test_last_plugin_package']      = '';
 		$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade']      = '';
+		$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade_package'] = '';
 		$GLOBALS['aculect_ai_companion_test_options']                  = array(
 			'active_plugins' => array( 'acme/acme.php' ),
 		);
@@ -111,6 +114,8 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_recovery_mode']            = false;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']              = array();
 		$GLOBALS['aculect_ai_companion_test_activate_plugin_errors']   = array();
+		$GLOBALS['aculect_ai_companion_test_activation_noop']           = false;
+		$GLOBALS['aculect_ai_companion_test_deactivation_noop']         = false;
 		$GLOBALS['aculect_ai_companion_test_last_plugin_activation']   = '';
 		$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = array();
 		$GLOBALS['aculect_ai_companion_test_plugin_api']               = null;
@@ -120,6 +125,7 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_plugin_update_versions']   = array();
 		$GLOBALS['aculect_ai_companion_test_last_plugin_package']      = '';
 		$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade']      = '';
+		$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade_package'] = '';
 
 		parent::tearDown();
 	}
@@ -204,6 +210,8 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertSame( 'classic-editor', $result['target']['id'] );
 		self::assertTrue( $result['confirmation_required'] );
 		self::assertSame( 'system', $result['risk_level'] );
+		self::assertArrayHasKey( PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY, $result );
+		unset( $result[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
 		self::assertStringNotContainsString( 'classic-editor.zip', wp_json_encode( $result ) );
 	}
 
@@ -247,7 +255,33 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertStringNotContainsString( '/var/www/private', wp_json_encode( $upgrader_failure ) );
 	}
 
+	public function test_install_plugin_rejects_non_wordpress_package_sources(): void {
+		$GLOBALS['aculect_ai_companion_test_plugin_api']->download_link = 'https://example.com/classic-editor.zip';
+
+		$result = $this->abilities->install_plugin( array( 'slug' => 'classic-editor' ) );
+
+		self::assertSame( 'invalid_package_url', $result['error'] );
+		self::assertStringNotContainsString( 'example.com', wp_json_encode( $result ) );
+	}
+
+	public function test_install_plugin_rejects_wordpress_package_authority_overrides(): void {
+		$GLOBALS['aculect_ai_companion_test_plugin_api']->download_link = 'https://downloads.wordpress.org:8443/plugin/classic-editor.zip';
+
+		$result = $this->abilities->install_plugin( array( 'slug' => 'classic-editor' ) );
+
+		self::assertSame( 'invalid_package_url', $result['error'] );
+	}
+
+	public function test_install_plugin_blocks_incompatible_wordpress_requirements_before_preview(): void {
+		$GLOBALS['aculect_ai_companion_test_plugin_api']->requires = '9.0';
+
+		$result = $this->abilities->install_plugin( array( 'slug' => 'classic-editor', 'dry_run' => true ) );
+
+		self::assertSame( 'plugin_requires_wordpress', $result['error'] );
+	}
+
 	public function test_update_plugin_returns_unavailable_without_cached_package(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
 		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins'] = (object) array( 'response' => array() );
 
 		$result = $this->abilities->update_plugin( array( 'plugin' => 'acme/acme.php' ) );
@@ -256,6 +290,7 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 	}
 
 	public function test_update_plugin_rejects_missing_or_private_cached_package(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
 		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins'] = (object) array(
 			'response' => array(
 				'acme/acme.php' => (object) array( 'new_version' => '2.0.0' ),
@@ -278,7 +313,26 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertSame( '', $GLOBALS['aculect_ai_companion_test_last_plugin_upgrade'] );
 	}
 
+	public function test_update_plugin_blocks_incompatible_php_requirements_before_preview(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins']->response['acme/acme.php']->requires_php = '99.0';
+
+		$result = $this->abilities->update_plugin( array( 'plugin' => 'acme/acme.php', 'dry_run' => true ) );
+
+		self::assertSame( 'plugin_requires_php', $result['error'] );
+	}
+
+	public function test_update_plugin_rejects_public_non_wordpress_package_sources(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
+		$GLOBALS['aculect_ai_companion_test_site_options']['_site_transient_update_plugins']->response['acme/acme.php']->package = 'https://example.com/acme.2.0.0.zip';
+
+		$result = $this->abilities->update_plugin( array( 'plugin' => 'acme/acme.php' ) );
+
+		self::assertSame( 'invalid_package_url', $result['error'] );
+	}
+
 	public function test_update_plugin_returns_preview_and_uses_core_upgrader(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
 		$preview = $this->abilities->update_plugin(
 			array(
 				'plugin'  => 'acme/acme.php',
@@ -293,8 +347,28 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertSame( 'updated', $result['status'] );
 		self::assertTrue( $result['verified'] );
 		self::assertSame( 'acme/acme.php', $GLOBALS['aculect_ai_companion_test_last_plugin_upgrade'] );
+		self::assertSame( 'https://downloads.wordpress.org/plugin/acme.2.0.0.zip', $GLOBALS['aculect_ai_companion_test_last_plugin_upgrade_package'] );
 		self::assertSame( '2.0.0', $result['plugin']['version'] );
 		self::assertTrue( $result['safety']['filesystem_writes'] );
+	}
+
+	public function test_install_and_update_require_exact_version_postconditions(): void {
+		$GLOBALS['aculect_ai_companion_test_plugin_to_install']['headers']['Version'] = '1.5.0';
+		$install = $this->abilities->install_plugin( array( 'slug' => 'classic-editor' ) );
+
+		$GLOBALS['aculect_ai_companion_test_is_multisite'] = false;
+		$GLOBALS['aculect_ai_companion_test_plugin_update_versions']['acme/acme.php'] = '1.5.0';
+		$update = $this->abilities->update_plugin( array( 'plugin' => 'acme/acme.php' ) );
+
+		self::assertSame( 'plugin_install_postcondition_failed', $install['error'] );
+		self::assertSame( 'plugin_update_postcondition_failed', $update['error'] );
+	}
+
+	public function test_update_plugin_rejects_site_active_plugins_on_multisite(): void {
+		$result = $this->abilities->update_plugin( array( 'plugin' => 'acme/acme.php' ) );
+
+		self::assertSame( 'multisite_update_scope', $result['error'] );
+		self::assertStringNotContainsString( '2.0.0', wp_json_encode( $result ) );
 	}
 
 	public function test_install_and_update_plugin_check_capabilities(): void {
@@ -362,6 +436,18 @@ final class PluginLifecycleAbilitiesTest extends TestCase {
 		self::assertTrue( in_array( 'paused-plugin/paused-plugin.php', $GLOBALS['aculect_ai_companion_test_active_plugins'], true ) );
 		self::assertSame( 'paused-plugin/paused-plugin.php', $GLOBALS['aculect_ai_companion_test_last_plugin_activation'] );
 		self::assertFalse( $result['safety']['read_only'] );
+	}
+
+	public function test_activation_and_deactivation_require_exact_state_postconditions(): void {
+		$GLOBALS['aculect_ai_companion_test_activation_noop'] = true;
+		$activate = $this->abilities->activate_plugin( array( 'plugin' => 'paused-plugin/paused-plugin.php' ) );
+
+		$GLOBALS['aculect_ai_companion_test_activation_noop']   = false;
+		$GLOBALS['aculect_ai_companion_test_deactivation_noop'] = true;
+		$deactivate = $this->abilities->deactivate_plugin( array( 'plugin' => 'acme/acme.php' ) );
+
+		self::assertSame( 'plugin_activate_postcondition_failed', $activate['error'] );
+		self::assertSame( 'plugin_deactivate_postcondition_failed', $deactivate['error'] );
 	}
 
 	public function test_activate_plugin_rejects_invalid_or_missing_plugins(): void {

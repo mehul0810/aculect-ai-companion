@@ -222,7 +222,7 @@ final class AbilityExecutionGateway {
 
 		$execution              = $this->execute_tool_with_safety( $tool, $args, $is_intelligence_tool, $auth );
 		$result                 = $execution['result'];
-		$args                   = $execution['args'];
+		$args                   = $this->strip_internal_execution_args( $tool, $execution['args'] );
 		$trusted_write_executed = $execution['trusted_write_executed'];
 
 		$activity_auth = $auth;
@@ -466,7 +466,19 @@ final class AbilityExecutionGateway {
 					: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
 		} else {
 			$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
-			$claim     = $claim_decision->claim();
+			$binding   = $this->plugin_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
+			if ( isset( $binding['error'] ) ) {
+				$this->release_claim_if_present( $claim_decision );
+				return array(
+					'result'                 => $binding,
+					'args'                   => $args,
+					'trusted_write_executed' => false,
+				);
+			}
+			if ( array() !== $binding ) {
+				$exec_args[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] = $binding;
+			}
+			$claim = $claim_decision->claim();
 			if ( $is_write_tool && $this->safety->has_execution_alias( $args ) && null === $claim ) {
 				$result = $this->safety->execution_uncertain_result();
 			} elseif ( null !== $claim && ! $this->safety->mark_claim_running( $claim ) ) {
@@ -717,6 +729,82 @@ final class AbilityExecutionGateway {
 	}
 
 	/**
+	 * Remove gateway-only execution metadata before activity or transport output.
+	 *
+	 * @param string               $tool Internal tool ID.
+	 * @param array<string, mixed> $args Execution arguments.
+	 * @return array<string, mixed>
+	 */
+	private function strip_internal_execution_args( string $tool, array $args ): array {
+		if ( $this->is_plugin_lifecycle_tool( $tool ) ) {
+			unset( $args[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
+		}
+
+		return $args;
+	}
+
+	/**
+	 * Identify plugin lifecycle writes that require exact package binding.
+	 *
+	 * @param string $tool Internal tool ID.
+	 * @return bool
+	 */
+	private function is_plugin_lifecycle_tool( string $tool ): bool {
+		return in_array(
+			$tool,
+			array(
+				'plugin_lifecycle.install_plugin',
+				'plugin_lifecycle.update_plugin',
+			),
+			true
+		);
+	}
+
+	/**
+	 * Resolve the exact package binding for a confirmed plugin write.
+	 *
+	 * @param string               $tool                    Internal tool ID.
+	 * @param array<string, mixed> $args                    Caller arguments.
+	 * @param bool                 $has_confirmation_token  Whether a token was supplied.
+	 * @param bool                 $write_permission_unblocked Whether trusted direct write is enabled.
+	 * @param array<string, mixed> $auth                    OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function plugin_execution_binding( string $tool, array $args, bool $has_confirmation_token, bool $write_permission_unblocked, array $auth ): array {
+		if ( ! $this->is_plugin_lifecycle_tool( $tool ) || ! $has_confirmation_token || $write_permission_unblocked ) {
+			return array();
+		}
+
+		$binding = $this->safety->confirmation_binding( $args );
+		return array() === $binding ? $this->invalid_confirmation_binding_payload( $tool, $auth ) : $binding;
+	}
+
+	/**
+	 * Release a claim when an execution precondition fails.
+	 *
+	 * @param ExecutionClaimDecision $decision Claim decision.
+	 */
+	private function release_claim_if_present( ExecutionClaimDecision $decision ): void {
+		$claim = $decision->claim();
+		if ( null !== $claim ) {
+			$this->safety->release_claim( $claim );
+		}
+	}
+
+	/**
+	 * Extract and remove gateway-only confirmation metadata from a preview.
+	 *
+	 * @param array<string, mixed> $result Preview payload.
+	 * @return array<string, mixed>
+	 */
+	private function extract_confirmation_binding( array &$result ): array {
+		$binding = $result[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] ?? array();
+		unset( $result[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
+
+		return is_array( $binding ) ? $binding : array();
+	}
+
+	/**
 	 * Add direct-write policy metadata to a safe preview result.
 	 *
 	 * @param array<string, mixed> $result Preview result.
@@ -726,7 +814,7 @@ final class AbilityExecutionGateway {
 		$result['confirmation_required']    = false;
 		$result['confirmation_policy']      = 'trusted_connection_direct_write';
 		$result['write_permission_enabled'] = true;
-		unset( $result['confirmation_token'], $result['confirmation_expires_in'], $result['confirmation_instructions'] );
+		unset( $result['confirmation_token'], $result['confirmation_expires_in'], $result['confirmation_instructions'], $result[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
 
 		return $result;
 	}
@@ -743,7 +831,7 @@ final class AbilityExecutionGateway {
 		$result['confirmation_policy']      = 'trusted_connection_direct_write';
 		$result['write_permission_enabled'] = true;
 		$result['access_level']             = ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) );
-		unset( $result['confirmation_token'], $result['confirmation_expires_in'], $result['confirmation_instructions'] );
+		unset( $result['confirmation_token'], $result['confirmation_expires_in'], $result['confirmation_instructions'], $result[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
 
 		return $result;
 	}
@@ -785,8 +873,9 @@ final class AbilityExecutionGateway {
 	 * @return array<string, mixed>
 	 */
 	private function add_confirmation_metadata( array $result, string $tool, array $args, array $auth ): array {
+		$binding                             = $this->extract_confirmation_binding( $result );
 		$result['confirmation_required']     = true;
-		$result['confirmation_token']        = $this->safety->issue_confirmation_token( $tool, $args, $auth );
+		$result['confirmation_token']        = $this->safety->issue_confirmation_token( $tool, $args, $auth, $binding );
 		$result['confirmation_expires_in']   = $this->safety->confirmation_ttl();
 		$result['confirmation_instructions'] = 'Repeat the same tool call with confirmation_token before it expires to apply these changes.';
 		$this->record_timeline_event(
@@ -840,6 +929,36 @@ final class AbilityExecutionGateway {
 	}
 
 	/**
+	 * Build a bounded response when a server-resolved package binding is absent.
+	 *
+	 * @param string               $tool Internal tool ID.
+	 * @param array<string, mixed> $auth OAuth context.
+	 * @return array<string, mixed>
+	 */
+	private function invalid_confirmation_binding_payload( string $tool, array $auth ): array {
+		$this->record_timeline_event(
+			'blocked_by',
+			array(
+				'method'     => 'tools/call',
+				'tool'       => $tool,
+				'status'     => 'blocked',
+				'blocked_by' => 'invalid_confirmation_binding',
+				'error_code' => 'invalid_confirmation_binding',
+				'risk_level' => 'system',
+			),
+			$auth
+		);
+
+		return array(
+			'status'                => 'blocked',
+			'error'                 => 'invalid_confirmation_binding',
+			'message'               => 'The confirmed plugin package identity is unavailable or expired. Request a new preview before retrying.',
+			'confirmation_required' => true,
+			'action'                => $tool,
+		);
+	}
+
+	/**
 	 * Build a confirmation-required result from a safe write preview.
 	 *
 	 * @param string               $tool Internal ability ID.
@@ -849,6 +968,7 @@ final class AbilityExecutionGateway {
 	 * @return array<string, mixed>
 	 */
 	private function confirmation_required_payload( string $tool, array $args, array $auth, array $preview ): array {
+		$binding = $this->extract_confirmation_binding( $preview );
 		$this->record_timeline_event(
 			'confirmation_issued',
 			array(
@@ -865,7 +985,7 @@ final class AbilityExecutionGateway {
 		return array(
 			'status'                    => 'confirmation_required',
 			'confirmation_required'     => true,
-			'confirmation_token'        => $this->safety->issue_confirmation_token( $tool, $args, $auth ),
+			'confirmation_token'        => $this->safety->issue_confirmation_token( $tool, $args, $auth, $binding ),
 			'confirmation_expires_in'   => $this->safety->confirmation_ttl(),
 			'confirmation_instructions' => 'Repeat the same tool call with confirmation_token before it expires to apply these changes.',
 			'action'                    => $tool,

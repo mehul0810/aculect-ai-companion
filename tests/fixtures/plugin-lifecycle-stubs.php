@@ -109,6 +109,11 @@ if ( ! function_exists( 'activate_plugin' ) ) {
 		if ( isset( $errors[ $plugin ] ) && $errors[ $plugin ] instanceof \WP_Error ) {
 			return $errors[ $plugin ];
 		}
+		if ( ! empty( $GLOBALS['aculect_ai_companion_test_activation_noop'] ) ) {
+			$GLOBALS['aculect_ai_companion_test_last_plugin_activation'] = $plugin;
+
+			return null;
+		}
 
 		$active = $GLOBALS['aculect_ai_companion_test_active_plugins'] ?? array();
 		if ( ! is_array( $active ) ) {
@@ -135,6 +140,11 @@ if ( ! function_exists( 'deactivate_plugins' ) ) {
 	 */
 	function deactivate_plugins( string|array $plugins ): void {
 		$targets = is_array( $plugins ) ? array_values( $plugins ) : array( $plugins );
+		if ( ! empty( $GLOBALS['aculect_ai_companion_test_deactivation_noop'] ) ) {
+			$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = $targets;
+
+			return;
+		}
 		$active  = $GLOBALS['aculect_ai_companion_test_active_plugins'] ?? array();
 		if ( ! is_array( $active ) ) {
 			$active = array();

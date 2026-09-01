@@ -14,11 +14,15 @@ use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionGateway;
 use Aculect\AICompanion\Connectors\MCP\AbilityExecutionRequest;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
+use Aculect\AICompanion\Connectors\MCP\PluginLifecycleAbilities;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Tests\Support\InMemoryExecutionClaimStore;
 use PHPUnit\Framework\TestCase;
+
+require_once dirname( __DIR__, 3 ) . '/fixtures/plugin-lifecycle-stubs.php';
+require_once dirname( __DIR__, 3 ) . '/fixtures/plugin-lifecycle-upgrader-stubs.php';
 
 /**
  * Verifies that direct callers receive the same policy and safety boundary as MCP transport.
@@ -254,6 +258,62 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertCount( 1, $reports );
 		self::assertArrayNotHasKey( 'dry_run', $reports[0] ?? array() );
 		self::assertArrayNotHasKey( 'confirmation_token', $reports[0] ?? array() );
+	}
+
+	public function test_plugin_confirmation_binds_exact_package_and_hides_binding_from_transport(): void {
+		$GLOBALS['aculect_ai_companion_test_is_multisite']           = false;
+		$GLOBALS['aculect_ai_companion_test_plugins']                = array(
+			'acme/acme.php' => array( 'Name' => 'Acme', 'Version' => '1.0.0' ),
+		);
+		$GLOBALS['aculect_ai_companion_test_plugin_api']              = (object) array(
+			'name'          => 'Classic Editor',
+			'version'       => '1.6.0',
+			'download_link' => 'https://downloads.wordpress.org/plugin/classic-editor.zip',
+		);
+		$GLOBALS['aculect_ai_companion_test_plugin_to_install']       = array(
+			'file'    => 'classic-editor/classic-editor.php',
+			'headers' => array( 'Name' => 'Classic Editor', 'Version' => '1.6.0' ),
+		);
+		$GLOBALS['aculect_ai_companion_test_plugin_install_result']   = true;
+		$registry = new AbilitiesRegistry();
+		$registry->save_enabled_ids( array( 'plugin_lifecycle.install_plugin' ) );
+		$auth    = array_merge(
+			$this->trusted_write_auth( 1 ),
+			array(
+				'access_level'             => '',
+				'write_permission_enabled' => false,
+			)
+		);
+		$gateway = new AbilityExecutionGateway( $registry, null, null, new ToolSafety( new InMemoryExecutionClaimStore() ) );
+		$initial = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'plugin_lifecycle_install_plugin',
+					'arguments' => array( 'slug' => 'classic-editor' ),
+				),
+				$auth
+			)
+		);
+
+		self::assertSame( 'confirmation_required', $initial->data['result']['status'] ?? '' );
+		self::assertStringNotContainsString( 'classic-editor.zip', wp_json_encode( $initial->data['result'] ) );
+		$GLOBALS['aculect_ai_companion_test_plugin_api']->download_link = 'https://example.com/changed.zip';
+		$confirmed = $gateway->execute(
+			new AbilityExecutionRequest(
+				array(
+					'name'      => 'plugin_lifecycle_install_plugin',
+					'arguments' => array(
+						'slug'              => 'classic-editor',
+						'confirmation_token' => (string) ( $initial->data['result']['confirmation_token'] ?? '' ),
+					),
+				),
+				$auth
+			)
+		);
+
+		self::assertSame( 'installed', $confirmed->data['result']['status'] ?? '' );
+		self::assertSame( 'https://downloads.wordpress.org/plugin/classic-editor.zip', $GLOBALS['aculect_ai_companion_test_last_plugin_package'] );
+		self::assertStringNotContainsString( PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY, wp_json_encode( $confirmed->data ) );
 	}
 
 	public function test_standard_write_dry_run_confirmation_and_idempotent_replay_are_gateway_owned(): void {

@@ -19,6 +19,26 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	private const STATUSES         = array( 'all', 'active', 'inactive', 'network_active', 'update_available', 'paused' );
 
 	/**
+	 * Request-local key used by the execution gateway for server-resolved writes.
+	 *
+	 * The key is never part of the public tool schema or response. It carries the
+	 * package identity resolved by a dry run so a later confirmation cannot drift
+	 * to a different plugin package.
+	 */
+	public const CONFIRMATION_BINDING_KEY = '_aculect_confirmation_binding';
+
+	private PluginLifecyclePackagePolicy $package_policy;
+
+	/**
+	 * Construct lifecycle abilities with an isolated package policy collaborator.
+	 *
+	 * @param PluginLifecyclePackagePolicy|null $package_policy Package policy.
+	 */
+	public function __construct( ?PluginLifecyclePackagePolicy $package_policy = null ) {
+		$this->package_policy = $package_policy ?? new PluginLifecyclePackagePolicy();
+	}
+
+	/**
 	 * List installed plugin lifecycle status.
 	 *
 	 * @param array<string, mixed> $args Tool arguments.
@@ -120,22 +140,53 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			return $this->error( 'plugin_already_installed', 'A plugin with this slug is already installed.' );
 		}
 
-		$information = ( new PluginLifecyclePackageManager() )->information( $slug );
-		if ( $information instanceof \WP_Error ) {
-			return $this->package_api_error( $information, 'install' );
-		}
-		if ( ! is_array( $information ) && ! is_object( $information ) ) {
-			return $this->error( 'plugin_information_unavailable', 'WordPress did not return usable plugin information.' );
+		$requires     = '';
+		$requires_php = '';
+		$binding      = $this->package_policy->requested_confirmation_binding( $args );
+		if ( null !== $binding ) {
+			$binding_error = $this->package_policy->validate_install_binding( $binding, $slug );
+			if ( null !== $binding_error ) {
+				return $binding_error;
+			}
+
+			$package      = (string) $binding['package'];
+			$name         = (string) $binding['name'];
+			$version      = (string) $binding['version'];
+			$requires     = (string) ( $binding['requires'] ?? '' );
+			$requires_php = (string) ( $binding['requires_php'] ?? '' );
+		} else {
+			$information = ( new PluginLifecyclePackageManager() )->information( $slug );
+			if ( $information instanceof \WP_Error ) {
+				return $this->package_api_error( $information, 'install' );
+			}
+			if ( ! is_array( $information ) && ! is_object( $information ) ) {
+				return $this->error( 'plugin_information_unavailable', 'WordPress did not return usable plugin information.' );
+			}
+
+			$metadata_slug = sanitize_key( $this->metadata_string( $information, 'slug' ) );
+			if ( '' !== $metadata_slug && $metadata_slug !== $slug ) {
+				return $this->error( 'plugin_source_mismatch', 'WordPress returned package information for a different plugin.' );
+			}
+
+			$package = $this->package_policy->requested_package_url( $this->metadata_value( $information, 'download_link' ), $slug );
+			if ( is_array( $package ) ) {
+				return $package;
+			}
+
+			$name               = $this->bounded_text( $this->metadata_string( $information, 'name' ), 120 );
+			$version            = $this->bounded_text( $this->metadata_string( $information, 'version' ), 40 );
+			$requires           = $this->bounded_text( $this->metadata_string( $information, 'requires' ), 40 );
+			$requires_php       = $this->bounded_text( $this->metadata_string( $information, 'requires_php' ), 40 );
+			$requirements_error = $this->package_policy->requirements_error( 'install', $requires, $requires_php );
+			if ( null !== $requirements_error ) {
+				return $requirements_error;
+			}
+			if ( '' === $version ) {
+				return $this->error( 'plugin_information_unavailable', 'WordPress did not return a target plugin version.' );
+			}
 		}
 
-		$package = $this->requested_package_url( $this->metadata_value( $information, 'download_link' ) );
-		if ( is_array( $package ) ) {
-			return $package;
-		}
-
-		$name    = $this->bounded_text( $this->metadata_string( $information, 'name' ), 120 );
-		$version = $this->bounded_text( $this->metadata_string( $information, 'version' ), 40 );
-		$target  = array(
+		$target = array(
 			'type'    => 'plugin',
 			'id'      => $slug,
 			'name'    => $name,
@@ -144,12 +195,16 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		);
 
 		if ( $this->is_dry_run( $args ) ) {
-			return $this->preview_response(
+			$preview = $this->preview_response(
 				'plugin_lifecycle.install_plugin',
 				$args,
 				$target,
 				array( $this->change( 'installed', false, true ), $this->change( 'version', '', $version ) ),
 				$this->plugin_install_warnings()
+			);
+			return $this->package_policy->with_confirmation_binding(
+				$preview,
+				$this->package_policy->install_binding( $slug, $name, $version, $package, $requires, $requires_php )
 			);
 		}
 
@@ -166,12 +221,11 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 				break;
 			}
 		}
-		$plugin   = $target;
-		$verified = false;
-		if ( is_array( $installed ) ) {
-			$plugin   = $installed;
-			$verified = true;
+		if ( ! is_array( $installed ) || (string) ( $installed['version'] ?? '' ) !== $version ) {
+			return $this->error( 'plugin_install_postcondition_failed', 'Plugin installation completed without the expected plugin version being available.' );
 		}
+		$plugin   = $installed;
+		$verified = true;
 
 		return array(
 			'status'                => 'installed',
@@ -211,58 +265,86 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		if ( null === $current ) {
 			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
 		}
-		if ( ! empty( $current['network_active'] ) && is_multisite() ) {
-			return $this->error( 'network_active_plugin', 'Network-active plugins cannot be updated from a site-scoped tool call.' );
+		if ( is_multisite() ) {
+			return $this->error( 'multisite_update_scope', 'Plugin updates are disabled on multisite because plugin files are shared across sites; use an explicitly network-scoped maintenance workflow.' );
 		}
 
-		$metadata = $this->plugin_update_metadata();
-		$update   = $metadata['response'][ $plugin_file ] ?? null;
-		if ( null === $update ) {
-			return $this->error( 'update_unavailable', 'No cached WordPress update is available for this plugin.' );
-		}
+		$requires     = '';
+		$requires_php = '';
+		$binding      = $this->package_policy->requested_confirmation_binding( $args );
+		if ( null !== $binding ) {
+			$binding_error = $this->package_policy->validate_update_binding( $binding, $plugin_file, $current );
+			if ( null !== $binding_error ) {
+				return $binding_error;
+			}
 
-		$package_value = $this->metadata_string( $update, 'package' );
-		if ( '' === $package_value ) {
-			$package_value = $this->metadata_string( $update, 'download_link' );
-		}
-		if ( '' === $package_value ) {
-			return $this->error( 'update_unavailable', 'Cached update metadata does not include a plugin package.' );
-		}
-		$package = $this->requested_package_url( $package_value );
-		if ( is_array( $package ) ) {
-			return $package;
-		}
+			$package      = (string) $binding['package'];
+			$new_version  = (string) $binding['version'];
+			$requires     = (string) ( $binding['requires'] ?? '' );
+			$requires_php = (string) ( $binding['requires_php'] ?? '' );
+		} else {
+			$metadata = $this->plugin_update_metadata();
+			$update   = $metadata['response'][ $plugin_file ] ?? null;
+			if ( null === $update ) {
+				return $this->error( 'update_unavailable', 'No cached WordPress update is available for this plugin.' );
+			}
 
-		$new_version = $this->bounded_text( $this->metadata_string( $update, 'new_version' ), 40 );
-		if ( '' === $new_version ) {
-			return $this->error( 'update_unavailable', 'Cached update metadata does not include a target version.' );
+			$package_value = $this->metadata_string( $update, 'package' );
+			if ( '' === $package_value ) {
+				$package_value = $this->metadata_string( $update, 'download_link' );
+			}
+			if ( '' === $package_value ) {
+				return $this->error( 'update_unavailable', 'Cached update metadata does not include a plugin package.' );
+			}
+			$package = $this->package_policy->requested_package_url( $package_value, $this->plugin_slug( $plugin_file ) );
+			if ( is_array( $package ) ) {
+				return $package;
+			}
+
+			$new_version = $this->bounded_text( $this->metadata_string( $update, 'new_version' ), 40 );
+			if ( '' === $new_version ) {
+				return $this->error( 'update_unavailable', 'Cached update metadata does not include a target version.' );
+			}
+			$requires           = $this->bounded_text( $this->metadata_string( $update, 'requires' ), 40 );
+			$requires_php       = $this->bounded_text( $this->metadata_string( $update, 'requires_php' ), 40 );
+			$requirements_error = $this->package_policy->requirements_error( 'update', $requires, $requires_php );
+			if ( null !== $requirements_error ) {
+				return $requirements_error;
+			}
 		}
 
 		$target            = $this->plugin_target_summary( $current );
 		$target['version'] = $new_version;
 		if ( $this->is_dry_run( $args ) ) {
-			return $this->preview_response(
+			$preview = $this->preview_response(
 				'plugin_lifecycle.update_plugin',
 				$args,
 				$target,
 				array( $this->change( 'version', $current['version'] ?? '', $new_version ) ),
 				$this->plugin_update_warnings()
 			);
+			return $this->package_policy->with_confirmation_binding(
+				$preview,
+				$this->package_policy->update_binding( $plugin_file, $current, $new_version, $package, $requires, $requires_php )
+			);
 		}
 
-		$result  = ( new PluginLifecyclePackageManager() )->update( $plugin_file );
+		$result  = ( new PluginLifecyclePackageManager() )->update( $plugin_file, $package );
 		$failure = $this->package_operation_failure( $result, 'update' );
 		if ( null !== $failure ) {
 			return $failure;
 		}
 
 		$updated = $this->plugin_inventory_item( $plugin_file );
+		if ( null === $updated || (string) ( $updated['version'] ?? '' ) !== $new_version ) {
+			return $this->error( 'plugin_update_postcondition_failed', 'Plugin update completed without the expected plugin version being available.' );
+		}
 
 		return array(
 			'status'                => 'updated',
 			'operation'             => 'update',
-			'plugin'                => $updated ?? $target,
-			'verified'              => null !== $updated,
+			'plugin'                => $updated,
+			'verified'              => true,
 			'changed'               => true,
 			'context'               => $this->site_context(),
 			'capabilities'          => $this->lifecycle_capabilities(),
@@ -403,6 +485,15 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		if ( null === $updated ) {
 			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
 		}
+		$state_matches = 'activate' === $operation
+			? ( true === ( $updated['active'] ?? false ) && true === ( $updated['site_active'] ?? false ) )
+			: ( false === ( $updated['active'] ?? true ) && false === ( $updated['site_active'] ?? true ) );
+		if ( ! $state_matches ) {
+			return $this->error(
+				'plugin_' . $operation . '_postcondition_failed',
+				'Plugin ' . ( 'activate' === $operation ? 'activation' : 'deactivation' ) . ' completed without the expected site state being available.'
+			);
+		}
 
 		return array(
 			'status'                => 'activate' === $operation ? 'activated' : 'deactivated',
@@ -448,41 +539,6 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		}
 
 		return $slug;
-	}
-
-	/**
-	 * Validate a package URL before WordPress core downloads it.
-	 *
-	 * @param mixed $value Package URL.
-	 * @return string|array<string, string>
-	 */
-	private function requested_package_url( mixed $value ): string|array {
-		if ( ! is_scalar( $value ) ) {
-			return $this->error( 'invalid_package_url', 'WordPress did not provide a usable plugin package URL.' );
-		}
-
-		$url    = esc_url_raw( trim( (string) $value ) );
-		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
-		if ( 'https' !== $scheme || ! $this->plugin_package_host_is_safe( $url ) ) {
-			return $this->error( 'invalid_package_url', 'Plugin packages must use a public HTTPS URL.' );
-		}
-
-		return $url;
-	}
-
-	/**
-	 * Allow the official directory host without a DNS lookup, otherwise apply
-	 * the normal public-address SSRF checks used by remote media URLs.
-	 *
-	 * @param string $url Package URL.
-	 */
-	private function plugin_package_host_is_safe( string $url ): bool {
-		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
-		if ( in_array( $host, array( 'downloads.wordpress.org', 'downloads.wordpress.net' ), true ) ) {
-			return true;
-		}
-
-		return $this->is_public_http_url( $url );
 	}
 
 	/**

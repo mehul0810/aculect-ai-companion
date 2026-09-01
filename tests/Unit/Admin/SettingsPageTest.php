@@ -477,7 +477,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( array(), $payload['revokedSessions'] );
 	}
 
-	public function test_local_connections_payload_applies_sample_rows_when_empty(): void {
+	public function test_local_connections_payload_stays_empty_when_no_real_sessions_exist(): void {
 		$GLOBALS['aculect_ai_companion_test_environment_type'] = 'local';
 		$this->wpdb->return_empty_results                      = true;
 		update_option( 'aculect_ai_companion_first_installed_at', 1704067200, false );
@@ -487,15 +487,10 @@ final class SettingsPageTest extends TestCase {
 
 		self::assertSame( 0, $payload['activeSessionCount'] );
 		self::assertFalse( $payload['isConnected'] );
-		self::assertCount( 3, $payload['sessions'] );
-		self::assertCount( 1, $payload['revokedSessions'] );
-		self::assertSame( 'ChatGPT Local QA', $payload['sessions'][0]['client_name'] );
-		self::assertSame( 'revoked', $payload['revokedSessions'][0]['status'] );
-		self::assertTrue( $payload['sessions'][0]['is_sample'] );
-		self::assertTrue( $payload['revokedSessions'][0]['is_sample'] );
-		self::assertGreaterThanOrEqual( 1704067200, strtotime( (string) $payload['sessions'][0]['created_at'] . ' UTC' ) );
+		self::assertSame( array(), $payload['sessions'] );
+		self::assertSame( array(), $payload['revokedSessions'] );
 		self::assertSame( 'Preview data - these are examples, not real connections or activity.', $payload['sampleData']['message'] );
-		self::assertSame( array( 'connections' ), $payload['sampleData']['appliedTabs'] );
+		self::assertSame( array(), $payload['sampleData']['appliedTabs'] );
 	}
 
 	public function test_local_abilities_payload_reports_sample_connection_count_when_empty(): void {

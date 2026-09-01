@@ -20,28 +20,30 @@ final class AdminMenuAbilitiesTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']             = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']         = array();
 		$GLOBALS['aculect_ai_companion_test_registered_settings'] = array(
-			'blogname' => array(
-				'group'       => 'general',
-				'type'        => 'string',
-				'description' => 'Site title.',
+			'blogname'                  => array(
+				'group'        => 'general',
+				'type'         => 'string',
+				'description'  => 'Site title.',
 				'show_in_rest' => true,
-				'default'     => '',
+				'default'      => '',
 			),
 			'aculect_ai_companion_mode' => array(
-				'group'       => 'aculect_ai_companion',
-				'type'        => 'string',
-				'description' => 'AI Companion mode.',
+				'group'        => 'aculect_ai_companion',
+				'type'         => 'string',
+				'description'  => 'AI Companion mode.',
 				'show_in_rest' => false,
-				'default'     => 'standard',
+				'default'      => 'standard',
 			),
 		);
 
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolate menu globals for the sparse-menu fallback test.
 		$GLOBALS['menu'] = array(
 			80 => array( 'Settings', 'manage_options', 'options-general.php', 'Settings' ),
 		);
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Isolate submenu globals for the sparse-menu fallback test.
 		$GLOBALS['submenu'] = array(
 			'options-general.php' => array(
 				10 => array( 'AI Companion', 'manage_options', 'options-general.php?page=aculect-ai-companion', 'AI Companion' ),
@@ -85,6 +87,46 @@ final class AdminMenuAbilitiesTest extends TestCase {
 		self::assertSame( 'ready', $result['status'] );
 		self::assertSame( 'options-permalink.php', $result['target']['slug'] );
 		self::assertStringContainsString( 'options-permalink.php', $result['target']['url'] );
+	}
+
+	public function test_list_pages_includes_core_submenus_when_dynamic_menu_is_sparse(): void {
+		$settings   = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'settings' ) );
+		$tools      = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$appearance = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'appearance' ) );
+		$dashboard  = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'dashboard' ) );
+
+		$setting_slugs    = array_column( $settings['items'], 'slug' );
+		$tool_slugs       = array_column( $tools['items'], 'slug' );
+		$appearance_slugs = array_column( $appearance['items'], 'slug' );
+		$dashboard_slugs  = array_column( $dashboard['items'], 'slug' );
+
+		self::assertContains( 'options-writing.php', $setting_slugs );
+		self::assertContains( 'options-permalink.php', $setting_slugs );
+		self::assertContains( 'import.php', $tool_slugs );
+		self::assertContains( 'site-health.php', $tool_slugs );
+		self::assertContains( 'nav-menus.php', $appearance_slugs );
+		self::assertContains( 'theme-editor.php', $appearance_slugs );
+		self::assertContains( 'update-core.php', $dashboard_slugs );
+	}
+
+	public function test_dynamic_core_submenu_metadata_takes_precedence_over_fallback(): void {
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Override one submenu to verify live metadata precedence.
+		$GLOBALS['submenu'] = array(
+			'options-general.php' => array(
+				10 => array( 'Writing', 'custom_writing_cap', 'options-writing.php', 'Writing' ),
+			),
+		);
+
+		$result = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'settings' ) );
+		$items  = array_values(
+			array_filter(
+				$result['items'],
+				static fn ( array $item ): bool => 'options-writing.php' === (string) ( $item['slug'] ?? '' )
+			)
+		);
+
+		self::assertCount( 1, $items );
+		self::assertSame( 'custom_writing_cap', $items[0]['capability'] );
 	}
 
 	public function test_refresh_context_stores_plugin_owned_snapshot(): void {

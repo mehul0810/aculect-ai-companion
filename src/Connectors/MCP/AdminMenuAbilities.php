@@ -304,7 +304,8 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 		$items = array_merge(
 			$this->known_core_surfaces(),
 			$this->map_global_menu( is_array( $menu ?? null ) ? $menu : array() ),
-			$this->map_global_submenu( is_array( $submenu ?? null ) ? $submenu : array() )
+			$this->map_global_submenu( is_array( $submenu ?? null ) ? $submenu : array() ),
+			$this->known_core_submenu_surfaces()
 		);
 
 		$deduped = array();
@@ -403,6 +404,41 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 			$this->admin_page( 'Users', 'Users', 'users.php', 'list_users', '', 'users', 70 ),
 			$this->admin_page( 'Tools', 'Tools', 'tools.php', 'manage_options', '', 'tools', 75 ),
 			$this->admin_page( 'Settings', 'General Settings', 'options-general.php', 'manage_options', '', 'settings', 80 ),
+		);
+	}
+
+	/**
+	 * Return core submenu surfaces when WordPress has not populated $submenu.
+	 *
+	 * Dynamic plugin and theme submenus are still added by map_global_submenu().
+	 * These stable core entries keep MCP planning useful outside an admin page
+	 * request without exposing option values or creating write paths.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function known_core_submenu_surfaces(): array {
+		return array(
+			$this->admin_page( 'Home', 'Dashboard Home', 'index.php', 'read', 'index.php', 'dashboard', 2 ),
+			$this->admin_page( 'Updates', 'WordPress Updates', 'update-core.php', 'update_core', 'index.php', 'dashboard', 4 ),
+			$this->admin_page( 'Themes', 'Themes', 'themes.php', 'switch_themes', 'themes.php', 'appearance', 60 ),
+			$this->admin_page( 'Editor', 'Site Editor', 'site-editor.php', 'edit_theme_options', 'themes.php', 'appearance', 61 ),
+			$this->admin_page( 'Customize', 'Customize', 'customize.php', 'customize', 'themes.php', 'appearance', 62 ),
+			$this->admin_page( 'Widgets', 'Widgets', 'widgets.php', 'edit_theme_options', 'themes.php', 'appearance', 63 ),
+			$this->admin_page( 'Menus', 'Menus', 'nav-menus.php', 'edit_theme_options', 'themes.php', 'appearance', 64 ),
+			$this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'themes.php', 'appearance', 65 ),
+			$this->admin_page( 'Available Tools', 'Available Tools', 'tools.php', 'manage_options', 'tools.php', 'tools', 75 ),
+			$this->admin_page( 'Import', 'Import', 'import.php', 'import', 'tools.php', 'tools', 76 ),
+			$this->admin_page( 'Export', 'Export', 'export.php', 'export', 'tools.php', 'tools', 77 ),
+			$this->admin_page( 'Site Health', 'Site Health', 'site-health.php', 'view_site_health_checks', 'tools.php', 'tools', 78 ),
+			$this->admin_page( 'Export Personal Data', 'Export Personal Data', 'export-personal-data.php', 'manage_options', 'tools.php', 'tools', 79 ),
+			$this->admin_page( 'Erase Personal Data', 'Erase Personal Data', 'erase-personal-data.php', 'manage_options', 'tools.php', 'tools', 80 ),
+			$this->admin_page( 'General', 'General Settings', 'options-general.php', 'manage_options', 'options-general.php', 'settings', 80 ),
+			$this->admin_page( 'Writing', 'Writing Settings', 'options-writing.php', 'manage_options', 'options-general.php', 'settings', 81 ),
+			$this->admin_page( 'Reading', 'Reading Settings', 'options-reading.php', 'manage_options', 'options-general.php', 'settings', 82 ),
+			$this->admin_page( 'Discussion', 'Discussion Settings', 'options-discussion.php', 'manage_options', 'options-general.php', 'settings', 83 ),
+			$this->admin_page( 'Media', 'Media Settings', 'options-media.php', 'manage_options', 'options-general.php', 'settings', 84 ),
+			$this->admin_page( 'Permalinks', 'Permalink Settings', 'options-permalink.php', 'manage_options', 'options-general.php', 'settings', 85 ),
+			$this->admin_page( 'Privacy', 'Privacy Settings', 'options-privacy.php', 'manage_privacy_options', 'options-general.php', 'settings', 86 ),
 		);
 	}
 

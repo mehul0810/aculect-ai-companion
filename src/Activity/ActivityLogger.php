@@ -198,6 +198,10 @@ final class ActivityLogger {
 				'type' => 'attachment',
 				'id'   => $this->first_id( $result, $args, array( 'id', 'post_id' ) ),
 			),
+			'plugin_lifecycle.install_plugin', 'plugin_lifecycle.update_plugin', 'plugin_lifecycle.activate_plugin', 'plugin_lifecycle.deactivate_plugin' => array(
+				'type' => 'plugin',
+				'id'   => null,
+			),
 			'comments.create_item', 'comments.update_item' => array(
 				'type' => 'comment',
 				'id'   => $this->first_id( $result, $args, array( 'id' ) ),
@@ -276,7 +280,7 @@ final class ActivityLogger {
 			'action' => $action,
 		);
 
-		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'suggestion_id', 'source_id', 'target_id', 'term_id', 'post_id', 'update_mode', 'job_key', 'source_type', 'target', 'block_type', 'placement', 'provider' ) as $key ) {
+		foreach ( array( 'post_type', 'status', 'taxonomy', 'id', 'plugin', 'slug', 'suggestion_id', 'source_id', 'target_id', 'term_id', 'post_id', 'update_mode', 'job_key', 'source_type', 'target', 'block_type', 'placement', 'provider' ) as $key ) {
 			if ( isset( $args[ $key ] ) && is_scalar( $args[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $args[ $key ] ) ? absint( $args[ $key ] ) : sanitize_text_field( (string) $args[ $key ] );
 			}
@@ -305,7 +309,7 @@ final class ActivityLogger {
 	private function result_metadata( array $result ): array {
 		$metadata = array();
 
-		foreach ( array( 'id', 'post_id', 'attachment_id', 'type', 'status', 'workflow', 'taxonomy', 'mime_type', 'target', 'block_type' ) as $key ) {
+		foreach ( array( 'id', 'post_id', 'attachment_id', 'type', 'status', 'workflow', 'taxonomy', 'mime_type', 'target', 'block_type', 'changed', 'verified' ) as $key ) {
 			if ( isset( $result[ $key ] ) && is_scalar( $result[ $key ] ) ) {
 				$metadata[ $key ] = is_numeric( $result[ $key ] ) ? absint( $result[ $key ] ) : sanitize_text_field( (string) $result[ $key ] );
 			}

@@ -270,6 +270,8 @@ final class ToolSafety {
 			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
+			'plugin_lifecycle.install_plugin',
+			'plugin_lifecycle.update_plugin',
 			'plugin_lifecycle.activate_plugin',
 			'plugin_lifecycle.deactivate_plugin',
 			'theme_lifecycle.switch_theme' => 'system',

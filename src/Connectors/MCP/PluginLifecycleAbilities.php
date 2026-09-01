@@ -97,6 +97,182 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Install one plugin from the WordPress.org directory.
+	 *
+	 * Only the directory metadata and package URL returned by WordPress core are
+	 * accepted. Installation never activates the plugin automatically.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function install_plugin( array $args ): array {
+		if ( ! current_user_can( 'install_plugins' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to install plugins.' );
+		}
+
+		$slug = $this->requested_plugin_slug( $args['slug'] ?? '' );
+		if ( is_array( $slug ) ) {
+			return $slug;
+		}
+
+		$this->load_plugin_functions();
+		if ( null !== $this->plugin_inventory_item_by_slug( $slug ) ) {
+			return $this->error( 'plugin_already_installed', 'A plugin with this slug is already installed.' );
+		}
+
+		$information = ( new PluginLifecyclePackageManager() )->information( $slug );
+		if ( $information instanceof \WP_Error ) {
+			return $this->package_api_error( $information, 'install' );
+		}
+		if ( ! is_array( $information ) && ! is_object( $information ) ) {
+			return $this->error( 'plugin_information_unavailable', 'WordPress did not return usable plugin information.' );
+		}
+
+		$package = $this->requested_package_url( $this->metadata_value( $information, 'download_link' ) );
+		if ( is_array( $package ) ) {
+			return $package;
+		}
+
+		$name    = $this->bounded_text( $this->metadata_string( $information, 'name' ), 120 );
+		$version = $this->bounded_text( $this->metadata_string( $information, 'version' ), 40 );
+		$target  = array(
+			'type'    => 'plugin',
+			'id'      => $slug,
+			'name'    => $name,
+			'version' => $version,
+			'source'  => 'wordpress.org',
+		);
+
+		if ( $this->is_dry_run( $args ) ) {
+			return $this->preview_response(
+				'plugin_lifecycle.install_plugin',
+				$args,
+				$target,
+				array( $this->change( 'installed', false, true ), $this->change( 'version', '', $version ) ),
+				$this->plugin_install_warnings()
+			);
+		}
+
+		$result  = ( new PluginLifecyclePackageManager() )->install( $package );
+		$failure = $this->package_operation_failure( $result, 'install' );
+		if ( null !== $failure ) {
+			return $failure;
+		}
+
+		$installed = null;
+		foreach ( $this->plugin_inventory() as $item ) {
+			if ( (string) ( $item['slug'] ?? '' ) === $slug ) {
+				$installed = $item;
+				break;
+			}
+		}
+		$plugin   = $target;
+		$verified = false;
+		if ( is_array( $installed ) ) {
+			$plugin   = $installed;
+			$verified = true;
+		}
+
+		return array(
+			'status'                => 'installed',
+			'operation'             => 'install',
+			'plugin'                => $plugin,
+			'verified'              => $verified,
+			'changed'               => true,
+			'context'               => $this->site_context(),
+			'capabilities'          => $this->lifecycle_capabilities(),
+			'capability_blockers'   => $this->capability_blockers(),
+			'safety'                => $this->write_safety_metadata( 'install' ),
+			'confirmation_required' => false,
+		);
+	}
+
+	/**
+	 * Update one installed plugin using cached WordPress update metadata.
+	 *
+	 * A remote update check is intentionally not forced by an assistant call.
+	 * WordPress core or an administrator must first populate the update transient.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>
+	 */
+	public function update_plugin( array $args ): array {
+		if ( ! current_user_can( 'update_plugins' ) ) {
+			return $this->error( 'forbidden', 'You do not have permission to update plugins.' );
+		}
+
+		$this->load_plugin_functions();
+		$plugin_file = $this->requested_plugin_file( $args['plugin'] ?? '' );
+		if ( is_array( $plugin_file ) ) {
+			return $plugin_file;
+		}
+
+		$current = $this->plugin_inventory_item( $plugin_file );
+		if ( null === $current ) {
+			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
+		}
+		if ( ! empty( $current['network_active'] ) && is_multisite() ) {
+			return $this->error( 'network_active_plugin', 'Network-active plugins cannot be updated from a site-scoped tool call.' );
+		}
+
+		$metadata = $this->plugin_update_metadata();
+		$update   = $metadata['response'][ $plugin_file ] ?? null;
+		if ( null === $update ) {
+			return $this->error( 'update_unavailable', 'No cached WordPress update is available for this plugin.' );
+		}
+
+		$package_value = $this->metadata_string( $update, 'package' );
+		if ( '' === $package_value ) {
+			$package_value = $this->metadata_string( $update, 'download_link' );
+		}
+		if ( '' === $package_value ) {
+			return $this->error( 'update_unavailable', 'Cached update metadata does not include a plugin package.' );
+		}
+		$package = $this->requested_package_url( $package_value );
+		if ( is_array( $package ) ) {
+			return $package;
+		}
+
+		$new_version = $this->bounded_text( $this->metadata_string( $update, 'new_version' ), 40 );
+		if ( '' === $new_version ) {
+			return $this->error( 'update_unavailable', 'Cached update metadata does not include a target version.' );
+		}
+
+		$target            = $this->plugin_target_summary( $current );
+		$target['version'] = $new_version;
+		if ( $this->is_dry_run( $args ) ) {
+			return $this->preview_response(
+				'plugin_lifecycle.update_plugin',
+				$args,
+				$target,
+				array( $this->change( 'version', $current['version'] ?? '', $new_version ) ),
+				$this->plugin_update_warnings()
+			);
+		}
+
+		$result  = ( new PluginLifecyclePackageManager() )->update( $plugin_file );
+		$failure = $this->package_operation_failure( $result, 'update' );
+		if ( null !== $failure ) {
+			return $failure;
+		}
+
+		$updated = $this->plugin_inventory_item( $plugin_file );
+
+		return array(
+			'status'                => 'updated',
+			'operation'             => 'update',
+			'plugin'                => $updated ?? $target,
+			'verified'              => null !== $updated,
+			'changed'               => true,
+			'context'               => $this->site_context(),
+			'capabilities'          => $this->lifecycle_capabilities(),
+			'capability_blockers'   => $this->capability_blockers(),
+			'safety'                => $this->write_safety_metadata( 'update' ),
+			'confirmation_required' => false,
+		);
+	}
+
+	/**
 	 * Activate one already-installed plugin on the current site.
 	 *
 	 * @param array<string, mixed> $args Tool arguments.
@@ -256,6 +432,127 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	}
 
 	/**
+	 * Normalize a WordPress.org plugin slug.
+	 *
+	 * @param mixed $value Raw slug.
+	 * @return string|array<string, string>
+	 */
+	private function requested_plugin_slug( mixed $value ): string|array {
+		if ( ! is_scalar( $value ) ) {
+			return $this->error( 'invalid_plugin_slug', 'Plugin slug must use lowercase letters, numbers, and hyphens.' );
+		}
+
+		$slug = strtolower( trim( (string) $value ) );
+		if ( ! preg_match( '/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/', $slug ) ) {
+			return $this->error( 'invalid_plugin_slug', 'Plugin slug must use lowercase letters, numbers, and hyphens.' );
+		}
+
+		return $slug;
+	}
+
+	/**
+	 * Validate a package URL before WordPress core downloads it.
+	 *
+	 * @param mixed $value Package URL.
+	 * @return string|array<string, string>
+	 */
+	private function requested_package_url( mixed $value ): string|array {
+		if ( ! is_scalar( $value ) ) {
+			return $this->error( 'invalid_package_url', 'WordPress did not provide a usable plugin package URL.' );
+		}
+
+		$url    = esc_url_raw( trim( (string) $value ) );
+		$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
+		if ( 'https' !== $scheme || ! $this->plugin_package_host_is_safe( $url ) ) {
+			return $this->error( 'invalid_package_url', 'Plugin packages must use a public HTTPS URL.' );
+		}
+
+		return $url;
+	}
+
+	/**
+	 * Allow the official directory host without a DNS lookup, otherwise apply
+	 * the normal public-address SSRF checks used by remote media URLs.
+	 *
+	 * @param string $url Package URL.
+	 */
+	private function plugin_package_host_is_safe( string $url ): bool {
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		if ( in_array( $host, array( 'downloads.wordpress.org', 'downloads.wordpress.net' ), true ) ) {
+			return true;
+		}
+
+		return $this->is_public_http_url( $url );
+	}
+
+	/**
+	 * Return an installed plugin by its directory slug.
+	 *
+	 * @param string $slug WordPress.org plugin slug.
+	 * @return mixed Installed plugin item or null.
+	 */
+	private function plugin_inventory_item_by_slug( string $slug ): mixed {
+		foreach ( $this->plugin_inventory() as $item ) {
+			if ( (string) ( $item['slug'] ?? '' ) === $slug ) {
+				return $item;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Map plugin API failures without exposing remote payloads or paths.
+	 *
+	 * @param \WP_Error $error     WordPress error.
+	 * @param string    $operation Install or update.
+	 * @return array<string, mixed>
+	 */
+	private function package_api_error( \WP_Error $error, string $operation ): array {
+		$code = sanitize_key( (string) $error->get_error_code() );
+
+		return array(
+			'error'        => 'plugin_' . $operation . '_information_failed',
+			'message'      => 'WordPress could not retrieve plugin package information.',
+			'failure_code' => '' !== $code ? $code : 'api_error',
+			'operation'    => $operation,
+			'safety'       => $this->write_safety_metadata( $operation ),
+		);
+	}
+
+	/**
+	 * Map a core upgrader result into a bounded public failure.
+	 *
+	 * @param mixed  $result    Core upgrader result.
+	 * @param string $operation Install or update.
+	 * @return array<string, mixed>|null
+	 */
+	private function package_operation_failure( mixed $result, string $operation ): ?array {
+		if ( $result instanceof \WP_Error ) {
+			$code = sanitize_key( (string) $result->get_error_code() );
+
+			return array(
+				'error'        => 'plugin_' . $operation . '_failed',
+				'message'      => 'WordPress could not ' . $operation . ' the plugin.',
+				'failure_code' => '' !== $code ? $code : 'upgrader_error',
+				'operation'    => $operation,
+				'safety'       => $this->write_safety_metadata( $operation ),
+			);
+		}
+
+		if ( true !== $result ) {
+			return array(
+				'error'     => 'plugin_' . $operation . '_failed',
+				'message'   => 'WordPress could not ' . $operation . ' the plugin.',
+				'operation' => $operation,
+				'safety'    => $this->write_safety_metadata( $operation ),
+			);
+		}
+
+		return null;
+	}
+
+	/**
 	 * Return current-site active plugin basenames.
 	 *
 	 * @return list<string>
@@ -360,7 +657,7 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	}
 
 	/**
-	 * Return missing capabilities for lifecycle actions not implemented in this slice.
+	 * Return missing capabilities for lifecycle actions.
 	 *
 	 * @return array<string, array{capability: string}>
 	 */
@@ -409,8 +706,8 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	private function safety_metadata(): array {
 		return array(
 			'read_only'                    => true,
-			'install_implemented'          => false,
-			'update_implemented'           => false,
+			'install_implemented'          => true,
+			'update_implemented'           => true,
 			'activate_implemented'         => true,
 			'deactivate_implemented'       => true,
 			'filesystem_credentials_used'  => false,
@@ -430,18 +727,24 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	private function write_safety_metadata( string $operation ): array {
+		$install_or_update = in_array( $operation, array( 'install', 'update' ), true );
+		$install           = 'install' === $operation;
+		$update            = 'update' === $operation;
+		$activate          = 'activate' === $operation;
+		$deactivate        = 'deactivate' === $operation;
+
 		return array(
 			'read_only'                      => false,
-			'install_implemented'            => false,
-			'update_implemented'             => false,
-			'activate_implemented'           => true,
-			'deactivate_implemented'         => true,
+			'install_implemented'            => $install,
+			'update_implemented'             => $update,
+			'activate_implemented'           => $activate,
+			'deactivate_implemented'         => $deactivate,
 			'operation'                      => $operation,
 			'site_scope_only'                => true,
 			'network_scope_supported'        => false,
 			'filesystem_credentials_used'    => false,
-			'filesystem_writes'              => false,
-			'option_writes'                  => false,
+			'filesystem_writes'              => $install_or_update,
+			'option_writes'                  => $install_or_update,
 			'raw_plugin_code_included'       => false,
 			'raw_update_payloads_included'   => false,
 			'secret_values_included'         => false,
@@ -517,6 +820,32 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			'Deactivation can remove frontend or admin functionality immediately and should be confirmed before execution.',
 			'Rollback is available by activating the same plugin through the matching plugin lifecycle tool.',
 			'This first beta slice changes the current site only; network deactivation remains out of scope.',
+		);
+	}
+
+	/**
+	 * Build bounded install warnings for the confirmation preview.
+	 *
+	 * @return string[]
+	 */
+	private function plugin_install_warnings(): array {
+		return array(
+			'Installing a plugin changes the site filesystem and should be confirmed before execution.',
+			'The plugin is installed inactive; activation is a separate confirmed action.',
+			'Only the WordPress.org package returned by core plugin information is accepted.',
+		);
+	}
+
+	/**
+	 * Build bounded update warnings for the confirmation preview.
+	 *
+	 * @return string[]
+	 */
+	private function plugin_update_warnings(): array {
+		return array(
+			'Updating a plugin changes the site filesystem and may change site behavior immediately.',
+			'This call uses cached WordPress update metadata and does not force a remote update check.',
+			'Rollback is not automatic; restore the plugin from a tested backup if the update causes a regression.',
 		);
 	}
 

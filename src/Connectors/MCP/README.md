@@ -170,8 +170,10 @@ and fail closed with recovery guidance.
 registered admin pages and a bounded fallback map for WordPress core's
 Dashboard, Tools, Appearance, and Settings submenus. This makes core navigation
 discoverable from non-admin MCP requests while keeping settings values and
-arbitrary option writes out of the surface. Use typed domain abilities and
-existing confirmation/capability gates for any future changes.
+arbitrary option writes out of the surface. Live WordPress menu metadata takes
+precedence over fallback entries, and conditional routes follow the active
+theme, site, and capability state. Use typed domain abilities and existing
+confirmation/capability gates for any future changes.
 
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The

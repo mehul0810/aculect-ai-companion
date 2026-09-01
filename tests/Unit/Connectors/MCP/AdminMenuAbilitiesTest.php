@@ -90,6 +90,9 @@ final class AdminMenuAbilitiesTest extends TestCase {
 	}
 
 	public function test_list_pages_includes_core_submenus_when_dynamic_menu_is_sparse(): void {
+		$GLOBALS['aculect_ai_companion_test_is_block_theme'] = false;
+		$GLOBALS['aculect_ai_companion_test_theme_supports'] = array( 'menus' => true );
+
 		$settings   = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'settings' ) );
 		$tools      = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
 		$appearance = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'appearance' ) );
@@ -107,6 +110,48 @@ final class AdminMenuAbilitiesTest extends TestCase {
 		self::assertContains( 'nav-menus.php', $appearance_slugs );
 		self::assertContains( 'theme-editor.php', $appearance_slugs );
 		self::assertContains( 'update-core.php', $dashboard_slugs );
+	}
+
+	public function test_fallback_respects_block_theme_conditional_routes(): void {
+		$GLOBALS['aculect_ai_companion_test_is_block_theme'] = true;
+		$GLOBALS['aculect_ai_companion_test_theme_supports'] = array();
+
+		$appearance       = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'appearance' ) );
+		$tools            = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$appearance_slugs = array_column( $appearance['items'], 'slug' );
+		$tool_slugs       = array_column( $tools['items'], 'slug' );
+
+		self::assertContains( 'site-editor.php', $appearance_slugs );
+		self::assertNotContains( 'customize.php', $appearance_slugs );
+		self::assertNotContains( 'nav-menus.php', $appearance_slugs );
+		self::assertNotContains( 'theme-editor.php', $appearance_slugs );
+		self::assertContains( 'theme-editor.php', $tool_slugs );
+	}
+
+	public function test_fallback_uses_wordpress_core_submenu_capabilities(): void {
+		$GLOBALS['aculect_ai_companion_test_is_block_theme'] = false;
+		$GLOBALS['aculect_ai_companion_test_theme_supports'] = array();
+		$GLOBALS['aculect_ai_companion_test_denied_caps']    = array( 'update_core' );
+
+		$tools        = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'tools' ) );
+		$dashboard    = ( new AdminMenuAbilities() )->list_pages( array( 'section' => 'dashboard' ) );
+		$tool_by_slug = array();
+		foreach ( $tools['items'] as $item ) {
+			$tool_by_slug[ (string) $item['slug'] ] = (string) $item['capability'];
+		}
+
+		$update_item = array_values(
+			array_filter(
+				$dashboard['items'],
+				static fn ( array $item ): bool => 'update-core.php' === (string) ( $item['slug'] ?? '' )
+			)
+		);
+
+		self::assertSame( 'edit_posts', $tool_by_slug['tools.php'] );
+		self::assertSame( 'export_others_personal_data', $tool_by_slug['export-personal-data.php'] );
+		self::assertSame( 'erase_others_personal_data', $tool_by_slug['erase-personal-data.php'] );
+		self::assertCount( 1, $update_item );
+		self::assertSame( 'update_plugins', $update_item[0]['capability'] );
 	}
 
 	public function test_dynamic_core_submenu_metadata_takes_precedence_over_fallback(): void {

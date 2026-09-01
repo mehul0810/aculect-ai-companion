@@ -417,29 +417,122 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 	 * @return list<array<string, mixed>>
 	 */
 	private function known_core_submenu_surfaces(): array {
-		return array(
+		$is_block_theme = $this->is_block_theme();
+		$items          = array(
 			$this->admin_page( 'Home', 'Dashboard Home', 'index.php', 'read', 'index.php', 'dashboard', 2 ),
-			$this->admin_page( 'Updates', 'WordPress Updates', 'update-core.php', 'update_core', 'index.php', 'dashboard', 4 ),
-			$this->admin_page( 'Themes', 'Themes', 'themes.php', 'switch_themes', 'themes.php', 'appearance', 60 ),
+			$this->admin_page( 'Updates', 'WordPress Updates', 'update-core.php', $this->core_update_capability(), 'index.php', 'dashboard', 4 ),
+			$this->admin_page( 'Themes', 'Themes', 'themes.php', $this->appearance_capability(), 'themes.php', 'appearance', 60 ),
 			$this->admin_page( 'Editor', 'Site Editor', 'site-editor.php', 'edit_theme_options', 'themes.php', 'appearance', 61 ),
-			$this->admin_page( 'Customize', 'Customize', 'customize.php', 'customize', 'themes.php', 'appearance', 62 ),
-			$this->admin_page( 'Widgets', 'Widgets', 'widgets.php', 'edit_theme_options', 'themes.php', 'appearance', 63 ),
-			$this->admin_page( 'Menus', 'Menus', 'nav-menus.php', 'edit_theme_options', 'themes.php', 'appearance', 64 ),
-			$this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'themes.php', 'appearance', 65 ),
-			$this->admin_page( 'Available Tools', 'Available Tools', 'tools.php', 'manage_options', 'tools.php', 'tools', 75 ),
-			$this->admin_page( 'Import', 'Import', 'import.php', 'import', 'tools.php', 'tools', 76 ),
-			$this->admin_page( 'Export', 'Export', 'export.php', 'export', 'tools.php', 'tools', 77 ),
-			$this->admin_page( 'Site Health', 'Site Health', 'site-health.php', 'view_site_health_checks', 'tools.php', 'tools', 78 ),
-			$this->admin_page( 'Export Personal Data', 'Export Personal Data', 'export-personal-data.php', 'manage_options', 'tools.php', 'tools', 79 ),
-			$this->admin_page( 'Erase Personal Data', 'Erase Personal Data', 'erase-personal-data.php', 'manage_options', 'tools.php', 'tools', 80 ),
-			$this->admin_page( 'General', 'General Settings', 'options-general.php', 'manage_options', 'options-general.php', 'settings', 80 ),
-			$this->admin_page( 'Writing', 'Writing Settings', 'options-writing.php', 'manage_options', 'options-general.php', 'settings', 81 ),
-			$this->admin_page( 'Reading', 'Reading Settings', 'options-reading.php', 'manage_options', 'options-general.php', 'settings', 82 ),
-			$this->admin_page( 'Discussion', 'Discussion Settings', 'options-discussion.php', 'manage_options', 'options-general.php', 'settings', 83 ),
-			$this->admin_page( 'Media', 'Media Settings', 'options-media.php', 'manage_options', 'options-general.php', 'settings', 84 ),
-			$this->admin_page( 'Permalinks', 'Permalink Settings', 'options-permalink.php', 'manage_options', 'options-general.php', 'settings', 85 ),
-			$this->admin_page( 'Privacy', 'Privacy Settings', 'options-privacy.php', 'manage_privacy_options', 'options-general.php', 'settings', 86 ),
 		);
+
+		if ( $this->customize_surface_available( $is_block_theme ) ) {
+			$items[] = $this->admin_page( 'Customize', 'Customize', 'customize.php', 'customize', 'themes.php', 'appearance', 62 );
+		}
+
+		if ( $this->theme_supports( 'menus' ) || $this->theme_supports( 'widgets' ) ) {
+			$items[] = $this->admin_page( 'Menus', 'Menus', 'nav-menus.php', 'edit_theme_options', 'themes.php', 'appearance', 64 );
+		}
+
+		if ( $this->theme_supports( 'custom-header' ) && $this->capability_available( 'customize' ) ) {
+			$items[] = $this->admin_page( 'Header', 'Header', 'customize.php?autofocus[control]=header_image', $this->appearance_capability(), 'themes.php', 'appearance', 65 );
+		}
+
+		if ( $this->theme_supports( 'custom-background' ) && $this->capability_available( 'customize' ) ) {
+			$items[] = $this->admin_page( 'Background', 'Background', 'customize.php?autofocus[control]=background_image', $this->appearance_capability(), 'themes.php', 'appearance', 66 );
+		}
+
+		if ( ! $is_block_theme && ! $this->is_multisite() ) {
+			$items[] = $this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'themes.php', 'appearance', 67 );
+		}
+
+		$items = array_merge(
+			$items,
+			array(
+				$this->admin_page( 'Available Tools', 'Available Tools', 'tools.php', 'edit_posts', 'tools.php', 'tools', 75 ),
+				$this->admin_page( 'Import', 'Import', 'import.php', 'import', 'tools.php', 'tools', 76 ),
+				$this->admin_page( 'Export', 'Export', 'export.php', 'export', 'tools.php', 'tools', 77 ),
+				$this->admin_page( 'Site Health', 'Site Health', 'site-health.php', 'view_site_health_checks', 'tools.php', 'tools', 78 ),
+				$this->admin_page( 'Export Personal Data', 'Export Personal Data', 'export-personal-data.php', 'export_others_personal_data', 'tools.php', 'tools', 79 ),
+				$this->admin_page( 'Erase Personal Data', 'Erase Personal Data', 'erase-personal-data.php', 'erase_others_personal_data', 'tools.php', 'tools', 80 ),
+			)
+		);
+
+		if ( $is_block_theme && ! $this->is_multisite() ) {
+			$items[] = $this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'tools.php', 'tools', 81 );
+		}
+
+		if ( $this->is_multisite() && function_exists( 'is_main_site' ) && ! is_main_site() ) {
+			$items[] = $this->admin_page( 'Delete Site', 'Delete Site', 'ms-delete-site.php', 'delete_site', 'tools.php', 'tools', 82 );
+		}
+
+		if ( ! $this->is_multisite() && defined( 'WP_ALLOW_MULTISITE' ) && WP_ALLOW_MULTISITE ) {
+			$items[] = $this->admin_page( 'Network Setup', 'Network Setup', 'network.php', 'setup_network', 'tools.php', 'tools', 83 );
+		}
+
+		return array_merge(
+			$items,
+			array(
+				$this->admin_page( 'General', 'General Settings', 'options-general.php', 'manage_options', 'options-general.php', 'settings', 80 ),
+				$this->admin_page( 'Writing', 'Writing Settings', 'options-writing.php', 'manage_options', 'options-general.php', 'settings', 81 ),
+				$this->admin_page( 'Reading', 'Reading Settings', 'options-reading.php', 'manage_options', 'options-general.php', 'settings', 82 ),
+				$this->admin_page( 'Discussion', 'Discussion Settings', 'options-discussion.php', 'manage_options', 'options-general.php', 'settings', 83 ),
+				$this->admin_page( 'Media', 'Media Settings', 'options-media.php', 'manage_options', 'options-general.php', 'settings', 84 ),
+				$this->admin_page( 'Permalinks', 'Permalink Settings', 'options-permalink.php', 'manage_options', 'options-general.php', 'settings', 85 ),
+				$this->admin_page( 'Privacy', 'Privacy Settings', 'options-privacy.php', 'manage_privacy_options', 'options-general.php', 'settings', 86 ),
+			)
+		);
+	}
+
+	/**
+	 * Return the capability WordPress uses for its updates submenu.
+	 */
+	private function core_update_capability(): string {
+		foreach ( array( 'update_core', 'update_plugins', 'update_themes', 'update_languages' ) as $capability ) {
+			if ( $this->capability_available( $capability ) ) {
+				return $capability;
+			}
+		}
+
+		return 'update_languages';
+	}
+
+	/**
+	 * Return the capability WordPress uses for its Appearance menu.
+	 */
+	private function appearance_capability(): string {
+		return function_exists( 'current_user_can' ) && current_user_can( 'switch_themes' ) ? 'switch_themes' : 'edit_theme_options';
+	}
+
+	/**
+	 * Check whether the active theme exposes a feature.
+	 *
+	 * @param string $feature Theme feature.
+	 */
+	private function theme_supports( string $feature ): bool {
+		return function_exists( 'current_theme_supports' ) && current_theme_supports( $feature );
+	}
+
+	/**
+	 * Return whether the active site uses a block theme.
+	 */
+	private function is_block_theme(): bool {
+		return function_exists( 'wp_is_block_theme' ) && wp_is_block_theme();
+	}
+
+	/**
+	 * Return whether the site is multisite.
+	 */
+	private function is_multisite(): bool {
+		return function_exists( 'is_multisite' ) && is_multisite();
+	}
+
+	/**
+	 * Check the conditional Customize submenu rule used by WordPress core.
+	 *
+	 * @param bool $is_block_theme Whether the active theme is a block theme.
+	 */
+	private function customize_surface_available( bool $is_block_theme ): bool {
+		return ! $is_block_theme || ( function_exists( 'has_action' ) && false !== has_action( 'customize_register' ) );
 	}
 
 	/**

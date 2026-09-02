@@ -52,6 +52,10 @@ final class ToolSafetyTest extends TestCase {
 		self::assertTrue( $this->safety->requires_confirmation( 'memory.bootstrap', array() ) );
 		self::assertSame( 'update', $this->safety->risk_level( 'plugin.incident.report', array() ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'plugin.incident.report', array() ) );
+		self::assertSame( 'system', $this->safety->risk_level( 'plugin_lifecycle.install_plugin', array( 'slug' => 'classic-editor' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'plugin_lifecycle.install_plugin', array( 'slug' => 'classic-editor' ) ) );
+		self::assertSame( 'system', $this->safety->risk_level( 'plugin_lifecycle.update_plugin', array( 'plugin' => 'acme/acme.php' ) ) );
+		self::assertTrue( $this->safety->requires_confirmation( 'plugin_lifecycle.update_plugin', array( 'plugin' => 'acme/acme.php' ) ) );
 		self::assertSame( 'destructive', $this->safety->risk_level( 'taxonomy.delete_term', array( 'term_id' => 12 ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'taxonomy.delete_term', array( 'term_id' => 12 ) ) );
 
@@ -171,6 +175,26 @@ final class ToolSafetyTest extends TestCase {
 				$auth
 			)
 		);
+	}
+
+	public function test_confirmation_token_retains_server_resolved_binding_for_execution(): void {
+		$auth    = array( 'user_id' => 7, 'client_id' => 'client-1', 'provider' => 'chatgpt' );
+		$binding = array(
+			'operation'       => 'update',
+			'plugin'          => 'acme/acme.php',
+			'package'         => 'https://downloads.wordpress.org/plugin/acme.2.0.0.zip',
+			'version'         => '2.0.0',
+			'package_digest'  => str_repeat( 'a', 64 ),
+			'large_untrusted' => str_repeat( 'x', 900 ),
+		);
+		$args    = array( 'plugin' => 'acme/acme.php' );
+		$token   = $this->safety->issue_confirmation_token( 'plugin_lifecycle.update_plugin', $args, $auth, $binding );
+		$call    = array_merge( $args, array( 'confirmation_token' => $token ) );
+
+		self::assertTrue( $this->safety->validate_confirmation_token( 'plugin_lifecycle.update_plugin', $call, $auth ) );
+		$stored = $this->safety->confirmation_binding( $call );
+		self::assertSame( 'https://downloads.wordpress.org/plugin/acme.2.0.0.zip', $stored['package'] ?? '' );
+		self::assertLessThanOrEqual( 512, strlen( (string) ( $stored['large_untrusted'] ?? '' ) ) );
 	}
 
 	public function test_idempotency_key_replays_identical_calls_and_rejects_reuse(): void {

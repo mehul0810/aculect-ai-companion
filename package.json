@@ -25,7 +25,7 @@
     "@wordpress/dataviews": "^14.3.0",
     "@wordpress/element": "^6.46.0",
     "@wordpress/icons": "^13.1.0",
-    "@wordpress/scripts": "^32.2.0"
+    "@wordpress/scripts": "^34.2.0"
   },
   "overrides": {
     "copy-webpack-plugin": {
@@ -34,7 +34,7 @@
     "markdownlint-cli": {
       "minimatch": "^3.1.5"
     },
-    "shell-quote": "^1.8.4",
+    "shell-quote": "^1.10.0",
     "webpack-dev-server": "^5.2.2",
     "uuid": "^11.1.1"
   }

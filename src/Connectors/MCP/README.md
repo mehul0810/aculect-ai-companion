@@ -175,6 +175,15 @@ or raw serialized navigation string edits. Future writes must preserve
 unknown/custom blocks and attrs, validate parsed block structure before save,
 and fail closed with recovery guidance.
 
+`admin_menu.get_context` and `admin_menu.list_pages` include both dynamically
+registered admin pages and a bounded fallback map for WordPress core's
+Dashboard, Tools, Appearance, and Settings submenus. This makes core navigation
+discoverable from non-admin MCP requests while keeping settings values and
+arbitrary option writes out of the surface. Live WordPress menu metadata takes
+precedence over fallback entries, and conditional routes follow the active
+theme, site, and capability state. Use typed domain abilities and existing
+confirmation/capability gates for any future changes.
+
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`

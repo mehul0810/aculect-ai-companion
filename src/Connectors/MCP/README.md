@@ -145,10 +145,19 @@ should stay deterministic, paginated where applicable, and capability-checked at
 execution time.
 
 `plugin_lifecycle.list_plugins` and `plugin_lifecycle.get_plugin` provide
-read-only installed-plugin lifecycle status: active/network-active state, cached
-update availability, recovery pause state, multisite context, and capability
-blockers. They must not install, update, activate, deactivate, delete,
-uninstall, edit, execute, or expose raw plugin code.
+installed-plugin lifecycle status: active/network-active state, cached update
+availability, recovery pause state, multisite context, and capability blockers.
+`plugin_lifecycle.install_plugin` installs an inactive plugin from the
+WordPress.org directory through the WordPress core upgrader.
+`plugin_lifecycle.update_plugin` applies an update already present in
+WordPress' cached update metadata through the core upgrader without forcing a
+remote check. `plugin_lifecycle.activate_plugin` and
+`plugin_lifecycle.deactivate_plugin` remain site-scoped, confirmation-gated
+operations. All lifecycle writes require the normal MCP/OAuth, role, capability,
+dry-run, confirmation, lockdown, and activity/audit boundaries. Network-wide
+operations, automatic update scheduling, arbitrary ZIP uploads, plugin
+deletion/uninstall, file editing, code execution, and raw plugin payloads remain
+out of scope.
 
 `theme_lifecycle.list_themes` and `theme_lifecycle.get_theme` provide read-only
 installed-theme lifecycle status: active state, parent and child relationships,

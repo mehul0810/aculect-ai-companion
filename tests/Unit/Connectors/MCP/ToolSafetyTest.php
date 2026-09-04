@@ -58,6 +58,8 @@ final class ToolSafetyTest extends TestCase {
 		self::assertTrue( $this->safety->requires_confirmation( 'plugin_lifecycle.update_plugin', array( 'plugin' => 'acme/acme.php' ) ) );
 		self::assertSame( 'destructive', $this->safety->risk_level( 'taxonomy.delete_term', array( 'term_id' => 12 ) ) );
 		self::assertTrue( $this->safety->requires_confirmation( 'taxonomy.delete_term', array( 'term_id' => 12 ) ) );
+		self::assertSame( 'update', $this->safety->risk_level( 'taxonomy.assign_terms', array( 'post_id' => 123 ) ) );
+		self::assertFalse( $this->safety->requires_confirmation( 'taxonomy.assign_terms', array( 'post_id' => 123 ) ) );
 
 		self::assertSame( 'draft', $this->safety->risk_level( 'content_workflow.create_draft', array( 'title' => 'Draft' ) ) );
 		self::assertSame(
@@ -178,7 +180,11 @@ final class ToolSafetyTest extends TestCase {
 	}
 
 	public function test_confirmation_token_retains_server_resolved_binding_for_execution(): void {
-		$auth    = array( 'user_id' => 7, 'client_id' => 'client-1', 'provider' => 'chatgpt' );
+		$auth    = array(
+			'user_id'   => 7,
+			'client_id' => 'client-1',
+			'provider'  => 'chatgpt',
+		);
 		$binding = array(
 			'operation'       => 'update',
 			'plugin'          => 'acme/acme.php',

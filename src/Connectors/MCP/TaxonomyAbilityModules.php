@@ -22,10 +22,47 @@ final class TaxonomyAbilityModules {
 			self::list_taxonomies( $factory ),
 			self::list_terms( $factory ),
 			self::get_term( $factory ),
+			self::assign_terms( $factory ),
 			self::create_term( $factory ),
 			self::delete_term( $factory ),
 			self::update_term( $factory ),
 			self::set_term_image( $factory ),
+		);
+	}
+
+	private static function assign_terms( AbilityModuleFactory $factory ): AbilityModuleInterface {
+		return self::module(
+			$factory,
+			'taxonomy.assign_terms',
+			'Assign Categories or Tags to Content',
+			'Assign or clear existing categories, tags, or custom taxonomy terms on an existing post, page, or custom content item.',
+			'content:draft',
+			false,
+			self::object_schema(
+				array(
+					'post_id'               => array(
+						'type'        => 'integer',
+						'minimum'     => 1,
+						'description' => 'Existing WordPress content item ID.',
+					),
+					'taxonomy'              => array(
+						'type'        => 'string',
+						'description' => 'Taxonomy slug registered for the content item post type, such as category or post_tag.',
+					),
+					'terms'                 => array(
+						'type'        => 'array',
+						'description' => 'Existing term IDs. Use taxonomy.list_terms to discover IDs, or an empty array to clear this taxonomy from the content item.',
+						'items'       => array(
+							'type'    => 'integer',
+							'minimum' => 1,
+						),
+						'maxItems'    => 100,
+					),
+					'expected_modified_gmt' => ContentWriteSchemas::expected_modified_gmt(),
+				),
+				array( 'post_id', 'taxonomy', 'terms' )
+			),
+			static fn ( array $args ): array => ( new TaxonomyAssignmentAbilities() )->assign_terms( $args )
 		);
 	}
 

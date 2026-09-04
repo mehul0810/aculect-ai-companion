@@ -72,6 +72,7 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - List terms for a supported taxonomy with pagination.
 - Create a category, tag, or custom content group.
 - Update a category, tag, or custom content group.
+- Assign or clear existing categories, tags, or custom taxonomy terms on a content item.
 
 ### Comments
 

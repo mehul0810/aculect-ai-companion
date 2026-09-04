@@ -110,6 +110,7 @@ Content groups:
 * List terms for a supported taxonomy with pagination
 * Create a category, tag, or custom content group
 * Update a category, tag, or custom content group
+* Assign or clear existing categories, tags, or custom taxonomy terms on a content item
 * Assign or clear an image for supported taxonomy terms
 
 Comments:
@@ -284,6 +285,7 @@ Composer dependencies for production releases are installed with:
 * Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.
 * Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1.
 * Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.
+* Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items.
 * Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
 
 = 0.7.2 =

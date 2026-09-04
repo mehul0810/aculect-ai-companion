@@ -304,6 +304,7 @@ final class ToolSafety {
 			'media.upload_image_data',
 			'redirects.create',
 			'taxonomy.create_term',
+			'taxonomy.assign_terms',
 			'taxonomy.set_term_image',
 			'taxonomy.update_term' => 'update',
 			default => 'read',

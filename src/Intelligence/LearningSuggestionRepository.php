@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Intelligence;
 
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -240,13 +242,13 @@ final class LearningSuggestionRepository {
 			return;
 		}
 
-		$memory = new ContentIndexRepository();
+		$memory = new MemoryService();
 		if ( 'dismissed' === $status ) {
-			$memory->delete_memory( $key );
+			$memory->forget( array( 'key' => $key ) );
 			return;
 		}
 
-		$memory->upsert_memory(
+		$memory->save(
 			array(
 				'key'        => $key,
 				'domain'     => (string) ( $item['domain'] ?? 'content' ),
@@ -254,6 +256,7 @@ final class LearningSuggestionRepository {
 				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
 				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
 				'status'     => 'approved',
+				'visibility' => 'site',
 				'source'     => 'learning',
 			)
 		);

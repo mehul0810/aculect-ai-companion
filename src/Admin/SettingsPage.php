@@ -28,6 +28,7 @@ use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -876,12 +877,11 @@ final class SettingsPage {
 			? (array) wp_unslash( $_POST['memory_item'] )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		$repository = new ContentIndexRepository();
+		$repository = new MemoryService();
 		$updated    = false;
 
 		if ( 'delete' === $action ) {
-			$result  = $repository->delete_memory( $original_key );
+			$result  = $repository->forget( array( 'key' => $original_key ) );
 			$updated = 'success' === ( $result['status'] ?? '' );
 		} else {
 			$status = match ( $action ) {
@@ -891,7 +891,7 @@ final class SettingsPage {
 			};
 			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
 
-			$result = $repository->upsert_memory(
+			$result  = $repository->save(
 				array(
 					'key'        => $key,
 					'domain'     => $memory_item['domain'] ?? 'content',
@@ -902,10 +902,9 @@ final class SettingsPage {
 					'source'     => $memory_item['source'] ?? 'admin',
 				)
 			);
-
 			$updated = 'success' === ( $result['status'] ?? '' );
 			if ( $updated && '' !== $original_key && $key !== $original_key ) {
-				$repository->delete_memory( $original_key );
+				$repository->forget( array( 'key' => $original_key ) );
 			}
 		}
 

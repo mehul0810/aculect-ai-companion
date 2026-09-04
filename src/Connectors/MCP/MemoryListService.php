@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryRepository;
 
 /**
  * Returns durable memory through a permission-safe reviewed projection.
@@ -34,10 +35,27 @@ final class MemoryListService {
 				);
 			}
 
-			$args['status'] = 'approved';
+			$args['status']     = 'approved';
+			$args['visibility'] = 'site';
+			$items              = ( new MemoryRepository() )->search(
+				array(
+					'namespace' => $args['namespace'] ?? 'site',
+					'status'    => 'approved',
+					'query'     => $args['query'] ?? '',
+					'limit'     => $args['per_page'] ?? 10,
+				)
+			);
+			$result             = array(
+				'items'    => $items,
+				'total'    => count( $items ),
+				'page'     => 1,
+				'per_page' => min( 50, max( 1, absint( $args['per_page'] ?? 10 ) ) ),
+				'context'  => 'compact',
+			);
+		} else {
+			$result = $this->repo()->list_memories( $args );
 		}
 
-		$result                 = $this->repo()->list_memories( $args );
 		$result['protocol']     = array(
 			'source_of_truth' => 'Aculect Intelligence local memory, not ChatGPT or Claude saved memory.',
 			'write_path'      => 'Use intelligence_feedback_submit for normal learning suggestions. Use memory_save only when explicit write permission and confirmation are available.',

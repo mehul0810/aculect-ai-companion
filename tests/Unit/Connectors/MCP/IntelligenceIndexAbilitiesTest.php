@@ -87,6 +87,27 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertStringContainsString( 'admin review', $result['warnings'][0] );
 	}
 
+	public function test_memory_save_records_versioned_site_event(): void {
+		$result = ( new IntelligenceIndexAbilities() )->save_memory(
+			array(
+				'key'        => 'brand.voice.primary',
+				'value'      => 'Use a concise, expert tone.',
+				'status'     => 'approved',
+				'visibility' => 'site',
+			)
+		);
+
+		self::assertSame( 'success', $result['status'] );
+		self::assertTrue( $result['event_recorded'] );
+		self::assertSame( 1, $result['memory']['version'] );
+		self::assertCount( 1, $this->wpdb->memory_events );
+		self::assertSame( 'updated', $this->wpdb->memory_events[0]['event_type'] );
+		self::assertSame( 'site', $this->wpdb->memory_events[0]['namespace'] );
+		self::assertSame( $result['memory']['uuid'], $this->wpdb->memory_events[0]['memory_uuid'] );
+		self::assertSame( 'brand.voice.primary', $result['memory']['key'] );
+		self::assertNotEmpty( $result['message'] );
+	}
+
 	public function test_empty_memory_save_bootstraps_initial_memory_preview(): void {
 		$result = ( new IntelligenceIndexAbilities() )->save_memory(
 			array(
@@ -902,6 +923,13 @@ final class IntelligenceIndexMemoryWpdb {
 	public array $rows = array();
 
 	/**
+	 * Stored immutable memory events.
+	 *
+	 * @var list<array<string, mixed>>
+	 */
+	public array $memory_events = array();
+
+	/**
 	 * Linked target IDs keyed by source post ID.
 	 *
 	 * @var array<int, list<int>>
@@ -1029,13 +1057,28 @@ final class IntelligenceIndexMemoryWpdb {
 	 * @param array<int, string>   $formats Insert formats.
 	 */
 	public function insert( string $table, array $data, array $formats ): int {
-		unset( $table, $formats );
+		unset( $formats );
+
+		if ( str_contains( $table, 'memory_events' ) ) {
+			$this->memory_events[] = $data;
+			return 1;
+		}
 
 		$data['id'] = count( $this->rows ) + 1;
 		$key        = (string) ( $data['memory_key'] ?? $data['job_key'] ?? 'row-' . $data['id'] );
 
 		$this->rows[ $key ] = $data;
 
+		return 1;
+	}
+
+	/**
+	 * Record transaction control statements.
+	 *
+	 * @param string $query Transaction statement.
+	 */
+	public function query( string $query ): int {
+		unset( $query );
 		return 1;
 	}
 

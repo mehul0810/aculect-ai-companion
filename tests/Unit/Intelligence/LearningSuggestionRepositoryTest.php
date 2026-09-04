@@ -27,7 +27,7 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new LearningSuggestionMemoryWpdb();
 
-		$GLOBALS['wpdb']                                  = $this->wpdb;
+		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 	}
 
@@ -128,7 +128,7 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( 'learning', $this->wpdb->rows[ 'learning.content.' . $id ]['source'] );
 	}
 
-	public function test_dismissing_approved_learning_removes_synced_memory(): void {
+	public function test_dismissing_approved_learning_tombstones_synced_memory(): void {
 		$repository = new LearningSuggestionRepository();
 		$result     = $repository->submit(
 			array(
@@ -143,7 +143,8 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertArrayHasKey( 'learning.content.' . $id, $this->wpdb->rows );
 
 		self::assertTrue( $repository->review( $id, 'dismiss', 'No longer needed.' ) );
-		self::assertArrayNotHasKey( 'learning.content.' . $id, $this->wpdb->rows );
+		self::assertNotEmpty( $this->wpdb->rows[ 'learning.content.' . $id ]['deleted_at'] );
+		self::assertSame( 'dismissed', $this->wpdb->rows[ 'learning.content.' . $id ]['status'] );
 	}
 
 	public function test_update_edits_pending_suggestion_without_changing_status(): void {
@@ -210,6 +211,9 @@ final class LearningSuggestionMemoryWpdb {
 	 */
 	public array $rows = array();
 
+	/** @var list<array<string, mixed>> */
+	public array $events = array();
+
 	/**
 	 * @var array<int, mixed>
 	 */
@@ -219,6 +223,11 @@ final class LearningSuggestionMemoryWpdb {
 		$this->last_args = $args;
 
 		return $query;
+	}
+
+	public function query( string $query ): int {
+		unset( $query );
+		return 1;
 	}
 
 	public function get_var( string $query ): ?int {
@@ -234,9 +243,13 @@ final class LearningSuggestionMemoryWpdb {
 	 * @param array<int, string>   $formats Insert formats.
 	 */
 	public function insert( string $table, array $data, array $formats ): int {
-		unset( $table, $formats );
+		unset( $formats );
+		if ( str_contains( $table, 'memory_events' ) ) {
+			$this->events[] = $data;
+			return 1;
+		}
 
-		$data['id']                                  = count( $this->rows ) + 1;
+		$data['id']                                 = count( $this->rows ) + 1;
 		$this->rows[ (string) $data['memory_key'] ] = $data;
 
 		return 1;
@@ -252,6 +265,14 @@ final class LearningSuggestionMemoryWpdb {
 		unset( $table, $formats, $where_formats );
 
 		$key = (string) ( $where['memory_key'] ?? '' );
+		if ( '' === $key && isset( $where['id'] ) ) {
+			foreach ( $this->rows as $candidate_key => $row ) {
+				if ( (int) ( $row['id'] ?? 0 ) === (int) $where['id'] ) {
+					$key = $candidate_key;
+					break;
+				}
+			}
+		}
 		if ( isset( $this->rows[ $key ] ) ) {
 			$this->rows[ $key ] = array_merge( $this->rows[ $key ], $data );
 		}

@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Intelligence;
 
 use Aculect\AICompanion\Intelligence\Database\Installer;
 use Aculect\AICompanion\Intelligence\Database\InstallerRetryState;
+use Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator;
 use PHPUnit\Framework\TestCase;
 
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused installer tests replace wpdb with a local test double.
@@ -44,7 +45,7 @@ final class InstallerTest extends TestCase {
 	public function test_install_skips_table_probes_when_version_is_current(): void {
 		$wpdb            = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
-		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.07.26.1', false );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.09.04.1', false );
 
 		Installer::install();
 
@@ -54,17 +55,17 @@ final class InstallerTest extends TestCase {
 	public function test_activate_verifies_tables_when_version_is_current(): void {
 		$wpdb            = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
-		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.07.26.1', false );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.09.04.1', false );
 
 		Installer::activate();
 
-		self::assertSame( 6, $wpdb->get_var_calls );
+		self::assertSame( 8, $wpdb->get_var_calls );
 	}
 
 	public function test_incomplete_schema_stays_stale_and_recovers_on_next_install(): void {
 		$wpdb                    = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb']         = $wpdb;
-		$wpdb->existing_tables   = array_slice( Installer::table_names(), 0, 5 );
+		$wpdb->existing_tables   = array_slice( Installer::table_names(), 0, 7 );
 		$previous_schema_version = '2026.01.01.1';
 		update_option( 'aculect_ai_companion_intelligence_db_version', $previous_schema_version, false );
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
@@ -86,15 +87,15 @@ final class InstallerTest extends TestCase {
 
 		self::assertTrue( Installer::install( true ) );
 		self::assertSame( array(), Installer::missing_table_keys() );
-		self::assertSame( '2026.07.26.1', get_option( 'aculect_ai_companion_intelligence_db_version' ) );
+		self::assertSame( '2026.09.04.1', get_option( 'aculect_ai_companion_intelligence_db_version' ) );
 		self::assertCount( 2, $wpdb->db_delta_queries );
 	}
 
 	public function test_failed_repair_invalidates_current_version_for_normal_boot_retry(): void {
 		$wpdb                  = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb']       = $wpdb;
-		$wpdb->existing_tables = array_slice( Installer::table_names(), 0, 5 );
-		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.07.26.1', false );
+		$wpdb->existing_tables = array_slice( Installer::table_names(), 0, 7 );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.09.04.1', false );
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function (): array {
 			throw new \RuntimeException( 'dbDelta failed' );
 		};
@@ -110,13 +111,13 @@ final class InstallerTest extends TestCase {
 		};
 
 		self::assertTrue( Installer::install( true ) );
-		self::assertSame( '2026.07.26.1', get_option( 'aculect_ai_companion_intelligence_db_version' ) );
+		self::assertSame( '2026.09.04.1', get_option( 'aculect_ai_companion_intelligence_db_version' ) );
 	}
 
 	public function test_normal_boot_backs_off_after_failure_and_forced_repair_clears_state(): void {
 		$wpdb                  = new IntelligenceInstallerWpdb();
 		$GLOBALS['wpdb']       = $wpdb;
-		$wpdb->existing_tables = array_slice( Installer::table_names(), 0, 5 );
+		$wpdb->existing_tables = array_slice( Installer::table_names(), 0, 7 );
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
 			$wpdb->db_delta_queries[] = $sql;
 			return array();
@@ -154,6 +155,15 @@ final class InstallerTest extends TestCase {
 		self::assertFalse( InstallerRetryState::allows_attempt() );
 		self::assertTrue( InstallerRetryState::allows_attempt( true ) );
 	}
+
+	public function test_missing_versioned_memory_column_keeps_schema_stale(): void {
+		$wpdb                 = new IntelligenceInstallerWpdb();
+		$GLOBALS['wpdb']      = $wpdb;
+		$wpdb->memory_columns = array_values( array_diff( MemorySchemaMigrator::required_columns(), array( 'content_hash' ) ) );
+		update_option( 'aculect_ai_companion_intelligence_db_version', '2026.09.04.1', false );
+
+		self::assertContains( 'memory_schema', Installer::missing_table_keys() );
+	}
 }
 
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Generic.Commenting.DocComment.MissingShort, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.FunctionComment.IncorrectTypeHint -- Focused wpdb double remains local to this test file.
@@ -173,12 +183,17 @@ final class IntelligenceInstallerWpdb {
 		'wp_aculect_ai_content_chunks',
 		'wp_aculect_ai_link_graph',
 		'wp_aculect_ai_memory_items',
+		'wp_aculect_ai_memory_events',
+		'wp_aculect_ai_memory_sync_state',
 		'wp_aculect_ai_jobs',
 		'wp_aculect_ai_cache',
 	);
 
 	/** @var list<string> */
 	public array $db_delta_queries = array();
+
+	/** @var list<string> */
+	public array $memory_columns = array();
 
 	/**
 	 * @var array<int, mixed>
@@ -203,6 +218,18 @@ final class IntelligenceInstallerWpdb {
 		$table = (string) ( $this->last_args[0] ?? '' );
 
 		return in_array( $table, $this->existing_tables, true ) ? $table : '';
+	}
+
+	/**
+	 * Return the configured memory column names.
+	 *
+	 * @param string $query  Schema query.
+	 * @param int    $column Requested column.
+	 * @return list<string>
+	 */
+	public function get_col( string $query, int $column = 0 ): array {
+		unset( $query, $column );
+		return array() === $this->memory_columns ? MemorySchemaMigrator::required_columns() : $this->memory_columns;
 	}
 
 	public function get_charset_collate(): string {

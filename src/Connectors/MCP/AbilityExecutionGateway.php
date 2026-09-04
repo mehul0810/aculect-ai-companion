@@ -204,8 +204,8 @@ final class AbilityExecutionGateway {
 		);
 
 		$error = $is_intelligence_tool
-			? $this->intelligence_tool_call_error( $tool, (int) ( $auth['user_id'] ?? 0 ), self::profile_context_from_auth( $auth ) )
-			: $this->tool_call_error( $tool, (int) ( $auth['user_id'] ?? 0 ), self::profile_context_from_auth( $auth ) );
+			? $this->intelligence_tool_call_error( $tool )
+			: $this->tool_call_error( $tool, (int) ( $auth['user_id'] ?? 0 ) );
 
 		if ( '' !== $error ) {
 			return $this->policy_outcome( $error, $tool, $args, $auth, $timer, $request );
@@ -336,11 +336,10 @@ final class AbilityExecutionGateway {
 	/**
 	 * Return a tools/call policy block result before dispatch, if any.
 	 *
-	 * @param string               $tool            Internal ability ID.
-	 * @param int                  $user_id         WordPress user ID.
-	 * @param array<string, mixed> $profile_context Profile selection context.
+	 * @param string $tool            Internal ability ID.
+	 * @param int    $user_id         WordPress user ID.
 	 */
-	private function tool_call_error( string $tool, int $user_id = 0, array $profile_context = array() ): string {
+	private function tool_call_error( string $tool, int $user_id = 0 ): string {
 		if ( ! $this->registry->is_known( $tool ) ) {
 			return 'unknown_tool';
 		}
@@ -361,12 +360,6 @@ final class AbilityExecutionGateway {
 			return 'tool_forbidden_by_capability';
 		}
 
-		$profiles           = new McpToolProfiles();
-		$profile_resolution = $profiles->resolve_for_user( $user_id, $this->registry, $profile_context );
-		if ( ! $profiles->allows_ability( $tool, $profile_resolution['profile'], $this->registry ) ) {
-			return 'tool_hidden_by_profile';
-		}
-
 		foreach ( $this->registry->dependency_ids( $tool ) as $dependency_id ) {
 			$is_dependency_policy_managed = ! $this->registry->is_derived_workflow( $dependency_id ) && ! $this->registry->is_core_default( $dependency_id ) && ! $this->registry->is_always_on_write_intelligence( $dependency_id );
 
@@ -380,10 +373,6 @@ final class AbilityExecutionGateway {
 
 			if ( ! $availability->capabilities_available( $dependency_id ) ) {
 				return 'tool_forbidden_by_capability';
-			}
-
-			if ( ! $profiles->allows_ability( $dependency_id, $profile_resolution['profile'], $this->registry ) ) {
-				return 'tool_hidden_by_profile';
 			}
 		}
 
@@ -590,7 +579,6 @@ final class AbilityExecutionGateway {
 			'unknown_tool'                 => 'Unknown tool.',
 			'tool_disabled'                => 'This ability is disabled in Aculect AI Companion settings.',
 			'tool_forbidden_for_role'      => 'This ability is not available for the connected WordPress role.',
-			'tool_hidden_by_profile'       => 'This ability is hidden by the selected MCP tool profile.',
 			'tool_forbidden_by_capability' => 'This ability is not available for the connected WordPress capabilities.',
 			'access_paused'                => 'AI access is paused in Aculect AI Companion settings.',
 			'insufficient_scope'           => 'The connection token does not include every required OAuth scope.',
@@ -638,7 +626,6 @@ final class AbilityExecutionGateway {
 		$event_messages = array(
 			'tool_disabled'                => array( 'mcp.tool_disabled', 'MCP tool call referenced a disabled tool.', 200 ),
 			'tool_forbidden_for_role'      => array( 'mcp.tool_forbidden_for_role', 'MCP tool call was blocked by role ability policy.', 200 ),
-			'tool_hidden_by_profile'       => array( 'mcp.tool_hidden_by_profile', 'MCP tool call was blocked by the selected tool profile.', 200 ),
 			'tool_forbidden_by_capability' => array( 'mcp.tool_forbidden_by_capability', 'MCP tool call was blocked by WordPress capabilities.', 200 ),
 			'access_paused'                => array( 'mcp.access_paused', 'MCP tool call was blocked because AI access is paused.', 423 ),
 		);
@@ -677,20 +664,11 @@ final class AbilityExecutionGateway {
 	/**
 	 * Return an intelligence-tool block reason before dispatch.
 	 *
-	 * @param string               $tool            Internal intelligence ID.
-	 * @param int                  $user_id         WordPress user ID.
-	 * @param array<string, mixed> $profile_context Profile selection context.
+	 * @param string $tool Internal intelligence ID.
 	 */
-	private function intelligence_tool_call_error( string $tool, int $user_id, array $profile_context ): string {
+	private function intelligence_tool_call_error( string $tool ): string {
 		if ( ! ( new McpToolAvailability() )->capabilities_available( $tool ) ) {
 			return 'tool_forbidden_by_capability';
-		}
-
-		$profiles = new McpToolProfiles();
-		$profile  = $profiles->resolve_for_user( $user_id, $this->registry, $profile_context )['profile'];
-		$module   = $this->intelligence->module( $tool );
-		if ( null !== $module && ! $profiles->allows_ability( $tool, $profile, $this->registry, $module ) ) {
-			return 'tool_hidden_by_profile';
 		}
 
 		return '';

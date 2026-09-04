@@ -123,8 +123,8 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( 'inferred_from_scopes', $export['profile']['source'] );
 		self::assertContains( 'content_get_item', $export['profile']['visible_tools'] );
 		self::assertContains( 'content_update_item', $export['profile']['hidden_tools'] );
-		self::assertSame( 'oauth_scope', $this->hiddenProfileReason( $export, 'content_update_item' )['reason'] );
-		self::assertSame( array( 'content:draft' ), $this->hiddenProfileReason( $export, 'content_update_item' )['missing_scopes'] );
+		self::assertSame( 'oauth_scope', $this->unavailableToolReason( $export, 'content_update_item' )['reason'] );
+		self::assertSame( array( 'content:draft' ), $this->unavailableToolReason( $export, 'content_update_item' )['missing_scopes'] );
 		self::assertFalse( $export['operations_manifest']['content']['update']['available'] );
 		self::assertSame( 'oauth_scope', $export['operations_manifest']['content']['update']['blocked_by'] );
 		self::assertSame( array( 'content:draft' ), $export['operations_manifest']['content']['update']['missing_scopes'] );
@@ -156,6 +156,8 @@ final class McpToolManifestTest extends TestCase {
 		self::assertSame( array( 'content:read', 'content:draft' ), $export['profile']['granted_scopes'] );
 		self::assertSame( $tool_names, $export['profile']['visible_tools'] );
 		self::assertSame( 'site_management', $export['session']['profile'] );
+		self::assertTrue( $export['profile']['guidance_only'] );
+		self::assertNotEmpty( $export['profile']['recommended_tools'] );
 		self::assertSame( array(), $export['profile']['hidden_by_profile'] );
 		self::assertContains( 'site_workflow_audit', $export['profile']['required_tools'] );
 		self::assertContains( 'navigation_get_context', $export['profile']['required_tools'] );
@@ -262,19 +264,19 @@ final class McpToolManifestTest extends TestCase {
 	}
 
 	/**
-	 * Return one hidden profile reason from an export.
+	 * Return one unavailable tool reason from an export.
 	 *
 	 * @param array<string, mixed> $export    Manifest export.
 	 * @param string               $tool_name Public tool name.
 	 * @return array<string, mixed>
 	 */
-	private function hiddenProfileReason( array $export, string $tool_name ): array {
-		foreach ( (array) ( $export['profile']['hidden_by_profile'] ?? array() ) as $entry ) {
+	private function unavailableToolReason( array $export, string $tool_name ): array {
+		foreach ( (array) ( $export['profile']['unavailable_tools_detail'] ?? array() ) as $entry ) {
 			if ( is_array( $entry ) && (string) ( $entry['tool'] ?? '' ) === $tool_name ) {
 				return $entry;
 			}
 		}
 
-		self::fail( sprintf( 'Missing hidden profile reason for %s.', $tool_name ) );
+		self::fail( sprintf( 'Missing unavailable tool reason for %s.', $tool_name ) );
 	}
 }

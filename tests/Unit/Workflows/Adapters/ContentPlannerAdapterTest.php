@@ -299,7 +299,7 @@ final class ContentPlannerAdapterTest extends TestCase {
 		self::assertSame( 0, $executions );
 	}
 
-	public function test_gateway_owns_scope_pause_profile_and_principal_boundaries(): void {
+	public function test_gateway_owns_scope_pause_guidance_and_principal_boundaries(): void {
 		$executions = 0;
 		$actor      = 0;
 		$this->replace_planner_module(
@@ -322,18 +322,18 @@ final class ContentPlannerAdapterTest extends TestCase {
 		self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $paused->code() );
 		self::assertSame( 0, $executions );
 
-		$hidden = $registry->execute(
+		$guided = $registry->execute(
 			$this->ordered_plan(),
 			'prepare_content',
 			array( 'brief' => 'Profile test.' ),
 			array_merge( $this->auth(), array( 'profile' => McpToolProfiles::PROFILE_SITE_MANAGEMENT ) )
 		);
-		self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $hidden->code() );
-		self::assertSame( 0, $executions );
+		self::assertTrue( $guided->succeeded() );
+		self::assertSame( 1, $executions );
 
 		$success = $registry->execute( $this->ordered_plan(), 'prepare_content', array( 'brief' => 'Principal test.' ), $this->auth() );
 		self::assertTrue( $success->succeeded() );
-		self::assertSame( 1, $executions );
+		self::assertSame( 2, $executions );
 		self::assertSame( 1, $actor );
 		self::assertSame( 99, get_current_user_id() );
 	}

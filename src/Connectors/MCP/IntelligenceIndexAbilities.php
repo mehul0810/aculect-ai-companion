@@ -1106,15 +1106,16 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function save_memory( array $args ): array {
+		if ( ! $this->can_view_global_index_summary() ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to manage Aculect memory.' );
+		}
 		if ( $this->is_memory_bootstrap_request( $args ) ) {
 			return $this->bootstrap_memories( $args, 'memory.save' );
 		}
-
 		$status = sanitize_key( (string) ( $args['status'] ?? 'pending' ) );
 		if ( ! in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ) {
 			$status = 'pending';
 		}
-
 		if ( $this->is_dry_run( $args ) ) {
 			return $this->preview_response(
 				'memory.save',
@@ -1132,7 +1133,6 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 					: array( 'Pending memories require admin review before they affect future Aculect Intelligence responses.' )
 			);
 		}
-
 		$result = $this->repo()->upsert_memory( $args );
 		if ( 'success' === ( $result['status'] ?? '' ) ) {
 			$memory_status           = (string) ( $result['memory']['status'] ?? $status );
@@ -1145,7 +1145,6 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				? array( 'Call memory_list to confirm the durable memory is available to future workflows.' )
 				: array( 'Review and approve this pending memory in Aculect Intelligence before relying on it in future workflows.' );
 		}
-
 		return $result;
 	}
 
@@ -1156,6 +1155,9 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function bootstrap_memory( array $args ): array {
+		if ( ! $this->can_view_global_index_summary() ) {
+			return $this->error_response( 'forbidden', 'You do not have permission to manage Aculect memory.' );
+		}
 		return $this->bootstrap_memories( $args, 'memory.bootstrap' );
 	}
 
@@ -1184,7 +1186,6 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		if ( ! in_array( $status, array( 'approved', 'pending' ), true ) ) {
 			$status = 'pending';
 		}
-
 		$force         = ! empty( $args['force'] );
 		$candidates    = $this->initial_memory_candidates();
 		$existing      = $this->repo()->list_memories(
@@ -1196,7 +1197,6 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 		$existing_keys = array_fill_keys( array_map( 'strval', array_column( (array) ( $existing['items'] ?? array() ), 'key' ) ), true );
 		$items         = array();
 		$skipped       = array();
-
 		foreach ( $candidates as $candidate ) {
 			$key = (string) ( $candidate['key'] ?? '' );
 			if ( '' === $key ) {

@@ -110,7 +110,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertSame( 'This ability is disabled in Aculect AI Companion settings.', $disabled->data['message'] ?? '' );
 	}
 
-	public function test_gateway_directly_enforces_role_profile_capability_and_dependency_denials(): void {
+	public function test_gateway_enforces_role_capability_and_dependency_without_profile_denial(): void {
 		$gateway = new AbilityExecutionGateway();
 		$GLOBALS['aculect_ai_companion_test_users'][2]->roles = array( 'author' );
 		$role    = $gateway->execute(
@@ -132,6 +132,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 					'arguments' => array(
 						'id'    => 123,
 						'title' => 'Profile denial',
+						'dry_run' => true,
 					),
 				),
 				array_merge( $this->trusted_write_auth( 1 ), array( 'profile' => 'read_only_audit' ) )
@@ -167,7 +168,8 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 
 		self::assertSame( 'This ability is not available for the connected WordPress role.', $role->data['message'] ?? '' );
-		self::assertSame( 'This ability is hidden by the selected MCP tool profile.', $profile->data['message'] ?? '' );
+		self::assertSame( AbilityExecutionGateway::OUTCOME_SUCCESS, $profile->type );
+		self::assertSame( 'preview', $profile->data['result']['status'] ?? '' );
 		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $capability->data['message'] ?? '' );
 		self::assertSame( 'This ability is disabled in Aculect AI Companion settings.', $dependency->data['message'] ?? '' );
 		self::assertSame( 'Original title', get_post( 123 )?->post_title );

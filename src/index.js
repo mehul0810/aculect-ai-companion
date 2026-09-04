@@ -6432,9 +6432,8 @@ function AbilityDashboard( {
 							are registered on this site.
 						</p>
 						<p className="aculect-ai-companion-help-text">
-							Catalog visibility does not grant access. OAuth,
-							roles, profiles, and WordPress permissions still
-							apply to every connection.
+							Intelligence guides selection. OAuth, role policy,
+							and WordPress permissions control access.
 						</p>
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">

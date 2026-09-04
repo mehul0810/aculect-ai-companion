@@ -329,18 +329,20 @@ final class WorkflowAdapterRegistryTest extends TestCase {
 		update_option( 'aculect_ai_companion_access_paused', '1', false );
 		$paused = ( new WorkflowAdapterRegistry() )->execute( $plan, 'read_content', array( 'id' => 123 ), $auth );
 		delete_option( 'aculect_ai_companion_access_paused' );
-		$hidden = ( new WorkflowAdapterRegistry() )->execute(
+		$guided = ( new WorkflowAdapterRegistry() )->execute(
 			$plan,
 			'read_content',
 			array( 'id' => 123 ),
 			array_merge( $auth, array( 'profile' => McpToolProfiles::PROFILE_SITE_MANAGEMENT ) )
 		);
 
-		foreach ( array( $missing_scope, $paused, $hidden ) as $result ) {
+		foreach ( array( $missing_scope, $paused ) as $result ) {
 			self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $result->code() );
 			self::assertStringNotContainsString( 'never-return-this-secret', (string) wp_json_encode( $result->to_array() ) );
 			self::assertArrayNotHasKey( 'message', $result->to_array() );
 		}
+		self::assertTrue( $guided->succeeded() );
+		self::assertStringNotContainsString( 'never-return-this-secret', (string) wp_json_encode( $guided->to_array() ) );
 	}
 
 	public function test_gateway_enforces_global_role_and_object_capability_policy(): void {

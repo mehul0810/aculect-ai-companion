@@ -84,13 +84,15 @@ through tools.
 
 ## Aculect Intelligence
 
-Aculect Intelligence is a categorized context surface, not an entitlement layer
-that hides operational abilities. Intelligence entries appear in the admin
-catalog but are not directly controlled by global or role-based ability toggles.
-Most tools are read-only context; reviewed feedback and incident-report tools
-can write bounded local records. Every tool still requires an authenticated
-connection, its declared OAuth scopes, profile visibility, WordPress capability
-checks, and active AI access.
+Aculect Intelligence is a categorized context surface and navigation guide, not
+an entitlement layer that hides operational abilities. Intelligence entries
+appear in the admin catalog but are not directly controlled by global or
+role-based ability toggles. Profiles may recommend or deprioritize tools for a
+task, but they never grant or deny access. Most tools are read-only context;
+reviewed feedback and incident-report tools can write bounded local records.
+Every tool still requires an authenticated connection, its declared OAuth
+scopes, applicable global and role policy, WordPress capability checks, and
+active AI access.
 
 The intelligence layer is divided into these context domains:
 
@@ -281,9 +283,9 @@ and never requires write approval. Reporting stores a local report, so after
 the capability check it follows the same approval contract as other writes: a
 connection with Write access can submit directly, while a read-only connection
 receives a short-lived `confirmation_token` for the exact report payload.
-WordPress capability, selected tool-profile policy, OAuth scope, and
+WordPress capability, global and role ability policy, OAuth scope, and
 confirmation failures are evaluated separately so clients can surface the
-actual blocker.
+actual blocker. The selected tool profile remains navigation guidance only.
 
 Comment workflows support review filters for moderation status, post, author,
 author email, author user ID, search, and date ranges. Replies are created with

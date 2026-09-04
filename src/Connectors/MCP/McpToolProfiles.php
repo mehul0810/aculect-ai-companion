@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 /**
- * Defines deterministic MCP tool profile visibility without expanding policy.
+ * Defines deterministic MCP tool profile guidance without expanding policy.
  */
 final class McpToolProfiles {
 
@@ -33,7 +33,7 @@ final class McpToolProfiles {
 			self::PROFILE_READ_ONLY_AUDIT    => array(
 				'id'                => self::PROFILE_READ_ONLY_AUDIT,
 				'label'             => 'Read-only audit',
-				'description'       => 'Read-only discovery, diagnostics, retrieval, and audit workflows. No write-capable tools are visible.',
+				'description'       => 'Prioritizes read-only discovery, diagnostics, retrieval, and audit workflows. Authorized write tools remain available.',
 				'included_groups'   => array(
 					'Site Information',
 					'Plugin Lifecycle',
@@ -67,7 +67,7 @@ final class McpToolProfiles {
 			self::PROFILE_CONTENT_MANAGEMENT => array(
 				'id'                => self::PROFILE_CONTENT_MANAGEMENT,
 				'label'             => 'Content management',
-				'description'       => 'Content planning, draft creation, post updates, media application, SEO, and content review workflows.',
+				'description'       => 'Prioritizes content planning, draft creation, post updates, media application, SEO, and content review workflows.',
 				'included_groups'   => array(
 					'Content',
 					'Content Groups',
@@ -98,7 +98,7 @@ final class McpToolProfiles {
 			self::PROFILE_SITE_MANAGEMENT    => array(
 				'id'                => self::PROFILE_SITE_MANAGEMENT,
 				'label'             => 'Site management',
-				'description'       => 'Site readiness, Site Editor context, admin navigation, user access discovery, and safe management workflows.',
+				'description'       => 'Prioritizes site readiness, Site Editor context, admin navigation, user access discovery, and safe management workflows.',
 				'included_groups'   => array(
 					'Site Information',
 					'Site Workflows',
@@ -130,7 +130,7 @@ final class McpToolProfiles {
 			self::PROFILE_FULL_ACCESS        => array(
 				'id'                => self::PROFILE_FULL_ACCESS,
 				'label'             => 'Full access',
-				'description'       => 'All globally enabled and otherwise authorized MCP tools for the connected WordPress user.',
+				'description'       => 'Provides broad navigation across all globally enabled and otherwise authorized MCP tools for the connected WordPress user.',
 				'included_groups'   => array(),
 				'hidden_groups'     => array(),
 				'read_only_default' => false,
@@ -179,7 +179,12 @@ final class McpToolProfiles {
 	}
 
 	/**
-	 * Check whether an ability is visible under the selected profile.
+	 * Check whether an ability is available under the selected profile.
+	 *
+	 * Profiles are advisory navigation aids and never authorize or deny an
+	 * ability. This compatibility method therefore accepts every known module.
+	 *
+	 * @deprecated 0.8.0 Use recommends_ability() for profile guidance.
 	 *
 	 * @param string                      $ability_id Ability ID.
 	 * @param array<string, mixed>        $profile    Sanitized profile definition.
@@ -187,6 +192,24 @@ final class McpToolProfiles {
 	 * @param AbilityModuleInterface|null $module Optional module.
 	 */
 	public function allows_ability( string $ability_id, array $profile, AbilitiesRegistry $registry, ?AbilityModuleInterface $module = null ): bool {
+		unset( $profile );
+
+		$module = $module ?? $registry->module( $ability_id ) ?? ( new IntelligenceRegistry() )->module( $ability_id );
+		return null !== $module;
+	}
+
+	/**
+	 * Check whether a profile recommends an ability for the current task.
+	 *
+	 * A false result only lowers navigation priority. It must never be used as
+	 * an authorization, discovery, or execution decision.
+	 *
+	 * @param string                      $ability_id Ability ID.
+	 * @param array<string, mixed>        $profile    Sanitized profile definition.
+	 * @param AbilitiesRegistry           $registry   Ability registry.
+	 * @param AbilityModuleInterface|null $module Optional module.
+	 */
+	public function recommends_ability( string $ability_id, array $profile, AbilitiesRegistry $registry, ?AbilityModuleInterface $module = null ): bool {
 		$module = $module ?? $registry->module( $ability_id );
 		if ( null === $module ) {
 			return false;
@@ -318,7 +341,7 @@ final class McpToolProfiles {
 	 */
 	private function known_groups( AbilitiesRegistry $registry ): array {
 		$groups = array();
-		foreach ( $registry->modules() as $module ) {
+		foreach ( $registry->modules() + ( new IntelligenceRegistry() )->modules() as $module ) {
 			$group = sanitize_text_field( $module->group() );
 			if ( '' !== $group ) {
 				$groups[] = $group;

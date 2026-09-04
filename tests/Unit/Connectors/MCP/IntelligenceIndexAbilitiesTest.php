@@ -116,6 +116,26 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'approved', $this->wpdb->rows['workflow.blocks.no_custom_html']['status'] );
 	}
 
+	public function test_memory_writes_require_manage_options(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		$abilities                                       = new IntelligenceIndexAbilities();
+
+		$save = $abilities->save_memory(
+			array(
+				'key'    => 'brand.voice.primary',
+				'value'  => 'Do not persist this value.',
+				'status' => 'approved',
+			)
+		);
+		$bootstrap = $abilities->bootstrap_memory( array( 'status' => 'approved' ) );
+
+		self::assertSame( 'error', $save['status'] );
+		self::assertSame( 'forbidden', $save['error'] );
+		self::assertSame( 'error', $bootstrap['status'] );
+		self::assertSame( 'forbidden', $bootstrap['error'] );
+		self::assertSame( array(), $this->wpdb->rows );
+	}
+
 	public function test_canonical_search_returns_empty_results_without_query(): void {
 		$result = ( new IntelligenceIndexAbilities() )->canonical_search( array( 'query' => '' ) );
 

@@ -1722,14 +1722,14 @@ final class McpControllerTest extends TestCase {
 		$policy      = $this->pluginIncidentRpcResult(
 			$controller,
 			array(
-				'title'   => 'Profile policy block',
-				'summary' => 'A read-only profile must not expose the incident write tool.',
+				'title'   => 'Profile guidance',
+				'summary' => 'A read-only profile guides selection without hiding an otherwise authorized tool.',
 			),
 			'plugin_incident_report',
 			$policy_auth
 		);
-		self::assertTrue( $policy['isError'] );
-		self::assertSame( 'This ability is hidden by the selected MCP tool profile.', $policy['content'][0]['text'] );
+		self::assertFalse( $policy['isError'] ?? false );
+		self::assertSame( 'confirmation_required', $policy['structuredContent']['status'] ?? '' );
 
 		$list = $this->pluginIncidentToolCall( $controller, array(), 'plugin_incident_list', $policy_auth );
 		self::assertSame( 0, $list['total'] );

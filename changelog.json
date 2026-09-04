@@ -12,7 +12,8 @@
 			"Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1."
 		],
 		"Fixed": [
-			"Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling."
+			"Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.",
+			"Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items."
 		],
 		"Reliability": [
 			"Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit."

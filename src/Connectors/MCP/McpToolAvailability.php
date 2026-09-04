@@ -369,6 +369,7 @@ final class McpToolAvailability {
 					'list_taxonomies' => 'taxonomy.list_taxonomies',
 					'list_terms'      => 'taxonomy.list_terms',
 					'get_term'        => 'taxonomy.get_term',
+					'assign_terms'    => 'taxonomy.assign_terms',
 					'create_term'     => 'taxonomy.create_term',
 					'delete_term'     => 'taxonomy.delete_term',
 					'update_term'     => 'taxonomy.update_term',

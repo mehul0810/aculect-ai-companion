@@ -186,7 +186,7 @@ final class ActivityLogger {
 	 */
 	private function target( string $action, array $args, array $result ): array {
 		return match ( $action ) {
-			'content.create_item', 'content.update_item', 'content.update_seo', 'content_workflow.create_draft', 'content_workflow.update_post', 'content_media.apply_image', 'seo_workflow.update_rankmath' => array(
+			'content.create_item', 'content.update_item', 'content.update_seo', 'content_workflow.create_draft', 'content_workflow.update_post', 'content_media.apply_image', 'seo_workflow.update_rankmath', 'taxonomy.assign_terms' => array(
 				'type' => sanitize_key( (string) ( $result['type'] ?? $args['post_type'] ?? 'content' ) ),
 				'id'   => $this->first_id( $result, $args, array( 'id', 'post_id' ) ),
 			),

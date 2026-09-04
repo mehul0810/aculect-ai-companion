@@ -506,11 +506,9 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 	 * @param int|string          $object_id  Object ID.
 	 * @param string|array<mixed> $taxonomies Taxonomy names.
 	 * @param array<string,mixed> $args       Query args.
-	 * @return list<WP_Term>
+	 * @return list<WP_Term>|list<int>
 	 */
 	function wp_get_object_terms( int|string $object_id, string|array $taxonomies, array $args = array() ): array {
-		unset( $args );
-
 		$object_id = absint( $object_id );
 		$allowed   = array_map( 'strval', (array) $taxonomies );
 		$assigned  = $GLOBALS['aculect_ai_companion_test_object_terms'][ $object_id ] ?? array();
@@ -525,7 +523,7 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 
 		usort( $terms, static fn( WP_Term $a, WP_Term $b ): int => $a->term_id <=> $b->term_id );
 
-		return $terms;
+		return 'ids' === ( $args['fields'] ?? '' ) ? array_map( static fn( WP_Term $term ): int => $term->term_id, $terms ) : $terms;
 	}
 }
 

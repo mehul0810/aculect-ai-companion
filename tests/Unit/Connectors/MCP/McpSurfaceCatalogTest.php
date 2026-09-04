@@ -51,6 +51,10 @@ final class McpSurfaceCatalogTest extends TestCase {
 		self::assertSame( 'ability', $catalog['content.update_item']['surfaceType'] );
 		self::assertTrue( $catalog['content.update_item']['configurable'] );
 		self::assertSame( array( 'content:draft' ), $catalog['content.update_item']['requiredScopes'] );
+		self::assertSame( 'ability', $catalog['taxonomy.assign_terms']['surfaceType'] );
+		self::assertTrue( $catalog['taxonomy.assign_terms']['configurable'] );
+		self::assertSame( 'taxonomy_assign_terms', $catalog['taxonomy.assign_terms']['toolName'] );
+		self::assertSame( array( 'content:draft' ), $catalog['taxonomy.assign_terms']['requiredScopes'] );
 
 		self::assertSame( 'ability', $catalog['search']['surfaceType'] );
 		self::assertTrue( $catalog['search']['coreDefault'] );

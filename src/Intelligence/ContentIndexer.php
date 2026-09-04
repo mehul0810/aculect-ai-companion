@@ -18,6 +18,7 @@ final class ContentIndexer {
 
 	public const STALE_SWEEP_HOOK          = 'aculect_ai_companion_content_index_stale_sweep';
 	public const STALE_SWEEP_RECOVERY_HOOK = 'aculect_ai_companion_content_index_stale_sweep_recovery';
+	public const INDEX_RETRY_HOOK          = ContentIndexRetryScheduler::HOOK;
 
 	private const DEFAULT_BATCH_LIMIT     = 25;
 	private const MAX_BATCH_LIMIT         = 100;
@@ -56,6 +57,7 @@ final class ContentIndexer {
 		if ( function_exists( 'wp_unschedule_hook' ) ) {
 			wp_unschedule_hook( self::STALE_SWEEP_HOOK );
 			wp_unschedule_hook( self::STALE_SWEEP_RECOVERY_HOOK );
+			wp_unschedule_hook( self::INDEX_RETRY_HOOK );
 			wp_unschedule_hook( self::REFRESH_JOB_HOOK );
 			wp_unschedule_hook( self::REFRESH_RECOVERY_HOOK );
 		}
@@ -76,37 +78,27 @@ final class ContentIndexer {
 	}
 
 	/**
-	 * Defer one post and retain the exact queue generation for safe fallback.
+	 * Defer one post and retain the exact queue generation for durable retry.
 	 *
 	 * @param int $post_id Post ID.
 	 * @return array{queued: bool, scheduled: bool, queue_token: string}
 	 */
 	public function defer_index_post_result( int $post_id ): array {
-		$post_id = absint( $post_id );
-		if ( 0 >= $post_id ) {
-			return array(
-				'queued'      => false,
-				'scheduled'   => false,
-				'queue_token' => '',
-			);
+		return ( new ContentIndexDeferrer() )->defer( $post_id, $this );
+	}
+
+	/**
+	 * Retry queue persistence without performing full indexing inline.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function retry_deferred_index( int $post_id ): void {
+		if ( ! $this->is_indexable_post_id( $post_id ) ) {
+			$this->delete_post( $post_id );
+			return;
 		}
 
-		$queue_token = ( new ContentIndexQueue() )->enqueue_generation( $post_id );
-		if ( '' === $queue_token ) {
-			return array(
-				'queued'      => false,
-				'scheduled'   => false,
-				'queue_token' => '',
-			);
-		}
-
-		$this->mark_post_stale( $post_id );
-
-		return array(
-			'queued'      => true,
-			'scheduled'   => $this->schedule_stale_sweep(),
-			'queue_token' => $queue_token,
-		);
+		$this->defer_index_post_result( $post_id );
 	}
 
 	/**
@@ -324,21 +316,19 @@ final class ContentIndexer {
 
 		$record['metadata']['section_ids'] = array_values( array_column( $chunks, 'chunk_id' ) );
 
-		$stored = $this->repo()->upsert_content_item( $record );
-		if ( ! $stored ) {
+		$stored = ( new ContentProjectionWriter( $this->repo() ) )->replace( $record, $chunks, $links );
+		if ( false === $stored ) {
+			$this->mark_post_stale( $post_id );
 			return $this->result( 'error', $post_id, 'index_write_failed' );
 		}
-
-		$chunk_count = $this->repo()->replace_chunks( $post_id, $chunks );
-		$link_count  = $this->repo()->replace_links( $post_id, $links );
 
 		return array(
 			'status'      => 'indexed',
 			'post_id'     => $post_id,
 			'post_type'   => (string) $post->post_type,
 			'post_status' => (string) $post->post_status,
-			'chunks'      => $chunk_count,
-			'links'       => $link_count,
+			'chunks'      => $stored['chunks'],
+			'links'       => $stored['links'],
 		);
 	}
 
@@ -359,6 +349,7 @@ final class ContentIndexer {
 	 * @param int $post_id Post ID.
 	 */
 	public function delete_post( int $post_id ): void {
+		( new ContentIndexRetryScheduler() )->clear( $post_id );
 		$tombstone = ( new ContentIndexQueue() )->invalidate_for_delete( $post_id );
 		$this->repo()->delete_content_item( $post_id );
 		if ( '' !== $tombstone ) {

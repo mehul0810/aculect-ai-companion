@@ -798,7 +798,7 @@ final class McpController {
 			'inputSchema'     => $input_schema,
 			'securitySchemes' => $security,
 			'_meta'           => $meta,
-			'annotations'     => $this->tool_annotations( $module ),
+			'annotations'     => ( new McpToolAnnotations() )->for_module( $module ),
 		);
 
 		$output_schema = $this->output_schema_for_module( $module );
@@ -826,39 +826,6 @@ final class McpController {
 		}
 
 		return $result['schema'];
-	}
-
-	/**
-	 * Return provider-facing tool annotations.
-	 *
-	 * @param AbilityModuleInterface $module Ability module.
-	 * @return array<string, bool>
-	 */
-	private function tool_annotations( AbilityModuleInterface $module ): array {
-		$risk = AbilityExecutionGateway::tool_risk_level( $module->id(), array() );
-
-		return array(
-			'readOnlyHint'    => $module->is_read_only(),
-			'destructiveHint' => in_array( $risk, array( 'destructive', 'system' ), true ),
-			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save', 'memory.bootstrap' ), true ),
-			'openWorldHint'   => in_array(
-				$module->id(),
-				array(
-					'content.create_item',
-					'content.update_item',
-					'content.update_block',
-					'content_media.search_cc0_images',
-					'content_media.apply_image',
-					'comments.create_item',
-					'comments.update_item',
-					'comments.bulk_update',
-					'media.upload_item',
-					'media.upload_image_data',
-					'wp_abilities.run',
-				),
-				true
-			),
-		);
 	}
 
 	/**

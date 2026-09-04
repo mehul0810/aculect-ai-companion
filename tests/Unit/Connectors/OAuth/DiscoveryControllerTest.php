@@ -26,7 +26,7 @@ final class DiscoveryControllerTest extends TestCase {
 		$resource_metadata = $controller->protected_resource_metadata()->get_data();
 		$auth_metadata     = $controller->authorization_server_metadata()->get_data();
 
-		self::assertSame( array( 'content:read', 'content:draft' ), $expected );
+		self::assertSame( array( 'content:read', 'content:draft', 'offline_access' ), $expected );
 		self::assertSame( $expected, $resource_metadata['scopes_supported'] );
 		self::assertSame( $expected, $auth_metadata['scopes_supported'] );
 		self::assertSame( Helpers::authorization_endpoint(), $auth_metadata['authorization_endpoint'] );

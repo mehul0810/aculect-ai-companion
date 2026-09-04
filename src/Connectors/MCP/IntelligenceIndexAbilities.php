@@ -1088,15 +1088,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function list_memories( array $args ): array {
-		$result                 = $this->repo()->list_memories( $args );
-		$result['protocol']     = array(
-			'source_of_truth' => 'Aculect Intelligence local memory, not ChatGPT or Claude saved memory.',
-			'write_path'      => 'Use intelligence_feedback_submit for normal learning suggestions. Use memory_save only when explicit write permission and confirmation are available.',
-			'review_default'  => 'New memory_save entries default to pending review unless status is explicitly approved.',
-		);
-		$result['next_actions'] = array( 'Use relevant memory items as constraints when preparing content workflows.' );
-
-		return $result;
+		return ( new MemoryListService() )->list( $args, $this->can_view_global_index_summary() );
 	}
 
 	/**

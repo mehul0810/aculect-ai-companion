@@ -25,15 +25,36 @@ final class Installer {
 	 * Create or update all intelligence index tables.
 	 *
 	 * @param bool $verify_tables Whether to verify table existence even when the stored version is current.
+	 * @return bool Whether every required intelligence table is available after installation.
 	 */
-	public static function install( bool $verify_tables = false ): void {
+	public static function install( bool $verify_tables = false ): bool {
 		$installed    = (string) get_option( self::OPTION_DB_VERSION, '0' );
 		$schema_stale = version_compare( $installed, self::DB_VERSION, '<' );
-
-		if ( $schema_stale || ( $verify_tables && ! self::all_tables_exist() ) ) {
-			self::create_tables();
-			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+		if ( $schema_stale && ! InstallerRetryState::allows_attempt( $verify_tables ) ) {
+			return false;
 		}
+		$missing = $verify_tables ? self::missing_table_keys() : array();
+
+		if ( $schema_stale || array() !== $missing ) {
+			try {
+				self::create_tables();
+			} catch ( \Throwable ) {
+				return self::installation_failed( $installed, array(), 'dbdelta_exception' );
+			}
+
+			$missing = self::missing_table_keys();
+			if ( array() !== $missing ) {
+				return self::installation_failed( $installed, $missing, 'tables_missing' );
+			}
+
+			if ( $schema_stale && ! update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false ) ) {
+				return self::installation_failed( $installed, array(), 'version_write_failed' );
+			}
+
+			InstallerRetryState::clear();
+		}
+
+		return true;
 	}
 
 	/**
@@ -114,6 +135,38 @@ final class Installer {
 	}
 
 	/**
+	 * Return logical keys for intelligence tables that are not currently available.
+	 *
+	 * @return list<string>
+	 */
+	public static function missing_table_keys(): array {
+		global $wpdb;
+
+		$tables  = array_combine(
+			array( 'content_index', 'content_chunks', 'link_graph', 'memory_items', 'jobs', 'cache' ),
+			self::table_names()
+		);
+		$missing = array();
+
+		foreach ( $tables as $key => $table ) {
+			if ( $table !== (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
+				$missing[] = $key;
+			}
+		}
+
+		return $missing;
+	}
+
+	/**
+	 * Return support-safe schema repair state.
+	 *
+	 * @return array{attempts:int,blocked:bool,last_failed_at:int,next_retry_at:int,missing_tables:list<string>,reason:string}
+	 */
+	public static function repair_status(): array {
+		return InstallerRetryState::status();
+	}
+
+	/**
 	 * Remove intelligence index storage and schema option.
 	 */
 	public static function uninstall(): void {
@@ -124,6 +177,7 @@ final class Installer {
 		}
 
 		delete_option( self::OPTION_DB_VERSION );
+		InstallerRetryState::clear();
 		ContentIndexer::delete_options();
 	}
 
@@ -252,22 +306,37 @@ final class Installer {
         ) {$charset};",
 		);
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 		dbDelta( implode( "\n", $sql ) );
 	}
 
 	/**
-	 * Determine whether all intelligence tables exist.
+	 * Remove a falsely current schema marker so normal boot retries the repair.
+	 *
+	 * Older schema versions are already stale and must remain available for
+	 * diagnostics until a later retry succeeds.
+	 *
+	 * @param string $installed Stored schema version before installation.
 	 */
-	private static function all_tables_exist(): bool {
-		global $wpdb;
-
-		foreach ( self::table_names() as $table ) {
-			if ( $table !== (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
-				return false;
-			}
+	private static function invalidate_current_version( string $installed ): void {
+		if ( version_compare( $installed, self::DB_VERSION, '>=' ) ) {
+			delete_option( self::OPTION_DB_VERSION );
 		}
+	}
 
-		return true;
+	/**
+	 * Persist a bounded repair failure and keep the schema marker retryable.
+	 *
+	 * @param string   $installed Stored version before the attempt.
+	 * @param string[] $missing   Missing logical table keys.
+	 * @param string   $reason    Bounded machine-readable reason.
+	 */
+	private static function installation_failed( string $installed, array $missing, string $reason ): bool {
+		self::invalidate_current_version( $installed );
+		InstallerRetryState::record_failure( $missing, $reason );
+
+		return false;
 	}
 }

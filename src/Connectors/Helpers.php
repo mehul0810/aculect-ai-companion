@@ -15,7 +15,7 @@ final class Helpers {
 	public const MCP_ROUTE                   = 'aculect-ai-companion/v1/mcp';
 	public const AUTHORIZATION_METADATA      = 'oauth-authorization-server';
 	public const PROTECTED_RESOURCE_METADATA = 'oauth-protected-resource';
-	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft' );
+	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft', 'offline_access' );
 
 	/**
 	 * Return the external site issuer used by OAuth metadata.

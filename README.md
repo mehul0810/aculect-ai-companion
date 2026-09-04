@@ -133,6 +133,12 @@ Clients that support MCP resources can use `resources/list` and `resources/read`
 
 This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
 
+### WebMCP Progressive Enhancement
+
+On logged-out, published, non-password-protected pages, Aculect registers one read-only WebMCP tool when the browser exposes `document.modelContext`. `aculect_get_page_context` returns a bounded summary of visible main-page content and, only when requested, up to four same-origin links. URLs exclude query strings and fragments, output is marked read-only and untrusted, and the result is capped at 1,500 characters.
+
+WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter.
+
 ### Public Interfaces
 
 - MCP: `/wp-json/aculect-ai-companion/v1/mcp`

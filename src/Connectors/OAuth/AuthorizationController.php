@@ -457,24 +457,7 @@ final class AuthorizationController {
 	 * @param string $scope Space-delimited scope string from the request.
 	 */
 	private function scope_summary( string $scope ): string {
-		$labels = array();
-		$scopes = preg_split( '/\s+/', trim( $scope ) );
-
-		foreach ( is_array( $scopes ) ? $scopes : array() as $item ) {
-			if ( 'content:read' === $item ) {
-				$labels[] = __( 'Read site content and safe site information', 'aculect-ai-companion' );
-			}
-
-			if ( 'content:draft' === $item ) {
-				$labels[] = __( 'Create and update content, terms, comments, and media', 'aculect-ai-companion' );
-			}
-		}
-
-		if ( array() === $labels ) {
-			return __( 'Use approved Aculect AI Companion actions', 'aculect-ai-companion' );
-		}
-
-		return implode( ', ', array_unique( $labels ) );
+		return ( new OAuthScopePolicy() )->consent_summary( $scope );
 	}
 
 	/**
@@ -1124,8 +1107,7 @@ final class AuthorizationController {
 		foreach ( $modules as $module ) {
 			$scopes = array_merge( $scopes, $module->required_scopes() );
 		}
-
-		return array_values( array_unique( array_map( 'strval', $scopes ) ) );
+		return ( new OAuthScopePolicy() )->with_protocol_scopes( $scopes );
 	}
 
 	/**

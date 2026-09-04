@@ -2009,7 +2009,7 @@ final class McpControllerTest extends TestCase {
 		$scope      = $this->invokePrivate( $controller, 'initial_auth_scope' );
 
 		self::assertSame( implode( ' ', Helpers::supported_scopes() ), $scope );
-		self::assertSame( 'content:read content:draft', $scope );
+		self::assertSame( 'content:read content:draft offline_access', $scope );
 
 		$response = $this->invokePrivate(
 			$controller,
@@ -2019,8 +2019,8 @@ final class McpControllerTest extends TestCase {
 		$header   = (string) $response->header( 'WWW-Authenticate' );
 		$data     = $response->get_data();
 
-		self::assertStringContainsString( 'scope="content:read content:draft"', $header );
-		self::assertStringContainsString( 'scope="content:read content:draft"', $data['result']['_meta']['mcp/www_authenticate'][0] );
+		self::assertStringContainsString( 'scope="content:read content:draft offline_access"', $header );
+		self::assertStringContainsString( 'scope="content:read content:draft offline_access"', $data['result']['_meta']['mcp/www_authenticate'][0] );
 	}
 
 	public function test_tools_call_scope_denial_has_legacy_and_current_response_goldens(): void {

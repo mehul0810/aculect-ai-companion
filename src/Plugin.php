@@ -26,6 +26,7 @@ use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller
 use Aculect\AICompanion\Workflows\Database\Installer as WorkflowInstaller;
 use Aculect\AICompanion\Workflows\Database\RunInstaller as WorkflowRunInstaller;
 use Aculect\AICompanion\Workflows\Database\AuditInstaller as WorkflowAuditInstaller;
+use Aculect\AICompanion\WebMCP\WebMcpAssets;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -121,7 +122,9 @@ final class Plugin {
 		add_action( 'aculect_ai_companion_content_index_refresh_recovery', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		add_action( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		add_action( ContentIndexer::INDEX_RETRY_HOOK, array( $this, 'handle_content_index_retry' ), 10, 1 );
 		( new EditorInternalLinkSuggestions() )->register();
+		( new WebMcpAssets() )->register();
 
 		OAuthInstaller::install();
 		ExecutionClaimsInstaller::install();
@@ -345,16 +348,8 @@ final class Plugin {
 		}
 
 		$this->content_index_saved_posts[ $post_id ] = true;
-		$deferred                                    = $indexer->defer_index_post_result( $post_id );
-		if ( $deferred['scheduled'] ) {
-			$this->content_index_deferred_posts[ $post_id ] = true;
-			return;
-		}
-
-		$result = $indexer->index_post( $post_id );
-		if ( 'error' !== ( $result['status'] ?? '' ) ) {
-			$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
-		}
+		$indexer->defer_index_post_result( $post_id );
+		$this->content_index_deferred_posts[ $post_id ] = true;
 	}
 
 	/**
@@ -362,6 +357,15 @@ final class Plugin {
 	 */
 	public function handle_content_index_stale_sweep(): void {
 		( new ContentIndexer() )->run_stale_sweep();
+	}
+
+	/**
+	 * Retry persisting/scheduling one deferred index item without indexing inline.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function handle_content_index_retry( int $post_id ): void {
+		( new ContentIndexer() )->retry_deferred_index( $post_id );
 	}
 
 	/**
@@ -445,23 +449,7 @@ final class Plugin {
 		}
 
 		$this->content_index_deferred_posts[ $post_id ] = true;
-		$keep_deferred_guard                            = false;
-		try {
-			$deferred = $indexer->defer_index_post_result( $post_id );
-			if ( $deferred['scheduled'] ) {
-				$keep_deferred_guard = true;
-				return;
-			}
-
-			$result = $indexer->index_post( $post_id );
-			if ( 'error' !== ( $result['status'] ?? '' ) ) {
-				$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
-			}
-		} finally {
-			if ( ! $keep_deferred_guard ) {
-				unset( $this->content_index_deferred_posts[ $post_id ] );
-			}
-		}
+		$indexer->defer_index_post_result( $post_id );
 	}
 
 	/**

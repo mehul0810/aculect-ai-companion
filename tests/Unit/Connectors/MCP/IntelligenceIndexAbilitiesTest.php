@@ -36,7 +36,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
 		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array();
-		$GLOBALS['aculect_ai_companion_test_options']          = array(
+		$GLOBALS['aculect_ai_companion_test_options']                = array(
 			'blogname' => 'Aculect Demo',
 		);
 
@@ -118,9 +118,9 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 
 	public function test_memory_writes_require_manage_options(): void {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
-		$abilities                                       = new IntelligenceIndexAbilities();
+		$abilities                                        = new IntelligenceIndexAbilities();
 
-		$save = $abilities->save_memory(
+		$save      = $abilities->save_memory(
 			array(
 				'key'    => 'brand.voice.primary',
 				'value'  => 'Do not persist this value.',
@@ -134,6 +134,28 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'error', $bootstrap['status'] );
 		self::assertSame( 'forbidden', $bootstrap['error'] );
 		self::assertSame( array(), $this->wpdb->rows );
+	}
+
+	public function test_non_admin_memory_reads_are_limited_to_approved_items(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		$abilities                                        = new IntelligenceIndexAbilities();
+
+		$approved = $abilities->list_memories( array() );
+		$pending  = $abilities->list_memories( array( 'status' => 'pending' ) );
+		$all      = $abilities->list_memories( array( 'status' => '' ) );
+
+		self::assertArrayHasKey( 'items', $approved );
+		self::assertSame( 'error', $pending['status'] );
+		self::assertSame( 'forbidden', $pending['error'] );
+		self::assertSame( 'error', $all['status'] );
+		self::assertSame( 'forbidden', $all['error'] );
+	}
+
+	public function test_admin_memory_reads_may_review_pending_items(): void {
+		$result = ( new IntelligenceIndexAbilities() )->list_memories( array( 'status' => 'pending' ) );
+
+		self::assertArrayHasKey( 'items', $result );
+		self::assertArrayNotHasKey( 'error', $result );
 	}
 
 	public function test_canonical_search_returns_empty_results_without_query(): void {

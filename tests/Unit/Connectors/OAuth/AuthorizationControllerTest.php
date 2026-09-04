@@ -109,7 +109,7 @@ final class AuthorizationControllerTest extends TestCase {
 
 		self::assertTrue( $this->invokePrivate( $controller, 'valid_code_challenge', array( str_repeat( 'a', 43 ) ) ) );
 		self::assertFalse( $this->invokePrivate( $controller, 'valid_code_challenge', array( str_repeat( 'a', 42 ) ) ) );
-		self::assertTrue( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'content:draft' ) ) ) );
+		self::assertTrue( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'content:draft', 'offline_access' ) ) ) );
 		self::assertFalse( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'options:write' ) ) ) );
 	}
 
@@ -285,6 +285,23 @@ final class AuthorizationControllerTest extends TestCase {
 		);
 
 		self::assertFalse( $allowed );
+	}
+
+	public function test_offline_access_supports_refresh_without_granting_content_privileges(): void {
+		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
+		$controller = new AuthorizationController();
+		$scopes     = $this->invokePrivate( $controller, 'allowed_scopes_for_user', array( 7 ) );
+
+		self::assertContains( 'content:read', $scopes );
+		self::assertContains( 'offline_access', $scopes );
+		self::assertNotContains( 'options:write', $scopes );
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'requested_scopes_allowed_for_current_user',
+				array( array( 'content:read', 'offline_access' ) )
+			)
+		);
 	}
 
 	public function test_assert_current_user_can_consent_allows_configured_non_admin_with_own_client(): void {

@@ -124,7 +124,7 @@ final class InstallerTest extends TestCase {
 			'aculect_ai_companion_oauth_issuer_backfill'   => IssuerBinding::hash(),
 			'aculect_ai_companion_logs_db_version'         => '2026.05.17.1',
 			'aculect_ai_companion_activity_db_version'     => '2026.05.20.1',
-			'aculect_ai_companion_intelligence_db_version' => '2026.07.26.1',
+			'aculect_ai_companion_intelligence_db_version' => '2026.09.05.2',
 			'aculect_ai_companion_workflows_db_version'    => '2026.08.19.1',
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 'outcome:success:0123456789abcdef0123456789abcdef:' . ( time() + 3600 ),
 		);

@@ -28,6 +28,8 @@ use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery;
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -205,18 +207,17 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function settings_payload( ?string $requested_tab = null ): array {
-		$payload_tab      = null === $requested_tab
+		$payload_tab          = null === $requested_tab
 			? $this->current_payload_tab()
 			: $this->normalize_payload_tab( $requested_tab );
-		$access_tokens    = new AccessTokenRepository();
-		$ability_registry = new AbilitiesRegistry();
-		$sample_data      = new LocalSampleData();
-		$access_tokens->revoke_superseded_active_sessions();
+		$access_tokens        = new AccessTokenRepository();
+		$ability_registry     = new AbilitiesRegistry();
+		$sample_data          = new LocalSampleData();
 		$real_session_count   = $access_tokens->active_token_count();
 		$active_session_count = $real_session_count;
 
 		$payload = array_merge(
-			$this->base_payload( $payload_tab, $active_session_count, $access_tokens ),
+			$this->base_payload( $payload_tab, $active_session_count ),
 			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
@@ -231,12 +232,11 @@ final class SettingsPage {
 	/**
 	 * Return shared settings data that is cheap enough for every tab.
 	 *
-	 * @param string                $payload_tab          Normalized payload tab.
-	 * @param int                   $active_session_count Active OAuth session count.
-	 * @param AccessTokenRepository $access_tokens Access token repository.
+	 * @param string $payload_tab          Normalized payload tab.
+	 * @param int    $active_session_count Active OAuth session count.
 	 * @return array<string, mixed>
 	 */
-	private function base_payload( string $payload_tab, int $active_session_count, AccessTokenRepository $access_tokens ): array {
+	private function base_payload( string $payload_tab, int $active_session_count ): array {
 		return array(
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
@@ -254,7 +254,6 @@ final class SettingsPage {
 			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
-			'connectSessions'    => $access_tokens->list_active_sessions(),
 			'accessPaused'       => AccessLockdown::is_paused(),
 			'currentUserId'      => get_current_user_id(),
 			'mcpUrl'             => Helpers::mcp_resource(),
@@ -379,30 +378,10 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function memory_payload(): array {
-		$payload = ( new ContentIndexRepository() )->list_memories(
-			array(
-				'status'   => '',
-				'per_page' => 50,
-			)
-		);
-		$items   = is_array( $payload['items'] ?? null ) ? $payload['items'] : array();
-		$summary = array(
-			'total'     => (int) ( $payload['total'] ?? count( $items ) ),
-			'approved'  => 0,
-			'pending'   => 0,
-			'dismissed' => 0,
-		);
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination filter.
+		$page = max( 1, absint( $_GET['memory_page'] ?? 1 ) );
 
-		foreach ( $items as $item ) {
-			$status = (string) ( is_array( $item ) ? ( $item['status'] ?? 'pending' ) : 'pending' );
-			if ( array_key_exists( $status, $summary ) ) {
-				++$summary[ $status ];
-			}
-		}
-
-		$payload['summary'] = $summary;
-
-		return $payload;
+		return ( new MemoryAdminQuery() )->page( $page );
 	}
 
 	/**
@@ -412,12 +391,13 @@ final class SettingsPage {
 	 */
 	private function empty_memory_payload(): array {
 		return array(
-			'items'    => array(),
-			'total'    => 0,
-			'page'     => 1,
-			'per_page' => 50,
-			'context'  => 'compact',
-			'summary'  => array(
+			'items'       => array(),
+			'total'       => 0,
+			'page'        => 1,
+			'per_page'    => 50,
+			'total_pages' => 1,
+			'context'     => 'compact',
+			'summary'     => array(
 				'total'     => 0,
 				'approved'  => 0,
 				'pending'   => 0,
@@ -876,12 +856,11 @@ final class SettingsPage {
 			? (array) wp_unslash( $_POST['memory_item'] )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		$repository = new ContentIndexRepository();
+		$repository = new MemoryService();
 		$updated    = false;
 
 		if ( 'delete' === $action ) {
-			$result  = $repository->delete_memory( $original_key );
+			$result  = $repository->forget( array( 'key' => $original_key ) );
 			$updated = 'success' === ( $result['status'] ?? '' );
 		} else {
 			$status = match ( $action ) {
@@ -891,7 +870,7 @@ final class SettingsPage {
 			};
 			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
 
-			$result = $repository->upsert_memory(
+			$result  = $repository->save(
 				array(
 					'key'        => $key,
 					'domain'     => $memory_item['domain'] ?? 'content',
@@ -902,10 +881,9 @@ final class SettingsPage {
 					'source'     => $memory_item['source'] ?? 'admin',
 				)
 			);
-
 			$updated = 'success' === ( $result['status'] ?? '' );
 			if ( $updated && '' !== $original_key && $key !== $original_key ) {
-				$repository->delete_memory( $original_key );
+				$repository->forget( array( 'key' => $original_key ) );
 			}
 		}
 

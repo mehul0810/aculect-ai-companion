@@ -4,17 +4,12 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
-use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryRepository;
 
 /**
  * Returns durable memory through a permission-safe reviewed projection.
  */
 final class MemoryListService {
-
-	public function __construct(
-		private readonly ?ContentIndexRepository $repository = null
-	) {
-	}
 
 	/**
 	 * List durable Aculect memory items.
@@ -33,11 +28,22 @@ final class MemoryListService {
 					'message' => 'Only administrators may review pending or dismissed Aculect memory.',
 				);
 			}
-
-			$args['status'] = 'approved';
 		}
 
-		$result                 = $this->repo()->list_memories( $args );
+		$result            = ( new MemoryRepository() )->search_page(
+			array(
+				'namespace'  => $args['namespace'] ?? 'site',
+				'status'     => $can_review_all ? $requested_status : 'approved',
+				'query'      => $args['query'] ?? '',
+				'domain'     => $args['domain'] ?? '',
+				'limit'      => $args['per_page'] ?? 10,
+				'page'       => $args['page'] ?? 1,
+				'cursor'     => $args['cursor'] ?? '',
+				'review_all' => $can_review_all,
+			)
+		);
+		$result['context'] = $can_review_all ? 'review' : 'compact';
+
 		$result['protocol']     = array(
 			'source_of_truth' => 'Aculect Intelligence local memory, not ChatGPT or Claude saved memory.',
 			'write_path'      => 'Use intelligence_feedback_submit for normal learning suggestions. Use memory_save only when explicit write permission and confirmation are available.',
@@ -46,9 +52,5 @@ final class MemoryListService {
 		$result['next_actions'] = array( 'Use relevant memory items as constraints when preparing content workflows.' );
 
 		return $result;
-	}
-
-	private function repo(): ContentIndexRepository {
-		return $this->repository ?? new ContentIndexRepository();
 	}
 }

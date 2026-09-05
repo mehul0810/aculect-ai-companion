@@ -1894,6 +1894,10 @@ final class FirstPartyAbilityModules {
 					'description' => 'Memory review status. Defaults to approved.',
 				),
 				'query'    => array( 'type' => 'string' ),
+				'cursor'   => array(
+					'type'        => 'string',
+					'description' => 'Opaque continuation cursor returned by the previous page. Prefer this over deep page numbers.',
+				),
 				'page'     => $this->page_schema(),
 				'per_page' => $this->per_page_schema( 50, 'Memory rows per page. Defaults to 10.' ),
 			)

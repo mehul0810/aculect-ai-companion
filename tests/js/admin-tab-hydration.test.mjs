@@ -13,6 +13,10 @@ const ADMIN_APP_SOURCE = readFileSync(
 	new URL( '../../src/index.js', import.meta.url ),
 	'utf8'
 );
+const ACCESSIBLE_TABS_SOURCE = readFileSync(
+	new URL( '../../src/accessible-tabs.mjs', import.meta.url ),
+	'utf8'
+);
 
 test( 'normalizes legacy tab aliases', () => {
 	assert.equal( normalizeTabName( 'about' ), 'overview' );
@@ -192,19 +196,27 @@ test( 'activity labels pre-auth refresh rejections as identity unavailable', () 
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/const \[ activeSurface, setActiveSurface \] = useState\( 'suggestions' \)/
+		/initialLearningSurface\( window\.location\.search \)/
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'suggestions' && \(\s*<section className="aculect-ai-companion-learning-section">/s
+		/<section[^>]+aculect-learning-panel-suggestions[^>]+hidden=\{ activeSurface !== 'suggestions' \}/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'memory' && \(\s*<section className="aculect-ai-companion-memory-section">/s
+		/<section[^>]+aculect-learning-panel-memory[^>]+hidden=\{ activeSurface !== 'memory' \}/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'incidents' && \(\s*<section className="aculect-ai-companion-incident-section">/s
+		/<section[^>]+aculect-learning-panel-incidents[^>]+hidden=\{ activeSurface !== 'incidents' \}/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /<AccessibleTabList/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /role="tablist"/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /aria-controls=/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /tabIndex=\{ selected \? 0 : -1 \}/ );
+	assert.match(
+		ACCESSIBLE_TABS_SOURCE,
+		/'ArrowLeft', 'ArrowRight', 'Home', 'End'/
 	);
 	assert.doesNotMatch(
 		ADMIN_APP_SOURCE,

@@ -9,8 +9,8 @@ Connected AI clients may read approved, relevant memory and propose changes. The
 ## Ownership boundaries
 
 - `Intelligence\Memory` owns records, versions, review state, retrieval, history, tombstones, and the neutral synchronization contract.
-- `Connectors\MCP\Modules\MemoryAbilityModules` owns public MCP tool declarations.
-- `Connectors\MCP\MemoryAbilities` maps MCP requests to the memory domain without owning persistence rules.
+- `Connectors\MCP\FirstPartyAbilityModules` currently owns the compatibility MCP declarations; these declarations will move into a focused memory module provider as the public surface expands.
+- `Connectors\MCP\MemoryListService` maps approved-memory reads to the domain without owning persistence rules.
 - Provider-specific adapters belong to `Connectors` and depend inward on the neutral memory synchronization contract.
 - Admin UI consumes the same domain service as MCP. It must not implement separate save, rename, delete, or conflict rules.
 
@@ -33,19 +33,19 @@ Every accepted mutation also creates an append-only event. Events provide histor
 The default tier uses indexed namespace, owner, status, visibility, expiry, and update filters before bounded text ranking. Semantic retrieval is an optional adapter; remote embeddings are opt-in and never run synchronously during normal MCP, REST, admin, or frontend requests.
 
 - Maximum returned memories: 50; recommended recall default: 10.
-- Maximum text-search candidate window: 200 rows.
+- Text search is applied in the database and supports bounded page traversal; callers never receive more than 50 rows per request.
 - Values and evidence remain bounded by the storage contract.
 - List/search queries select explicit columns and may skip exact totals.
-- Cache keys include namespace, actor visibility, normalized query/filter, and latest event cursor.
-- Synchronization runs asynchronously in leased batches of at most 50 records with retry backoff and idempotency keys.
+- Retrieval caching will key namespace, actor visibility, normalized query/filter, and latest event cursor when introduced.
+- Provider synchronization will run asynchronously in leased batches with retry backoff and idempotency keys when provider adapters are introduced.
 
 ## Delivery phases
 
 ### Phase 1: canonical, versioned foundation
 
 - Add versioned memory records, event history, tombstones, and connector checkpoint storage.
-- Add bounded search/get/propose/update/forget/history/change-feed MCP operations.
-- Preserve `memory_list`, `memory_save`, and `memory_bootstrap` as compatibility aliases.
+- Expose bounded `memory_list`, `memory_save`, and `memory_bootstrap` compatibility operations.
+- Keep get/update/forget/history/change-feed behavior in the domain layer until their public MCP contracts and authorization scopes are completed.
 - Keep existing `content:read` and `content:draft` authorization working during the transition.
 
 ### Phase 2: fine-grained consent and admin UX
@@ -64,4 +64,4 @@ The default tier uses indexed namespace, owner, status, visibility, expiry, and 
 
 Phase 1 passes when legacy rows remain readable, stale writes fail deterministically, tombstones appear in the change feed, non-admin callers cannot read unapproved/private memory, all queries are bounded, installer retries remain recoverable, and existing public memory tools retain compatible response fields.
 
-The migration is expand-only and backfills legacy UUID/hash identity in bounded, retryable batches before marking the schema current. Rolling back code leaves additive columns and tables intact; older code continues using `memory_key`, value, evidence, status, and timestamps. No rollback deletes memory or history.
+The migration is expand-only. Schema expansion is marked independently, while legacy UUID/hash identity and transactional-engine conversion continue through bounded background batches tracked by a separate migration version. Rolling back code leaves additive columns and tables intact; older code continues using `memory_key`, value, evidence, status, and timestamps. No rollback deletes memory or history.

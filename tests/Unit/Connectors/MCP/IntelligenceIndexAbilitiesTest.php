@@ -1111,6 +1111,9 @@ final class IntelligenceIndexMemoryWpdb {
 	 */
 	public function get_row( string $query, string $output ): ?array {
 		unset( $output );
+		if ( str_contains( $query, 'information_schema.TABLES' ) ) {
+			return array( 'Name' => (string) ( $this->last_args[0] ?? '' ), 'Engine' => 'InnoDB' );
+		}
 
 		if ( str_contains( $query, 'COUNT(*) AS total' ) && str_contains( $query, 'latest_indexed_at' ) ) {
 			$rows   = $this->content_rows();

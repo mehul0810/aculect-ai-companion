@@ -17,7 +17,8 @@ final class MemoryService {
 
 	public function __construct(
 		private readonly ?MemoryRepository $memories = null,
-		private readonly ?MemoryEventRepository $events = null
+		private readonly ?MemoryEventRepository $events = null,
+		private readonly ?MemoryStorageRequirements $storage = null
 	) {
 	}
 
@@ -118,7 +119,7 @@ final class MemoryService {
 		global $wpdb;
 		/** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort
 
-		if ( ! method_exists( $wpdb, 'query' ) ) {
+		if ( ! method_exists( $wpdb, 'query' ) || ! $this->storage_requirements()->supports_transactions() ) {
 			return $this->transaction_error();
 		}
 		if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
@@ -170,6 +171,10 @@ final class MemoryService {
 
 	private function event_repository(): MemoryEventRepository {
 		return $this->events ?? new MemoryEventRepository();
+	}
+
+	private function storage_requirements(): MemoryStorageRequirements {
+		return $this->storage ?? new MemoryStorageRequirements();
 	}
 
 	/**

@@ -1,4 +1,5 @@
 @import "../node_modules/@wordpress/dataviews/build-style/style.css";
+@import "styles/memory-pagination";
 
 .settings_page_aculect-ai-companion #wpcontent {
 	padding: 0;
@@ -4034,42 +4035,6 @@ td:first-child
 	display: grid;
 	gap: 12px;
 	min-width: 0;
-}
-
-.aculect-ai-companion-learning-surface-nav {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	min-width: 0;
-	padding: 6px;
-	border: 1px solid var(--aculect-ai-companion-border);
-	border-radius: 8px;
-	background: var(--aculect-ai-companion-soft);
-}
-
-.aculect-ai-companion-learning-surface-nav .components-button {
-	gap: 8px;
-	min-height: 36px;
-	border-radius: 6px;
-}
-
-.aculect-ai-companion-learning-surface-nav__count {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 22px;
-	min-height: 22px;
-	padding: 0 7px;
-	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.22);
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 1;
-}
-
-.aculect-ai-companion-learning-surface-nav .components-button.is-secondary .aculect-ai-companion-learning-surface-nav__count {
-	background: var(--aculect-ai-companion-surface);
-	color: var(--aculect-ai-companion-muted);
 }
 
 .aculect-ai-companion-learning-section,

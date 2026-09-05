@@ -140,40 +140,140 @@ final class MemoryRepository {
 	 * @return list<array<string, mixed>>
 	 */
 	public function search( array $args = array() ): array {
+		return $this->search_page( $args )['items'];
+	}
+
+	/**
+	 * Search approved records with complete database-backed pagination.
+	 *
+	 * @param array<string, mixed> $args Query arguments.
+	 * @return array{items:list<array<string, mixed>>,page:int,per_page:int,has_more:bool,next_cursor:string,error?:string}
+	 */
+	public function search_page( array $args = array() ): array {
 		global $wpdb;
 
 		$limit     = min( self::MAX_LIMIT, max( 1, absint( $args['limit'] ?? 10 ) ) );
+		$page      = max( 1, absint( $args['page'] ?? 1 ) );
 		$namespace = $this->namespace( $args['namespace'] ?? 'site' );
 		$status    = sanitize_key( (string) ( $args['status'] ?? 'approved' ) );
 		$status    = in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ? $status : 'approved';
-		$query     = strtolower( sanitize_text_field( is_scalar( $args['query'] ?? null ) ? (string) $args['query'] : '' ) );
-		$values    = array( Installer::memory_items_table(), $namespace, $status, gmdate( 'Y-m-d H:i:s' ) );
-		$values[]  = 200;
+		$query     = $this->boolean_search_query( $args['query'] ?? '' );
+		if ( 1 < $page && '' === (string) ( $args['cursor'] ?? '' ) ) {
+			return array(
+				'items'       => array(),
+				'page'        => $page,
+				'per_page'    => $limit,
+				'has_more'    => false,
+				'next_cursor' => '',
+				'error'       => 'cursor_required',
+			);
+		}
+		if ( '' !== $query && ! $this->search_index_ready() ) {
+			return array(
+				'items'       => array(),
+				'page'        => $page,
+				'per_page'    => $limit,
+				'has_more'    => false,
+				'next_cursor' => '',
+				'error'       => 'memory_search_migrating',
+			);
+		}
+		$domain     = sanitize_key( is_scalar( $args['domain'] ?? null ) ? (string) $args['domain'] : '' );
+		$domain     = in_array( $domain, array( 'brand', 'site', 'content', 'developer', 'seo', 'workflow' ), true ) ? $domain : '';
+		$review_all = ! empty( $args['review_all'] );
+		$values     = array( Installer::memory_items_table(), $namespace, $status, gmdate( 'Y-m-d H:i:s' ) );
+		$access_sql = $review_all ? '' : " AND visibility = 'site' AND sensitivity = 'normal'";
+		$query_sql  = '';
+		if ( '' !== $query ) {
+			$query_sql = ' AND MATCH(memory_key, value, evidence) AGAINST (%s IN BOOLEAN MODE)';
+			$values[]  = $query;
+		}
+		if ( '' !== $domain ) {
+			$query_sql .= ' AND domain = %s';
+			$values[]   = $domain;
+		}
+		$cursor = $this->decode_cursor( $args['cursor'] ?? '' );
+		if ( array() !== $cursor ) {
+			$query_sql .= ' AND (updated_at < %s OR (updated_at = %s AND id < %d))';
+			$values[]   = $cursor['updated_at'];
+			$values[]   = $cursor['updated_at'];
+			$values[]   = $cursor['id'];
+		}
+		$values[] = $limit + 1;
 
 		$rows = $wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Values are supplied through an unpacked, fixed-order list.
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Column list is fixed; values use placeholders.
-				'SELECT ' . self::COLUMNS . " FROM %i WHERE namespace = %s AND status = %s AND visibility = 'site' AND sensitivity = 'normal' AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > %s) ORDER BY updated_at DESC, id DESC LIMIT %d",
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column list and query fragment are fixed; values use placeholders.
+				'SELECT ' . self::COLUMNS . " FROM %i WHERE namespace = %s AND status = %s{$access_sql} AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > %s){$query_sql} ORDER BY updated_at DESC, id DESC LIMIT %d",
 				...$values
 			),
 			ARRAY_A
 		);
 
-		$rows = array_values( array_filter( is_array( $rows ) ? $rows : array(), 'is_array' ) );
-		if ( '' !== $query ) {
-			$rows = array_values(
-				array_filter(
-					$rows,
-					static fn ( array $row ): bool => str_contains(
-						strtolower( (string) ( $row['memory_key'] ?? '' ) . ' ' . (string) ( $row['value'] ?? '' ) . ' ' . (string) ( $row['evidence'] ?? '' ) ),
-						$query
-					)
-				)
-			);
-		}
+		$rows     = array_values( array_filter( is_array( $rows ) ? $rows : array(), 'is_array' ) );
+		$has_more = count( $rows ) > $limit;
 
-		return array_map( array( $this, 'public_record' ), array_slice( $rows, 0, $limit ) );
+		$items = array_slice( $rows, 0, $limit );
+		$last  = end( $items );
+
+		return array(
+			'items'       => array_map( array( $this, 'public_record' ), $items ),
+			'page'        => $page,
+			'per_page'    => $limit,
+			'has_more'    => $has_more,
+			'next_cursor' => $has_more && is_array( $last ) ? $this->encode_cursor( (string) ( $last['updated_at'] ?? '' ), (int) ( $last['id'] ?? 0 ) ) : '',
+		);
+	}
+
+	/** Return whether the deferred full-text index is ready for MATCH queries. */
+	private function search_index_ready(): bool {
+		global $wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SHOW INDEX FROM %i WHERE Key_name = %s', Installer::memory_items_table(), 'memory_search' ), ARRAY_A );
+		return is_array( $rows ) && array() !== $rows;
+	}
+
+	/**
+	 * Normalize user text into required full-text terms.
+	 *
+	 * @param mixed $query Untrusted search input.
+	 */
+	private function boolean_search_query( mixed $query ): string {
+		$value = sanitize_text_field( is_scalar( $query ) ? (string) $query : '' );
+		$terms = preg_split( '/[^\pL\pN_.-]+/u', $value, -1, PREG_SPLIT_NO_EMPTY );
+		return implode( ' ', array_map( static fn ( string $term ): string => '+' . $term . '*', array_slice( is_array( $terms ) ? $terms : array(), 0, 8 ) ) );
+	}
+
+	/**
+	 * Encode a stable updated-at/id keyset position.
+	 *
+	 * @param string $updated_at Last row timestamp.
+	 * @param int    $id         Last row identifier.
+	 */
+	private function encode_cursor( string $updated_at, int $id ): string {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Opaque pagination cursor, not executable content.
+		return rtrim( strtr( base64_encode( $updated_at . '|' . $id ), '+/', '-_' ), '=' );
+	}
+
+	/**
+	 * Decode and validate an opaque keyset cursor.
+	 *
+	 * @param mixed $cursor Untrusted cursor input.
+	 * @return array{updated_at:string,id:int}|array{}
+	 */
+	private function decode_cursor( mixed $cursor ): array {
+		if ( ! is_scalar( $cursor ) || '' === (string) $cursor ) {
+			return array();
+		}
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decodes a validated pagination cursor.
+		$decoded = base64_decode( strtr( (string) $cursor, '-_', '+/' ), true );
+		if ( ! is_string( $decoded ) || ! preg_match( '/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\|(\d+)$/', $decoded, $matches ) ) {
+			return array();
+		}
+		return array(
+			'updated_at' => $matches[1],
+			'id'         => absint( $matches[2] ),
+		);
 	}
 
 	/**

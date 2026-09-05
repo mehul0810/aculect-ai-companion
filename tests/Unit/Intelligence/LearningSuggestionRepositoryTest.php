@@ -12,6 +12,8 @@ namespace Aculect\AICompanion\Tests\Unit\Intelligence;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use PHPUnit\Framework\TestCase;
 
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Generic.Commenting.DocComment.MissingShort, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.FunctionComment.ParamNameNoMatch, Squiz.Commenting.FunctionComment.IncorrectTypeHint, WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused wpdb double remains local to this test.
+
 /**
  * Verifies learning suggestions remain bounded, sanitized, and review-first.
  */
@@ -301,7 +303,10 @@ final class LearningSuggestionMemoryWpdb {
 	 * @return array<string, mixed>|null
 	 */
 	public function get_row( string $query, string $output ): ?array {
-		unset( $query, $output );
+		unset( $output );
+		if ( str_contains( $query, 'information_schema.TABLES' ) ) {
+			return array( 'Name' => (string) ( $this->last_args[0] ?? '' ), 'Engine' => 'InnoDB' );
+		}
 
 		return $this->rows[ $this->last_memory_key() ] ?? null;
 	}

@@ -18,7 +18,7 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned intelligence index tables require controlled schema changes.
 
-	private const DB_VERSION        = '2026.09.04.1';
+	private const DB_VERSION        = '2026.09.05.2';
 	private const OPTION_DB_VERSION = 'aculect_ai_companion_intelligence_db_version';
 
 	/**
@@ -33,36 +33,27 @@ final class Installer {
 		if ( $schema_stale && ! InstallerRetryState::allows_attempt( $verify_tables ) ) {
 			return false;
 		}
-		$missing = $verify_tables ? self::missing_table_keys() : array();
+		$missing = ( $verify_tables || $schema_stale ) ? self::missing_table_keys( false ) : array();
 
 		if ( $schema_stale || array() !== $missing ) {
 			try {
-				self::create_tables();
+				self::create_tables( in_array( 'memory_items', $missing, true ) );
 			} catch ( \Throwable ) {
 				return self::installation_failed( $installed, array(), 'dbdelta_exception' );
 			}
 
-			$missing = self::missing_table_keys();
+			$missing = self::missing_table_keys( false );
 			if ( array() !== $missing ) {
 				return self::installation_failed( $installed, $missing, 'tables_missing' );
 			}
-			if ( $schema_stale ) {
-				$migration = MemorySchemaMigrator::backfill();
-				if ( MemorySchemaMigrator::FAILED === $migration ) {
-					return self::installation_failed( $installed, array( 'memory_backfill' ), 'migration_failed' );
-				}
-				if ( MemorySchemaMigrator::PENDING === $migration ) {
-					InstallerRetryState::clear();
-					return false;
-				}
-			}
-
 			if ( $schema_stale && ! update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false ) ) {
 				return self::installation_failed( $installed, array(), 'version_write_failed' );
 			}
 
 			InstallerRetryState::clear();
 		}
+
+		MemorySchemaMigrator::ensure_scheduled();
 
 		return true;
 	}
@@ -167,9 +158,10 @@ final class Installer {
 	/**
 	 * Return logical keys for intelligence tables that are not currently available.
 	 *
+	 * @param bool $include_deferred Whether background-only indexes must be ready.
 	 * @return list<string>
 	 */
-	public static function missing_table_keys(): array {
+	public static function missing_table_keys( bool $include_deferred = true ): array {
 		global $wpdb;
 		/** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort
 
@@ -192,7 +184,7 @@ final class Installer {
 			}
 		}
 		$memory_tables = array( 'memory_items', 'memory_events', 'memory_sync_state' );
-		if ( array() === array_intersect( $memory_tables, $missing ) && method_exists( $wpdb, 'get_results' ) && ! MemorySchemaMigrator::has_required_indexes() ) {
+		if ( array() === array_intersect( $memory_tables, $missing ) && method_exists( $wpdb, 'get_results' ) && ! MemorySchemaMigrator::has_required_indexes( $include_deferred ) ) {
 			$missing[] = 'memory_schema';
 		}
 
@@ -224,9 +216,11 @@ final class Installer {
 	}
 
 	/**
-	 * Create or upgrade intelligence tables through dbDelta().
+	 * Create or reconcile intelligence tables through dbDelta().
+	 *
+	 * @param bool $fresh_memory Whether the memory table is new and empty.
 	 */
-	private static function create_tables(): void {
+	private static function create_tables( bool $fresh_memory = false ): void {
 		global $wpdb;
 
 		$charset = $wpdb->get_charset_collate();
@@ -239,6 +233,7 @@ final class Installer {
 		$memory_sync   = self::memory_sync_state_table();
 		$jobs          = self::jobs_table();
 		$cache         = self::cache_table();
+		$memory_search = $fresh_memory ? ', FULLTEXT KEY memory_search (memory_key, value, evidence)' : '';
 
 		$sql = array(
 			"CREATE TABLE {$content_index} (
@@ -332,7 +327,8 @@ final class Installer {
 			KEY expires_at (expires_at),
 			KEY content_hash (content_hash),
             KEY updated_at (updated_at)
-        ) {$charset};",
+			{$memory_search}
+        ) ENGINE=InnoDB {$charset};",
 			"CREATE TABLE {$memory_events} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			event_uuid char(36) NOT NULL,
@@ -351,7 +347,7 @@ final class Installer {
 			KEY namespace_cursor (namespace, id),
 			KEY connection_cursor (connection_id, id),
 			KEY created_at (created_at)
-		) {$charset};",
+		) ENGINE=InnoDB {$charset};",
 			"CREATE TABLE {$memory_sync} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			connector_id varchar(191) NOT NULL,
@@ -369,7 +365,7 @@ final class Installer {
 			KEY connector_namespace_status (connector_id, namespace, status),
 			KEY memory_uuid (memory_uuid),
 			KEY updated_at (updated_at)
-		) {$charset};",
+		) ENGINE=InnoDB {$charset};",
 			"CREATE TABLE {$jobs} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             job_key varchar(120) NOT NULL,

@@ -37,6 +37,13 @@ import {
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
 import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
+import { AccessibleTabList } from './accessible-tabs.mjs';
+import { initialLearningSurface } from './learning-surface.mjs';
+import {
+	MemoryPagination,
+	memoryRecordsList,
+	memoryRecordsSummary,
+} from './memory-pagination.mjs';
 import {
 	Button,
 	Card,
@@ -80,7 +87,6 @@ import {
 	shield,
 	trash,
 } from '@wordpress/icons';
-
 const TAB_QUERY_PARAM = 'tab';
 const SETTINGS_TABS = [
 	{ name: 'overview', title: 'Overview', icon: home },
@@ -173,7 +179,6 @@ function useMediaQuery( query ) {
 		typeof window.matchMedia === 'function' &&
 		window.matchMedia( query ).matches;
 	const [ matches, setMatches ] = useState( getMatches );
-
 	useEffect( () => {
 		if (
 			typeof window === 'undefined' ||
@@ -184,12 +189,10 @@ function useMediaQuery( query ) {
 
 		const mediaQueryList = window.matchMedia( query );
 		const handleChange = ( event ) => setMatches( event.matches );
-
 		setMatches( mediaQueryList.matches );
 
 		if ( typeof mediaQueryList.addEventListener === 'function' ) {
 			mediaQueryList.addEventListener( 'change', handleChange );
-
 			return () =>
 				mediaQueryList.removeEventListener( 'change', handleChange );
 		}
@@ -1023,18 +1026,6 @@ function incidentReportsSummary( incidentReports ) {
 		: {};
 }
 
-function memoryRecordsList( memoryRecords ) {
-	return Array.isArray( memoryRecords?.items )
-		? memoryRecords.items
-		: EMPTY_ARRAY;
-}
-
-function memoryRecordsSummary( memoryRecords ) {
-	return memoryRecords?.summary && typeof memoryRecords.summary === 'object'
-		? memoryRecords.summary
-		: {};
-}
-
 function incidentCategoryLabel( categoryName ) {
 	return INCIDENT_CATEGORY_LABELS[ categoryName ] || 'Bug';
 }
@@ -1677,13 +1668,20 @@ function LearningSuggestionsDashboard( {
 	memoryRecords,
 	incidentReports,
 } ) {
-	const [ activeSurface, setActiveSurface ] = useState( 'suggestions' );
+	const [ activeSurface, setActiveSurface ] = useState( () =>
+		initialLearningSurface( window.location.search )
+	);
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
 	const memories = memoryRecordsList( memoryRecords );
 	const memorySummary = memoryRecordsSummary( memoryRecords );
 	const incidents = incidentReportsList( incidentReports );
 	const incidentSummary = incidentReportsSummary( incidentReports );
+	const memoryPage = Math.max( 1, Number( memoryRecords?.page || 1 ) );
+	const memoryTotalPages = Math.max(
+		1,
+		Number( memoryRecords?.total_pages || 1 )
+	);
 	const surfaces = LEARNING_REVIEW_SURFACES.map( ( surface ) => {
 		if ( surface.id === 'memory' ) {
 			return {
@@ -1771,33 +1769,21 @@ function LearningSuggestionsDashboard( {
 					) ) }
 				</div>
 			</div>
-			<div
+			<AccessibleTabList
 				className="aculect-ai-companion-learning-surface-nav"
-				role="tablist"
-				aria-label="Learning review surfaces"
-			>
-				{ surfaces.map( ( surface ) => {
-					const isSelected = surface.id === activeSurface;
-					return (
-						<Button
-							key={ surface.id }
-							type="button"
-							variant={ isSelected ? 'primary' : 'secondary' }
-							isPressed={ isSelected }
-							role="tab"
-							aria-selected={ isSelected }
-							onClick={ () => setActiveSurface( surface.id ) }
-						>
-							<span>{ surface.label }</span>
-							<span className="aculect-ai-companion-learning-surface-nav__count">
-								{ surface.count }
-							</span>
-						</Button>
-					);
-				} ) }
-			</div>
-			{ activeSurface === 'memory' && (
-				<section className="aculect-ai-companion-memory-section">
+				label="Learning review surfaces"
+				tabs={ surfaces }
+				selectedId={ activeSurface }
+				onSelect={ setActiveSurface }
+			/>
+			{
+				<section
+					id="aculect-learning-panel-memory"
+					className="aculect-ai-companion-memory-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-memory"
+					hidden={ activeSurface !== 'memory' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Memory Records</h3>
 						<p>
@@ -1822,10 +1808,20 @@ function LearningSuggestionsDashboard( {
 							) ) }
 						</div>
 					) }
+					<MemoryPagination
+						page={ memoryPage }
+						totalPages={ memoryTotalPages }
+					/>
 				</section>
-			) }
-			{ activeSurface === 'incidents' && (
-				<section className="aculect-ai-companion-incident-section">
+			}
+			{
+				<section
+					id="aculect-learning-panel-incidents"
+					className="aculect-ai-companion-incident-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-incidents"
+					hidden={ activeSurface !== 'incidents' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Incident Reports</h3>
 						<p>
@@ -1850,9 +1846,15 @@ function LearningSuggestionsDashboard( {
 						</div>
 					) }
 				</section>
-			) }
-			{ activeSurface === 'suggestions' && (
-				<section className="aculect-ai-companion-learning-section">
+			}
+			{
+				<section
+					id="aculect-learning-panel-suggestions"
+					className="aculect-ai-companion-learning-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-suggestions"
+					hidden={ activeSurface !== 'suggestions' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Learning Suggestions</h3>
 						<p>
@@ -1878,7 +1880,7 @@ function LearningSuggestionsDashboard( {
 						</div>
 					) }
 				</section>
-			) }
+			}
 		</div>
 	);
 }

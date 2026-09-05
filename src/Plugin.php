@@ -23,6 +23,7 @@ use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller;
+use Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator;
 use Aculect\AICompanion\Workflows\Database\Installer as WorkflowInstaller;
 use Aculect\AICompanion\Workflows\Database\RunInstaller as WorkflowRunInstaller;
 use Aculect\AICompanion\Workflows\Database\AuditInstaller as WorkflowAuditInstaller;
@@ -123,6 +124,7 @@ final class Plugin {
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		add_action( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		add_action( ContentIndexer::INDEX_RETRY_HOOK, array( $this, 'handle_content_index_retry' ), 10, 1 );
+		add_action( MemorySchemaMigrator::HOOK, array( MemorySchemaMigrator::class, 'run_scheduled_batch' ) );
 		( new EditorInternalLinkSuggestions() )->register();
 		( new WebMcpAssets() )->register();
 

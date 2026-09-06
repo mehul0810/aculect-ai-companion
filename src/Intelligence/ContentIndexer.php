@@ -999,8 +999,7 @@ final class ContentIndexer {
 			if ( ! is_scalar( $value ) || '' === trim( (string) $value ) ) {
 				continue;
 			}
-
-			$this->repo()->upsert_memory(
+			( new Memory\MemoryService() )->save(
 				array(
 					'key'        => $key,
 					'domain'     => str_starts_with( $key, 'brand.' ) ? 'brand' : 'site',

@@ -29,7 +29,6 @@ use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery;
-use Aculect\AICompanion\Intelligence\Memory\MemoryService;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -451,6 +450,8 @@ final class SettingsPage {
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
 			'reviewMemoryAction'              => 'aculect_ai_companion_review_memory_item',
+			'retryMemoryMigrationAction'      => 'aculect_ai_companion_retry_memory_migration',
+			'retryMemoryMigrationNonce'       => wp_create_nonce( 'aculect_ai_companion_retry_memory_migration' ),
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'revokeStaleOAuthClientAction'    => 'aculect_ai_companion_revoke_stale_oauth_client',
 			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
@@ -856,43 +857,30 @@ final class SettingsPage {
 			? (array) wp_unslash( $_POST['memory_item'] )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
-		$repository = new MemoryService();
-		$updated    = false;
-
-		if ( 'delete' === $action ) {
-			$result  = $repository->forget( array( 'key' => $original_key ) );
-			$updated = 'success' === ( $result['status'] ?? '' );
-		} else {
-			$status = match ( $action ) {
-				'approve' => 'approved',
-				'dismiss' => 'dismissed',
-				default => sanitize_key( (string) ( $memory_item['status'] ?? 'pending' ) ),
-			};
-			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
-
-			$result  = $repository->save(
-				array(
-					'key'        => $key,
-					'domain'     => $memory_item['domain'] ?? 'content',
-					'value'      => $memory_item['value'] ?? '',
-					'evidence'   => $memory_item['evidence'] ?? '',
-					'confidence' => $memory_item['confidence'] ?? 'medium',
-					'status'     => $status,
-					'source'     => $memory_item['source'] ?? 'admin',
-				)
-			);
-			$updated = 'success' === ( $result['status'] ?? '' );
-			if ( $updated && '' !== $original_key && $key !== $original_key ) {
-				$repository->forget( array( 'key' => $original_key ) );
-			}
-		}
-
+		$updated = ( new MemoryReviewAction() )->execute( $action, $original_key, $memory_item );
 		wp_safe_redirect(
 			add_query_arg(
 				array(
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'learning',
 					'memory_reviewed' => $updated ? $action : 'not_updated',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/** Schedule an operator-approved retry without running DDL in the request. */
+	public function handle_retry_memory_migration(): void {
+		$this->guard_action( 'aculect_ai_companion_retry_memory_migration' );
+		( new \Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator() )->retry();
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'             => self::PAGE_SLUG,
+					'tab'              => 'learning',
+					'learning_surface' => 'memory',
 				),
 				$this->settings_url()
 			)

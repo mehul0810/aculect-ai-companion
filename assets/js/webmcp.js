@@ -10,10 +10,12 @@
 
 	const MAX_OUTPUT_LENGTH = 1500;
 	const MAX_LINKS = 4;
+	const MAX_NODES = 400;
 	const registration = new AbortController();
 
 	const cleanText = ( value, limit ) =>
 		String( value || '' )
+			.slice( 0, limit * 4 )
 			.replace( /\s+/g, ' ' )
 			.trim()
 			.slice( 0, limit );
@@ -38,16 +40,87 @@
 		}
 	};
 
-	const sameOriginLinks = ( root, maximum ) => {
+	const isHidden = ( node ) => {
+		if ( node.nodeType !== 1 ) {
+			return false;
+		}
+		const style =
+			typeof window.getComputedStyle === 'function'
+				? window.getComputedStyle( node )
+				: {};
+		return (
+			/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|FORM|INPUT|TEXTAREA|SELECT)$/.test(
+				node.tagName
+			) ||
+			node.hidden ||
+			node.getAttribute( 'aria-hidden' ) === 'true' ||
+			( node.tagName === 'DETAILS' && ! node.open ) ||
+			style.display === 'none' ||
+			[ 'hidden', 'collapse' ].includes( style.visibility ) ||
+			style.opacity === '0'
+		);
+	};
+
+	// Bounded traversal avoids materializing the entire page or forcing innerText layout.
+	const visibleNodes = ( root ) => {
+		const nodes = [];
+		let node = root;
+		let visited = 0;
+		let ancestor = root?.parentNode;
+		while ( ancestor && visited++ < MAX_NODES ) {
+			if ( isHidden( ancestor ) ) {
+				return nodes;
+			}
+			ancestor = ancestor.parentNode;
+		}
+		if ( ancestor ) {
+			return nodes;
+		}
+		while ( node && visited++ < MAX_NODES ) {
+			if ( ! isHidden( node ) ) {
+				nodes.push( node );
+				if ( node.firstChild ) {
+					node = node.firstChild;
+					continue;
+				}
+			}
+			while ( node !== root && ! node.nextSibling ) {
+				node = node.parentNode;
+			}
+			node = node === root ? null : node.nextSibling;
+		}
+		return nodes;
+	};
+
+	const visibleText = ( root, maximum ) => {
+		let text = '';
+		for ( const node of visibleNodes( root ) ) {
+			if ( node.nodeType === 3 ) {
+				text += ` ${ String( node.nodeValue || '' ).slice(
+					0,
+					maximum
+				) }`;
+				if ( text.length >= maximum ) {
+					break;
+				}
+			}
+		}
+		return cleanText( text, maximum );
+	};
+
+	const sameOriginLinks = ( nodes, maximum ) => {
 		const links = [];
 		const seen = new Set();
 
-		for ( const element of root.querySelectorAll( 'a[href]' ) ) {
+		for ( const element of nodes ) {
 			if ( links.length >= maximum ) {
 				break;
 			}
 
-			const label = cleanText( element.innerText, 60 );
+			if ( element.tagName !== 'A' || ! element.href ) {
+				continue;
+			}
+			const label = visibleText( element, 60 );
 			if ( ! label ) {
 				continue;
 			}
@@ -78,28 +151,36 @@
 	};
 
 	const fitOutputBudget = ( context ) => {
-		while ( JSON.stringify( context ).length > MAX_OUTPUT_LENGTH ) {
-			if ( context.links.length ) {
-				context.links.pop();
-				continue;
-			}
-			if ( context.content.length > 120 ) {
-				context.content = context.content.slice(
+		// Every iteration consumes data; even JSON-escaped headings cannot stall this loop.
+		for ( const field of [
+			'links',
+			'content',
+			'description',
+			'headings',
+			'title',
+			'url',
+			'language',
+		] ) {
+			while (
+				context[ field ].length &&
+				JSON.stringify( context ).length > MAX_OUTPUT_LENGTH
+			) {
+				context[ field ] = context[ field ].slice(
 					0,
-					context.content.length - 80
+					Math.max(
+						0,
+						context[ field ].length -
+							( Array.isArray( context[ field ] ) ? 1 : 40 )
+					)
 				);
-				continue;
 			}
-			context.description = context.description.slice(
-				0,
-				Math.max( 0, context.description.length - 40 )
-			);
 		}
 
 		return context;
 	};
 
 	const collectPageContext = ( input = {} ) => {
+		input = input && typeof input === 'object' ? input : {};
 		const root =
 			document.querySelector( 'main, article, [role="main"]' ) ||
 			document.body;
@@ -110,8 +191,11 @@
 			0,
 			Math.min( MAX_LINKS, requestedLinks )
 		);
-		const headings = Array.from( root.querySelectorAll( 'h1, h2, h3' ) )
-			.map( ( heading ) => cleanText( heading.innerText, 80 ) )
+		const nodes = visibleNodes( root );
+		const headings = nodes
+			.filter( ( node ) => /^(H1|H2|H3)$/.test( node.tagName ) )
+			.slice( 0, 6 )
+			.map( ( heading ) => visibleText( heading, 80 ) )
 			.filter( Boolean )
 			.slice( 0, 6 );
 
@@ -122,9 +206,9 @@
 			language: cleanText( document.documentElement.lang, 20 ),
 			description: metaContent( 'description' ),
 			headings,
-			content: cleanText( root.innerText, 600 ),
+			content: visibleText( root, 600 ),
 			links: input.includeLinks
-				? sameOriginLinks( root, maximumLinks )
+				? sameOriginLinks( nodes, maximumLinks )
 				: [],
 		} );
 	};

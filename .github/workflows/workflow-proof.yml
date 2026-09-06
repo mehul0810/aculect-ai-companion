@@ -1,248 +1,45 @@
-name: Workflow Storage and Package Proof
+name: Packaged WordPress Proof
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/workflow-proof.yml"
-      - "src/Workflows/**"
-      - "src/Admin/**"
-      - "tests/Unit/Admin/**"
-      - "tests/Unit/Workflows/**"
-      - "tests/Integration/Workflows/**"
-      - "tests/Integration/Browser/**"
-      - "composer.json"
-      - "composer.lock"
-      - "package.json"
-      - "package-lock.json"
-      - ".distignore"
-  push:
-    branches:
-      - "release/**"
-    paths:
-      - ".github/workflows/workflow-proof.yml"
-      - "src/Workflows/**"
-      - "src/Admin/**"
-      - "tests/Unit/Admin/**"
-      - "tests/Unit/Workflows/**"
-      - "tests/Integration/Workflows/**"
-      - "tests/Integration/Browser/**"
-      - "composer.json"
-      - "composer.lock"
-      - "package.json"
-      - "package-lock.json"
-      - ".distignore"
+  workflow_call:
+    inputs:
+      package-artifact-name:
+        type: string
+        required: true
+      package-sha256:
+        type: string
+        required: true
 
 permissions:
   contents: read
 
-concurrency:
-  group: workflow-proof-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  php-quality:
-    name: Hosted PHP quality gate
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: "8.2"
-          coverage: none
-          tools: composer:v2
-
-      - name: Validate composer metadata
-        run: composer validate --strict
-
-      - name: Install composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-
-      - name: Run PHP quality gate and unit tests
-        run: composer ci:php
-
-  real-database:
-    name: ${{ matrix.engine }} workflow storage proof
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - engine: MySQL 8.0 / InnoDB
-            image: mysql:8.0
-          - engine: MariaDB 10.11 / InnoDB
-            image: mariadb:10.11
-
-    services:
-      database:
-        image: ${{ matrix.image }}
-        env:
-          MYSQL_ROOT_PASSWORD: workflow-proof-test
-          MYSQL_DATABASE: aculect_workflow_proof
-        ports:
-          - 3306/tcp
-        options: >-
-          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=workflow-proof-test --silent"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: "8.2"
-          coverage: none
-          extensions: mysqli
-          tools: composer:v2
-
-      - name: Install composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-
-      - name: Prove real transactional workflow storage
-        env:
-          ACULECT_WORKFLOW_DB_HOST: 127.0.0.1
-          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports[3306] }}
-          ACULECT_WORKFLOW_DB_NAME: aculect_workflow_proof
-          ACULECT_WORKFLOW_DB_USER: root
-          ACULECT_WORKFLOW_DB_PASSWORD: workflow-proof-test
-        run: php tests/Integration/Workflows/real-database-installer.php
-
-  wordpress-sqlite:
-    name: WP 7.1 WP_SQLite_DB workflow proof
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: "8.2"
-          coverage: none
-          tools: composer:v2
-
-      - name: Install composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-
-      - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "20.19.0"
-
-      - name: Prepare WordPress SQLite drop-in
-        run: |
-          git clone --depth 1 --branch v3.0.1 https://github.com/WordPress/sqlite-database-integration.git .wp-env/sqlite-source
-          mkdir -p .wp-env/sqlite-plugin
-          cp -R .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/. .wp-env/sqlite-plugin/
-          rm -f .wp-env/sqlite-plugin/wp-includes/database
-          mkdir -p .wp-env/sqlite-plugin/wp-includes/database
-          cp -R .wp-env/sqlite-source/packages/mysql-on-sqlite/src/. .wp-env/sqlite-plugin/wp-includes/database/
-          cp .wp-env/sqlite-source/packages/plugin-sqlite-database-integration/db.copy .wp-env/sqlite-db.php
-          sed -i "s#'{SQLITE_IMPLEMENTATION_FOLDER_PATH}'#__DIR__.'/plugins/sqlite-database-integration'#g; s#{SQLITE_PLUGIN}#sqlite-database-integration/load.php#g" .wp-env/sqlite-db.php
-
-      - name: Configure wp-env
-        run: |
-          cat > .wp-env.json <<JSON
-          {
-            "core": "https://wordpress.org/wordpress-7.1.zip",
-            "port": 8881,
-            "testsEnvironment": false,
-            "plugins": [],
-            "mappings": {
-              "wp-content/plugins/aculect-ai-companion": "${GITHUB_WORKSPACE}",
-              "wp-content/plugins/sqlite-database-integration": "${GITHUB_WORKSPACE}/.wp-env/sqlite-plugin",
-              "wp-content/db.php": "${GITHUB_WORKSPACE}/.wp-env/sqlite-db.php"
-            }
-          }
-          JSON
-          npm install --global @wordpress/env@11.6.0
-
-      - name: Start WordPress with SQLite
-        run: wp-env start --update
-
-      - name: Wait for SQLite WordPress
-        run: |
-          for attempt in $(seq 1 12); do
-            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 5
-          done
-          wp-env run cli wp core is-installed
-
-      - name: Activate plugin and run WP_SQLite_DB proof
-        run: |
-          wp-env run cli wp plugin activate aculect-ai-companion
-          wp-env run cli wp eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/Workflows/wp-sqlite-installer.php
-
-      - name: Stop WordPress
-        if: always()
-        run: wp-env stop
-
   packaged-wordpress:
     name: Packaged plugin WP 7.1 and browser proof
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Download canonical package from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          php-version: "8.2"
-          coverage: none
-          tools: composer:v2
-
-      - name: Install production composer dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction
-
-      - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24.16.0"
-          cache: npm
-
-      - name: Install npm dependencies and build assets
-        run: |
-          npm ci
-          npm run build
-
-      - name: Prepare production package
-        run: |
-          mkdir -p "${GITHUB_WORKSPACE}/release/aculect-ai-companion"
-          rsync -rc --exclude-from="${GITHUB_WORKSPACE}/.distignore" "${GITHUB_WORKSPACE}/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
-          php bin/verify-production-package.php release/aculect-ai-companion
-
-      - name: Create immutable package artifact
+          name: ${{ inputs.package-artifact-name }}
+          path: release/
+      - name: Verify immutable package before extraction
+        env:
+          EXPECTED_SHA256: ${{ inputs.package-sha256 }}
         run: |
           cd release
-          zip -qr -X aculect-ai-companion.zip aculect-ai-companion
-          sha256sum aculect-ai-companion.zip > aculect-ai-companion.zip.sha256
-          test -s aculect-ai-companion.zip.sha256
-
-      - name: Upload immutable package artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: aculect-ai-companion-package-${{ github.sha }}
-          path: |
-            release/aculect-ai-companion.zip
-            release/aculect-ai-companion.zip.sha256
-          if-no-files-found: error
-          retention-days: 7
-
+          sha256sum --check aculect-ai-companion.zip.sha256
+          test "$(sha256sum aculect-ai-companion.zip | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+          unzip -q aculect-ai-companion.zip
       - name: Setup Node for WordPress environment
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "20.19.0"
+          node-version-file: .nvmrc
+
+      - name: Install locked browser dependencies
+        run: npm ci
 
       - name: Configure packaged WordPress environment
         env:
@@ -256,7 +53,8 @@ jobs:
             "plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
             "mappings": {
               "wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}",
-              "wp-content/aculect-workflow-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Workflows"
+              "wp-content/aculect-workflow-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Workflows",
+              "wp-content/aculect-memory-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Memory"
             }
           }
           JSON
@@ -283,6 +81,9 @@ jobs:
 
       - name: Prove workflow retry lease with WordPress Options API
         run: wp-env run cli wp eval-file wp-content/aculect-workflow-proofs/wp-options-retry-cache.php
+
+      - name: Prove real memory review rollback, migration CAS and sync replay
+        run: wp-env run cli wp --user=admin eval-file wp-content/aculect-memory-proofs/wp-memory-proof.php aculect-disposable-memory-proof
 
       - name: Install Chromium for browser proof
         run: npx playwright install --with-deps chromium

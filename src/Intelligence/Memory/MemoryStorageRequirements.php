@@ -17,6 +17,17 @@ use Aculect\AICompanion\Intelligence\Database\Installer;
 final class MemoryStorageRequirements {
 	private ?bool $supported = null;
 
+	/** Verify the options table before atomically committing a learning review. */
+	public function supports_review_transactions(): bool {
+		global $wpdb;
+		if ( ! $this->supports_transactions() ) {
+			return false;
+		}
+		$table = $wpdb->options ?? $wpdb->prefix . 'options';
+		$row   = $wpdb->get_row( $wpdb->prepare( 'SELECT TABLE_NAME AS Name, ENGINE AS Engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s LIMIT 1', $table ), ARRAY_A );
+		return is_array( $row ) && ( $row['Name'] ?? '' ) === $table && 'innodb' === strtolower( (string) ( $row['Engine'] ?? '' ) );
+	}
+
 	/**
 	 * Return whether both mutation tables use a transactional engine.
 	 */

@@ -147,41 +147,33 @@ final class MemoryRepository {
 	 * Search approved records with complete database-backed pagination.
 	 *
 	 * @param array<string, mixed> $args Query arguments.
-	 * @return array{items:list<array<string, mixed>>,page:int,per_page:int,has_more:bool,next_cursor:string,error?:string}
+	 * @return array{items:list<array<string, mixed>>,page:int,per_page:int,has_more:bool,next_cursor:string,error?:string,status?:string,message?:string}
 	 */
 	public function search_page( array $args = array() ): array {
 		global $wpdb;
 
-		$limit     = min( self::MAX_LIMIT, max( 1, absint( $args['limit'] ?? 10 ) ) );
-		$page      = max( 1, absint( $args['page'] ?? 1 ) );
-		$namespace = $this->namespace( $args['namespace'] ?? 'site' );
-		$status    = sanitize_key( (string) ( $args['status'] ?? 'approved' ) );
-		$status    = in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ? $status : 'approved';
-		$query     = $this->boolean_search_query( $args['query'] ?? '' );
-		if ( 1 < $page && '' === (string) ( $args['cursor'] ?? '' ) ) {
-			return array(
-				'items'       => array(),
-				'page'        => $page,
-				'per_page'    => $limit,
-				'has_more'    => false,
-				'next_cursor' => '',
-				'error'       => 'cursor_required',
-			);
+		$limit      = min( self::MAX_LIMIT, max( 1, absint( $args['limit'] ?? 10 ) ) );
+		$page       = max( 1, absint( $args['page'] ?? 1 ) );
+		$namespace  = $this->namespace( $args['namespace'] ?? 'site' );
+		$status     = sanitize_key( (string) ( $args['status'] ?? 'approved' ) );
+		$status     = in_array( $status, array( 'approved', 'pending', 'dismissed' ), true ) ? $status : 'approved';
+		$query      = $this->boolean_search_query( $args['query'] ?? '' );
+		$raw_cursor = $args['cursor'] ?? '';
+		$cursor     = $this->decode_cursor( $raw_cursor );
+		if ( '' !== $raw_cursor && array() === $cursor ) {
+			return $this->page_error( 'invalid_cursor', 'Use the unchanged next_cursor returned by memory_list.', $page, $limit );
+		}
+		if ( 1 < $page && '' === $raw_cursor ) {
+			return $this->page_error( 'cursor_required', 'Continuation requires next_cursor from the previous page; page is only a display counter.', $page, $limit );
 		}
 		if ( '' !== $query && ! $this->search_index_ready() ) {
-			return array(
-				'items'       => array(),
-				'page'        => $page,
-				'per_page'    => $limit,
-				'has_more'    => false,
-				'next_cursor' => '',
-				'error'       => 'memory_search_migrating',
-			);
+			return $this->page_error( 'memory_search_migrating', 'Memory search is awaiting its background migration.', $page, $limit );
 		}
 		$domain     = sanitize_key( is_scalar( $args['domain'] ?? null ) ? (string) $args['domain'] : '' );
 		$domain     = in_array( $domain, array( 'brand', 'site', 'content', 'developer', 'seo', 'workflow' ), true ) ? $domain : '';
 		$review_all = ! empty( $args['review_all'] );
-		$values     = array( Installer::memory_items_table(), $namespace, $status, gmdate( 'Y-m-d H:i:s' ) );
+		$now        = gmdate( 'Y-m-d H:i:s' );
+		$values     = array( Installer::memory_items_table(), $namespace, $status, $now, $now );
 		$access_sql = $review_all ? '' : " AND visibility = 'site' AND sensitivity = 'normal'";
 		$query_sql  = '';
 		if ( '' !== $query ) {
@@ -192,7 +184,6 @@ final class MemoryRepository {
 			$query_sql .= ' AND domain = %s';
 			$values[]   = $domain;
 		}
-		$cursor = $this->decode_cursor( $args['cursor'] ?? '' );
 		if ( array() !== $cursor ) {
 			$query_sql .= ' AND (updated_at < %s OR (updated_at = %s AND id < %d))';
 			$values[]   = $cursor['updated_at'];
@@ -205,7 +196,7 @@ final class MemoryRepository {
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Values are supplied through an unpacked, fixed-order list.
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column list and query fragment are fixed; values use placeholders.
-				'SELECT ' . self::COLUMNS . " FROM %i WHERE namespace = %s AND status = %s{$access_sql} AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > %s){$query_sql} ORDER BY updated_at DESC, id DESC LIMIT %d",
+				'SELECT ' . self::COLUMNS . " FROM %i WHERE namespace = %s AND status = %s{$access_sql} AND " . MemoryValidity::SQL . "{$query_sql} ORDER BY updated_at DESC, id DESC LIMIT %d",
 				...$values
 			),
 			ARRAY_A
@@ -223,6 +214,28 @@ final class MemoryRepository {
 			'per_page'    => $limit,
 			'has_more'    => $has_more,
 			'next_cursor' => $has_more && is_array( $last ) ? $this->encode_cursor( (string) ( $last['updated_at'] ?? '' ), (int) ( $last['id'] ?? 0 ) ) : '',
+		);
+	}
+
+	/**
+	 * Return a consistent, non-successful pagination result.
+	 *
+	 * @param string $code Error code.
+	 * @param string $message Recovery guidance.
+	 * @param int    $page Display page.
+	 * @param int    $limit Page size.
+	 * @return array{items:array{},page:int,per_page:int,has_more:bool,next_cursor:string,status:string,error:string,message:string}
+	 */
+	private function page_error( string $code, string $message, int $page, int $limit ): array {
+		return array_merge(
+			$this->error( $code, $message ),
+			array(
+				'items'       => array(),
+				'page'        => $page,
+				'per_page'    => $limit,
+				'has_more'    => false,
+				'next_cursor' => '',
+			)
 		);
 	}
 
@@ -262,12 +275,16 @@ final class MemoryRepository {
 	 * @return array{updated_at:string,id:int}|array{}
 	 */
 	private function decode_cursor( mixed $cursor ): array {
-		if ( ! is_scalar( $cursor ) || '' === (string) $cursor ) {
+		if ( ! is_string( $cursor ) || '' === $cursor || strlen( $cursor ) > 100 ) {
 			return array();
 		}
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Decodes a validated pagination cursor.
 		$decoded = base64_decode( strtr( (string) $cursor, '-_', '+/' ), true );
 		if ( ! is_string( $decoded ) || ! preg_match( '/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\|(\d+)$/', $decoded, $matches ) ) {
+			return array();
+		}
+		$date = \DateTimeImmutable::createFromFormat( '!Y-m-d H:i:s', $matches[1], new \DateTimeZone( 'UTC' ) );
+		if ( false === $date || $date->format( 'Y-m-d H:i:s' ) !== $matches[1] || ! ctype_digit( $matches[2] ) || (string) (int) $matches[2] !== $matches[2] || (int) $matches[2] < 1 ) {
 			return array();
 		}
 		return array(

@@ -5,17 +5,22 @@ on:
     types: [released]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: production-release-${{ github.event.release.id }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build Plugin Artifact
+  validate:
+    name: Validate production tag and main ancestry
+    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Verify production tag is on main
@@ -24,6 +29,7 @@ jobs:
         run: |
           git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
           tag_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          test "$tag_commit" = "$(git rev-parse HEAD)"
           expected_version="${RELEASE_TAG#v}"
           release_version="$(sed -n -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*([^[:space:]]+).*$/\1/p' aculect-ai-companion.php | head -n 1)"
           main_version="$(git show origin/main:aculect-ai-companion.php | sed -n -E 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*([^[:space:]]+).*$/\1/p' | head -n 1)"
@@ -38,70 +44,46 @@ jobs:
             exit 1
           fi
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+
+  package:
+    needs: validate
+    uses: ./.github/workflows/package.yml
+  plugin-check:
+    needs: package
+    uses: ./.github/workflows/plugin-check.yml
+    with:
+      package-sha256: ${{ needs.package.outputs.sha256 }}
+      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
+  publish:
+    name: Publish verified production package
+    needs: [validate, package, plugin-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          php-version: "8.2"
-          tools: composer:v2
-
-      - name: Install composer dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-
-      - uses: actions/setup-node@v6
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          node-version: "24.16.0"
-          cache: "npm"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build
-
-      - name: Prepare plugin package
+          name: ${{ needs.package.outputs.artifact-name }}
+          path: release/
+      - name: Verify exact package before publishing
+        env:
+          EXPECTED_SHA256: ${{ needs.package.outputs.sha256 }}
         run: |
-          mkdir -p "${GITHUB_WORKSPACE}/release/aculect-ai-companion"
-          rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
-
-      - name: Verify production package contents
-        run: php bin/verify-production-package.php release/aculect-ai-companion
-
-      - name: Setup Node for Plugin Check
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20.19.0"
-
-      - name: Run Plugin Check
-        run: |
-          PLUGIN_DIR=$(realpath "./release/aculect-ai-companion")
-          PLUGIN_SLUG="aculect-ai-companion"
-
-          cat > .wp-env.json <<JSON
-          {
-            "core": null,
-            "port": 8880,
-            "testsEnvironment": false,
-            "plugins": [ "https://downloads.wordpress.org/plugin/plugin-check.zip" ],
-            "mappings": {
-              "wp-content/plugins/${PLUGIN_SLUG}": "${PLUGIN_DIR}"
-            }
-          }
-          JSON
-
-          npm -g --no-fund i @wordpress/env@11.6.0
-          wp-env start --update
-          for attempt in {1..12}; do
-            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
-              break
-            fi
-            sleep 5
-          done
-          wp-env run cli wp core is-installed
-          wp-env run cli wp plugin activate "${PLUGIN_SLUG}"
-          wp-env run cli wp plugin check "${PLUGIN_SLUG}" --format=json --ignore-warnings --exclude-files=.wp-env.json --slug="${PLUGIN_SLUG}" --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
-          cat "${RUNNER_TEMP}/plugin-check-results.txt"
-
-      - name: Deploy to WordPress.org
+          cd release
+          sha256sum --check aculect-ai-companion.zip.sha256
+          test "$(sha256sum aculect-ai-companion.zip | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+          unzip -q aculect-ai-companion.zip
+      - name: Check existing assets before deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EXPECTED_SHA256: ${{ needs.package.outputs.sha256 }}
+        run: bash bin/ci-upload-release.sh --check-only
+      - name: Deploy verified package to WordPress.org
         uses: 10up/action-wordpress-plugin-deploy@2.3.0
         env:
           SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
@@ -109,13 +91,9 @@ jobs:
           SLUG: aculect-ai-companion
           BUILD_DIR: release/aculect-ai-companion
           ASSETS_DIR: .wordpress-org
-
-      - name: Generate plugin artifact
-        run: |
-          cd "${GITHUB_WORKSPACE}/release" || exit 1
-          zip -r "${GITHUB_WORKSPACE}/aculect-ai-companion.zip" aculect-ai-companion
-
-      - name: Upload release asset
+      - name: Attach one canonical ZIP and checksum without replacement
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "${{ github.workspace }}/aculect-ai-companion.zip" --clobber
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EXPECTED_SHA256: ${{ needs.package.outputs.sha256 }}
+        run: bash bin/ci-upload-release.sh

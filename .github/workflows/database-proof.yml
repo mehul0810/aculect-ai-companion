@@ -1,0 +1,109 @@
+name: Shared Real Database Proofs
+
+on:
+  workflow_call:
+    inputs:
+      workflows:
+        type: boolean
+        default: false
+      claims:
+        type: boolean
+        default: false
+      oauth:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  real-database:
+    name: ${{ matrix.engine }} storage and concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: MySQL 8.0
+            image: mysql:8.0
+          - engine: MariaDB 10.11
+            image: mariadb:10.11
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: isolated-ci-proof
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=isolated-ci-proof --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      ACULECT_CI_DB_HOST: 127.0.0.1
+      ACULECT_CI_DB_USER: root
+      ACULECT_CI_DB_PASSWORD: isolated-ci-proof
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          extensions: mysqli, pdo_mysql
+          tools: composer:v2
+      - name: Cache Composer downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ runner.os }}-php82-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php82-
+
+      - name: Install locked PHP dependencies once
+        run: composer install --prefer-dist --no-progress --no-interaction
+      - name: Prepare separate disposable databases
+        env:
+          ACULECT_CI_DB_PORT: ${{ job.services.database.ports['3306'] }}
+        run: |
+          php -r '
+          $db = new mysqli(getenv("ACULECT_CI_DB_HOST"), getenv("ACULECT_CI_DB_USER"), getenv("ACULECT_CI_DB_PASSWORD"), "", (int) getenv("ACULECT_CI_DB_PORT"));
+          foreach (["aculect_installer_proof", "aculect_runner_proof", "aculect_claims_proof", "aculect_oauth_proof"] as $name) {
+            if (!$db->query("CREATE DATABASE " . $name . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")) {
+              throw new RuntimeException("Could not create isolated proof database.");
+            }
+          }'
+      - name: Prove workflow storage installation
+        if: inputs.workflows
+        env:
+          ACULECT_WORKFLOW_DB_HOST: ${{ env.ACULECT_CI_DB_HOST }}
+          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports['3306'] }}
+          ACULECT_WORKFLOW_DB_NAME: aculect_installer_proof
+          ACULECT_WORKFLOW_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
+          ACULECT_WORKFLOW_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
+        run: php tests/Integration/Workflows/real-database-installer.php
+      - name: Prove workflow execution
+        if: inputs.workflows
+        env:
+          ACULECT_WORKFLOW_DB_HOST: ${{ env.ACULECT_CI_DB_HOST }}
+          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports['3306'] }}
+          ACULECT_WORKFLOW_DB_NAME: aculect_runner_proof
+          ACULECT_WORKFLOW_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
+          ACULECT_WORKFLOW_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
+        run: php tests/Integration/Workflows/real-database-runner.php
+      - name: Prove competing execution workers
+        if: inputs.claims
+        env:
+          ACULECT_CLAIMS_DB_HOST: ${{ env.ACULECT_CI_DB_HOST }}
+          ACULECT_CLAIMS_DB_PORT: ${{ job.services.database.ports['3306'] }}
+          ACULECT_CLAIMS_DB_NAME: aculect_claims_proof
+          ACULECT_CLAIMS_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
+          ACULECT_CLAIMS_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
+        run: php tests/Integration/ExecutionClaims/real-database-concurrency.php
+      - name: Prove OAuth issuer migration and joins
+        if: inputs.oauth
+        env:
+          ACULECT_TEST_DB_DSN: mysql:host=127.0.0.1;port=${{ job.services.database.ports['3306'] }};dbname=aculect_oauth_proof;charset=utf8mb4
+          ACULECT_TEST_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
+          ACULECT_TEST_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
+        run: php tests/integration/oauth-issuer-engine.php

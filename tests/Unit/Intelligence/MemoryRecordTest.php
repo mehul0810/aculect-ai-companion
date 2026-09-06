@@ -40,7 +40,7 @@ final class MemoryRecordTest extends TestCase {
 				'owner_user_id' => 42,
 			)
 		);
-		$second  = $factory->normalize( array( 'value' => 'Publishers' ), $first );
+		$second  = $factory->normalize( array( 'value' => 'Publishers', 'memory_uuid' => '00000000-0000-4000-8000-000000000000' ), $first );
 
 		self::assertSame( $first['memory_uuid'], $second['memory_uuid'] );
 		self::assertSame( $first['memory_key'], $second['memory_key'] );
@@ -63,6 +63,23 @@ final class MemoryRecordTest extends TestCase {
 
 		self::assertTrue( $factory->can_sync( $record ) );
 		$record['sensitivity'] = 'sensitive';
+		self::assertFalse( $factory->can_sync( $record ) );
+	}
+
+	public function test_future_and_expired_records_cannot_sync(): void {
+		$factory              = new MemoryRecord();
+		$record               = $factory->normalize(
+			array(
+				'key'        => 'timed',
+				'value'      => 'Guidance',
+				'status'     => 'approved',
+				'visibility' => 'site',
+			)
+		);
+		$record['valid_from'] = '2999-01-01 00:00:00';
+		self::assertFalse( $factory->can_sync( $record ) );
+		$record['valid_from'] = null;
+		$record['expires_at'] = '2000-01-01 00:00:00';
 		self::assertFalse( $factory->can_sync( $record ) );
 	}
 }

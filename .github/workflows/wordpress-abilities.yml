@@ -1,28 +1,17 @@
 name: WordPress Abilities Contract
 
 on:
-  pull_request:
-    branches:
-      - main
-      - develop
-      - "release/**"
-  push:
-    branches:
-      - main
-      - develop
-      - "release/**"
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: wordpress-abilities-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   contract:
     name: WordPress ${{ matrix.wordpress }} Abilities contract
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -33,19 +22,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           tools: composer:v2
+
+      - name: Cache Composer downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ runner.os }}-php82-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php82-
 
       - name: Install PHP dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "20.19.0"
 

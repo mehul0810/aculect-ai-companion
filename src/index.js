@@ -1,3 +1,19 @@
+import { ChangelogDashboard } from './Admin/changelog/ChangelogDashboard';
+import { MemoryRecordCard } from './Admin/memory/MemoryRecordCard';
+import { ActionForm } from './Admin/shared/ActionForm';
+import { EmptyState } from './Admin/shared/EmptyState';
+import {
+	isPlainObject,
+	safeExternalUrl,
+	connectionDateValue,
+} from './Admin/shared/value-utils.mjs';
+import {
+	LEARNING_DOMAIN_LABELS,
+	LEARNING_CONFIDENCE_LABELS,
+	learningDomainLabel,
+	learningStatusLabel,
+	learningConfidenceLabel,
+} from './Admin/shared/learning-labels.mjs';
 import {
 	render,
 	useEffect,
@@ -112,30 +128,6 @@ const DIAGNOSTIC_FILTERS = [
 	{ name: 'warn', label: 'Needs review' },
 	{ name: 'fail', label: 'Errors' },
 ];
-const CHANGELOG_METADATA_KEYS = new Set( [
-	'date',
-	'releaseDate',
-	'releasedAt',
-	'type',
-] );
-const LEARNING_DOMAIN_LABELS = {
-	site: 'Site',
-	content: 'Content',
-	developer: 'Developer',
-	brand: 'Brand',
-	seo: 'SEO',
-	workflow: 'Workflow',
-};
-const LEARNING_STATUS_LABELS = {
-	pending: 'Pending',
-	approved: 'Approved',
-	dismissed: 'Dismissed',
-};
-const LEARNING_CONFIDENCE_LABELS = {
-	low: 'Low confidence',
-	medium: 'Medium confidence',
-	high: 'High confidence',
-};
 const INCIDENT_CATEGORY_LABELS = {
 	bug: 'Bug',
 	compatibility: 'Compatibility',
@@ -674,15 +666,6 @@ function ConnectionProviderLogo( {
 	);
 }
 
-function EmptyState( { title, children } ) {
-	return (
-		<div className="aculect-ai-companion-empty-state">
-			<strong>{ title }</strong>
-			{ children && <p>{ children }</p> }
-		</div>
-	);
-}
-
 function TabLoadingState( {
 	tab,
 	failed = false,
@@ -752,11 +735,17 @@ function useDataViewsModule() {
 	useEffect( () => {
 		let isMounted = true;
 
-		import( '@wordpress/dataviews/wp' ).then( ( nextModule ) => {
-			if ( isMounted ) {
-				setDataViewsModule( nextModule );
-			}
-		} );
+		import( '@wordpress/dataviews/wp' )
+			.then( ( nextModule ) => {
+				if ( isMounted ) {
+					setDataViewsModule( nextModule );
+				}
+			} )
+			.catch( () => {
+				if ( isMounted ) {
+					setDataViewsModule( { loadError: true } );
+				}
+			} );
 
 		return () => {
 			isMounted = false;
@@ -766,7 +755,20 @@ function useDataViewsModule() {
 	return dataViewsModule;
 }
 
-function DataViewLoadingState( { label } ) {
+function DataViewLoadingState( { label, failed = false } ) {
+	if ( failed ) {
+		return (
+			<Notice status="error" isDismissible={ false }>
+				The table could not load.{ ' ' }
+				<Button
+					variant="link"
+					onClick={ () => window.location.reload() }
+				>
+					Reload this page
+				</Button>
+			</Notice>
+		);
+	}
 	return (
 		<div className="aculect-ai-companion-data-view__loading">
 			<span
@@ -775,121 +777,6 @@ function DataViewLoadingState( { label } ) {
 			/>
 			<strong>{ label }</strong>
 		</div>
-	);
-}
-
-function ActionForm( {
-	data,
-	action,
-	nonce,
-	label,
-	children,
-	destructive = false,
-	onSubmit,
-	isBusy = false,
-	busyLabel = '',
-	disabled = false,
-	variant = '',
-	enctype = '',
-	confirmMessage = '',
-	confirmTitle = 'Confirm action',
-	confirmButtonLabel = '',
-	buttonContent = null,
-	buttonClassName = '',
-	formClassName = '',
-	accessibleLabel = '',
-} ) {
-	const [ isConfirmOpen, setIsConfirmOpen ] = useState( false );
-	const formRef = useRef( null );
-	const confirmedSubmitRef = useRef( false );
-	const submitLabel = isBusy && busyLabel ? busyLabel : label;
-	const isDisabled = disabled || isBusy;
-	const handleSubmit = ( event ) => {
-		if ( confirmMessage && ! confirmedSubmitRef.current ) {
-			event.preventDefault();
-			setIsConfirmOpen( true );
-			return false;
-		}
-
-		confirmedSubmitRef.current = false;
-
-		if ( onSubmit ) {
-			return onSubmit( event );
-		}
-
-		return undefined;
-	};
-	const submitConfirmedAction = () => {
-		confirmedSubmitRef.current = true;
-		setIsConfirmOpen( false );
-
-		if ( formRef.current?.requestSubmit ) {
-			formRef.current.requestSubmit();
-			return;
-		}
-
-		formRef.current?.submit();
-	};
-
-	return (
-		<>
-			<form
-				ref={ formRef }
-				method="post"
-				action={ data.actions?.adminPostUrl }
-				className={ [
-					'aculect-ai-companion-action-form',
-					formClassName,
-				]
-					.filter( Boolean )
-					.join( ' ' ) }
-				onSubmit={ handleSubmit }
-				{ ...( enctype ? { encType: enctype } : {} ) }
-			>
-				<input type="hidden" name="action" value={ action } />
-				<input type="hidden" name="_wpnonce" value={ nonce } />
-				{ children }
-				<Button
-					type="submit"
-					className={ buttonClassName }
-					variant={
-						variant || ( destructive ? 'secondary' : 'primary' )
-					}
-					isDestructive={ destructive }
-					isBusy={ isBusy }
-					disabled={ isDisabled }
-					accessibleWhenDisabled
-					aria-label={ accessibleLabel || undefined }
-				>
-					{ buttonContent || submitLabel }
-				</Button>
-			</form>
-			{ isConfirmOpen && (
-				<Modal
-					title={ confirmTitle }
-					onRequestClose={ () => setIsConfirmOpen( false ) }
-				>
-					<p>{ confirmMessage }</p>
-					<div className="aculect-ai-companion-confirm-dialog__actions">
-						<Button
-							type="button"
-							variant="secondary"
-							onClick={ () => setIsConfirmOpen( false ) }
-						>
-							Cancel
-						</Button>
-						<Button
-							type="button"
-							variant="primary"
-							isDestructive={ destructive }
-							onClick={ submitConfirmedAction }
-						>
-							{ confirmButtonLabel || label }
-						</Button>
-					</div>
-				</Modal>
-			) }
-		</>
 	);
 }
 
@@ -991,18 +878,6 @@ function learningSuggestionsSummary( learningSuggestions ) {
 		typeof learningSuggestions.summary === 'object'
 		? learningSuggestions.summary
 		: {};
-}
-
-function learningDomainLabel( domain ) {
-	return LEARNING_DOMAIN_LABELS[ domain ] || 'Content';
-}
-
-function learningStatusLabel( status ) {
-	return LEARNING_STATUS_LABELS[ status ] || 'Pending';
-}
-
-function learningConfidenceLabel( confidence ) {
-	return LEARNING_CONFIDENCE_LABELS[ confidence ] || 'Medium confidence';
 }
 
 function learningSourceLabel( source ) {
@@ -1111,296 +986,6 @@ function IncidentReportCard( { report } ) {
 					</Button>
 				) : null }
 			</div>
-		</article>
-	);
-}
-
-function MemoryRecordHiddenInputs( { record, action } ) {
-	return (
-		<>
-			<input type="hidden" name="memory_key" value={ record.key || '' } />
-			<input type="hidden" name="memory_action" value={ action } />
-			<input
-				type="hidden"
-				name="memory_item[key]"
-				value={ record.key || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[domain]"
-				value={ record.domain || 'content' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[value]"
-				value={ record.value || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[evidence]"
-				value={ record.evidence || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[confidence]"
-				value={ record.confidence || 'medium' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[source]"
-				value={ record.source || 'admin' }
-			/>
-		</>
-	);
-}
-
-function MemoryRecordReviewForm( {
-	data,
-	record,
-	action,
-	label,
-	icon,
-	destructive = false,
-} ) {
-	return (
-		<ActionForm
-			data={ data }
-			action={ data.actions?.reviewMemoryAction }
-			nonce={ data.actions?.reviewMemoryNonce }
-			label={ label }
-			variant={ destructive ? 'secondary' : 'primary' }
-			destructive={ destructive }
-			confirmMessage={ destructive ? `${ label } this memory item?` : '' }
-			confirmTitle="Review memory"
-			buttonContent={
-				<>
-					<Icon icon={ icon } size={ 16 } />
-					<span>{ label }</span>
-				</>
-			}
-			disabled={
-				! data.actions?.reviewMemoryAction ||
-				! data.actions?.reviewMemoryNonce
-			}
-		>
-			<MemoryRecordHiddenInputs record={ record } action={ action } />
-		</ActionForm>
-	);
-}
-
-function MemoryRecordEditModal( { data, record, onClose } ) {
-	const [ formValues, setFormValues ] = useState( {
-		key: record.key || '',
-		domain: record.domain || 'content',
-		value: record.value || '',
-		evidence: record.evidence || '',
-		confidence: record.confidence || 'medium',
-		status: record.status || 'pending',
-		source: record.source || 'admin',
-	} );
-	const updateValue = ( key ) => ( value ) => {
-		setFormValues( ( current ) => ( {
-			...current,
-			[ key ]: value,
-		} ) );
-	};
-
-	return (
-		<Modal title="Edit memory item" onRequestClose={ onClose }>
-			<form
-				method="post"
-				action={ data.actions?.adminPostUrl }
-				className="aculect-ai-companion-learning-edit-form"
-			>
-				<input
-					type="hidden"
-					name="action"
-					value={ data.actions?.reviewMemoryAction }
-				/>
-				<input
-					type="hidden"
-					name="_wpnonce"
-					value={ data.actions?.reviewMemoryNonce }
-				/>
-				<input
-					type="hidden"
-					name="memory_key"
-					value={ record.key || '' }
-				/>
-				<input type="hidden" name="memory_action" value="update" />
-				<TextControl
-					label="Key"
-					name="memory_item[key]"
-					value={ formValues.key }
-					onChange={ updateValue( 'key' ) }
-				/>
-				<SelectControl
-					label="Domain"
-					name="memory_item[domain]"
-					value={ formValues.domain }
-					options={ Object.entries( LEARNING_DOMAIN_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'domain' ) }
-				/>
-				<TextareaControl
-					label="Value"
-					name="memory_item[value]"
-					value={ formValues.value }
-					onChange={ updateValue( 'value' ) }
-					rows={ 4 }
-				/>
-				<TextareaControl
-					label="Evidence"
-					name="memory_item[evidence]"
-					value={ formValues.evidence }
-					onChange={ updateValue( 'evidence' ) }
-					rows={ 3 }
-				/>
-				<SelectControl
-					label="Confidence"
-					name="memory_item[confidence]"
-					value={ formValues.confidence }
-					options={ Object.entries( LEARNING_CONFIDENCE_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'confidence' ) }
-				/>
-				<SelectControl
-					label="Status"
-					name="memory_item[status]"
-					value={ formValues.status }
-					options={ Object.entries( LEARNING_STATUS_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'status' ) }
-				/>
-				<input
-					type="hidden"
-					name="memory_item[source]"
-					value={ formValues.source }
-				/>
-				<div className="aculect-ai-companion-confirm-dialog__actions">
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={ onClose }
-					>
-						Cancel
-					</Button>
-					<Button
-						type="submit"
-						variant="primary"
-						disabled={
-							! data.actions?.reviewMemoryAction ||
-							! data.actions?.reviewMemoryNonce
-						}
-						accessibleWhenDisabled
-					>
-						Save Memory
-					</Button>
-				</div>
-			</form>
-		</Modal>
-	);
-}
-
-function MemoryRecordCard( { data, record } ) {
-	const [ isEditing, setIsEditing ] = useState( false );
-	const status = record.status || 'pending';
-	const domain = record.domain || 'content';
-	const isApproved = status === 'approved';
-	const isDismissed = status === 'dismissed';
-
-	return (
-		<article
-			className={ `aculect-ai-companion-learning-card aculect-ai-companion-memory-card is-${ status }` }
-		>
-			<div className="aculect-ai-companion-learning-card__header">
-				<div>
-					<h3>{ record.key || 'Memory item' }</h3>
-					<p className="aculect-ai-companion-learning-source">
-						<span>{ record.source || 'manual' }</span>
-					</p>
-				</div>
-				<div className="aculect-ai-companion-learning-card__badges">
-					<span
-						className={ `aculect-ai-companion-learning-pill is-${ domain }` }
-					>
-						{ learningDomainLabel( domain ) }
-					</span>
-					<span
-						className={ `aculect-ai-companion-learning-pill is-${ status }` }
-					>
-						{ learningStatusLabel( status ) }
-					</span>
-					<span className="aculect-ai-companion-learning-pill is-confidence">
-						{ learningConfidenceLabel( record.confidence ) }
-					</span>
-				</div>
-			</div>
-			<div className="aculect-ai-companion-learning-card__body">
-				<dl className="aculect-ai-companion-learning-details">
-					<div>
-						<dt>Value</dt>
-						<dd>{ record.value || '-' }</dd>
-					</div>
-					{ record.evidence && (
-						<div>
-							<dt>Evidence</dt>
-							<dd>{ record.evidence }</dd>
-						</div>
-					) }
-				</dl>
-			</div>
-			<div className="aculect-ai-companion-learning-card__footer">
-				<span className="aculect-ai-companion-learning-card__date">
-					{ connectionDateValue( record.updated_at, 'Updated' ) }
-				</span>
-				<div className="aculect-ai-companion-learning-actions">
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={ () => setIsEditing( true ) }
-					>
-						Edit
-					</Button>
-					{ ! isApproved && (
-						<MemoryRecordReviewForm
-							data={ data }
-							record={ record }
-							action="approve"
-							label="Approve"
-							icon={ check }
-						/>
-					) }
-					{ ! isDismissed && (
-						<MemoryRecordReviewForm
-							data={ data }
-							record={ record }
-							action="dismiss"
-							label="Dismiss"
-							icon={ trash }
-							destructive
-						/>
-					) }
-					<MemoryRecordReviewForm
-						data={ data }
-						record={ record }
-						action="delete"
-						label="Delete"
-						icon={ trash }
-						destructive
-					/>
-				</div>
-			</div>
-			{ isEditing && (
-				<MemoryRecordEditModal
-					data={ data }
-					record={ record }
-					onClose={ () => setIsEditing( false ) }
-				/>
-			) }
 		</article>
 	);
 }
@@ -1791,6 +1376,25 @@ function LearningSuggestionsDashboard( {
 							workflows after explicit review.
 						</p>
 					</div>
+					{ memoryRecords?.migration?.status === 'blocked' && (
+						<Notice status="warning" isDismissible={ false }>
+							<p>
+								Memory upgrade needs attention:{ ' ' }
+								{ memoryRecords.migration.blocked?.reason }
+							</p>
+							<p>{ memoryRecords.migration.recovery }</p>
+							<ActionForm
+								data={ data }
+								action={
+									data.actions?.retryMemoryMigrationAction
+								}
+								nonce={
+									data.actions?.retryMemoryMigrationNonce
+								}
+								label="Retry memory upgrade"
+							/>
+						</Notice>
+					) }
 					{ memories.length === 0 ? (
 						<EmptyState title="No memory records">
 							AI clients can call memory_bootstrap or memory_save
@@ -1801,7 +1405,7 @@ function LearningSuggestionsDashboard( {
 						<div className="aculect-ai-companion-learning-list">
 							{ memories.map( ( record ) => (
 								<MemoryRecordCard
-									key={ record.key }
+									key={ `${ record.namespace }:${ record.key }` }
 									data={ data }
 									record={ record }
 								/>
@@ -3009,24 +2613,6 @@ function connectionScopeLabel( scope ) {
 	return labels[ scope ] || scope;
 }
 
-function connectionDateValue( value, fallback = 'Never' ) {
-	const rawValue = String( value || '' ).trim();
-
-	if ( ! rawValue ) {
-		return fallback;
-	}
-
-	const parsedDate = new Date( rawValue.replace( ' ', 'T' ) );
-	if ( Number.isNaN( parsedDate.getTime() ) ) {
-		return rawValue;
-	}
-
-	return new Intl.DateTimeFormat( undefined, {
-		dateStyle: 'medium',
-		timeStyle: 'short',
-	} ).format( parsedDate );
-}
-
 function connectionRelativeExpiry( value ) {
 	const rawValue = String( value || '' ).trim();
 
@@ -4097,7 +3683,10 @@ function ConnectionsDataViews( {
 	if ( ! DataViewsComponent ) {
 		return (
 			<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
-				<DataViewLoadingState label="Loading connections table" />
+				<DataViewLoadingState
+					label="Loading connections table"
+					failed={ dataViewsModule?.loadError }
+				/>
 			</div>
 		);
 	}
@@ -6419,7 +6008,10 @@ function AbilityDashboard( {
 								}
 							/>
 						) : (
-							<DataViewLoadingState label="Loading abilities table" />
+							<DataViewLoadingState
+								label="Loading abilities table"
+								failed={ dataViewsModule?.loadError }
+							/>
 						) }
 					</div>
 				</section>
@@ -7029,310 +6621,6 @@ function RoleAbilitiesEditor( {
 				</aside>
 			</div>
 		</section>
-	);
-}
-
-function isPlainObject( value ) {
-	return value && typeof value === 'object' && ! Array.isArray( value );
-}
-
-function versionParts( version ) {
-	return String( version || '' )
-		.split( '.' )
-		.map( ( part ) => Number.parseInt( part, 10 ) || 0 );
-}
-
-function compareVersionsDescending( firstVersion, secondVersion ) {
-	const firstParts = versionParts( firstVersion );
-	const secondParts = versionParts( secondVersion );
-	const length = Math.max( firstParts.length, secondParts.length );
-
-	for ( let index = 0; index < length; index += 1 ) {
-		const firstPart = firstParts[ index ] || 0;
-		const secondPart = secondParts[ index ] || 0;
-
-		if ( firstPart !== secondPart ) {
-			return secondPart - firstPart;
-		}
-	}
-
-	return String( secondVersion ).localeCompare( String( firstVersion ) );
-}
-
-function releaseType( version ) {
-	const parts = versionParts( version );
-	const patch = parts[ 2 ] || 0;
-
-	if ( patch > 0 ) {
-		return 'Patch release';
-	}
-
-	const major = parts[ 0 ] || 0;
-	const minor = parts[ 1 ] || 0;
-
-	if ( major > 0 && minor === 0 ) {
-		return 'Major release';
-	}
-
-	return 'Minor release';
-}
-
-function safeExternalUrl( value ) {
-	try {
-		const url = new URL( String( value || '' ) );
-
-		return [ 'https:', 'http:' ].includes( url.protocol )
-			? url.toString()
-			: '';
-	} catch {
-		return '';
-	}
-}
-
-function normalizeChangelogEntries( changelog ) {
-	const entries = Object.entries(
-		isPlainObject( changelog ) ? changelog : {}
-	)
-		.map( ( [ version, entry ] ) => {
-			const entryData = isPlainObject( entry ) ? entry : {};
-			const date = String(
-				entryData.date ||
-					entryData.releaseDate ||
-					entryData.releasedAt ||
-					''
-			).trim();
-			const type = String( entryData.type || '' ).trim();
-
-			return {
-				version,
-				type: type || releaseType( version ),
-				date,
-				groups: Object.entries( entryData )
-					.filter(
-						( [ title ] ) => ! CHANGELOG_METADATA_KEYS.has( title )
-					)
-					.map( ( [ title, items ] ) => ( {
-						title,
-						items: Array.isArray( items )
-							? items.filter( ( item ) =>
-									String( item || '' ).trim()
-							  )
-							: [],
-					} ) )
-					.filter( ( group ) => group.items.length > 0 ),
-			};
-		} )
-		.filter( ( entry ) => entry.version );
-
-	return entries.sort( ( firstEntry, secondEntry ) =>
-		compareVersionsDescending( firstEntry.version, secondEntry.version )
-	);
-}
-
-function ChangelogDashboard( { changelog, metadata } ) {
-	const pluginMetadata = isPlainObject( metadata ) ? metadata : {};
-	const entries = normalizeChangelogEntries( changelog );
-	const latestVersion = entries[ 0 ]?.version || '';
-	const installedVersion =
-		pluginMetadata.version || pluginMetadata.stableTag || latestVersion;
-	const [ selectedVersion, setSelectedVersion ] = useState(
-		latestVersion || installedVersion || ''
-	);
-	const selectedEntry =
-		entries.find( ( entry ) => entry.version === selectedVersion ) ||
-		entries[ 0 ];
-	const wordpressOrgUrl = safeExternalUrl( pluginMetadata.wordpressOrgUrl );
-	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
-	const reviewUrl = safeExternalUrl( pluginMetadata.reviewUrl );
-	const releaseDate = selectedEntry?.date || 'Not listed in changelog';
-	const metadataRows = [
-		{ label: 'Version', value: selectedEntry?.version || '-' },
-		{ label: 'Release date', value: releaseDate },
-		{ label: 'Type', value: selectedEntry?.type || 'Release' },
-		{ label: 'Tested up to', value: pluginMetadata.testedUpTo || '-' },
-		{ label: 'Requires WP', value: pluginMetadata.requiresAtLeast || '-' },
-		{ label: 'Requires PHP', value: pluginMetadata.requiresPhp || '-' },
-	];
-
-	if ( entries.length === 0 ) {
-		return (
-			<div className="aculect-ai-companion-changelog-dashboard">
-				<EmptyState title="No changelog entries">
-					Check the bundled changelog file or the WordPress.org
-					developer tab for release notes.
-				</EmptyState>
-			</div>
-		);
-	}
-
-	return (
-		<div className="aculect-ai-companion-changelog-dashboard">
-			{ wordpressOrgUrl && (
-				<div className="aculect-ai-companion-tab-actions">
-					<Button
-						href={ wordpressOrgUrl }
-						target="_blank"
-						rel="noreferrer noopener"
-						variant="secondary"
-					>
-						WordPress.org Changelog
-					</Button>
-				</div>
-			) }
-
-			<div className="aculect-ai-companion-changelog-layout">
-				<aside className="aculect-ai-companion-changelog-sidebar">
-					<h3 className="aculect-ai-companion-changelog-sidebar__title">
-						Versions
-					</h3>
-					<div className="aculect-ai-companion-changelog-version-list">
-						{ entries.map( ( entry ) => {
-							const isSelected =
-								entry.version === selectedEntry.version;
-
-							return (
-								<button
-									key={ entry.version }
-									type="button"
-									className={
-										isSelected ? 'is-selected' : ''
-									}
-									aria-pressed={ isSelected }
-									onClick={ () =>
-										setSelectedVersion( entry.version )
-									}
-								>
-									<span className="aculect-ai-companion-changelog-version-list__version">
-										{ entry.version }
-									</span>
-									<span className="aculect-ai-companion-changelog-version-list__meta">
-										{ entry.date || 'Date not listed' }
-									</span>
-									<span className="aculect-ai-companion-changelog-version-list__badges">
-										{ entry.version === latestVersion && (
-											<em>Latest</em>
-										) }
-										{ entry.version ===
-											installedVersion && (
-											<em>Installed</em>
-										) }
-									</span>
-								</button>
-							);
-						} ) }
-					</div>
-				</aside>
-
-				<section className="aculect-ai-companion-changelog-detail">
-					<div className="aculect-ai-companion-changelog-detail__header">
-						<div>
-							<span className="aculect-ai-companion-eyebrow">
-								Selected release
-							</span>
-							<h3 className="aculect-ai-companion-changelog-detail__version">
-								{ selectedEntry.version }
-							</h3>
-						</div>
-						<div className="aculect-ai-companion-changelog-detail__badges">
-							{ selectedEntry.version === latestVersion && (
-								<span className="aculect-ai-companion-changelog-detail__badge">
-									Latest
-								</span>
-							) }
-							{ selectedEntry.version === installedVersion && (
-								<span className="aculect-ai-companion-changelog-detail__badge">
-									Installed
-								</span>
-							) }
-						</div>
-					</div>
-
-					<div className="aculect-ai-companion-changelog-meta-grid">
-						{ metadataRows.map( ( item ) => (
-							<div
-								key={ item.label }
-								className="aculect-ai-companion-changelog-meta-grid__item"
-							>
-								<span className="aculect-ai-companion-changelog-meta-grid__label">
-									{ item.label }
-								</span>
-								<strong className="aculect-ai-companion-changelog-meta-grid__value">
-									{ item.value }
-								</strong>
-							</div>
-						) ) }
-					</div>
-
-					{ selectedEntry.groups.length > 0 ? (
-						<div className="aculect-ai-companion-changelog-notes">
-							{ selectedEntry.groups.map( ( group ) => (
-								<section
-									key={ group.title }
-									className="aculect-ai-companion-changelog-notes__group"
-								>
-									<h4 className="aculect-ai-companion-changelog-notes__title">
-										{ group.title }
-									</h4>
-									<ul className="aculect-ai-companion-changelog-notes__list">
-										{ group.items.map( ( item, index ) => (
-											<li
-												key={ `${ selectedEntry.version }-${ group.title }-${ index }` }
-											>
-												{ item }
-											</li>
-										) ) }
-									</ul>
-								</section>
-							) ) }
-						</div>
-					) : (
-						<EmptyState title="No release notes">
-							This version exists in the changelog source, but no
-							grouped notes were found.
-						</EmptyState>
-					) }
-				</section>
-			</div>
-
-			<div className="aculect-ai-companion-changelog-help">
-				<div className="aculect-ai-companion-changelog-help__item">
-					<h3 className="aculect-ai-companion-changelog-help__title">
-						Need help with an update?
-					</h3>
-					<p className="aculect-ai-companion-changelog-help__copy">
-						Use the support forum for release questions,
-						compatibility reports, or setup issues.
-					</p>
-					{ supportUrl && (
-						<a
-							href={ supportUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							Open support forum
-						</a>
-					) }
-				</div>
-				<div className="aculect-ai-companion-changelog-help__item">
-					<h3 className="aculect-ai-companion-changelog-help__title">
-						Share release feedback
-					</h3>
-					<p className="aculect-ai-companion-changelog-help__copy">
-						Reviews help prioritize improvements and surface
-						compatibility feedback for other WordPress users.
-					</p>
-					{ reviewUrl && (
-						<a
-							href={ reviewUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							Leave a review
-						</a>
-					) }
-				</div>
-			</div>
-		</div>
 	);
 }
 

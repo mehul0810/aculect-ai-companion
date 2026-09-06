@@ -18,12 +18,12 @@ Connected AI clients may read approved, relevant memory and propose changes. The
 
 Each memory has a stable UUID and site-global legacy key, namespace, optional user owner, domain, value and evidence, visibility and sensitivity, review status, confidence, source, monotonically increasing version, content hash, validity window, and soft-deletion timestamp. The legacy key remains globally unique for compatibility; namespaces classify routing and visibility but do not create duplicate identities for the same key.
 
-Every accepted mutation also creates an append-only event. Events provide history, cache invalidation, and a cursor-based outbound change feed. Connector sync state stores only mappings, checkpoints, leases, bounded errors, and retry timing; provider tokens remain in the existing protected OAuth/connector storage.
+Every accepted mutation also creates an append-only event. Events provide history, cache invalidation, and a cursor-based outbound change feed. The reserved connector-state table is available for future server-driven adapters; the current client-driven adapter uses deterministic proposal keys and caller-held checkpoints rather than an idle polling queue. Provider tokens remain in the existing protected OAuth/connector storage.
 
 ## Write and conflict rules
 
 1. New AI-originated content is a pending proposal by default.
-2. Updates require the caller's expected version. A stale version returns a conflict with the current safe record projection.
+2. Admin edits require the observed version. Compatibility APIs accept an optional expected version; database updates always compare the version read by the service. A stale version returns a conflict rather than overwriting a newer edit.
 3. Approved site state wins conflicts. Incoming provider changes never use last-write-wins.
 4. Forget operations create tombstones so connected clients can converge without resurrecting deleted memory.
 5. Sensitive or user-private memory is excluded from synchronization by default.
@@ -37,7 +37,33 @@ The default tier uses indexed namespace, owner, status, visibility, expiry, and 
 - Values and evidence remain bounded by the storage contract.
 - List/search queries select explicit columns and may skip exact totals.
 - Retrieval caching will key namespace, actor visibility, normalized query/filter, and latest event cursor when introduced.
-- Provider synchronization will run asynchronously in leased batches with retry backoff and idempotency keys when provider adapters are introduced.
+- Server-driven provider synchronization would require leased batches and retry backoff. The implemented MCP exchange is client-driven, opt-in and bounded; no periodic remote requests are scheduled.
+
+## Implemented client-driven exchange
+
+`memory_sync_pull` and `memory_sync_push` use the existing authenticated MCP transport. Both require a WordPress administrator and the explicit site filter `aculect_ai_companion_memory_sync_enabled` (default false). Pull requires `content:read`; push additionally requires `content:draft` and the existing confirmation gate. Intelligence grouping does not decide authorization.
+
+Enable only after the site owner approves the destination application's handling of shared context:
+
+```php
+add_filter( 'aculect_ai_companion_memory_sync_enabled', '__return_true' );
+```
+
+Pull begins with an ID-bounded snapshot and then returns ordered event deltas, at most 20 rows per request. Only currently approved, site-visible, normal-sensitivity, temporally valid content is exported. Other records yield content-free `remove` instructions. Clients must enforce expiration, apply invalidations, and stop using a replica older than five minutes. Cursors expire after five minutes and require a fresh snapshot. The event stream is eventually consistent: database auto-increment allocation is not commit ordering, so a concurrently committed older event may be repaired by the required full refresh rather than the next delta. This is not a transactional cross-system replica or an authorization cache.
+
+Push accepts at most 20 proposals with stable external `id`, positive `version`, and bounded `value`. Identity is scoped by the authenticated WordPress user, connector identifier and external revision. Imports are private pending proposals; supplied approval/privacy fields cannot bypass review. Replaying the same revision/value does not create another event; changing the value for the same revision returns a conflict. A newer external revision creates another proposal, never replaces approved site guidance. Partial failures do not advance the caller checkpoint. Retry rejected items with the same IDs; administrators explicitly approve and share appropriate proposals in Learning > Memory.
+
+These tools support an application-controlled memory bridge, not automatic access to ChatGPT/Claude/Cursor personal memory. [OpenAI's remote MCP contract](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) supplies the tool transport; [Claude's memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool) requires an application-owned client-side implementation. A custom client can map that implementation to the site exchange. No provider account, external API credential or remote data transfer is enabled during installation.
+
+Disable the filter or revoke the OAuth connection to stop subsequent access. Already disclosed data cannot be recalled from an external application; only enable applications whose deletion/retention behavior the owner accepts.
+
+## Migration and administration operations
+
+Legacy backfills preserve existing UUIDs and compare all observed fields before changing identity/hash metadata. A persisted ID cursor avoids starting each batch at the beginning; conflicting rows are reread, not overwritten. Memory, event and learning-review option writes require transactional tables and commit together. Failed review persistence rolls back both canonical memory and history, and invalidates WordPress option caches before retry.
+
+Large or unmeasurable schema changes pause automatically and show a reason/recovery action in Learning > Memory and index diagnostics. Other failures use exponential backoff capped at six hours and pause after eight attempts. Back up the database and resolve the reported issue during an approved maintenance window before using Retry migration. Retrying does not bypass the table-size guard. The existing `aculect_ai_companion_allow_large_memory_migration` filter is an operator override for a reviewed maintenance operation, not a routine recommendation. No migration deletes records.
+
+Admin pages use explicit fields, twenty-record pages and a 60-second totals cache invalidated after committed writes. Numbered admin pagination remains compatible; large-table deep-page cost is not claimed eliminated. Memory search uses keyset cursors, not offsets, and rejects malformed cursors explicitly.
 
 ## Delivery phases
 

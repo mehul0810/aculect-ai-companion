@@ -16,9 +16,9 @@ final class MemoryService {
 	private const MAX_BATCH = 100;
 
 	public function __construct(
-		private readonly ?MemoryRepository $memories = null,
-		private readonly ?MemoryEventRepository $events = null,
-		private readonly ?MemoryStorageRequirements $storage = null
+		private ?MemoryRepository $memories = null,
+		private ?MemoryEventRepository $events = null,
+		private ?MemoryStorageRequirements $storage = null
 	) {
 	}
 
@@ -33,6 +33,27 @@ final class MemoryService {
 			static fn ( MemoryRepository $repository ): array => $repository->save( $input ),
 			'updated',
 			$input
+		);
+	}
+
+	/**
+	 * Commit a reviewed memory and its learning-option state together.
+	 *
+	 * @param array<string,mixed> $input Memory input.
+	 * @param bool                $forget Whether this is a dismissal.
+	 * @param callable():bool     $persist_review Transactional option persistence.
+	 * @return array<string,mixed>
+	 */
+	public function review( array $input, bool $forget, callable $persist_review ): array {
+		if ( ! $this->storage_requirements()->supports_review_transactions() ) {
+			return $this->transaction_error();
+		}
+		return $this->mutate(
+			static fn ( MemoryRepository $repository ): array => $forget
+				? $repository->forget( (string) $input['key'], 'site', null ) : $repository->save( $input ),
+			$forget ? 'forgotten' : 'updated',
+			$input,
+			$persist_review
 		);
 	}
 
@@ -113,9 +134,10 @@ final class MemoryService {
 	 * @param callable             $callback  Mutation callback accepting the memory repository.
 	 * @param string               $event_type Event type.
 	 * @param array<string, mixed> $input Input context.
+	 * @param callable():bool|null $before_commit Additional transactional persistence.
 	 * @return array<string, mixed>
 	 */
-	private function mutate( callable $callback, string $event_type, array $input ): array {
+	private function mutate( callable $callback, string $event_type, array $input, ?callable $before_commit = null ): array {
 		global $wpdb;
 		/** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort
 
@@ -125,56 +147,66 @@ final class MemoryService {
 		if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
 			return $this->transaction_error();
 		}
-		$result = $callback( $this->memory_repository() );
-		$memory = is_array( $result['memory'] ?? null ) ? $result['memory'] : array();
-		if ( 'success' !== ( $result['status'] ?? '' ) || array() === $memory ) {
-			$wpdb->query( 'ROLLBACK' );
-			return $result;
-		}
+		try {
+			$result = $callback( $this->memory_repository() );
+			$memory = is_array( $result['memory'] ?? null ) ? $result['memory'] : array();
+			if ( 'success' !== ( $result['status'] ?? '' ) || array() === $memory ) {
+				$wpdb->query( 'ROLLBACK' );
+				return $result;
+			}
 
-		$event_saved = $this->event_repository()->append(
-			array(
-				'memory_uuid'    => $memory['memory_uuid'] ?? $memory['uuid'] ?? '',
-				'namespace'      => $memory['namespace'] ?? 'site',
-				'event_type'     => $event_type,
-				'memory_version' => $memory['version'] ?? 1,
-				'actor_user_id'  => get_current_user_id(),
-				'connection_id'  => $input['connection_id'] ?? '',
-				'payload'        => array(
-					'key'          => $memory['memory_key'] ?? $memory['key'] ?? '',
-					'content_hash' => $memory['content_hash'] ?? '',
-					'status'       => $memory['status'] ?? '',
-					'deleted'      => ! empty( $memory['deleted_at'] ),
-				),
-			)
-		);
-		if ( ! $event_saved ) {
-			$wpdb->query( 'ROLLBACK' );
-			return array(
-				'status'  => 'error',
-				'error'   => 'memory_event_failed',
-				'message' => 'Memory history could not be recorded.',
+			$event_saved = $this->event_repository()->append(
+				array(
+					'memory_uuid'    => $memory['memory_uuid'] ?? $memory['uuid'] ?? '',
+					'namespace'      => $memory['namespace'] ?? 'site',
+					'event_type'     => $event_type,
+					'memory_version' => $memory['version'] ?? 1,
+					'actor_user_id'  => get_current_user_id(),
+					'connection_id'  => $input['connection_id'] ?? '',
+					'payload'        => array(
+						'key'          => $memory['memory_key'] ?? $memory['key'] ?? '',
+						'content_hash' => $memory['content_hash'] ?? '',
+						'status'       => $memory['status'] ?? '',
+						'deleted'      => ! empty( $memory['deleted_at'] ),
+					),
+				)
 			);
-		}
+			if ( ! $event_saved ) {
+				$wpdb->query( 'ROLLBACK' );
+				return array(
+					'status'  => 'error',
+					'error'   => 'memory_event_failed',
+					'message' => 'Memory history could not be recorded.',
+				);
+			}
 
-		if ( false === $wpdb->query( 'COMMIT' ) ) {
+			if ( null !== $before_commit && ! $before_commit() ) {
+				$wpdb->query( 'ROLLBACK' );
+				return $this->transaction_error();
+			}
+			if ( false === $wpdb->query( 'COMMIT' ) ) {
+				$wpdb->query( 'ROLLBACK' );
+				return $this->transaction_error();
+			}
+			$result['event_recorded'] = true;
+			MemoryAdminQuery::invalidate_summary();
+			return $result;
+		} catch ( \Throwable ) {
 			$wpdb->query( 'ROLLBACK' );
 			return $this->transaction_error();
 		}
-		$result['event_recorded'] = true;
-		return $result;
 	}
 
 	private function memory_repository(): MemoryRepository {
-		return $this->memories ?? new MemoryRepository();
+		return $this->memories ??= new MemoryRepository();
 	}
 
 	private function event_repository(): MemoryEventRepository {
-		return $this->events ?? new MemoryEventRepository();
+		return $this->events ??= new MemoryEventRepository();
 	}
 
 	private function storage_requirements(): MemoryStorageRequirements {
-		return $this->storage ?? new MemoryStorageRequirements();
+		return $this->storage ??= new MemoryStorageRequirements();
 	}
 
 	/**

@@ -79,7 +79,13 @@ final class LearningSuggestionRepository {
 
 		$items   = $this->all();
 		$items[] = $suggestion;
-		$this->save( $items );
+		if ( ! $this->save( $items ) ) {
+			return array(
+				'status'  => 'rejected',
+				'error'   => 'storage_error',
+				'message' => 'The learning suggestion could not be saved. Please retry.',
+			);
+		}
 
 		return array(
 			'status'        => 'queued',
@@ -174,12 +180,7 @@ final class LearningSuggestionRepository {
 		}
 		unset( $item );
 
-		if ( $updated ) {
-			$this->save( $items );
-			$this->sync_memory_for_reviewed_item( $reviewed_item );
-		}
-
-		return $updated;
+		return $updated && $this->sync_memory_for_reviewed_item( $reviewed_item, $items );
 	}
 
 	/**
@@ -222,44 +223,45 @@ final class LearningSuggestionRepository {
 		}
 		unset( $item );
 
-		if ( $updated ) {
-			$this->save( $items );
-			$this->sync_memory_for_reviewed_item( $updated_item );
-		}
-
-		return $updated;
+		return $updated && $this->sync_memory_for_reviewed_item( $updated_item, $items );
 	}
 
 	/**
 	 * Sync approved or dismissed learning suggestions into durable memory.
 	 *
-	 * @param array<string, mixed> $item Learning suggestion item.
+	 * @param array<string, mixed>      $item Learning suggestion item.
+	 * @param list<array<string,mixed>> $items Updated review queue.
 	 */
-	private function sync_memory_for_reviewed_item( array $item ): void {
+	private function sync_memory_for_reviewed_item( array $item, array $items ): bool {
 		$key    = $this->memory_key( $item );
 		$status = (string) ( $item['status'] ?? 'pending' );
 		if ( '' === $key || 'pending' === $status ) {
-			return;
+			return $this->save( $items );
 		}
 
 		$memory = new MemoryService();
-		if ( 'dismissed' === $status ) {
-			$memory->forget( array( 'key' => $key ) );
-			return;
+		try {
+			$result = $memory->review(
+				array(
+					'key'        => $key,
+					'domain'     => (string) ( $item['domain'] ?? 'content' ),
+					'value'      => (string) ( $item['suggested_update'] ?? '' ),
+					'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
+					'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
+					'status'     => 'approved',
+					'visibility' => 'site',
+					'source'     => 'learning',
+				),
+				'dismissed' === $status,
+				fn (): bool => $this->save( $items )
+			);
+			return 'success' === ( $result['status'] ?? '' ) || ( 'memory_not_found' === ( $result['error'] ?? '' ) && $this->save( $items ) );
+		} finally {
+			// update_option may populate persistent cache before a transaction is rolled back.
+			wp_cache_delete( self::OPTION, 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
 		}
-
-		$memory->save(
-			array(
-				'key'        => $key,
-				'domain'     => (string) ( $item['domain'] ?? 'content' ),
-				'value'      => (string) ( $item['suggested_update'] ?? '' ),
-				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
-				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
-				'status'     => 'approved',
-				'visibility' => 'site',
-				'source'     => 'learning',
-			)
-		);
 	}
 
 	/**
@@ -268,6 +270,9 @@ final class LearningSuggestionRepository {
 	 * @param array<string, mixed> $item Learning suggestion item.
 	 */
 	private function memory_key( array $item ): string {
+		if ( ! empty( $item['memory_key'] ) ) {
+			return (string) $item['memory_key'];
+		}
 		$id     = sanitize_key( (string) ( $item['id'] ?? '' ) );
 		$domain = sanitize_key( (string) ( $item['domain'] ?? 'content' ) );
 
@@ -310,9 +315,9 @@ final class LearningSuggestionRepository {
 	 *
 	 * @param list<array<string, mixed>> $items Stored suggestions.
 	 */
-	private function save( array $items ): void {
+	private function save( array $items ): bool {
 		$items = array_values( array_slice( $items, -self::MAX_SUGGESTIONS ) );
-		update_option( self::OPTION, $items, false );
+		return update_option( self::OPTION, $items, false ) || get_option( self::OPTION ) === $items;
 	}
 
 	/**
@@ -329,6 +334,7 @@ final class LearningSuggestionRepository {
 
 		return array(
 			'id'               => $id,
+			'memory_key'       => $this->memory_key( $item ),
 			'domain'           => $this->sanitize_enum( $item['domain'] ?? '', self::DOMAINS, 'content' ),
 			'issue'            => $this->sanitize_text( $item['issue'] ?? '', 500 ),
 			'evidence'         => $this->sanitize_text( $item['evidence'] ?? '', 1200 ),

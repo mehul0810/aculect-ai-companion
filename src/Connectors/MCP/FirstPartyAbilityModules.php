@@ -30,6 +30,7 @@ final class FirstPartyAbilityModules {
 	public function all(): array {
 		$fixed_workflows = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
 		$modules         = array(
+			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\MemorySyncAbilityModules( $this->module_factory ) )->all() ),
 			$this->module(
 				'search',
 				'Search WordPress Content',
@@ -1881,27 +1882,7 @@ final class FirstPartyAbilityModules {
 	 * @return array<string, mixed>
 	 */
 	private function memory_list_schema(): array {
-		return $this->object_schema(
-			array(
-				'domain'   => array(
-					'type'        => 'string',
-					'enum'        => array( 'brand', 'site', 'content', 'developer', 'seo', 'workflow' ),
-					'description' => 'Memory domain to filter.',
-				),
-				'status'   => array(
-					'type'        => 'string',
-					'enum'        => array( 'approved', 'pending', 'dismissed' ),
-					'description' => 'Memory review status. Defaults to approved.',
-				),
-				'query'    => array( 'type' => 'string' ),
-				'cursor'   => array(
-					'type'        => 'string',
-					'description' => 'Opaque continuation cursor returned by the previous page. Prefer this over deep page numbers.',
-				),
-				'page'     => $this->page_schema(),
-				'per_page' => $this->per_page_schema( 50, 'Memory rows per page. Defaults to 10.' ),
-			)
-		);
+		return MemoryListSchema::build();
 	}
 
 	/**

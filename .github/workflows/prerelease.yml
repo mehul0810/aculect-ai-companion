@@ -5,86 +5,40 @@ on:
     types: [published]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: prerelease-${{ github.event.release.id }}
+  cancel-in-progress: false
 
 jobs:
-  build:
+  package:
     if: github.event.release.prerelease
-    name: Build Plugin Artifact
+    uses: ./.github/workflows/package.yml
+  plugin-check:
+    needs: package
+    uses: ./.github/workflows/plugin-check.yml
+    with:
+      package-sha256: ${{ needs.package.outputs.sha256 }}
+      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
+  publish:
+    name: Attach verified prerelease artifact
+    needs: [package, plugin-check]
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          php-version: "8.2"
-          tools: composer:v2
-
-      - name: Install composer dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-
-      - uses: actions/setup-node@v6
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          node-version: "24.16.0"
-          cache: "npm"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build
-
-      - name: Prepare plugin package
-        run: |
-          mkdir -p "${GITHUB_WORKSPACE}/release/aculect-ai-companion"
-          rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
-
-      - name: Verify production package contents
-        run: php bin/verify-production-package.php release/aculect-ai-companion
-
-      - name: Setup Node for Plugin Check
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20.19.0"
-
-      - name: Run Plugin Check
-        run: |
-          PLUGIN_DIR=$(realpath "./release/aculect-ai-companion")
-          PLUGIN_SLUG="aculect-ai-companion"
-
-          cat > .wp-env.json <<JSON
-          {
-            "core": null,
-            "port": 8880,
-            "testsEnvironment": false,
-            "plugins": [ "https://downloads.wordpress.org/plugin/plugin-check.zip" ],
-            "mappings": {
-              "wp-content/plugins/${PLUGIN_SLUG}": "${PLUGIN_DIR}"
-            }
-          }
-          JSON
-
-          npm -g --no-fund i @wordpress/env@11.6.0
-          wp-env start --update
-          for attempt in {1..12}; do
-            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
-              break
-            fi
-            sleep 5
-          done
-          wp-env run cli wp core is-installed
-          wp-env run cli wp plugin activate "${PLUGIN_SLUG}"
-          wp-env run cli wp plugin check "${PLUGIN_SLUG}" --format=json --ignore-warnings --exclude-files=.wp-env.json --slug="${PLUGIN_SLUG}" --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
-          cat "${RUNNER_TEMP}/plugin-check-results.txt"
-
-      - name: Generate plugin artifact
-        run: |
-          cd "${GITHUB_WORKSPACE}/release" || exit 1
-          zip -r "${GITHUB_WORKSPACE}/aculect-ai-companion.zip" aculect-ai-companion
-
-      - name: Upload release asset
+          name: ${{ needs.package.outputs.artifact-name }}
+          path: release/
+      - name: Attach one canonical ZIP and checksum without replacement
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "${{ github.workspace }}/aculect-ai-companion.zip" --clobber
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EXPECTED_SHA256: ${{ needs.package.outputs.sha256 }}
+        run: bash bin/ci-upload-release.sh

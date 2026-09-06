@@ -296,6 +296,7 @@ final class ToolSafety {
 			'content_internal_link.suggestion_apply',
 			'plugin.incident.report',
 			'memory.save',
+			'memory.sync_push',
 			'memory.bootstrap',
 			'seo_workflow.update_rankmath',
 			'media.rename_file',
@@ -327,7 +328,7 @@ final class ToolSafety {
 			return true;
 		}
 
-		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap', 'plugin.incident.report' ), true ) ) {
+		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap', 'memory.sync_push', 'plugin.incident.report' ), true ) ) {
 			return true;
 		}
 

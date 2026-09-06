@@ -10,14 +10,14 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Intelligence\Memory\Sync;
 
 /**
- * Provider adapters implement bounded asynchronous import and export batches.
+ * Adapters implement bounded, caller-checkpointed import and export batches.
  */
 interface MemoryConnectorAdapterInterface {
 
 	public function id(): string;
 
 	/**
-	 * Pull external changes as untrusted pending proposals.
+	 * Pull changes from the adapter-owned store; transport-specific policy controls eligibility.
 	 *
 	 * @param string $cursor Provider checkpoint.
 	 * @param int    $limit  Maximum records.
@@ -26,7 +26,7 @@ interface MemoryConnectorAdapterInterface {
 	public function pull( string $cursor, int $limit ): array;
 
 	/**
-	 * Push approved, non-sensitive site changes with idempotency keys.
+	 * Push versioned changes; site adapters quarantine imports as pending proposals.
 	 *
 	 * @param list<array<string, mixed>> $changes Approved outbound changes.
 	 * @param string                     $cursor  Provider checkpoint.

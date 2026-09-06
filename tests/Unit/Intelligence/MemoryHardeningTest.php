@@ -181,9 +181,94 @@ final class MemoryHardeningTest extends TestCase {
 		self::assertSame( 5, $result['total_pages'] );
 		self::assertSame( 2, $result['page'] );
 	}
+
+	public function test_backfill_preserves_uuid_and_compares_observed_values(): void {
+		$wpdb            = new MemoryHardeningWpdb();
+		$wpdb->rows      = array(
+			array(
+				'id'           => 8,
+				'memory_key'   => 'voice',
+				'memory_uuid'  => 'stable-uuid',
+				'namespace'    => 'site',
+				'value'        => 'Original',
+				'version'      => 3,
+				'content_hash' => '',
+			),
+		);
+		$GLOBALS['wpdb'] = $wpdb;
+		self::assertSame( MemorySchemaMigrator::COMPLETE, MemorySchemaMigrator::backfill() );
+		self::assertSame( 'stable-uuid', $wpdb->update_data['memory_uuid'] );
+		self::assertSame( $wpdb->rows[0], $wpdb->update_where );
+		self::assertSame( 8, get_option( 'aculect_ai_companion_memory_backfill_cursor' ) );
+	}
+
+	public function test_backfill_conflict_retries_without_advancing_cursor(): void {
+		$wpdb                = new MemoryHardeningWpdb();
+		$wpdb->rows          = array(
+			array(
+				'id'           => 9,
+				'memory_key'   => 'voice',
+				'memory_uuid'  => 'stable-uuid',
+				'namespace'    => 'site',
+				'value'        => 'Stale',
+				'version'      => 1,
+				'content_hash' => '',
+			),
+		);
+		$wpdb->update_result = 0;
+		$GLOBALS['wpdb']     = $wpdb;
+		self::assertSame( MemorySchemaMigrator::PENDING, MemorySchemaMigrator::backfill() );
+		self::assertSame( 0, get_option( 'aculect_ai_companion_memory_backfill_cursor', 0 ) );
+		self::assertSame( 'Stale', $wpdb->update_where['value'] );
+		self::assertSame( 1, $wpdb->update_where['version'] );
+	}
+
+	public function test_malformed_cursors_fail_before_any_query(): void {
+		$wpdb            = new MemoryHardeningWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Malformed opaque cursor fixtures.
+		foreach ( array( 'not-a-cursor', array(), 7, str_repeat( 'a', 101 ), base64_encode( '2026-99-99 00:00:00|3' ), base64_encode( '2026-09-06 00:00:00|0' ) ) as $cursor ) {
+			$result = ( new MemoryRepository() )->search_page( array( 'cursor' => $cursor ) );
+			self::assertSame( 'invalid_cursor', $result['error'] );
+			self::assertSame( 'error', $result['status'] );
+		}
+		self::assertSame( 0, $wpdb->result_queries );
+	}
+
+	public function test_search_filters_future_memories_in_sql(): void {
+		$wpdb            = new MemoryHardeningWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		( new MemoryRepository() )->search_page();
+		self::assertStringContainsString( 'valid_from <= %s', $wpdb->last_query );
+		self::assertStringContainsString( 'expires_at > %s', $wpdb->last_query );
+		self::assertSame( $wpdb->last_args[3], $wpdb->last_args[4] );
+	}
+
+	public function test_blocked_migration_does_not_retry_automatically(): void {
+		$wpdb                    = new MemoryHardeningWpdb();
+		$wpdb->table_size_result = 70000000;
+		$GLOBALS['wpdb']         = $wpdb;
+		MemorySchemaMigrator::run_scheduled_batch();
+		$queries = $wpdb->result_queries;
+		MemorySchemaMigrator::run_scheduled_batch();
+		self::assertFalse( MemorySchemaMigrator::ensure_scheduled() );
+		self::assertSame( $queries, $wpdb->result_queries );
+		self::assertSame( 'blocked', MemorySchemaMigrator::diagnostics()['status'] );
+		self::assertNotEmpty( MemorySchemaMigrator::diagnostics()['recovery'] );
+	}
 }
 
 final class MemoryHardeningWpdb {
+	public array $update_data  = array();
+	public array $update_where = array();
+	public int $update_result  = 1;
+
+	public function update( string $table, array $data, array $where, array $formats, ?array $where_formats ): int {
+		unset( $table, $formats, $where_formats );
+		$this->update_data  = $data;
+		$this->update_where = $where;
+		return $this->update_result;
+	}
 	public string $prefix     = 'wp_';
 	public string $last_query = '';
 	/** @var list<mixed> */

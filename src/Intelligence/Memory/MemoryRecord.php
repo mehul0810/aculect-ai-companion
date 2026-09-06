@@ -25,7 +25,7 @@ final class MemoryRecord {
 		$value      = $this->text( $input['value'] ?? '', 4000 );
 		$namespace  = $this->identifier( $input['namespace'] ?? $existing['namespace'] ?? 'site', 191, 'site' );
 		$memory_key = $this->identifier( $input['key'] ?? $input['memory_key'] ?? $existing['memory_key'] ?? '', 120 );
-		$uuid       = $this->uuid( $input['memory_uuid'] ?? $existing['memory_uuid'] ?? '' );
+		$uuid       = $this->uuid( $existing['memory_uuid'] ?? $input['memory_uuid'] ?? '' );
 		$uuid       = '' === $uuid ? $this->generate_uuid() : $uuid;
 		$version    = null === $existing ? 1 : max( 1, absint( $existing['version'] ?? 1 ) + 1 );
 		$source     = $this->identifier( $input['source'] ?? $existing['source'] ?? 'manual', 40, 'manual' );
@@ -62,7 +62,7 @@ final class MemoryRecord {
 		return 'approved' === (string) ( $record['status'] ?? '' )
 			&& 'site' === (string) ( $record['visibility'] ?? '' )
 			&& 'normal' === (string) ( $record['sensitivity'] ?? '' )
-			&& empty( $record['deleted_at'] );
+			&& MemoryValidity::is_live( $record );
 	}
 
 	private function text( mixed $value, int $limit ): string {

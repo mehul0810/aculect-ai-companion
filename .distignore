@@ -9,6 +9,8 @@ artifacts/
 bin/
 node_modules/
 tests/
+docs/
+scripts/
 vendor/bin/
 vendor/paragonie/random_compat/build-phar.sh
 vendor/paragonie/random_compat/other/build_phar.php
@@ -30,6 +32,9 @@ CONTRIBUTING.md
 CODE-REVIEW*.md
 README.md
 SECURITY.md
+TESTING.md
+RELEASE.md
+DESIGN.md
 composer.json
 composer.lock
 package.json

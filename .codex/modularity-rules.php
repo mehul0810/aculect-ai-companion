@@ -31,7 +31,7 @@ return array(
 	'exceptions'       => array(
 		array(
 			'path'      => 'src/index.js',
-			'max_lines' => 9016,
+			'max_lines' => 8304,
 			'owner'     => 'Admin UI',
 			'reason'    => 'Legacy tab composition root; extract per-tab components.',
 			'issue'     => '#430',
@@ -39,7 +39,7 @@ return array(
 		),
 		array(
 			'path'      => 'src/style.scss',
-			'max_lines' => 6111,
+			'max_lines' => 5629,
 			'owner'     => 'Admin UI',
 			'reason'    => 'Legacy style entrypoint; split into tab partials.',
 			'issue'     => '#430',
@@ -63,7 +63,7 @@ return array(
 		),
 		array(
 			'path'      => 'src/Connectors/MCP/FirstPartyAbilityModules.php',
-			'max_lines' => 2540,
+			'max_lines' => 2424,
 			'owner'     => 'MCP',
 			'reason'    => 'Legacy ability composition root; extract domain providers.',
 			'issue'     => '#430',
@@ -87,7 +87,7 @@ return array(
 		),
 		array(
 			'path'      => 'src/Admin/SettingsPage.php',
-			'max_lines' => 1789,
+			'max_lines' => 1623,
 			'owner'     => 'Admin UI',
 			'reason'    => 'Legacy composition page; extract tab payload/action handlers.',
 			'issue'     => '#430',

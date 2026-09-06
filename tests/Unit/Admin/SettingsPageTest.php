@@ -36,6 +36,7 @@ final class SettingsPageTest extends TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+		\Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery::invalidate_summary();
 
 		$this->original_get  = $_GET;
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;

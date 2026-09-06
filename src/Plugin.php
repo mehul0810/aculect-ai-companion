@@ -157,6 +157,7 @@ final class Plugin {
 		'save_brand'                   => 'handle_save_brand',
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
 		'review_memory_item'           => 'handle_review_memory_item',
+		'retry_memory_migration'       => 'handle_retry_memory_migration',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
 		'revoke_stale_oauth_client'    => 'handle_revoke_stale_oauth_client',
 		'run_content_index_sweep'      => 'handle_run_content_index_sweep',

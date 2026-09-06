@@ -9,11 +9,27 @@ const source = await readFile(
 );
 
 const createElement = ( overrides = {} ) => ( {
+	nodeType: 1,
+	tagName: 'DIV',
 	innerText: '',
 	getAttribute: () => '',
 	querySelectorAll: () => [],
 	...overrides,
 } );
+
+const append = ( parent, children ) => {
+	parent.firstChild = children[ 0 ];
+	children.forEach( ( node, index ) => {
+		node.parentNode = parent;
+		node.nextSibling = children[ index + 1 ] || null;
+	} );
+	return parent;
+};
+
+const textElement = ( tagName, text, extra = {} ) =>
+	append( createElement( { tagName, ...extra } ), [
+		{ nodeType: 3, nodeValue: text },
+	] );
 
 const boot = async ( { supported = true } = {} ) => {
 	const registrations = [];
@@ -48,6 +64,16 @@ const boot = async ( { supported = true } = {} ) => {
 				  } )
 				: root,
 	};
+	append( root, [
+		textElement( 'H1', 'Overview' ),
+		textElement( 'P', 'Public body content '.repeat( 100 ) ),
+		textElement( 'A', 'About', {
+			href: 'https://reader:password@example.com/about?nonce=secret#team',
+		} ),
+		textElement( 'A', 'External', {
+			href: 'https://outside.example/docs',
+		} ),
+	] );
 	if ( supported ) {
 		document.modelContext = {
 			registerTool: async ( definition, options ) =>
@@ -67,7 +93,7 @@ const boot = async ( { supported = true } = {} ) => {
 	vm.runInContext( source, context );
 	await new Promise( ( resolve ) => setImmediate( resolve ) );
 
-	return { registrations, window };
+	return { registrations, window, document, root, context };
 };
 
 test( 'registers one bounded read-only page-context tool when WebMCP is supported', async () => {
@@ -97,4 +123,53 @@ test( 'degrades without side effects when WebMCP is unavailable', async () => {
 
 	assert.equal( registrations.length, 0 );
 	assert.equal( window.aculectWebMcp, undefined );
+} );
+
+test( 'escaped content and headings cannot stall output budgeting', async () => {
+	const { context, document, root } = await boot();
+	document.title = '\\'.repeat( 120 );
+	append( root, [
+		...Array.from( { length: 6 }, () =>
+			textElement( 'H1', '\\'.repeat( 80 ) )
+		),
+		textElement( 'P', '\\'.repeat( 600 ) ),
+	] );
+	const result = vm.runInContext(
+		'window.aculectWebMcp.collectPageContext(null)',
+		context,
+		{ timeout: 200 }
+	);
+	assert.ok( JSON.stringify( result ).length <= 1500 );
+} );
+
+test( 'traversal is bounded and excludes hidden/form/script content', async () => {
+	const { root, window } = await boot();
+	append( root, [
+		textElement( 'SCRIPT', 'secret script' ),
+		textElement( 'FORM', 'secret form' ),
+		textElement( 'TEXTAREA', 'secret input' ),
+		textElement( 'P', 'secret hidden', { hidden: true } ),
+		...Array.from( { length: 500 }, () => textElement( 'SPAN', '' ) ),
+		textElement( 'H2', 'beyond traversal budget' ),
+	] );
+	const result = window.aculectWebMcp.collectPageContext( {} );
+	assert.equal( result.content, '' );
+	assert.equal( result.headings.length, 0 );
+} );
+
+test( 'selected main content remains private under a hidden ancestor', async () => {
+	const { root, window } = await boot();
+	append( createElement( { hidden: true } ), [ root ] );
+	assert.equal( window.aculectWebMcp.collectPageContext().content, '' );
+	root.parentNode.hidden = false;
+	root.parentNode.getAttribute = () => 'true';
+	assert.equal(
+		window.aculectWebMcp.collectPageContext().headings.length,
+		0
+	);
+	root.parentNode.getAttribute = () => '';
+	window.getComputedStyle = ( element ) => ( {
+		display: element === root.parentNode ? 'none' : 'block',
+	} );
+	assert.equal( window.aculectWebMcp.collectPageContext().content, '' );
 } );

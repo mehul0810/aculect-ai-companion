@@ -19,10 +19,12 @@ final class MemorySchemaMigrator {
 	public const HOOK     = 'aculect_ai_companion_memory_schema_backfill';
 
 	private const BATCH_SIZE               = 100;
-	private const MIGRATION_VERSION        = '2026.09.05.2';
+	private const MIGRATION_VERSION        = '2026.09.06.1';
+	private const OPTION_CURSOR            = 'aculect_ai_companion_memory_backfill_cursor';
 	private const OPTION_MIGRATION_VERSION = 'aculect_ai_companion_memory_migration_version';
 	private const WORKER_LOCK              = 'aculect_ai_companion_memory_migration';
 	private const OPTION_BLOCKED           = 'aculect_ai_companion_memory_migration_blocked';
+	private const OPTION_FAILURES          = 'aculect_ai_companion_memory_migration_failures';
 	private const MAX_ONLINE_ALTER_BYTES   = 67108864;
 	private const INDEXES                  = array(
 		'memory_items'  => array( 'memory_key', 'memory_uuid', 'namespace_status_updated', 'expires_at', 'memory_search' ),
@@ -104,8 +106,9 @@ final class MemorySchemaMigrator {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, memory_key, namespace, value, version FROM %i WHERE memory_uuid IS NULL OR memory_uuid = '' OR content_hash = '' ORDER BY id ASC LIMIT %d",
+				"SELECT id, memory_key, memory_uuid, namespace, value, version, content_hash FROM %i WHERE id > %d AND (memory_uuid IS NULL OR memory_uuid = '' OR content_hash = '') ORDER BY id ASC LIMIT %d",
 				Installer::memory_items_table(),
+				absint( get_option( self::OPTION_CURSOR, 0 ) ),
 				self::BATCH_SIZE + 1
 			),
 			ARRAY_A
@@ -122,18 +125,26 @@ final class MemorySchemaMigrator {
 			$updated   = $wpdb->update(
 				Installer::memory_items_table(),
 				array(
-					'memory_uuid'  => wp_generate_uuid4(),
+					'memory_uuid'  => empty( $row['memory_uuid'] ) ? wp_generate_uuid4() : (string) $row['memory_uuid'],
 					'namespace'    => $namespace,
 					'content_hash' => hash( 'sha256', $namespace . "\n" . $key . "\n" . $value ),
 					'version'      => max( 1, absint( $row['version'] ?? 1 ) ),
 				),
-				array( 'id' => absint( $row['id'] ?? 0 ) ),
+				// Compare every observed field: a normal save is not serialized by the worker lease.
+				array_intersect_key( $row, array_flip( array( 'id', 'memory_key', 'memory_uuid', 'namespace', 'value', 'version', 'content_hash' ) ) ),
 				array( '%s', '%s', '%s', '%d' ),
-				array( '%d' )
+				null
 			);
 			if ( false === $updated ) {
 				return self::FAILED;
 			}
+			if ( 0 === $updated ) {
+				// Re-read a conflicting row on the next batch, never overwrite or skip it.
+				return self::PENDING;
+			}
+		}
+		if ( isset( $row['id'] ) ) {
+			update_option( self::OPTION_CURSOR, absint( $row['id'] ), false );
 		}
 
 		return count( $rows ) <= self::BATCH_SIZE ? self::COMPLETE : self::PENDING;
@@ -145,6 +156,9 @@ final class MemorySchemaMigrator {
 	 * @param int $delay Delay before the scheduled batch in seconds.
 	 */
 	public static function ensure_scheduled( int $delay = 30 ): bool {
+		if ( array() !== self::blocked_status() ) {
+			return false;
+		}
 		if ( self::is_complete() || ! function_exists( 'wp_schedule_single_event' ) ) {
 			return self::is_complete();
 		}
@@ -162,36 +176,84 @@ final class MemorySchemaMigrator {
 	 * Process one background batch and arrange continuation when required.
 	 */
 	public static function run_scheduled_batch(): void {
-		if ( self::is_complete() ) {
+		if ( self::is_complete() || array() !== self::blocked_status() ) {
 			return;
 		}
 		$lease = self::acquire_lease();
 		if ( '' === $lease ) {
+			self::ensure_scheduled( 60 );
 			return;
 		}
 
 		try {
 			$storage = self::ensure_transactional_table();
 			if ( self::COMPLETE !== $storage ) {
-				self::ensure_scheduled( self::FAILED === $storage ? 300 : 30 );
+				self::continue_after( $storage );
 				return;
 			}
 			$index = self::ensure_search_index();
 			if ( self::COMPLETE !== $index ) {
-				self::ensure_scheduled( self::FAILED === $index ? 300 : 30 );
+				self::continue_after( $index );
 				return;
 			}
 
 			$result = self::backfill();
 			if ( self::COMPLETE === $result ) {
 				update_option( self::OPTION_MIGRATION_VERSION, self::MIGRATION_VERSION, false );
+				delete_option( self::OPTION_FAILURES );
 				return;
 			}
 
-			self::ensure_scheduled( self::FAILED === $result ? 300 : 30 );
+			self::continue_after( $result );
 		} finally {
 			self::release_lease( $lease );
 		}
+	}
+
+	/**
+	 * Back off transient failures and stop automatic retries after eight attempts.
+	 *
+	 * @param string $result Last batch disposition.
+	 */
+	private static function continue_after( string $result ): void {
+		$failures = self::FAILED === $result ? absint( get_option( self::OPTION_FAILURES, 0 ) ) + 1 : 0;
+		update_option( self::OPTION_FAILURES, $failures, false );
+		if ( $failures >= 8 && array() === self::blocked_status() ) {
+			update_option(
+				self::OPTION_BLOCKED,
+				array(
+					'reason'   => 'retry_limit',
+					'attempts' => $failures,
+				),
+				false
+			);
+		}
+		self::ensure_scheduled( $failures > 0 ? min( 21600, 300 * ( 2 ** min( 7, $failures - 1 ) ) ) : 30 );
+	}
+
+	/** Requeue after an operator has addressed the reported maintenance requirement. */
+	public static function retry(): bool {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return false;
+		}
+		delete_option( self::OPTION_BLOCKED );
+		delete_option( self::OPTION_FAILURES );
+		return self::ensure_scheduled();
+	}
+
+	/**
+	 * Explain deferred work without exposing memory contents.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function diagnostics(): array {
+		$blocked = self::blocked_status();
+		return array(
+			'status'   => self::is_complete() ? 'complete' : ( array() === $blocked ? 'pending' : 'blocked' ),
+			'blocked'  => $blocked,
+			'attempts' => absint( get_option( self::OPTION_FAILURES, 0 ) ),
+			'recovery' => array() === $blocked ? '' : 'Back up the database, resolve the reported schema/size issue during maintenance, then retry the memory migration. Automatic retries are paused; no data was deleted.',
+		);
 	}
 
 	/**
@@ -330,6 +392,7 @@ final class MemorySchemaMigrator {
 					'operation' => $operation,
 					'table'     => $table,
 					'bytes'     => $bytes,
+					'reason'    => 'maintenance_required',
 				),
 				false
 			);

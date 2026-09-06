@@ -18,22 +18,44 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned intelligence index tables require controlled schema changes.
 
-	private const DB_VERSION        = '2026.07.26.1';
+	private const DB_VERSION        = '2026.09.05.2';
 	private const OPTION_DB_VERSION = 'aculect_ai_companion_intelligence_db_version';
 
 	/**
 	 * Create or update all intelligence index tables.
 	 *
 	 * @param bool $verify_tables Whether to verify table existence even when the stored version is current.
+	 * @return bool Whether every required intelligence table is available after installation.
 	 */
-	public static function install( bool $verify_tables = false ): void {
+	public static function install( bool $verify_tables = false ): bool {
 		$installed    = (string) get_option( self::OPTION_DB_VERSION, '0' );
 		$schema_stale = version_compare( $installed, self::DB_VERSION, '<' );
-
-		if ( $schema_stale || ( $verify_tables && ! self::all_tables_exist() ) ) {
-			self::create_tables();
-			update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false );
+		if ( $schema_stale && ! InstallerRetryState::allows_attempt( $verify_tables ) ) {
+			return false;
 		}
+		$missing = ( $verify_tables || $schema_stale ) ? self::missing_table_keys( false ) : array();
+
+		if ( $schema_stale || array() !== $missing ) {
+			try {
+				self::create_tables( in_array( 'memory_items', $missing, true ) );
+			} catch ( \Throwable ) {
+				return self::installation_failed( $installed, array(), 'dbdelta_exception' );
+			}
+
+			$missing = self::missing_table_keys( false );
+			if ( array() !== $missing ) {
+				return self::installation_failed( $installed, $missing, 'tables_missing' );
+			}
+			if ( $schema_stale && ! update_option( self::OPTION_DB_VERSION, self::DB_VERSION, false ) ) {
+				return self::installation_failed( $installed, array(), 'version_write_failed' );
+			}
+
+			InstallerRetryState::clear();
+		}
+
+		MemorySchemaMigrator::ensure_scheduled();
+
+		return true;
 	}
 
 	/**
@@ -80,6 +102,24 @@ final class Installer {
 	}
 
 	/**
+	 * Return the append-only memory event table name.
+	 */
+	public static function memory_events_table(): string {
+		global $wpdb;
+
+		return $wpdb->prefix . 'aculect_ai_memory_events';
+	}
+
+	/**
+	 * Return the memory connector synchronization state table name.
+	 */
+	public static function memory_sync_state_table(): string {
+		global $wpdb;
+
+		return $wpdb->prefix . 'aculect_ai_memory_sync_state';
+	}
+
+	/**
 	 * Return the intelligence job table name.
 	 */
 	public static function jobs_table(): string {
@@ -108,9 +148,56 @@ final class Installer {
 			self::content_chunks_table(),
 			self::link_graph_table(),
 			self::memory_items_table(),
+			self::memory_events_table(),
+			self::memory_sync_state_table(),
 			self::jobs_table(),
 			self::cache_table(),
 		);
+	}
+
+	/**
+	 * Return logical keys for intelligence tables that are not currently available.
+	 *
+	 * @param bool $include_deferred Whether background-only indexes must be ready.
+	 * @return list<string>
+	 */
+	public static function missing_table_keys( bool $include_deferred = true ): array {
+		global $wpdb;
+		/** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort
+
+		$tables  = array_combine(
+			array( 'content_index', 'content_chunks', 'link_graph', 'memory_items', 'memory_events', 'memory_sync_state', 'jobs', 'cache' ),
+			self::table_names()
+		);
+		$missing = array();
+
+		foreach ( $tables as $key => $table ) {
+			if ( $table !== (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
+				$missing[] = $key;
+			}
+		}
+
+		if ( ! in_array( 'memory_items', $missing, true ) && method_exists( $wpdb, 'get_col' ) ) {
+			$columns = $wpdb->get_col( $wpdb->prepare( 'SHOW COLUMNS FROM %i', self::memory_items_table() ), 0 );
+			if ( array_diff( MemorySchemaMigrator::required_columns(), array_map( 'strval', $columns ) ) ) {
+				$missing[] = 'memory_schema';
+			}
+		}
+		$memory_tables = array( 'memory_items', 'memory_events', 'memory_sync_state' );
+		if ( array() === array_intersect( $memory_tables, $missing ) && method_exists( $wpdb, 'get_results' ) && ! MemorySchemaMigrator::has_required_indexes( $include_deferred ) ) {
+			$missing[] = 'memory_schema';
+		}
+
+		return array_values( array_unique( $missing ) );
+	}
+
+	/**
+	 * Return support-safe schema repair state.
+	 *
+	 * @return array{attempts:int,blocked:bool,last_failed_at:int,next_retry_at:int,missing_tables:list<string>,reason:string}
+	 */
+	public static function repair_status(): array {
+		return InstallerRetryState::status();
 	}
 
 	/**
@@ -124,13 +211,16 @@ final class Installer {
 		}
 
 		delete_option( self::OPTION_DB_VERSION );
+		InstallerRetryState::clear();
 		ContentIndexer::delete_options();
 	}
 
 	/**
-	 * Create or upgrade intelligence tables through dbDelta().
+	 * Create or reconcile intelligence tables through dbDelta().
+	 *
+	 * @param bool $fresh_memory Whether the memory table is new and empty.
 	 */
-	private static function create_tables(): void {
+	private static function create_tables( bool $fresh_memory = false ): void {
 		global $wpdb;
 
 		$charset = $wpdb->get_charset_collate();
@@ -139,8 +229,11 @@ final class Installer {
 		$chunks        = self::content_chunks_table();
 		$links         = self::link_graph_table();
 		$memories      = self::memory_items_table();
+		$memory_events = self::memory_events_table();
+		$memory_sync   = self::memory_sync_state_table();
 		$jobs          = self::jobs_table();
 		$cache         = self::cache_table();
+		$memory_search = $fresh_memory ? ', FULLTEXT KEY memory_search (memory_key, value, evidence)' : '';
 
 		$sql = array(
 			"CREATE TABLE {$content_index} (
@@ -207,19 +300,72 @@ final class Installer {
 			"CREATE TABLE {$memories} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             memory_key varchar(120) NOT NULL,
+			memory_uuid char(36) DEFAULT NULL,
+			namespace varchar(191) NOT NULL DEFAULT 'site',
+			owner_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
             domain varchar(40) NOT NULL,
             value text NOT NULL,
             evidence text DEFAULT NULL,
             confidence varchar(20) NOT NULL DEFAULT 'medium',
-	            status varchar(20) NOT NULL DEFAULT 'pending',
+			status varchar(20) NOT NULL DEFAULT 'pending',
+			visibility varchar(20) NOT NULL DEFAULT 'site',
+			sensitivity varchar(20) NOT NULL DEFAULT 'normal',
+			version bigint(20) unsigned NOT NULL DEFAULT 1,
+			content_hash char(64) NOT NULL DEFAULT '',
             source varchar(40) NOT NULL DEFAULT 'manual',
+			valid_from datetime DEFAULT NULL,
+			expires_at datetime DEFAULT NULL,
+			deleted_at datetime DEFAULT NULL,
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
-            UNIQUE KEY memory_key (memory_key),
+			UNIQUE KEY memory_key (memory_key),
+			UNIQUE KEY memory_uuid (memory_uuid),
+			KEY namespace_status_updated (namespace, status, updated_at),
+			KEY owner_status (owner_user_id, status),
             KEY domain_status (domain, status),
+			KEY expires_at (expires_at),
+			KEY content_hash (content_hash),
             KEY updated_at (updated_at)
-        ) {$charset};",
+			{$memory_search}
+        ) ENGINE=InnoDB {$charset};",
+			"CREATE TABLE {$memory_events} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			event_uuid char(36) NOT NULL,
+			memory_uuid char(36) NOT NULL,
+			namespace varchar(191) NOT NULL DEFAULT 'site',
+			event_type varchar(32) NOT NULL,
+			memory_version bigint(20) unsigned NOT NULL DEFAULT 1,
+			actor_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			connection_id varchar(191) NOT NULL DEFAULT '',
+			payload longtext DEFAULT NULL,
+			payload_hash char(64) NOT NULL DEFAULT '',
+			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			UNIQUE KEY event_uuid (event_uuid),
+			KEY memory_version (memory_uuid, memory_version),
+			KEY namespace_cursor (namespace, id),
+			KEY connection_cursor (connection_id, id),
+			KEY created_at (created_at)
+		) ENGINE=InnoDB {$charset};",
+			"CREATE TABLE {$memory_sync} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			connector_id varchar(191) NOT NULL,
+			namespace varchar(191) NOT NULL DEFAULT 'site',
+			external_id varchar(191) NOT NULL DEFAULT '',
+			memory_uuid char(36) DEFAULT NULL,
+			cursor_value varchar(191) NOT NULL DEFAULT '',
+			status varchar(20) NOT NULL DEFAULT 'idle',
+			last_error_code varchar(64) NOT NULL DEFAULT '',
+			last_attempt_at datetime DEFAULT NULL,
+			last_success_at datetime DEFAULT NULL,
+			updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			UNIQUE KEY connector_namespace_external (connector_id, namespace, external_id),
+			KEY connector_namespace_status (connector_id, namespace, status),
+			KEY memory_uuid (memory_uuid),
+			KEY updated_at (updated_at)
+		) ENGINE=InnoDB {$charset};",
 			"CREATE TABLE {$jobs} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             job_key varchar(120) NOT NULL,
@@ -252,22 +398,37 @@ final class Installer {
         ) {$charset};",
 		);
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 		dbDelta( implode( "\n", $sql ) );
 	}
 
 	/**
-	 * Determine whether all intelligence tables exist.
+	 * Remove a falsely current schema marker so normal boot retries the repair.
+	 *
+	 * Older schema versions are already stale and must remain available for
+	 * diagnostics until a later retry succeeds.
+	 *
+	 * @param string $installed Stored schema version before installation.
 	 */
-	private static function all_tables_exist(): bool {
-		global $wpdb;
-
-		foreach ( self::table_names() as $table ) {
-			if ( $table !== (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) ) {
-				return false;
-			}
+	private static function invalidate_current_version( string $installed ): void {
+		if ( version_compare( $installed, self::DB_VERSION, '>=' ) ) {
+			delete_option( self::OPTION_DB_VERSION );
 		}
+	}
 
-		return true;
+	/**
+	 * Persist a bounded repair failure and keep the schema marker retryable.
+	 *
+	 * @param string   $installed Stored version before the attempt.
+	 * @param string[] $missing   Missing logical table keys.
+	 * @param string   $reason    Bounded machine-readable reason.
+	 */
+	private static function installation_failed( string $installed, array $missing, string $reason ): bool {
+		self::invalidate_current_version( $installed );
+		InstallerRetryState::record_failure( $missing, $reason );
+
+		return false;
 	}
 }

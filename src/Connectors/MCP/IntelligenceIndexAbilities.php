@@ -16,6 +16,7 @@ use Aculect\AICompanion\Intelligence\InternalLinkPolicy;
 use Aculect\AICompanion\Intelligence\InternalLinkSuggestionRepository;
 use Aculect\AICompanion\Intelligence\InternalLinkTargetInspector;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
 
 /**
  * Exposes indexed search, chunk retrieval, link suggestions, memories, and batch refresh to MCP clients.
@@ -1088,15 +1089,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function list_memories( array $args ): array {
-		$result                 = $this->repo()->list_memories( $args );
-		$result['protocol']     = array(
-			'source_of_truth' => 'Aculect Intelligence local memory, not ChatGPT or Claude saved memory.',
-			'write_path'      => 'Use intelligence_feedback_submit for normal learning suggestions. Use memory_save only when explicit write permission and confirmation are available.',
-			'review_default'  => 'New memory_save entries default to pending review unless status is explicitly approved.',
-		);
-		$result['next_actions'] = array( 'Use relevant memory items as constraints when preparing content workflows.' );
-
-		return $result;
+		return ( new MemoryListService() )->list( $args, $this->can_view_global_index_summary() );
 	}
 
 	/**
@@ -1133,7 +1126,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 					: array( 'Pending memories require admin review before they affect future Aculect Intelligence responses.' )
 			);
 		}
-		$result = $this->repo()->upsert_memory( $args );
+		$result = ( new MemoryService() )->save( $args );
 		if ( 'success' === ( $result['status'] ?? '' ) ) {
 			$memory_status           = (string) ( $result['memory']['status'] ?? $status );
 			$result['review_status'] = array(
@@ -1237,24 +1230,23 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 				'next_actions'          => array( 'Repeat this tool call with confirmation_token to store these memory rows.' ),
 			);
 		}
-
-		$saved = array();
-		foreach ( $items as $item ) {
-			$result = $this->repo()->upsert_memory( $item );
-			if ( 'success' === ( $result['status'] ?? '' ) && is_array( $result['memory'] ?? null ) ) {
-				$saved[] = $result['memory'];
-			}
-		}
+		$batch    = ( new MemoryService() )->save_batch( $items );
+		$saved    = $batch['saved'];
+		$failures = $batch['failures'];
 
 		return array(
-			'status'        => array() === $saved ? 'unchanged' : 'success',
-			'message'       => array() === $saved
+			'status'        => array() !== $failures ? 'error' : ( array() === $saved ? 'unchanged' : 'success' ),
+			'message'       => array() !== $failures
+				? 'Aculect memory bootstrap stopped with one or more failed rows.'
+				: ( array() === $saved
 				? 'No new Aculect memory rows were created. Existing memory already covers the bootstrap keys.'
-				: 'Aculect memory bootstrap stored local memory rows for future MCP workflows.',
+				: 'Aculect memory bootstrap stored local memory rows for future MCP workflows.' ),
 			'items'         => $saved,
+			'failures'      => $failures,
 			'skipped'       => $skipped,
 			'summary'       => array(
 				'created'  => count( $saved ),
+				'failed'   => count( $failures ),
 				'skipped'  => count( $skipped ),
 				'status'   => $status,
 				'existing' => (int) ( $existing['total'] ?? count( $existing_keys ) ),

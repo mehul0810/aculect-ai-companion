@@ -92,7 +92,10 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'description' => 'Use this only when you are building your own Claude integration.',
 				'steps'       => array(
 					'Add Aculect AI Companion to the Claude API mcp_servers array with type url, name, and the connection URL above.',
+					'Use the mcp-client-2025-11-20 beta header and reference the server from exactly one mcp_toolset entry.',
 					'If your app calls protected Aculect tools directly, complete OAuth first and pass the access token as authorization_token.',
+					'For the large ability catalog, use mcp_toolset allowlisting and defer_loading to reduce initial tool context without changing Aculect authorization.',
+					'The Claude API MCP connector is not eligible for Zero Data Retention; confirm this is acceptable for your data policy before use.',
 					'Keep destructive WordPress actions behind explicit user approval in your application.',
 				),
 				'actionLabel' => 'Open Claude API Docs',

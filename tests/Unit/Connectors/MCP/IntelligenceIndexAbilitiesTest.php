@@ -36,7 +36,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_scheduled_events'] = array();
 		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
 		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array();
-		$GLOBALS['aculect_ai_companion_test_options']          = array(
+		$GLOBALS['aculect_ai_companion_test_options']                = array(
 			'blogname' => 'Aculect Demo',
 		);
 
@@ -87,6 +87,27 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertStringContainsString( 'admin review', $result['warnings'][0] );
 	}
 
+	public function test_memory_save_records_versioned_site_event(): void {
+		$result = ( new IntelligenceIndexAbilities() )->save_memory(
+			array(
+				'key'        => 'brand.voice.primary',
+				'value'      => 'Use a concise, expert tone.',
+				'status'     => 'approved',
+				'visibility' => 'site',
+			)
+		);
+
+		self::assertSame( 'success', $result['status'] );
+		self::assertTrue( $result['event_recorded'] );
+		self::assertSame( 1, $result['memory']['version'] );
+		self::assertCount( 1, $this->wpdb->memory_events );
+		self::assertSame( 'updated', $this->wpdb->memory_events[0]['event_type'] );
+		self::assertSame( 'site', $this->wpdb->memory_events[0]['namespace'] );
+		self::assertSame( $result['memory']['uuid'], $this->wpdb->memory_events[0]['memory_uuid'] );
+		self::assertSame( 'brand.voice.primary', $result['memory']['key'] );
+		self::assertNotEmpty( $result['message'] );
+	}
+
 	public function test_empty_memory_save_bootstraps_initial_memory_preview(): void {
 		$result = ( new IntelligenceIndexAbilities() )->save_memory(
 			array(
@@ -118,9 +139,9 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 
 	public function test_memory_writes_require_manage_options(): void {
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
-		$abilities                                       = new IntelligenceIndexAbilities();
+		$abilities                                        = new IntelligenceIndexAbilities();
 
-		$save = $abilities->save_memory(
+		$save      = $abilities->save_memory(
 			array(
 				'key'    => 'brand.voice.primary',
 				'value'  => 'Do not persist this value.',
@@ -134,6 +155,28 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 		self::assertSame( 'error', $bootstrap['status'] );
 		self::assertSame( 'forbidden', $bootstrap['error'] );
 		self::assertSame( array(), $this->wpdb->rows );
+	}
+
+	public function test_non_admin_memory_reads_are_limited_to_approved_items(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		$abilities                                        = new IntelligenceIndexAbilities();
+
+		$approved = $abilities->list_memories( array() );
+		$pending  = $abilities->list_memories( array( 'status' => 'pending' ) );
+		$all      = $abilities->list_memories( array( 'status' => '' ) );
+
+		self::assertArrayHasKey( 'items', $approved );
+		self::assertSame( 'error', $pending['status'] );
+		self::assertSame( 'forbidden', $pending['error'] );
+		self::assertSame( 'error', $all['status'] );
+		self::assertSame( 'forbidden', $all['error'] );
+	}
+
+	public function test_admin_memory_reads_may_review_pending_items(): void {
+		$result = ( new IntelligenceIndexAbilities() )->list_memories( array( 'status' => 'pending' ) );
+
+		self::assertArrayHasKey( 'items', $result );
+		self::assertArrayNotHasKey( 'error', $result );
 	}
 
 	public function test_canonical_search_returns_empty_results_without_query(): void {
@@ -880,6 +923,13 @@ final class IntelligenceIndexMemoryWpdb {
 	public array $rows = array();
 
 	/**
+	 * Stored immutable memory events.
+	 *
+	 * @var list<array<string, mixed>>
+	 */
+	public array $memory_events = array();
+
+	/**
 	 * Linked target IDs keyed by source post ID.
 	 *
 	 * @var array<int, list<int>>
@@ -1007,13 +1057,28 @@ final class IntelligenceIndexMemoryWpdb {
 	 * @param array<int, string>   $formats Insert formats.
 	 */
 	public function insert( string $table, array $data, array $formats ): int {
-		unset( $table, $formats );
+		unset( $formats );
+
+		if ( str_contains( $table, 'memory_events' ) ) {
+			$this->memory_events[] = $data;
+			return 1;
+		}
 
 		$data['id'] = count( $this->rows ) + 1;
 		$key        = (string) ( $data['memory_key'] ?? $data['job_key'] ?? 'row-' . $data['id'] );
 
 		$this->rows[ $key ] = $data;
 
+		return 1;
+	}
+
+	/**
+	 * Record transaction control statements.
+	 *
+	 * @param string $query Transaction statement.
+	 */
+	public function query( string $query ): int {
+		unset( $query );
 		return 1;
 	}
 
@@ -1046,6 +1111,9 @@ final class IntelligenceIndexMemoryWpdb {
 	 */
 	public function get_row( string $query, string $output ): ?array {
 		unset( $output );
+		if ( str_contains( $query, 'information_schema.TABLES' ) ) {
+			return array( 'Name' => (string) ( $this->last_args[0] ?? '' ), 'Engine' => 'InnoDB' );
+		}
 
 		if ( str_contains( $query, 'COUNT(*) AS total' ) && str_contains( $query, 'latest_indexed_at' ) ) {
 			$rows   = $this->content_rows();

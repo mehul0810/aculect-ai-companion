@@ -66,6 +66,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 					'Create a custom app and paste your connection URL when ChatGPT asks for the MCP server URL.',
 					'ChatGPT should read the MCP tool metadata and ask you to authenticate when authorization is required.',
 					'After WordPress approval, enable Aculect AI Companion for the conversation where you want to use it.',
+					'After ability or schema changes, refresh the app actions in Workspace settings. ChatGPT uses a frozen approved tool snapshot; Business apps may need to be recreated and republished.',
 				),
 				'actionLabel' => $this->primary_action_label(),
 				'actionUrl'   => $this->primary_action_url(),
@@ -76,6 +77,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'steps'       => array(
 					'Use your connection URL from above as the remote MCP server_url in your Responses API mcp tool configuration.',
 					'If your application calls protected Aculect tools directly, complete OAuth first and pass the resulting access token as the MCP authorization value.',
+					'Use allowed_tools or defer_loading to reduce model context for a task; these client hints do not replace Aculect OAuth, WordPress capabilities, or server policy.',
 					'Keep destructive WordPress actions behind explicit user approval in your application.',
 				),
 				'actionLabel' => 'Open OpenAI API Docs',

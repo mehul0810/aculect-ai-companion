@@ -59,7 +59,12 @@ final class ProviderRegistryTest extends TestCase {
 		self::assertStringContainsString( '"url": "https://example.com/wp-json/aculect-ai-companion/v1/mcp"', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringNotContainsString( '"httpUrl":', $providers['cursor']['setupSections'][0]['copyFields'][0]['value'] );
 		self::assertStringContainsString( '.cursor/mcp.json', implode( ' ', $providers['cursor']['setupSections'][0]['steps'] ) );
-		self::assertStringContainsString( 'cursor://anysphere.cursor-mcp/oauth/callback', implode( ' ', $providers['cursor']['setupSections'][1]['steps'] ) );
+		self::assertStringContainsString( 'https://www.cursor.com/agents/mcp/oauth/callback', implode( ' ', $providers['cursor']['setupSections'][1]['steps'] ) );
+		self::assertStringContainsString( 'http://localhost:8787/callback', implode( ' ', $providers['cursor']['setupSections'][1]['steps'] ) );
+		self::assertStringContainsString( 'frozen approved tool snapshot', implode( ' ', $providers['chatgpt']['setupSections'][0]['steps'] ) );
+		self::assertStringContainsString( 'mcp-client-2025-11-20', implode( ' ', $providers['claude']['setupSections'][2]['steps'] ) );
+		self::assertStringContainsString( 'defer_loading', implode( ' ', $providers['claude']['setupSections'][2]['steps'] ) );
+		self::assertStringContainsString( 'not eligible for Zero Data Retention', implode( ' ', $providers['claude']['setupSections'][2]['steps'] ) );
 		self::assertSame( 'Gemini', $providers['gemini']['label'] );
 		self::assertSame( 'Google', $providers['gemini']['brandName'] );
 		self::assertSame( 'https://gemini.google.com/', $providers['gemini']['brandUrl'] );

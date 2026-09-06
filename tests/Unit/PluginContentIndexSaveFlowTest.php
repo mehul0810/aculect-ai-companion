@@ -9,11 +9,14 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit;
 
+require_once dirname( __DIR__ ) . '/Support/PluginContentIndexWpdb.php';
+
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexQueue;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer;
 use Aculect\AICompanion\Plugin;
+use Aculect\AICompanion\Tests\Support\PluginContentIndexWpdb;
 use PHPUnit\Framework\TestCase;
 use WP_Post;
 use WP_Taxonomy;
@@ -30,163 +33,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		parent::setUp();
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
-		$GLOBALS['wpdb']     = new class() {
-			public string $prefix = 'wp_';
-			/** @var array<int, array<string, mixed>> */
-			public array $content_rows = array();
-			/** @var array<int, array<int, array<string, mixed>>> */
-			public array $chunk_rows = array();
-			/** @var array<int, array<int, array<string, mixed>>> */
-			public array $link_rows = array();
-			/** @var list<array{query: string, args: array<int, mixed>}> */
-			public array $prepared = array();
-			/** @var array<int, mixed> */
-			private array $last_prepare_args    = array();
-			/** Number of content-row replacement calls. */
-			public int $replace_calls = 0;
-			/** Number of child-row insertion calls. */
-			public int $insert_calls  = 0;
-			/** Force content-row replacement failures. */
-			public bool $fail_replacements = false;
-			/** Force index deletion failures. */
-			public bool $fail_deletions = false;
-
-			public function prepare( string $query, mixed ...$args ): string {
-				$this->last_prepare_args = $args;
-				$this->prepared[]        = array(
-					'query' => $query,
-					'args'  => $args,
-				);
-
-				return $query;
-			}
-
-			public function replace( string $table, array $data, array $formats ): int|false {
-				unset( $formats );
-				++$this->replace_calls;
-
-				if ( Installer::content_index_table() !== $table ) {
-					return false;
-				}
-				if ( $this->fail_replacements ) {
-					return false;
-				}
-
-				$before_callback = $GLOBALS['aculect_ai_companion_test_before_content_replace'] ?? null;
-				if ( is_callable( $before_callback ) ) {
-					$GLOBALS['aculect_ai_companion_test_before_content_replace'] = null;
-					$before_callback( (int) $data['object_id'] );
-				}
-				$this->content_rows[ (int) $data['object_id'] ] = $data;
-				$callback = $GLOBALS['aculect_ai_companion_test_after_content_replace'] ?? null;
-				if ( is_callable( $callback ) ) {
-					$GLOBALS['aculect_ai_companion_test_after_content_replace'] = null;
-					$callback( (int) $data['object_id'] );
-				}
-
-				return 1;
-			}
-
-			public function insert( string $table, array $data, array $formats ): int|false {
-				unset( $formats );
-				++$this->insert_calls;
-
-				if ( Installer::content_chunks_table() === $table ) {
-					$this->chunk_rows[ (int) $data['object_id'] ][] = $data;
-					return 1;
-				}
-
-				if ( Installer::link_graph_table() === $table ) {
-					$this->link_rows[ (int) $data['source_id'] ][] = $data;
-					return 1;
-				}
-
-				return false;
-			}
-
-			public function update( string $table, array $data, array $where, array $formats, array $where_formats ): int|false {
-				unset( $formats, $where_formats );
-
-				if ( Installer::content_index_table() !== $table ) {
-					return false;
-				}
-
-				$object_id = (int) ( $where['object_id'] ?? 0 );
-				if ( ! isset( $this->content_rows[ $object_id ] ) ) {
-					return 0;
-				}
-
-				$this->content_rows[ $object_id ] = array_merge( $this->content_rows[ $object_id ], $data );
-
-				return 1;
-			}
-
-			public function delete( string $table, array $where, array $where_formats ): int|false {
-				unset( $where_formats );
-				if ( $this->fail_deletions ) {
-					return false;
-				}
-
-				if ( Installer::content_index_table() === $table ) {
-					$object_id = (int) ( $where['object_id'] ?? 0 );
-					unset( $this->content_rows[ $object_id ] );
-					$callback = $GLOBALS['aculect_ai_companion_test_after_content_delete'] ?? null;
-					if ( is_callable( $callback ) ) {
-						$GLOBALS['aculect_ai_companion_test_after_content_delete'] = null;
-						$callback( $object_id );
-					}
-					return 1;
-				}
-
-				if ( Installer::content_chunks_table() === $table ) {
-					unset( $this->chunk_rows[ (int) ( $where['object_id'] ?? 0 ) ] );
-					return 1;
-				}
-
-				if ( Installer::link_graph_table() === $table ) {
-					$source_id = (int) ( $where['source_id'] ?? 0 );
-					if ( 0 < $source_id ) {
-						unset( $this->link_rows[ $source_id ] );
-					}
-
-					return 1;
-				}
-
-				return false;
-			}
-
-			public function get_row( string $query, string $output ) : ?array {
-				unset( $query, $output );
-
-				$object_id = (int) ( $this->last_prepare_args[1] ?? 0 );
-
-				return $this->content_rows[ $object_id ] ?? null;
-			}
-
-			public function get_col( string $query ): array {
-				unset( $query );
-
-				$rows = array_values(
-					array_filter(
-						$this->content_rows,
-						static fn ( array $row ): bool => ! empty( $row['stale'] )
-					)
-				);
-
-				usort(
-					$rows,
-					static fn ( array $left, array $right ): int => strcmp(
-						(string) ( $right['modified_gmt'] ?? '' ),
-						(string) ( $left['modified_gmt'] ?? '' )
-					)
-				);
-
-				return array_map(
-					static fn ( array $row ): int => (int) $row['object_id'],
-					$rows
-				);
-			}
-		};
+		$GLOBALS['wpdb']     = new PluginContentIndexWpdb();
 
 		$GLOBALS['aculect_ai_companion_test_options']          = array();
 		$GLOBALS['aculect_ai_companion_test_posts']            = array();
@@ -330,6 +177,49 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
 	}
 
+	public function test_partial_child_write_rolls_back_the_projection_and_remains_stale(): void {
+		$post_id = 34113;
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
+			array(
+				'ID'                => $post_id,
+				'post_type'         => 'post',
+				'post_status'       => 'publish',
+				'post_title'        => 'Atomic projection',
+				'post_content'      => '<!-- wp:paragraph --><p>Original indexed content.</p><!-- /wp:paragraph -->',
+				'post_modified_gmt' => '2026-07-10 10:05:00',
+			)
+		);
+		$indexer = new ContentIndexer();
+		self::assertSame( 'indexed', $indexer->index_post( $post_id )['status'] );
+		$original_row    = $GLOBALS['wpdb']->content_rows[ $post_id ];
+		$original_chunks = $GLOBALS['wpdb']->chunk_rows[ $post_id ];
+
+		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:heading --><h2>First section</h2><!-- /wp:heading -->'
+			. '<!-- wp:paragraph --><p>Replacement content with a <a href="https://example.com/target/">link</a>.</p><!-- /wp:paragraph -->'
+			. '<!-- wp:heading --><h2>Second section</h2><!-- /wp:heading -->'
+			. '<!-- wp:paragraph --><p>This child insert must fail.</p><!-- /wp:paragraph -->';
+		$GLOBALS['wpdb']->fail_insert_call = $GLOBALS['wpdb']->insert_calls + 2;
+
+		$result = $indexer->index_post( $post_id );
+
+		self::assertSame( 'error', $result['status'] );
+		self::assertSame( 'index_write_failed', $result['reason'] ?? '' );
+		self::assertSame( $original_row['search_text'], $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] );
+		self::assertSame( $original_chunks, $GLOBALS['wpdb']->chunk_rows[ $post_id ] );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->link_rows );
+		self::assertSame( 1, $GLOBALS['wpdb']->content_rows[ $post_id ]['stale'] );
+
+		$GLOBALS['wpdb']->fail_insert_call = $GLOBALS['wpdb']->insert_calls + 3;
+		$link_failure = $indexer->index_post( $post_id );
+
+		self::assertSame( 'error', $link_failure['status'] );
+		self::assertSame( 'index_write_failed', $link_failure['reason'] ?? '' );
+		self::assertSame( $original_row['search_text'], $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] );
+		self::assertSame( $original_chunks, $GLOBALS['wpdb']->chunk_rows[ $post_id ] );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->link_rows );
+		self::assertSame( 1, $GLOBALS['wpdb']->content_rows[ $post_id ]['stale'] );
+	}
+
 	public function test_stale_import_preserves_failed_item_backoff(): void {
 		$post_id = 34104;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
@@ -421,7 +311,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK ) );
 	}
 
-	public function test_schedule_failure_falls_back_to_inline_indexing_without_orphaning_queue_state(): void {
+	public function test_schedule_failure_keeps_durable_queue_without_inline_indexing(): void {
 		$post_id = 34103;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
 			array(
@@ -433,16 +323,17 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				'post_modified_gmt' => '2026-07-10 11:00:00',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array( ContentIndexer::STALE_SWEEP_HOOK );
 
 		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
-		self::assertGreaterThan( 0, $GLOBALS['wpdb']->replace_calls );
-		self::assertArrayHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
-		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+		self::assertSame( 0, $GLOBALS['wpdb']->replace_calls );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertSame( 1, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::INDEX_RETRY_HOOK, array( $post_id ) ) );
 	}
 
-	public function test_inline_fallback_allows_a_later_same_request_mutation(): void {
+	public function test_schedule_failure_coalesces_later_same_request_mutations(): void {
 		$post_id = 34909;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
 			array(
@@ -454,7 +345,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				'post_modified_gmt' => '2026-07-10 11:15:00',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array( ContentIndexer::STALE_SWEEP_HOOK );
 		$plugin = Plugin::instance();
 		$plugin->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
@@ -463,13 +354,12 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Second mutation.</p><!-- /wp:paragraph -->';
 		$plugin->handle_content_index_meta_changed( 2, $post_id, '_thumbnail_id', 2 );
 
-		$search_text = (string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' );
-		self::assertStringContainsString( 'Second mutation', $search_text );
-		self::assertStringNotContainsString( 'First mutation', $search_text );
-		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+		self::assertSame( 0, $GLOBALS['wpdb']->replace_calls );
+		self::assertSame( 1, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::INDEX_RETRY_HOOK, array( $post_id ) ) );
 	}
 
-	public function test_inline_error_clears_guard_for_a_later_same_request_mutation(): void {
+	public function test_retry_hook_restores_queue_after_initial_persistence_failure(): void {
 		$post_id = 34910;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
 			array(
@@ -481,25 +371,23 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				'post_modified_gmt' => '2026-07-10 11:30:00',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_schedule_failure'] = true;
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array(
+			'aculect_ai_companion_pending_index_' . $post_id,
+		);
 		$plugin = Plugin::instance();
 		$plugin->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
-		$GLOBALS['wpdb']->fail_replacements = true;
-		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Failed mutation.</p><!-- /wp:paragraph -->';
-		$plugin->handle_content_index_meta_changed( 1, $post_id, '_thumbnail_id', 1 );
-
-		$GLOBALS['wpdb']->fail_replacements = false;
-		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ]->post_content = '<!-- wp:paragraph --><p>Recovered mutation.</p><!-- /wp:paragraph -->';
-		$plugin->handle_content_index_meta_changed( 2, $post_id, '_thumbnail_id', 2 );
-
-		$search_text = (string) ( $GLOBALS['wpdb']->content_rows[ $post_id ]['search_text'] ?? '' );
-		self::assertStringContainsString( 'Recovered mutation', $search_text );
-		self::assertStringNotContainsString( 'Failed mutation', $search_text );
+		self::assertSame( 0, $GLOBALS['wpdb']->replace_calls );
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::INDEX_RETRY_HOOK, array( $post_id ) ) );
+
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array();
+		$plugin->handle_content_index_retry( $post_id );
+		self::assertSame( 1, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
 	}
 
-	public function test_inline_fallback_does_not_delete_a_newer_queue_generation(): void {
+	public function test_failed_schedule_does_not_delete_the_queued_generation(): void {
 		$post_id = 34107;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
 			array(
@@ -511,16 +399,14 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 				'post_modified_gmt' => '2026-07-10 14:00:00',
 			)
 		);
-		$GLOBALS['aculect_ai_companion_test_schedule_failure']      = true;
-		$GLOBALS['aculect_ai_companion_test_after_content_replace'] = static function ( int $replaced_post_id ): void {
-			$GLOBALS['aculect_ai_companion_test_schedule_failure'] = false;
-			( new ContentIndexer() )->defer_index_post( $replaced_post_id );
-		};
+		$GLOBALS['aculect_ai_companion_test_schedule_failure_hooks'] = array( ContentIndexer::STALE_SWEEP_HOOK );
 
 		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
 		self::assertSame( 1, ( new ContentIndexer() )->pending_index_count() );
-		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::STALE_SWEEP_HOOK ) );
+		self::assertSame( 'index', ( new ContentIndexQueue() )->current_generation( $post_id )['action'] );
+		self::assertSame( 0, $GLOBALS['wpdb']->replace_calls );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::INDEX_RETRY_HOOK, array( $post_id ) ) );
 	}
 
 	public function test_delete_during_claimed_index_cannot_reintroduce_content(): void {
@@ -729,7 +615,7 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 		self::assertSame( 0, $indexer->pending_index_count() );
 	}
 
-	public function test_queue_persistence_failure_falls_back_to_inline_indexing(): void {
+	public function test_queue_persistence_failure_schedules_a_bounded_retry_without_inline_indexing(): void {
 		$post_id = 34105;
 		$GLOBALS['aculect_ai_companion_test_posts'][ $post_id ] = new WP_Post(
 			array(
@@ -747,8 +633,9 @@ final class PluginContentIndexSaveFlowTest extends TestCase {
 
 		Plugin::instance()->handle_content_index_save( $post_id, get_post( $post_id ), true );
 
-		self::assertArrayHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
+		self::assertArrayNotHasKey( $post_id, $GLOBALS['wpdb']->content_rows );
 		self::assertSame( 0, ( new ContentIndexer() )->pending_index_count() );
+		self::assertGreaterThan( 0, (int) wp_next_scheduled( ContentIndexer::INDEX_RETRY_HOOK, array( $post_id ) ) );
 	}
 
 	public function test_non_indexable_status_transition_removes_existing_index_and_queue_state(): void {

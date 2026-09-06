@@ -25,6 +25,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 = Why use Aculect AI Companion? =
 
 * Connect WordPress to ChatGPT, Claude, Grok, and other MCP-compatible AI apps
+* Offer one bounded, read-only WebMCP page-context tool on public pages in compatible browsers without exposing backend management abilities
 * Create, update, and organize WordPress content through controlled AI workflows
 * Audit internal linking, review link opportunities, and apply approved suggestions through MCP
 * Work with posts, pages, custom post types, categories, tags, comments, and media
@@ -42,6 +43,12 @@ Setup is designed to be simple:
 4. Approve the connection on the screen that appears.
 
 After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI assistant can do and disconnect assistants at any time.
+
+= Provider-specific setup notes =
+
+* ChatGPT custom apps use an approved snapshot of MCP tools. After an Aculect ability or schema change, refresh the app actions in ChatGPT workspace settings; Business apps may need to be recreated and republished.
+* Claude API integrations should use the `mcp-client-2025-11-20` beta header and reference Aculect from exactly one `mcp_toolset`. Use tool allowlisting and `defer_loading` to reduce initial context. Anthropic documents that the MCP connector is not eligible for Zero Data Retention.
+* Cursor remote MCP setup uses the connection URL with the `url` key. When fixed OAuth registration is required, use `https://www.cursor.com/agents/mcp/oauth/callback` for web and Cursor Agents or `http://localhost:8787/callback` for the desktop app. Toggle the MCP server off and on after ability changes to refresh tool metadata.
 
 = Features =
 

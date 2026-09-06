@@ -12,7 +12,7 @@ namespace Aculect\AICompanion\Tests\Unit\Diagnostics;
 use Aculect\AICompanion\Diagnostics\IntelligenceIndexHealth;
 use PHPUnit\Framework\TestCase;
 
-// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused diagnostics tests replace wpdb with a local test double.
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Files.OneObjectStructurePerFile.MultipleFound -- Focused diagnostics tests keep their wpdb double local.
 
 /**
  * Verifies content intelligence diagnostics stay operational and support-safe.
@@ -25,7 +25,8 @@ final class IntelligenceIndexHealthTest extends TestCase {
 		parent::setUp();
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
-		$GLOBALS['wpdb']    = new FakeIntelligenceIndexWpdb();
+		$GLOBALS['wpdb']     = new FakeIntelligenceIndexWpdb();
+		delete_option( 'aculect_ai_companion_intelligence_install_retry' );
 		update_option( 'aculect_ai_companion_pending_index_ids', array( 12, 34, 34 ), false );
 	}
 
@@ -37,6 +38,7 @@ final class IntelligenceIndexHealthTest extends TestCase {
 		}
 
 		delete_option( 'aculect_ai_companion_pending_index_ids' );
+		delete_option( 'aculect_ai_companion_intelligence_install_retry' );
 
 		parent::tearDown();
 	}
@@ -59,6 +61,7 @@ final class IntelligenceIndexHealthTest extends TestCase {
 		self::assertSame( 'job-1', $status['recent_refresh_jobs'][0]['job_key'] );
 		self::assertArrayNotHasKey( 'args', $status['recent_refresh_jobs'][0] );
 		self::assertArrayNotHasKey( 'result', $status['recent_refresh_jobs'][0] );
+		self::assertSame( 0, $status['installer_repair']['attempts'] );
 	}
 }
 

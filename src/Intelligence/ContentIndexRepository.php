@@ -71,8 +71,9 @@ final class ContentIndexRepository {
 	 *
 	 * @param int                        $object_id Content item ID.
 	 * @param list<array<string, mixed>> $chunks    Chunk rows.
+	 * @return int|false Inserted row count, or false when replacement failed.
 	 */
-	public function replace_chunks( int $object_id, array $chunks ): int {
+	public function replace_chunks( int $object_id, array $chunks ): int|false {
 		global $wpdb;
 
 		$object_id = absint( $object_id );
@@ -80,7 +81,10 @@ final class ContentIndexRepository {
 			return 0;
 		}
 
-		$wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) );
+		$deleted = $wpdb->delete( Installer::content_chunks_table(), array( 'object_id' => $object_id ), array( '%d' ) );
+		if ( false === $deleted ) {
+			return false;
+		}
 
 		$inserted = 0;
 		foreach ( array_slice( $chunks, 0, 200 ) as $chunk ) {
@@ -105,49 +109,11 @@ final class ContentIndexRepository {
 				array( '%d', '%s', '%s', '%s', '%d', '%d', '%s', '%d', '%d', '%s', '%s', '%s' )
 			);
 
-			if ( false !== $result ) {
-				++$inserted;
+			if ( 1 !== (int) $result ) {
+				return false;
 			}
-		}
 
-		return $inserted;
-	}
-
-	/**
-	 * Replace outbound link rows for one content item.
-	 *
-	 * @param int                        $source_id Source content ID.
-	 * @param list<array<string, mixed>> $links     Link rows.
-	 */
-	public function replace_links( int $source_id, array $links ): int {
-		global $wpdb;
-
-		$source_id = absint( $source_id );
-		if ( 0 >= $source_id ) {
-			return 0;
-		}
-
-		$wpdb->delete( Installer::link_graph_table(), array( 'source_id' => $source_id ), array( '%d' ) );
-
-		$inserted = 0;
-		foreach ( array_slice( $links, 0, 300 ) as $link ) {
-			$result = $wpdb->insert(
-				Installer::link_graph_table(),
-				array(
-					'source_id'   => $source_id,
-					'target_id'   => isset( $link['target_id'] ) ? absint( $link['target_id'] ) : null,
-					'target_url'  => $this->url( $link['target_url'] ?? '' ),
-					'anchor_text' => $this->text( $link['anchor_text'] ?? '', 255 ),
-					'rel'         => $this->text( $link['rel'] ?? '', 80 ),
-					'context'     => $this->text( $link['context'] ?? '', 1000 ),
-					'created_at'  => gmdate( 'Y-m-d H:i:s' ),
-				),
-				array( '%d', '%d', '%s', '%s', '%s', '%s', '%s' )
-			);
-
-			if ( false !== $result ) {
-				++$inserted;
-			}
+			++$inserted;
 		}
 
 		return $inserted;

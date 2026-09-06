@@ -37,6 +37,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
+          cache: npm
 
       - name: Install locked browser dependencies
         run: npm ci
@@ -89,7 +90,7 @@ jobs:
         run: wp-env run cli wp eval-file wp-content/aculect-workflow-proofs/wp-options-retry-cache.php
 
       - name: Prove real memory review rollback, migration CAS and sync replay
-        run: wp-env run cli wp --user=admin eval-file wp-content/aculect-memory-proofs/wp-memory-proof.php aculect-disposable-memory-proof
+        run: wp-env run cli wp --user=admin eval-file wp-content/aculect-memory-proofs/wp-memory-proof.php aculect-disposable-memory-proof --use-include
 
       - name: Install Chromium for browser proof
         run: npx playwright install --with-deps chromium

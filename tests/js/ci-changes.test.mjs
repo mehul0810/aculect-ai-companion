@@ -109,6 +109,10 @@ test( 'packaged proof separates asset tooling from the proven wp-env runtime', (
 		workflow.indexOf( 'node-version: "20.19.0"' ) <
 			workflow.indexOf( 'npm install --global @wordpress/env@11.6.0' )
 	);
+	assert.match(
+		workflow,
+		/wp-memory-proof\.php aculect-disposable-memory-proof --use-include/
+	);
 } );
 
 const base = 'a'.repeat( 40 );

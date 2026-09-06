@@ -79,7 +79,7 @@ final class SiteMemorySyncAdapter implements MemoryConnectorAdapterInterface {
 			return 'invalid_memory_proposal';
 		}
 		// Stable identity plus a value comparison prevents replacing a reviewed proposal on replay.
-		$identity   = hash( 'sha256', $this->connector . "\n" . $id . "\n" . $version );
+		$identity   = hash( 'sha256', $this->connector . "\n" . $this->namespace . "\n" . $id . "\n" . $version );
 		$key        = 'sync.' . $identity;
 		$existing   = ( new MemoryRepository() )->find( $key, $this->namespace, true );
 		$normalized = sanitize_text_field( $value );

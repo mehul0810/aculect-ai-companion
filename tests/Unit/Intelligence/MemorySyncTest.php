@@ -55,6 +55,22 @@ final class MemorySyncTest extends TestCase {
 		self::assertSame( 'memory_sync_version_conflict', $adapter->push( array( $change ), 'batch2' )['rejected']['voice'] );
 	}
 
+	public function test_proposal_identity_and_replay_are_isolated_by_namespace(): void {
+		$change = array(
+			'id'      => 'voice',
+			'version' => 1,
+			'value'   => 'Concise.',
+		);
+		$first  = new SiteMemorySyncAdapter( 'client', 'site-a' );
+		$second = new SiteMemorySyncAdapter( 'client', 'site-b' );
+		self::assertSame( array( 'voice' ), $first->push( array( $change ), '' )['accepted'] );
+		self::assertSame( array( 'voice' ), $second->push( array( $change ), '' )['accepted'] );
+		self::assertCount( 2, $this->database->rows );
+		self::assertSame( array( 'voice' ), $first->push( array( $change ), '' )['accepted'] );
+		self::assertSame( array( 'voice' ), $second->push( array( $change ), '' )['accepted'] );
+		self::assertCount( 2, $this->database->events );
+	}
+
 	public function test_new_external_versions_do_not_overwrite_reviewed_guidance(): void {
 		$adapter = new SiteMemorySyncAdapter( 'client1' );
 		$change  = array(
@@ -148,7 +164,7 @@ final class MemorySyncTest extends TestCase {
 			$result['items'][1]
 		);
 		self::assertSame( 'remove', $result['items'][2]['operation'] );
-		self::assertStringNotContainsString( 'SECRET', json_encode( $result ) );
+		self::assertStringNotContainsString( 'SECRET', (string) wp_json_encode( $result ) );
 	}
 
 	public function test_cursor_is_namespace_bound_and_malformed_values_fail(): void {

@@ -247,7 +247,7 @@ function aculect_memory_proof_import( SiteMemorySyncAdapter $adapter, string $na
 	);
 	$accepted = $adapter->push( array( $proposal ), 'external-checkpoint' );
 	aculect_memory_proof_assert( array( 'external-proposal' ) === $accepted['accepted'] && array() === $accepted['rejected'], 'Versioned memory proposal was not accepted.' );
-	$key    = 'sync.' . hash( 'sha256', $adapter->id() . "\nexternal-proposal\n1" );
+	$key    = 'sync.' . hash( 'sha256', $adapter->id() . "\n" . $namespace . "\nexternal-proposal\n1" );
 	$memory = ( new MemoryRepository() )->find( $key, $namespace );
 	aculect_memory_proof_assert( 'pending' === $memory['status'] && 'private' === $memory['visibility'], 'Imported proposal bypassed site review/privacy.' );
 	$again = $adapter->push( array( $proposal ), 'external-checkpoint' );

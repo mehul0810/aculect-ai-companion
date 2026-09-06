@@ -39,7 +39,7 @@ const rules = [
 		checks: [ 'codeql' ],
 	},
 	{
-		test: /^(?:src\/(?:Workflows|Admin|Intelligence|Connectors\/MCP)\/|tests\/(?:Integration\/Workflows|Unit\/Workflows|Unit\/Admin|fixtures\/workflows)\/)/,
+		test: /^(?:src\/(?:Workflows|Admin|Intelligence|Connectors\/MCP)\/.*\.php$|tests\/(?:Integration\/Workflows|Unit\/Workflows|Unit\/Admin|fixtures\/workflows)\/)/,
 		checks: [ 'workflows' ],
 	},
 	{

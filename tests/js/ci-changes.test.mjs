@@ -69,11 +69,19 @@ test( 'MCP callers cover execution claims, OAuth and native abilities', () => {
 } );
 
 test( 'frontend requires one build and packaged browser proof', () => {
-	const result = classifyChanges( [ 'src/admin/connect.js' ] );
-	assert.equal( result.assets, true );
-	assert.equal( result.package, true );
-	assert.equal( result.browser, true );
-	assert.equal( result.oauth, false );
+	for ( const path of [
+		'src/admin/connect.js',
+		'src/Admin/memory/MemoryRecordCard.js',
+	] ) {
+		const result = classifyChanges( [ path ] );
+		assert.equal( result.assets, true );
+		assert.equal( result.package, true );
+		assert.equal( result.browser, true );
+		assert.equal( result.oauth, false );
+		assert.equal( result.workflows, false );
+		assert.equal( result.claims, false );
+		assert.equal( result.wordpress, false );
+	}
 } );
 
 test( 'memory integration-only edits run the existing packaged WordPress proof', () => {
@@ -83,6 +91,24 @@ test( 'memory integration-only edits run the existing packaged WordPress proof',
 	for ( const name of [ 'php', 'assets', 'package', 'browser' ] ) {
 		assert.equal( result[ name ], true );
 	}
+} );
+
+test( 'packaged proof separates asset tooling from the proven wp-env runtime', () => {
+	const workflow = readFileSync(
+		new URL(
+			'../../.github/workflows/workflow-proof.yml',
+			import.meta.url
+		),
+		'utf8'
+	);
+	assert.ok(
+		workflow.indexOf( 'run: npm ci' ) <
+			workflow.indexOf( 'node-version: "20.19.0"' )
+	);
+	assert.ok(
+		workflow.indexOf( 'node-version: "20.19.0"' ) <
+			workflow.indexOf( 'npm install --global @wordpress/env@11.6.0' )
+	);
 } );
 
 const base = 'a'.repeat( 40 );

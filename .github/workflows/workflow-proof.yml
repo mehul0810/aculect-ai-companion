@@ -41,6 +41,12 @@ jobs:
       - name: Install locked browser dependencies
         run: npm ci
 
+      - name: Use the proven wp-env runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          # wp-env 11.6.0 exits without initialization under the asset Node 24 runtime.
+          node-version: "20.19.0"
+
       - name: Configure packaged WordPress environment
         env:
           PLUGIN_DIR: ${{ github.workspace }}/release/aculect-ai-companion

@@ -63,7 +63,9 @@ No ruleset or deployment-environment gate is created here. Creating an environme
 
 ## Validation and limitations
 
-Local validation: actionlint 1.7.12, scoped ESLint, 13 passing CI Node regression tests, Bash syntax checks and repository modularity check.
+Local validation: actionlint 1.7.12, scoped ESLint, 14 passing CI Node regression tests, Bash syntax checks and repository modularity check.
+
+The packaged proof installs locked browser dependencies on Node 24, then uses the existing Node 20.19 compatibility runtime for wp-env 11.6.0, matching the other WordPress jobs. The first consolidated hosted run demonstrated that using Node 24 for wp-env exits without initialization. Upgrading this legacy test harness runtime requires separate runtime proof; it does not affect the plugin's PHP runtime.
 
 Hosted MySQL/MariaDB/SQLite/WordPress/browser execution must pass on the pushed exact head before claiming the consolidated pipeline is proven. The local machine has no Docker runtime; the package script's deterministic timestamp normalization targets the Ubuntu CI runner.
 

@@ -293,6 +293,10 @@ Composer dependencies for production releases are installed with:
 * Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1.
 * Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.
 * Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items.
+* Added site-owned Aculect Memory with versioned records, history, and opt-in client-driven synchronization. Imported proposals remain private and pending review; this does not synchronize provider-owned personal memory stores.
+* Improved memory review with namespace and version checks, bounded database queries, and visible migration recovery. Failed learning approvals roll back their memory and history changes together.
+* Hardened WebMCP page-context extraction with bounded traversal and output, hidden/form-content exclusion, and sanitized links.
+* Kept intelligence groups as navigation and guidance while preserving OAuth scopes, WordPress capabilities, and explicit approval requirements for ability execution.
 * Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
 
 = 0.7.2 =

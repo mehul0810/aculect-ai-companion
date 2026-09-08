@@ -2,10 +2,14 @@
 	"0.8.0": {
 		"date": "2026-08-20",
 		"New": [
+			"Added site-owned Aculect Memory with versioned records, history, and opt-in client-driven synchronization. Imported proposals remain private and pending review; this does not synchronize provider-owned personal memory stores.",
 			"Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.",
 			"Added custom-workflow definitions, deterministic planning and readiness, private read/proposal adapters, Phase-A definition-storage schema/installer groundwork, a durable runner, native adapter catalog, bounded audit trail, guarded administration, and a public workflow connector surface. Runtime execution remains permission-aware and approval-gated."
 		],
 		"Improved": [
+			"Improved memory review with namespace and version checks, bounded database queries, and visible migration recovery. Failed learning approvals roll back their memory and history changes together.",
+			"Hardened WebMCP page-context extraction with bounded traversal and output, hidden/form-content exclusion, and sanitized links.",
+			"Kept intelligence groups as navigation and guidance while preserving OAuth scopes, WordPress capabilities, and explicit approval requirements for ability execution.",
 			"Improved eligible public third-party WordPress Ability exposure with explicit administrator policy, safe read-only/non-destructive defaults, and fail-closed malformed metadata.",
 			"Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.",
 			"Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.",

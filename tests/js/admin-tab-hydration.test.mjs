@@ -212,8 +212,12 @@ test( 'learning review surfaces render behind explicit active-state checks', () 
 	);
 	assert.match( ADMIN_APP_SOURCE, /<AccessibleTabList/ );
 	assert.match( ACCESSIBLE_TABS_SOURCE, /role="tablist"/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /role="tab"/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /aria-selected=\{ selected \}/ );
 	assert.match( ACCESSIBLE_TABS_SOURCE, /aria-controls=/ );
 	assert.match( ACCESSIBLE_TABS_SOURCE, /tabIndex=\{ selected \? 0 : -1 \}/ );
+	assert.doesNotMatch( ACCESSIBLE_TABS_SOURCE, /isPressed=/ );
+	assert.doesNotMatch( ACCESSIBLE_TABS_SOURCE, /aria-pressed/ );
 	assert.match(
 		ACCESSIBLE_TABS_SOURCE,
 		/'ArrowLeft', 'ArrowRight', 'Home', 'End'/

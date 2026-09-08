@@ -46,7 +46,6 @@ export function AccessibleTabList( {
 						id={ `aculect-learning-tab-${ tab.id }` }
 						type="button"
 						variant={ selected ? 'primary' : 'secondary' }
-						isPressed={ selected }
 						role="tab"
 						aria-selected={ selected }
 						aria-controls={ `aculect-learning-panel-${ tab.id }` }

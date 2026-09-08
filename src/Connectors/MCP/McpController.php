@@ -25,6 +25,22 @@ final class McpController {
 	);
 
 	/**
+	 * Request headers used by the Streamable HTTP transport that browser
+	 * clients may include in a CORS preflight.
+	 *
+	 * This allowlist does not relax the endpoint's Origin validation.
+	 *
+	 * @var string[]
+	 */
+	private const CORS_REQUEST_HEADERS = array(
+		'MCP-Protocol-Version',
+		'MCP-Method',
+		'MCP-Name',
+		'MCP-Session-Id',
+		'Last-Event-ID',
+	);
+
+	/**
 	 * OAuth context resolved by the permission callback for the current request.
 	 *
 	 * @var array<string, mixed>
@@ -68,6 +84,24 @@ final class McpController {
 		);
 
 		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
+		add_filter( 'rest_allowed_cors_headers', array( $this, 'filter_mcp_cors_request_headers' ) );
+	}
+
+	/**
+	 * Permit the protocol's non-simple request headers on WordPress REST CORS
+	 * preflights without widening the allowed Origin policy.
+	 *
+	 * @param string[] $headers Existing allowed request headers.
+	 * @return string[]
+	 */
+	public function filter_mcp_cors_request_headers( array $headers ): array {
+		foreach ( self::CORS_REQUEST_HEADERS as $header ) {
+			if ( ! in_array( $header, $headers, true ) ) {
+				$headers[] = $header;
+			}
+		}
+
+		return $headers;
 	}
 
 	/**
@@ -131,6 +165,7 @@ final class McpController {
 
 		if ( $response instanceof WP_REST_Response ) {
 			$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			$this->apply_mcp_cache_headers( $response );
 		}
 
 		$data = $response instanceof WP_REST_Response ? $response->get_data() : null;
@@ -145,6 +180,7 @@ final class McpController {
 				$response->get_status()
 			);
 			$transport_response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			$this->apply_mcp_cache_headers( $transport_response );
 			return $transport_response;
 		}
 
@@ -1430,8 +1466,21 @@ final class McpController {
 		);
 		$response->header( 'WWW-Authenticate', TokenValidator::www_authenticate_header( $scope, $error ) );
 		$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+		$this->apply_mcp_cache_headers( $response );
 
 		return $response;
+	}
+
+	/**
+	 * Prevent caches from replaying OAuth challenges, request-specific JSON-RPC
+	 * responses, or an authenticated SSE-probe response to another client.
+	 *
+	 * @param WP_REST_Response $response REST response.
+	 */
+	private function apply_mcp_cache_headers( WP_REST_Response $response ): void {
+		$response->header( 'Cache-Control', 'no-store, private' );
+		$response->header( 'Pragma', 'no-cache' );
+		$response->header( 'Vary', 'Authorization, Accept, Origin, MCP-Protocol-Version, MCP-Method, MCP-Name, MCP-Session-Id, Last-Event-ID' );
 	}
 
 	/**

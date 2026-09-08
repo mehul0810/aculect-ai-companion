@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\MCP\McpController;
+use Aculect\AICompanion\Connectors\MCP\McpTransportResponsePolicy;
 use PHPUnit\Framework\TestCase;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -55,7 +56,7 @@ final class McpControllerTransportHeadersTest extends TestCase {
 	}
 
 	public function test_mcp_cors_headers_include_only_required_transport_headers(): void {
-		$headers = ( new McpController() )->filter_mcp_cors_request_headers(
+		$headers = McpTransportResponsePolicy::filter_cors_request_headers(
 			array( 'Authorization', 'Content-Type' )
 		);
 

@@ -133,6 +133,189 @@ function aculect_memory_proof_review( string $run ): void {
 }
 
 /**
+ * Inject one independent queue mutation immediately before a primary queue CAS.
+ *
+ * @param wpdb                  $second     Second disposable database connection.
+ * @param callable():array|bool $concurrent Independent queue operation.
+ * @param array<string,mixed>   $outcome    Captured independent operation result.
+ * @return Closure Query filter.
+ */
+function aculect_memory_proof_queue_interleave( wpdb $second, callable $concurrent, array &$outcome ): Closure {
+	global $wpdb;
+	$primary = $wpdb;
+	$table   = $wpdb->options;
+
+	return static function ( string $query ) use ( $primary, $second, $table, $concurrent, &$outcome ): string {
+		global $wpdb;
+		if ( array() !== $outcome || ! str_starts_with( ltrim( $query ), "UPDATE {$table} SET option_value" ) || ! str_contains( $query, 'HEX(option_value)' ) ) {
+			return $query;
+		}
+
+		// The primary snapshot has already been read. Commit an independent
+		// mutation before its CAS so the stale owner must fail without replacement.
+		$outcome = array( 'status' => 'injected' );
+		$wpdb    = $second;
+		try {
+			$outcome = array( 'result' => $concurrent() );
+		} finally {
+			$wpdb = $primary;
+		}
+
+		return $query;
+	};
+}
+
+/**
+ * Prove the production learning queue CAS across two real WordPress connections.
+ *
+ * @param string $run Unique disposable fixture identity.
+ */
+function aculect_memory_proof_learning_queue( string $run ): void {
+	global $wpdb;
+
+	$second = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+	$second->set_prefix( $wpdb->prefix );
+	try {
+		$learning = new LearningSuggestionRepository();
+		$seed     = $learning->submit(
+			array(
+				'issue'            => 'Queue seed ' . $run,
+				'suggested_update' => 'Keep the existing queue snapshot.',
+			)
+		);
+		aculect_memory_proof_assert( 'queued' === $seed['status'], 'Could not create the learning queue seed.' );
+
+		$submission_outcome = array();
+		$submission_filter  = aculect_memory_proof_queue_interleave(
+			$second,
+			static fn (): array => ( new LearningSuggestionRepository() )->submit(
+				array(
+					'issue'            => 'Concurrent queue submission ' . $run,
+					'suggested_update' => 'Keep this independent submission.',
+				)
+			),
+			$submission_outcome
+		);
+		add_filter( 'query', $submission_filter, PHP_INT_MAX );
+		try {
+			$stale_submission = $learning->submit(
+				array(
+					'issue'            => 'Stale queue submission ' . $run,
+					'suggested_update' => 'This stale write must fail safely.',
+				)
+			);
+		} finally {
+			remove_filter( 'query', $submission_filter, PHP_INT_MAX );
+		}
+		aculect_memory_proof_assert( 'storage_error' === ( $stale_submission['error'] ?? '' ) && 'queued' === ( $submission_outcome['result']['status'] ?? '' ), 'Concurrent queue submissions did not produce one safe failure and one persisted item.' );
+		$retried_submission = $learning->submit(
+			array(
+				'issue'            => 'Retried queue submission ' . $run,
+				'suggested_update' => 'Retry from a fresh queue snapshot.',
+			)
+		);
+		aculect_memory_proof_assert( 'queued' === $retried_submission['status'], 'A stale queue submission could not retry from fresh state.' );
+		$issues = array_column( $learning->admin_payload()['items'], 'issue' );
+		aculect_memory_proof_assert( in_array( 'Concurrent queue submission ' . $run, $issues, true ) && in_array( 'Retried queue submission ' . $run, $issues, true ) && ! in_array( 'Stale queue submission ' . $run, $issues, true ), 'Queue retry lost an independent submission or retained a stale write.' );
+
+		$editable     = $learning->submit(
+			array(
+				'issue'            => 'Editable queue item ' . $run,
+				'suggested_update' => 'Original editable guidance.',
+			)
+		);
+		$editable_id  = (string) $editable['suggestion']['id'];
+		$edit_outcome = array();
+		$edit_filter  = aculect_memory_proof_queue_interleave(
+			$second,
+			static fn (): array => ( new LearningSuggestionRepository() )->submit(
+				array(
+					'issue'            => 'Submission during queue edit ' . $run,
+					'suggested_update' => 'Retain this unrelated queue item.',
+				)
+			),
+			$edit_outcome
+		);
+		add_filter( 'query', $edit_filter, PHP_INT_MAX );
+		try {
+			$stale_edit = $learning->update(
+				$editable_id,
+				array(
+					'issue'            => 'Stale queue edit ' . $run,
+					'suggested_update' => 'This stale edit must not overwrite state.',
+				)
+			);
+		} finally {
+			remove_filter( 'query', $edit_filter, PHP_INT_MAX );
+		}
+		$items = array_column( $learning->admin_payload()['items'], null, 'id' );
+		aculect_memory_proof_assert( false === $stale_edit && 'queued' === ( $edit_outcome['result']['status'] ?? '' ) && ( $items[ $editable_id ]['issue'] ?? '' ) === 'Editable queue item ' . $run && in_array( 'Submission during queue edit ' . $run, array_column( $items, 'issue' ), true ), 'A stale edit replaced an unrelated submission or its original queue item.' );
+		aculect_memory_proof_assert(
+			$learning->update(
+				$editable_id,
+				array(
+					'issue'            => 'Retried queue edit ' . $run,
+					'suggested_update' => 'Fresh edit after the independent submission.',
+				)
+			),
+			'A stale edit could not retry from fresh queue state.'
+		);
+
+		$reviewable     = $learning->submit(
+			array(
+				'issue'            => 'Reviewable queue item ' . $run,
+				'suggested_update' => 'Original review guidance.',
+			)
+		);
+		$reviewable_id  = (string) $reviewable['suggestion']['id'];
+		$memory_key     = 'learning.content.' . $reviewable_id;
+		$before_events  = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', Installer::memory_events_table() ) );
+		$review_outcome = array();
+		$review_filter  = aculect_memory_proof_queue_interleave(
+			$second,
+			static fn (): bool => ( new LearningSuggestionRepository() )->update(
+				$reviewable_id,
+				array(
+					'issue'            => 'Concurrent review edit ' . $run,
+					'suggested_update' => 'This edit wins over the stale review.',
+				)
+			),
+			$review_outcome
+		);
+		add_filter( 'query', $review_filter, PHP_INT_MAX );
+		try {
+			$stale_review = $learning->review( $reviewable_id, 'approve', 'Stale review note.' );
+		} finally {
+			remove_filter( 'query', $review_filter, PHP_INT_MAX );
+		}
+		$items = array_column( $learning->admin_payload()['items'], null, 'id' );
+		aculect_memory_proof_assert( false === $stale_review && true === ( $review_outcome['result'] ?? false ) && ( $items[ $reviewable_id ]['issue'] ?? '' ) === 'Concurrent review edit ' . $run && array() === ( new MemoryRepository() )->find( $memory_key ), 'A stale review overwrote a concurrent edit or committed memory.' );
+		$after_failed_events = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', Installer::memory_events_table() ) );
+		aculect_memory_proof_assert( $before_events === $after_failed_events, 'A stale review committed a memory history event.' );
+		aculect_memory_proof_assert( $learning->review( $reviewable_id, 'approve', 'Retried review note.' ), 'A stale review could not retry after the concurrent edit.' );
+		$memory  = ( new MemoryRepository() )->find( $memory_key );
+		$history = ( new MemoryService() )->history( $memory['memory_uuid'] ?? '' );
+		aculect_memory_proof_assert( 'approved' === ( $memory['status'] ?? '' ) && 1 === count( $history ) && 1 === (int) ( $history[0]['memory_version'] ?? 0 ), 'Review retry did not commit exactly one memory/event pair.' );
+
+		for ( $index = 0; $index < 105; ++$index ) {
+			$retained = $learning->submit(
+				array(
+					'issue'            => 'Queue retention ' . $run . ' ' . $index,
+					'suggested_update' => 'Bounded disposable queue retention fixture.',
+				)
+			);
+			aculect_memory_proof_assert( 'queued' === $retained['status'], 'Could not add a bounded queue retention fixture.' );
+		}
+		$issues = array_column( $learning->admin_payload()['items'], 'issue' );
+		aculect_memory_proof_assert( 100 === count( $issues ) && ! in_array( 'Queue retention ' . $run . ' 0', $issues, true ) && in_array( 'Queue retention ' . $run . ' 104', $issues, true ), 'Learning queue retention did not preserve the latest 100 entries.' );
+	} finally {
+		$second->close();
+	}
+
+	echo "PASS learning queue CAS submissions, edits, reviews, retries and retention\n";
+}
+
+/**
  * Inject a normal save on a second real connection at the production CAS update.
  *
  * @param wpdb                $second Second connection to the disposable database.
@@ -333,6 +516,7 @@ aculect_memory_proof_guard( isset( $args ) && is_array( $args ) ? $args : array(
 $run = substr( str_replace( '-', '', wp_generate_uuid4() ), 0, 12 );
 aculect_memory_proof_batch( $run );
 aculect_memory_proof_review( $run );
+aculect_memory_proof_learning_queue( $run );
 aculect_memory_proof_migration( $run );
 aculect_memory_proof_sync( $run );
 echo "PASS packaged Aculect Memory real WordPress proof\n";

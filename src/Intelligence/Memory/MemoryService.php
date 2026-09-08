@@ -39,12 +39,13 @@ final class MemoryService {
 	/**
 	 * Commit a reviewed memory and its learning-option state together.
 	 *
-	 * @param array<string,mixed> $input Memory input.
-	 * @param bool                $forget Whether this is a dismissal.
-	 * @param callable():bool     $persist_review Transactional option persistence.
+	 * @param array<string,mixed>  $input Memory input.
+	 * @param bool                 $forget Whether this is a dismissal.
+	 * @param callable():bool      $persist_review Transactional option persistence.
+	 * @param callable():void|null $after_commit Post-commit notification callback.
 	 * @return array<string,mixed>
 	 */
-	public function review( array $input, bool $forget, callable $persist_review ): array {
+	public function review( array $input, bool $forget, callable $persist_review, ?callable $after_commit = null ): array {
 		if ( ! $this->storage_requirements()->supports_review_transactions() ) {
 			return $this->transaction_error();
 		}
@@ -53,7 +54,8 @@ final class MemoryService {
 				? $repository->forget( (string) $input['key'], 'site', null ) : $repository->save( $input ),
 			$forget ? 'forgotten' : 'updated',
 			$input,
-			$persist_review
+			$persist_review,
+			$after_commit
 		);
 	}
 
@@ -135,9 +137,10 @@ final class MemoryService {
 	 * @param string               $event_type Event type.
 	 * @param array<string, mixed> $input Input context.
 	 * @param callable():bool|null $before_commit Additional transactional persistence.
+	 * @param callable():void|null $after_commit  Notification only after a successful commit.
 	 * @return array<string, mixed>
 	 */
-	private function mutate( callable $callback, string $event_type, array $input, ?callable $before_commit = null ): array {
+	private function mutate( callable $callback, string $event_type, array $input, ?callable $before_commit = null, ?callable $after_commit = null ): array {
 		global $wpdb;
 		/** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort
 
@@ -190,6 +193,14 @@ final class MemoryService {
 			}
 			$result['event_recorded'] = true;
 			MemoryAdminQuery::invalidate_summary();
+			if ( null !== $after_commit ) {
+				try {
+					$after_commit();
+				} catch ( \Throwable $observer_error ) {
+					// Post-commit observers cannot roll back a completed durable review.
+					unset( $observer_error );
+				}
+			}
 			return $result;
 		} catch ( \Throwable ) {
 			$wpdb->query( 'ROLLBACK' );

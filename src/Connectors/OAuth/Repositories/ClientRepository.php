@@ -556,7 +556,7 @@ final class ClientRepository implements ClientRepositoryInterface {
 	}
 
 	/**
-	 * Remove matching duplicate clients that have no live credential.
+	 * Remove stale matching duplicates without interrupting pending consent.
 	 *
 	 * @param string $provider                 Provider slug.
 	 * @param string $registration_fingerprint Canonical registration fingerprint.
@@ -598,6 +598,7 @@ final class ClientRepository implements ClientRepositoryInterface {
 							WHERE active_refresh.revoked = 0
 							AND active_refresh.expires_at >= %s
 						)
+						AND clients.created_at < %s
 						ORDER BY clients.created_at ASC
 						LIMIT %d
 					) duplicate_clients
@@ -613,6 +614,7 @@ final class ClientRepository implements ClientRepositoryInterface {
 				$tables['access_tokens'],
 				$tables['refresh_tokens'],
 				$now,
+				$this->stale_client_cutoff(),
 				$limit
 			)
 		);

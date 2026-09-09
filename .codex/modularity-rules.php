@@ -173,7 +173,7 @@ return array(
 		'src/Intelligence/ContentIndexer.php' => array( 'run_queued_refresh_slice' => 151 ),
 		'src/Workflows/Adapters/ContentPlannerAdapter.php' => array( 'output_schema' => 187 ),
 		'tests/Unit/PluginContentIndexSaveFlowTest.php' => array( 'setUp' => 186 ),
-		'tests/Unit/Connectors/MCP/WordPressAbilitiesPolicyTest.php' => array( 'test_fresh_policy_defaults_only_valid_read_only_abilities_on' => 261 ),
+		'tests/Unit/Connectors/MCP/WordPressAbilitiesPolicyTest.php' => array( 'test_fresh_policy_keeps_third_party_abilities_disabled' => 261 ),
 		'tests/Unit/Workflows/Definitions/WorkflowDefinitionTest.php' => array( 'invalid_definition_provider' => 376 ),
 	),
 	'dependency_rules' => array(

@@ -5553,40 +5553,20 @@ function sameStringSet( firstValue, secondValue ) {
 	return first.every( ( item ) => secondSet.has( item ) );
 }
 
-function normalizedAbilityRows( {
-	abilityCatalog,
-	enabledAbilities,
-	wpAbilities,
-	enabledWpAbilities,
-} ) {
-	const enabledAbilityIds = new Set( enabledAbilities );
+function normalizedAbilityRows( { wpAbilities, enabledWpAbilities } ) {
 	const enabledWpAbilityIds = new Set( enabledWpAbilities );
-	const firstParty = abilityCatalog.map( ( ability ) => ( {
-		id: String( ability.id || '' ),
-		title: String( ability.title || ability.id || 'Untitled ability' ),
-		description: String( ability.description || '' ),
-		group: normalizedAbilityGroup( ability.group ),
-		scope: String( ability.scope || 'content:read' ),
-		source: 'system',
-		sourceLabel: 'System',
-		surfaceType: String( ability.surfaceType || 'ability' ),
-		configurable: Boolean( ability.configurable ),
-		policyState: String( ability.policyState || 'policy-managed' ),
-		readOnly: Boolean( ability.readOnly ),
-		enabled: Boolean( ability.configurable )
-			? enabledAbilityIds.has( ability.id )
-			: Boolean( ability.enabled ),
-		toolName: String( ability.toolName || ability.id || '' ),
-		updated: 'Bundled registry',
-	} ) );
 	const wordpress = wpAbilities.map( ( ability ) => ( {
 		id: String( ability.id || '' ),
 		title: String( ability.title || ability.id || 'WordPress ability' ),
 		description: String( ability.description || '' ),
 		group: normalizedAbilityGroup( ability.category || 'WordPress API' ),
-		scope: 'content:draft',
+		scope: ability.readOnly ? 'Read-only' : 'Can change site',
 		source: 'wordpress',
-		sourceLabel: 'WordPress API',
+		sourceLabel: String(
+			ability.provider ||
+				ability.id?.split( '/' )[ 0 ] ||
+				'Unknown provider'
+		),
 		surfaceType: 'ability',
 		configurable: true,
 		policyState: enabledWpAbilityIds.has( ability.id )
@@ -5601,21 +5581,23 @@ function normalizedAbilityRows( {
 		updated: 'Runtime policy',
 	} ) );
 
-	return [ ...firstParty, ...wordpress ]
+	return wordpress
 		.filter( ( ability ) => ability.id )
-		.sort( sortAbilities );
+		.sort(
+			( first, second ) =>
+				first.sourceLabel.localeCompare( second.sourceLabel ) ||
+				sortAbilities( first, second )
+		);
 }
 
 function AbilityDashboard( {
 	data,
-	enabledAbilities,
 	wpAbilities,
 	enabledWpAbilities,
 	confirmationGroups,
 	confirmationGroupOptions,
 	roleAbilitiesEnabled,
 	hasChanges,
-	onToggleAbility,
 	onToggleWpAbility,
 	onToggleConfirmationGroup,
 	onEnableAll,
@@ -5624,9 +5606,6 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
-	const abilityCatalog = Array.isArray( data.abilityCatalog )
-		? data.abilityCatalog
-		: EMPTY_ARRAY;
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
@@ -5636,7 +5615,7 @@ function AbilityDashboard( {
 		page: 1,
 		perPage: 12,
 		sort: {
-			field: 'ability',
+			field: 'source',
 			direction: 'asc',
 		},
 		fields: [
@@ -5679,12 +5658,10 @@ function AbilityDashboard( {
 	const rows = useMemo(
 		() =>
 			normalizedAbilityRows( {
-				abilityCatalog,
-				enabledAbilities,
 				wpAbilities,
 				enabledWpAbilities,
 			} ),
-		[ abilityCatalog, enabledAbilities, enabledWpAbilities, wpAbilities ]
+		[ enabledWpAbilities, wpAbilities ]
 	);
 	const categoryOptions = useMemo(
 		() =>
@@ -5694,21 +5671,16 @@ function AbilityDashboard( {
 		[ rows ]
 	);
 	const sourceOptions = useMemo(
-		() => [
-			{ value: 'system', label: 'System' },
-			...( wpAbilities.length > 0
-				? [ { value: 'wordpress', label: 'WordPress API' } ]
-				: [] ),
-		],
-		[ wpAbilities.length ]
-	);
-	const surfaceTypeOptions = useMemo(
-		() => [
-			{ value: 'ability', label: 'Ability' },
-			{ value: 'intelligence', label: 'Intelligence' },
-			{ value: 'workflow', label: 'Workflow' },
-		],
-		[]
+		() =>
+			Array.from(
+				new Set( rows.map( ( ability ) => ability.sourceLabel ) )
+			)
+				.sort()
+				.map( ( provider ) => ( {
+					value: provider,
+					label: provider,
+				} ) ),
+		[ rows ]
 	);
 	const fields = useMemo(
 		() => [
@@ -5720,30 +5692,16 @@ function AbilityDashboard( {
 				getValue: ( { item } ) => Boolean( item.enabled ),
 				render: ( { item: ability } ) => (
 					<div className="aculect-ai-companion-ability-toggle-cell">
-						{ ability.configurable ? (
-							<ToggleControl
-								label={ `${ ability.title } active state` }
-								checked={ ability.enabled }
-								onChange={ ( checked ) => {
-									if ( ability.source === 'wordpress' ) {
-										onToggleWpAbility(
-											ability.id,
-											Boolean( checked )
-										);
-										return;
-									}
-
-									onToggleAbility(
-										ability.id,
-										Boolean( checked )
-									);
-								} }
-							/>
-						) : (
-							<span className="aculect-ai-companion-policy-chip is-managed">
-								Managed
-							</span>
-						) }
+						<ToggleControl
+							label={ `${ ability.title } active state` }
+							checked={ ability.enabled }
+							onChange={ ( checked ) =>
+								onToggleWpAbility(
+									ability.id,
+									Boolean( checked )
+								)
+							}
+						/>
 					</div>
 				),
 			},
@@ -5782,14 +5740,13 @@ function AbilityDashboard( {
 							<span className="is-source">
 								{ ability.sourceLabel }
 							</span>
-							<span>{ ability.surfaceType }</span>
 							<span>{ ability.group }</span>
 							{ ability.source === 'wordpress' &&
 								ability.decision === 'default' && (
 									<span>
 										{ ability.defaultEnabled
-											? 'Safe default on'
-											: 'Safe default off' }
+											? 'Default enabled'
+											: 'Default disabled' }
 									</span>
 								) }
 						</div>
@@ -5798,7 +5755,7 @@ function AbilityDashboard( {
 			},
 			{
 				id: 'scope',
-				label: 'Scope',
+				label: 'Effect',
 				enableGlobalSearch: true,
 				getValue: ( { item } ) => item.scope,
 				render: ( { item: ability } ) => (
@@ -5812,7 +5769,6 @@ function AbilityDashboard( {
 								? 'Read-only'
 								: 'Can change site' }
 						</span>
-						<code>{ ability.scope }</code>
 					</div>
 				),
 			},
@@ -5872,20 +5828,12 @@ function AbilityDashboard( {
 				getValue: ( { item } ) => ( item.readOnly ? 'read' : 'write' ),
 			},
 			{
-				id: 'surface_type',
-				label: 'Surface type',
-				elements: surfaceTypeOptions,
+				id: 'source',
+				label: 'Provider',
+				elements: sourceOptions,
 				filterBy: { operators: [ 'isAny' ], isPrimary: true },
 				enableGlobalSearch: true,
-				getValue: ( { item } ) => item.surfaceType,
-			},
-			{
-				id: 'source',
-				label: 'Source',
-				elements: sourceOptions,
-				filterBy: { operators: [ 'isAny' ] },
-				enableGlobalSearch: true,
-				getValue: ( { item } ) => item.source,
+				getValue: ( { item } ) => item.sourceLabel,
 			},
 			{
 				id: 'actions',
@@ -5906,14 +5854,7 @@ function AbilityDashboard( {
 				),
 			},
 		],
-		[
-			categoryOptions,
-			onCopy,
-			onToggleAbility,
-			onToggleWpAbility,
-			sourceOptions,
-			surfaceTypeOptions,
-		]
+		[ categoryOptions, onCopy, onToggleWpAbility, sourceOptions ]
 	);
 	const { data: visibleRows, paginationInfo } = useMemo(
 		() =>
@@ -5945,14 +5886,6 @@ function AbilityDashboard( {
 				name="_wpnonce"
 				value={ data.actions?.saveAbilitiesNonce }
 			/>
-			{ enabledAbilities.map( ( id ) => (
-				<input
-					key={ id }
-					type="hidden"
-					name="enabled_abilities[]"
-					value={ id }
-				/>
-			) ) }
 			{ enabledWpAbilities.map( ( id ) => (
 				<input
 					key={ id }
@@ -5961,6 +5894,7 @@ function AbilityDashboard( {
 					value={ id }
 				/>
 			) ) }
+			<input type="hidden" name="confirmation_groups_present" value="1" />
 			{ confirmationGroups.map( ( group ) => (
 				<input
 					key={ group }
@@ -6020,14 +5954,14 @@ function AbilityDashboard( {
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>About abilities</h3>
 						<p>
-							The catalog separates context intelligence, composed
-							workflows, and independent abilities. WordPress
-							Ability API rows appear only when public abilities
-							are registered on this site.
+							Manage third-party plugin abilities registered
+							through the WordPress Abilities API, organized by
+							provider.
 						</p>
 						<p className="aculect-ai-companion-help-text">
-							Intelligence guides selection. OAuth, role policy,
-							and WordPress permissions control access.
+							WordPress Core and Aculect abilities are enabled by
+							default. OAuth scopes, role policy, and WordPress
+							permissions still control access to every ability.
 						</p>
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">
@@ -6038,14 +5972,14 @@ function AbilityDashboard( {
 								variant="secondary"
 								onClick={ onEnableAll }
 							>
-								Enable all
+								Enable all third-party abilities
 							</Button>
 							<Button
 								type="button"
 								variant="secondary"
 								onClick={ onDisableAll }
 							>
-								Disable all
+								Disable all third-party abilities
 							</Button>
 							<Button
 								type="button"
@@ -7079,16 +7013,6 @@ function SettingsApp() {
 		settingsRestNonce,
 	] );
 
-	const toggleAbility = ( id, checked ) => {
-		setEnabledAbilities( ( current ) => {
-			if ( checked ) {
-				return Array.from( new Set( [ ...current, id ] ) );
-			}
-
-			return current.filter( ( item ) => item !== id );
-		} );
-	};
-
 	const toggleWpAbility = ( abilityId, checked ) => {
 		setEnabledWpAbilities( ( current ) => {
 			if ( checked ) {
@@ -7784,7 +7708,6 @@ function SettingsApp() {
 							<>
 								<AbilityDashboard
 									data={ data }
-									enabledAbilities={ enabledAbilities }
 									wpAbilities={ wpAbilities }
 									enabledWpAbilities={ enabledWpAbilities }
 									confirmationGroups={ confirmationGroups }
@@ -7795,17 +7718,11 @@ function SettingsApp() {
 										roleAbilitiesEnabled
 									}
 									hasChanges={ hasAbilityChanges }
-									onToggleAbility={ toggleAbility }
 									onToggleWpAbility={ toggleWpAbility }
 									onToggleConfirmationGroup={
 										toggleConfirmationGroup
 									}
 									onEnableAll={ () => {
-										setEnabledAbilities(
-											abilities.map(
-												( ability ) => ability.id
-											)
-										);
 										setEnabledWpAbilities(
 											wpAbilities.map(
 												( ability ) => ability.id
@@ -7813,7 +7730,6 @@ function SettingsApp() {
 										);
 									} }
 									onDisableAll={ () => {
-										setEnabledAbilities( [] );
 										setEnabledWpAbilities( [] );
 									} }
 									onManageRoleAbilities={ () =>

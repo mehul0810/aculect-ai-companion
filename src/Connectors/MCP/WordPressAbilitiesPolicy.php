@@ -44,7 +44,7 @@ final class WordPressAbilitiesPolicy {
 			}
 
 			$id = $this->ability_name( $ability );
-			if ( $registrar->is_first_party_read_intelligence( $id ) || $registrar->is_mcp_only_intelligence( $id ) ) {
+			if ( $registrar->is_first_party_read_intelligence( $id ) || $registrar->is_mcp_only_intelligence( $id ) || ( new WordPressAbilitySource() )->is_core( $ability ) ) {
 				continue;
 			}
 
@@ -80,12 +80,9 @@ final class WordPressAbilitiesPolicy {
 		$decisions = $this->saved_decisions();
 		$allowed   = array_keys( array_filter( $decisions ) );
 
-		if ( ! $this->has_legacy_policy() ) {
-			foreach ( $this->abilities() as $ability ) {
-				$id = $this->ability_name( $ability );
-				if ( ! array_key_exists( $id, $decisions ) && $this->is_safe_default( $ability ) ) {
-					$allowed[] = $id;
-				}
+		foreach ( $this->abilities() as $ability ) {
+			if ( ( new WordPressAbilitySource() )->is_core( $ability ) && $this->is_public( $ability ) ) {
+				$allowed[] = $this->ability_name( $ability );
 			}
 		}
 
@@ -193,13 +190,16 @@ final class WordPressAbilitiesPolicy {
 	 * @param object $ability Ability object.
 	 */
 	private function is_allowed_ability( object $ability ): bool {
+		if ( ( new WordPressAbilitySource() )->is_core( $ability ) ) {
+			return $this->is_public( $ability );
+		}
 		$id       = $this->ability_name( $ability );
 		$decision = $this->decision_for( $id );
 		if ( null !== $decision ) {
 			return $decision;
 		}
 
-		return ! $this->has_legacy_policy() && $this->is_safe_default( $ability );
+		return false;
 	}
 
 	/**
@@ -241,7 +241,8 @@ final class WordPressAbilitiesPolicy {
 		$meta      = $this->ability_meta( $ability );
 		$registrar = new WordPressAbilitiesRegistrar();
 
-		return 1 === preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/', $id )
+		return ( new WordPressAbilitySource() )->is_core( $ability )
+			&& 1 === preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/', $id )
 			&& ! $registrar->is_first_party_read_intelligence( $id )
 			&& ! $registrar->is_mcp_only_intelligence( $id )
 			&& $this->is_public( $ability )
@@ -634,7 +635,7 @@ final class WordPressAbilitiesPolicy {
 		if ( function_exists( 'wp_get_abilities' ) ) {
 			foreach ( $this->abilities() as $ability ) {
 				$name = $this->ability_name( $ability );
-				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $name ) && ! $registrar->is_mcp_only_intelligence( $name ) ) {
+				if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $name ) && ! $registrar->is_mcp_only_intelligence( $name ) && ! ( new WordPressAbilitySource() )->is_core( $ability ) ) {
 					$known[] = $name;
 				}
 			}
@@ -668,7 +669,7 @@ final class WordPressAbilitiesPolicy {
 		$registrar = new WordPressAbilitiesRegistrar();
 		foreach ( $this->abilities() as $ability ) {
 			$id = $this->ability_name( $ability );
-			if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $id ) && ! $registrar->is_mcp_only_intelligence( $id ) ) {
+			if ( $this->is_public( $ability ) && ! $registrar->is_first_party_read_intelligence( $id ) && ! $registrar->is_mcp_only_intelligence( $id ) && ! ( new WordPressAbilitySource() )->is_core( $ability ) ) {
 				$ids[] = $id;
 			}
 		}

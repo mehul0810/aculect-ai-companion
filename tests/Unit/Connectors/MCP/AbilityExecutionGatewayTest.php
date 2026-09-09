@@ -75,7 +75,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_denial_precedence_rejects_unknown_and_disabled_tools_before_pause_or_scope(): void {
+	public function test_unknown_tools_and_pause_remain_enforced_despite_legacy_selections(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.list_items' ) );
 		AccessLockdown::set_paused( true );
@@ -107,7 +107,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 
 		self::assertSame( AbilityExecutionGateway::OUTCOME_UNKNOWN_TOOL, $unknown->type );
 		self::assertSame( AbilityExecutionGateway::OUTCOME_TOOL_ERROR, $disabled->type );
-		self::assertSame( 'This ability is disabled in Aculect AI Companion settings.', $disabled->data['message'] ?? '' );
+		self::assertSame( 'AI access is paused in Aculect AI Companion settings.', $disabled->data['message'] ?? '' );
 	}
 
 	public function test_gateway_enforces_role_capability_and_dependency_without_profile_denial(): void {
@@ -163,7 +163,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 						'content' => '<!-- wp:paragraph --><p>Safe block content.</p><!-- /wp:paragraph -->',
 					),
 				),
-				$this->trusted_write_auth( 1 )
+				$this->trusted_write_auth( 2 )
 			)
 		);
 
@@ -171,7 +171,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertSame( AbilityExecutionGateway::OUTCOME_SUCCESS, $profile->type );
 		self::assertSame( 'preview', $profile->data['result']['status'] ?? '' );
 		self::assertSame( 'This ability is not available for the connected WordPress capabilities.', $capability->data['message'] ?? '' );
-		self::assertSame( 'This ability is disabled in Aculect AI Companion settings.', $dependency->data['message'] ?? '' );
+		self::assertSame( 'This ability is not available for the connected WordPress role.', $dependency->data['message'] ?? '' );
 		self::assertSame( 'Original title', get_post( 123 )?->post_title );
 	}
 

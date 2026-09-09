@@ -32,7 +32,7 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_fresh_policy_defaults_only_valid_read_only_abilities_on(): void {
+	public function test_fresh_policy_keeps_third_party_abilities_disabled(): void {
 		$this->register_ability( 'example/read', true, false );
 		$this->register_ability( 'example/write', false, false );
 		$this->register_ability( 'example/destructive', true, true );
@@ -261,8 +261,8 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 
 		$policy = new WordPressAbilitiesPolicy();
 
-		self::assertSame( array( 'example/read' ), $policy->allowed_ids() );
-		self::assertTrue( $policy->is_allowed( 'example/read' ) );
+		self::assertSame( array(), $policy->allowed_ids() );
+		self::assertFalse( $policy->is_allowed( 'example/read' ) );
 		self::assertFalse( $policy->is_allowed( 'example/write' ) );
 		self::assertFalse( $policy->is_allowed( 'example/destructive' ) );
 		self::assertFalse( $policy->is_allowed( 'example/no-permission' ) );
@@ -290,7 +290,7 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/null-constraint' ) );
 
 		$definitions = array_column( $policy->public_definitions(), null, 'id' );
-		self::assertTrue( $definitions['example/read']['defaultEnabled'] );
+		self::assertFalse( $definitions['example/read']['defaultEnabled'] );
 		self::assertSame( 'default', $definitions['example/read']['decision'] );
 		self::assertFalse( $definitions['example/write']['defaultEnabled'] );
 	}
@@ -371,7 +371,7 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		self::assertFalse( $policy->is_allowed( 'example/read' ) );
 	}
 
-	public function test_new_safe_ability_uses_default_after_policy_initialization(): void {
+	public function test_new_safe_ability_remains_disabled_after_policy_initialization(): void {
 		$this->register_ability( 'example/first', true, false );
 		$policy = new WordPressAbilitiesPolicy();
 		$policy->save_allowed_ids( array() );
@@ -379,7 +379,7 @@ final class WordPressAbilitiesPolicyTest extends TestCase {
 		$this->register_ability( 'example/new-read', true, false );
 
 		self::assertFalse( $policy->is_allowed( 'example/first' ) );
-		self::assertTrue( $policy->is_allowed( 'example/new-read' ) );
+		self::assertFalse( $policy->is_allowed( 'example/new-read' ) );
 	}
 
 	public function test_first_party_name_shadow_is_not_allowed_through_third_party_bridge(): void {

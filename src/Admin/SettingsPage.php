@@ -543,20 +543,15 @@ final class SettingsPage {
 	public function handle_save_abilities(): void {
 		$this->guard_action( 'aculect_ai_companion_save_abilities' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['enabled_abilities'] )
-			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_abilities'] ) )
-			: array();
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		( new AbilitiesRegistry() )->save_enabled_ids( $enabled );
-
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$confirmation_groups = isset( $_POST['confirmation_required_groups'] )
 			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['confirmation_required_groups'] ) )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
+		// Third-party saves must not clear controls omitted by a client form.
+		if ( isset( $_POST['confirmation_groups_present'] ) || isset( $_POST['confirmation_required_groups'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce.
+			( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
+		}
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$enabled_wp_abilities = isset( $_POST['enabled_wp_abilities'] )

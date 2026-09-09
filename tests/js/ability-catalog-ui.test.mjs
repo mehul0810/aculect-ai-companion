@@ -7,14 +7,49 @@ const source = await readFile(
 	'utf8'
 );
 
-test( 'abilities UI keeps the complete catalog separate from configurable form state', () => {
-	assert.match( source, /data\.abilityCatalog/ );
-	assert.match( source, /ability\.configurable \? \(/ );
-	assert.match( source, /name="enabled_abilities\[\]"/ );
-	assert.match( source, /label: 'Surface type'/ );
-	assert.match( source, /label: 'Policy state'/ );
+const dashboard = source.slice(
+	source.indexOf( 'function AbilityDashboard(' ),
+	source.indexOf( 'function roleAbilitySearchText(' )
+);
+const normalizeSource = source.slice(
+	source.indexOf( 'function normalizedAbilityRows(' ),
+	source.indexOf( 'function AbilityDashboard(' )
+);
+const normalize = new Function(
+	'normalizedAbilityGroup',
+	'sortAbilities',
+	`${ normalizeSource }; return normalizedAbilityRows;`
+)(
+	( group ) => group,
+	( first, second ) => first.id.localeCompare( second.id )
+);
+
+test( 'third-party rows use provider grouping and preserve enabled choices', () => {
+	const rows = normalize( {
+		wpAbilities: [
+			{ id: 'zeta/read', provider: 'Zeta', readOnly: true },
+			{ id: 'alpha/write' },
+		],
+		enabledWpAbilities: [ 'alpha/write' ],
+		abilityCatalog: [ { id: 'aculect/site' } ],
+	} );
+	assert.deepEqual(
+		rows.map( ( row ) => row.id ),
+		[ 'alpha/write', 'zeta/read' ]
+	);
+	assert.equal( rows[ 0 ].sourceLabel, 'alpha' );
+	assert.equal( rows[ 0 ].enabled, true );
+	assert.equal( rows[ 1 ].enabled, false );
+} );
+
+test( 'abilities form saves all external selections independently of visible rows', () => {
+	assert.match( dashboard, /enabledWpAbilities\.map/ );
+	assert.match( dashboard, /name="enabled_wp_abilities\[\]"/ );
+	assert.match( dashboard, /name="confirmation_required_groups\[\]"/ );
+	assert.match( dashboard, /name="confirmation_groups_present"/ );
+	assert.match( dashboard, /label: 'Provider'/ );
 	assert.doesNotMatch(
-		source,
-		/name="enabled_abilities\[\]"[\s\S]{0,180}abilityCatalog\.map/
+		dashboard,
+		/name="enabled_abilities\[\]"|abilityCatalog|Surface type/
 	);
 } );

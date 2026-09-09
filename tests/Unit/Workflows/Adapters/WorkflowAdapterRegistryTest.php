@@ -345,13 +345,13 @@ final class WorkflowAdapterRegistryTest extends TestCase {
 		self::assertStringNotContainsString( 'never-return-this-secret', (string) wp_json_encode( $guided->to_array() ) );
 	}
 
-	public function test_gateway_enforces_global_role_and_object_capability_policy(): void {
+	public function test_gateway_ignores_legacy_global_selection_and_enforces_role_and_object_policy(): void {
 		$plan     = $this->proposal_plan();
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.list_items' ) );
 		$adapter  = new WordPressReadAdapter( $registry );
 		$disabled = ( new WorkflowAdapterRegistry( array( $adapter ) ) )->execute( $plan, 'read_content', array( 'id' => 123 ), $this->auth() );
-		self::assertSame( WorkflowAdapterResult::CODE_GATEWAY_REJECTED, $disabled->code() );
+		self::assertTrue( $disabled->succeeded() );
 
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 		RoleAbilitiesPolicy::set_editing_enabled( true );

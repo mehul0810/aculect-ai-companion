@@ -53,6 +53,7 @@ final class WordPressAbilitiesBridge {
 			$items[] = $mapped;
 		}
 
+		usort( $items, static fn( array $a, array $b ): int => strcmp( $a['id'], $b['id'] ) );
 		$total = count( $items );
 		$items = array_slice( $items, ( $page - 1 ) * $per_page, $per_page );
 

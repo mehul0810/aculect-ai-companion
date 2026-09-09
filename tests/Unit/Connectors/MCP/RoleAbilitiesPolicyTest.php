@@ -60,7 +60,8 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 	public function test_non_admin_role_defaults_to_read_only_enabled_abilities(): void {
 		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 
-		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
+		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
+		self::assertFalse( $this->policy->is_allowed_for_user( 'content.update_item', 7, $this->registry ) );
 		self::assertFalse( $this->policy->has_explicit_policy( 'editor' ) );
 	}
 
@@ -83,7 +84,7 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 		self::assertSame( 0, $GLOBALS['aculect_ai_companion_count_users_calls'] );
 		self::assertSame( array(), $this->policy->saved_policies( $this->registry ) );
 		self::assertFalse( $this->policy->has_explicit_policy( 'editor' ) );
-		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
+		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
 	}
 
 	public function test_administrator_receives_global_enabled_abilities_and_ignores_saved_policy(): void {
@@ -150,23 +151,25 @@ final class RoleAbilitiesPolicyTest extends TestCase {
 		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_role( 'editor', $this->registry ) );
 	}
 
-	public function test_user_policy_uses_assigned_roles_and_never_exceeds_global_policy(): void {
+	public function test_user_policy_uses_assigned_roles_with_global_defaults(): void {
 		RoleAbilitiesPolicy::set_editing_enabled( true );
 		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 		$this->policy->save_role_policy( 'editor', array( 'content.get_item', 'content.update_item' ), $this->registry );
 		$this->policy->save_role_policy( 'author', array( 'content.update_item', 'media.delete_item' ), $this->registry );
 
 		self::assertSame( array( 'content.get_item', 'content.update_item' ), $this->policy->allowed_ids_for_user( 7, $this->registry ) );
-		self::assertSame( array( 'content.update_item' ), $this->policy->allowed_ids_for_user( 11, $this->registry ) );
-		self::assertFalse( $this->policy->is_allowed_for_user( 'media.delete_item', 11, $this->registry ) );
+		self::assertSame( array( 'content.update_item', 'media.delete_item' ), $this->policy->allowed_ids_for_user( 11, $this->registry ) );
+		self::assertTrue( $this->policy->is_allowed_for_user( 'media.delete_item', 11, $this->registry ) );
+		self::assertFalse( $this->policy->is_allowed_for_user( 'media.delete_item', 7, $this->registry ) );
+		self::assertFalse( $this->policy->is_allowed_for_user( 'content.get_item', 11, $this->registry ) );
 	}
 
 	public function test_missing_invalid_and_roleless_users_use_read_only_default(): void {
 		$this->registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
 
-		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 0, $this->registry ) );
-		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 99, $this->registry ) );
-		self::assertSame( array( 'content.get_item' ), $this->policy->allowed_ids_for_user( 13, $this->registry ) );
+		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_user( 0, $this->registry ) );
+		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_user( 99, $this->registry ) );
+		self::assertSame( $this->read_only_enabled_ids(), $this->policy->allowed_ids_for_user( 13, $this->registry ) );
 	}
 
 	/**

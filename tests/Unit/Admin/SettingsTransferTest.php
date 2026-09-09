@@ -130,7 +130,9 @@ final class SettingsTransferTest extends TestCase {
 
 		self::assertTrue( ( new SettingsTransfer() )->import_payload( $payload ) );
 
-		self::assertSame( array( 'content.get_item' ), ( new AbilitiesRegistry() )->enabled_ids() );
+		self::assertSame( array( 'content.get_item' ), get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES ) );
+		self::assertContains( 'content.update_item', ( new AbilitiesRegistry() )->enabled_ids() );
+		self::assertNotContains( 'unknown.tool', ( new AbilitiesRegistry() )->enabled_ids() );
 		self::assertSame( array( 'wp/example' ), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
 		self::assertSame(
 			array(
@@ -186,7 +188,12 @@ final class SettingsTransferTest extends TestCase {
 		self::assertTrue( ( new SettingsTransfer() )->import_payload( $payload ) );
 		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame( array(), ( new RoleAbilitiesPolicy() )->saved_policies( $registry ) );
-		self::assertSame( array( 'content.get_item' ), ( new RoleAbilitiesPolicy() )->allowed_ids_for_role( 'editor', $registry ) );
+		$allowed = ( new RoleAbilitiesPolicy() )->allowed_ids_for_role( 'editor', $registry );
+		self::assertContains( 'content.get_item', $allowed );
+		self::assertNotContains( 'content.update_item', $allowed );
+		foreach ( $allowed as $id ) {
+			self::assertTrue( $registry->is_read_only( $id ) );
+		}
 	}
 
 	public function test_reset_restores_defaults_without_protocol_storage_cleanup(): void {

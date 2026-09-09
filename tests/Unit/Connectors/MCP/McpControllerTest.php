@@ -929,7 +929,7 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( count( $paged_names ), count( array_unique( $paged_names ) ) );
 	}
 
-	public function test_tools_list_rejects_stale_versioned_cursor_after_policy_change(): void {
+	public function test_tools_list_rejects_stale_versioned_cursor_after_scope_change(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array_keys( $registry->configurable_definitions() ) );
 
@@ -939,7 +939,7 @@ final class McpControllerTest extends TestCase {
 
 		self::assertArrayHasKey( 'nextCursor', $first_page );
 
-		$registry->save_enabled_ids( array( 'content.get_item' ) );
+		$scopes            = array( 'content:read' );
 		$stale_cursor_page = $controller->tools_list_page_for_user( 1, $scopes, (string) $first_page['nextCursor'] );
 		$fresh_first_page  = $controller->tools_list_page_for_user( 1, $scopes );
 
@@ -1762,7 +1762,7 @@ final class McpControllerTest extends TestCase {
 		self::assertFalse( $gateway->is_access_paused( 12 ) );
 	}
 
-	public function test_disabled_tools_are_not_listed_and_are_blocked_for_cached_clients(): void {
+	public function test_legacy_global_selections_do_not_hide_tools_or_block_cached_clients(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.list_items' ) );
 
@@ -1794,26 +1794,26 @@ final class McpControllerTest extends TestCase {
 		self::assertContains( 'content_audit_internal_links', $names );
 		self::assertContains( 'content_batch_status', $names );
 		self::assertContains( 'mcp_learning_inspect_activity', $names );
-		self::assertNotContains( 'content_workflow_create_draft', $names );
-		self::assertNotContains( 'content_update_item', $names );
+		self::assertContains( 'content_workflow_create_draft', $names );
+		self::assertContains( 'content_update_item', $names );
 		self::assertNotContains( 'brand_get_profile', $names );
 		self::assertNotContains( 'blocks_list_available', $names );
 		$gateway = new AbilityExecutionGateway( $registry );
 		foreach ( array( 'content.list_items', 'memory.list', 'memory.save', 'memory.bootstrap', 'workflow_guides.list', 'workflow.route_request', 'workflow_session.start', 'workflow_session.get', 'workflow_session.update', 'search', 'fetch', 'content_search.items', 'content_search.chunks', 'content_find.related', 'content_internal_link.policy', 'content_find.internal_links', 'content_audit.internal_links', 'content_batch.status', 'mcp_learning.inspect_activity' ) as $tool ) {
 			self::assertSame( '', $this->invokePrivate( $gateway, 'tool_call_error', array( $tool ) ) );
 		}
-		self::assertSame( 'tool_disabled', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content_workflow.create_draft' ) ) );
-		self::assertSame( 'tool_disabled', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content.update_item' ) ) );
+		self::assertSame( '', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
+		self::assertSame( '', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content.update_item', 1 ) ) );
 		self::assertSame( 'unknown_tool', $this->invokePrivate( $gateway, 'tool_call_error', array( 'content.not_real' ) ) );
 	}
 
-	public function test_derived_workflow_tool_calls_require_enabled_dependencies(): void {
+	public function test_derived_workflow_tool_calls_require_role_allowed_dependencies(): void {
 		$registry = new AbilitiesRegistry();
-		$registry->save_enabled_ids( array( 'content.get_item' ) );
 
-		self::assertSame( 'tool_disabled', $this->invokePrivate( new AbilityExecutionGateway( $registry ), 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
+		$GLOBALS['aculect_ai_companion_test_users'][1]->roles = array( 'author' );
+		self::assertSame( 'tool_forbidden_for_role', $this->invokePrivate( new AbilityExecutionGateway( $registry ), 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
 
-		$registry->save_enabled_ids( array( 'content.create_item' ) );
+		$GLOBALS['aculect_ai_companion_test_users'][1]->roles = array( 'administrator' );
 
 		self::assertSame( '', $this->invokePrivate( new AbilityExecutionGateway( $registry ), 'tool_call_error', array( 'content_workflow.create_draft', 1 ) ) );
 	}

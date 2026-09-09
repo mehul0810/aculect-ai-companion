@@ -159,8 +159,8 @@ final class McpToolAvailabilityTest extends TestCase {
 			array( 'connection_profile' => McpToolProfiles::PROFILE_READ_ONLY_AUDIT )
 		);
 
-		self::assertFalse( $operations['media']['trash']['available'] );
-		self::assertSame( 'global_disabled', $operations['media']['trash']['blocked_by'] );
+		self::assertTrue( $operations['media']['trash']['available'] );
+		self::assertArrayNotHasKey( 'blocked_by', $operations['media']['trash'] );
 	}
 
 	public function test_custom_profile_guidance_can_only_reference_known_groups(): void {
@@ -260,7 +260,7 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertNotContains( 'content_update_item', $tool_names );
 
 		self::assertFalse( $operations['content']['list_items']['available'] );
-		self::assertSame( 'global_disabled', $operations['content']['list_items']['blocked_by'] );
+		self::assertSame( 'role_policy', $operations['content']['list_items']['blocked_by'] );
 		self::assertSame( 'neither', $operations['content']['list_items']['availability_channels']['summary'] );
 		self::assertNotContains( 'content_list_items', $tool_names );
 	}
@@ -394,20 +394,22 @@ final class McpToolAvailabilityTest extends TestCase {
 		self::assertContains( 'content_workflow_create_draft', $tool_names );
 	}
 
-	public function test_workflow_operations_are_blocked_when_atomic_operations_are_globally_disabled(): void {
-		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'administrator' );
+	public function test_workflow_operations_are_blocked_when_atomic_operations_are_role_denied(): void {
+		$GLOBALS['aculect_ai_companion_test_users'][7]->roles = array( 'editor' );
 
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item' ) );
 
+		RoleAbilitiesPolicy::set_editing_enabled( true );
+		( new RoleAbilitiesPolicy() )->save_role_policy( 'editor', array( 'content.get_item' ), $registry );
 		$operations = ( new McpToolAvailability() )->operations_manifest_for_user( 7, $registry );
 		$tools      = ( new McpController() )->tool_manifest_for_current_user();
 		$tool_names = array_column( $tools['tools'], 'name' );
 
 		self::assertFalse( $operations['content']['create']['available'] );
-		self::assertSame( 'global_disabled', $operations['content']['create']['blocked_by'] );
+		self::assertSame( 'role_policy', $operations['content']['create']['blocked_by'] );
 		self::assertFalse( $operations['workflows']['create_draft']['available'] );
-		self::assertSame( 'global_disabled:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
+		self::assertSame( 'role_policy:content.create_item', $operations['workflows']['create_draft']['blocked_by'] );
 		self::assertNotContains( 'content_workflow_create_draft', $tool_names );
 	}
 

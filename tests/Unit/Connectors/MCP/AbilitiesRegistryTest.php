@@ -102,7 +102,8 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		$this->registry->save_enabled_ids( array( 'content.update_item' ) );
 
-		self::assertSame( array( 'content.update_item' ), $this->registry->enabled_ids() );
+		self::assertSame( array( 'content.update_item' ), get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES ) );
+		self::assertContains( 'content.create_item', $this->registry->enabled_ids() );
 		self::assertContains( 'search', $this->registry->policy_enabled_ids() );
 		self::assertContains( 'content.update_item', $this->registry->policy_enabled_ids() );
 		self::assertTrue( $this->registry->is_enabled( 'search' ) );
@@ -435,7 +436,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content.list_items',
 				'content.create_item',
 			),
-			$this->registry->enabled_ids()
+			get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES )
 		);
 	}
 }

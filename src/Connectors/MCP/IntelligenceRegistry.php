@@ -184,42 +184,34 @@ final class IntelligenceRegistry {
 			$this->build_module(
 				'intelligence.capabilities.get_directory',
 				'MCP Capability Directory',
-				'Explain what this WordPress MCP connection can do now, what workflows are possible, which intelligence surfaces exist, and why blocked capabilities are unavailable.',
-				$this->object_schema(
-					array(
-						'detail' => array(
-							'type'        => 'string',
-							'enum'        => array( 'summary', 'full' ),
-							'description' => 'Use summary for a concise first-session answer or full to include per-operation entries and scopes. Defaults to summary.',
-						),
-					)
-				),
+				'List all available Aculect, WordPress Core and enabled third-party capabilities with their execution tools. Follow catalog.has_more using page to discover every capability.',
+				$this->object_schema( CapabilityCatalog::input_properties() ),
 				static fn ( array $args ): array => $context->capabilities( $args )
 			),
 			$this->build_module(
 				'intelligence.site.get_context',
-				'Site Intelligence',
+				'Get Site Context',
 				'Read stable site, theme, locale, and connector context for this WordPress site.',
 				$this->empty_schema(),
 				static fn (): array => $context->site()
 			),
 			$this->build_module(
 				'intelligence.content.get_context',
-				'Content Intelligence',
+				'Get Content Context',
 				'Read content types, taxonomies, block summaries, pattern summaries, and content-generation constraints.',
 				$this->empty_schema(),
 				static fn (): array => $context->content()
 			),
 			$this->build_module(
 				'intelligence.developer.get_context',
-				'Developer Intelligence',
+				'Get Developer Context',
 				'Read safe WordPress runtime and implementation context without exposing secrets.',
 				$this->empty_schema(),
 				static fn (): array => $context->developer()
 			),
 			$this->build_module(
 				'intelligence.brand.get_context',
-				'Brand Intelligence',
+				'Get Brand Guidance',
 				'Read saved and detected brand guidance for content, design, and media decisions.',
 				$this->empty_schema(),
 				static fn (): array => $context->brand()

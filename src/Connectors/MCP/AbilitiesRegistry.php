@@ -284,12 +284,18 @@ final class AbilitiesRegistry {
 	 * @return list<string>
 	 */
 	public function enabled_ids(): array {
-		$stored = get_option( self::OPTION_ENABLED_ABILITIES, null );
-		if ( ! is_array( $stored ) ) {
-			return array_keys( $this->configurable_definitions() );
-		}
+		// Legacy selections remain stored for rollback; role policy still applies.
+		return array_keys( $this->configurable_definitions() );
+	}
 
-		return $this->sanitize_ids( $stored );
+	/**
+	 * Preserve sanitized legacy selections for exports and rollback only.
+	 *
+	 * @return list<string>
+	 */
+	public function legacy_enabled_ids(): array {
+		$stored = get_option( self::OPTION_ENABLED_ABILITIES, null );
+		return is_array( $stored ) ? $this->sanitize_ids( $stored ) : $this->enabled_ids();
 	}
 
 	/**

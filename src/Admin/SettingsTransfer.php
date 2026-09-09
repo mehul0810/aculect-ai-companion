@@ -48,7 +48,7 @@ final class SettingsTransfer {
 			'pluginVersion' => ACULECT_AI_COMPANION_VERSION,
 			'exportedAt'    => gmdate( 'c' ),
 			'settings'      => array(
-				'enabledAbilities'                => $registry->enabled_ids(),
+				'enabledAbilities'                => $registry->legacy_enabled_ids(),
 				'enabledWpAbilities'              => ( new WordPressAbilitiesPolicy() )->allowed_ids(),
 				'wpAbilityDecisions'              => ( new WordPressAbilitiesPolicy() )->saved_decisions(),
 				'confirmationGroups'              => ( new ToolSafety() )->confirmation_groups(),

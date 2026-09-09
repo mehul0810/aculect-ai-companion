@@ -131,12 +131,20 @@ flows through WordPress ability permissions, Aculect AI Companion ability toggle
 scopes. Keep `wp_abilities_run` treated as write-capable because third-party
 abilities may modify data even when their names are not obvious.
 
-Third-party abilities are default-denied unless they declare public,
-read-only, non-destructive metadata, a callable permission callback, and
-closed, bounded JSON Schemas (including nested objects and arrays). An
-administrator may explicitly enable an otherwise valid public ability through
-the policy screen; that decision does not bypass the WordPress permission
-callback or the MCP/OAuth boundary.
+Public native Core abilities are enabled by default after implementation-origin
+verification. Third-party abilities require administrator enablement in the
+Abilities tab, including read-only registrations. Existing explicit decisions
+are retained. This decision never bypasses WordPress permission callbacks or
+the MCP/OAuth boundary. Provider namespaces are grouping labels, not proof of
+ownership. Aculect capabilities are enabled by default through their direct
+tools and are not managed in this tab.
+
+`intelligence_capabilities_get_directory` returns a canonical `catalog` with
+`items`, `total`, `page`, `per_page`, and `has_more`. Request subsequent pages
+to enumerate authorized Aculect tools and enabled native abilities, without
+duplicate Aculect mirrors. Each entry gives its execution route and required
+scopes; native execution can remain unavailable when `wp_abilities_run` is not
+authorized. Existing directory fields and tool aliases remain compatible.
 
 ## Content Surface
 

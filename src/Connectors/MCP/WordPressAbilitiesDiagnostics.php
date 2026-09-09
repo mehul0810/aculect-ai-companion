@@ -142,6 +142,8 @@ final class WordPressAbilitiesDiagnostics {
 
 		return $base + array(
 			'registered'          => true,
+			'execution_route'     => 'direct_mcp',
+			'bridge_allowed'      => ( new WordPressAbilitiesPolicy() )->is_allowed( $name ),
 			'public'              => $public,
 			'allowed'             => $allowed,
 			'capable'             => $capable,

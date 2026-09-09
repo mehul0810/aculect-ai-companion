@@ -131,7 +131,7 @@ Internal-link intelligence is intentionally assistant-first. Use `content_intern
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
-This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
+WordPress and Aculect capabilities are enabled by default, subject to connection scopes, role permissions and runtime safety checks. The Abilities tab lists public third-party WordPress abilities grouped by provider, with explicit enable/disable controls. Plugins adopting the WordPress Abilities API need no curated integration. The capability directory's paginated `catalog` lists available direct tools and enabled native abilities with their execution routes; Aculect mirrors appear only once. Existing third-party decisions and legacy first-party selections are retained for rollback.
 
 ### WebMCP Progressive Enhancement
 

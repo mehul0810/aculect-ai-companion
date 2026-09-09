@@ -1,11 +1,12 @@
 <?php
-
 /**
  * WordPress Abilities API contract smoke test.
  *
  * Run with WP-CLI inside a real WordPress environment. The unit suite uses
  * WordPress-light stubs and intentionally cannot prove registration lifecycle,
  * permission callbacks, or core schema handling.
+ *
+ * @package Aculect\AICompanion
  */
 
 if ( ! function_exists( 'wp_get_abilities' ) ) {
@@ -71,4 +72,15 @@ foreach ( $expected as $name ) {
 	}
 }
 
-WP_CLI::success( sprintf( 'Validated %d Aculect WordPress Abilities.', count( $expected ) ) );
+$source  = new \Aculect\AICompanion\Connectors\MCP\WordPressAbilitySource();
+$policy  = new \Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy();
+$managed = array_column( $policy->public_definitions(), 'id' );
+foreach ( array( 'core/get-site-info', 'core/get-environment-info' ) as $core_id ) {
+	if ( ! isset( $by_name[ $core_id ] ) ) {
+		continue; // Native baseline varies across supported WordPress versions.
+	}
+	if ( ! $source->is_core( $by_name[ $core_id ] ) || ! $policy->is_allowed( $core_id ) || in_array( $core_id, $managed, true ) ) {
+		WP_CLI::error( 'Native Core ability default or management classification failed: ' . $core_id );
+	}
+}
+WP_CLI::success( sprintf( 'Validated %d Aculect WordPress Abilities and native Core defaults.', count( $expected ) ) );

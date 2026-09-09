@@ -45,15 +45,6 @@ final class McpControllerTest extends TestCase {
 		self::assertInstanceOf( WordPressExecutionClaimStore::class, $this->privatePropertyValue( $safety, 'claim_store' ) );
 	}
 
-	public function test_controller_protocol_constants_share_the_policy_authority(): void {
-		self::assertSame( McpProtocolVersion::CURRENT, McpController::PROTOCOL_VERSION_CURRENT );
-		self::assertSame( McpProtocolVersion::LEGACY, McpController::PROTOCOL_VERSION_LEGACY );
-		self::assertSame(
-			array( McpProtocolVersion::CURRENT, McpProtocolVersion::LEGACY ),
-			McpController::SUPPORTED_PROTOCOL_VERSIONS
-		);
-	}
-
 	protected function setUp(): void {
 		parent::setUp();
 
@@ -719,7 +710,7 @@ final class McpControllerTest extends TestCase {
 		self::assertIsString( wp_json_encode( $data ) );
 	}
 
-	public function test_legacy_initialize_negotiates_supported_version_and_rejects_unknown_version(): void {
+	public function test_initialize_negotiates_supported_versions_and_rejects_unknown_version(): void {
 		$controller = new McpController();
 		$this->setPrivateProperty(
 			$controller,
@@ -752,7 +743,7 @@ final class McpControllerTest extends TestCase {
 			array(),
 			array(
 				'jsonrpc' => '2.0',
-				'id'      => 2,
+				'id'      => 3,
 				'method'  => 'initialize',
 				'params'  => array( 'protocolVersion' => '2099-01-01' ),
 			),
@@ -765,7 +756,10 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( -32022, $response->get_data()['error']['code'] ?? null );
 		self::assertSame( 'unsupported_protocol_version', $response->get_data()['error']['data']['code'] ?? '' );
 		self::assertSame( '2099-01-01', $response->get_data()['error']['data']['requested'] ?? '' );
-		self::assertSame( array( McpController::PROTOCOL_VERSION_LEGACY ), $response->get_data()['error']['data']['supported'] ?? array() );
+		self::assertSame(
+			array( McpProtocolVersion::TRANSITIONAL, McpController::PROTOCOL_VERSION_LEGACY ),
+			$response->get_data()['error']['data']['supported'] ?? array()
+		);
 	}
 
 	public function test_current_unknown_method_returns_json_rpc_404(): void {

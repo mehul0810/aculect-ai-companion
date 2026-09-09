@@ -21,9 +21,9 @@ final class McpController {
 	public const PROTOCOL_VERSION_LEGACY     = McpProtocolVersion::LEGACY;
 	public const SUPPORTED_PROTOCOL_VERSIONS = array(
 		self::PROTOCOL_VERSION_CURRENT,
+		McpProtocolVersion::TRANSITIONAL,
 		self::PROTOCOL_VERSION_LEGACY,
 	);
-
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
 	 *
@@ -548,14 +548,14 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
-				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+				if ( ! McpProtocolVersion::uses_initialize( $this->request_protocol_version ) ) {
 					return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
 				}
 
 				$requested_version = isset( $body['params']['protocolVersion'] ) && is_string( $body['params']['protocolVersion'] )
 					? $body['params']['protocolVersion']
 					: self::PROTOCOL_VERSION_LEGACY;
-				if ( self::PROTOCOL_VERSION_LEGACY !== $requested_version ) {
+				if ( ! McpProtocolVersion::uses_initialize( $requested_version ) ) {
 					return new WP_REST_Response(
 						$this->rpc_error(
 							$id,
@@ -564,14 +564,14 @@ final class McpController {
 							array(
 								'code'      => 'unsupported_protocol_version',
 								'requested' => $requested_version,
-								'supported' => array( self::PROTOCOL_VERSION_LEGACY ),
+								'supported' => array( McpProtocolVersion::TRANSITIONAL, self::PROTOCOL_VERSION_LEGACY ),
 							)
 						),
 						400
 					);
 				}
 				$started_at = microtime( true );
-				$result     = $this->initialize_payload( self::PROTOCOL_VERSION_LEGACY );
+				$result     = $this->initialize_payload( $requested_version );
 				$this->record_timeline_event(
 					'initialize',
 					array(

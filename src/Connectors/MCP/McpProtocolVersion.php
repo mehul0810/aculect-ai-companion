@@ -12,8 +12,9 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class McpProtocolVersion {
 
-	public const LEGACY  = '2025-06-18';
-	public const CURRENT = '2026-07-28';
+	public const LEGACY       = '2025-06-18';
+	public const TRANSITIONAL = '2025-11-25';
+	public const CURRENT      = '2026-07-28';
 
 	/**
 	 * Check whether a version is known to the internal policy layer.
@@ -21,6 +22,18 @@ final class McpProtocolVersion {
 	 * @param string $version Protocol version.
 	 */
 	public static function is_known( string $version ): bool {
-		return in_array( $version, array( self::LEGACY, self::CURRENT ), true );
+		return in_array( $version, array( self::LEGACY, self::TRANSITIONAL, self::CURRENT ), true );
+	}
+
+	/**
+	 * Return whether the protocol revision uses the initialize lifecycle.
+	 *
+	 * The 2026 stateless discovery revision intentionally removed initialize,
+	 * while the preceding supported revisions retain that lifecycle.
+	 *
+	 * @param string $version Protocol version.
+	 */
+	public static function uses_initialize( string $version ): bool {
+		return in_array( $version, array( self::LEGACY, self::TRANSITIONAL ), true );
 	}
 }

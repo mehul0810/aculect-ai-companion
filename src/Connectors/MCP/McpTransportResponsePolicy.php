@@ -96,8 +96,8 @@ final class McpTransportResponsePolicy {
 	}
 
 	/**
-	 * Serve a minimal authenticated SSE probe for clients that require one
-	 * before using Streamable HTTP POST requests.
+	 * Serve an authenticated SSE probe for clients that open the optional
+	 * Streamable HTTP GET channel before issuing JSON-RPC POST requests.
 	 *
 	 * @param bool             $served  Whether the REST request was already served.
 	 * @param WP_REST_Response $response REST response.
@@ -139,9 +139,14 @@ final class McpTransportResponsePolicy {
 	}
 
 	/**
-	 * Produce a valid SSE comment large enough to cross common proxy buffers.
+	 * Produce a valid, empty SSE event large enough to cross common proxy
+	 * buffers. A comment alone is not dispatched as an event by SSE clients,
+	 * so it cannot safely prime a reconnecting Streamable HTTP client.
 	 */
 	public static function sse_probe_payload(): string {
-		return ': ' . str_repeat( ' ', 2048 ) . "\n\n";
+		return 'id: ' . bin2hex( random_bytes( 16 ) ) . "\n"
+			. "retry: 1000\n"
+			. "data:\n"
+			. ': ' . str_repeat( ' ', 2048 ) . "\n\n";
 	}
 }

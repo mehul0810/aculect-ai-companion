@@ -20,6 +20,7 @@ final class McpResultPolicyTest extends TestCase {
 		);
 
 		self::assertSame( $result, ( new McpResultPolicy() )->shape( McpProtocolVersion::LEGACY, 'tools/list', $result ) );
+		self::assertSame( $result, ( new McpResultPolicy() )->shape( McpProtocolVersion::TRANSITIONAL, 'tools/list', $result ) );
 	}
 
 	public function test_current_cacheable_results_use_conservative_cache_contracts(): void {

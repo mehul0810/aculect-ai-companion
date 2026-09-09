@@ -62,12 +62,12 @@ final class McpControllerTransportHeadersTest extends TestCase {
 		self::assertFalse( McpTransportResponsePolicy::is_sse_probe_response( new WP_REST_Response( null, 200 ), $request ) );
 	}
 
-	public function test_sse_probe_payload_is_a_valid_sse_comment(): void {
+	public function test_sse_probe_payload_primes_a_reconnectable_sse_stream(): void {
 		$payload = McpTransportResponsePolicy::sse_probe_payload();
 
-		self::assertStringStartsWith( ': ', $payload );
+		self::assertMatchesRegularExpression( '/^id: [a-f0-9]{32}\\nretry: 1000\\ndata:\\n: /', $payload );
 		self::assertStringEndsWith( "\n\n", $payload );
-		self::assertGreaterThanOrEqual( 2050, strlen( $payload ) );
+		self::assertGreaterThanOrEqual( 2080, strlen( $payload ) );
 	}
 
 	public function test_current_sse_probe_response_uses_the_requested_protocol_header(): void {

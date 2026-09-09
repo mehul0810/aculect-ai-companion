@@ -26,7 +26,7 @@ final class McpResultPolicy {
 	 * @throws \InvalidArgumentException When the protocol version is unknown.
 	 */
 	public function shape( string $protocol_version, string $method, array $result, bool $authorization_independent = false ): array {
-		if ( McpProtocolVersion::LEGACY === $protocol_version ) {
+		if ( McpProtocolVersion::uses_initialize( $protocol_version ) ) {
 			return $result;
 		}
 

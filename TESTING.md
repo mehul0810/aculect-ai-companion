@@ -34,6 +34,8 @@ without `wp_get_abilities()` report an explicit skip.
 - Non-live release proof may use fixture-backed smoke coverage when secrets are unavailable.
 - Live admin/browser proof still requires the owner-provided smoke inputs documented in `scripts/smoke/README.md`.
 - MCP discovery changes must prove deterministic `initialize` and paginated `tools/list` behavior.
+- MCP transport changes also require `npm run smoke:mcp-sdk` against the target using locally configured OAuth smoke credentials. The SDK performs initialization, the initialized notification, paginated discovery, and a read-only `site_get_info` call. The result identifies the failed stage and HTTP status without printing bearer tokens or tool payloads. Unit tests, synthetic HTTP fixtures, and a successful GET response do not prove a hosted connector works.
+- Distinguish Streamable HTTP from legacy HTTP+SSE when diagnosing fallback. An optional GET 405 is valid for Streamable HTTP; a legacy SSE client expects an `endpoint` event. Capture the failing exchange before changing transport behavior or adding protocol versions.
 - High-risk write-path changes must include confirmation, capability, rollback, and audit-log validation.
 
 ## PR Reporting

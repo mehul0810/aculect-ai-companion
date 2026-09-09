@@ -751,15 +751,8 @@ final class McpControllerTest extends TestCase {
 			'/aculect-ai-companion/v1/mcp'
 		);
 		$response = $controller->handle_rpc( $unknown );
-		self::assertInstanceOf( \WP_REST_Response::class, $response );
-		self::assertSame( 400, $response->get_status() );
-		self::assertSame( -32022, $response->get_data()['error']['code'] ?? null );
-		self::assertSame( 'unsupported_protocol_version', $response->get_data()['error']['data']['code'] ?? '' );
-		self::assertSame( '2099-01-01', $response->get_data()['error']['data']['requested'] ?? '' );
-		self::assertSame(
-			array( McpProtocolVersion::TRANSITIONAL, McpController::PROTOCOL_VERSION_LEGACY ),
-			$response->get_data()['error']['data']['supported'] ?? array()
-		);
+		self::assertIsArray( $response );
+		self::assertSame( McpProtocolVersion::TRANSITIONAL, $response['result']['protocolVersion'] ?? '' );
 	}
 
 	public function test_current_unknown_method_returns_json_rpc_404(): void {

@@ -79,4 +79,41 @@ final class McpProtocolCompatibilityTest extends TestCase {
 
 		return $controller;
 	}
+
+	public function test_initialize_fallback_can_complete_the_negotiated_lifecycle(): void {
+		foreach ( array( '2025-03-26', '2024-11-05', '2099-01-01' ) as $version ) {
+			$controller = $this->authenticated_controller();
+			$response   = $controller->handle_rpc(
+				new WP_REST_Request(
+					array(),
+					array(),
+					array(
+						'jsonrpc' => '2.0',
+						'id'      => 1,
+						'method'  => 'initialize',
+						'params'  => array( 'protocolVersion' => $version ),
+					),
+					'POST',
+					'/aculect-ai-companion/v1/mcp'
+				)
+			);
+			self::assertIsArray( $response );
+			self::assertSame( McpProtocolVersion::TRANSITIONAL, $response['result']['protocolVersion'] );
+			$notification = $controller->handle_rpc(
+				new WP_REST_Request(
+					array(),
+					array( 'mcp-protocol-version' => $response['result']['protocolVersion'] ),
+					array(
+						'jsonrpc' => '2.0',
+						'method'  => 'notifications/initialized',
+					),
+					'POST',
+					'/aculect-ai-companion/v1/mcp'
+				)
+			);
+			self::assertInstanceOf( \WP_REST_Response::class, $notification );
+			self::assertSame( 202, $notification->get_status() );
+			self::assertNull( $notification->get_data() );
+		}
+	}
 }

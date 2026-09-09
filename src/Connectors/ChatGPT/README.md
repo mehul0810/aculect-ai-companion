@@ -61,6 +61,11 @@ Current rule:
 
 Regression check: inspect `tools/list` and confirm every returned `tools[].name` matches `^[a-zA-Z0-9_-]{1,64}$`.
 
+Client or host-specific prefixes that appear in connector traces are owned by
+the host namespace; Aculect only controls the safe public tool name returned by
+`tools/list`. Do not infer a server-side arbitrary-prefix feature from those
+trace names.
+
 Intelligence context `operations` entries are structured as `{ ability_id, tool, available, blocked_by, required_scopes, read_only }`. Admin/global ability settings and role policy decide whether an operation is callable. Intelligence should choose among `available: true` tools; unavailable entries exist to explain blocked workflows without implying WordPress data is missing.
 
 When Claude appears to see fewer tools than ChatGPT, export the MCP tool manifest from `AI Companion > Diagnostics` or from the active connection's actions menu. The export captures the exact `tools/list` payload for the selected WordPress user plus `ability_policy` details:
@@ -80,6 +85,14 @@ The primary setup had to be reduced to one field: the MCP endpoint. Showing clie
 Unauthenticated MCP requests must advertise OAuth through a bearer challenge and metadata. ChatGPT uses that to discover the authorization server and DCR endpoint.
 
 The protected resource metadata needs to point to the canonical MCP resource and supported authorization servers. The authorization server metadata needs to advertise authorization, token, registration, supported scopes, PKCE `S256`, and resource indicators.
+
+Authorization responses include the RFC 9207 `iss` parameter on both success
+and error redirects, and discovery advertises
+`authorization_response_iss_parameter_supported: true`. Public metadata is
+short-lived (`max-age=300`) so connector caches do not pin endpoint changes for
+an hour. Token authentication advertises only the methods implemented by this
+server: `none`, `client_secret_basic`, and `client_secret_post`; CIMD is
+disabled and `private_key_jwt` is intentionally not supported.
 
 ### Dynamic Client Registration Must Not 429 Valid Requests
 

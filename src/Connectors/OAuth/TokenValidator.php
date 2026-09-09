@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\OAuth;
 
-use Exception;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Server\ResourceServerFactory;
-use League\OAuth2\Server\Exception\OAuthServerException;
 use WP_REST_Request;
 
 /**
  * Validates bearer tokens and maps them to MCP request context.
  */
 final class TokenValidator {
+
+	private const FAILURE_NONE                      = 'none';
+	private const FAILURE_RESOURCE_MISMATCH         = 'resource_mismatch';
+	private const FAILURE_TOKEN_VALIDATION          = 'token_validation_failed';
+	private const FAILURE_TOKEN_CONTEXT_MISSING     = 'token_context_missing';
+	private const FAILURE_CONTEXT_RESOURCE_MISMATCH = 'context_resource_mismatch';
+
+	private string $failure_reason = self::FAILURE_NONE;
 
 	/**
 	 * Authenticate a REST request with the OAuth resource server.
@@ -23,12 +29,15 @@ final class TokenValidator {
 	 * @return array<string, mixed>
 	 */
 	public function authenticate( WP_REST_Request $request ): array {
+		$this->failure_reason = self::FAILURE_NONE;
+
 		try {
 			$requested_resource = (string) $request->get_param( 'resource' );
 			if ( '' === $requested_resource ) {
 				$requested_resource = (string) $request->get_header( 'resource' );
 			}
 			if ( '' !== $requested_resource && Helpers::mcp_resource() !== Helpers::normalize_resource( $requested_resource ) ) {
+				$this->failure_reason = self::FAILURE_RESOURCE_MISMATCH;
 				return array();
 			}
 
@@ -37,13 +46,27 @@ final class TokenValidator {
 			$context   = ( new AccessTokenRepository() )->context_from_token_id( $token_id );
 
 			if ( array() === $context || Helpers::mcp_resource() !== Helpers::normalize_resource( (string) ( $context['resource'] ?? '' ) ) ) {
+				$this->failure_reason = array() === $context
+					? self::FAILURE_TOKEN_CONTEXT_MISSING
+					: self::FAILURE_CONTEXT_RESOURCE_MISMATCH;
 				return array();
 			}
 
 			return $context;
-		} catch ( OAuthServerException | Exception ) {
+		} catch ( \Throwable ) {
+			$this->failure_reason = self::FAILURE_TOKEN_VALIDATION;
 			return array();
 		}
+	}
+
+	/**
+	 * Return a fixed, non-secret reason for the latest failed validation.
+	 *
+	 * This is intended for bounded diagnostics only; callers must not expose it
+	 * in OAuth or MCP responses.
+	 */
+	public function failure_reason(): string {
+		return $this->failure_reason;
 	}
 
 	/**

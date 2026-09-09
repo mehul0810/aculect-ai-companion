@@ -644,7 +644,7 @@ final class McpControllerTest extends TestCase {
 
 		$legacy = new WP_REST_Request( array(), array(), array( 'method' => 'tools/list' ), 'POST', '/aculect-ai-companion/v1/mcp' );
 		self::assertNull( $this->transportErrorForRequest( $controller, $legacy ) );
-		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $this->privateProperty( $controller, 'request_protocol_version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $this->privateProperty( $controller, 'request_protocol_version' ) );
 	}
 
 	public function test_early_body_rejections_cannot_inherit_or_lose_request_protocol_state(): void {
@@ -661,7 +661,7 @@ final class McpControllerTest extends TestCase {
 		$legacy_response  = $controller->handle_rpc( $legacy_oversized );
 		self::assertInstanceOf( \WP_REST_Response::class, $legacy_response );
 		self::assertArrayNotHasKey( '_meta', $legacy_response->get_data() );
-		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $this->privateProperty( $controller, 'request_protocol_version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $this->privateProperty( $controller, 'request_protocol_version' ) );
 
 		$current_oversized = new WP_REST_Request(
 			array(),
@@ -680,14 +680,14 @@ final class McpControllerTest extends TestCase {
 
 		$permission = $controller->check_mcp_permission( $legacy_oversized );
 		self::assertInstanceOf( \WP_Error::class, $permission );
-		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $this->privateProperty( $controller, 'request_protocol_version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $this->privateProperty( $controller, 'request_protocol_version' ) );
 		$filtered = $controller->filter_mcp_auth_response(
 			new \WP_REST_Response( array( 'code' => 'request_body_too_large' ), 413 ),
 			null,
 			$legacy_oversized
 		);
 		self::assertInstanceOf( \WP_REST_Response::class, $filtered );
-		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $filtered->header( 'MCP-Protocol-Version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $filtered->header( 'MCP-Protocol-Version' ) );
 	}
 
 	public function test_unsupported_version_error_data_remains_valid_utf8(): void {
@@ -1019,7 +1019,7 @@ final class McpControllerTest extends TestCase {
 	public function test_initialize_payload_includes_chatgpt_workflow_instructions(): void {
 		$result = $this->invokePrivate( new McpController(), 'initialize_payload' );
 
-		self::assertSame( '2025-06-18', $result['protocolVersion'] );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $result['protocolVersion'] );
 		self::assertSame( 'Aculect AI Companion MCP', $result['serverInfo']['name'] );
 		self::assertIsString( $result['instructions'] );
 		self::assertStringContainsString( 'workflow_route_request', $result['instructions'] );
@@ -2037,7 +2037,7 @@ final class McpControllerTest extends TestCase {
 			self::assertTrue( $response->get_data()['result']['isError'] ?? false );
 		}
 
-		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $legacy_response->header( 'MCP-Protocol-Version' ) );
+		self::assertSame( McpController::PROTOCOL_VERSION_INITIAL, $legacy_response->header( 'MCP-Protocol-Version' ) );
 		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $current_response->header( 'MCP-Protocol-Version' ) );
 		self::assertArrayNotHasKey( 'io.modelcontextprotocol/serverInfo', $legacy_response->get_data()['result']['_meta'] ?? array() );
 		self::assertArrayHasKey( 'io.modelcontextprotocol/serverInfo', $current_response->get_data()['result']['_meta'] ?? array() );

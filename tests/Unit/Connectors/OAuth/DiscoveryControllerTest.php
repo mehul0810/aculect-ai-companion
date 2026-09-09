@@ -37,8 +37,11 @@ final class DiscoveryControllerTest extends TestCase {
 		self::assertSame( TokenEndpointAuthMethod::supported(), $resource_metadata['token_endpoint_auth_methods_supported'] );
 		self::assertSame( TokenEndpointAuthMethod::supported(), $auth_metadata['token_endpoint_auth_methods_supported'] );
 		self::assertFalse( $auth_metadata['client_id_metadata_document_supported'] );
+		self::assertTrue( $auth_metadata['authorization_response_iss_parameter_supported'] );
 		self::assertSame( Helpers::issuer(), $auth_metadata['issuer'] );
 		self::assertSame( array( Helpers::issuer() ), $resource_metadata['authorization_servers'] );
+		self::assertSame( 'public, max-age=300', $controller->protected_resource_metadata()->header( 'Cache-Control' ) );
+		self::assertSame( 'public, max-age=300', $controller->authorization_server_metadata()->header( 'Cache-Control' ) );
 	}
 
 	public function test_reverse_proxy_external_root_is_the_sole_canonical_issuer(): void {

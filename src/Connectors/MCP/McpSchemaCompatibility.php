@@ -43,7 +43,7 @@ final class McpSchemaCompatibility {
 			return $this->error( 'unsupported_protocol_version', 'The schema protocol version is not supported.' );
 		}
 
-		if ( McpProtocolVersion::LEGACY === $protocol_version ) {
+		if ( in_array( $protocol_version, array( McpProtocolVersion::INITIAL, McpProtocolVersion::LEGACY ), true ) ) {
 			return $this->prepare_legacy( $schema );
 		}
 
@@ -74,7 +74,7 @@ final class McpSchemaCompatibility {
 	}
 
 	/**
-	 * Preserve the exact existing schema value for legacy routing.
+	 * Preserve the exact existing schema value for initialize-era routing.
 	 *
 	 * Legacy compatibility is intentionally not subjected to current-dialect
 	 * validation or canonicalization. The live transport already owns the

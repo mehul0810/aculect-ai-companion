@@ -70,7 +70,7 @@ final class McpControllerTransportHeadersTest extends TestCase {
 		self::assertGreaterThanOrEqual( 2080, strlen( $payload ) );
 	}
 
-	public function test_current_sse_probe_response_uses_the_requested_protocol_header(): void {
+	public function test_current_protocol_rejects_the_removed_sse_get_transport(): void {
 		$controller = new McpController();
 		$this->set_private_property(
 			$controller,
@@ -97,7 +97,7 @@ final class McpControllerTransportHeadersTest extends TestCase {
 		$response = $controller->filter_mcp_auth_response( $controller->describe( $request ), null, $request );
 
 		self::assertInstanceOf( WP_REST_Response::class, $response );
-		self::assertSame( 200, $response->get_status() );
+		self::assertSame( 405, $response->get_status() );
 		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $response->header( 'MCP-Protocol-Version' ) );
 	}
 

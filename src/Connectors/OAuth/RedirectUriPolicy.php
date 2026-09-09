@@ -137,11 +137,11 @@ final class RedirectUriPolicy {
 		}
 
 		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
-		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$host   = trim( strtolower( (string) ( $parts['host'] ?? '' ) ), '[]' );
 		$path   = (string) ( $parts['path'] ?? '' );
 		$port   = isset( $parts['port'] ) ? (int) $parts['port'] : null;
 
-		if ( 'http' !== $scheme || ! in_array( $host, array( 'localhost', '127.0.0.1' ), true ) || '' === $path ) {
+		if ( 'http' !== $scheme || ! in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true ) || '' === $path ) {
 			return null;
 		}
 

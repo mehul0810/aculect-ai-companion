@@ -157,21 +157,28 @@ issuance before this persistence path revokes superseded sessions.
 
 The endpoint is stateless: JSON-RPC messages use POST, while an authenticated
 GET that explicitly accepts `text/event-stream` receives a short priming SSE
-event for clients that open the optional Streamable HTTP listener. That event
-does not create a server session or deliver server-initiated notifications.
-Other GET requests return HTTP 405. The endpoint supports MCP `2026-07-28`,
-`2025-11-25`, and `2025-06-18`. Requests that omit
-`MCP-Protocol-Version` use the legacy `2025-06-18` contract for compatibility
-with existing clients. Requests using `2026-07-28` must send matching
+event only for the pre-`2026-07-28` compatibility revisions. Current
+`2026-07-28` requests are POST-only and return HTTP 405 for GET, as required by
+the current Streamable HTTP transport. The priming event does not create a
+server session or deliver server-initiated notifications. The endpoint
+supports MCP `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26`.
+Requests that omit `MCP-Protocol-Version` use the `2025-03-26` compatibility
+contract. Requests using `2026-07-28` must send matching
 `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`,
 `resources/read`, and `prompts/get`) `Mcp-Name` headers plus the required
 per-request protocol and client-capability metadata. `server/discover`
 advertises the supported versions. The `2026-07-28` contract does not use the
-initialize lifecycle; `2025-11-25` and `2025-06-18` retain
+initialize lifecycle; the earlier revisions retain
 `initialize` / `notifications/initialized`. An initialize request for another
 version receives a supported initialize-era version; the client must accept
-that version before continuing. This does not enable legacy HTTP+SSE transport:
-the endpoint does not advertise an `endpoint` event or a separate message channel.
+that version before continuing. The endpoint does not advertise an `endpoint`
+event or a separate message channel for server notifications. Per-connection
+ability and role policy can make `tools/list` vary by authenticated user;
+`listChanged: false` means the server does not provide change notifications,
+so clients should re-list after reconnecting or after an administrator changes
+ability policy. Current-protocol tool cursors that are invalid or stale
+restart at page zero and include the non-secret `_meta.aculect/cursorError`
+diagnostic (`invalid_cursor` or `stale_cursor`).
 Current-protocol discovery and
 static resource lists include public cache hints, while authorization-dependent
 tool lists and resource reads remain private with a zero TTL. Current responses
@@ -181,4 +188,21 @@ Browser requests are accepted only from the exact public connector origin or
 origins explicitly approved with the
 `aculect-ai-companion/connectors/allowed_mcp_origins` filter; wildcards are not
 accepted. JSON-RPC notifications require the same OAuth authentication as other
-MCP requests. The server does not advertise list-change notifications.
+MCP requests. The server does not advertise list-change notifications or
+MCP `prompts/*` methods; prompts are intentionally outside the current
+product capability boundary. OAuth discovery advertises RFC 9207 `iss`
+responses, which are appended to both success and error authorization
+redirects. The server supports `none` and
+`client_secret_basic`/`client_secret_post` token authentication for registered
+clients; `private_key_jwt` and client metadata document (CIMD) authentication
+are intentionally unsupported and must not be assumed from public metadata.
+
+Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
+default. Hosts behind a verified reverse proxy may supply a stable, non-secret
+fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`
+filter; the plugin does not trust forwarded headers automatically.
+
+If a deployed `/oauth/authorize` request returns an `Unknown OAuth client`
+response while the REST authorize route works, treat that as a deployment or
+rewrite/source-attribution mismatch: verify the deployed package, canonical
+issuer, root rewrite, and active plugin version before changing OAuth code.

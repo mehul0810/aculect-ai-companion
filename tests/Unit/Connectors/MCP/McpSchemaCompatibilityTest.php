@@ -45,12 +45,15 @@ final class McpSchemaCompatibilityTest extends TestCase {
 		$compatibility = new McpSchemaCompatibility();
 		$current       = $compatibility->prepare( array(), McpProtocolVersion::CURRENT );
 		$legacy        = $compatibility->prepare( array(), McpProtocolVersion::LEGACY );
+		$initial       = $compatibility->prepare( array(), McpProtocolVersion::INITIAL );
 
 		self::assertTrue( $current['valid'] );
 		self::assertInstanceOf( \stdClass::class, $current['schema'] );
 		self::assertSame( '{}', wp_json_encode( $current['schema'] ) );
 		self::assertTrue( $legacy['valid'] );
 		self::assertSame( array(), $legacy['schema'] );
+		self::assertTrue( $initial['valid'] );
+		self::assertSame( array(), $initial['schema'] );
 	}
 
 	public function test_current_empty_schema_maps_remain_json_objects_on_the_wire(): void {

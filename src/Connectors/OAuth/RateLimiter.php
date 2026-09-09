@@ -109,19 +109,27 @@ final class RateLimiter {
 	 * @param string $action Limiter bucket.
 	 */
 	private function bucket_key( string $action ): string {
-		return 'aculect_ai_companion_rl_' . sanitize_key( $action ) . '_' . substr( hash( 'sha256', $this->client_fingerprint() ), 0, 32 );
+		return 'aculect_ai_companion_rl_' . sanitize_key( $action ) . '_' . substr( hash( 'sha256', $this->client_fingerprint( $action ) ), 0, 32 );
 	}
 
 	/**
 	 * Return a stable fingerprint for the requesting client.
 	 *
-	 * Uses REMOTE_ADDR only: proxy headers are spoofable and must not widen
-	 * or bypass the limit. Hosts that terminate TLS upstream can use the
-	 * rate-limit filters to adjust budgets instead.
+	 * Uses REMOTE_ADDR by default: proxy headers are spoofable and must not
+	 * widen or bypass the limit. A host operator may provide a trusted,
+	 * non-secret fingerprint through the filter when a reverse proxy has a
+	 * verified client identity; the plugin never reads forwarded headers.
+	 *
+	 * @param string $action Limiter bucket.
 	 */
-	private function client_fingerprint(): string {
+	private function client_fingerprint( string $action = '' ): string {
 		// phpcs:ignore WordPressVIPMinimum.Variables.ServerVariables.UserControlledHeaders -- REMOTE_ADDR is set by the server, not the client.
-		$address = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$address          = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$filtered_address = apply_filters( 'aculect_ai_companion_rate_limit_client_fingerprint', $address, $action );
+		if ( is_scalar( $filtered_address ) ) {
+			$address = (string) $filtered_address;
+		}
+		$address = substr( sanitize_text_field( $address ), 0, 128 );
 
 		return '' === $address ? 'unknown' : $address;
 	}

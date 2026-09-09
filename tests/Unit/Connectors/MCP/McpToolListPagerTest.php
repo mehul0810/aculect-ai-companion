@@ -109,6 +109,7 @@ final class McpToolListPagerTest extends TestCase {
 
 		self::assertSame( array_slice( $tools, 0, 60 ), $invalid['tools'] );
 		self::assertFalse( $invalid['_meta']['aculect/cursorValid'] );
+		self::assertSame( 'invalid_cursor', $invalid['_meta']['aculect/cursorError'] );
 		self::assertSame( 0, $invalid['_meta']['aculect/pageOffset'] );
 		self::assertSame( self::FIXTURE_CURSOR, $invalid['nextCursor'] );
 
@@ -118,6 +119,7 @@ final class McpToolListPagerTest extends TestCase {
 		$fresh                     = $pager->page( $changed );
 
 		self::assertFalse( $stale['_meta']['aculect/cursorValid'] );
+		self::assertSame( 'stale_cursor', $stale['_meta']['aculect/cursorError'] );
 		self::assertSame( 0, $stale['_meta']['aculect/pageOffset'] );
 		self::assertSame( $fresh['tools'], $stale['tools'] );
 		self::assertSame( $fresh['nextCursor'], $stale['nextCursor'] );

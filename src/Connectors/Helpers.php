@@ -215,7 +215,7 @@ final class Helpers {
 		}
 
 		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
-		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$host   = trim( strtolower( (string) ( $parts['host'] ?? '' ) ), '[]' );
 		$path   = (string) ( $parts['path'] ?? '' );
 
 		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) || array_key_exists( 'fragment', $parts ) ) {

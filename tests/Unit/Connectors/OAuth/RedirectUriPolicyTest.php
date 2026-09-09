@@ -56,6 +56,7 @@ final class RedirectUriPolicyTest extends TestCase {
 			'localhost adds ephemeral port'        => array( 'http://localhost/callback', 'http://localhost:3118/callback' ),
 			'localhost replaces registered port'   => array( 'http://localhost:7777/callback', 'http://localhost:3118/callback' ),
 			'ipv4 loopback adds ephemeral port'    => array( 'http://127.0.0.1/callback', 'http://127.0.0.1:49152/callback' ),
+			'ipv6 loopback adds ephemeral port'    => array( 'http://[::1]/callback', 'http://[::1]:49152/callback' ),
 			'query remains exact while port moves' => array( 'http://localhost/callback?flow=oauth', 'http://localhost:8123/callback?flow=oauth' ),
 		);
 	}
@@ -78,15 +79,14 @@ final class RedirectUriPolicyTest extends TestCase {
 	 */
 	public static function rejected_redirect_variants(): array {
 		return array(
-			'loopback host changes'        => array( 'http://localhost/callback', 'http://127.0.0.1:3118/callback' ),
-			'lookalike host'               => array( 'http://localhost/callback', 'http://localhost.example:3118/callback' ),
-			'path changes'                 => array( 'http://localhost/callback', 'http://localhost:3118/other' ),
-			'query changes'                => array( 'http://localhost/callback?flow=one', 'http://localhost:3118/callback?flow=two' ),
-			'query is added'               => array( 'http://localhost/callback', 'http://localhost:3118/callback?flow=two' ),
-			'fragment is added'            => array( 'http://localhost/callback', 'http://localhost:3118/callback#code' ),
-			'user information is added'    => array( 'http://localhost/callback', 'http://user@localhost:3118/callback' ),
-			'non-loopback HTTP host'       => array( 'http://example.com/callback', 'http://example.com:3118/callback' ),
-			'IPv6 port is not generalized' => array( 'http://[::1]/callback', 'http://[::1]:3118/callback' ),
+			'loopback host changes'     => array( 'http://localhost/callback', 'http://127.0.0.1:3118/callback' ),
+			'lookalike host'            => array( 'http://localhost/callback', 'http://localhost.example:3118/callback' ),
+			'path changes'              => array( 'http://localhost/callback', 'http://localhost:3118/other' ),
+			'query changes'             => array( 'http://localhost/callback?flow=one', 'http://localhost:3118/callback?flow=two' ),
+			'query is added'            => array( 'http://localhost/callback', 'http://localhost:3118/callback?flow=two' ),
+			'fragment is added'         => array( 'http://localhost/callback', 'http://localhost:3118/callback#code' ),
+			'user information is added' => array( 'http://localhost/callback', 'http://user@localhost:3118/callback' ),
+			'non-loopback HTTP host'    => array( 'http://example.com/callback', 'http://example.com:3118/callback' ),
 		);
 	}
 }

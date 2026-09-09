@@ -48,6 +48,9 @@ final class McpToolListPager {
 				'aculect/cursorValid'         => $cursor_data['fingerprint_matches'],
 			),
 		);
+		if ( '' !== $cursor_data['error'] ) {
+			$result['_meta']['aculect/cursorError'] = $cursor_data['error'];
+		}
 
 		if ( $offset + count( $page ) < count( $tools ) ) {
 			$result['nextCursor']                           = $this->encode_cursor( $offset + count( $page ), $fingerprint );
@@ -126,13 +129,14 @@ final class McpToolListPager {
 	 *
 	 * @param string $cursor      Opaque cursor value.
 	 * @param string $fingerprint Current full tools/list fingerprint.
-	 * @return array{offset:int, fingerprint_matches:bool}
+	 * @return array{offset:int, fingerprint_matches:bool, error:string}
 	 */
 	private function cursor_data( string $cursor, string $fingerprint ): array {
 		if ( '' === $cursor ) {
 			return array(
 				'offset'              => 0,
 				'fingerprint_matches' => true,
+				'error'               => '',
 			);
 		}
 
@@ -143,6 +147,7 @@ final class McpToolListPager {
 			return array(
 				'offset'              => 0,
 				'fingerprint_matches' => false,
+				'error'               => 'invalid_cursor',
 			);
 		}
 
@@ -151,12 +156,14 @@ final class McpToolListPager {
 			return array(
 				'offset'              => absint( $payload['o'] ?? 0 ),
 				'fingerprint_matches' => hash_equals( $fingerprint, (string) ( $payload['fp'] ?? '' ) ),
+				'error'               => hash_equals( $fingerprint, (string) ( $payload['fp'] ?? '' ) ) ? '' : 'stale_cursor',
 			);
 		}
 
 		return array(
 			'offset'              => max( 0, absint( $decoded ) ),
 			'fingerprint_matches' => true,
+			'error'               => '',
 		);
 	}
 }

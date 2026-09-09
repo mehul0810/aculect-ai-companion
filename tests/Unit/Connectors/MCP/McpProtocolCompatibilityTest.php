@@ -22,9 +22,13 @@ require_once dirname( __DIR__, 3 ) . '/fixtures/mcp-request-stubs.php';
 final class McpProtocolCompatibilityTest extends TestCase {
 
 	public function test_transitional_protocol_is_known_and_uses_initialize(): void {
+		self::assertTrue( McpProtocolVersion::is_known( McpProtocolVersion::INITIAL ) );
+		self::assertTrue( McpProtocolVersion::uses_initialize( McpProtocolVersion::INITIAL ) );
+		self::assertTrue( McpProtocolVersion::uses_get_transport( McpProtocolVersion::INITIAL ) );
 		self::assertTrue( McpProtocolVersion::is_known( McpProtocolVersion::TRANSITIONAL ) );
 		self::assertTrue( McpProtocolVersion::uses_initialize( McpProtocolVersion::TRANSITIONAL ) );
 		self::assertFalse( McpProtocolVersion::uses_initialize( McpProtocolVersion::CURRENT ) );
+		self::assertFalse( McpProtocolVersion::uses_get_transport( McpProtocolVersion::CURRENT ) );
 	}
 
 	public function test_transitional_initialize_negotiates_the_exact_requested_version(): void {
@@ -81,7 +85,25 @@ final class McpProtocolCompatibilityTest extends TestCase {
 	}
 
 	public function test_initialize_fallback_can_complete_the_negotiated_lifecycle(): void {
-		foreach ( array( '2025-03-26', '2024-11-05', '2099-01-01' ) as $version ) {
+		self::assertSame(
+			McpProtocolVersion::INITIAL,
+			$this->authenticated_controller()->handle_rpc(
+				new WP_REST_Request(
+					array(),
+					array(),
+					array(
+						'jsonrpc' => '2.0',
+						'id'      => 1,
+						'method'  => 'initialize',
+						'params'  => array( 'protocolVersion' => McpProtocolVersion::INITIAL ),
+					),
+					'POST',
+					'/aculect-ai-companion/v1/mcp'
+				)
+			)['result']['protocolVersion']
+		);
+
+		foreach ( array( '2024-11-05', '2099-01-01' ) as $version ) {
 			$controller = $this->authenticated_controller();
 			$response   = $controller->handle_rpc(
 				new WP_REST_Request(

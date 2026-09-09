@@ -18,11 +18,13 @@ use WP_REST_Server;
 final class McpController {
 
 	public const PROTOCOL_VERSION_CURRENT    = McpProtocolVersion::CURRENT;
+	public const PROTOCOL_VERSION_INITIAL    = McpProtocolVersion::INITIAL;
 	public const PROTOCOL_VERSION_LEGACY     = McpProtocolVersion::LEGACY;
 	public const SUPPORTED_PROTOCOL_VERSIONS = array(
 		self::PROTOCOL_VERSION_CURRENT,
 		McpProtocolVersion::TRANSITIONAL,
 		self::PROTOCOL_VERSION_LEGACY,
+		self::PROTOCOL_VERSION_INITIAL,
 	);
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
@@ -31,7 +33,7 @@ final class McpController {
 	 */
 	private array $request_auth = array();
 
-	private string $request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+	private string $request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
 	private AbilityExecutionGateway $execution_gateway;
 
 	/**
@@ -93,12 +95,13 @@ final class McpController {
 			return new \WP_Error( $transport_error['code'], $transport_error['message'], array( 'status' => $transport_error['status'] ) );
 		}
 
-		$auth = ( new TokenValidator() )->authenticate( $request );
+		$token_validator = new TokenValidator();
+		$auth            = $token_validator->authenticate( $request );
 		if ( array() === $auth ) {
 			( new Logger() )->warning(
 				'mcp.invalid_token',
 				'MCP request did not include a valid bearer token.',
-				$this->log_context( $this->rpc_method_from_request( $request ), '', 'invalid_token' ),
+				$this->log_context( $this->rpc_method_from_request( $request ), '', 'invalid_token', '', array(), $token_validator->failure_reason() ),
 				$request,
 				401
 			);
@@ -198,7 +201,7 @@ final class McpController {
 				);
 			}
 
-			$this->request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+			$this->request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
 			return null;
 		}
 
@@ -367,7 +370,7 @@ final class McpController {
 	 * @param WP_REST_Request $request REST request.
 	 */
 	private function reset_request_protocol_version( WP_REST_Request $request ): void {
-		$this->request_protocol_version = self::PROTOCOL_VERSION_LEGACY;
+		$this->request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
 		$header                         = (string) $request->get_header( 'mcp-protocol-version' );
 		$version                        = $this->decoded_mcp_header( $header );
 		if ( null !== $version && in_array( $version, self::SUPPORTED_PROTOCOL_VERSIONS, true ) ) {
@@ -465,11 +468,13 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->reset_request_protocol_version( $request );
+
 		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
-		return McpTransportResponsePolicy::get_response( $request );
+		return McpTransportResponsePolicy::get_response( $request, $this->request_protocol_version );
 	}
 
 	/**
@@ -554,7 +559,7 @@ final class McpController {
 
 				$requested_version = isset( $body['params']['protocolVersion'] ) && is_string( $body['params']['protocolVersion'] )
 					? $body['params']['protocolVersion']
-					: self::PROTOCOL_VERSION_LEGACY;
+					: self::PROTOCOL_VERSION_INITIAL;
 				if ( ! McpProtocolVersion::uses_initialize( $requested_version ) ) {
 					// Initialization negotiates a supported alternative; subsequent headers remain strict.
 					$requested_version = McpProtocolVersion::TRANSITIONAL;
@@ -649,10 +654,11 @@ final class McpController {
 	 * @param string   $provider        Provider slug.
 	 * @param string   $error_code      Optional error code.
 	 * @param string   $tool            Optional internal tool ID.
-	 * @param string[] $required_scopes Optional required scopes.
+	 * @param string[] $required_scopes  Optional required scopes.
+	 * @param string   $auth_failure_reason Fixed non-secret authentication failure category.
 	 * @return array<string, mixed>
 	 */
-	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array() ): array {
+	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array(), string $auth_failure_reason = '' ): array {
 		$context = array(
 			'provider'   => $provider,
 			'rpc_method' => $method,
@@ -665,6 +671,10 @@ final class McpController {
 
 		if ( array() !== $required_scopes ) {
 			$context['required_scopes'] = array_values( array_map( 'strval', $required_scopes ) );
+		}
+
+		if ( '' !== $auth_failure_reason ) {
+			$context['auth_failure_reason'] = $auth_failure_reason;
 		}
 
 		return $context;
@@ -817,7 +827,7 @@ final class McpController {
 	 * @param string $protocol_version Negotiated protocol version.
 	 * @return array<string, mixed>
 	 */
-	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_LEGACY ): array {
+	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_INITIAL ): array {
 		return array(
 			'protocolVersion' => $protocol_version,
 			'serverInfo'      => $this->server_info(),

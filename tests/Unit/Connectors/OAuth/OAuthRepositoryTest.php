@@ -478,7 +478,7 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( ConnectionAccessLevel::WRITE, $wpdb->inserts[0]['data']['access_level'] );
 	}
 
-	public function test_new_access_token_revokes_older_matching_provider_sessions(): void {
+	public function test_new_access_token_revokes_older_sessions_for_the_same_oauth_client_only(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
 
@@ -494,21 +494,18 @@ final class OAuthRepositoryTest extends TestCase {
 
 		self::assertSame( array( 'insert', 'query', 'query' ), $wpdb->operations );
 		self::assertSame( 'chatgpt-client-2', $wpdb->inserts[0]['data']['client_id'] );
-		self::assertStringContainsString( 'current_client.provider <> %s', $wpdb->prepared[0]['query'] );
-		self::assertStringContainsString( 'clients.provider = current_client.provider', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.client_id = %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.token_hash <> %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'COALESCE(access_tokens.user_id, 0) = %d', $wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
-		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][5] );
-		self::assertSame( hash( 'sha256', 'new-chatgpt-token' ), $wpdb->prepared[0]['args'][7] );
-		self::assertSame( 7, $wpdb->prepared[0]['args'][8] );
-		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $wpdb->prepared[0]['args'][9] );
-		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][14] );
+		self::assertSame( hash( 'sha256', 'new-chatgpt-token' ), $wpdb->prepared[0]['args'][4] );
+		self::assertSame( 7, $wpdb->prepared[0]['args'][5] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $wpdb->prepared[0]['args'][6] );
+		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][7] );
 		self::assertStringContainsString( 'WHERE access_tokens.revoked = 1', $wpdb->prepared[1]['query'] );
 	}
 
-	public function test_revoke_superseded_active_sessions_deduplicates_known_providers_but_not_generic_clients(): void {
+	public function test_revoke_superseded_active_sessions_matches_the_same_oauth_client(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
 
@@ -517,12 +514,9 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 1, $revoked );
 		self::assertSame( array( 'query', 'query' ), $wpdb->operations );
 		self::assertStringContainsString( 'newer_refresh.expires_at > older_refresh.expires_at', $wpdb->prepared[0]['query'] );
-		self::assertStringContainsString( 'newer_client.provider = older_client.provider', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'newer.client_id = older.client_id', $wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
-		self::assertSame( '2026-06-01 00:00:00', $wpdb->prepared[0]['args'][7] );
-		self::assertSame( '2026-06-01 00:00:00', $wpdb->prepared[0]['args'][8] );
-		self::assertSame( 25, $wpdb->prepared[0]['args'][13] );
+		self::assertSame( 25, $wpdb->prepared[0]['args'][7] );
 		self::assertStringContainsString( 'WHERE access_tokens.revoked = 1', $wpdb->prepared[1]['query'] );
 	}
 

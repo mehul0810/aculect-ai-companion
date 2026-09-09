@@ -16,6 +16,12 @@ use WP_REST_Server;
 final class DiscoveryController {
 
 	/**
+	 * Keep public discovery cache entries short enough that endpoint and
+	 * capability changes do not remain pinned in connector caches for an hour.
+	 */
+	private const PUBLIC_METADATA_CACHE_MAX_AGE = 300;
+
+	/**
 	 * Register root-level well-known rewrite rules.
 	 */
 	public function add_rewrite_rules(): void {
@@ -126,7 +132,7 @@ final class DiscoveryController {
 			),
 			200
 		);
-		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Cache-Control', 'public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		$response->header( 'Access-Control-Allow-Origin', '*' );
 
 		return $response;
@@ -168,13 +174,14 @@ final class DiscoveryController {
 				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 				'code_challenge_methods_supported'      => array( 'S256' ),
 				'client_id_metadata_document_supported' => false,
+				'authorization_response_iss_parameter_supported' => true,
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_indicators_supported'         => true,
 				'protected_resources'                   => array( Helpers::mcp_resource() ),
 			),
 			200
 		);
-		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Cache-Control', 'public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		$response->header( 'Access-Control-Allow-Origin', '*' );
 
 		return $response;
@@ -210,7 +217,7 @@ final class DiscoveryController {
 
 		status_header( $response->get_status() );
 		header( 'Content-Type: application/json; charset=' . get_option( 'blog_charset' ) );
-		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Cache-Control: public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		header( 'Access-Control-Allow-Origin: *' );
 		echo wp_json_encode( $response->get_data(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
 		exit;

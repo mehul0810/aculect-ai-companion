@@ -76,10 +76,11 @@ final class McpTransportResponsePolicy {
 	/**
 	 * Return the authenticated GET response for the MCP endpoint.
 	 *
-	 * @param WP_REST_Request $request REST request.
+	 * @param WP_REST_Request $request          REST request.
+	 * @param string          $protocol_version Resolved MCP protocol version.
 	 */
-	public static function get_response( WP_REST_Request $request ): WP_REST_Response {
-		if ( self::accepts_sse( $request ) ) {
+	public static function get_response( WP_REST_Request $request, string $protocol_version = McpProtocolVersion::INITIAL ): WP_REST_Response {
+		if ( self::accepts_sse( $request ) && McpProtocolVersion::uses_get_transport( $protocol_version ) ) {
 			return new WP_REST_Response( null, 200 );
 		}
 

@@ -699,32 +699,6 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( McpController::PROTOCOL_VERSION_LEGACY, $filtered->header( 'MCP-Protocol-Version' ) );
 	}
 
-	public function test_current_get_response_uses_the_requested_protocol_header(): void {
-		$controller = new McpController();
-		$this->setPrivateProperty(
-			$controller,
-			'request_auth',
-			array(
-				'user_id' => 1,
-				'scopes'  => array( 'content:read' ),
-			)
-		);
-		$request = new WP_REST_Request(
-			array(),
-			array( 'mcp-protocol-version' => McpController::PROTOCOL_VERSION_CURRENT ),
-			array(),
-			'GET',
-			'/aculect-ai-companion/v1/mcp'
-		);
-		self::assertNull( $this->transportErrorForRequest( $controller, $request ) );
-
-		$response = $controller->describe( $request );
-		$filtered = $controller->filter_mcp_auth_response( $response, null, $request );
-		self::assertInstanceOf( \WP_REST_Response::class, $filtered );
-		self::assertSame( 405, $filtered->get_status() );
-		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $filtered->header( 'MCP-Protocol-Version' ) );
-	}
-
 	public function test_unsupported_version_error_data_remains_valid_utf8(): void {
 		$controller  = new McpController();
 		$unsupported = str_repeat( 'a', 63 ) . '😀';

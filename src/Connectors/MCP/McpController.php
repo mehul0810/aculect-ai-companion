@@ -69,6 +69,7 @@ final class McpController {
 
 		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
 		add_filter( 'rest_allowed_cors_headers', array( McpTransportResponsePolicy::class, 'filter_cors_request_headers' ) );
+		add_filter( 'rest_pre_serve_request', array( McpTransportResponsePolicy::class, 'serve_sse_probe' ), 20, 4 );
 	}
 
 	/**
@@ -464,21 +465,11 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
-		unset( $request );
-
 		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
-		$response = new WP_REST_Response(
-			array(
-				'code'    => 'mcp_get_not_supported',
-				'message' => 'This stateless MCP endpoint accepts POST requests only.',
-			),
-			405
-		);
-		$response->header( 'Allow', 'POST' );
-		return $response;
+		return McpTransportResponsePolicy::get_response( $request );
 	}
 
 	/**

@@ -32,19 +32,73 @@ final class McpControllerTransportHeadersTest extends TestCase {
 				'scopes'  => array( 'content:read' ),
 			)
 		);
-		$request = new WP_REST_Request(
+		$request  = new WP_REST_Request(
 			array(),
-			array( 'mcp-protocol-version' => McpController::PROTOCOL_VERSION_LEGACY ),
+			array(
+				'accept'               => 'application/json, text/event-stream',
+				'mcp-protocol-version' => McpController::PROTOCOL_VERSION_LEGACY,
+			),
 			array(),
 			'GET',
 			'/aculect-ai-companion/v1/mcp'
 		);
+		$response = $controller->filter_mcp_auth_response( $controller->describe( $request ), null, $request );
+
+		self::assertInstanceOf( WP_REST_Response::class, $response );
+		self::assertSame( 200, $response->get_status() );
+		$this->assert_never_cacheable( $response );
+		self::assertTrue( McpTransportResponsePolicy::is_sse_probe_response( $response, $request ) );
+	}
+
+	public function test_sse_probe_requires_an_event_stream_accept_header(): void {
+		$request = new WP_REST_Request(
+			array(),
+			array( 'accept' => 'application/json' ),
+			array(),
+			'GET',
+			'/aculect-ai-companion/v1/mcp'
+		);
+		self::assertFalse( McpTransportResponsePolicy::accepts_sse( $request ) );
+		self::assertFalse( McpTransportResponsePolicy::is_sse_probe_response( new WP_REST_Response( null, 200 ), $request ) );
+	}
+
+	public function test_sse_probe_payload_is_a_valid_sse_comment(): void {
+		$payload = McpTransportResponsePolicy::sse_probe_payload();
+
+		self::assertStringStartsWith( ': ', $payload );
+		self::assertStringEndsWith( "\n\n", $payload );
+		self::assertGreaterThanOrEqual( 2050, strlen( $payload ) );
+	}
+
+	public function test_current_sse_probe_response_uses_the_requested_protocol_header(): void {
+		$controller = new McpController();
+		$this->set_private_property(
+			$controller,
+			'request_auth',
+			array(
+				'user_id' => 1,
+				'scopes'  => array( 'content:read' ),
+			)
+		);
+		$request         = new WP_REST_Request(
+			array(),
+			array(
+				'accept'               => 'text/event-stream, application/json',
+				'mcp-protocol-version' => McpController::PROTOCOL_VERSION_CURRENT,
+			),
+			array(),
+			'GET',
+			'/aculect-ai-companion/v1/mcp'
+		);
+		$transport_error = new \ReflectionMethod( $controller, 'transport_error' );
+
+		self::assertNull( $transport_error->invoke( $controller, $request ) );
 
 		$response = $controller->filter_mcp_auth_response( $controller->describe( $request ), null, $request );
 
 		self::assertInstanceOf( WP_REST_Response::class, $response );
-		self::assertSame( 405, $response->get_status() );
-		$this->assert_never_cacheable( $response );
+		self::assertSame( 200, $response->get_status() );
+		self::assertSame( McpController::PROTOCOL_VERSION_CURRENT, $response->header( 'MCP-Protocol-Version' ) );
 	}
 
 	public function test_oauth_challenge_is_never_cacheable(): void {

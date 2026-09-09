@@ -43,13 +43,34 @@ export async function probe( url, token, timeout = 15000 ) {
 			} );
 			const headers = new Headers( init.headers );
 			const method = init.body ? JSON.parse( init.body ).method : null;
-			events.push( {
+			const event = {
 				method: init.method || 'GET',
 				rpc: method,
 				protocol: headers.get( 'mcp-protocol-version' ),
 				status: response.status,
 				contentType: response.headers.get( 'content-type' ),
-			} );
+			};
+			if ( event.contentType?.includes( 'application/json' ) ) {
+				const payload = await response
+					.clone()
+					.json()
+					.catch( () => null );
+				const rpcError = payload?.error;
+				const rpcData = rpcError?.data;
+				const result = payload?.result;
+				if ( rpcError && typeof rpcError === 'object' ) {
+					event.rpcErrorCode =
+						typeof rpcError.code === 'number'
+							? rpcError.code
+							: null;
+					event.rpcErrorDataCode =
+						typeof rpcData?.code === 'string' ? rpcData.code : null;
+				}
+				if ( result?.isError === true ) {
+					event.resultIsError = true;
+				}
+			}
+			events.push( event );
 			return response;
 		},
 	} );

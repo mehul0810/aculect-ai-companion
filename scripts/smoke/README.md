@@ -93,3 +93,24 @@ npm run smoke:mcp-live-client
 The smoke calls `initialize` twice, follows every `tools/list` page twice, and records only counts, pagination status, and SHA-256 fingerprints. When `ACULECT_MCP_SMOKE_RECONNECT_PROOF_URL` is provided, it repeats `initialize` and full `tools/list` collection after the external client reconnect/cache-refresh proof step. Use `ACULECT_MCP_SMOKE_RECONNECT_WAIT_MS` when the tester needs a pause before that post-refresh check.
 
 The summary never writes bearer tokens or raw tool payloads. If reconnect proof is omitted, the baseline deterministic discovery check still runs and `summary.json` marks the external reconnect/cache-refresh proof as deferred.
+
+## MCP Local Wire Smoke
+
+Before using a live bearer token, run the no-secret local wire harness:
+
+```bash
+npm run smoke:mcp-local
+```
+
+The harness starts PHP's built-in server with the repository's WordPress-light
+fixtures, injects one deterministic fixture principal, and drives the actual
+`McpController` through HTTP using the pinned MCP SDK. It verifies the same
+`initialize` → `notifications/initialized` → paginated `tools/list` →
+`site_get_info` path as the live smoke, plus a negative bearer check. It does
+not contact WordPress, OAuth, Cloudflare, or an external client. The summary is
+written to `artifacts/smoke/mcp-local/latest/summary.json` and includes safe
+stage/status/error-code metadata and server-side fixture events.
+
+This harness is the first gate for transport, registry, tool execution, and
+fixture-runtime failures. Only after it passes should `npm run smoke:mcp-sdk`
+be used against a configured live endpoint.

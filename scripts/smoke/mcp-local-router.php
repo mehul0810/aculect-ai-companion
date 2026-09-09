@@ -95,19 +95,30 @@ function aculect_local_mcp_method( mixed $body ): string {
  * Extract a response body and status from the WordPress response double.
  *
  * @param mixed $response Controller response.
- * @return array{body:mixed,status:int}
+ * @return array{body:mixed,status:int,headers:array<string,string>}
  */
 function aculect_local_mcp_response( mixed $response ): array {
 	if ( $response instanceof WP_REST_Response ) {
+		$headers = method_exists( $response, 'get_headers' ) ? $response->get_headers() : array();
+		if ( array() === $headers ) {
+			try {
+				$header_property = new ReflectionProperty( $response, 'headers' );
+				$headers         = $header_property->getValue( $response );
+			} catch ( Throwable ) {
+				$headers = array();
+			}
+		}
 		return array(
-			'body'   => $response->get_data(),
-			'status' => $response->get_status(),
+			'body'    => $response->get_data(),
+			'status'  => $response->get_status(),
+			'headers' => is_array( $headers ) ? array_map( 'strval', $headers ) : array(),
 		);
 	}
 
 	return array(
-		'body'   => $response,
-		'status' => 200,
+		'body'    => $response,
+		'status'  => 200,
+		'headers' => array(),
 	);
 }
 
@@ -179,21 +190,32 @@ if ( preg_match( '/^Bearer\s+(.+)$/i', (string) ( $headers['authorization'] ?? '
 $request = new WP_REST_Request( array(), $headers, $body, 'POST', ACULECT_LOCAL_MCP_PATH, $raw_body );
 
 try {
-	$response    = aculect_local_mcp_response( $controller->handle_rpc( $request ) );
-	$data        = $response['body'];
-	$http_status = $response['status'];
-	$protocol    = (string) ( $headers['mcp-protocol-version'] ?? '' );
+	$response     = aculect_local_mcp_response( $controller->handle_rpc( $request ) );
+	$data         = $response['body'];
+	$http_status  = $response['status'];
+	$header_names = array_map( 'strtolower', array_keys( $response['headers'] ) );
+	foreach ( $response['headers'] as $name => $value ) {
+		header( $name . ': ' . $value );
+	}
+	$protocol = (string) ( $headers['mcp-protocol-version'] ?? '' );
 	if ( is_array( $data ) && isset( $data['result']['protocolVersion'] ) && is_string( $data['result']['protocolVersion'] ) ) {
 		$protocol = $data['result']['protocolVersion'];
 	}
 	$challenge = $data['result']['_meta']['mcp/www_authenticate'][0] ?? null;
-	if ( is_string( $challenge ) && '' !== $challenge ) {
+	if ( is_string( $challenge ) && '' !== $challenge && ! in_array( 'www-authenticate', $header_names, true ) ) {
 		header( 'WWW-Authenticate: ' . $challenge );
 	}
-	if ( '' !== $protocol ) {
+	if ( '' !== $protocol && ! in_array( 'mcp-protocol-version', $header_names, true ) ) {
 		header( 'MCP-Protocol-Version: ' . $protocol );
 	}
-	header( 'Cache-Control: no-store' );
+	if ( ! in_array( 'cache-control', $header_names, true ) ) {
+		header( 'Cache-Control: no-store, private, no-cache, max-age=0, must-revalidate' );
+		header( 'Pragma: no-cache' );
+		header( 'Expires: 0' );
+		header( 'CDN-Cache-Control: no-store' );
+		header( 'Surrogate-Control: no-store' );
+		header( 'X-Accel-Expires: 0' );
+	}
 	if ( null === $data ) {
 		http_response_code( $http_status );
 		aculect_local_mcp_log(
@@ -220,7 +242,12 @@ try {
 } catch ( Throwable $exception ) {
 	http_response_code( 500 );
 	header( 'Content-Type: application/json; charset=utf-8' );
-	header( 'Cache-Control: no-store' );
+	header( 'Cache-Control: no-store, private, no-cache, max-age=0, must-revalidate' );
+	header( 'Pragma: no-cache' );
+	header( 'Expires: 0' );
+	header( 'CDN-Cache-Control: no-store' );
+	header( 'Surrogate-Control: no-store' );
+	header( 'X-Accel-Expires: 0' );
 	echo wp_json_encode(
 		array(
 			'jsonrpc' => '2.0',

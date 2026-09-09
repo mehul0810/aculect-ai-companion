@@ -78,6 +78,11 @@ test( 'SDK completes initialization, discovery and call when optional GET return
 		'tools/list',
 		'tools/call',
 	] );
+	assert.equal( result.warnings.length, 0 );
+	assert.equal(
+		result.events.at( -1 ).responseHeaders.wwwAuthenticate,
+		false
+	);
 	assert.doesNotMatch( JSON.stringify( result ), /PRIVATE_/ );
 } );
 

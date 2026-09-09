@@ -184,6 +184,11 @@ static resource lists include public cache hints, while authorization-dependent
 tool lists and resource reads remain private with a zero TTL. Current responses
 also identify the Aculect MCP server and use JSON-RPC invalid-params errors for
 unknown tools and resources.
+All MCP HTTP responses are explicitly non-cacheable across WordPress, CDN, and
+reverse-proxy cache directives. Responses include an opaque
+`X-Aculect-MCP-Request-ID`; when opt-in diagnostics record an MCP failure, this
+ID can be matched to that log entry and never contains OAuth or request-payload
+data.
 Browser requests are accepted only from the exact public connector origin or
 origins explicitly approved with the
 `aculect-ai-companion/connectors/allowed_mcp_origins` filter; wildcards are not

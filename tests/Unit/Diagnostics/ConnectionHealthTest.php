@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Diagnostics;
 
+use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
+use Aculect\AICompanion\Connectors\OAuth\TokenEndpointAuthMethod;
 use Aculect\AICompanion\Connectors\OAuth\Server\SecretsVault;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use PHPUnit\Framework\TestCase;
@@ -41,6 +43,7 @@ final class ConnectionHealthTest extends TestCase {
 		$GLOBALS['aculect_ai_companion_test_transients']   = array();
 		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
 		unset(
+			$GLOBALS['aculect_ai_companion_test_http_get'],
 			$_SERVER['HTTP_CF_RAY'],
 			$_SERVER['HTTP_CF_VISITOR'],
 			$_SERVER['HTTP_CF_CONNECTING_IP'],
@@ -207,6 +210,7 @@ final class ConnectionHealthTest extends TestCase {
 				'connection_url',
 				'wordpress_version',
 				'php_version',
+				'plugin_version',
 				'environment_type',
 				'debug_mode',
 			),
@@ -222,6 +226,83 @@ final class ConnectionHealthTest extends TestCase {
 		);
 		self::assertArrayNotHasKey( 'access_token', $result['system'] );
 		self::assertArrayNotHasKey( 'client_secret', $result['details'] );
+	}
+
+	public function test_protected_resource_metadata_check_rejects_an_issuer_or_scope_mismatch(): void {
+		$GLOBALS['aculect_ai_companion_test_http_get'] = static function ( string $url ): array {
+			unset( $url );
+
+			return array(
+				'body'     => wp_json_encode(
+					array(
+						'resource'              => Helpers::mcp_resource(),
+						'authorization_servers' => array( array( 'nested' => 'issuer' ) ),
+						'scopes_supported'      => array( 'content:read', array( 'nested' => 'scope' ) ),
+					)
+				),
+				'headers'  => array( 'content-type' => 'application/json' ),
+				'response' => array(
+					'code'    => 200,
+					'message' => 'OK',
+				),
+			);
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_protected_resource_metadata' );
+
+		self::assertSame( 'protected_resource_metadata', $result['id'] );
+		self::assertSame( 'fail', $result['status'] );
+	}
+
+	public function test_authorization_metadata_check_rejects_a_stale_endpoint_contract(): void {
+		$GLOBALS['aculect_ai_companion_test_http_get'] = static function ( string $url ): array {
+			unset( $url );
+
+			return array(
+				'body'     => wp_json_encode(
+					array(
+						'issuer'                           => Helpers::authorization_server_issuer(),
+						'authorization_endpoint'           => Helpers::authorization_endpoint(),
+						'token_endpoint'                   => Helpers::token_endpoint(),
+						'registration_endpoint'            => 'https://stale.example/register',
+						'protected_resources'              => array( Helpers::mcp_resource() ),
+						'resource_indicators_supported'    => true,
+						'code_challenge_methods_supported' => array( 'S256' ),
+						'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
+					)
+				),
+				'headers'  => array( 'content-type' => 'application/json' ),
+				'response' => array(
+					'code'    => 200,
+					'message' => 'OK',
+				),
+			);
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_authorization_metadata' );
+
+		self::assertSame( 'authorization_metadata', $result['id'] );
+		self::assertSame( 'fail', $result['status'] );
+	}
+
+	public function test_mcp_challenge_check_rejects_a_resource_metadata_url_mismatch(): void {
+		$GLOBALS['aculect_ai_companion_test_http_get'] = static function ( string $url ): array {
+			unset( $url );
+
+			return array(
+				'body'     => '{}',
+				'headers'  => array( 'www-authenticate' => 'Bearer resource_metadata="https://stale.example/.well-known/oauth-protected-resource"' ),
+				'response' => array(
+					'code'    => 401,
+					'message' => 'Unauthorized',
+				),
+			);
+		};
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_mcp_auth_challenge' );
+
+		self::assertSame( 'mcp_auth_challenge', $result['id'] );
+		self::assertSame( 'fail', $result['status'] );
 	}
 
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {

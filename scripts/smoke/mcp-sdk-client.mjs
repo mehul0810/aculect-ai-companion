@@ -7,6 +7,11 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { pathToFileURL } from 'node:url';
 import process from 'node:process';
 
+function safeHeader( response, name ) {
+	const value = response.headers.get( name );
+	return value ? value.replace( /[\r\n]/g, '' ).slice( 0, 200 ) : null;
+}
+
 /**
  * Exercise the supported transport with an actual SDK, without logging payloads.
  *
@@ -17,6 +22,7 @@ import process from 'node:process';
 export async function probe( url, token, timeout = 15000 ) {
 	const events = [];
 	const errors = [];
+	const warnings = [];
 	const deadline = AbortSignal.timeout( timeout );
 	const client = new Client( {
 		name: 'aculect-sdk-proof',
@@ -43,13 +49,58 @@ export async function probe( url, token, timeout = 15000 ) {
 			} );
 			const headers = new Headers( init.headers );
 			const method = init.body ? JSON.parse( init.body ).method : null;
+			const cacheControl = safeHeader( response, 'cache-control' );
+			const vary = safeHeader( response, 'vary' );
 			const event = {
 				method: init.method || 'GET',
 				rpc: method,
 				protocol: headers.get( 'mcp-protocol-version' ),
 				status: response.status,
-				contentType: response.headers.get( 'content-type' ),
+				contentType: safeHeader( response, 'content-type' ),
+				responseHeaders: {
+					protocol: safeHeader( response, 'mcp-protocol-version' ),
+					cacheControl,
+					pragma: safeHeader( response, 'pragma' ),
+					expires: safeHeader( response, 'expires' ),
+					cdnCacheControl: safeHeader(
+						response,
+						'cdn-cache-control'
+					),
+					surrogateControl: safeHeader(
+						response,
+						'surrogate-control'
+					),
+					xAccelExpires: safeHeader( response, 'x-accel-expires' ),
+					vary,
+					lastModified: safeHeader( response, 'last-modified' ),
+					edgeCacheStatus:
+						safeHeader( response, 'cf-cache-status' ) ||
+						safeHeader( response, 'x-cache' ),
+					wwwAuthenticate: response.headers.has( 'www-authenticate' ),
+					requestId: safeHeader(
+						response,
+						'x-aculect-mcp-request-id'
+					),
+				},
 			};
+			if (
+				response.status === 401 &&
+				! /\bno-store\b/i.test( cacheControl || '' )
+			) {
+				warnings.push( 'auth_response_cache_policy' );
+			}
+			if (
+				response.status === 401 &&
+				! response.headers.has( 'www-authenticate' )
+			) {
+				warnings.push( 'auth_challenge_header_missing' );
+			}
+			if (
+				response.status === 401 &&
+				! /\bauthorization\b/i.test( vary || '' )
+			) {
+				warnings.push( 'auth_response_vary_missing' );
+			}
 			if ( event.contentType?.includes( 'application/json' ) ) {
 				const payload = await response
 					.clone()
@@ -127,6 +178,7 @@ export async function probe( url, token, timeout = 15000 ) {
 			toolCount: names.size,
 			events,
 			errors,
+			warnings: [ ...new Set( warnings ) ],
 		};
 	} catch ( error ) {
 		return {
@@ -138,6 +190,7 @@ export async function probe( url, token, timeout = 15000 ) {
 				type: error.name,
 				code: typeof error.code === 'number' ? error.code : null,
 			},
+			warnings: [ ...new Set( warnings ) ],
 		};
 	} finally {
 		await client.close();

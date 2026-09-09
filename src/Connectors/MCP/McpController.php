@@ -34,6 +34,7 @@ final class McpController {
 	private array $request_auth = array();
 
 	private string $request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
+	private string $request_id               = '';
 	private AbilityExecutionGateway $execution_gateway;
 
 	/**
@@ -71,6 +72,7 @@ final class McpController {
 
 		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
 		add_filter( 'rest_allowed_cors_headers', array( McpTransportResponsePolicy::class, 'filter_cors_request_headers' ) );
+		add_filter( 'rest_exposed_cors_headers', array( McpTransportResponsePolicy::class, 'filter_exposed_cors_headers' ) );
 		add_filter( 'rest_pre_serve_request', array( McpTransportResponsePolicy::class, 'serve_sse_probe' ), 20, 4 );
 	}
 
@@ -81,6 +83,7 @@ final class McpController {
 	 * @return true|\WP_Error
 	 */
 	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
+		$this->request_id   = $this->new_request_id();
 		$this->request_auth = array();
 		$this->reset_request_protocol_version( $request );
 		McpToolAvailability::set_current_granted_scopes( null );
@@ -136,6 +139,7 @@ final class McpController {
 
 		if ( $response instanceof WP_REST_Response ) {
 			$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			$this->apply_request_id_header( $response );
 			McpTransportResponsePolicy::apply_cache_headers( $response );
 		}
 
@@ -151,6 +155,7 @@ final class McpController {
 				$response->get_status()
 			);
 			$transport_response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			$this->apply_request_id_header( $transport_response );
 			McpTransportResponsePolicy::apply_cache_headers( $transport_response );
 			return $transport_response;
 		}
@@ -466,6 +471,7 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->ensure_request_id();
 		$this->reset_request_protocol_version( $request );
 		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
@@ -481,6 +487,7 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->ensure_request_id();
 		$this->reset_request_protocol_version( $request );
 
 		$request_error = ( new McpInputValidator() )->request_error( $request );
@@ -659,6 +666,9 @@ final class McpController {
 			'rpc_method' => $method,
 			'tool'       => $tool,
 		) + ( '' === $auth_failure_reason ? array() : array( 'auth_failure_reason' => $auth_failure_reason ) );
+		if ( '' !== $this->request_id ) {
+			$context['request_id'] = $this->request_id;
+		}
 		if ( '' !== $error_code ) {
 			$context['error_code'] = $error_code;
 		}
@@ -1390,6 +1400,7 @@ final class McpController {
 	 * @return WP_REST_Response
 	 */
 	private function auth_challenge_response( string|int|null $id, string $scope, int $status, string $error ): WP_REST_Response {
+		$this->ensure_request_id();
 		$response = new WP_REST_Response(
 			$this->rpc_result(
 				$id,
@@ -1412,9 +1423,52 @@ final class McpController {
 		);
 		$response->header( 'WWW-Authenticate', TokenValidator::www_authenticate_header( $scope, $error ) );
 		$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+		$this->apply_request_id_header( $response );
 		McpTransportResponsePolicy::apply_cache_headers( $response );
 
 		return $response;
+	}
+
+	/**
+	 * Ensure a request correlation ID exists for direct controller calls and
+	 * permission-callback flows that do not pass through the same public method.
+	 */
+	private function ensure_request_id(): void {
+		if ( '' === $this->request_id ) {
+			$this->request_id = $this->new_request_id();
+		}
+	}
+
+	/**
+	 * Return an opaque request ID without making the unit-test runtime depend on
+	 * the complete WordPress function set.
+	 */
+	private function new_request_id(): string {
+		if ( function_exists( 'wp_generate_uuid4' ) ) {
+			return (string) wp_generate_uuid4();
+		}
+
+		try {
+			$bytes = random_bytes( 16 );
+		} catch ( \Throwable ) {
+			$bytes = hash( 'sha256', uniqid( '', true ), true );
+		}
+
+		$bytes[6] = chr( ( ord( $bytes[6] ) & 0x0f ) | 0x40 );
+		$bytes[8] = chr( ( ord( $bytes[8] ) & 0x3f ) | 0x80 );
+
+		return vsprintf( '%s%s-%s-%s-%s-%s%s%s', str_split( bin2hex( $bytes ), 4 ) );
+	}
+
+	/**
+	 * Attach the opaque server-side ID used to correlate a response with the
+	 * opt-in diagnostic log entry. It never contains client or token data.
+	 *
+	 * @param WP_REST_Response $response REST response.
+	 */
+	private function apply_request_id_header( WP_REST_Response $response ): void {
+		$this->ensure_request_id();
+		$response->header( 'X-Aculect-MCP-Request-ID', $this->request_id );
 	}
 
 	/**

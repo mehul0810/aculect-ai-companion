@@ -30,6 +30,17 @@ final class McpTransportResponsePolicy {
 	);
 
 	/**
+	 * Safe response headers that browser-based MCP diagnostics may inspect.
+	 *
+	 * @var string[]
+	 */
+	private const CORS_RESPONSE_HEADERS = array(
+		'MCP-Protocol-Version',
+		'WWW-Authenticate',
+		'X-Aculect-MCP-Request-ID',
+	);
+
+	/**
 	 * Permit the protocol's non-simple request headers on WordPress REST CORS
 	 * preflights without widening the allowed Origin policy.
 	 *
@@ -47,14 +58,37 @@ final class McpTransportResponsePolicy {
 	}
 
 	/**
+	 * Expose only protocol and opaque diagnostic response headers to browsers.
+	 *
+	 * @param string[] $headers Existing exposed response headers.
+	 * @return string[]
+	 */
+	public static function filter_exposed_cors_headers( array $headers ): array {
+		foreach ( self::CORS_RESPONSE_HEADERS as $header ) {
+			if ( ! in_array( $header, $headers, true ) ) {
+				$headers[] = $header;
+			}
+		}
+
+		return $headers;
+	}
+
+	/**
 	 * Prevent caches from replaying OAuth challenges, request-specific JSON-RPC
 	 * responses, or an authenticated SSE-probe response to another client.
 	 *
 	 * @param WP_REST_Response $response REST response.
 	 */
 	public static function apply_cache_headers( WP_REST_Response $response ): void {
-		$response->header( 'Cache-Control', 'no-store, private' );
+		// WordPress core and common reverse proxies do not all honor the same
+		// cache-control directive. Keep every MCP response request-specific,
+		// including OAuth challenges and the optional authenticated SSE probe.
+		$response->header( 'Cache-Control', 'no-store, private, no-cache, max-age=0, must-revalidate' );
 		$response->header( 'Pragma', 'no-cache' );
+		$response->header( 'Expires', '0' );
+		$response->header( 'CDN-Cache-Control', 'no-store' );
+		$response->header( 'Surrogate-Control', 'no-store' );
+		$response->header( 'X-Accel-Expires', '0' );
 		$response->header( 'Vary', 'Authorization, Accept, Origin, MCP-Protocol-Version, MCP-Method, MCP-Name, MCP-Session-Id, Last-Event-ID' );
 	}
 

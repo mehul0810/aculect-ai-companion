@@ -54,6 +54,7 @@ function requiredConfig() {
 		),
 		reconnectProofUrl: envValue( 'ACULECT_MCP_SMOKE_RECONNECT_PROOF_URL' ),
 		reconnectWaitMs: intEnv( 'ACULECT_MCP_SMOKE_RECONNECT_WAIT_MS', 0 ),
+		transportEvents: [],
 	};
 	const missing = [];
 
@@ -114,6 +115,71 @@ function wait( ms ) {
 	} );
 }
 
+function safeHeader( response, name ) {
+	const value = response.headers.get( name );
+	return value ? value.replace( /[\r\n]/g, '' ).slice( 0, 200 ) : null;
+}
+
+function responseDiagnostics( response ) {
+	const cacheControl = safeHeader( response, 'cache-control' );
+	const vary = safeHeader( response, 'vary' );
+
+	return {
+		status: response.status,
+		protocol: safeHeader( response, 'mcp-protocol-version' ),
+		contentType: safeHeader( response, 'content-type' ),
+		cacheControl,
+		pragma: safeHeader( response, 'pragma' ),
+		expires: safeHeader( response, 'expires' ),
+		cdnCacheControl: safeHeader( response, 'cdn-cache-control' ),
+		surrogateControl: safeHeader( response, 'surrogate-control' ),
+		xAccelExpires: safeHeader( response, 'x-accel-expires' ),
+		vary,
+		lastModified: safeHeader( response, 'last-modified' ),
+		edgeCacheStatus:
+			safeHeader( response, 'cf-cache-status' ) ||
+			safeHeader( response, 'x-cache' ),
+		wwwAuthenticate: response.headers.has( 'www-authenticate' ),
+		requestId: safeHeader( response, 'x-aculect-mcp-request-id' ),
+		cacheSafe: /\bno-store\b/i.test( cacheControl || '' ),
+		variesAuthorization: /\bauthorization\b/i.test( vary || '' ),
+	};
+}
+
+async function unauthenticatedChallenge( config ) {
+	const response = await fetch( siteUrl( config.baseUrl, config.mcpPath ), {
+		method: 'POST',
+		headers: {
+			accept: 'application/json',
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify( {
+			jsonrpc: '2.0',
+			id: 'anonymous-challenge',
+			method: 'initialize',
+			params: {
+				protocolVersion: '2025-11-25',
+				capabilities: {},
+				clientInfo: {
+					name: 'aculect-mcp-live-challenge',
+					version: '0.1.0',
+				},
+			},
+		} ),
+	} );
+	const body = await response.json().catch( () => null );
+	const diagnostics = responseDiagnostics( response );
+	return {
+		...diagnostics,
+		rpcErrorCode:
+			typeof body?.error?.code === 'number' ? body.error.code : null,
+		rpcErrorDataCode:
+			typeof body?.error?.data?.code === 'string'
+				? body.error.data.code
+				: null,
+	};
+}
+
 async function mcpRpc( config, id, method, params = {} ) {
 	const response = await fetch( siteUrl( config.baseUrl, config.mcpPath ), {
 		method: 'POST',
@@ -131,6 +197,10 @@ async function mcpRpc( config, id, method, params = {} ) {
 			method,
 			params,
 		} ),
+	} );
+	config.transportEvents.push( {
+		method,
+		...responseDiagnostics( response ),
 	} );
 	const body = await response.json().catch( () => null );
 
@@ -303,6 +373,7 @@ async function main() {
 	await rm( runDir, { force: true, recursive: true } );
 	await mkdir( runDir, { recursive: true } );
 
+	const anonymousChallenge = await unauthenticatedChallenge( config );
 	const firstInitialize = await initialize(
 		config,
 		'initialize-1',
@@ -367,6 +438,8 @@ async function main() {
 		status: 'passed',
 		baseUrl: config.baseUrl,
 		path: config.mcpPath,
+		unauthenticatedChallenge: anonymousChallenge,
+		transportEvents: config.transportEvents.slice( 0, 32 ),
 		initialize: {
 			firstFingerprint: `sha256:${ firstInitializeFingerprint }`,
 			secondFingerprint: `sha256:${ secondInitializeFingerprint }`,

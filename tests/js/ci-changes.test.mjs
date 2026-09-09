@@ -59,7 +59,6 @@ test( 'MCP callers cover execution claims, OAuth and native abilities', () => {
 		'claims',
 		'oauth',
 		'wordpress',
-		'workflows',
 		'php',
 		'assets',
 		'package',
@@ -78,7 +77,6 @@ test( 'frontend requires one build and packaged browser proof', () => {
 		assert.equal( result.package, true );
 		assert.equal( result.browser, true );
 		assert.equal( result.oauth, false );
-		assert.equal( result.workflows, false );
 		assert.equal( result.claims, false );
 		assert.equal( result.wordpress, false );
 	}
@@ -171,7 +169,6 @@ test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing requ
 		'assets',
 		'package',
 		'database',
-		'sqlite',
 		'wordpress',
 		'browser',
 		'security',
@@ -212,7 +209,6 @@ test( 'aggregate allows only detector-authorized skips', () => {
 		'assets',
 		'package',
 		'database',
-		'sqlite',
 		'wordpress',
 		'browser',
 		'security',
@@ -249,7 +245,7 @@ test( 'aggregate allows only detector-authorized skips', () => {
 	);
 } );
 
-test( 'consolidated workflows retain every pre-existing integration proof', () => {
+test( 'consolidated workflows retain supported integration proofs', () => {
 	const read = ( name ) =>
 		readFileSync(
 			new URL( '../../.github/workflows/' + name, import.meta.url ),
@@ -257,31 +253,28 @@ test( 'consolidated workflows retain every pre-existing integration proof', () =
 		);
 	const database = read( 'database-proof.yml' );
 	for ( const proof of [
-		'real-database-installer.php',
-		'real-database-runner.php',
 		'real-database-concurrency.php',
 		'oauth-issuer-engine.php',
 	] ) {
 		assert.ok( database.includes( proof ), proof );
 	}
-	for ( const name of [
-		'aculect_installer_proof',
-		'aculect_runner_proof',
-		'aculect_claims_proof',
-		'aculect_oauth_proof',
-	] ) {
+	for ( const name of [ 'aculect_claims_proof', 'aculect_oauth_proof' ] ) {
 		assert.ok( database.includes( name ) );
 	}
-	const sqlite = read( 'workflow-runner-proof.yml' );
+	assert.ok( ! database.includes( 'Integration/Workflows' ) );
+	assert.ok( ! checks.includes( 'workflows' ) );
 	assert.ok(
-		sqlite.includes( 'wp-sqlite-installer.php' ) &&
-			sqlite.includes( 'wp-sqlite-runner.php' )
+		! existsSync(
+			new URL(
+				'../../.github/workflows/workflow-runner-proof.yml',
+				import.meta.url
+			)
+		)
 	);
 	const packaged = read( 'workflow-proof.yml' );
-	assert.ok(
-		packaged.includes( 'wp-options-retry-cache.php' ) &&
-			packaged.includes( 'workflow-admin.mjs' )
-	);
+	assert.ok( packaged.includes( 'workflow-admin.mjs' ) );
+	assert.ok( ! packaged.includes( 'wp-options-retry-cache.php' ) );
+	assert.ok( ! packaged.includes( 'Integration/Workflows' ) );
 	assert.ok( packaged.includes( 'wp plugin check' ) );
 	assert.ok(
 		packaged.includes(

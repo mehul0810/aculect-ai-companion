@@ -126,14 +126,6 @@ return array(
 			'target'    => 1000,
 		),
 		array(
-			'path'      => 'src/Workflows/Adapters/ContentPlannerAdapter.php',
-			'max_lines' => 1243,
-			'owner'     => 'Workflows',
-			'reason'    => 'Planner validation and projection should be split.',
-			'issue'     => '#430',
-			'target'    => 1000,
-		),
-		array(
 			'path'      => 'src/Connectors/MCP/SiteMaintenanceReports.php',
 			'max_lines' => 1205,
 			'owner'     => 'MCP',
@@ -171,10 +163,8 @@ return array(
 		'src/Connectors/MCP/McpSchemaCompatibility.php' => array( 'current_schema_error' => 172 ),
 		'src/Connectors/MCP/WordPressAbilitiesPolicy.php' => array( 'valid_schema_node' => 175 ),
 		'src/Intelligence/ContentIndexer.php' => array( 'run_queued_refresh_slice' => 151 ),
-		'src/Workflows/Adapters/ContentPlannerAdapter.php' => array( 'output_schema' => 187 ),
 		'tests/Unit/PluginContentIndexSaveFlowTest.php' => array( 'setUp' => 186 ),
 		'tests/Unit/Connectors/MCP/WordPressAbilitiesPolicyTest.php' => array( 'test_fresh_policy_keeps_third_party_abilities_disabled' => 261 ),
-		'tests/Unit/Workflows/Definitions/WorkflowDefinitionTest.php' => array( 'invalid_definition_provider' => 376 ),
 	),
 	'dependency_rules' => array(
 		array(
@@ -190,16 +180,6 @@ return array(
 			'exceptions' => array(
 				'src/Activity/ActivityLogger.php' => 'Existing risk classification edge; inject a neutral risk contract.',
 			),
-		),
-		array(
-			'root'       => 'src/Workflows/Definitions',
-			'forbidden'  => array( 'Aculect\\AICompanion\\Connectors\\', 'Aculect\\AICompanion\\Admin\\', 'Aculect\\AICompanion\\Intelligence\\' ),
-			'exceptions' => array(),
-		),
-		array(
-			'root'       => 'src/Workflows/Planning',
-			'forbidden'  => array( 'Aculect\\AICompanion\\Connectors\\', 'Aculect\\AICompanion\\Admin\\', 'Aculect\\AICompanion\\Intelligence\\' ),
-			'exceptions' => array(),
 		),
 	),
 );

@@ -286,7 +286,6 @@ Composer dependencies for production releases are installed with:
 = 0.8.0 =
 
 * Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.
-* Added custom-workflow definitions, deterministic planning and readiness, private read/proposal adapters, Phase-A definition-storage schema/installer groundwork, a durable runner, native adapter catalog, bounded audit trail, guarded administration, and a public workflow connector surface. Runtime execution remains permission-aware and approval-gated.
 * Unified capability discovery with a paginated catalog, default-enabled WordPress and Aculect capabilities, and a third-party-only Abilities screen with explicit administrator choices and preserved runtime permissions.
 * Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.
 * Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.
@@ -298,7 +297,7 @@ Composer dependencies for production releases are installed with:
 * Improved memory review with namespace and version checks, bounded database queries, and visible migration recovery. Failed learning approvals roll back their memory and history changes together.
 * Hardened WebMCP page-context extraction with bounded traversal and output, hidden/form-content exclusion, and sanitized links.
 * Kept intelligence groups as navigation and guidance while preserving OAuth scopes, WordPress capabilities, and explicit approval requirements for ability execution.
-* Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
+* Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
 * Hardened MCP responses against WordPress, CDN, and reverse-proxy caching while preserving safe CORS exposure for protocol and correlation headers.
 
 = 0.7.2 =

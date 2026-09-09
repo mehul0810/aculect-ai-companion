@@ -60,7 +60,6 @@ jobs:
             "plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
             "mappings": {
               "wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}",
-              "wp-content/aculect-workflow-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Workflows",
               "wp-content/aculect-memory-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Memory"
             }
           }
@@ -86,9 +85,6 @@ jobs:
           wp-env run cli wp plugin check aculect-ai-companion --format=json --ignore-warnings --exclude-files=.wp-env.json --slug=aculect-ai-companion --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
           cat "${RUNNER_TEMP}/plugin-check-results.txt"
 
-      - name: Prove workflow retry lease with WordPress Options API
-        run: wp-env run cli wp eval-file wp-content/aculect-workflow-proofs/wp-options-retry-cache.php
-
       - name: Prove real memory review rollback, migration CAS and sync replay
         run: wp-env run cli wp --user=admin eval-file wp-content/aculect-memory-proofs/wp-memory-proof.php aculect-disposable-memory-proof --use-include
 
@@ -98,7 +94,7 @@ jobs:
       - name: Create browser proof administrator
         run: wp-env run cli wp user create workflow-admin workflow-admin@example.test --role=administrator --user_pass=workflow-admin-password
 
-      - name: Prove packaged workflow admin screen
+      - name: Prove packaged settings and custom workflow absence
         env:
           ACULECT_WP_BASE_URL: http://localhost:8882
           ACULECT_WP_ADMIN_USER: workflow-admin

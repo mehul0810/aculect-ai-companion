@@ -545,34 +545,30 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		self::assertSame( 'Committed once', get_post( 123 )?->post_title );
 	}
 
-	public function test_workflow_mutation_confirmation_preview_never_dispatches_connector_callback(): void {
-		$safety = new ToolSafety( new InMemoryExecutionClaimStore() );
-		$safety->save_confirmation_groups( array( 'Custom Content Workflows' ) );
-		$gateway = new AbilityExecutionGateway( null, null, null, $safety );
-		$result  = $gateway->execute(
-			new AbilityExecutionRequest(
-				array(
-					'name'      => 'content_workflow_execute',
-					'arguments' => array(
-						'run_id' => 'run-preview-only',
-						'input'  => array(),
-					),
-				),
-				array_merge(
-					$this->trusted_write_auth( 1 ),
-					array(
-						'access_level'             => '',
-						'write_permission_enabled' => false,
+	public function test_custom_workflow_names_and_legacy_aliases_are_unknown(): void {
+		$registry = new AbilitiesRegistry();
+		$gateway  = new AbilityExecutionGateway( $registry );
+		$native   = new \Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar();
+		foreach ( array( 'list', 'get', 'prepare', 'dry_run', 'execute', 'resume', 'cancel', 'status', 'result' ) as $operation ) {
+			$id = 'content_workflow.' . $operation;
+			self::assertNull( $registry->module( $id ) );
+			self::assertNotContains( $native->ability_name_for_id( $id ), $native->ability_names() );
+			foreach ( array( $id, 'content_workflow_' . $operation ) as $name ) {
+				$result = $gateway->execute(
+					new AbilityExecutionRequest(
+						array(
+							'name'      => $name,
+							'arguments' => array(),
+						),
+						$this->trusted_write_auth( 1 )
 					)
-				)
-			)
-		);
-
-		self::assertSame( AbilityExecutionGateway::OUTCOME_SUCCESS, $result->type );
-		self::assertSame( 'confirmation_required', $result->data['result']['status'] ?? '' );
-		self::assertTrue( $result->data['result']['preview']['preview_only'] ?? false );
-		self::assertTrue( $result->data['result']['preview']['mutation_blocked'] ?? false );
-		self::assertSame( 'content_workflow.execute', $result->data['result']['preview']['action'] ?? '' );
+				);
+				self::assertSame( AbilityExecutionGateway::OUTCOME_UNKNOWN_TOOL, $result->type, $name );
+			}
+		}
+		foreach ( array( 'prepare_post', 'create_draft', 'update_post' ) as $operation ) {
+			self::assertNotNull( $registry->module( 'content_workflow.' . $operation ) );
+		}
 	}
 
 	public function test_atomic_claim_returns_bounded_in_progress_without_dispatching_the_contender(): void {

@@ -15,10 +15,9 @@ export function failedChecks( needs ) {
 		php: flags.php === 'true',
 		assets: flags.assets === 'true',
 		package: flags.package === 'true',
-		database: [ 'workflows', 'claims', 'oauth' ].some(
+		database: [ 'claims', 'oauth' ].some(
 			( name ) => flags[ name ] === 'true'
 		),
-		sqlite: flags.workflows === 'true',
 		wordpress: flags.wordpress === 'true',
 		browser: flags.browser === 'true',
 		security: flags.security === 'true',

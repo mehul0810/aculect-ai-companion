@@ -6,7 +6,6 @@ export const checks = [
 	'php',
 	'assets',
 	'package',
-	'workflows',
 	'claims',
 	'oauth',
 	'wordpress',
@@ -20,14 +19,7 @@ const rules = [
 		test: /\.php$|^(?:phpstan|phpcs|phpunit)/,
 		checks: [ 'php' ],
 		// Shared PHP callers can change storage or authorization behavior indirectly.
-		production: [
-			'package',
-			'wordpress',
-			'browser',
-			'workflows',
-			'claims',
-			'oauth',
-		],
+		production: [ 'package', 'wordpress', 'browser', 'claims', 'oauth' ],
 	},
 	{
 		test: /\.(?:[cm]?js|jsx|tsx?|scss|css)$|^(?:package(?:-lock)?\.json|\.nvmrc|eslint\.|webpack\.)/,
@@ -37,10 +29,6 @@ const rules = [
 	{
 		test: /\.(?:[cm]?js|jsx|tsx?)$|^(?:package(?:-lock)?\.json|webpack\.)/,
 		checks: [ 'codeql' ],
-	},
-	{
-		test: /^(?:src\/(?:Workflows|Admin|Intelligence|Connectors\/MCP)\/.*\.php$|tests\/(?:Integration\/Workflows|Unit\/Workflows|Unit\/Admin|fixtures\/workflows)\/)/,
-		checks: [ 'workflows' ],
 	},
 	{
 		test: /^(?:src\/Connectors\/(?:MCP|OAuth)\/|tests\/(?:Integration\/ExecutionClaims|Unit\/Connectors)\/)/,

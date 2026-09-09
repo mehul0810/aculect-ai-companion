@@ -14,7 +14,7 @@
 - Keep individual methods below 80 lines in production and 100 lines in tests for review; the hard ceilings are 120 and 180 lines respectively. Extract a focused collaborator before adding a new responsibility to a legacy exception.
 - Run `composer check:modularity` for every scoped change. It reports legacy hotspots with owner/issue/target metadata, enforces exception ceilings, and checks forbidden namespace dependencies. Pull-request CI additionally runs `bin/check-modularity.php --changed-from=origin/<base>` so touched legacy exceptions cannot grow relative to the base branch.
 - Legacy exceptions in `.codex/modularity-rules.php` are temporary ratchets, not waivers. A PR that touches an exception must either reduce its ceiling or explain the bounded change and keep the recorded ceiling fixed afterward.
-- Domain ownership is directional: `Workflows\Definitions` and `Workflows\Planning` remain pure contracts/plans and cannot import MCP, admin, or intelligence layers; Intelligence and Activity cannot import MCP services directly. Add a neutral port or adapter when a boundary needs to cross layers.
+- Domain ownership is directional: Intelligence and Activity cannot import MCP services directly. Add a neutral port or adapter when a boundary needs to cross layers.
 
 ## Project Subagents
 - Project subagents live in `.codex/agents`; `.codex/config.toml` limits concurrency to three threads and one agent depth.

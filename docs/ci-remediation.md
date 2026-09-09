@@ -13,18 +13,16 @@ The stable required-check name is **Required CI**. It runs even when upstream jo
 | Composer validation, PHP lint/WPCS/PHPStan/unit tests and modularity | CI PHP Quality, once |
 | JavaScript/style lint, JS tests and asset build | CI Assets, once |
 | Production dependency/package-content verification | Canonical Plugin Package |
-| MySQL 8.0 + MariaDB 10.11 installer and runner | Shared Real Database Proofs |
-| MySQL 8.0 + MariaDB 10.11 execution-worker concurrency | Same services, separate claims database |
+| MySQL 8.0 + MariaDB 10.11 execution-worker concurrency | Shared Real Database Proofs, isolated claims database |
 | MySQL 8.0 + MariaDB 10.11 OAuth migration/joins | Same services, separate OAuth database |
-| WordPress SQLite installer + runner | Workflow SQLite Proof, one environment |
 | Native WordPress Abilities | All existing versions: 6.8.1, 6.9, 7.1 |
-| Packaged Plugin Check, WordPress Options retry lease, memory rollback/CAS/sync proof, workflow-admin browser proof | Packaged WordPress Proof |
+| Packaged Plugin Check, memory rollback/CAS/sync proof, settings and absent custom-workflow browser proof | Packaged WordPress Proof |
 | PHP/secrets scanning | PHP Security |
 | JavaScript security | CodeQL, plus existing weekly schedule |
 
 A full applicable run builds assets once rather than separately for assets, package and packaged-browser jobs. The package consumes this run's SHA/attempt-named asset artifact. Exact artifact names travel through upstream job outputs so full reruns avoid name collisions and failed-job reruns can reuse successful upstream artifacts. The browser consumes the same verified ZIP, checking its checksum against the independent package job output before extraction.
 
-Database suites run against four fresh databases in each shared engine service. Test scripts have fixed table names and some intentionally drop tables; database isolation prevents one proof masking another's fresh-install behavior. SQLite proof scripts run in separate WP-CLI processes in the same disposable WordPress environment.
+Database suites run against separate fresh claims and OAuth databases in each shared engine service. Test scripts have fixed table names and some intentionally drop tables; database isolation prevents one proof masking another's fresh-install behavior.
 
 The former OAuth and execution-claims workflows remain manual focused entry points. They call the shared database proof rather than maintaining another copy.
 
@@ -67,7 +65,7 @@ Local validation: actionlint 1.7.12, scoped ESLint, 14 passing CI Node regressio
 
 The packaged proof installs locked browser dependencies on Node 24, then uses the existing Node 20.19 compatibility runtime for wp-env 11.6.0, matching the other WordPress jobs. The first consolidated hosted run demonstrated that using Node 24 for wp-env exits without initialization. Upgrading this legacy test harness runtime requires separate runtime proof; it does not affect the plugin's PHP runtime.
 
-Hosted MySQL/MariaDB/SQLite/WordPress/browser execution must pass on the pushed exact head before claiming the consolidated pipeline is proven. The local machine has no Docker runtime; the package script's deterministic timestamp normalization targets the Ubuntu CI runner.
+Hosted MySQL/MariaDB/WordPress/browser execution must pass on the pushed exact head before claiming the consolidated pipeline is proven. The local machine has no Docker runtime; the package script's deterministic timestamp normalization targets the Ubuntu CI runner.
 
 This is resource/latency reduction, not a measured billing claim. Actual cost depends on repository visibility, runner billing and artifact consumption. Measure completed job time/artifact storage after the first hosted run.
 

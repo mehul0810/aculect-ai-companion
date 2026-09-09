@@ -1029,10 +1029,6 @@ final class McpController {
 			);
 		}
 
-		if ( WorkflowAbilityOutputSchema::supports( $module->id() ) ) {
-			return $this->object_output_schema( WorkflowAbilityOutputSchema::fields() );
-		}
-
 		if ( ! str_starts_with( $module->id(), 'intelligence.' ) ) {
 			return $this->is_collection_module( $module )
 				? $this->collection_output_schema()

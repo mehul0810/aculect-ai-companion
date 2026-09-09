@@ -3,9 +3,6 @@ name: Shared Real Database Proofs
 on:
   workflow_call:
     inputs:
-      workflows:
-        type: boolean
-        default: false
       claims:
         type: boolean
         default: false
@@ -68,29 +65,11 @@ jobs:
         run: |
           php -r '
           $db = new mysqli(getenv("ACULECT_CI_DB_HOST"), getenv("ACULECT_CI_DB_USER"), getenv("ACULECT_CI_DB_PASSWORD"), "", (int) getenv("ACULECT_CI_DB_PORT"));
-          foreach (["aculect_installer_proof", "aculect_runner_proof", "aculect_claims_proof", "aculect_oauth_proof"] as $name) {
+          foreach (["aculect_claims_proof", "aculect_oauth_proof"] as $name) {
             if (!$db->query("CREATE DATABASE " . $name . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")) {
               throw new RuntimeException("Could not create isolated proof database.");
             }
           }'
-      - name: Prove workflow storage installation
-        if: inputs.workflows
-        env:
-          ACULECT_WORKFLOW_DB_HOST: ${{ env.ACULECT_CI_DB_HOST }}
-          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports['3306'] }}
-          ACULECT_WORKFLOW_DB_NAME: aculect_installer_proof
-          ACULECT_WORKFLOW_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
-          ACULECT_WORKFLOW_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
-        run: php tests/Integration/Workflows/real-database-installer.php
-      - name: Prove workflow execution
-        if: inputs.workflows
-        env:
-          ACULECT_WORKFLOW_DB_HOST: ${{ env.ACULECT_CI_DB_HOST }}
-          ACULECT_WORKFLOW_DB_PORT: ${{ job.services.database.ports['3306'] }}
-          ACULECT_WORKFLOW_DB_NAME: aculect_runner_proof
-          ACULECT_WORKFLOW_DB_USER: ${{ env.ACULECT_CI_DB_USER }}
-          ACULECT_WORKFLOW_DB_PASSWORD: ${{ env.ACULECT_CI_DB_PASSWORD }}
-        run: php tests/Integration/Workflows/real-database-runner.php
       - name: Prove competing execution workers
         if: inputs.claims
         env:

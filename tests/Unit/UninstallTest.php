@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused uninstall tests replace wpdb with a local test double.
 
 /**
- * Verifies uninstall.php removes all opt-in plugin data.
+ * Verifies supported cleanup without deleting deferred development data.
  */
 final class UninstallTest extends TestCase {
 
@@ -84,9 +84,9 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_site_editor_snapshot', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_admin_menu_snapshot', 'missing' ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
-		self::assertSame( 'missing', get_option( 'aculect_ai_companion_workflow_audit_db_version', 'missing' ) );
+		self::assertSame( '2026.08.19.1', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
+		self::assertSame( array( 'status' => 'valid' ), get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
+		self::assertSame( '2026.08.29.1', get_option( 'aculect_ai_companion_workflow_audit_db_version', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_remove_data_on_uninstall', 'missing' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_execution_claims' ) );
@@ -98,11 +98,11 @@ final class UninstallTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_memory_items' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_jobs' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_cache' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_runs' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_run_steps' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_audit' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflows' ) );
-		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_versions' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_runs' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_run_steps' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_audit' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflows' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_versions' ) );
 	}
 }
 

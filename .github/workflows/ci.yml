@@ -22,7 +22,6 @@ jobs:
       php: ${{ steps.scope.outputs.php }}
       assets: ${{ steps.scope.outputs.assets }}
       package: ${{ steps.scope.outputs.package }}
-      workflows: ${{ steps.scope.outputs.workflows }}
       claims: ${{ steps.scope.outputs.claims }}
       oauth: ${{ steps.scope.outputs.oauth }}
       wordpress: ${{ steps.scope.outputs.wordpress }}
@@ -161,18 +160,11 @@ jobs:
   database:
     name: Real database proofs
     needs: changes
-    if: needs.changes.outputs.workflows == 'true' || needs.changes.outputs.claims == 'true' || needs.changes.outputs.oauth == 'true'
+    if: needs.changes.outputs.claims == 'true' || needs.changes.outputs.oauth == 'true'
     uses: ./.github/workflows/database-proof.yml
     with:
-      workflows: ${{ needs.changes.outputs.workflows == 'true' }}
       claims: ${{ needs.changes.outputs.claims == 'true' }}
       oauth: ${{ needs.changes.outputs.oauth == 'true' }}
-
-  sqlite:
-    name: SQLite proofs
-    needs: changes
-    if: needs.changes.outputs.workflows == 'true'
-    uses: ./.github/workflows/workflow-runner-proof.yml
 
   wordpress:
     name: Native WordPress contract
@@ -212,7 +204,7 @@ jobs:
   required:
     name: Required CI
     if: always()
-    needs: [changes, php, assets, package, database, sqlite, wordpress, browser, security, codeql]
+    needs: [changes, php, assets, package, database, wordpress, browser, security, codeql]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

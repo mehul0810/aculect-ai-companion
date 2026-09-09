@@ -14,6 +14,7 @@ use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
+use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
 /**
@@ -73,6 +74,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * Store a newly issued access token by hash, resource, scopes, and expiry.
 	 *
 	 * @param AccessTokenEntityInterface $accessTokenEntity Issued token entity.
+	 * @throws OAuthServerException When the token cannot be persisted.
 	 */
 	public function persistNewAccessToken( AccessTokenEntityInterface $accessTokenEntity ): void {
 		global $wpdb;
@@ -93,7 +95,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 		$write_permission_enabled = ConnectionAccessLevel::allows_direct_write( $access_level ) ? 1 : 0;
 
-		$wpdb->insert(
+		$result = $wpdb->insert(
 			$table,
 			array(
 				'token_hash'               => $this->hash_identifier( $accessTokenEntity->getIdentifier() ),
@@ -108,6 +110,10 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			),
 			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
+
+		if ( false === $result ) {
+			throw OAuthServerException::serverError( 'Unable to persist the access token.' );
+		}
 
 		$this->revoke_superseded_sessions_for_token(
 			(string) $accessTokenEntity->getClient()->getIdentifier(),

@@ -21,7 +21,7 @@ use PHPUnit\Framework\TestCase;
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused repository test replaces wpdb with an isolated adapter.
 
 /**
- * Verifies repeated successful DCR requests replace unused duplicate rows.
+ * Verifies DCR retries preserve pending registrations and prune stale duplicates.
  */
 final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
@@ -51,8 +51,9 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_identical_public_client_retries_do_not_grow_total_rows(): void {
+	public function test_identical_public_client_retries_preserve_pending_registrations(): void {
 		$repository = new ClientRepository();
+		$client_ids = array();
 
 		for ( $attempt = 0; $attempt < 20; ++$attempt ) {
 			$result = $repository->create_client_result(
@@ -63,6 +64,7 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
 			self::assertSame( ClientRegistrationResult::CREATED, $result->status() );
 			self::assertNotNull( $result->client() );
+			$client_ids[] = $result->client()['client_id'];
 		}
 
 		/**
@@ -72,8 +74,45 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 		 */
 		$wpdb = $GLOBALS['wpdb'];
 
-		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients' ) );
-		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+		self::assertCount( 20, array_unique( $client_ids ) );
+		self::assertSame( 20, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+		foreach ( $client_ids as $client_id ) {
+			self::assertSame( 1, $wpdb->prepared_scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s', $client_id ) );
+		}
+	}
+
+	public function test_recent_matching_client_survives_delayed_consent_at_capacity(): void {
+		$wpdb        = $this->wpdb();
+		$redirect    = 'http://localhost/delayed/callback';
+		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect ) );
+		self::assertNotNull( $fingerprint );
+		for ( $index = 0; $index < 100; ++$index ) {
+			$this->seed_client( $wpdb, 'pending-' . $index, $fingerprint );
+		}
+		$wpdb->query( $wpdb->prepare( 'UPDATE wp_aculect_ai_companion_oauth_clients SET created_at = %s', gmdate( 'Y-m-d H:i:s', time() - 12 * HOUR_IN_SECONDS ) ) );
+
+		$result = ( new ClientRepository() )->create_client_result( 'MCP Client', array( $redirect ), false );
+
+		self::assertSame( ClientRegistrationResult::CAPACITY_EXCEEDED, $result->status() );
+		self::assertSame( 100, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+	}
+
+	public function test_confidential_retries_preserve_distinct_credentials(): void {
+		$repository = new ClientRepository();
+		$redirects  = array( 'https://chatgpt.com/oauth/callback' );
+		$first      = $repository->create_client_result( 'ChatGPT', $redirects )->client();
+		$second     = $repository->create_client_result( 'ChatGPT', $redirects )->client();
+
+		self::assertNotNull( $first );
+		self::assertNotNull( $second );
+		self::assertNotSame( $first['client_id'], $second['client_id'] );
+		self::assertNotEmpty( $first['client_secret'] );
+		self::assertNotSame( $first['client_secret'], $second['client_secret'] );
+		foreach ( array( $first, $second ) as $client ) {
+			$rows = $this->wpdb()->get_results( $this->wpdb()->prepare( 'SELECT * FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s AND revoked = 0', $client['client_id'] ), ARRAY_A );
+			self::assertCount( 1, $rows );
+			self::assertTrue( wp_check_password( $client['client_secret'], $rows[0]['client_secret_hash'] ) );
+		}
 	}
 
 	public function test_capacity_full_does_not_remove_unrelated_dormant_clients_or_hash_secret(): void {

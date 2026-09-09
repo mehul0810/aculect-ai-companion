@@ -148,6 +148,13 @@ WebMCP complements the authenticated remote MCP endpoint; it does not mirror the
 - Protected resource metadata: `/.well-known/oauth-protected-resource`
 - Authorization server metadata: `/.well-known/oauth-authorization-server`
 
+Repeated OAuth registrations receive independent credentials and preserve recent
+registrations awaiting consent. Matching duplicates are only eligible for bounded
+cleanup after the existing stale-client threshold (24 hours by default) and when
+no live access token, authorization code, or refresh token protects them. The
+active-client capacity limit still applies. Access-token storage failures abort
+issuance before this persistence path revokes superseded sessions.
+
 The endpoint is stateless: JSON-RPC messages use POST, while an authenticated
 GET that explicitly accepts `text/event-stream` receives a short priming SSE
 event for clients that open the optional Streamable HTTP listener. That event

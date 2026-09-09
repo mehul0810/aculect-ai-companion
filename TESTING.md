@@ -31,6 +31,7 @@ without `wp_get_abilities()` report an explicit skip.
 - If `phpstan-baseline.neon` changes, the PR body must include a non-empty `PHPStan baseline justification:` line that explains the reviewed reason for the baseline delta.
 
 ## Release and Proof Checks
+- OAuth retry/persistence regressions: `vendor/bin/phpunit --filter 'OAuthDcrSqlitePersistenceTest|OAuthRepositoryTest'`. Repeated registrations must preserve pending clients, including at capacity; duplicate cleanup must retain live credentials and only remove registrations older than the existing stale-client threshold (24 hours by default). Failed access-token insertion must stop issuance before superseded-session revocation. These repository tests do not prove an end-to-end hosted OAuth exchange or transactional refresh rollback.
 - Non-live release proof may use fixture-backed smoke coverage when secrets are unavailable.
 - Live admin/browser proof still requires the owner-provided smoke inputs documented in `scripts/smoke/README.md`.
 - MCP discovery changes must prove deterministic `initialize` and paginated `tools/list` behavior.

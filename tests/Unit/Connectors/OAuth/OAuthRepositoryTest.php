@@ -127,6 +127,28 @@ final class OAuthRepositoryTest extends TestCase {
 		( new AccessTokenRepository() )->persistNewAccessToken( $token );
 	}
 
+	public function test_failed_access_token_insert_stops_issuance_before_session_revocation(): void {
+		$wpdb                = new FakeAccessTokenWpdb();
+		$wpdb->insert_result = false;
+		$GLOBALS['wpdb']     = $wpdb;
+
+		try {
+			( new AccessTokenRepository() )->persistNewAccessToken( $this->access_token_entity( 'new-token', 'chatgpt-client', '7' ) );
+			self::fail( 'A failed insert must abort token issuance.' );
+		} catch ( \League\OAuth2\Server\Exception\OAuthServerException $exception ) {
+			self::assertSame( 'server_error', $exception->getErrorType() );
+			self::assertSame( 500, $exception->getHttpStatusCode() );
+			$response = $exception->generateHttpResponse( Psr7Bridge::response() );
+			$payload  = json_decode( (string) $response->getBody(), true );
+			self::assertArrayNotHasKey( 'access_token', $payload );
+			self::assertArrayNotHasKey( 'refresh_token', $payload );
+		}
+
+		self::assertSame( array( 'insert' ), $wpdb->operations );
+		self::assertSame( array(), $wpdb->updates );
+		self::assertSame( array(), $wpdb->queries );
+	}
+
 	public function test_refresh_token_support_context_uses_hashed_lookup_and_safe_connection_fields(): void {
 		$raw             = 'raw-refresh-token';
 		$wpdb            = new FakeAccessTokenWpdb();
@@ -596,7 +618,8 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][8] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][9] );
 		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][10] );
-		self::assertSame( 25, $wpdb->prepared[0]['args'][11] );
+		self::assertStringContainsString( 'clients.created_at < %s', $wpdb->prepared[0]['query'] );
+		self::assertSame( 25, $wpdb->prepared[0]['args'][12] );
 	}
 
 	public function test_duplicate_client_cleanup_uses_order_insensitive_redirect_fingerprints(): void {
@@ -1000,6 +1023,8 @@ final class FakeAccessTokenWpdb {
 	 */
 	public array $inserts = array();
 
+	public int|false $insert_result = 1;
+
 	/**
 	 * Operation order.
 	 *
@@ -1120,7 +1145,7 @@ final class FakeAccessTokenWpdb {
 		);
 		$this->operations[] = 'insert';
 
-		return 1;
+		return $this->insert_result;
 	}
 
 	/**

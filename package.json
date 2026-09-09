@@ -10,6 +10,7 @@
     "lint:css": "wp-scripts lint-style",
     "smoke:release-fixture": "node scripts/smoke/release-fixture.mjs",
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
+    "smoke:mcp-sdk": "node scripts/smoke/mcp-sdk-client.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",
     "test:js": "node --test tests/js/*.test.mjs",
@@ -20,13 +21,14 @@
     "npm": ">=11"
   },
   "devDependencies": {
-    "axe-core": "^4.13.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@playwright/test": "^1.60.0",
     "@wordpress/components": "^33.1.0",
     "@wordpress/dataviews": "^14.3.0",
     "@wordpress/element": "^6.46.0",
     "@wordpress/icons": "^13.1.0",
-    "@wordpress/scripts": "^32.2.0"
+    "@wordpress/scripts": "^32.2.0",
+    "axe-core": "^4.13.0"
   },
   "overrides": {
     "@puppeteer/browsers": "^3.2.1",

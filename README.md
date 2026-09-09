@@ -161,7 +161,11 @@ with existing clients. Requests using `2026-07-28` must send matching
 per-request protocol and client-capability metadata. `server/discover`
 advertises the supported versions. The `2026-07-28` contract does not use the
 initialize lifecycle; `2025-11-25` and `2025-06-18` retain
-`initialize` / `notifications/initialized`. Current-protocol discovery and
+`initialize` / `notifications/initialized`. An initialize request for another
+version receives a supported initialize-era version; the client must accept
+that version before continuing. This does not enable legacy HTTP+SSE transport:
+the endpoint does not advertise an `endpoint` event or a separate message channel.
+Current-protocol discovery and
 static resource lists include public cache hints, while authorization-dependent
 tool lists and resource reads remain private with a zero TTL. Current responses
 also identify the Aculect MCP server and use JSON-RPC invalid-params errors for

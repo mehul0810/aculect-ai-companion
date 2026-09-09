@@ -118,7 +118,10 @@ async function mcpRpc( config, id, method, params = {} ) {
 	const response = await fetch( siteUrl( config.baseUrl, config.mcpPath ), {
 		method: 'POST',
 		headers: {
-			accept: 'application/json',
+			accept: 'application/json, text/event-stream',
+			...( config.protocolVersion
+				? { 'mcp-protocol-version': config.protocolVersion }
+				: {} ),
 			authorization: `Bearer ${ config.bearerToken }`,
 			'content-type': 'application/json',
 		},
@@ -145,9 +148,11 @@ async function mcpRpc( config, id, method, params = {} ) {
 
 	if ( body.error ) {
 		throw new Error(
-			`MCP ${ method } returned ${ body.error.code || 'error' }: ${
-				body.error.message || 'Unknown error'
-			}`
+			`MCP ${ method } returned JSON-RPC error code ${
+				typeof body.error.code === 'number'
+					? body.error.code
+					: 'unknown'
+			}.`
 		);
 	}
 
@@ -159,14 +164,38 @@ async function mcpRpc( config, id, method, params = {} ) {
 }
 
 async function initialize( config, id, clientName ) {
-	return mcpRpc( config, id, 'initialize', {
-		protocolVersion: '2025-03-26',
+	delete config.protocolVersion;
+	const result = await mcpRpc( config, id, 'initialize', {
+		protocolVersion: '2025-11-25',
 		capabilities: {},
 		clientInfo: {
 			name: clientName,
 			version: '0.1.0',
 		},
 	} );
+	if ( ! [ '2025-11-25', '2025-06-18' ].includes( result.protocolVersion ) ) {
+		throw new Error( 'Server negotiated an unsupported protocol version.' );
+	}
+	config.protocolVersion = result.protocolVersion;
+	const response = await fetch( siteUrl( config.baseUrl, config.mcpPath ), {
+		method: 'POST',
+		headers: {
+			accept: 'application/json, text/event-stream',
+			authorization: `Bearer ${ config.bearerToken }`,
+			'content-type': 'application/json',
+			'mcp-protocol-version': config.protocolVersion,
+		},
+		body: JSON.stringify( {
+			jsonrpc: '2.0',
+			method: 'notifications/initialized',
+		} ),
+	} );
+	if ( response.status !== 202 || ( await response.text() ).length !== 0 ) {
+		throw new Error(
+			'Initialized notification must return HTTP 202 with an empty body.'
+		);
+	}
+	return result;
 }
 
 async function collectTools( config, idPrefix ) {

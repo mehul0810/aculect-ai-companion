@@ -59,6 +59,28 @@ If `ACULECT_SMOKE_MCP_BEARER_TOKEN` is omitted, the UI smoke still runs and `sum
 
 ## MCP Live-Client Discovery Smoke
 
+For transport diagnosis use `npm run smoke:mcp-sdk` with
+`ACULECT_MCP_SMOKE_BASE_URL` and `ACULECT_MCP_SMOKE_BEARER_TOKEN` configured locally.
+It uses the pinned development-only MCP SDK with a 15-second deadline and bounded
+pagination/reconnects. It completes initialize, initialized notification, discovery,
+and one `site_get_info` call. Output includes only stage, protocol headers, HTTP
+status/content type, and error types/codes. It never prints raw server error bodies
+or tool results, which can contain private data. This checks Streamable HTTP,
+not the deprecated HTTP+SSE endpoint-event transport. OAuth consent and token
+refresh must be checked separately with MCP Inspector. Never paste tokens in chat.
+
+If Inspector fails before consent with an unknown-client error, compare the
+advertised authorization endpoint with the plugin REST authorization route using
+the same registered client and PKCE parameters. Different error templates or
+lookup outcomes can indicate a stale root-route shim, another plugin, or an
+infrastructure routing conflict. Inspect the deployed handler before changing
+OAuth client validation; do not bypass issuer binding or accept unknown clients.
+A working REST route alone does not prove the advertised OAuth flow works.
+
+The discovery script below remains a metadata determinism check, not a replacement
+for SDK or hosted-client proof. It sends both required Accept types, completes the
+initialized notification, and carries the negotiated version on subsequent calls.
+
 Run the focused live-client discovery smoke after connecting an external MCP client and minting a safe test access token:
 
 ```bash

@@ -556,19 +556,8 @@ final class McpController {
 					? $body['params']['protocolVersion']
 					: self::PROTOCOL_VERSION_LEGACY;
 				if ( ! McpProtocolVersion::uses_initialize( $requested_version ) ) {
-					return new WP_REST_Response(
-						$this->rpc_error(
-							$id,
-							-32022,
-							'Unsupported protocol version',
-							array(
-								'code'      => 'unsupported_protocol_version',
-								'requested' => $requested_version,
-								'supported' => array( McpProtocolVersion::TRANSITIONAL, self::PROTOCOL_VERSION_LEGACY ),
-							)
-						),
-						400
-					);
+					// Initialization negotiates a supported alternative; subsequent headers remain strict.
+					$requested_version = McpProtocolVersion::TRANSITIONAL;
 				}
 				$started_at = microtime( true );
 				$result     = $this->initialize_payload( $requested_version );

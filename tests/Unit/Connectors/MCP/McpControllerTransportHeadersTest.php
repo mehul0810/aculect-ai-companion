@@ -120,9 +120,24 @@ final class McpControllerTransportHeadersTest extends TestCase {
 		self::assertNotContains( 'X-Unrelated-Header', $headers );
 	}
 
+	public function test_mcp_cors_exposes_only_safe_protocol_diagnostics(): void {
+		$headers = McpTransportResponsePolicy::filter_exposed_cors_headers( array( 'Link' ) );
+
+		self::assertContains( 'MCP-Protocol-Version', $headers );
+		self::assertContains( 'WWW-Authenticate', $headers );
+		self::assertContains( 'X-Aculect-MCP-Request-ID', $headers );
+		self::assertContains( 'Link', $headers );
+		self::assertNotContains( 'Authorization', $headers );
+	}
+
 	private function assert_never_cacheable( WP_REST_Response $response ): void {
-		self::assertSame( 'no-store, private', $response->header( 'Cache-Control' ) );
+		self::assertSame( 'no-store, private, no-cache, max-age=0, must-revalidate', $response->header( 'Cache-Control' ) );
 		self::assertSame( 'no-cache', $response->header( 'Pragma' ) );
+		self::assertSame( '0', $response->header( 'Expires' ) );
+		self::assertSame( 'no-store', $response->header( 'CDN-Cache-Control' ) );
+		self::assertSame( 'no-store', $response->header( 'Surrogate-Control' ) );
+		self::assertSame( '0', $response->header( 'X-Accel-Expires' ) );
+		self::assertMatchesRegularExpression( '/^[0-9a-f-]{36}$/', (string) $response->header( 'X-Aculect-MCP-Request-ID' ) );
 		self::assertStringContainsString( 'Authorization', (string) $response->header( 'Vary' ) );
 		self::assertStringContainsString( 'MCP-Protocol-Version', (string) $response->header( 'Vary' ) );
 	}

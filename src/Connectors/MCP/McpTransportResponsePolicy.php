@@ -13,6 +13,8 @@ use WP_REST_Response;
  */
 final class McpTransportResponsePolicy {
 
+	private static string $request_id = '';
+
 	/**
 	 * Request headers used by the Streamable HTTP transport that browser
 	 * clients may include in a CORS preflight.
@@ -28,6 +30,44 @@ final class McpTransportResponsePolicy {
 		'MCP-Session-Id',
 		'Last-Event-ID',
 	);
+
+	/**
+	 * Safe response headers that browser-based MCP diagnostics may inspect.
+	 *
+	 * @var string[]
+	 */
+	private const CORS_RESPONSE_HEADERS = array(
+		'MCP-Protocol-Version',
+		'WWW-Authenticate',
+		'X-Aculect-MCP-Request-ID',
+	);
+
+	/**
+	 * Register transport-wide response and browser header hooks.
+	 */
+	public static function register_hooks(): void {
+		add_filter( 'rest_allowed_cors_headers', array( self::class, 'filter_cors_request_headers' ) );
+		add_filter( 'rest_exposed_cors_headers', array( self::class, 'filter_exposed_cors_headers' ) );
+		add_filter( 'rest_pre_serve_request', array( self::class, 'serve_sse_probe' ), 20, 4 );
+	}
+
+	/**
+	 * Start a new request correlation scope.
+	 */
+	public static function begin_request(): void {
+		self::$request_id = self::new_request_id();
+	}
+
+	/**
+	 * Return the opaque request ID for the current transport scope.
+	 */
+	public static function request_id(): string {
+		if ( '' === self::$request_id ) {
+			self::begin_request();
+		}
+
+		return self::$request_id;
+	}
 
 	/**
 	 * Permit the protocol's non-simple request headers on WordPress REST CORS
@@ -47,15 +87,48 @@ final class McpTransportResponsePolicy {
 	}
 
 	/**
+	 * Expose only protocol and opaque diagnostic response headers to browsers.
+	 *
+	 * @param string[] $headers Existing exposed response headers.
+	 * @return string[]
+	 */
+	public static function filter_exposed_cors_headers( array $headers ): array {
+		foreach ( self::CORS_RESPONSE_HEADERS as $header ) {
+			if ( ! in_array( $header, $headers, true ) ) {
+				$headers[] = $header;
+			}
+		}
+
+		return $headers;
+	}
+
+	/**
 	 * Prevent caches from replaying OAuth challenges, request-specific JSON-RPC
 	 * responses, or an authenticated SSE-probe response to another client.
 	 *
 	 * @param WP_REST_Response $response REST response.
 	 */
 	public static function apply_cache_headers( WP_REST_Response $response ): void {
-		$response->header( 'Cache-Control', 'no-store, private' );
+		// WordPress core and common reverse proxies do not all honor the same
+		// cache-control directive. Keep every MCP response request-specific,
+		// including OAuth challenges and the optional authenticated SSE probe.
+		$response->header( 'Cache-Control', 'no-store, private, no-cache, max-age=0, must-revalidate' );
 		$response->header( 'Pragma', 'no-cache' );
+		$response->header( 'Expires', '0' );
+		$response->header( 'CDN-Cache-Control', 'no-store' );
+		$response->header( 'Surrogate-Control', 'no-store' );
+		$response->header( 'X-Accel-Expires', '0' );
 		$response->header( 'Vary', 'Authorization, Accept, Origin, MCP-Protocol-Version, MCP-Method, MCP-Name, MCP-Session-Id, Last-Event-ID' );
+	}
+
+	/**
+	 * Apply the request correlation and cache policy headers together.
+	 *
+	 * @param WP_REST_Response $response REST response.
+	 */
+	public static function apply_request_headers( WP_REST_Response $response ): void {
+		$response->header( 'X-Aculect-MCP-Request-ID', self::request_id() );
+		self::apply_cache_headers( $response );
 	}
 
 	/**
@@ -149,5 +222,26 @@ final class McpTransportResponsePolicy {
 			. "retry: 1000\n"
 			. "data:\n"
 			. ': ' . str_repeat( ' ', 2048 ) . "\n\n";
+	}
+
+	/**
+	 * Return an opaque request ID without depending on the complete WordPress
+	 * function set in lightweight tests.
+	 */
+	private static function new_request_id(): string {
+		if ( function_exists( 'wp_generate_uuid4' ) ) {
+			return (string) wp_generate_uuid4();
+		}
+
+		try {
+			$bytes = random_bytes( 16 );
+		} catch ( \Throwable ) {
+			$bytes = hash( 'sha256', uniqid( '', true ), true );
+		}
+
+		$bytes[6] = chr( ( ord( $bytes[6] ) & 0x0f ) | 0x40 );
+		$bytes[8] = chr( ( ord( $bytes[8] ) & 0x3f ) | 0x80 );
+
+		return vsprintf( '%s%s-%s-%s-%s-%s%s%s', str_split( bin2hex( $bytes ), 4 ) );
 	}
 }

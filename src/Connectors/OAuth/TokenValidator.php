@@ -16,6 +16,8 @@ final class TokenValidator {
 
 	private const FAILURE_NONE                      = 'none';
 	private const FAILURE_RESOURCE_MISMATCH         = 'resource_mismatch';
+	private const FAILURE_AUTHORIZATION_MISSING     = 'authorization_header_missing';
+	private const FAILURE_AUTHORIZATION_INVALID     = 'bearer_header_invalid';
 	private const FAILURE_TOKEN_VALIDATION          = 'token_validation_failed';
 	private const FAILURE_TOKEN_CONTEXT_MISSING     = 'token_context_missing';
 	private const FAILURE_CONTEXT_RESOURCE_MISMATCH = 'context_resource_mismatch';
@@ -38,6 +40,24 @@ final class TokenValidator {
 			}
 			if ( '' !== $requested_resource && Helpers::mcp_resource() !== Helpers::normalize_resource( $requested_resource ) ) {
 				$this->failure_reason = self::FAILURE_RESOURCE_MISMATCH;
+				return array();
+			}
+
+			$authorization = trim( (string) $request->get_header( 'authorization' ) );
+			if ( '' === $authorization ) {
+				foreach ( array( 'HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION' ) as $server_key ) {
+					if ( isset( $_SERVER[ $server_key ] ) && is_scalar( $_SERVER[ $server_key ] ) ) {
+						$authorization = trim( (string) wp_unslash( $_SERVER[ $server_key ] ) );
+						break;
+					}
+				}
+			}
+			if ( '' === $authorization ) {
+				$this->failure_reason = self::FAILURE_AUTHORIZATION_MISSING;
+				return array();
+			}
+			if ( ! preg_match( '/^Bearer\s+\S+$/i', $authorization ) ) {
+				$this->failure_reason = self::FAILURE_AUTHORIZATION_INVALID;
 				return array();
 			}
 

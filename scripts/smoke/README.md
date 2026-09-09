@@ -64,7 +64,10 @@ For transport diagnosis use `npm run smoke:mcp-sdk` with
 It uses the pinned development-only MCP SDK with a 15-second deadline and bounded
 pagination/reconnects. It completes initialize, initialized notification, discovery,
 and one `site_get_info` call. Output includes only stage, protocol headers, HTTP
-status/content type, and error types/codes. It never prints raw server error bodies
+status/content type, safe cache/edge headers, request correlation IDs, and error
+types/codes. It also records an unauthenticated challenge probe so OAuth status,
+`WWW-Authenticate`, and cache behavior can be checked before a bearer is used. It
+never prints raw server error bodies
 or tool results, which can contain private data. This checks Streamable HTTP,
 not the deprecated HTTP+SSE endpoint-event transport. OAuth consent and token
 refresh must be checked separately with MCP Inspector. Never paste tokens in chat.

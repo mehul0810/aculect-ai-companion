@@ -70,8 +70,7 @@ final class McpController {
 		);
 
 		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
-		add_filter( 'rest_allowed_cors_headers', array( McpTransportResponsePolicy::class, 'filter_cors_request_headers' ) );
-		add_filter( 'rest_pre_serve_request', array( McpTransportResponsePolicy::class, 'serve_sse_probe' ), 20, 4 );
+		McpTransportResponsePolicy::register_hooks();
 	}
 
 	/**
@@ -81,6 +80,7 @@ final class McpController {
 	 * @return true|\WP_Error
 	 */
 	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
+		McpTransportResponsePolicy::begin_request();
 		$this->request_auth = array();
 		$this->reset_request_protocol_version( $request );
 		McpToolAvailability::set_current_granted_scopes( null );
@@ -136,7 +136,7 @@ final class McpController {
 
 		if ( $response instanceof WP_REST_Response ) {
 			$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
-			McpTransportResponsePolicy::apply_cache_headers( $response );
+			McpTransportResponsePolicy::apply_request_headers( $response );
 		}
 
 		$data = $response instanceof WP_REST_Response ? $response->get_data() : null;
@@ -151,7 +151,7 @@ final class McpController {
 				$response->get_status()
 			);
 			$transport_response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
-			McpTransportResponsePolicy::apply_cache_headers( $transport_response );
+			McpTransportResponsePolicy::apply_request_headers( $transport_response );
 			return $transport_response;
 		}
 
@@ -654,15 +654,15 @@ final class McpController {
 	 * @return array<string, mixed>
 	 */
 	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array(), string $auth_failure_reason = '' ): array {
-		$context = array(
+		$context               = array(
 			'provider'   => $provider,
 			'rpc_method' => $method,
 			'tool'       => $tool,
 		) + ( '' === $auth_failure_reason ? array() : array( 'auth_failure_reason' => $auth_failure_reason ) );
+		$context['request_id'] = McpTransportResponsePolicy::request_id();
 		if ( '' !== $error_code ) {
 			$context['error_code'] = $error_code;
 		}
-
 		if ( array() !== $required_scopes ) {
 			$context['required_scopes'] = array_values( array_map( 'strval', $required_scopes ) );
 		}
@@ -1412,7 +1412,7 @@ final class McpController {
 		);
 		$response->header( 'WWW-Authenticate', TokenValidator::www_authenticate_header( $scope, $error ) );
 		$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
-		McpTransportResponsePolicy::apply_cache_headers( $response );
+		McpTransportResponsePolicy::apply_request_headers( $response );
 
 		return $response;
 	}

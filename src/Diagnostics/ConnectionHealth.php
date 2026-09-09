@@ -7,6 +7,7 @@ namespace Aculect\AICompanion\Diagnostics;
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesDiagnostics;
+use Aculect\AICompanion\Connectors\OAuth\TokenEndpointAuthMethod;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
 use WP_Error;
 
@@ -306,9 +307,14 @@ final class ConnectionHealth {
 			return $response;
 		}
 
-		$data = $response['json'];
-		if ( ! is_array( $data ) || Helpers::mcp_resource() !== (string) ( $data['resource'] ?? '' ) ) {
-			return $this->item( 'protected_resource_metadata', 'fail', 'Resource metadata loaded but did not describe this connection URL.', 'Flush permalinks and check whether a cache or proxy is serving stale metadata.', array( 'url' => $url ) );
+		$data              = $response['json'];
+		$expected_resource = Helpers::mcp_resource();
+		if ( ! is_array( $data )
+			|| (string) ( $data['resource'] ?? '' ) !== $expected_resource
+			|| ! $this->matches_string_set( $data['authorization_servers'] ?? null, array( Helpers::authorization_server_issuer() ) )
+			|| ! $this->matches_string_set( $data['scopes_supported'] ?? null, Helpers::supported_scopes() )
+		) {
+			return $this->item( 'protected_resource_metadata', 'fail', 'Resource metadata loaded but did not describe this OAuth connection exactly.', 'Flush permalinks and check whether a cache or proxy is serving stale resource metadata.', array( 'url' => $url ) );
 		}
 
 		return $this->item( 'protected_resource_metadata', 'pass', 'Resource metadata is reachable.', 'No action needed.', array( 'url' => $url ) );
@@ -328,9 +334,18 @@ final class ConnectionHealth {
 			return $response;
 		}
 
-		$data = $response['json'];
-		if ( ! is_array( $data ) || '' === (string) ( $data['registration_endpoint'] ?? '' ) || '' === (string) ( $data['authorization_endpoint'] ?? '' ) ) {
-			return $this->item( 'authorization_metadata', 'fail', 'Authorization metadata loaded but is missing connection endpoints.', 'Flush permalinks and clear any cache for /.well-known OAuth metadata URLs.', array( 'url' => $url ) );
+		$data                      = $response['json'];
+		$metadata_matches_contract = is_array( $data )
+			&& Helpers::authorization_server_issuer() === (string) ( $data['issuer'] ?? '' )
+			&& Helpers::authorization_endpoint() === (string) ( $data['authorization_endpoint'] ?? '' )
+			&& Helpers::token_endpoint() === (string) ( $data['token_endpoint'] ?? '' )
+			&& Helpers::registration_endpoint() === (string) ( $data['registration_endpoint'] ?? '' )
+			&& $this->matches_string_set( $data['protected_resources'] ?? null, array( Helpers::mcp_resource() ) )
+			&& true === ( $data['resource_indicators_supported'] ?? false )
+			&& $this->matches_string_set( $data['code_challenge_methods_supported'] ?? null, array( 'S256' ) )
+			&& $this->matches_string_set( $data['token_endpoint_auth_methods_supported'] ?? null, TokenEndpointAuthMethod::supported() );
+		if ( ! $metadata_matches_contract ) {
+			return $this->item( 'authorization_metadata', 'fail', 'Authorization metadata loaded but does not match the published OAuth connection contract.', 'Flush permalinks and clear any cache for /.well-known OAuth metadata URLs.', array( 'url' => $url ) );
 		}
 
 		return $this->item( 'authorization_metadata', 'pass', 'Authorization metadata is reachable.', 'No action needed.', array( 'url' => $url ) );
@@ -354,8 +369,15 @@ final class ConnectionHealth {
 			return $this->blocked_item( 'mcp_auth_challenge', $url, $status );
 		}
 
-		$challenge = strtolower( (string) ( $response['headers']['www-authenticate'] ?? '' ) );
-		if ( 401 === $status && str_contains( $challenge, 'bearer' ) ) {
+		$challenge    = is_scalar( $response['headers']['www-authenticate'] ?? null ) ? (string) $response['headers']['www-authenticate'] : '';
+		$metadata_url = '';
+		if ( preg_match( '/resource_metadata="([^"]+)"/i', $challenge, $matches ) ) {
+			$metadata_url = (string) $matches[1];
+		}
+		if ( 401 === $status
+			&& preg_match( '/^\s*Bearer(?:\s|$)/i', $challenge )
+			&& Helpers::protected_resource_metadata_url() === $metadata_url
+		) {
 			return $this->item(
 				'mcp_auth_challenge',
 				'pass',
@@ -758,6 +780,33 @@ final class ConnectionHealth {
 	}
 
 	/**
+	 * Compare a public JSON array to an exact string set without coercing nested
+	 * objects or arrays into warning-producing string values.
+	 *
+	 * @param mixed    $actual   Candidate metadata value.
+	 * @param string[] $expected Expected string set.
+	 */
+	private function matches_string_set( mixed $actual, array $expected ): bool {
+		if ( ! is_array( $actual ) ) {
+			return false;
+		}
+
+		$actual_values = array();
+		foreach ( $actual as $value ) {
+			if ( is_scalar( $value ) ) {
+				$actual_values[] = (string) $value;
+			}
+		}
+
+		$actual_values   = array_values( array_unique( $actual_values ) );
+		$expected_values = array_values( array_unique( array_map( 'strval', $expected ) ) );
+		sort( $actual_values );
+		sort( $expected_values );
+
+		return $actual_values === $expected_values;
+	}
+
+	/**
 	 * Build a Cloudflare/security-layer remediation result.
 	 *
 	 * @param string $id     Check ID.
@@ -910,6 +959,7 @@ final class ConnectionHealth {
 				'connection_url'    => Helpers::mcp_resource(),
 				'wordpress_version' => get_bloginfo( 'version' ),
 				'php_version'       => PHP_VERSION,
+				'plugin_version'    => defined( 'ACULECT_AI_COMPANION_VERSION' ) ? ACULECT_AI_COMPANION_VERSION : '',
 				'environment_type'  => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production',
 				'debug_mode'        => defined( 'WP_DEBUG' ) && WP_DEBUG ? 'enabled' : 'disabled',
 			)

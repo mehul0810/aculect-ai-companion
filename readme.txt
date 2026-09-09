@@ -291,6 +291,7 @@ Composer dependencies for production releases are installed with:
 * Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.
 * Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.
 * Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1.
+* Improved MCP/OAuth connection diagnostics with exact metadata validation, safe challenge reporting, and request correlation without exposing tokens or request payloads.
 * Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.
 * Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items.
 * Added site-owned Aculect Memory with versioned records, history, and opt-in client-driven synchronization. Imported proposals remain private and pending review; this does not synchronize provider-owned personal memory stores.
@@ -298,6 +299,7 @@ Composer dependencies for production releases are installed with:
 * Hardened WebMCP page-context extraction with bounded traversal and output, hidden/form-content exclusion, and sanitized links.
 * Kept intelligence groups as navigation and guidance while preserving OAuth scopes, WordPress capabilities, and explicit approval requirements for ability execution.
 * Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, WP_SQLite workflow-installer proof, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
+* Hardened MCP responses against WordPress, CDN, and reverse-proxy caching while preserving safe CORS exposure for protocol and correlation headers.
 
 = 0.7.2 =
 

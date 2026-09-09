@@ -21,8 +21,10 @@ final class McpController {
 	public const PROTOCOL_VERSION_INITIAL    = McpProtocolVersion::INITIAL;
 	public const PROTOCOL_VERSION_LEGACY     = McpProtocolVersion::LEGACY;
 	public const SUPPORTED_PROTOCOL_VERSIONS = array(
-		self::PROTOCOL_VERSION_CURRENT, McpProtocolVersion::TRANSITIONAL,
-		self::PROTOCOL_VERSION_LEGACY, McpProtocolVersion::INITIAL,
+		self::PROTOCOL_VERSION_CURRENT,
+		McpProtocolVersion::TRANSITIONAL,
+		self::PROTOCOL_VERSION_LEGACY,
+		McpProtocolVersion::INITIAL,
 	);
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
@@ -198,7 +200,6 @@ final class McpController {
 					'status'  => 400,
 				);
 			}
-
 			$this->request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
 			return null;
 		}
@@ -658,7 +659,6 @@ final class McpController {
 			'rpc_method' => $method,
 			'tool'       => $tool,
 		) + ( '' === $auth_failure_reason ? array() : array( 'auth_failure_reason' => $auth_failure_reason ) );
-
 		if ( '' !== $error_code ) {
 			$context['error_code'] = $error_code;
 		}

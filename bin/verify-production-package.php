@@ -62,6 +62,7 @@ $forbidden_paths = array(
 	'TESTING.md',
 	'RELEASE.md',
 	'DESIGN.md',
+	'design-qa.md',
 	'composer.json',
 	'composer.lock',
 	'eslint.config.cjs',

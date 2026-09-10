@@ -35,6 +35,7 @@ SECURITY.md
 TESTING.md
 RELEASE.md
 DESIGN.md
+design-qa.md
 composer.json
 composer.lock
 package.json

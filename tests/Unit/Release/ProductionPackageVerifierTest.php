@@ -67,6 +67,24 @@ final class ProductionPackageVerifierTest extends TestCase {
 		}
 	}
 
+	public function test_verifier_rejects_internal_design_qa_notes(): void {
+		$package = $this->package_fixture();
+		$this->write_file(
+			$package . '/vendor/autoload.php',
+			"<?php\nnamespace League\\OAuth2\\Server\\Repositories;\ninterface AccessTokenRepositoryInterface {}\n"
+		);
+		$this->write_file( $package . '/design-qa.md', "Internal design QA notes.\n" );
+
+		try {
+			$result = $this->run_verifier( $package );
+
+			self::assertSame( 1, $result['status'] );
+			self::assertStringContainsString( 'Development-only path is present: design-qa.md', $result['output'] );
+		} finally {
+			$this->remove_directory( dirname( $package ) );
+		}
+	}
+
 	public function test_distignore_excludes_generated_smoke_artifacts_from_package_staging(): void {
 		$parent  = sys_get_temp_dir() . '/aculect-package-staging-' . bin2hex( random_bytes( 8 ) );
 		$source  = $parent . '/source';
@@ -81,6 +99,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 			"{\"status\":\"pass\"}\n"
 		);
 		$this->write_file( $source . '/aculect-ai-companion.php', "<?php\n" );
+		$this->write_file( $source . '/design-qa.md', "Internal design QA notes.\n" );
 
 		try {
 			$result = $this->run_package_staging( $source, $package );
@@ -88,6 +107,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 			self::assertSame( 0, $result['status'], $result['output'] );
 			self::assertFileExists( $package . '/aculect-ai-companion.php' );
 			self::assertFileDoesNotExist( $package . '/artifacts' );
+			self::assertFileDoesNotExist( $package . '/design-qa.md' );
 		} finally {
 			$this->remove_directory( $parent );
 		}

@@ -24,8 +24,8 @@
 - Use `aculect-narrow-fixer` only when the parent agent provides exact files, behavior, and validation commands; it must not commit, push, or broaden scope.
 - Use `aculect-mcp-oauth-reviewer` for high-risk MCP, OAuth, ability-policy, security, and diagnostics review.
 - Use `aculect-release-reviewer` before release merges, production package checks, or wp.org-facing release work.
-- `gpt-5.3-codex-spark` is preferred for bounded mapping, log summarization, and narrow fixes. `gpt-5.5` is reserved for security-sensitive MCP/OAuth and release-readiness review.
-- If `gpt-5.5` is unavailable in the active Codex runtime, report that clearly and use `gpt-5.4` only for the affected reviewer handoff.
+- Use `gpt-5.6-luna` with `max` reasoning effort for all project subagents, including mapping, narrow fixes, MCP/OAuth review, release review, and delegated runtime validation.
+- If `gpt-5.6-luna` with `max` reasoning is unavailable in the active runtime, report the blocker and ask the owner before substituting another model or reasoning effort.
 
 ## When To Spawn Project Subagents
 - Subagents do not run automatically just because profiles exist; the parent agent must decide and launch them when task scope warrants delegation.

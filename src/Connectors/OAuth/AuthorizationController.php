@@ -118,7 +118,7 @@ final class AuthorizationController {
 		$consent_url = $this->admin_consent_url(
 			$this->store_consent_request( $context['params'] )
 		);
-		if ( ! is_user_logged_in() ) {
+		if ( ! AuthorizationBrowserSession::is_logged_in( null !== $request ) ) {
 			( new Logger() )->info(
 				'authorize.login_redirect',
 				'OAuth authorization request redirected to WordPress login.',

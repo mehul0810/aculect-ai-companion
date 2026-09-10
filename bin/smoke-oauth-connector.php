@@ -8,7 +8,7 @@
 
 declare(strict_types=1);
 
-const ACULECT_SMOKE_VERSION = '1.0.0';
+const ACULECT_SMOKE_VERSION = '1.1.0';
 
 /**
  * @param string[] $argv Command arguments.
@@ -50,28 +50,30 @@ function aculect_smoke_main( array $argv ): int {
 		throw new RuntimeException( 'Dynamic client registration did not produce a usable client fixture.' );
 	}
 
-	$authorize_url = aculect_smoke_authorize_url( $base_url, $client );
+	foreach ( array( 'root' => false, 'REST' => true ) as $entry => $rest_entry ) {
+		$authorize_url = aculect_smoke_authorize_url( $base_url, $client, $rest_entry );
 
-	$logged_out = aculect_smoke_request(
-		'GET',
-		$authorize_url,
-		array( 'Accept: text/html,application/xhtml+xml' )
-	);
-	aculect_smoke_assert_redirect_status( $logged_out, 'logged-out authorize' );
-	aculect_smoke_assert_logged_out_location( $logged_out );
-	aculect_smoke_line( 'PASS logged-out authorize redirects to login with admin consent redirect_to.' );
+		$logged_out = aculect_smoke_request(
+			'GET',
+			$authorize_url,
+			array( 'Accept: text/html,application/xhtml+xml' )
+		);
+		aculect_smoke_assert_redirect_status( $logged_out, $entry . ' logged-out authorize' );
+		aculect_smoke_assert_logged_out_location( $logged_out );
+		aculect_smoke_line( 'PASS ' . $entry . ' logged-out authorize redirects to login with admin consent redirect_to.' );
 
-	$logged_in = aculect_smoke_request(
-		'GET',
-		$authorize_url,
-		array(
-			'Accept: text/html,application/xhtml+xml',
-			'Cookie: ' . trim( $cookie_header ),
-		)
-	);
-	aculect_smoke_assert_redirect_status( $logged_in, 'logged-in authorize' );
-	aculect_smoke_assert_logged_in_location( $logged_in );
-	aculect_smoke_line( 'PASS logged-in authorize redirects directly to admin consent.' );
+		$logged_in = aculect_smoke_request(
+			'GET',
+			$authorize_url,
+			array(
+				'Accept: text/html,application/xhtml+xml',
+				'Cookie: ' . trim( $cookie_header ),
+			)
+		);
+		aculect_smoke_assert_redirect_status( $logged_in, $entry . ' logged-in authorize' );
+		aculect_smoke_assert_logged_in_location( $logged_in );
+		aculect_smoke_line( 'PASS ' . $entry . ' logged-in authorize redirects directly to admin consent.' );
+	}
 	aculect_smoke_line( 'OAuth connector smoke passed.' );
 
 	return 0;
@@ -161,8 +163,9 @@ function aculect_smoke_register_client( string $base_url, int $attempt ): array 
 
 /**
  * @param array{client_id: string, redirect_uri: string} $client Client fixture.
+ * @param bool $rest_entry Whether to exercise the REST authorization entry.
  */
-function aculect_smoke_authorize_url( string $base_url, array $client ): string {
+function aculect_smoke_authorize_url( string $base_url, array $client, bool $rest_entry = false ): string {
 	$query = http_build_query(
 		array(
 			'response_type'         => 'code',
@@ -179,7 +182,9 @@ function aculect_smoke_authorize_url( string $base_url, array $client ): string 
 		PHP_QUERY_RFC3986
 	);
 
-	return $base_url . '/oauth/authorize?' . $query;
+	$entry_path = $rest_entry ? '/wp-json/aculect-ai-companion/v1/oauth/authorize' : '/oauth/authorize';
+
+	return $base_url . $entry_path . '?' . $query;
 }
 
 /**

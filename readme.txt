@@ -285,6 +285,7 @@ Composer dependencies for production releases are installed with:
 
 = 0.8.0 =
 
+* Fixed the REST OAuth authorization entry to send already logged-in browsers directly to consent while preserving login, permission and consent checks.
 * Added confirmed existing classic-menu item updates and registered scalar custom-field editing with permission, schema and stale-state checks.
 * Added bounded public rendered-page inspection, targeted native cache and soft rewrite maintenance, and read-only WordPress.org file checksum comparisons.
 * Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.

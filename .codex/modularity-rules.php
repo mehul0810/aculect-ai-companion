@@ -63,7 +63,7 @@ return array(
 		),
 		array(
 			'path'      => 'src/Connectors/MCP/FirstPartyAbilityModules.php',
-			'max_lines' => 2424,
+			'max_lines' => 2416,
 			'owner'     => 'MCP',
 			'reason'    => 'Legacy ability composition root; extract domain providers.',
 			'issue'     => '#430',
@@ -155,7 +155,7 @@ return array(
 			'update_item'  => 190,
 			'update_block' => 152,
 		),
-		'src/Connectors/MCP/FirstPartyAbilityModules.php' => array( 'all' => 1286 ),
+		'src/Connectors/MCP/FirstPartyAbilityModules.php' => array( 'all' => 1277 ),
 		'src/Connectors/MCP/McpController.php' => array(
 			'handle_rpc'            => 173,
 			'output_schema_for_module' => 207,

@@ -65,6 +65,12 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - Read one content item by ID.
 - Create a post, page, or custom content item.
 - Update title, content, excerpt, slug, or status for an existing item.
+- Discover, read and update permitted existing registered scalar custom fields with schema validation and confirmation.
+
+### Navigation
+
+- Inspect classic and block navigation sources.
+- Read and update existing classic-menu item labels, custom-link URLs, parent, order, target and rel with state checks and confirmation.
 
 ### Content Groups
 
@@ -92,6 +98,9 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - View WordPress version, PHP version, active theme, and basic site metadata.
 - List installed plugins and active state for users who can manage plugins.
 - List installed themes and active state for users who can manage themes.
+- Inspect bounded public server-rendered headings, links and head metadata without forwarding credentials.
+- Request targeted native post-cache invalidation or a current-site soft rewrite flush with administrator confirmation.
+- Compare bounded batches of installed core or plugin files against official WordPress.org checksums; unsupported packages are not treated as verified.
 
 ### WordPress Abilities
 

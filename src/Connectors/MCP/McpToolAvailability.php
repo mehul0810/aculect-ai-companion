@@ -325,17 +325,7 @@ final class McpToolAvailability {
 				$registry,
 				$wp_abilities
 			),
-			'navigation'         => $this->operation_group(
-				array(
-					'get_context'    => 'navigation.get_context',
-					'list_menus'     => 'navigation.list_menus',
-					'list_locations' => 'navigation.list_locations',
-					'list_items'     => 'navigation.list_items',
-				),
-				$policy,
-				$registry,
-				$wp_abilities
-			),
+			...$this->site_operation_groups( $policy, $registry, $wp_abilities ),
 			'workflow_guides'    => $this->operation_group(
 				array(
 					'list'           => 'workflow_guides.list',
@@ -424,6 +414,45 @@ final class McpToolAvailability {
 				$wp_abilities
 			),
 		);
+	}
+
+	/**
+	 * Project bounded site-operation groups through the ordinary policy boundary.
+	 *
+	 * @param array<string,mixed>           $policy Actor policy.
+	 * @param AbilitiesRegistry             $registry Module registry.
+	 * @param WordPressAbilitiesDiagnostics $wp_abilities Native availability.
+	 * @return array<string,mixed>
+	 */
+	private function site_operation_groups( array $policy, AbilitiesRegistry $registry, WordPressAbilitiesDiagnostics $wp_abilities ): array {
+		$groups = array(
+			'navigation'     => array(
+				'get_context'    => 'navigation.get_context',
+				'list_menus'     => 'navigation.list_menus',
+				'list_locations' => 'navigation.list_locations',
+				'list_items'     => 'navigation.list_items',
+				'read_item'      => 'navigation.read_item',
+				'update_item'    => 'navigation.update_item',
+			),
+			'content_fields' => array(
+				'list_fields'  => 'content_fields.list_fields',
+				'read_field'   => 'content_fields.read_field',
+				'update_field' => 'content_fields.update_field',
+			),
+			'maintenance'    => array(
+				'clean_post_cache'    => 'maintenance.clean_post_cache',
+				'flush_rewrite_rules' => 'maintenance.flush_rewrite_rules',
+			),
+			'integrity'      => array(
+				'check_core'   => 'integrity.check_core',
+				'check_plugin' => 'integrity.check_plugin',
+			),
+			'rendered_page'  => array( 'inspect' => 'site.inspect_rendered_page' ),
+		);
+		foreach ( $groups as $key => $abilities ) {
+			$groups[ $key ] = $this->operation_group( $abilities, $policy, $registry, $wp_abilities );
+		}
+		return $groups;
 	}
 
 	/**
@@ -643,6 +672,10 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return match ( $ability_id ) {
+			'navigation.read_item', 'navigation.update_item' => array( 'edit_theme_options' ),
+			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
+			'integrity.check_core' => array( 'update_core' ),
+			'integrity.check_plugin' => array( 'update_plugins' ),
 			'site.get_health',
 			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),

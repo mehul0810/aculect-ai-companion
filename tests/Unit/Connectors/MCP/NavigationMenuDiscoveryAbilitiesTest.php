@@ -120,7 +120,10 @@ final class NavigationMenuDiscoveryAbilitiesTest extends TestCase {
 		self::assertSame( 'classic_theme', $result['navigation']['theme_mode'] );
 		self::assertSame( 'classic_menu', $result['navigation']['primary_surface'] );
 		self::assertSame( 2, $result['navigation']['registered_location_count'] );
-		self::assertFalse( $result['write_support']['implemented'] );
+		self::assertTrue( $result['write_support']['implemented'] );
+		self::assertFalse( $result['write_support']['block_writes_implemented'] );
+		self::assertFalse( $result['write_support']['location_writes_implemented'] );
+		self::assertSame( 'navigation_update_item', $result['write_support']['update_tool'] );
 		self::assertFalse( $result['safety']['raw_string_navigation_edits_allowed'] );
 	}
 

@@ -19,6 +19,7 @@
 - The train includes packaged WordPress 7.1 final compatibility proof for native Abilities lifecycle execution, client-safe schema preparation, editor integration, and Connect keyboard behavior.
 - The release branch includes the reviewed OAuth issuer/DCR boundary.
 - Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`; do not claim it in 0.8.0.
+- Bounded site operations in this train cover existing classic-menu items, existing registered scalar fields, anonymous public-page inspection, native targeted maintenance and paginated official checksum comparisons. Their contracts, required confirmations and exclusions are recorded in `docs/0.8.0-site-operations.md`; they do not include block navigation writes, complex field builders, global cache purges or file repair.
 - The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog are synchronized to the `0.8.0` metadata candidate. Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.
 
 ## Deferred Development Data

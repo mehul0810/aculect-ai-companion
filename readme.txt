@@ -285,6 +285,8 @@ Composer dependencies for production releases are installed with:
 
 = 0.8.0 =
 
+* Added confirmed existing classic-menu item updates and registered scalar custom-field editing with permission, schema and stale-state checks.
+* Added bounded public rendered-page inspection, targeted native cache and soft rewrite maintenance, and read-only WordPress.org file checksum comparisons.
 * Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.
 * Unified capability discovery with a paginated catalog, default-enabled WordPress and Aculect capabilities, and a third-party-only Abilities screen with explicit administrator choices and preserved runtime permissions.
 * Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.

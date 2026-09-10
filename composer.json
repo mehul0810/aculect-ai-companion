@@ -38,8 +38,10 @@
       "@analyse:mcp:registry",
       "@analyse:mcp:runtime",
       "@analyse:mcp:abilities",
+      "@analyse:mcp:site-operations",
       "@analyse:mcp:modules"
     ],
+    "analyse:mcp:site-operations": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/NavigationItemWriteAbilities.php src/Connectors/MCP/NavigationItemState.php src/Connectors/MCP/RegisteredFieldAbilities.php src/Connectors/MCP/RegisteredFieldPolicy.php src/Connectors/MCP/RenderedPageInspectionAbilities.php src/Connectors/MCP/RenderedPageEvidence.php src/Connectors/MCP/TargetedMaintenanceAbilities.php src/Connectors/MCP/IntegrityChecksumAbilities.php src/Connectors/MCP/ChecksumFileInspector.php",
     "analyse:mcp:modules": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/Modules src/Connectors/MCP/MemoryListSchema.php",
     "analyse:core": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Activity src/Admin src/Connectors/OAuth src/Connectors/Providers src/Connectors/Helpers.php src/Diagnostics src/Intelligence src/WebMCP src/Plugin.php aculect-ai-companion.php",
     "analyse": [

@@ -31,6 +31,7 @@ final class FirstPartyAbilityModules {
 		$fixed_workflows = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
 		$modules         = array(
 			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\MemorySyncAbilityModules( $this->module_factory ) )->all() ),
+			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\SiteOperationsAbilityModules( $this->module_factory ) )->all() ),
 			$this->module(
 				'search',
 				'Search WordPress Content',
@@ -224,16 +225,7 @@ final class FirstPartyAbilityModules {
 				$this->admin_settings_schema(),
 				static fn ( array $args ): array => ( new AdminMenuAbilities() )->list_settings( $args )
 			),
-			$this->module(
-				'navigation.get_context',
-				'Read Navigation Intelligence',
-				'Use this before planning navigation or menu work. It detects block theme, hybrid, classic-menu, and unsupported navigation context and states clearly that writes are not implemented in this slice.',
-				'Navigation Intelligence',
-				'content:read',
-				true,
-				$this->context_only_schema(),
-				static fn ( array $args ): array => ( new NavigationMenuDiscoveryAbilities() )->get_context( $args )
-			),
+			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\NavigationItemAbilityModules( $this->module_factory ) )->all() ),
 			$this->module(
 				'navigation.list_menus',
 				'List Navigation Menus',

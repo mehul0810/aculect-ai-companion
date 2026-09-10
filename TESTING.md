@@ -6,6 +6,7 @@
 - If a required check cannot run, record the exact blocker and the remaining risk.
 
 ## Standard Checks
+- Site-operation PHPStan lane: `composer analyse:mcp:site-operations`; focused tests: `vendor/bin/phpunit --filter 'NavigationItemWriteAbilitiesTest|RegisteredFieldAbilitiesTest|BoundedSiteOperationsTest|SiteOperationsToolSurfaceTest'`. These are WordPress-light tests, not live WordPress or hosted-connector proof.
 - PHP syntax: `composer run lint:php`
 - PHP unit and static analysis: `composer test` or the narrow `composer` scripts relevant to the touched surface
 - JavaScript tests: `npm run test:js`

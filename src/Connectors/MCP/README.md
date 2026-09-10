@@ -16,6 +16,15 @@ When adding or changing tools:
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
 
+## Bounded Site Operations
+
+The 0.8.0 tools add existing classic-menu item updates, registered scalar content
+fields, anonymous rendered-page inspection, targeted native maintenance, and
+read-only official checksum comparisons. The four new writes always require
+confirmation, including trusted connections. See the
+[tool contracts and safety limits](../../../docs/0.8.0-site-operations.md) for
+inputs, permissions, concurrency, external-request limits and recovery.
+
 ## Workflow Routing And Sessions
 
 `workflow_route_request` is the first-party entry point for ambiguous or

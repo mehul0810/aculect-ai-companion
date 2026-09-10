@@ -39,17 +39,17 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 			'status'        => 'ready',
 			'type'          => 'navigation_menu',
 			'label'         => 'Navigation Intelligence',
-			'description'   => 'Read-only WordPress navigation context and inventory for classic menus, classic menu locations, and wp_navigation entities. No writes are implemented in this slice.',
+			'description'   => 'Read-only navigation context for classic menus, locations and wp_navigation entities. Separate guarded tools support existing classic-menu item updates only.',
 			'theme'         => $theme,
 			'navigation'    => $summary,
 			'capabilities'  => array(
 				'can_read'            => true,
-				'can_write'           => false,
+				'can_write'           => current_user_can( 'edit_theme_options' ),
 				'required_capability' => 'edit_theme_options',
 			),
 			'write_support' => $this->write_support_policy(),
 			'safety'        => array(
-				'writes_implemented'                  => false,
+				'writes_implemented'                  => true,
 				'raw_string_navigation_edits_allowed' => false,
 				'explicit_location_reassignment_only_for_writes' => true,
 				'preserve_unknown_blocks_for_future_writes' => true,
@@ -60,6 +60,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'Use navigation_list_menus to inventory readable classic menus and wp_navigation entities.',
 				'Use navigation_list_locations to inspect registered classic menu locations before planning any explicit reassignment.',
 				'Use navigation_list_items with menu_id, navigation_id, or location for bounded item-level inventory only.',
+				'For an existing classic item, use navigation_read_item to obtain expected_state, then preview and confirm navigation_update_item. Block and location writes are unsupported.',
 			),
 			'read_only'     => true,
 		);
@@ -473,8 +474,12 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 	 */
 	private function write_support_policy(): array {
 		return array(
-			'implemented'                          => false,
-			'current_slice'                        => 'read_only_inventory',
+			'implemented'                          => true,
+			'current_slice'                        => 'classic_item_updates',
+			'block_writes_implemented'             => false,
+			'location_writes_implemented'          => false,
+			'read_before_write'                    => 'navigation_read_item',
+			'update_tool'                          => 'navigation_update_item',
 			'classic_location_reassignment'        => 'explicit_only_with_confirmation_and_audit',
 			'block_navigation_write_model'         => 'nested_mixed_block_capable',
 			'preserve_unknown_custom_blocks_attrs' => true,

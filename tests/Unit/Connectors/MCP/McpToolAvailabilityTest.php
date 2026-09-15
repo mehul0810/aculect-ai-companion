@@ -455,7 +455,7 @@ final class McpToolAvailabilityTest extends TestCase {
 
 	public function test_workflow_operations_respect_static_capability_dependency_blocks(): void {
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 21;
-		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
+		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options', 'view_site_health_checks' );
 
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'site.get_info', 'site.get_health' ) );

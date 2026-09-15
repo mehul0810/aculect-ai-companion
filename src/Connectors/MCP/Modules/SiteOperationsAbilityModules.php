@@ -43,6 +43,24 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			$this->factory->create(
+				'tools.prepare_handoff',
+				'Open Native WordPress Tools',
+				'Return a capability-checked native Tools screen. User performs file selection, downloads and verified privacy actions manually. Never accepts personal data or files, executes a job, or claims completion.',
+				'Site Tools',
+				'content:read',
+				true,
+				$this->schema(
+					array(
+						'target' => array(
+							'type' => 'string',
+							'enum' => array( 'import', 'export', 'privacy_export', 'privacy_erase', 'site_health' ),
+						),
+					),
+					array( 'target' )
+				),
+				static fn ( array $args ): array => ( new \Aculect\AICompanion\Connectors\MCP\ToolsHandoffAbilities() )->prepare( $args )
+			),
 			...( new ExtensionLifecycleAbilityModules( $this->factory ) )->all(),
 			...array_values( ( new PrivateSettingsAbilityModules( $this->factory ) )->all() ),
 			$this->factory->create( 'site.inspect_rendered_page', 'Inspect Public Rendered Page', 'Inspect a public post permalink without cookies or redirects. Returns bounded server-rendered headings, links and head metadata, not screenshots or JavaScript-rendered content.', 'Site Inspection', 'content:read', true, $this->schema( $post, array( 'post_id' ) ), static fn ( array $args ): array => ( new RenderedPageInspectionAbilities() )->inspect( $args ) ),

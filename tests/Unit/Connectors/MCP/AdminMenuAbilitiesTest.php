@@ -80,6 +80,13 @@ final class AdminMenuAbilitiesTest extends TestCase {
 		self::assertFalse( $result['raw_options_included'] );
 	}
 
+	public function test_file_editor_navigation_explicitly_denies_execution(): void {
+		$result = ( new AdminMenuAbilities() )->get_navigation_target( array( 'query' => 'plugin file editor' ) );
+		self::assertSame( 'plugin-editor.php', $result['target']['slug'] );
+		self::assertSame( 'not_allowed', $result['operation_policy']['status'] );
+		self::assertFalse( $result['target']['operation_policy']['execution_allowed'] );
+	}
+
 	public function test_navigation_target_finds_core_settings_page(): void {
 		$result = ( new AdminMenuAbilities() )->get_navigation_target(
 			array(

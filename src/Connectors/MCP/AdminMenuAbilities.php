@@ -156,11 +156,12 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 		);
 
 		return array(
-			'status'       => array() === $ranked ? 'not_found' : 'ready',
-			'query'        => $query,
-			'target'       => $ranked[0] ?? array(),
-			'alternatives' => array_slice( $ranked, 1, 5 ),
-			'guidance'     => array(
+			'status'           => array() === $ranked ? 'not_found' : 'ready',
+			'operation_policy' => ToolsOperationPolicy::for_page( (string) ( $ranked[0]['slug'] ?? '' ) ),
+			'query'            => $query,
+			'target'           => $ranked[0] ?? array(),
+			'alternatives'     => array_slice( $ranked, 1, 5 ),
+			'guidance'         => array(
 				'admin_only'   => true,
 				'change_model' => 'Navigate to the admin page or use a future typed ability; do not edit files or arbitrary options.',
 			),
@@ -465,6 +466,9 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 		if ( $is_block_theme && ! $this->is_multisite() ) {
 			$items[] = $this->admin_page( 'Theme File Editor', 'Theme File Editor', 'theme-editor.php', 'edit_themes', 'tools.php', 'tools', 81 );
 		}
+		if ( ! $this->is_multisite() ) {
+			$items[] = $this->admin_page( 'Plugin File Editor', 'Plugin File Editor', 'plugin-editor.php', 'edit_plugins', $is_block_theme ? 'tools.php' : 'plugins.php', $is_block_theme ? 'tools' : 'plugins', 81 );
+		}
 
 		if ( $this->is_multisite() && function_exists( 'is_main_site' ) && ! is_main_site() && ! $this->is_deleted_site() ) {
 			$items[] = $this->admin_page( 'Delete Site', 'Delete Site', 'ms-delete-site.php', 'delete_site', 'tools.php', 'tools', 82 );
@@ -650,15 +654,16 @@ final class AdminMenuAbilities extends AbstractAbilityService {
 		$slug = sanitize_text_field( $slug );
 
 		return array(
-			'menu_title'  => sanitize_text_field( $menu_title ),
-			'title'       => sanitize_text_field( '' === $title ? $menu_title : $title ),
-			'slug'        => $slug,
-			'parent_slug' => sanitize_text_field( $parent_slug ),
-			'section'     => sanitize_key( $section ),
-			'url'         => $this->admin_page_url( $slug ),
-			'capability'  => sanitize_key( $capability ),
-			'available'   => $this->capability_available( $capability ),
-			'position'    => $position,
+			'menu_title'       => sanitize_text_field( $menu_title ),
+			'title'            => sanitize_text_field( '' === $title ? $menu_title : $title ),
+			'slug'             => $slug,
+			'parent_slug'      => sanitize_text_field( $parent_slug ),
+			'section'          => sanitize_key( $section ),
+			'url'              => $this->admin_page_url( $slug ),
+			'capability'       => sanitize_key( $capability ),
+			'available'        => $this->capability_available( $capability ),
+			'position'         => $position,
+			'operation_policy' => ToolsOperationPolicy::for_page( $slug ),
 		);
 	}
 

@@ -42,6 +42,23 @@ Open `AI Companion > Connect` in WordPress:
 - Read compact MCP resources for capability, site, Site Editor, admin menu, content, brand, workflow, and memory context.
 - Connect and disconnect AI assistants.
 
+## WordPress Tools boundaries
+
+- `tools.prepare_handoff` returns a capability-checked native screen for Import,
+  Export, Site Health, Export Personal Data, or Erase Personal Data. It does not
+  execute operations or verify completion. Users handle files, requester details,
+  verification, downloads, and erasure confirmation manually in WordPress; these
+  inputs must not be captured through AI chat or browser automation.
+- `site.get_health` uses `view_site_health_checks`. Its selected configuration
+  signals are not full native Site Health coverage. REST URL discovery is not a
+  connectivity test, update information is cached, and native aggregate counters
+  are reported with unknown freshness when available. Missing counters are not a pass.
+- Navigation to Theme File Editor, Plugin File Editor, or Delete Site includes an
+  explicit `not_allowed` operation policy. No file-editing or site-deletion
+  operation is provided. Other navigation targets also do not grant execution authority.
+- Full native health test execution, redacted Info coverage, import/export jobs,
+  and privacy-request progress tracking are not implemented by these handoffs.
+
 ## Supported AI Tools
 
 Aculect AI Companion keeps the primary setup surface focused on:

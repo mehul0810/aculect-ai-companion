@@ -10,64 +10,69 @@ namespace Aculect\AICompanion\Settings;
 
 /** Never accepts an arbitrary option name from a client. */
 final class PrivateSettingTargets {
+	public function __construct( private readonly CorePrivateSettingTargets $coreTargets = new CorePrivateSettingTargets() ) {}
+
 	/**
 	 * Return fixed settings and their native storage mapping.
 	 *
 	 * @return array<string,array<string,mixed>>
 	 */
 	public function all(): array {
-		return array(
-			'site_title'        => array(
-				'option' => 'blogname',
-				'label'  => 'Site title',
-				'group'  => 'General',
-				'secret' => false,
+		return array_merge(
+			array(
+				'site_title'        => array(
+					'option' => 'blogname',
+					'label'  => 'Site title',
+					'group'  => 'General',
+					'secret' => false,
+				),
+				'tagline'           => array(
+					'option' => 'blogdescription',
+					'label'  => 'Tagline',
+					'group'  => 'General',
+					'secret' => false,
+				),
+				'timezone'          => array(
+					'option' => 'timezone_string',
+					'label'  => 'Timezone (for example Asia/Kolkata)',
+					'group'  => 'General',
+					'secret' => false,
+				),
+				'posts_per_page'    => array(
+					'option' => 'posts_per_page',
+					'label'  => 'Posts per page (1–100)',
+					'group'  => 'Reading',
+					'secret' => false,
+				),
+				'default_category'  => array(
+					'option' => 'default_category',
+					'label'  => 'Default category ID',
+					'group'  => 'Writing',
+					'secret' => false,
+				),
+				'openai_api_key'    => array(
+					'option'   => 'connectors_ai_openai_api_key',
+					'label'    => 'OpenAI API key',
+					'group'    => 'Connectors',
+					'secret'   => true,
+					'provider' => 'openai',
+				),
+				'anthropic_api_key' => array(
+					'option'   => 'connectors_ai_anthropic_api_key',
+					'label'    => 'Anthropic API key',
+					'group'    => 'Connectors',
+					'secret'   => true,
+					'provider' => 'anthropic',
+				),
+				'google_api_key'    => array(
+					'option'   => 'connectors_ai_google_api_key',
+					'label'    => 'Google API key',
+					'group'    => 'Connectors',
+					'secret'   => true,
+					'provider' => 'google',
+				),
 			),
-			'tagline'           => array(
-				'option' => 'blogdescription',
-				'label'  => 'Tagline',
-				'group'  => 'General',
-				'secret' => false,
-			),
-			'timezone'          => array(
-				'option' => 'timezone_string',
-				'label'  => 'Timezone (for example Asia/Kolkata)',
-				'group'  => 'General',
-				'secret' => false,
-			),
-			'posts_per_page'    => array(
-				'option' => 'posts_per_page',
-				'label'  => 'Posts per page (1–100)',
-				'group'  => 'Reading',
-				'secret' => false,
-			),
-			'default_category'  => array(
-				'option' => 'default_category',
-				'label'  => 'Default category ID',
-				'group'  => 'Writing',
-				'secret' => false,
-			),
-			'openai_api_key'    => array(
-				'option'   => 'connectors_ai_openai_api_key',
-				'label'    => 'OpenAI API key',
-				'group'    => 'Connectors',
-				'secret'   => true,
-				'provider' => 'openai',
-			),
-			'anthropic_api_key' => array(
-				'option'   => 'connectors_ai_anthropic_api_key',
-				'label'    => 'Anthropic API key',
-				'group'    => 'Connectors',
-				'secret'   => true,
-				'provider' => 'anthropic',
-			),
-			'google_api_key'    => array(
-				'option'   => 'connectors_ai_google_api_key',
-				'label'    => 'Google API key',
-				'group'    => 'Connectors',
-				'secret'   => true,
-				'provider' => 'google',
-			),
+			$this->coreTargets->all()
 		);
 	}
 
@@ -155,6 +160,9 @@ final class PrivateSettingTargets {
 		}
 		if ( 'timezone' === $id ) {
 			return in_array( $value, timezone_identifiers_list(), true ) ? $value : null;
+		}
+		if ( null !== $this->coreTargets->get( $id ) ) {
+			return $this->coreTargets->validate( $id, $value );
 		}
 		// Core stores blogname/blogdescription HTML-escaped; compare that native form after saving.
 		$sanitized = esc_html( sanitize_text_field( $value ) );

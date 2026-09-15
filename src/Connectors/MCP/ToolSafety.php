@@ -274,6 +274,7 @@ final class ToolSafety {
 			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
+			'revisions.restore_content' => 'destructive',
 			'navigation.update_item',
 			'content_fields.update_field',
 			'maintenance.clean_post_cache',

@@ -43,6 +43,7 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			...( new ContentRecoveryAbilityModules( $this->factory ) )->all(),
 			...( new ToolsInspectionAbilityModules( $this->factory ) )->all(),
 			$this->factory->create(
 				'tools.prepare_handoff',

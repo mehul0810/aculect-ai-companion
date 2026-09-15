@@ -249,6 +249,12 @@ MCP Apps forms are not implemented.
 
 Supported targets are site title, tagline, named timezone, posts per page
 (1–100), default category ID, and OpenAI/Anthropic/Google connector API keys.
+The same private form also supports start of week (0–6), RSS item count
+(1–100) and excerpt mode, default comment/ping status, comment moderation,
+threaded comments and depth (2–10), comments per page (1–100), thumbnail crop,
+and thumbnail/medium/large image dimensions (0–4096 pixels). These are fixed,
+server-validated options, not arbitrary option access. Image-size changes apply
+to future image processing; existing images are not regenerated.
 Connector keys require the native connector registry and an installed SDK
 provider, without constant or environment overrides. Permalinks use a link to
 the native WordPress screen; arbitrary options and other sensitive settings
@@ -273,6 +279,27 @@ Keys use native WordPress option storage, not a new encrypted vault. Trusted
 hosting, backups, provider SDKs, and installed plugins can still access them.
 This feature does not erase a secret already pasted into chat or control a
 third-party client's recording. Do not automate or capture the private form.
+
+### Content revision recovery
+
+`revisions.compare_content` compares one saved revision with its parent post or
+page and returns change flags, byte counts and an `expected_state` token,
+alongside target IDs, current status and fixed safety warnings. It never returns
+historical field text or metadata values.
+`revisions.restore_content` restores title, content and excerpt only. It requires
+the existing `content:draft` OAuth write scope, native read/edit permission (and
+publishing permission for live, private or scheduled content), fresh state,
+an available native revision system, no other-editor lock, and explicit
+confirmation even on trusted-write connections. A matching recovery revision
+must be verified before writing and still exist after the update.
+
+Status is preserved: restoring a published post changes its live content.
+Metadata, terms, featured media, slugs, source files and the whole site are not
+restored. Normal WordPress save hooks still run. Native revision retention can
+prune history, and state/lock checks are not an atomic lock against other native
+or plugin writers. An unverified outcome is terminal and must be inspected
+manually, not retried automatically. Autosaves, trashed content and custom post
+types are outside this initial recovery contract. This is not a full-site backup.
 
 ## Plugin and theme lifecycle
 

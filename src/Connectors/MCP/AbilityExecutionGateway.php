@@ -642,7 +642,7 @@ final class AbilityExecutionGateway {
 	 * @param bool                 $is_intelligence_tool Whether the tool belongs to intelligence.
 	 */
 	private function write_permission_unblocks_tool( string $tool, array $auth, bool $is_intelligence_tool ): bool {
-		if ( $this->is_lifecycle_write( $tool ) || in_array( $tool, array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' ), true ) ) {
+		if ( $this->is_lifecycle_write( $tool ) || in_array( $tool, array( 'revisions.restore_content', 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' ), true ) ) {
 			return false;
 		}
 

@@ -19,10 +19,11 @@ final class PluginLifecyclePackagePolicy {
 	 *
 	 * @param mixed  $value Package URL.
 	 * @param string $slug  Expected WordPress.org plugin slug.
+	 * @param string $version Exact version confirmed for the package.
 	 * @return string|array<string, string>
 	 */
-	public function requested_package_url( mixed $value, string $slug = '' ): string|array {
-		if ( ! is_scalar( $value ) ) {
+	public function requested_package_url( mixed $value, string $slug = '', string $version = '' ): string|array {
+		if ( ! is_string( $value ) || ! $this->valid_version_requirement( $version ) ) {
 			return $this->error( 'invalid_package_url', 'WordPress did not provide a usable plugin package URL.' );
 		}
 
@@ -33,18 +34,19 @@ final class PluginLifecyclePackagePolicy {
 		$user   = wp_parse_url( $url, PHP_URL_USER );
 		$pass   = wp_parse_url( $url, PHP_URL_PASS );
 		$path   = (string) wp_parse_url( $url, PHP_URL_PATH );
-		$file   = strtolower( basename( rawurldecode( $path ) ) );
-		$slug   = sanitize_key( $slug );
 		if (
 			'https' !== $scheme
+			|| ! preg_match( '/^[a-z0-9][a-z0-9-]{0,99}$/D', $slug )
+			|| $url !== $value
 			|| ! in_array( $host, array( 'downloads.wordpress.org', 'downloads.wordpress.net' ), true )
 			|| null !== $port
 			|| null !== $user
 			|| null !== $pass
-			|| ! preg_match( '#^/plugin/[^/]+\.zip$#i', $path )
-			|| ( '' !== $slug && ! str_starts_with( $file, strtolower( $slug ) . '.' ) )
+			|| null !== wp_parse_url( $url, PHP_URL_QUERY )
+			|| null !== wp_parse_url( $url, PHP_URL_FRAGMENT )
+			|| '/plugin/' . $slug . '.' . $version . '.zip' !== $path
 		) {
-			return $this->error( 'invalid_package_url', 'Plugin packages must come from the matching WordPress.org download host.' );
+			return $this->error( 'invalid_package_url', 'Plugin packages must use the exact WordPress.org slug and version download URL.' );
 		}
 
 		return $url;
@@ -153,7 +155,7 @@ final class PluginLifecyclePackagePolicy {
 			return $this->error( 'invalid_confirmation_binding', 'The confirmed plugin package identity is no longer valid.' );
 		}
 
-		$package = $this->requested_package_url( $binding['package'] ?? null, $slug );
+		$package = $this->requested_package_url( $binding['package'] ?? null, $slug, (string) ( $binding['version'] ?? '' ) );
 		if ( is_array( $package ) || ! hash_equals( (string) $binding['package'], $package ) ) {
 			return $this->error( 'invalid_confirmation_binding', 'The confirmed plugin package identity is no longer valid.' );
 		}
@@ -183,7 +185,7 @@ final class PluginLifecyclePackagePolicy {
 			return $this->error( 'invalid_confirmation_binding', 'The confirmed plugin package identity is no longer valid.' );
 		}
 
-		$package = $this->requested_package_url( $binding['package'] ?? null, $slug );
+		$package = $this->requested_package_url( $binding['package'] ?? null, $slug, (string) ( $binding['version'] ?? '' ) );
 		if ( is_array( $package ) || ! hash_equals( (string) $binding['package'], $package ) ) {
 			return $this->error( 'invalid_confirmation_binding', 'The confirmed plugin package identity is no longer valid.' );
 		}

@@ -14,6 +14,33 @@
 - Diff hygiene: `git diff --check`
 - Modularity budgets and dependency boundaries: `composer check:modularity`. For the pull-request ratchet (legacy files may not grow), run `php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from=origin/<base-branch>`.
 
+## Extension Lifecycle Changes
+
+- Static lane: `composer analyse:mcp:extensions`; module and gateway checks remain
+  in their existing MCP lanes. No dependency or baseline increase is required.
+- Focused regressions: `vendor/bin/phpunit --filter 'ExtensionDirectoryAbilitiesTest|ExtensionActivationGuardTest|ExtensionDeletionAbilitiesTest|ExtensionDeletionPolicyTest|ThemePackageAbilitiesTest|PluginLifecycleAbilitiesTest|ThemeLifecycleAbilitiesTest|AbilityExecutionGatewayTest|McpDiscoveryDeterminismTest'`.
+- Prove directory limits, malformed remote fields, permission denial, closed
+  schemas, metadata projection, and non-mutating native upload handoffs.
+- Prove confirmed package identity, installed version postconditions, stale
+  requests, replay, protected active/dependent extensions, single-site limits,
+  direct-filesystem requirements, and disabled file modifications. Never run
+  destructive tests against the working Studio site or real extension data.
+- Round-trip deletion bindings through `ToolSafety` confirmation storage in
+  regressions: it canonicalizes scalar values and key order. Comparing only
+  service-local previews can miss a gateway integration failure.
+- Check duplicate theme slugs in default and secondary registered roots: deletion
+  must reject secondary-root targets without changing either directory. Core's
+  theme deletion API resolves the default root, unlike theme inventory lookups.
+- Use disposable WordPress and synthetic ZIPs for native upgrader/deletion proof.
+  Test through the execution gateway and independently inspect native inventory.
+  Locally substituted package downloads prove core integration, not WordPress.org
+  availability, package trust, premium updates, or a full supported-version matrix.
+- ZIP handoff success means only that the correct native upload screen was
+  returned. Do not report an uploaded or installed ZIP until the native screen
+  and subsequent inventory establish it. Do not automate private inputs.
+- Run `npm run smoke:mcp-local` for changed discovery contracts. This uses fixture
+  authentication and is not a hosted ChatGPT/Claude OAuth interoperability test.
+
 ## WordPress Abilities Integration
 
 The PHPUnit suite deliberately uses WordPress-light stubs and cannot prove the

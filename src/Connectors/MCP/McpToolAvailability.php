@@ -671,7 +671,7 @@ final class McpToolAvailability {
 	 * @return list<string>
 	 */
 	private function required_capabilities( string $ability_id ): array {
-		return match ( $ability_id ) {
+		return ExtensionLifecyclePolicy::capabilities( $ability_id ) ?? match ( $ability_id ) {
 			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
 			'navigation.read_item', 'navigation.update_item' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
@@ -680,15 +680,6 @@ final class McpToolAvailability {
 			'site.get_health',
 			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
-			'plugin_lifecycle.list_plugins',
-			'plugin_lifecycle.get_plugin' => array( 'activate_plugins' ),
-			'plugin_lifecycle.install_plugin' => array( 'install_plugins' ),
-			'plugin_lifecycle.update_plugin' => array( 'update_plugins' ),
-			'plugin_lifecycle.activate_plugin',
-			'plugin_lifecycle.deactivate_plugin' => array( 'activate_plugins' ),
-			'theme_lifecycle.list_themes',
-			'theme_lifecycle.get_theme',
-			'theme_lifecycle.switch_theme',
 			'site.list_themes' => array( 'switch_themes' ),
 			'site_editor.get_context',
 			'site_editor.refresh_context',

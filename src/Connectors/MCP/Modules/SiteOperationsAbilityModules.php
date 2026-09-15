@@ -43,6 +43,7 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			...( new ExtensionLifecycleAbilityModules( $this->factory ) )->all(),
 			...array_values( ( new PrivateSettingsAbilityModules( $this->factory ) )->all() ),
 			$this->factory->create( 'site.inspect_rendered_page', 'Inspect Public Rendered Page', 'Inspect a public post permalink without cookies or redirects. Returns bounded server-rendered headings, links and head metadata, not screenshots or JavaScript-rendered content.', 'Site Inspection', 'content:read', true, $this->schema( $post, array( 'post_id' ) ), static fn ( array $args ): array => ( new RenderedPageInspectionAbilities() )->inspect( $args ) ),
 			$this->factory->create( 'content_fields.list_fields', 'List Registered Content Fields', 'List permitted single scalar REST-exposed fields for an editable content item. Protected, unregistered and complex fields are excluded; no arbitrary metadata or field builder is exposed.', 'Content Fields', 'content:read', true, $this->schema( $post + $page, array( 'post_id' ) ), static fn ( array $args ): array => ( new RegisteredFieldAbilities() )->list_fields( $args ) ),

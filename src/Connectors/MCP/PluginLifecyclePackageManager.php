@@ -51,7 +51,11 @@ final class PluginLifecyclePackageManager {
 			return $upgrader;
 		}
 
-		return $upgrader->install( $package, array( 'clear_update_cache' => true ) );
+		try {
+			return $upgrader->install( $package, array( 'clear_update_cache' => true ) );
+		} catch ( \Throwable ) {
+			return new \WP_Error( 'plugin_install_failed', 'WordPress could not verify the plugin installation.' );
+		}
 	}
 
 	/**
@@ -108,7 +112,14 @@ final class PluginLifecyclePackageManager {
 					'hook_extra'        => $hook_extra,
 				)
 			);
+			/**
+			 * Runtime failures may differ from historic core PHPDoc.
+			 *
+			 * @var mixed $result
+			 */
 			$result = $upgrader->result;
+		} catch ( \Throwable ) {
+			return new \WP_Error( 'plugin_update_failed', 'WordPress could not verify the plugin update.' );
 		} finally {
 			if ( function_exists( 'wp_clean_plugins_cache' ) ) {
 				remove_action( 'upgrader_process_complete', 'wp_clean_plugins_cache', 9 );
@@ -124,7 +135,7 @@ final class PluginLifecyclePackageManager {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		if ( array() === $result ) {
+		if ( array() === $result || false === $result || null === $result ) {
 			return new \WP_Error( 'plugin_update_failed', 'WordPress could not update the plugin.' );
 		}
 
@@ -159,6 +170,13 @@ final class PluginLifecyclePackageManager {
 	 * @return \Plugin_Upgrader|\WP_Error
 	 */
 	private function upgrader(): object {
+		if ( ! function_exists( 'get_filesystem_method' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		$context = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR : ABSPATH . 'wp-content/plugins';
+		if ( ! wp_is_file_mod_allowed( 'aculect_plugin_packages' ) || 'direct' !== get_filesystem_method( array(), $context ) ) {
+			return new \WP_Error( 'filesystem_unavailable', 'Package changes require allowed direct filesystem access. Use native WordPress maintenance instead.' );
+		}
 		if ( ! class_exists( 'Plugin_Upgrader' ) ) {
 			$path = ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
 			if ( ! is_file( $path ) ) {
@@ -172,10 +190,10 @@ final class PluginLifecyclePackageManager {
 			return new \WP_Error( 'plugin_upgrader_unavailable', 'WordPress plugin upgrader APIs are unavailable.' );
 		}
 
-		$skin = class_exists( 'Automatic_Upgrader_Skin' )
-			? new \Automatic_Upgrader_Skin()
-			: new \WP_Upgrader_Skin();
+		if ( ! class_exists( 'Automatic_Upgrader_Skin' ) ) {
+			return new \WP_Error( 'plugin_upgrader_unavailable', 'A quiet WordPress upgrader is required.' );
+		}
 
-		return new \Plugin_Upgrader( $skin );
+		return new \Plugin_Upgrader( new \Automatic_Upgrader_Skin() );
 	}
 }

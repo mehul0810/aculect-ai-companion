@@ -130,8 +130,8 @@ final class AbilityExecutionGatewayTest extends TestCase {
 				array(
 					'name'      => 'content_update_item',
 					'arguments' => array(
-						'id'    => 123,
-						'title' => 'Profile denial',
+						'id'      => 123,
+						'title'   => 'Profile denial',
 						'dry_run' => true,
 					),
 				),
@@ -263,20 +263,26 @@ final class AbilityExecutionGatewayTest extends TestCase {
 	}
 
 	public function test_plugin_confirmation_binds_exact_package_and_hides_binding_from_transport(): void {
-		$GLOBALS['aculect_ai_companion_test_is_multisite']           = false;
-		$GLOBALS['aculect_ai_companion_test_plugins']                = array(
-			'acme/acme.php' => array( 'Name' => 'Acme', 'Version' => '1.0.0' ),
+		$GLOBALS['aculect_ai_companion_test_is_multisite']          = false;
+		$GLOBALS['aculect_ai_companion_test_plugins']               = array(
+			'acme/acme.php' => array(
+				'Name'    => 'Acme',
+				'Version' => '1.0.0',
+			),
 		);
-		$GLOBALS['aculect_ai_companion_test_plugin_api']              = (object) array(
+		$GLOBALS['aculect_ai_companion_test_plugin_api']            = (object) array(
 			'name'          => 'Classic Editor',
 			'version'       => '1.6.0',
-			'download_link' => 'https://downloads.wordpress.org/plugin/classic-editor.zip',
+			'download_link' => 'https://downloads.wordpress.org/plugin/classic-editor.1.6.0.zip',
 		);
-		$GLOBALS['aculect_ai_companion_test_plugin_to_install']       = array(
+		$GLOBALS['aculect_ai_companion_test_plugin_to_install']     = array(
 			'file'    => 'classic-editor/classic-editor.php',
-			'headers' => array( 'Name' => 'Classic Editor', 'Version' => '1.6.0' ),
+			'headers' => array(
+				'Name'    => 'Classic Editor',
+				'Version' => '1.6.0',
+			),
 		);
-		$GLOBALS['aculect_ai_companion_test_plugin_install_result']   = true;
+		$GLOBALS['aculect_ai_companion_test_plugin_install_result'] = true;
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'plugin_lifecycle.install_plugin' ) );
 		$auth    = array_merge(
@@ -298,14 +304,14 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 
 		self::assertSame( 'confirmation_required', $initial->data['result']['status'] ?? '' );
-		self::assertStringNotContainsString( 'classic-editor.zip', wp_json_encode( $initial->data['result'] ) );
+		self::assertStringNotContainsString( 'classic-editor.1.6.0.zip', wp_json_encode( $initial->data['result'] ) );
 		$GLOBALS['aculect_ai_companion_test_plugin_api']->download_link = 'https://example.com/changed.zip';
 		$confirmed = $gateway->execute(
 			new AbilityExecutionRequest(
 				array(
 					'name'      => 'plugin_lifecycle_install_plugin',
 					'arguments' => array(
-						'slug'              => 'classic-editor',
+						'slug'               => 'classic-editor',
 						'confirmation_token' => (string) ( $initial->data['result']['confirmation_token'] ?? '' ),
 					),
 				),
@@ -314,7 +320,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 
 		self::assertSame( 'installed', $confirmed->data['result']['status'] ?? '' );
-		self::assertSame( 'https://downloads.wordpress.org/plugin/classic-editor.zip', $GLOBALS['aculect_ai_companion_test_last_plugin_package'] );
+		self::assertSame( 'https://downloads.wordpress.org/plugin/classic-editor.1.6.0.zip', $GLOBALS['aculect_ai_companion_test_last_plugin_package'] );
 		self::assertStringNotContainsString( PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY, wp_json_encode( $confirmed->data ) );
 	}
 
@@ -331,15 +337,18 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 
 		foreach ( $auth_variants as $auth ) {
-			$GLOBALS['aculect_ai_companion_test_plugins']              = array();
-			$GLOBALS['aculect_ai_companion_test_plugin_api']           = (object) array(
+			$GLOBALS['aculect_ai_companion_test_plugins']             = array();
+			$GLOBALS['aculect_ai_companion_test_plugin_api']          = (object) array(
 				'name'          => 'Classic Editor',
 				'version'       => '1.6.0',
-				'download_link' => 'https://downloads.wordpress.org/plugin/classic-editor.zip',
+				'download_link' => 'https://downloads.wordpress.org/plugin/classic-editor.1.6.0.zip',
 			);
-			$GLOBALS['aculect_ai_companion_test_plugin_to_install']    = array(
+			$GLOBALS['aculect_ai_companion_test_plugin_to_install']   = array(
 				'file'    => 'classic-editor/classic-editor.php',
-				'headers' => array( 'Name' => 'Classic Editor', 'Version' => '1.6.0' ),
+				'headers' => array(
+					'Name'    => 'Classic Editor',
+					'Version' => '1.6.0',
+				),
 			);
 			$GLOBALS['aculect_ai_companion_test_last_plugin_package'] = '';
 			$registry = new AbilitiesRegistry();
@@ -375,11 +384,14 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		);
 
 		foreach ( $auth_variants as $auth ) {
-			$GLOBALS['aculect_ai_companion_test_is_multisite']              = false;
-			$GLOBALS['aculect_ai_companion_test_plugins']                   = array(
-				'acme/acme.php' => array( 'Name' => 'Acme', 'Version' => '1.0.0' ),
+			$GLOBALS['aculect_ai_companion_test_is_multisite']                = false;
+			$GLOBALS['aculect_ai_companion_test_plugins']                     = array(
+				'acme/acme.php' => array(
+					'Name'    => 'Acme',
+					'Version' => '1.0.0',
+				),
 			);
-			$GLOBALS['aculect_ai_companion_test_site_options']              = array(
+			$GLOBALS['aculect_ai_companion_test_site_options']                = array(
 				'_site_transient_update_plugins' => (object) array(
 					'last_checked' => time(),
 					'response'     => array(
@@ -392,7 +404,7 @@ final class AbilityExecutionGatewayTest extends TestCase {
 					),
 				),
 			);
-			$GLOBALS['aculect_ai_companion_test_plugin_update_versions']    = array( 'acme/acme.php' => '2.0.0' );
+			$GLOBALS['aculect_ai_companion_test_plugin_update_versions']      = array( 'acme/acme.php' => '2.0.0' );
 			$GLOBALS['aculect_ai_companion_test_last_plugin_upgrade_package'] = '';
 			$registry = new AbilitiesRegistry();
 			$registry->save_enabled_ids( array( 'plugin_lifecycle.update_plugin' ) );
@@ -443,10 +455,13 @@ final class AbilityExecutionGatewayTest extends TestCase {
 
 		foreach ( array( 'activate', 'deactivate' ) as $operation ) {
 			foreach ( $auth_variants as $auth ) {
-				$GLOBALS['aculect_ai_companion_test_plugins']                 = array(
-					'acme/acme.php' => array( 'Name' => 'Acme', 'Version' => '1.0.0' ),
+				$GLOBALS['aculect_ai_companion_test_plugins']                  = array(
+					'acme/acme.php' => array(
+						'Name'    => 'Acme',
+						'Version' => '1.0.0',
+					),
 				);
-				$GLOBALS['aculect_ai_companion_test_active_plugins']          = 'activate' === $operation ? array() : array( 'acme/acme.php' );
+				$GLOBALS['aculect_ai_companion_test_active_plugins']           = 'activate' === $operation ? array() : array( 'acme/acme.php' );
 				$GLOBALS['aculect_ai_companion_test_last_plugin_activation']   = '';
 				$GLOBALS['aculect_ai_companion_test_last_plugin_deactivation'] = array();
 				$GLOBALS['aculect_ai_companion_test_options']                  = array( 'active_plugins' => $GLOBALS['aculect_ai_companion_test_active_plugins'] );

@@ -248,6 +248,10 @@ final class ToolSafety {
 	 * @param array<mixed> $args Tool arguments.
 	 */
 	public function risk_level( string $tool, array $args ): string {
+		$lifecycle_risk = ExtensionLifecyclePolicy::risk( $tool );
+		if ( null !== $lifecycle_risk ) {
+			return $lifecycle_risk;
+		}
 		$status         = isset( $args['status'] ) && is_scalar( $args['status'] ) ? sanitize_key( (string) $args['status'] ) : '';
 		$comment_status = match ( $status ) {
 			'pending', 'unapproved', 'unapprove' => 'hold',
@@ -270,15 +274,10 @@ final class ToolSafety {
 			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
-			'plugin_lifecycle.install_plugin',
-			'plugin_lifecycle.update_plugin',
-			'plugin_lifecycle.activate_plugin',
-			'plugin_lifecycle.deactivate_plugin',
 			'navigation.update_item',
 			'content_fields.update_field',
 			'maintenance.clean_post_cache',
-			'maintenance.flush_rewrite_rules',
-			'theme_lifecycle.switch_theme' => 'system',
+			'maintenance.flush_rewrite_rules' => 'system',
 			'taxonomy.delete_term' => 'destructive',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {

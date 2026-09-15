@@ -427,7 +427,7 @@ final class AbilityExecutionGateway {
 					: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
 		} else {
 			$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
-			$binding   = $this->plugin_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
+			$binding   = $this->lifecycle_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
 			if ( isset( $binding['error'] ) ) {
 				$this->release_claim_if_present( $claim_decision );
 				return array(
@@ -642,7 +642,7 @@ final class AbilityExecutionGateway {
 	 * @param bool                 $is_intelligence_tool Whether the tool belongs to intelligence.
 	 */
 	private function write_permission_unblocks_tool( string $tool, array $auth, bool $is_intelligence_tool ): bool {
-		if ( $this->is_plugin_lifecycle_write( $tool ) || in_array( $tool, array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' ), true ) ) {
+		if ( $this->is_lifecycle_write( $tool ) || in_array( $tool, array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' ), true ) ) {
 			return false;
 		}
 
@@ -661,7 +661,7 @@ final class AbilityExecutionGateway {
 	 * @return array<string, mixed>
 	 */
 	private function strip_internal_execution_args( string $tool, array $args ): array {
-		if ( $this->is_plugin_lifecycle_tool( $tool ) ) {
+		if ( $this->is_bound_lifecycle_tool( $tool ) ) {
 			unset( $args[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] );
 		}
 
@@ -669,46 +669,30 @@ final class AbilityExecutionGateway {
 	}
 
 	/**
-	 * Identify plugin lifecycle writes that require exact package binding.
+	 * Identify extension writes requiring package or deletion-state binding.
 	 *
 	 * @param string $tool Internal tool ID.
 	 * @return bool
 	 */
-	private function is_plugin_lifecycle_tool( string $tool ): bool {
-		return in_array(
-			$tool,
-			array(
-				'plugin_lifecycle.install_plugin',
-				'plugin_lifecycle.update_plugin',
-			),
-			true
-		);
+	private function is_bound_lifecycle_tool( string $tool ): bool {
+		return ExtensionLifecyclePolicy::requires_binding( $tool );
 	}
 
 	/**
 	 * Identify lifecycle writes that always require an explicit confirmation.
 	 *
-	 * Plugin installation, updates, and activation changes can affect site
+	 * Extension installation, updates, deletion and activation can affect site
 	 * availability, so the trusted-connection direct-write bypass never applies.
 	 *
 	 * @param string $tool Internal tool ID.
 	 * @return bool
 	 */
-	private function is_plugin_lifecycle_write( string $tool ): bool {
-		return in_array(
-			$tool,
-			array(
-				'plugin_lifecycle.install_plugin',
-				'plugin_lifecycle.update_plugin',
-				'plugin_lifecycle.activate_plugin',
-				'plugin_lifecycle.deactivate_plugin',
-			),
-			true
-		);
+	private function is_lifecycle_write( string $tool ): bool {
+		return ExtensionLifecyclePolicy::requires_confirmation( $tool );
 	}
 
 	/**
-	 * Resolve the exact package binding for a confirmed plugin write.
+	 * Resolve the exact state binding for a confirmed extension write.
 	 *
 	 * @param string               $tool                    Internal tool ID.
 	 * @param array<string, mixed> $args                    Caller arguments.
@@ -717,8 +701,8 @@ final class AbilityExecutionGateway {
 	 * @param array<string, mixed> $auth                    OAuth context.
 	 * @return array<string, mixed>
 	 */
-	private function plugin_execution_binding( string $tool, array $args, bool $has_confirmation_token, bool $write_permission_unblocked, array $auth ): array {
-		if ( ! $this->is_plugin_lifecycle_tool( $tool ) || ! $has_confirmation_token || $write_permission_unblocked ) {
+	private function lifecycle_execution_binding( string $tool, array $args, bool $has_confirmation_token, bool $write_permission_unblocked, array $auth ): array {
+		if ( ! $this->is_bound_lifecycle_tool( $tool ) || ! $has_confirmation_token || $write_permission_unblocked ) {
 			return array();
 		}
 
@@ -899,7 +883,7 @@ final class AbilityExecutionGateway {
 		return array(
 			'status'                => 'blocked',
 			'error'                 => 'invalid_confirmation_binding',
-			'message'               => 'The confirmed plugin package identity is unavailable or expired. Request a new preview before retrying.',
+			'message'               => 'The confirmed extension identity is unavailable or expired. Request a new preview before retrying.',
 			'confirmation_required' => true,
 			'action'                => $tool,
 		);

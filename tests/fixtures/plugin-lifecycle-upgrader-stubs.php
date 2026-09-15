@@ -7,7 +7,32 @@
 
 declare(strict_types=1);
 
-// phpcs:disable Generic.Files.OneObjectStructurePerFile -- Core exposes these related upgrader classes globally.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile, Universal.Files.SeparateFunctionsFromOO.Mixed -- Fixture mirrors related WordPress filesystem APIs and upgrader classes.
+
+if ( ! function_exists( 'get_filesystem_method' ) ) {
+	/**
+	 * Return the fixture filesystem transport without requesting credentials.
+	 *
+	 * @param array  $args Credentials unused by this fixture.
+	 * @param string $context Destination context.
+	 */
+	function get_filesystem_method( array $args = array(), string $context = '' ): string {
+		unset( $args, $context );
+		return (string) ( $GLOBALS['aculect_ai_companion_test_filesystem_method'] ?? 'direct' );
+	}
+}
+
+if ( ! function_exists( 'wp_is_file_mod_allowed' ) ) {
+	/**
+	 * Return fixture file-modification policy.
+	 *
+	 * @param string $context Operation context.
+	 */
+	function wp_is_file_mod_allowed( string $context ): bool {
+		unset( $context );
+		return (bool) ( $GLOBALS['aculect_ai_companion_test_file_mod_allowed'] ?? true );
+	}
+}
 
 if ( ! class_exists( 'WP_Upgrader_Skin' ) ) {
 	/**
@@ -30,7 +55,11 @@ if ( ! class_exists( 'Plugin_Upgrader' ) ) {
 	 * Test double for the WordPress core plugin upgrader.
 	 */
 	class Plugin_Upgrader {
-		/** @var bool|WP_Error|null */
+		/**
+		 * Captured fixture upgrade result.
+		 *
+		 * @var bool|WP_Error|null
+		 */
 		public bool|WP_Error|null $result = null;
 
 		/**

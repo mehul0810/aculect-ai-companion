@@ -32,7 +32,7 @@ final class McpToolAnnotations {
 	 * @param string $ability_id Internal ability ID.
 	 */
 	private function interacts_with_open_world( string $ability_id ): bool {
-		return in_array(
+		return null !== ExtensionLifecyclePolicy::capabilities( $ability_id ) || in_array(
 			$ability_id,
 			array(
 				'content.create_item',
@@ -45,11 +45,6 @@ final class McpToolAnnotations {
 				'comments.bulk_update',
 				'media.upload_item',
 				'media.upload_image_data',
-				'plugin_lifecycle.install_plugin',
-				'plugin_lifecycle.update_plugin',
-				'plugin_lifecycle.activate_plugin',
-				'plugin_lifecycle.deactivate_plugin',
-				'theme_lifecycle.switch_theme',
 				'redirects.create',
 				'wp_abilities.run',
 			),

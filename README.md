@@ -248,6 +248,58 @@ hosting, backups, provider SDKs, and installed plugins can still access them.
 This feature does not erase a secret already pasted into chat or control a
 third-party client's recording. Do not automate or capture the private form.
 
+## Plugin and theme lifecycle
+
+Lifecycle tools are separately enabled MCP abilities, subject to OAuth scopes,
+role policies, and the corresponding native WordPress capabilities. Directory
+search sends the supplied search text to WordPress.org; never include secrets.
+Returned descriptions are untrusted metadata, not instructions or endorsements.
+
+| Operation | Plugins | Themes |
+| --- | --- | --- |
+| Inventory and details | `plugin_lifecycle.list_plugins`, `get_plugin` | `theme_lifecycle.list_themes`, `get_theme` |
+| WordPress.org search | `plugin_lifecycle.search_plugins` | `theme_lifecycle.search_themes` |
+| WordPress.org install | `plugin_lifecycle.install_plugin` | `theme_lifecycle.install_theme` |
+| Cached WordPress.org update | `plugin_lifecycle.update_plugin` | `theme_lifecycle.update_theme` |
+| ZIP upload handoff | `plugin_lifecycle.upload_plugin` | `theme_lifecycle.upload_theme` |
+| Protected deletion | `plugin_lifecycle.delete_plugin` | `theme_lifecycle.delete_theme` |
+| Activation | `activate_plugin`, `deactivate_plugin` | `switch_theme` |
+
+ZIP tools **only return the native HTTPS WordPress upload screen**. The user
+selects a trusted ZIP and confirms upload, installation, or replacement in
+WordPress. Aculect neither receives the file through MCP nor claims the handoff
+completed an installation. Private download URLs, license keys, and filesystem
+credentials must not be sent through chat. Native WordPress owns upload limits,
+archive validation, replacement confirmation, and displayed results.
+
+File mutations require a preview and explicit confirmation, including on trusted
+write connections. Installation does not automatically activate an extension.
+Automated theme package changes support standalone themes only; child-theme
+packages stay in the native upload/maintenance workflow so an unpreviewed parent
+is never installed implicitly. Theme package changes and deletion are single-site
+only; plugin updates also reject multisite. Package writes require direct filesystem access and allowed
+file modifications. Credential-based filesystem transports and arbitrary
+package URLs are unsupported. Cached update availability is not a forced remote
+update check, and a version postcondition is not a malware or compatibility audit.
+Plugin downloads must name the confirmed slug and version; mutable latest ZIP
+URLs are rejected. Uncertain package writes consume the confirmation attempt
+and require native inspection before any new preview, not an automatic retry.
+
+Deletion protects active extensions, Aculect itself, shared plugin directories,
+and installed dependents. A parent theme required by an installed child cannot be
+deleted. The confirmed target must still match its preview. **Plugin uninstall
+hooks may permanently remove settings or other data**; obtain explicit approval
+and a verified backup before deletion. There is no automatic restore guarantee.
+Native maintenance outside Aculect is not serialized by MCP execution claims.
+Disable the affected ability to stop new assistant calls if an operation fails;
+inspect native WordPress state before retrying an uncertain outcome.
+Theme deletion is limited to the default theme directory; other registered
+theme roots require native maintenance to avoid deleting a same-named directory.
+
+Theme switching validates native theme availability and compatibility and checks
+the resulting active theme. Plugin activation respects native dependency checks;
+self-deactivation must be performed manually in WordPress.
+
 Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
 default. Hosts behind a verified reverse proxy may supply a stable, non-secret
 fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`

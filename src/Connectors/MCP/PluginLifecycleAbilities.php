@@ -168,13 +168,13 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 				return $this->error( 'plugin_source_mismatch', 'WordPress returned package information for a different plugin.' );
 			}
 
-			$package = $this->package_policy->requested_package_url( $this->metadata_value( $information, 'download_link' ), $slug );
+			$version = $this->bounded_text( $this->metadata_string( $information, 'version' ), 40 );
+			$package = $this->package_policy->requested_package_url( $this->metadata_value( $information, 'download_link' ), $slug, $version );
 			if ( is_array( $package ) ) {
 				return $package;
 			}
 
 			$name               = $this->bounded_text( $this->metadata_string( $information, 'name' ), 120 );
-			$version            = $this->bounded_text( $this->metadata_string( $information, 'version' ), 40 );
 			$requires           = $this->bounded_text( $this->metadata_string( $information, 'requires' ), 40 );
 			$requires_php       = $this->bounded_text( $this->metadata_string( $information, 'requires_php' ), 40 );
 			$requirements_error = $this->package_policy->requirements_error( 'install', $requires, $requires_php );
@@ -222,7 +222,7 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			}
 		}
 		if ( ! is_array( $installed ) || (string) ( $installed['version'] ?? '' ) !== $version ) {
-			return $this->error( 'plugin_install_postcondition_failed', 'Plugin installation completed without the expected plugin version being available.' );
+			return $this->package_partial_write( 'install' );
 		}
 		$plugin   = $installed;
 		$verified = true;
@@ -296,12 +296,12 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			if ( '' === $package_value ) {
 				return $this->error( 'update_unavailable', 'Cached update metadata does not include a plugin package.' );
 			}
-			$package = $this->package_policy->requested_package_url( $package_value, $this->plugin_slug( $plugin_file ) );
+			$new_version = $this->bounded_text( $this->metadata_string( $update, 'new_version' ), 40 );
+			$package     = $this->package_policy->requested_package_url( $package_value, $this->plugin_slug( $plugin_file ), $new_version );
 			if ( is_array( $package ) ) {
 				return $package;
 			}
 
-			$new_version = $this->bounded_text( $this->metadata_string( $update, 'new_version' ), 40 );
 			if ( '' === $new_version ) {
 				return $this->error( 'update_unavailable', 'Cached update metadata does not include a target version.' );
 			}
@@ -313,6 +313,9 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			}
 		}
 
+		if ( version_compare( $new_version, (string) ( $current['version'] ?? '' ), '<=' ) ) {
+			return $this->error( 'update_unavailable', 'Cached plugin metadata does not describe a newer version.' );
+		}
 		$target            = $this->plugin_target_summary( $current );
 		$target['version'] = $new_version;
 		if ( $this->is_dry_run( $args ) ) {
@@ -337,7 +340,7 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 
 		$updated = $this->plugin_inventory_item( $plugin_file );
 		if ( null === $updated || (string) ( $updated['version'] ?? '' ) !== $new_version ) {
-			return $this->error( 'plugin_update_postcondition_failed', 'Plugin update completed without the expected plugin version being available.' );
+			return $this->package_partial_write( 'update' );
 		}
 
 		return array(
@@ -450,6 +453,11 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 			return $this->error( 'plugin_not_found', 'Requested plugin is not installed.' );
 		}
 
+		$blocker = ExtensionActivationGuard::plugin( $plugin_file, $operation );
+		if ( null !== $blocker ) {
+			return $blocker;
+		}
+
 		if ( 'activate' === $operation && true === $current['active'] ) {
 			return $this->activation_noop_result( $current, 'already_active', 'Plugin is already active on this site.' );
 		}
@@ -475,7 +483,7 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 		if ( 'activate' === $operation ) {
 			$result = activate_plugin( $plugin_file, '', false, false );
 			if ( is_wp_error( $result ) ) {
-				return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+				return $this->error( 'plugin_activation_failed', 'WordPress could not activate the plugin. Review native recovery diagnostics.' );
 			}
 		} else {
 			deactivate_plugins( array( $plugin_file ), false, false );
@@ -565,12 +573,12 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	private function package_api_error( \WP_Error $error, string $operation ): array {
-		$code = sanitize_key( (string) $error->get_error_code() );
+		unset( $error );
 
 		return array(
 			'error'        => 'plugin_' . $operation . '_information_failed',
 			'message'      => 'WordPress could not retrieve plugin package information.',
-			'failure_code' => '' !== $code ? $code : 'api_error',
+			'failure_code' => 'api_error',
 			'operation'    => $operation,
 			'safety'       => $this->write_safety_metadata( $operation ),
 		);
@@ -584,28 +592,31 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>|null
 	 */
 	private function package_operation_failure( mixed $result, string $operation ): ?array {
-		if ( $result instanceof \WP_Error ) {
-			$code = sanitize_key( (string) $result->get_error_code() );
-
-			return array(
-				'error'        => 'plugin_' . $operation . '_failed',
-				'message'      => 'WordPress could not ' . $operation . ' the plugin.',
-				'failure_code' => '' !== $code ? $code : 'upgrader_error',
-				'operation'    => $operation,
-				'safety'       => $this->write_safety_metadata( $operation ),
-			);
+		if ( true === $result ) {
+			return null;
 		}
-
-		if ( true !== $result ) {
-			return array(
-				'error'     => 'plugin_' . $operation . '_failed',
-				'message'   => 'WordPress could not ' . $operation . ' the plugin.',
-				'operation' => $operation,
-				'safety'    => $this->write_safety_metadata( $operation ),
-			);
+		$code = $result instanceof \WP_Error ? (string) $result->get_error_code() : '';
+		if ( in_array( $code, array( 'filesystem_unavailable', 'plugin_upgrader_unavailable' ), true ) ) {
+			return $this->error( $code, 'Plugin package writing is unavailable under the current filesystem policy.' );
 		}
+		return $this->package_partial_write( $operation );
+	}
 
-		return null;
+	/**
+	 * Make uncertain package attempts terminal so the same token cannot retry.
+	 *
+	 * @param string $operation Install or update.
+	 * @return array<string, mixed>
+	 */
+	private function package_partial_write( string $operation ): array {
+		return array(
+			'error'     => 'partial_write',
+			'message'   => 'WordPress attempted a plugin package change but its final state could not be verified. Inspect WordPress before requesting a new preview.',
+			'operation' => $operation,
+			'terminal'  => true,
+			'changed'   => true,
+			'verified'  => false,
+		);
 	}
 
 	/**
@@ -757,10 +768,13 @@ final class PluginLifecycleAbilities extends AbstractAbilityService {
 	/**
 	 * Return safety metadata shared by list/get responses.
 	 *
-	 * @return array<string, bool>
+	 * @return array<string, bool|string>
 	 */
 	private function safety_metadata(): array {
 		return array(
+			'search_implemented'           => true,
+			'delete_implemented'           => true,
+			'upload_mode'                  => 'native_wordpress_handoff',
 			'read_only'                    => true,
 			'install_implemented'          => true,
 			'update_implemented'           => true,

@@ -17,7 +17,7 @@
 - Domain ownership is directional: Intelligence and Activity cannot import MCP services directly. Add a neutral port or adapter when a boundary needs to cross layers.
 
 ## Project Subagents
-- Project subagents live in `.codex/agents`; `.codex/config.toml` limits concurrency to three threads and one agent depth.
+- Project subagents live in `.codex/agents`; keep concurrency to three threads by policy. `.codex/config.toml` limits agent depth to one; do not restore the obsolete `agents.max_threads` setting when `multi_agent_v2` is enabled.
 - Use `aculect-plugin-mapper` for read-only PHP/MCP/OAuth/admin architecture mapping.
 - Use `aculect-admin-ui-mapper` for read-only settings UI, React, CSS, and build-surface mapping.
 - Use `aculect-ci-log-summarizer` for bounded CI, PHPUnit, PHPStan, WPCS, npm, build, and release log summaries.

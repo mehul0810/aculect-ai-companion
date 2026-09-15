@@ -672,6 +672,7 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return match ( $ability_id ) {
+			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
 			'navigation.read_item', 'navigation.update_item' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
 			'integrity.check_core' => array( 'update_core' ),

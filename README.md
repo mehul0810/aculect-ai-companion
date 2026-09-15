@@ -213,6 +213,41 @@ redirects. The server supports `none` and
 clients; `private_key_jwt` and client metadata document (CIMD) authentication
 are intentionally unsupported and must not be assumed from public metadata.
 
+### Private settings input
+
+The `settings.private_targets`, `settings.private_input`, and
+`settings.private_status` abilities provide discovery, a WordPress-hosted form,
+and a value-free outcome. The assistant receives a link; the administrator opens
+it manually, enters the value outside chat, and confirms the update. Inline
+MCP Apps forms are not implemented.
+
+Supported targets are site title, tagline, named timezone, posts per page
+(1–100), default category ID, and OpenAI/Anthropic/Google connector API keys.
+Connector keys require the native connector registry and an installed SDK
+provider, without constant or environment overrides. Permalinks use a link to
+the native WordPress screen; arbitrary options and other sensitive settings
+are not supported.
+
+Forms require HTTPS, `manage_options`, and a session nonce. Requests expire
+after ten minutes, belong to one administrator and originating site, and permit
+one submission. Multisite requests cannot be reused on another site.
+Creating another request invalidates that administrator's previous request.
+Expiry invalidates access; it does not physically delete the value-free request
+metadata. Temporary metadata/lock cleanup on uninstall remains a known limitation.
+Only request metadata and a keyed state fingerprint are stored in the handoff;
+no input value is accepted in an MCP tool schema or returned in its result.
+Browser submissions record only the administrator, fixed target, and outcome
+in Aculect activity; the audit API does not accept the input value.
+SDK configuration checks are not a guarantee of provider account validity.
+Rejected input does not intentionally replace the prior option. Concurrent
+Aculect submissions are serialized and stale state is rejected; unrelated
+native/plugin writers do not participate in that lock.
+
+Keys use native WordPress option storage, not a new encrypted vault. Trusted
+hosting, backups, provider SDKs, and installed plugins can still access them.
+This feature does not erase a secret already pasted into chat or control a
+third-party client's recording. Do not automate or capture the private form.
+
 Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
 default. Hosts behind a verified reverse proxy may supply a stable, non-secret
 fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`

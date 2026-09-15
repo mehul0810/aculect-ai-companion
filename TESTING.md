@@ -43,6 +43,37 @@ without `wp_get_abilities()` report an explicit skip.
 - High-risk write-path changes must include confirmation, capability, rollback, and audit-log validation.
 
 ## PR Reporting
+
+### Private settings handoff
+
+- Run `vendor/bin/phpunit --filter PrivateSettingRequestsTest` for allowlists,
+  role/HTTPS/site-binding gates, expiration/replacement, replay, stale writes, owner-checked
+  locks, provider rejection, and value-free schemas/results/metadata. These
+  tests use isolated SDK and metadata doubles, not a live provider or database.
+- Before release, use a disposable HTTPS WordPress instance and synthetic input
+  only: request a form through MCP, manually save a distinct site title, reload,
+  and verify native persistence plus status-only MCP output. Repeat with an
+  unauthorized account, missing/invalid nonce, expired request, replay, and a
+  changed underlying setting. Inspect redirects and activity for value leakage.
+- Verify desktop/mobile keyboard flow and response security headers. Connector
+  coverage requires installed supported provider plugins; fixture acceptance
+  must not be described as live credential verification. Never paste keys into
+  chat or capture populated private fields in screenshots or automation traces.
+- Development proof on 2026-09-15 used a disposable WordPress 7.1/PHP 8.4.8
+  SQLite site behind a loopback HTTPS proxy. A fresh source-blind browser run
+  verified save/persistence, value-free result/redirect/audit, replay, invalid
+  nonce, anonymous/subscriber denial, replacement/expiry, stale state, desktop
+  and 320px layout, labels/descriptions, and keyboard traversal. The fixture
+  explicitly marked its trusted local proxy as HTTPS; this does not prove
+  production TLS/proxy configuration, live provider credentials, external MCP
+  OAuth clients, MySQL concurrency, or live multisite behavior.
+- A bounded independent source review found and verified a multisite site-ID
+  binding fix; cross-site and legacy-unbound requests have regression tests.
+  The separate formal security scans remained incomplete on earlier snapshots
+  and must not be described as passing. Native storage is not encrypted by this
+  feature; opt-in uninstall cleanup of value-free request/lock metadata remains
+  a low-priority limitation.
+
 - PRs must list the commands actually run.
 - Negative-path checks should be called out when they are part of the acceptance criteria.
 - CI failures should be owned by the surface they block: PHP lint, WPCS, PHPStan, and PHPUnit failures stay with the author; Semgrep findings need either a code fix or an explicit owner-reviewed triage note before merge.

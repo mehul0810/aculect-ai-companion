@@ -117,6 +117,7 @@ final class Plugin {
 		add_action( MemorySchemaMigrator::HOOK, array( MemorySchemaMigrator::class, 'run_scheduled_batch' ) );
 		( new EditorInternalLinkSuggestions() )->register();
 		( new WebMcpAssets() )->register();
+		( new \Aculect\AICompanion\Admin\PrivateSettingForm() )->register();
 
 		OAuthInstaller::install();
 		ExecutionClaimsInstaller::install();

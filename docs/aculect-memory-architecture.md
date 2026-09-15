@@ -30,7 +30,17 @@ Every accepted mutation also creates an append-only event. Events provide histor
 
 ## Retrieval path and budgets
 
-The default tier uses indexed namespace, owner, status, visibility, expiry, and update filters before bounded text ranking. Semantic retrieval is an optional adapter; remote embeddings are opt-in and never run synchronously during normal MCP, REST, admin, or frontend requests.
+The chronological list uses namespace, review status, visibility, sensitivity and validity filters with local full-text filtering when `query` is supplied. It orders by update time and ID with keyset pagination; it does not rank results by relevance. Task recall is a separate optional mode of `memory_list`, selected by supplying `task`. It uses local full-text relevance first, stored confidence second, then update time and ID. No embedding service is required.
+
+### Task recall
+
+Call `memory_list` with `{"task":"brand voice for a product article","domain":"brand","budget_chars":6000,"per_page":10}`. Omit `query` and continuation cursors in this mode. Existing list/review calls keep their original response and pagination behavior.
+
+Recall considers only approved, currently valid, site-visible, normal-sensitivity records in the `site` namespace, including for administrators. It selects at most 50 candidates plus one lookahead row in SQL. Up to twelve optional prefix terms are extracted from the bounded task; this is lexical matching, not semantic understanding. An optional domain is a hard filter. Relevance is computed before the candidate limit, so an older matching record is not excluded merely because fifty newer records exist.
+
+The returned context pack defaults to a 6,000-byte JSON budget, configurable from 1,000 to 12,000 via `budget_chars`; bytes conservatively bound characters, not tokens. This budget covers the recall result object, not the MCP transport envelope. Whole records that do not fit are omitted and `truncated` is set. Values are never shortened, rewritten, or merged. Each selected record includes its source, evidence, stored confidence, version, update/expiry metadata when present, and selection explanation. Stored confidence is not independent verification. Competing guidance remains visible when it fits; this phase does not detect semantic contradictions or choose which rule is authoritative. Absence from a bounded result is not evidence that no rule exists.
+
+Missing full-text indexes and database failures return explicit errors. Recall does not refresh indexes, alter records, synchronize data, or cache authorization decisions. The focused `MemoryRecallTest` fixtures cover SQL ordering/eligibility, private/stale/future/deleted exclusion, JSON budgets, competing guidance, and malformed input. Actual relevance quality across languages remains dependent on the database tokenizer and corpus.
 
 - Maximum returned memories: 50; recommended recall default: 10.
 - Text search is applied in the database and supports bounded page traversal; callers never receive more than 50 rows per request.
@@ -82,7 +92,7 @@ Admin pages use explicit fields, twenty-record pages and a 60-second totals cach
 
 ### Phase 3: retrieval and adapters
 
-- Add a capability-detected local full-text or embedding adapter behind the neutral retrieval interface.
+- Local full-text task recall is implemented; evaluate recall fixtures before introducing an optional embedding adapter.
 - Add provider adapters only for official APIs with explicit consent, per-connection allowlists, rate limiting, and deletion propagation.
 - Measure recall quality, p95 query time, queue delay, retry rates, and storage growth before changing defaults.
 

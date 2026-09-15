@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Intelligence\Memory\MemoryRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryRecall;
 
 /**
  * Returns durable memory through a permission-safe reviewed projection.
@@ -19,6 +20,9 @@ final class MemoryListService {
 	 * @return array<string, mixed>
 	 */
 	public function list( array $args, bool $can_review_all ): array {
+		if ( array_key_exists( 'task', $args ) ) {
+			return ( new MemoryRecall() )->recall( $args );
+		}
 		$requested_status = sanitize_key( (string) ( $args['status'] ?? 'approved' ) );
 		if ( ! $can_review_all ) {
 			if ( 'approved' !== $requested_status ) {

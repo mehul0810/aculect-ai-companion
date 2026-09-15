@@ -140,6 +140,8 @@ Internal-link intelligence is intentionally assistant-first. Use `content_intern
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
+For task-focused memory, call `memory_list` with `task`, an optional `domain`, and `budget_chars` (default 6000). This returns relevant approved site guidance with source/evidence, relevance scores and selection explanations within a bounded JSON context pack. Existing chronological listing and administrator review remain available when `task` is omitted. See [Aculect Memory architecture](docs/aculect-memory-architecture.md#task-recall) for eligibility, budgets and limitations.
+
 WordPress and Aculect capabilities are enabled by default, subject to connection scopes, role permissions and runtime safety checks. The Abilities tab lists public third-party WordPress abilities grouped by provider, with explicit enable/disable controls. Plugins adopting the WordPress Abilities API need no curated integration. The capability directory's paginated `catalog` lists available direct tools and enabled native abilities with their execution routes; Aculect mirrors appear only once. Existing third-party decisions and legacy first-party selections are retained for rollback.
 
 ### WebMCP Progressive Enhancement

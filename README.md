@@ -146,7 +146,7 @@ WordPress and Aculect capabilities are enabled by default, subject to connection
 
 On logged-out, published, non-password-protected pages, Aculect registers one read-only WebMCP tool when the browser exposes `document.modelContext`. `aculect_get_page_context` returns a bounded summary of visible main-page content and, only when requested, up to four same-origin links. URLs exclude query strings and fragments, output is marked read-only and untrusted, and the result is capped at 1,500 characters.
 
-WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter.
+WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Registration is deduplicated, cleaned up on page exit, and restored when returning through the browser's back/forward cache. Registration failures are contained and retryable; navigation links require an explicit boolean opt-in. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter.
 
 ### Public Interfaces
 

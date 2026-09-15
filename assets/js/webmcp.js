@@ -11,7 +11,8 @@
 	const MAX_OUTPUT_LENGTH = 1500;
 	const MAX_LINKS = 4;
 	const MAX_NODES = 400;
-	const registration = new AbortController();
+	let registration = null;
+	let registrationResult = null;
 
 	const cleanText = ( value, limit ) =>
 		String( value || '' )
@@ -207,51 +208,81 @@
 			description: metaContent( 'description' ),
 			headings,
 			content: visibleText( root, 600 ),
-			links: input.includeLinks
-				? sameOriginLinks( nodes, maximumLinks )
-				: [],
+			links:
+				input.includeLinks === true
+					? sameOriginLinks( nodes, maximumLinks )
+					: [],
 		} );
 	};
 
-	const register = async () => {
-		await document.modelContext.registerTool(
-			{
-				name: 'aculect_get_page_context',
-				title: 'Understand this WordPress page',
-				description:
-					'Returns bounded, visible context from the current public WordPress page, with optional same-origin navigation links.',
-				inputSchema: {
-					type: 'object',
-					properties: {
-						includeLinks: {
-							type: 'boolean',
-							description:
-								'Include up to four same-origin links visible in the main page content.',
+	const register = () => {
+		if ( registrationResult ) {
+			return registrationResult;
+		}
+		const controller = new AbortController();
+		registration = controller;
+		// Defer invocation so synchronous browser errors use the same recovery path.
+		registrationResult = Promise.resolve()
+			.then( async () => {
+				if ( controller.signal.aborted ) {
+					return false;
+				}
+				await document.modelContext.registerTool(
+					{
+						name: 'aculect_get_page_context',
+						title: 'Understand this WordPress page',
+						description:
+							'Returns bounded, visible context from the current public WordPress page, with optional same-origin navigation links.',
+						inputSchema: {
+							type: 'object',
+							properties: {
+								includeLinks: {
+									type: 'boolean',
+									description:
+										'Include up to four same-origin links visible in the main page content.',
+								},
+								maxLinks: {
+									type: 'integer',
+									minimum: 0,
+									maximum: MAX_LINKS,
+									description:
+										'Maximum same-origin links to return.',
+								},
+							},
+							additionalProperties: false,
 						},
-						maxLinks: {
-							type: 'integer',
-							minimum: 0,
-							maximum: MAX_LINKS,
-							description: 'Maximum same-origin links to return.',
+						annotations: {
+							readOnlyHint: true,
+							untrustedContentHint: true,
+							consequentialHint: false,
 						},
+						execute: async ( input ) => collectPageContext( input ),
 					},
-					additionalProperties: false,
-				},
-				annotations: {
-					readOnlyHint: true,
-					untrustedContentHint: true,
-					consequentialHint: false,
-				},
-				execute: async ( input ) => collectPageContext( input ),
-			},
-			{ signal: registration.signal }
-		);
+					{ signal: controller.signal }
+				);
 
-		return true;
+				return ! controller.signal.aborted;
+			} )
+			.catch( () => {
+				controller.abort();
+				if ( registration === controller ) {
+					registration = null;
+					registrationResult = null;
+				}
+				return false;
+			} );
+		return registrationResult;
 	};
 
-	window.addEventListener( 'pagehide', () => registration.abort(), {
-		once: true,
+	window.addEventListener( 'pagehide', () => {
+		registration?.abort();
+		registration = null;
+		registrationResult = null;
+	} );
+	window.addEventListener( 'pageshow', ( event ) => {
+		if ( event.persisted ) {
+			register();
+		}
 	} );
 	window.aculectWebMcp = { collectPageContext, register };
 	register().catch( () => false );

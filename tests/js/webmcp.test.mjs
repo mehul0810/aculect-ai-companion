@@ -81,8 +81,11 @@ const boot = async ( { supported = true } = {} ) => {
 		};
 	}
 
+	const listeners = {};
 	const window = {
-		addEventListener: () => {},
+		addEventListener: ( name, callback ) => {
+			listeners[ name ] = callback;
+		},
 	};
 	const context = vm.createContext( {
 		AbortController,
@@ -93,7 +96,7 @@ const boot = async ( { supported = true } = {} ) => {
 	vm.runInContext( source, context );
 	await new Promise( ( resolve ) => setImmediate( resolve ) );
 
-	return { registrations, window, document, root, context };
+	return { registrations, window, document, root, context, listeners };
 };
 
 test( 'registers one bounded read-only page-context tool when WebMCP is supported', async () => {
@@ -123,6 +126,67 @@ test( 'degrades without side effects when WebMCP is unavailable', async () => {
 
 	assert.equal( registrations.length, 0 );
 	assert.equal( window.aculectWebMcp, undefined );
+} );
+
+test( 'restores registration after each back-forward cache return without duplicates', async () => {
+	const { registrations, window, listeners } = await boot();
+	await Promise.all( [
+		window.aculectWebMcp.register(),
+		window.aculectWebMcp.register(),
+	] );
+	assert.equal( registrations.length, 1 );
+	for ( let index = 0; index < 2; index++ ) {
+		listeners.pagehide();
+		assert.equal( registrations[ index ].options.signal.aborted, true );
+		listeners.pageshow( { persisted: true } );
+		assert.equal( await window.aculectWebMcp.register(), true );
+		assert.equal( registrations.length, index + 2 );
+		assert.equal(
+			registrations[ index + 1 ].options.signal.aborted,
+			false
+		);
+	}
+} );
+
+test( 'registration failures are contained and can be retried', async () => {
+	const { document, window, listeners } = await boot();
+	for ( const asynchronous of [ false, true ] ) {
+		listeners.pagehide();
+		document.modelContext.registerTool = () => {
+			if ( asynchronous ) {
+				return Promise.reject( new Error( 'Unavailable' ) );
+			}
+			throw new Error( 'Unavailable' );
+		};
+		assert.equal( await window.aculectWebMcp.register(), false );
+		document.modelContext.registerTool = () => {};
+		assert.equal( await window.aculectWebMcp.register(), true );
+	}
+} );
+
+test( 'links require an explicit boolean opt-in and tolerate malformed input', async () => {
+	const { window } = await boot();
+	for ( const input of [
+		null,
+		false,
+		1,
+		'text',
+		[],
+		{ includeLinks: 'false' },
+		{ includeLinks: 1 },
+	] ) {
+		assert.equal(
+			window.aculectWebMcp.collectPageContext( input ).links.length,
+			0
+		);
+	}
+	assert.equal(
+		window.aculectWebMcp.collectPageContext( {
+			includeLinks: true,
+			maxLinks: 0,
+		} ).links.length,
+		0
+	);
 } );
 
 test( 'escaped content and headings cannot stall output budgeting', async () => {

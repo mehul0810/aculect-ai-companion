@@ -39,7 +39,7 @@ final class ToolsHandoffAbilities {
 		return array(
 			'status'               => 'manual_action_required',
 			'target'               => $target,
-			'url'                  => admin_url( $page ),
+			'url'                  => admin_url( $page, 'https' ),
 			'operation_executed'   => false,
 			'completion_verified'  => false,
 			'private_input_policy' => 'The user must select files, enter personal information, confirm requests, and download archives manually in WordPress. Do not enter, read, capture, or transfer these inputs or files through AI chat or browser automation.',

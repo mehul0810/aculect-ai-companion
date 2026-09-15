@@ -44,4 +44,11 @@ final class NativeHealthSummaryTest extends TestCase {
 			self::assertSame( 'unavailable', NativeHealthSummary::read()['status'] );
 		}
 	}
+
+	public function test_native_counter_bounds_and_depth_fail_closed(): void {
+		foreach ( array( str_repeat( ' ', 2049 ), '{"good":1.5,"recommended":0,"critical":0}', '{"good":100001,"recommended":0,"critical":0}', '{"good":1,"recommended":0}', '{"good":{"nested":{"nested":{}}},"recommended":0,"critical":0}' ) as $raw ) {
+			set_transient( 'health-check-site-status-result', $raw );
+			self::assertSame( 'unavailable', NativeHealthSummary::read()['status'] );
+		}
+	}
 }

@@ -56,8 +56,17 @@ Open `AI Companion > Connect` in WordPress:
 - Navigation to Theme File Editor, Plugin File Editor, or Delete Site includes an
   explicit `not_allowed` operation policy. No file-editing or site-deletion
   operation is provided. Other navigation targets also do not grant execution authority.
-- Full native health test execution, redacted Info coverage, import/export jobs,
-  and privacy-request progress tracking are not implemented by these handoffs.
+- `site.health_info` reads fixed, redacted fields from four native Info sections:
+  core, server, database, and constants. Private-marked fields, paths, identities,
+  arbitrary constants, and third-party sections are excluded. This is not a full
+  debug dump; native WordPress builds the diagnostics before projection.
+- `tools.privacy_request_status` reads one known native request ID and action
+  with the corresponding export/erasure capability. It returns lifecycle state
+  only, never requester details, confirmation keys, archives, or a job percentage.
+  A completed native request does not prove that no personal data remains.
+- Full native health test execution and importer/exporter jobs remain in their
+  native screens. Handoffs do not provide an Aculect-managed job engine or report
+  browser-only per-exporter/eraser progress.
 
 ## Supported AI Tools
 

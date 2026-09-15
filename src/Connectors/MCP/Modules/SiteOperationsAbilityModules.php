@@ -43,6 +43,7 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			...( new ToolsInspectionAbilityModules( $this->factory ) )->all(),
 			$this->factory->create(
 				'tools.prepare_handoff',
 				'Open Native WordPress Tools',

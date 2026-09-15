@@ -6,6 +6,7 @@
 - If a required check cannot run, record the exact blocker and the remaining risk.
 
 ## Standard Checks
+- Tools inspection: `vendor/bin/phpunit --filter 'SiteHealthInfoTest|PrivacyRequestStatusTest|NativeHealthSummaryTest|ToolsHandoffAbilitiesTest|ToolsOperationPolicyTest|SiteOperationsToolSurfaceTest'`. Validate capability-before-read, strict action/ID binding, native lifecycle changes, private-field exclusion, malformed data and unknown freshness. Native gateway proof must exercise a disposable WordPress runtime: unit adapters do not prove native admin dependencies are loaded. Never invoke real exports, send requester emails or erase real data during validation. Privacy lifecycle state is not exporter progress or proof that retained data is absent.
 - Site-operation PHPStan lane: `composer analyse:mcp:site-operations`; focused tests: `vendor/bin/phpunit --filter 'NavigationItemWriteAbilitiesTest|RegisteredFieldAbilitiesTest|BoundedSiteOperationsTest|SiteOperationsToolSurfaceTest'`. These are WordPress-light tests, not live WordPress or hosted-connector proof.
 - PHP syntax: `composer run lint:php`
 - PHP unit and static analysis: `composer test` or the narrow `composer` scripts relevant to the touched surface

@@ -19,7 +19,7 @@ use ReflectionMethod;
 final class SiteOperationsToolSurfaceTest extends TestCase {
 
 	private const WRITES = array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' );
-	private const READS  = array( 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin' );
+	private const READS  = array( 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin', 'tools.prepare_handoff', 'site.health_info', 'tools.privacy_request_status' );
 
 	protected function setUp(): void {
 		$GLOBALS['aculect_ai_companion_test_options']             = array();

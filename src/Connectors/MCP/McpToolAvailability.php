@@ -677,7 +677,7 @@ final class McpToolAvailability {
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
 			'integrity.check_core' => array( 'update_core' ),
 			'integrity.check_plugin' => array( 'update_plugins' ),
-			'site.get_health' => array( 'view_site_health_checks' ),
+			'site.get_health', 'site.health_info' => array( 'view_site_health_checks' ),
 			'site.maintenance_report' => array( 'manage_options' ),
 			'site.list_plugins' => array( 'activate_plugins' ),
 			'site.list_themes' => array( 'switch_themes' ),

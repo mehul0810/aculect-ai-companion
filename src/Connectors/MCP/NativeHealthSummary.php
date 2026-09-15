@@ -22,6 +22,7 @@ final class NativeHealthSummary {
 	public static function read(): array {
 		$raw    = get_transient( 'health-check-site-status-result' );
 		$result = array(
+			'source'         => 'best_effort_wordpress_internal_transient',
 			'status'         => 'unavailable',
 			'freshness'      => 'unknown',
 			'tests_executed' => false,

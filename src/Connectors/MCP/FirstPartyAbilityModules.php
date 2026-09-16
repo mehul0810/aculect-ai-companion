@@ -780,11 +780,11 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'media.update_item',
 				'Update Media Item',
-				'Update media title, alt text, caption, description, slug, or attachment parent.',
+				'Update media title, alt text, caption, description, slug, or attachment parent. Send expected_state from media.get_item to reject stale metadata; omission retains legacy behavior.',
 				'Media',
 				'content:draft',
 				false,
-				$this->object_schema(
+				MediaExpectedState::schema(
 					array(
 						'id'          => array( 'type' => 'integer' ),
 						'title'       => array( 'type' => 'string' ),
@@ -808,7 +808,7 @@ final class FirstPartyAbilityModules {
 				'Media',
 				'content:draft',
 				false,
-				$this->object_schema(
+				MediaExpectedState::schema(
 					array( 'id' => array( 'type' => 'integer' ) ),
 					array( 'id' )
 				),
@@ -821,7 +821,7 @@ final class FirstPartyAbilityModules {
 				'Media',
 				'content:draft',
 				false,
-				$this->object_schema(
+				MediaExpectedState::schema(
 					array(
 						'id'       => array( 'type' => 'integer' ),
 						'filename' => array(

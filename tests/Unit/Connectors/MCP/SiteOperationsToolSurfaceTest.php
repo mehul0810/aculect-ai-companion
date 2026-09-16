@@ -18,8 +18,9 @@ use ReflectionMethod;
  */
 final class SiteOperationsToolSurfaceTest extends TestCase {
 
-	private const WRITES = array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' );
-	private const READS  = array( 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin', 'tools.prepare_handoff', 'site.health_info', 'tools.privacy_request_status' );
+	private const RECOVERY_WRITES = array( 'media.delete_item', 'navigation.assign_location', 'content.restore_trashed', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record' );
+	private const WRITES          = array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', ...self::RECOVERY_WRITES );
+	private const READS           = array( 'navigation.read_location_context', 'content.inspect_trashed', 'site_editor.list_records', 'site_editor.read_record', 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin', 'tools.prepare_handoff', 'site.health_info', 'tools.privacy_request_status' );
 
 	protected function setUp(): void {
 		$GLOBALS['aculect_ai_companion_test_options']             = array();
@@ -62,7 +63,7 @@ final class SiteOperationsToolSurfaceTest extends TestCase {
 		$gateway = new AbilityExecutionGateway();
 		$policy  = new ReflectionMethod( $gateway, 'write_permission_unblocks_tool' );
 		foreach ( self::WRITES as $id ) {
-			self::assertSame( 'system', $safety->risk_level( $id, array() ) );
+			self::assertSame( in_array( $id, self::RECOVERY_WRITES, true ) ? 'destructive' : 'system', $safety->risk_level( $id, array() ) );
 			self::assertTrue( $safety->requires_confirmation( $id, array() ) );
 			foreach ( array( array( 'access_level' => 'write' ), array( 'write_permission_enabled' => true ) ) as $auth ) {
 				self::assertFalse( $policy->invoke( $gateway, $id, $auth, false ) );
@@ -80,7 +81,7 @@ final class SiteOperationsToolSurfaceTest extends TestCase {
 		}
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_theme_options', 'manage_options', 'update_core', 'update_plugins' );
 		$limited = $availability->tool_modules_for_user( 1, $registry, null, array( 'content:read', 'content:draft' ) );
-		foreach ( array( 'navigation.read_item', 'navigation.update_item', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', 'integrity.check_core', 'integrity.check_plugin' ) as $id ) {
+		foreach ( array( 'navigation.read_location_context', 'navigation.assign_location', 'site_editor.list_records', 'site_editor.read_record', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record', 'navigation.read_item', 'navigation.update_item', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', 'integrity.check_core', 'integrity.check_plugin' ) as $id ) {
 			self::assertArrayNotHasKey( $id, $limited );
 		}
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();

@@ -43,6 +43,9 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			...( new NavigationLocationAbilityModules( $this->factory ) )->all(),
+			...( new TrashedContentAbilityModules( $this->factory ) )->all(),
+			...( new EditorRecordAbilityModules( $this->factory ) )->all(),
 			...( new ContentRecoveryAbilityModules( $this->factory ) )->all(),
 			...( new ToolsInspectionAbilityModules( $this->factory ) )->all(),
 			$this->factory->create(

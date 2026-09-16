@@ -16,7 +16,7 @@ final class CorePrivateSettingTargets {
 	 * @var array<string,array<string,mixed>>
 	 */
 	private const TARGETS = array(
-		'start_of_week'          => array(
+		'start_of_week'                 => array(
 			'option'  => 'start_of_week',
 			'label'   => 'Start of week (0–6; 0=Sunday, 6=Saturday)',
 			'group'   => 'General',
@@ -24,7 +24,21 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 6,
 		),
-		'posts_per_rss'          => array(
+		'date_format'                   => array(
+			'option' => 'date_format',
+			'label'  => 'Date format (F j, Y; Y-m-d; m/d/Y; d/m/Y; d.m.Y)',
+			'group'  => 'General',
+			'secret' => false,
+			'values' => array( 'F j, Y', 'Y-m-d', 'm/d/Y', 'd/m/Y', 'd.m.Y' ),
+		),
+		'time_format'                   => array(
+			'option' => 'time_format',
+			'label'  => 'Time format (g:i a; g:i A; H:i)',
+			'group'  => 'General',
+			'secret' => false,
+			'values' => array( 'g:i a', 'g:i A', 'H:i' ),
+		),
+		'posts_per_rss'                 => array(
 			'option'  => 'posts_per_rss',
 			'label'   => 'Posts per RSS feed (1–100)',
 			'group'   => 'Reading',
@@ -32,7 +46,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 1,
 			'maximum' => 100,
 		),
-		'rss_use_excerpt'        => array(
+		'rss_use_excerpt'               => array(
 			'option'  => 'rss_use_excerpt',
 			'label'   => 'RSS content (0=full text, 1=excerpt)',
 			'group'   => 'Reading',
@@ -40,21 +54,21 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 1,
 		),
-		'default_comment_status' => array(
+		'default_comment_status'        => array(
 			'option' => 'default_comment_status',
 			'label'  => 'Default comment status (open or closed)',
 			'group'  => 'Discussion',
 			'secret' => false,
 			'values' => array( 'open', 'closed' ),
 		),
-		'default_ping_status'    => array(
+		'default_ping_status'           => array(
 			'option' => 'default_ping_status',
 			'label'  => 'Default ping status (open or closed)',
 			'group'  => 'Discussion',
 			'secret' => false,
 			'values' => array( 'open', 'closed' ),
 		),
-		'comment_moderation'     => array(
+		'comment_moderation'            => array(
 			'option'  => 'comment_moderation',
 			'label'   => 'Comment moderation (0=off, 1=on)',
 			'group'   => 'Discussion',
@@ -62,7 +76,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 1,
 		),
-		'thread_comments'        => array(
+		'thread_comments'               => array(
 			'option'  => 'thread_comments',
 			'label'   => 'Threaded comments (0=off, 1=on)',
 			'group'   => 'Discussion',
@@ -70,7 +84,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 1,
 		),
-		'thread_comments_depth'  => array(
+		'thread_comments_depth'         => array(
 			'option'  => 'thread_comments_depth',
 			'label'   => 'Threaded comment depth (2–10)',
 			'group'   => 'Discussion',
@@ -78,7 +92,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 2,
 			'maximum' => 10,
 		),
-		'comments_per_page'      => array(
+		'comments_per_page'             => array(
 			'option'  => 'comments_per_page',
 			'label'   => 'Comments per page (1–100)',
 			'group'   => 'Discussion',
@@ -86,7 +100,61 @@ final class CorePrivateSettingTargets {
 			'minimum' => 1,
 			'maximum' => 100,
 		),
-		'thumbnail_size_w'       => array(
+		'page_comments'                 => array(
+			'option'  => 'page_comments',
+			'label'   => 'Paginate comments (0=off, 1=on)',
+			'group'   => 'Discussion',
+			'secret'  => false,
+			'minimum' => 0,
+			'maximum' => 1,
+		),
+		'default_comments_page'         => array(
+			'option' => 'default_comments_page',
+			'label'  => 'Default comments page (newest or oldest)',
+			'group'  => 'Discussion',
+			'secret' => false,
+			'values' => array( 'newest', 'oldest' ),
+		),
+		'comment_order'                 => array(
+			'option' => 'comment_order',
+			'label'  => 'Comment order (asc or desc)',
+			'group'  => 'Discussion',
+			'secret' => false,
+			'values' => array( 'asc', 'desc' ),
+		),
+		'close_comments_for_old_posts'  => array(
+			'option'  => 'close_comments_for_old_posts',
+			'label'   => 'Close comments on older posts (0=off, 1=on)',
+			'group'   => 'Discussion',
+			'secret'  => false,
+			'minimum' => 0,
+			'maximum' => 1,
+		),
+		'close_comments_days_old'       => array(
+			'option'  => 'close_comments_days_old',
+			'label'   => 'Close comments after (1–3650 days)',
+			'group'   => 'Discussion',
+			'secret'  => false,
+			'minimum' => 1,
+			'maximum' => 3650,
+		),
+		'comment_max_links'             => array(
+			'option'  => 'comment_max_links',
+			'label'   => 'Comment links before moderation (0–100)',
+			'group'   => 'Discussion',
+			'secret'  => false,
+			'minimum' => 0,
+			'maximum' => 100,
+		),
+		'show_avatars'                  => array(
+			'option'  => 'show_avatars',
+			'label'   => 'Show avatars in comments (0=off, 1=on)',
+			'group'   => 'Discussion',
+			'secret'  => false,
+			'minimum' => 0,
+			'maximum' => 1,
+		),
+		'thumbnail_size_w'              => array(
 			'option'  => 'thumbnail_size_w',
 			'label'   => 'Thumbnail width (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -94,7 +162,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'thumbnail_size_h'       => array(
+		'thumbnail_size_h'              => array(
 			'option'  => 'thumbnail_size_h',
 			'label'   => 'Thumbnail height (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -102,7 +170,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'medium_size_w'          => array(
+		'medium_size_w'                 => array(
 			'option'  => 'medium_size_w',
 			'label'   => 'Medium image width (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -110,7 +178,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'medium_size_h'          => array(
+		'medium_size_h'                 => array(
 			'option'  => 'medium_size_h',
 			'label'   => 'Medium image height (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -118,7 +186,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'large_size_w'           => array(
+		'large_size_w'                  => array(
 			'option'  => 'large_size_w',
 			'label'   => 'Large image width (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -126,7 +194,7 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'large_size_h'           => array(
+		'large_size_h'                  => array(
 			'option'  => 'large_size_h',
 			'label'   => 'Large image height (0–4096 px; affects new uploads only; existing images are not regenerated)',
 			'group'   => 'Media',
@@ -134,9 +202,17 @@ final class CorePrivateSettingTargets {
 			'minimum' => 0,
 			'maximum' => 4096,
 		),
-		'thumbnail_crop'         => array(
+		'thumbnail_crop'                => array(
 			'option'  => 'thumbnail_crop',
 			'label'   => 'Thumbnail crop (0=off, 1=on; affects new uploads only; existing images are not regenerated)',
+			'group'   => 'Media',
+			'secret'  => false,
+			'minimum' => 0,
+			'maximum' => 1,
+		),
+		'uploads_use_yearmonth_folders' => array(
+			'option'  => 'uploads_use_yearmonth_folders',
+			'label'   => 'Organize uploads by year/month (0=off, 1=on; new uploads only)',
 			'group'   => 'Media',
 			'secret'  => false,
 			'minimum' => 0,

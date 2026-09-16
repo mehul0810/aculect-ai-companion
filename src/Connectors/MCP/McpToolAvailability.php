@@ -223,6 +223,7 @@ final class McpToolAvailability {
 				'missing_user'                   => $policy['missing_user'],
 				'missing_role'                   => $policy['missing_role'],
 			),
+			'content_recovery'   => $this->recovery_operations( $policy, $registry, $wp_abilities ),
 			'site_information'   => $this->operation_group(
 				array(
 					'get_settings' => 'site.get_settings',
@@ -298,6 +299,11 @@ final class McpToolAvailability {
 					'get_template'        => 'site_editor.get_template',
 					'list_template_parts' => 'site_editor.list_template_parts',
 					'get_template_part'   => 'site_editor.get_template_part',
+					'list_records'        => 'site_editor.list_records',
+					'read_record'         => 'site_editor.read_record',
+					'update_record'       => 'site_editor.update_record',
+					'set_style'           => 'site_editor.set_style',
+					'restore_record'      => 'site_editor.restore_record',
 				),
 				$policy,
 				$registry,
@@ -427,12 +433,14 @@ final class McpToolAvailability {
 	private function site_operation_groups( array $policy, AbilitiesRegistry $registry, WordPressAbilitiesDiagnostics $wp_abilities ): array {
 		$groups = array(
 			'navigation'     => array(
-				'get_context'    => 'navigation.get_context',
-				'list_menus'     => 'navigation.list_menus',
-				'list_locations' => 'navigation.list_locations',
-				'list_items'     => 'navigation.list_items',
-				'read_item'      => 'navigation.read_item',
-				'update_item'    => 'navigation.update_item',
+				'get_context'           => 'navigation.get_context',
+				'list_menus'            => 'navigation.list_menus',
+				'list_locations'        => 'navigation.list_locations',
+				'list_items'            => 'navigation.list_items',
+				'read_item'             => 'navigation.read_item',
+				'update_item'           => 'navigation.update_item',
+				'read_location_context' => 'navigation.read_location_context',
+				'assign_location'       => 'navigation.assign_location',
 			),
 			'content_fields' => array(
 				'list_fields'  => 'content_fields.list_fields',
@@ -481,6 +489,28 @@ final class McpToolAvailability {
 		}
 
 		return $group;
+	}
+
+	/**
+	 * Keep recovery discovery separate from the broad operation catalog.
+	 *
+	 * @param array<string,mixed>           $policy Current actor policy.
+	 * @param AbilitiesRegistry             $registry Current tool registry.
+	 * @param WordPressAbilitiesDiagnostics $wp_abilities Native metadata.
+	 * @return array<string,mixed>
+	 */
+	private function recovery_operations( array $policy, AbilitiesRegistry $registry, WordPressAbilitiesDiagnostics $wp_abilities ): array {
+		return $this->operation_group(
+			array(
+				'compare_revision' => 'revisions.compare_content',
+				'restore_revision' => 'revisions.restore_content',
+				'inspect_trashed'  => 'content.inspect_trashed',
+				'restore_trashed'  => 'content.restore_trashed',
+			),
+			$policy,
+			$registry,
+			$wp_abilities
+		);
 	}
 
 	/**
@@ -673,7 +703,7 @@ final class McpToolAvailability {
 	private function required_capabilities( string $ability_id ): array {
 		return ExtensionLifecyclePolicy::capabilities( $ability_id ) ?? match ( $ability_id ) {
 			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
-			'navigation.read_item', 'navigation.update_item' => array( 'edit_theme_options' ),
+			'navigation.read_item', 'navigation.update_item', 'navigation.read_location_context', 'navigation.assign_location' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
 			'integrity.check_core' => array( 'update_core' ),
 			'integrity.check_plugin' => array( 'update_plugins' ),
@@ -686,7 +716,12 @@ final class McpToolAvailability {
 			'site_editor.list_templates',
 			'site_editor.get_template',
 			'site_editor.list_template_parts',
-			'site_editor.get_template_part' => array( 'edit_theme_options' ),
+			'site_editor.get_template_part',
+			'site_editor.list_records',
+			'site_editor.read_record',
+			'site_editor.update_record',
+			'site_editor.set_style',
+			'site_editor.restore_record' => array( 'edit_theme_options' ),
 			'users.roles_summary' => array( 'promote_users' ),
 			'users.list_safe' => array( 'list_users' ),
 			'plugin.incident.report',

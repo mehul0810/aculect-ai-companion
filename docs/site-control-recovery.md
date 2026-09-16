@@ -108,6 +108,13 @@ are preserved. Native filtered projections cannot replace the raw persisted map.
 Success is verified; uncertain hooks/write outcomes are terminal. This does not
 create/delete menus or menu items and is not a block-navigation assignment tool.
 
+Navigation discovery advertises these separate guarded tools and the existing
+database navigation update/recovery tools. Implementation flags are not caller
+authorization: clients must still consult capabilities and respect scope, role,
+enabled-tool, native-permission and runtime checks. Unknown/custom block writes
+are not promised; the native navigation block allowlist applies. Menu creation
+and deletion remain explicitly unsupported in discovery.
+
 ## Media trash safety
 
 `media.delete_item` remains trash-only and requires explicit confirmation even

@@ -39,7 +39,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 			'status'        => 'ready',
 			'type'          => 'navigation_menu',
 			'label'         => 'Navigation Intelligence',
-			'description'   => 'Read-only navigation context for classic menus, locations and wp_navigation entities. Separate guarded tools support existing classic-menu item updates only.',
+			'description'   => 'Read-only navigation context. Separate guarded tools update existing classic items, assign classic locations, and update or recover existing database navigation records; they do not create or delete menus.',
 			'theme'         => $theme,
 			'navigation'    => $summary,
 			'capabilities'  => array(
@@ -52,7 +52,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'writes_implemented'                  => true,
 				'raw_string_navigation_edits_allowed' => false,
 				'explicit_location_reassignment_only_for_writes' => true,
-				'preserve_unknown_blocks_for_future_writes' => true,
+				'preserve_unknown_blocks_for_future_writes' => false,
 				'validate_parsed_block_structure_before_save' => true,
 				'fail_closed_on_unsupported_write_structures' => true,
 			),
@@ -60,7 +60,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'Use navigation_list_menus to inventory readable classic menus and wp_navigation entities.',
 				'Use navigation_list_locations to inspect registered classic menu locations before planning any explicit reassignment.',
 				'Use navigation_list_items with menu_id, navigation_id, or location for bounded item-level inventory only.',
-				'For an existing classic item, use navigation_read_item to obtain expected_state, then preview and confirm navigation_update_item. Block and location writes are unsupported.',
+				'Use navigation_read_item then navigation_update_item for existing classic items; navigation_read_location_context then navigation_assign_location for locations; site_editor_read_record then site_editor_update_record or site_editor_restore_record for existing database navigation. Writes require fresh state, permission and confirmation; consult capabilities before calling.',
 			),
 			'read_only'     => true,
 		);
@@ -468,25 +468,12 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 	}
 
 	/**
-	 * Return policy metadata for future writes.
+	 * Describe implemented write surfaces separately from caller authorization.
 	 *
 	 * @return array<string, mixed>
 	 */
 	private function write_support_policy(): array {
-		return array(
-			'implemented'                          => true,
-			'current_slice'                        => 'classic_item_updates',
-			'block_writes_implemented'             => false,
-			'location_writes_implemented'          => false,
-			'read_before_write'                    => 'navigation_read_item',
-			'update_tool'                          => 'navigation_update_item',
-			'classic_location_reassignment'        => 'explicit_only_with_confirmation_and_audit',
-			'block_navigation_write_model'         => 'nested_mixed_block_capable',
-			'preserve_unknown_custom_blocks_attrs' => true,
-			'validate_parsed_block_structure'      => true,
-			'raw_string_navigation_edits_allowed'  => false,
-			'fail_closed_with_recovery_guidance'   => true,
-		);
+		return NavigationWriteSupport::describe();
 	}
 
 	/**

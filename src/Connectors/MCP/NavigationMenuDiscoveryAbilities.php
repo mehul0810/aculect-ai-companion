@@ -39,7 +39,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 			'status'        => 'ready',
 			'type'          => 'navigation_menu',
 			'label'         => 'Navigation Intelligence',
-			'description'   => 'Read-only navigation context. Separate guarded tools update existing classic items, assign classic locations, and update or recover existing database navigation records; they do not create or delete menus.',
+			'description'   => 'Read-only navigation context. Separate guarded tools update classic items, assign classic locations, update or recover database navigation, and delete eligible menus or trash editor records with explicit confirmation. Menu creation remains unsupported.',
 			'theme'         => $theme,
 			'navigation'    => $summary,
 			'capabilities'  => array(

@@ -277,6 +277,8 @@ final class ToolSafety {
 			'revisions.restore_content',
 			'content.restore_trashed',
 			'navigation.assign_location',
+			'navigation.delete_menu',
+			'site_editor.delete_record',
 			'site_editor.update_record',
 			'site_editor.set_style',
 			'site_editor.restore_record' => 'destructive',

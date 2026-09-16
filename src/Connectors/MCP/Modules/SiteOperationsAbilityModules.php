@@ -43,6 +43,8 @@ final class SiteOperationsAbilityModules {
 			),
 		);
 		$modules = array(
+			...( new NavigationMenuDeletionAbilityModules( $this->factory ) )->all(),
+			...( new UserPrivacyAbilityModules( $this->factory ) )->all(),
 			...( new NavigationLocationAbilityModules( $this->factory ) )->all(),
 			...( new TrashedContentAbilityModules( $this->factory ) )->all(),
 			...( new EditorRecordAbilityModules( $this->factory ) )->all(),

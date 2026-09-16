@@ -304,17 +304,14 @@ final class McpToolAvailability {
 					'update_record'       => 'site_editor.update_record',
 					'set_style'           => 'site_editor.set_style',
 					'restore_record'      => 'site_editor.restore_record',
+					'delete_record'       => 'site_editor.delete_record',
 				),
 				$policy,
 				$registry,
 				$wp_abilities
 			),
 			'user_access'        => $this->operation_group(
-				array(
-					'current_access' => 'users.current_access',
-					'roles_summary'  => 'users.roles_summary',
-					'list_safe'      => 'users.list_safe',
-				),
+				UserPrivacyPolicy::operations(),
 				$policy,
 				$registry,
 				$wp_abilities
@@ -441,6 +438,8 @@ final class McpToolAvailability {
 				'update_item'           => 'navigation.update_item',
 				'read_location_context' => 'navigation.read_location_context',
 				'assign_location'       => 'navigation.assign_location',
+				'inspect_menu_deletion' => 'navigation.inspect_menu_deletion',
+				'delete_menu'           => 'navigation.delete_menu',
 			),
 			'content_fields' => array(
 				'list_fields'  => 'content_fields.list_fields',
@@ -703,7 +702,7 @@ final class McpToolAvailability {
 	private function required_capabilities( string $ability_id ): array {
 		return ExtensionLifecyclePolicy::capabilities( $ability_id ) ?? match ( $ability_id ) {
 			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
-			'navigation.read_item', 'navigation.update_item', 'navigation.read_location_context', 'navigation.assign_location' => array( 'edit_theme_options' ),
+			'navigation.read_item', 'navigation.update_item', 'navigation.read_location_context', 'navigation.assign_location', 'navigation.inspect_menu_deletion', 'navigation.delete_menu' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
 			'integrity.check_core' => array( 'update_core' ),
 			'integrity.check_plugin' => array( 'update_plugins' ),
@@ -721,7 +720,7 @@ final class McpToolAvailability {
 			'site_editor.read_record',
 			'site_editor.update_record',
 			'site_editor.set_style',
-			'site_editor.restore_record' => array( 'edit_theme_options' ),
+			'site_editor.restore_record', 'site_editor.delete_record' => array( 'edit_theme_options' ),
 			'users.roles_summary' => array( 'promote_users' ),
 			'users.list_safe' => array( 'list_users' ),
 			'plugin.incident.report',

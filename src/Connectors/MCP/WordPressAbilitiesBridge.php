@@ -104,6 +104,10 @@ final class WordPressAbilitiesBridge {
 	 * @return array<string, mixed>
 	 */
 	public function run( array $args ): array {
+		$id = $args['id'] ?? $args['name'] ?? null;
+		if ( is_string( $id ) && 'core/get-user-info' === sanitize_text_field( $id ) ) {
+			return UserPrivacyPolicy::sensitive_data();
+		}
 		if ( ! function_exists( 'wp_get_abilities' ) ) {
 			return $this->unavailable();
 		}

@@ -113,7 +113,25 @@ database navigation update/recovery tools. Implementation flags are not caller
 authorization: clients must still consult capabilities and respect scope, role,
 enabled-tool, native-permission and runtime checks. Unknown/custom block writes
 are not promised; the native navigation block allowlist applies. Menu creation
-and deletion remain explicitly unsupported in discovery.
+remains explicitly unsupported in discovery. Deletion is exposed separately with
+the safeguards below.
+
+## Confirmed menu and editor-record deletion
+
+`navigation.inspect_menu_deletion` supplies a fresh state token and permanent-
+deletion warning. `navigation.delete_menu` requires explicit confirmation even
+on trusted-write connections. It accepts only a bounded classic menu unassigned
+from the active theme's locations, verifies its exact native item membership,
+and checks that the menu/items are absent and location state is preserved afterward.
+Classic menu deletion is permanent: there is no native trash or automatic rollback.
+Widgets, blocks, inactive themes and plugin references may still reference the menu.
+
+`site_editor.delete_record` requires the token from `site_editor.read_record`,
+native permissions, no edit lock and explicit confirmation. Supported database
+templates, template parts, navigation and global-style records move to native
+trash only; disabled trash causes refusal. Content, ownership and restoration
+metadata are verified after the write. Published records may affect live layout
+or fallbacks immediately. Uncertain native outcomes are terminal, not retry advice.
 
 ## Media trash safety
 
@@ -134,14 +152,30 @@ should read and supply a fresh token rather than silently dropping a stale token
 
 ## Remaining work and owner decisions
 
+The owner has authorized menu and database editor-record deletion only with
+explicit confirmation. This does not authorize deleting users or sites, or
+editing theme/plugin source files. Backup-provider selection and bespoke plugin
+adapters are deferred. The existing WordPress Abilities bridge continues to
+support eligible public registrations subject to its permission and policy gates;
+registration alone is not a guarantee about third-party data privacy.
+
+`users.delete_user` and `users.read_sensitive` are read-only policy-refusal tools.
+They take no user identifiers or personal-data arguments, perform no user lookup
+or mutation, and return an unconditional privacy/safety explanation. Confirmation
+and administrator privileges cannot turn these into executable user operations.
+Existing user summaries remain limited to their fixed safe field allowlist.
+The known `core/get-user-info` registered ability also returns the sensitive-data
+refusal through the bridge before its callback runs, including normalized names.
+This policy does not claim to classify arbitrary third-party ability behavior;
+a reviewed policy for user-related third-party executions remains a separate gate.
+
 1. Broader navigation lifecycle and creation/assignment of new database editor
    records, with scoped state checks and native recovery proof.
-2. User administration
-   needs an explicit field/action policy; passwords, identity, roles and deletion
-   are not implicitly authorized by a generic site-control request.
-3. Backups require the owner to choose a provider and permitted backup/restore
+2. User deletion and sensitive retrieval are prohibited. Public-profile mutations,
+   identity and role changes are not added by the refusal tools.
+3. Backups are deferred until the owner chooses a provider and permitted backup/restore
    operations. Native Tools links are handoffs, not a backup implementation.
-4. Typed third-party adapters require selected plugins and permitted data/actions;
+4. Bespoke typed third-party adapters are deferred; they require selected plugins and permitted data/actions;
    the generic WordPress Abilities bridge is not a typed plugin-data adapter.
 
 Theme source-file editing, plugin source-file editing and site deletion remain

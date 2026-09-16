@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Connectors\MCP\Modules;
 
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleFactory;
 use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
+use Aculect\AICompanion\Connectors\MCP\EditorRecordDeletion;
 use Aculect\AICompanion\Connectors\MCP\EditorRecordAbilities;
 use Aculect\AICompanion\Connectors\MCP\EditorRecordState;
 use Aculect\AICompanion\Connectors\MCP\EditorStylePolicy;
@@ -106,6 +107,7 @@ final class EditorRecordAbilityModules {
 			$this->factory->create( 'site_editor.update_record', 'Update Site Editor Blocks', 'Update only title and/or registered serialized block content of an existing database template, template part or navigation record. Requires edit_theme_options, fresh expected_state, explicit confirmation, no edit lock and a verified recovery revision. No files, metadata, assignment, creation or status changes.', 'Site Editor', 'content:draft', false, $this->schema( $target + $state + $changes, array( 'post_id', 'expected_state', 'changes' ) ), static fn ( array $args ): array => ( new EditorRecordAbilities() )->write( 'update_record', $args ) ),
 			$this->factory->create( 'site_editor.set_style', 'Set Global Style Override', 'Set one allowlisted color, typography, spacing or layout value in an existing current-theme user-style record; null removes that override. Hex colors, bounded CSS dimensions and declared typography values only. Requires explicit confirmation, fresh expected_state and a recovery revision. No custom CSS, theme files or arbitrary theme.json settings.', 'Site Editor', 'content:draft', false, $this->schema( $target + $state + $style, array( 'post_id', 'expected_state', 'path', 'value' ) ), static fn ( array $args ): array => ( new EditorRecordAbilities() )->write( 'set_style', $args ) ),
 			$this->factory->create( 'site_editor.restore_record', 'Restore Site Editor Content Revision', 'Restore title, content and excerpt from one saved revision of this database editor record. Read with the same revision_id first to obtain expected_state. Always requires explicit confirmation, native editor permission, no lock and a verified recovery point. Preserves status, terms and metadata; published design changes are immediate.', 'Site Editor', 'content:draft', false, $this->schema( $target + $state + $revision, array( 'post_id', 'expected_state', 'revision_id' ) ), static fn ( array $args ): array => ( new EditorRecordAbilities() )->write( 'restore_record', $args ) ),
+			$this->factory->create( 'site_editor.delete_record', 'Trash Site Editor Record', 'Move one existing current-theme database template, template part, navigation or global-style record to native WordPress trash after explicit confirmation and a fresh read_record expected_state. Uses edit_theme_options, read, edit and delete_post permissions, refuses disabled trash, never permanently deletes or edits theme files, and verifies content, identity, terms and metadata after native trash.', 'Site Editor', 'content:draft', false, $this->schema( $target + $state, array( 'post_id', 'expected_state' ) ), static fn ( array $args ): array => ( new EditorRecordDeletion() )->delete( $args ) ),
 		);
 	}
 

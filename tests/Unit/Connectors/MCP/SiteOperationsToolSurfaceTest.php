@@ -18,9 +18,9 @@ use ReflectionMethod;
  */
 final class SiteOperationsToolSurfaceTest extends TestCase {
 
-	private const RECOVERY_WRITES = array( 'media.delete_item', 'navigation.assign_location', 'content.restore_trashed', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record' );
+	private const RECOVERY_WRITES = array( 'site_editor.delete_record', 'navigation.delete_menu', 'media.delete_item', 'navigation.assign_location', 'content.restore_trashed', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record' );
 	private const WRITES          = array( 'navigation.update_item', 'content_fields.update_field', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', ...self::RECOVERY_WRITES );
-	private const READS           = array( 'navigation.read_location_context', 'content.inspect_trashed', 'site_editor.list_records', 'site_editor.read_record', 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin', 'tools.prepare_handoff', 'site.health_info', 'tools.privacy_request_status' );
+	private const READS           = array( 'users.delete_user', 'users.read_sensitive', 'navigation.inspect_menu_deletion', 'navigation.read_location_context', 'content.inspect_trashed', 'site_editor.list_records', 'site_editor.read_record', 'navigation.read_item', 'content_fields.list_fields', 'content_fields.read_field', 'site.inspect_rendered_page', 'integrity.check_core', 'integrity.check_plugin', 'tools.prepare_handoff', 'site.health_info', 'tools.privacy_request_status' );
 
 	protected function setUp(): void {
 		$GLOBALS['aculect_ai_companion_test_options']             = array();
@@ -81,7 +81,7 @@ final class SiteOperationsToolSurfaceTest extends TestCase {
 		}
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'edit_theme_options', 'manage_options', 'update_core', 'update_plugins' );
 		$limited = $availability->tool_modules_for_user( 1, $registry, null, array( 'content:read', 'content:draft' ) );
-		foreach ( array( 'navigation.read_location_context', 'navigation.assign_location', 'site_editor.list_records', 'site_editor.read_record', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record', 'navigation.read_item', 'navigation.update_item', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', 'integrity.check_core', 'integrity.check_plugin' ) as $id ) {
+		foreach ( array( 'navigation.inspect_menu_deletion', 'navigation.delete_menu', 'site_editor.delete_record', 'navigation.read_location_context', 'navigation.assign_location', 'site_editor.list_records', 'site_editor.read_record', 'site_editor.update_record', 'site_editor.set_style', 'site_editor.restore_record', 'navigation.read_item', 'navigation.update_item', 'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules', 'integrity.check_core', 'integrity.check_plugin' ) as $id ) {
 			self::assertArrayNotHasKey( $id, $limited );
 		}
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();

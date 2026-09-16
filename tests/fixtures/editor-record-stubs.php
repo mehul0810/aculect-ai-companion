@@ -29,9 +29,25 @@ function function_exists( string $function ): bool {
 		'wp_save_post_revision',
 		'wp_slash',
 		'wp_update_post',
+		'_truncate_post_slug',
 	);
 
 	return in_array( ltrim( $function, '\\' ), $fixture_functions, true ) || \function_exists( $function );
+}
+
+/**
+ * Mirror the native ASCII slug truncation used by WordPress trash handling.
+ *
+ * @param string $slug   Slug to truncate.
+ * @param int    $length Maximum byte length.
+ */
+function _truncate_post_slug( string $slug, int $length = 200 ): string {
+	if ( strlen( $slug ) > $length ) {
+		$decoded = urldecode( $slug );
+		$slug    = $decoded === $slug ? substr( $slug, 0, $length ) : substr( $decoded, 0, $length );
+	}
+
+	return rtrim( $slug, '-' );
 }
 
 /**

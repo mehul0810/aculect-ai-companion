@@ -116,13 +116,13 @@ The authorize endpoint previously sent logged-out users to `wp-login.php` with `
 
 Current rule:
 
-- If the user is already logged in, `/oauth/authorize` redirects directly to the Aculect AI Companion wp-admin consent screen.
+- If the user is already logged in, `/aculect-ai-companion/oauth/authorize` redirects directly to the Aculect AI Companion wp-admin consent screen.
 - If the user is logged out, `wp_login_url()` uses the Aculect AI Companion wp-admin consent screen as `redirect_to`.
 - Consent approval/denial posts to `admin-post.php` with nonce validation.
 
 ### Root Authorize URL Compatibility
 
-Some flows can hit `/oauth/authorize` outside the REST namespace. The rewrite rule handles that root URL directly so normal browser cookies remain available before redirecting to the wp-admin consent screen.
+Discovery advertises `/aculect-ai-companion/oauth/authorize`, outside the REST namespace, so normal browser cookies remain available before redirecting to the wp-admin consent screen. The legacy `/oauth/authorize` alias is retained, but another OAuth provider may claim that shared path. Use the advertised plugin-owned route for new connections and refresh cached discovery metadata after updating.
 
 ## Common Errors We Hit
 
@@ -146,7 +146,7 @@ Regression check: force a low cap in a fixture, verify the response is sanitized
 
 Cause: authorize flow did not cleanly hand off to wp-admin consent and relied on REST route state.
 
-Fix: validate the OAuth request first, then send logged-in users directly to `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Fix: validate the OAuth request first, then send logged-in users directly to `admin.php?page=aculect-ai-companion-oauth-consent` with the stored request token.
 
 Regression check: with an authenticated browser session, OAuth authorize should show the consent screen without landing on `wp-login.php`.
 
@@ -154,9 +154,9 @@ Regression check: with an authenticated browser session, OAuth authorize should 
 
 Cause: `wp_login_url()` used the REST authorize URL as `redirect_to`.
 
-Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including the OAuth request parameters.
+Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including its stored request token.
 
-Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `admin.php?page=aculect-ai-companion-oauth-consent`.
 
 ### ChatGPT Says The MCP Server Does Not Implement OAuth
 
@@ -202,7 +202,7 @@ ACULECT_SMOKE_COOKIE_HEADER='wordpress_logged_in_...=...' \
 composer smoke:oauth
 ```
 
-Expected: DCR returns `201`, logged-out authorize redirects to `wp-login.php` with `redirect_to` targeting `options-general.php?page=aculect-ai-companion&view=oauth-consent`, and logged-in authorize redirects directly to the consent screen.
+Expected: DCR returns `201`, logged-out authorize redirects to `wp-login.php` with `redirect_to` targeting `admin.php?page=aculect-ai-companion-oauth-consent`, and logged-in authorize redirects directly to the consent screen.
 
 The script prints only sanitized pass/fail output. It does not print cookies, client secrets, tokens, authorization codes, or raw response bodies. Increase retry coverage with `ACULECT_SMOKE_DCR_ATTEMPTS=3` or `--dcr-attempts=3` when validating DCR retry behavior.
 
@@ -225,12 +225,12 @@ Expected: response is `201`.
 ```bash
 base='http://localhost:8895'
 client_id='CLIENT_FROM_DCR_RESPONSE'
-curl -sSI "$base/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
+curl -sSI "$base/aculect-ai-companion/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
   | tr -d '\r' \
   | grep -Ei '^(HTTP/|location:)'
 ```
 
-Expected: `302` to `wp-login.php` with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Expected: `302` to `wp-login.php` with `redirect_to` containing `admin.php?page=aculect-ai-companion-oauth-consent`.
 
 ### Logged-In Authorize Should Go Directly To Consent
 

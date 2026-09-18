@@ -2,6 +2,8 @@
 	"0.8.0": {
 		"date": "2026-08-20",
 		"New": [
+			"Added guarded editor record and classic-menu deletion with explicit confirmation, while refusing user deletion and sensitive user information retrieval.",
+			"Added bounded Tools inspection and native handoffs, safe core settings, content recovery, navigation location management, and guarded media trash handling.",
 			"Added site-owned Aculect Memory with versioned records, history, and opt-in client-driven synchronization. Imported proposals remain private and pending review; this does not synchronize provider-owned personal memory stores.",
 			"Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility."
 		],
@@ -16,6 +18,7 @@
 			"Improved MCP/OAuth connection diagnostics with exact metadata validation, safe challenge reporting, and request correlation without exposing tokens or request payloads."
 		],
 		"Fixed": [
+			"Isolated browser OAuth authorization at a plugin-owned route to avoid conflicts with other OAuth providers; retained the legacy route for compatibility.",
 			"Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.",
 			"Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items."
 		],

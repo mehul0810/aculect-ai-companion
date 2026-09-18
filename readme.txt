@@ -285,6 +285,9 @@ Composer dependencies for production releases are installed with:
 
 = 0.8.0 =
 
+* Isolated browser OAuth authorization at a plugin-owned route to avoid conflicts with other OAuth providers; retained the legacy route for compatibility.
+* Added guarded editor record and classic-menu deletion with explicit confirmation, while refusing user deletion and sensitive user information retrieval.
+* Added bounded Tools inspection and native handoffs, safe core settings, content recovery, navigation location management, and guarded media trash handling.
 * Fixed the REST OAuth authorization entry to send already logged-in browsers directly to consent while preserving login, permission and consent checks.
 * Added confirmed existing classic-menu item updates and registered scalar custom-field editing with permission, schema and stale-state checks.
 * Added bounded public rendered-page inspection, targeted native cache and soft rewrite maintenance, and read-only WordPress.org file checksum comparisons.

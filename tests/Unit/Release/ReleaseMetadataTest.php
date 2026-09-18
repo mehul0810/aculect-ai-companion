@@ -90,6 +90,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( 'https://example.com/aculect-ai-companion/oauth/authorize', $endpoint );
 		self::assertStringContainsString( '- OAuth authorization: `/aculect-ai-companion/oauth/authorize`', $readme );
 		self::assertStringContainsString( '- Authorization endpoint: `/aculect-ai-companion/oauth/authorize`', $chatgpt_readme );
+		self::assertStringContainsString( "'/aculect-ai-companion/oauth/authorize'", $this->file_contents( $root . '/bin/smoke-oauth-connector.php' ) );
 		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
 	}
 

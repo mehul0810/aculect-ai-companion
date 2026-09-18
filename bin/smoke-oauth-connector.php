@@ -182,7 +182,7 @@ function aculect_smoke_authorize_url( string $base_url, array $client, bool $res
 		PHP_QUERY_RFC3986
 	);
 
-	$entry_path = $rest_entry ? '/wp-json/aculect-ai-companion/v1/oauth/authorize' : '/oauth/authorize';
+	$entry_path = $rest_entry ? '/wp-json/aculect-ai-companion/v1/oauth/authorize' : '/aculect-ai-companion/oauth/authorize';
 
 	return $base_url . $entry_path . '?' . $query;
 }

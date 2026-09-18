@@ -87,9 +87,9 @@ final class ReleaseMetadataTest extends TestCase {
 		$chatgpt_readme = $this->file_contents( $root . '/src/Connectors/ChatGPT/README.md' );
 		$endpoint       = Helpers::authorization_endpoint();
 
-		self::assertSame( 'https://example.com/oauth/authorize', $endpoint );
-		self::assertStringContainsString( '- OAuth authorization: `/oauth/authorize`', $readme );
-		self::assertStringContainsString( '- Authorization endpoint: `/oauth/authorize`', $chatgpt_readme );
+		self::assertSame( 'https://example.com/aculect-ai-companion/oauth/authorize', $endpoint );
+		self::assertStringContainsString( '- OAuth authorization: `/aculect-ai-companion/oauth/authorize`', $readme );
+		self::assertStringContainsString( '- Authorization endpoint: `/aculect-ai-companion/oauth/authorize`', $chatgpt_readme );
 		self::assertStringNotContainsString( '- OAuth authorization: `/wp-json/aculect-ai-companion/v1/oauth/authorize`', $readme );
 	}
 

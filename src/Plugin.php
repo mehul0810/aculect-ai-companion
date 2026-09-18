@@ -32,7 +32,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Plugin {
 
-	private const REWRITE_VERSION        = '2026.05.11.1';
+	private const REWRITE_VERSION        = '2026.09.18.1';
 	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
@@ -270,7 +270,7 @@ final class Plugin {
 		}
 
 		$path = (string) wp_parse_url( $requested_url, PHP_URL_PATH );
-		if ( str_starts_with( $path, '/.well-known/oauth-' ) || '/oauth/authorize' === untrailingslashit( $path ) ) {
+		if ( str_starts_with( $path, '/.well-known/oauth-' ) || in_array( untrailingslashit( $path ), array( '/oauth/authorize', '/aculect-ai-companion/oauth/authorize' ), true ) ) {
 			return false;
 		}
 
@@ -491,5 +491,7 @@ final class Plugin {
 	private static function add_rewrite_rules(): void {
 		( new DiscoveryController() )->add_rewrite_rules();
 		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?aculect_ai_companion_oauth_authorize=1', 'top' );
+		// Keep the legacy alias, but advertise an owned path that other OAuth plugins do not claim.
+		add_rewrite_rule( '^aculect-ai-companion/oauth/authorize/?$', 'index.php?aculect_ai_companion_oauth_authorize=1', 'top' );
 	}
 }

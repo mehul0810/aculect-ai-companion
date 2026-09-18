@@ -30,7 +30,7 @@ final class DiscoveryControllerTest extends TestCase {
 		self::assertSame( $expected, $resource_metadata['scopes_supported'] );
 		self::assertSame( $expected, $auth_metadata['scopes_supported'] );
 		self::assertSame( Helpers::authorization_endpoint(), $auth_metadata['authorization_endpoint'] );
-		self::assertSame( 'https://example.com/oauth/authorize', $auth_metadata['authorization_endpoint'] );
+		self::assertSame( 'https://example.com/aculect-ai-companion/oauth/authorize', $auth_metadata['authorization_endpoint'] );
 		self::assertStringNotContainsString( '/wp-json/', $auth_metadata['authorization_endpoint'] );
 		self::assertSame( Helpers::registration_endpoint(), $auth_metadata['registration_endpoint'] );
 		self::assertSame( array( 'S256' ), $auth_metadata['code_challenge_methods_supported'] );

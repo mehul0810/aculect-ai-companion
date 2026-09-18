@@ -180,7 +180,7 @@ WebMCP complements the authenticated remote MCP endpoint; it does not mirror the
 
 - MCP: `/wp-json/aculect-ai-companion/v1/mcp`
 - OAuth registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
-- OAuth authorization: `/oauth/authorize`
+- OAuth authorization: `/aculect-ai-companion/oauth/authorize`
 - OAuth token: `/wp-json/aculect-ai-companion/v1/oauth/token`
 - Protected resource metadata: `/.well-known/oauth-protected-resource`
 - Authorization server metadata: `/.well-known/oauth-authorization-server`
@@ -358,7 +358,9 @@ default. Hosts behind a verified reverse proxy may supply a stable, non-secret
 fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`
 filter; the plugin does not trust forwarded headers automatically.
 
-If a deployed `/oauth/authorize` request returns an `Unknown OAuth client`
-response while the REST authorize route works, treat that as a deployment or
-rewrite/source-attribution mismatch: verify the deployed package, canonical
-issuer, root rewrite, and active plugin version before changing OAuth code.
+OAuth discovery advertises `/aculect-ai-companion/oauth/authorize` to avoid
+collisions with plugins that claim the generic `/oauth/authorize` route. The old
+route remains a compatibility alias where another plugin has not claimed it.
+After upgrading, invalidate cached OAuth discovery documents and refresh the
+connector metadata before reconnecting. The update refreshes WordPress rewrite
+rules, but cannot evict hosting/CDN caches that run before WordPress.

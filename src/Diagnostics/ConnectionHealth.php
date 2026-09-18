@@ -20,7 +20,7 @@ final class ConnectionHealth {
 
 	private const OPTION_TRANSIENT_PROBE = 'aculect_ai_companion_connection_health_transient_probe';
 	private const REQUEST_TIMEOUT        = 8;
-	private const CLOUDFLARE_RULE        = '(starts_with(http.request.uri.path, "/wp-json/aculect-ai-companion/v1/") or starts_with(http.request.uri.path, "/.well-known/oauth-") or http.request.uri.path eq "/oauth/authorize")';
+	private const CLOUDFLARE_RULE        = '(starts_with(http.request.uri.path, "/wp-json/aculect-ai-companion/v1/") or starts_with(http.request.uri.path, "/.well-known/oauth-") or http.request.uri.path eq "/oauth/authorize" or http.request.uri.path eq "/aculect-ai-companion/oauth/authorize")';
 
 	/**
 	 * Run the connection checks and persist the latest result.
@@ -417,6 +417,7 @@ final class ConnectionHealth {
 				'/wp-json/aculect-ai-companion/v1/',
 				'/.well-known/oauth-',
 				'/oauth/authorize',
+				'/aculect-ai-companion/oauth/authorize',
 			),
 			'guidance'        => array(
 				'Do not challenge Aculect connector routes with browser challenges, Under Attack mode, Bot Fight Mode, Super Bot Fight Mode, or WAF challenge actions.',

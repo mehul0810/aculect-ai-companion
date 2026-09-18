@@ -54,7 +54,7 @@ final class Helpers {
 	 * Return the OAuth authorization endpoint URL.
 	 */
 	public static function authorization_endpoint(): string {
-		return self::normalize_url( self::external_base_url() . '/oauth/authorize' );
+		return self::normalize_url( self::external_base_url() . '/aculect-ai-companion/oauth/authorize' );
 	}
 
 	/**

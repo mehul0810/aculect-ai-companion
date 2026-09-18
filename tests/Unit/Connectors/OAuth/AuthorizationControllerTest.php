@@ -168,7 +168,7 @@ final class AuthorizationControllerTest extends TestCase {
 
 	public function test_authorization_endpoint_uses_root_route_for_browser_cookie_auth(): void {
 		self::assertSame(
-			'https://example.com/oauth/authorize',
+			'https://example.com/aculect-ai-companion/oauth/authorize',
 			Helpers::authorization_endpoint()
 		);
 		self::assertStringNotContainsString(

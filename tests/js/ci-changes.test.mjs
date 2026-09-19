@@ -31,6 +31,10 @@ test( 'documentation keeps secrets scanning without rebuilding the plugin', () =
 		'utf8'
 	);
 	assert.match( ci, /name: Scan repository secrets\n        run:/ );
+	assert.match(
+		ci,
+		/semgrep\/semgrep:1\.176\.0\s+semgrep scan --config p\/secrets/
+	);
 } );
 
 test( 'unknown files and unavailable history fail safe to every check', () => {

@@ -108,7 +108,7 @@ jobs:
       - name: Scan repository secrets
         run: >-
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.176.0
-          scan --config p/secrets --exclude vendor --exclude node_modules
+          semgrep scan --config p/secrets --exclude vendor --exclude node_modules
           --exclude release --metrics=off --error .
 
       - name: Install production Composer dependencies

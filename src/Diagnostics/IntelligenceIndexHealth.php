@@ -6,6 +6,8 @@ namespace Aculect\AICompanion\Diagnostics;
 
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
+use Aculect\AICompanion\Intelligence\Database\Installer;
+use Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator;
 
 /**
  * Builds support-safe operational status for the local intelligence index.
@@ -41,6 +43,8 @@ final class IntelligenceIndexHealth {
 			'scheduler_recovery_action' => $cron_off ? 'Configure a real system cron runner for wp-cron.php before relying on queued refreshes.' : '',
 			'job_status_counts'         => $jobs,
 			'recent_refresh_jobs'       => $repository->recent_job_summaries( 5 ),
+			'installer_repair'          => Installer::repair_status(),
+			'memory_migration'          => MemorySchemaMigrator::diagnostics(),
 		);
 	}
 

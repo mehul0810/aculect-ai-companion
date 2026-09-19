@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
+use Aculect\AICompanion\Connectors\OAuth\BoundClientGuard;
 use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\ScopeEntityInterface;
+use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
 
 /**
@@ -71,9 +74,12 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	 * Store a newly issued access token by hash, resource, scopes, and expiry.
 	 *
 	 * @param AccessTokenEntityInterface $accessTokenEntity Issued token entity.
+	 * @throws OAuthServerException When the token cannot be persisted.
 	 */
 	public function persistNewAccessToken( AccessTokenEntityInterface $accessTokenEntity ): void {
 		global $wpdb;
+
+		BoundClientGuard::assert_current( $accessTokenEntity->getClient() );
 
 		$table  = Installer::table_names()['access_tokens'];
 		$scopes = array();
@@ -89,7 +95,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 		);
 		$write_permission_enabled = ConnectionAccessLevel::allows_direct_write( $access_level ) ? 1 : 0;
 
-		$wpdb->insert(
+		$result = $wpdb->insert(
 			$table,
 			array(
 				'token_hash'               => $this->hash_identifier( $accessTokenEntity->getIdentifier() ),
@@ -104,6 +110,10 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			),
 			array( '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s' )
 		);
+
+		if ( false === $result ) {
+			throw OAuthServerException::serverError( 'Unable to persist the access token.' );
+		}
 
 		$this->revoke_superseded_sessions_for_token(
 			(string) $accessTokenEntity->getClient()->getIdentifier(),
@@ -136,9 +146,20 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	public function isAccessTokenRevoked( string $tokenId ): bool {
 		global $wpdb;
 
-		$table = Installer::table_names()['access_tokens'];
-		$row   = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT revoked, expires_at FROM %i WHERE token_hash = %s', $table, $this->hash_identifier( $tokenId ) ),
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT access_tokens.revoked, access_tokens.expires_at
+				FROM %i access_tokens
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE access_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0',
+				$tables['access_tokens'],
+				$tables['clients'],
+				$this->hash_identifier( $tokenId ),
+				IssuerBinding::hash()
+			),
 			ARRAY_A
 		);
 
@@ -167,12 +188,15 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 			$wpdb->prepare(
 				'SELECT access_tokens.*, clients.client_name, clients.provider
                 FROM %i access_tokens
-                LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
                 WHERE access_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0
                 LIMIT 1',
 				$tables['access_tokens'],
 				$tables['clients'],
-				$this->hash_identifier( $token_id )
+				$this->hash_identifier( $token_id ),
+				IssuerBinding::hash()
 			),
 			ARRAY_A
 		);
@@ -599,7 +623,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * Revoke older active sessions when a newer token is issued.
+	 * Revoke older active sessions for the same OAuth client when a newer token is issued.
 	 *
 	 * @param string      $client_id  OAuth client identifier for the new token.
 	 * @param string|null $user_id    WordPress user identifier for the new token.
@@ -625,46 +649,22 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 						SELECT access_tokens.id
 						FROM %i access_tokens
 						INNER JOIN %i refresh_tokens ON refresh_tokens.access_token_hash = access_tokens.token_hash
-						LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
-						LEFT JOIN %i current_client ON current_client.client_id = %s
 						WHERE access_tokens.revoked = 0
 						AND refresh_tokens.revoked = 0
 						AND refresh_tokens.expires_at >= %s
 						AND access_tokens.token_hash <> %s
 						AND COALESCE(access_tokens.user_id, 0) = %d
 						AND access_tokens.resource = %s
-						AND (
-							(
-								current_client.provider IS NOT NULL
-								AND current_client.provider <> %s
-								AND current_client.provider <> %s
-								AND clients.provider = current_client.provider
-							)
-							OR (
-								(
-									current_client.provider IS NULL
-									OR current_client.provider = %s
-									OR current_client.provider = %s
-								)
-								AND access_tokens.client_id = %s
-							)
-						)
+						AND access_tokens.client_id = %s
 					) superseded_tokens
 				)',
 				$tables['access_tokens'],
 				$tables['access_tokens'],
 				$tables['refresh_tokens'],
-				$tables['clients'],
-				$tables['clients'],
-				$client_id,
 				$now,
 				$token_hash,
 				$user_id,
 				$resource,
-				'',
-				'mcp',
-				'',
-				'mcp',
 				$client_id
 			)
 		);
@@ -673,7 +673,7 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 	}
 
 	/**
-	 * Revoke older active access tokens that have a newer matching session.
+	 * Revoke older active access tokens that have a newer session for the same OAuth client.
 	 *
 	 * @param string $now   Current UTC datetime.
 	 * @param int    $limit Maximum rows to revoke.
@@ -695,9 +695,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 							AND newer.token_hash <> older.token_hash
 							AND newer.resource = older.resource
 							AND COALESCE(newer.user_id, 0) = COALESCE(older.user_id, 0)
+							AND newer.client_id = older.client_id
 						INNER JOIN %i newer_refresh ON newer_refresh.access_token_hash = newer.token_hash
-						LEFT JOIN %i older_client ON older_client.client_id = older.client_id
-						LEFT JOIN %i newer_client ON newer_client.client_id = newer.client_id
 						WHERE older.revoked = 0
 						AND older_refresh.revoked = 0
 						AND older_refresh.expires_at >= %s
@@ -715,22 +714,6 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 								AND newer.id > older.id
 							)
 						)
-						AND (
-							(
-								older_client.provider IS NOT NULL
-								AND older_client.provider <> %s
-								AND older_client.provider <> %s
-								AND newer_client.provider = older_client.provider
-							)
-							OR (
-								(
-									older_client.provider IS NULL
-									OR older_client.provider = %s
-									OR older_client.provider = %s
-								)
-								AND newer.client_id = older.client_id
-							)
-						)
 						LIMIT %d
 					) superseded_tokens
 				)',
@@ -739,14 +722,8 @@ final class AccessTokenRepository implements AccessTokenRepositoryInterface {
 				$tables['refresh_tokens'],
 				$tables['access_tokens'],
 				$tables['refresh_tokens'],
-				$tables['clients'],
-				$tables['clients'],
 				$now,
 				$now,
-				'',
-				'mcp',
-				'',
-				'mcp',
 				$limit
 			)
 		);

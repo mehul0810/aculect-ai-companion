@@ -13,6 +13,7 @@ use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -24,21 +25,27 @@ final class AuthorizationControllerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']         = array();
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
-			7 => new \WP_User( array(
-				'ID'    => 7,
-				'roles' => array( 'editor' ),
-			) ),
-			9 => new \WP_User( array(
-				'ID'    => 9,
-				'roles' => array( 'author' ),
-			) ),
+			7 => new \WP_User(
+				array(
+					'ID'    => 7,
+					'roles' => array( 'editor' ),
+				)
+			),
+			9 => new \WP_User(
+				array(
+					'ID'    => 9,
+					'roles' => array( 'author' ),
+				)
+			),
 		);
 		$_GET  = array();
 		$_POST = array();
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
+		update_option( 'aculect_ai_companion_oauth_issuer_backfill', IssuerBinding::hash(), false );
 	}
 
 	public function test_params_from_array_allowlists_and_sanitizes_oauth_parameters(): void {
@@ -102,7 +109,7 @@ final class AuthorizationControllerTest extends TestCase {
 
 		self::assertTrue( $this->invokePrivate( $controller, 'valid_code_challenge', array( str_repeat( 'a', 43 ) ) ) );
 		self::assertFalse( $this->invokePrivate( $controller, 'valid_code_challenge', array( str_repeat( 'a', 42 ) ) ) );
-		self::assertTrue( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'content:draft' ) ) ) );
+		self::assertTrue( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'content:draft', 'offline_access' ) ) ) );
 		self::assertFalse( $this->invokePrivate( $controller, 'scope_tokens_supported', array( array( 'content:read', 'options:write' ) ) ) );
 	}
 
@@ -161,13 +168,38 @@ final class AuthorizationControllerTest extends TestCase {
 
 	public function test_authorization_endpoint_uses_root_route_for_browser_cookie_auth(): void {
 		self::assertSame(
-			'https://example.com/oauth/authorize',
+			'https://example.com/aculect-ai-companion/oauth/authorize',
 			Helpers::authorization_endpoint()
 		);
 		self::assertStringNotContainsString(
 			'/wp-json/',
 			Helpers::authorization_endpoint()
 		);
+	}
+
+	public function test_success_and_error_authorization_locations_include_exact_rfc9207_issuer(): void {
+		$controller = new AuthorizationController();
+		$success    = $this->invokePrivate(
+			$controller,
+			'authorization_response_location',
+			array( 'https://client.example/callback?code=abc&state=state-value' )
+		);
+		$error      = $this->invokePrivate(
+			$controller,
+			'authorization_response_location',
+			array(
+				'https://client.example/callback',
+				array(
+					'error' => 'access_denied',
+					'state' => 'state-value',
+				),
+			)
+		);
+
+		self::assertSame( Helpers::issuer(), $this->query_param( $success, 'iss' ) );
+		self::assertSame( Helpers::issuer(), $this->query_param( $error, 'iss' ) );
+		self::assertSame( 'abc', $this->query_param( $success, 'code' ) );
+		self::assertSame( 'access_denied', $this->query_param( $error, 'error' ) );
 	}
 
 	public function test_server_error_description_does_not_expose_exception_details(): void {
@@ -255,6 +287,23 @@ final class AuthorizationControllerTest extends TestCase {
 		self::assertFalse( $allowed );
 	}
 
+	public function test_offline_access_supports_refresh_without_granting_content_privileges(): void {
+		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
+		$controller = new AuthorizationController();
+		$scopes     = $this->invokePrivate( $controller, 'allowed_scopes_for_user', array( 7 ) );
+
+		self::assertContains( 'content:read', $scopes );
+		self::assertContains( 'offline_access', $scopes );
+		self::assertNotContains( 'options:write', $scopes );
+		self::assertTrue(
+			$this->invokePrivate(
+				$controller,
+				'requested_scopes_allowed_for_current_user',
+				array( array( 'content:read', 'offline_access' ) )
+			)
+		);
+	}
+
 	public function test_assert_current_user_can_consent_allows_configured_non_admin_with_own_client(): void {
 		RoleConnectionEntryPoint::save( true, array( 'editor' ) );
 
@@ -331,14 +380,21 @@ final class AuthorizationControllerTest extends TestCase {
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object $object    Object instance.
+	 * @param string $method    Method name.
+	 * @param array  $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {
 		$reflection = new ReflectionMethod( $object, $method );
 
 		return $reflection->invokeArgs( $object, $arguments );
+	}
+
+	private function query_param( string $url, string $key ): string {
+		$query = (string) wp_parse_url( $url, PHP_URL_QUERY );
+		parse_str( $query, $params );
+
+		return is_scalar( $params[ $key ] ?? null ) ? (string) $params[ $key ] : '';
 	}
 }

@@ -1,3 +1,19 @@
+import { ChangelogDashboard } from './Admin/changelog/ChangelogDashboard';
+import { MemoryRecordCard } from './Admin/memory/MemoryRecordCard';
+import { ActionForm } from './Admin/shared/ActionForm';
+import { EmptyState } from './Admin/shared/EmptyState';
+import {
+	isPlainObject,
+	safeExternalUrl,
+	connectionDateValue,
+} from './Admin/shared/value-utils.mjs';
+import {
+	LEARNING_DOMAIN_LABELS,
+	LEARNING_CONFIDENCE_LABELS,
+	learningDomainLabel,
+	learningStatusLabel,
+	learningConfidenceLabel,
+} from './Admin/shared/learning-labels.mjs';
 import {
 	render,
 	useEffect,
@@ -30,15 +46,20 @@ import {
 	safeDiagnosticEvidence,
 } from './diagnostics-ui.mjs';
 import {
+	connectAppNavigationTarget,
 	connectAppOptionForProvider,
+	connectAppPickerState,
 	normalizeConnectionRequests,
 	shouldShowPendingRequests,
 } from './connect-wizard.mjs';
-import {
-	connectToolFilteringViewModel,
-	copyToolFilteringField,
-} from './connect-tool-filtering.mjs';
 import { tabOverflowState, tabScrollTarget } from './tab-navigation.mjs';
+import { AccessibleTabList } from './accessible-tabs.mjs';
+import { initialLearningSurface } from './learning-surface.mjs';
+import {
+	MemoryPagination,
+	memoryRecordsList,
+	memoryRecordsSummary,
+} from './memory-pagination.mjs';
 import {
 	Button,
 	Card,
@@ -60,6 +81,7 @@ import {
 	category,
 	chartBar,
 	check,
+	chevronDown,
 	cog,
 	comment,
 	copy,
@@ -81,7 +103,6 @@ import {
 	shield,
 	trash,
 } from '@wordpress/icons';
-
 const TAB_QUERY_PARAM = 'tab';
 const SETTINGS_TABS = [
 	{ name: 'overview', title: 'Overview', icon: home },
@@ -107,30 +128,6 @@ const DIAGNOSTIC_FILTERS = [
 	{ name: 'warn', label: 'Needs review' },
 	{ name: 'fail', label: 'Errors' },
 ];
-const CHANGELOG_METADATA_KEYS = new Set( [
-	'date',
-	'releaseDate',
-	'releasedAt',
-	'type',
-] );
-const LEARNING_DOMAIN_LABELS = {
-	site: 'Site',
-	content: 'Content',
-	developer: 'Developer',
-	brand: 'Brand',
-	seo: 'SEO',
-	workflow: 'Workflow',
-};
-const LEARNING_STATUS_LABELS = {
-	pending: 'Pending',
-	approved: 'Approved',
-	dismissed: 'Dismissed',
-};
-const LEARNING_CONFIDENCE_LABELS = {
-	low: 'Low confidence',
-	medium: 'Medium confidence',
-	high: 'High confidence',
-};
 const INCIDENT_CATEGORY_LABELS = {
 	bug: 'Bug',
 	compatibility: 'Compatibility',
@@ -174,7 +171,6 @@ function useMediaQuery( query ) {
 		typeof window.matchMedia === 'function' &&
 		window.matchMedia( query ).matches;
 	const [ matches, setMatches ] = useState( getMatches );
-
 	useEffect( () => {
 		if (
 			typeof window === 'undefined' ||
@@ -185,12 +181,10 @@ function useMediaQuery( query ) {
 
 		const mediaQueryList = window.matchMedia( query );
 		const handleChange = ( event ) => setMatches( event.matches );
-
 		setMatches( mediaQueryList.matches );
 
 		if ( typeof mediaQueryList.addEventListener === 'function' ) {
 			mediaQueryList.addEventListener( 'change', handleChange );
-
 			return () =>
 				mediaQueryList.removeEventListener( 'change', handleChange );
 		}
@@ -672,32 +666,6 @@ function ConnectionProviderLogo( {
 	);
 }
 
-function ConnectCapabilityCard( { icon, title, children, tone = 'blue' } ) {
-	return (
-		<div className="aculect-ai-companion-connect-capability-card">
-			<span
-				className={ `aculect-ai-companion-connect-capability-card__icon is-${ tone }` }
-				aria-hidden="true"
-			>
-				<Icon icon={ icon } size={ 20 } />
-			</span>
-			<div>
-				<h3>{ title }</h3>
-				<p>{ children }</p>
-			</div>
-		</div>
-	);
-}
-
-function EmptyState( { title, children } ) {
-	return (
-		<div className="aculect-ai-companion-empty-state">
-			<strong>{ title }</strong>
-			{ children && <p>{ children }</p> }
-		</div>
-	);
-}
-
 function TabLoadingState( {
 	tab,
 	failed = false,
@@ -767,11 +735,17 @@ function useDataViewsModule() {
 	useEffect( () => {
 		let isMounted = true;
 
-		import( '@wordpress/dataviews/wp' ).then( ( nextModule ) => {
-			if ( isMounted ) {
-				setDataViewsModule( nextModule );
-			}
-		} );
+		import( '@wordpress/dataviews/wp' )
+			.then( ( nextModule ) => {
+				if ( isMounted ) {
+					setDataViewsModule( nextModule );
+				}
+			} )
+			.catch( () => {
+				if ( isMounted ) {
+					setDataViewsModule( { loadError: true } );
+				}
+			} );
 
 		return () => {
 			isMounted = false;
@@ -781,7 +755,20 @@ function useDataViewsModule() {
 	return dataViewsModule;
 }
 
-function DataViewLoadingState( { label } ) {
+function DataViewLoadingState( { label, failed = false } ) {
+	if ( failed ) {
+		return (
+			<Notice status="error" isDismissible={ false }>
+				The table could not load.{ ' ' }
+				<Button
+					variant="link"
+					onClick={ () => window.location.reload() }
+				>
+					Reload this page
+				</Button>
+			</Notice>
+		);
+	}
 	return (
 		<div className="aculect-ai-companion-data-view__loading">
 			<span
@@ -790,121 +777,6 @@ function DataViewLoadingState( { label } ) {
 			/>
 			<strong>{ label }</strong>
 		</div>
-	);
-}
-
-function ActionForm( {
-	data,
-	action,
-	nonce,
-	label,
-	children,
-	destructive = false,
-	onSubmit,
-	isBusy = false,
-	busyLabel = '',
-	disabled = false,
-	variant = '',
-	enctype = '',
-	confirmMessage = '',
-	confirmTitle = 'Confirm action',
-	confirmButtonLabel = '',
-	buttonContent = null,
-	buttonClassName = '',
-	formClassName = '',
-	accessibleLabel = '',
-} ) {
-	const [ isConfirmOpen, setIsConfirmOpen ] = useState( false );
-	const formRef = useRef( null );
-	const confirmedSubmitRef = useRef( false );
-	const submitLabel = isBusy && busyLabel ? busyLabel : label;
-	const isDisabled = disabled || isBusy;
-	const handleSubmit = ( event ) => {
-		if ( confirmMessage && ! confirmedSubmitRef.current ) {
-			event.preventDefault();
-			setIsConfirmOpen( true );
-			return false;
-		}
-
-		confirmedSubmitRef.current = false;
-
-		if ( onSubmit ) {
-			return onSubmit( event );
-		}
-
-		return undefined;
-	};
-	const submitConfirmedAction = () => {
-		confirmedSubmitRef.current = true;
-		setIsConfirmOpen( false );
-
-		if ( formRef.current?.requestSubmit ) {
-			formRef.current.requestSubmit();
-			return;
-		}
-
-		formRef.current?.submit();
-	};
-
-	return (
-		<>
-			<form
-				ref={ formRef }
-				method="post"
-				action={ data.actions?.adminPostUrl }
-				className={ [
-					'aculect-ai-companion-action-form',
-					formClassName,
-				]
-					.filter( Boolean )
-					.join( ' ' ) }
-				onSubmit={ handleSubmit }
-				{ ...( enctype ? { encType: enctype } : {} ) }
-			>
-				<input type="hidden" name="action" value={ action } />
-				<input type="hidden" name="_wpnonce" value={ nonce } />
-				{ children }
-				<Button
-					type="submit"
-					className={ buttonClassName }
-					variant={
-						variant || ( destructive ? 'secondary' : 'primary' )
-					}
-					isDestructive={ destructive }
-					isBusy={ isBusy }
-					disabled={ isDisabled }
-					accessibleWhenDisabled
-					aria-label={ accessibleLabel || undefined }
-				>
-					{ buttonContent || submitLabel }
-				</Button>
-			</form>
-			{ isConfirmOpen && (
-				<Modal
-					title={ confirmTitle }
-					onRequestClose={ () => setIsConfirmOpen( false ) }
-				>
-					<p>{ confirmMessage }</p>
-					<div className="aculect-ai-companion-confirm-dialog__actions">
-						<Button
-							type="button"
-							variant="secondary"
-							onClick={ () => setIsConfirmOpen( false ) }
-						>
-							Cancel
-						</Button>
-						<Button
-							type="button"
-							variant="primary"
-							isDestructive={ destructive }
-							onClick={ submitConfirmedAction }
-						>
-							{ confirmButtonLabel || label }
-						</Button>
-					</div>
-				</Modal>
-			) }
-		</>
 	);
 }
 
@@ -1008,18 +880,6 @@ function learningSuggestionsSummary( learningSuggestions ) {
 		: {};
 }
 
-function learningDomainLabel( domain ) {
-	return LEARNING_DOMAIN_LABELS[ domain ] || 'Content';
-}
-
-function learningStatusLabel( status ) {
-	return LEARNING_STATUS_LABELS[ status ] || 'Pending';
-}
-
-function learningConfidenceLabel( confidence ) {
-	return LEARNING_CONFIDENCE_LABELS[ confidence ] || 'Medium confidence';
-}
-
 function learningSourceLabel( source ) {
 	if ( ! source || typeof source !== 'object' ) {
 		return 'MCP client';
@@ -1038,18 +898,6 @@ function incidentReportsSummary( incidentReports ) {
 	return incidentReports?.summary &&
 		typeof incidentReports.summary === 'object'
 		? incidentReports.summary
-		: {};
-}
-
-function memoryRecordsList( memoryRecords ) {
-	return Array.isArray( memoryRecords?.items )
-		? memoryRecords.items
-		: EMPTY_ARRAY;
-}
-
-function memoryRecordsSummary( memoryRecords ) {
-	return memoryRecords?.summary && typeof memoryRecords.summary === 'object'
-		? memoryRecords.summary
 		: {};
 }
 
@@ -1138,296 +986,6 @@ function IncidentReportCard( { report } ) {
 					</Button>
 				) : null }
 			</div>
-		</article>
-	);
-}
-
-function MemoryRecordHiddenInputs( { record, action } ) {
-	return (
-		<>
-			<input type="hidden" name="memory_key" value={ record.key || '' } />
-			<input type="hidden" name="memory_action" value={ action } />
-			<input
-				type="hidden"
-				name="memory_item[key]"
-				value={ record.key || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[domain]"
-				value={ record.domain || 'content' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[value]"
-				value={ record.value || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[evidence]"
-				value={ record.evidence || '' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[confidence]"
-				value={ record.confidence || 'medium' }
-			/>
-			<input
-				type="hidden"
-				name="memory_item[source]"
-				value={ record.source || 'admin' }
-			/>
-		</>
-	);
-}
-
-function MemoryRecordReviewForm( {
-	data,
-	record,
-	action,
-	label,
-	icon,
-	destructive = false,
-} ) {
-	return (
-		<ActionForm
-			data={ data }
-			action={ data.actions?.reviewMemoryAction }
-			nonce={ data.actions?.reviewMemoryNonce }
-			label={ label }
-			variant={ destructive ? 'secondary' : 'primary' }
-			destructive={ destructive }
-			confirmMessage={ destructive ? `${ label } this memory item?` : '' }
-			confirmTitle="Review memory"
-			buttonContent={
-				<>
-					<Icon icon={ icon } size={ 16 } />
-					<span>{ label }</span>
-				</>
-			}
-			disabled={
-				! data.actions?.reviewMemoryAction ||
-				! data.actions?.reviewMemoryNonce
-			}
-		>
-			<MemoryRecordHiddenInputs record={ record } action={ action } />
-		</ActionForm>
-	);
-}
-
-function MemoryRecordEditModal( { data, record, onClose } ) {
-	const [ formValues, setFormValues ] = useState( {
-		key: record.key || '',
-		domain: record.domain || 'content',
-		value: record.value || '',
-		evidence: record.evidence || '',
-		confidence: record.confidence || 'medium',
-		status: record.status || 'pending',
-		source: record.source || 'admin',
-	} );
-	const updateValue = ( key ) => ( value ) => {
-		setFormValues( ( current ) => ( {
-			...current,
-			[ key ]: value,
-		} ) );
-	};
-
-	return (
-		<Modal title="Edit memory item" onRequestClose={ onClose }>
-			<form
-				method="post"
-				action={ data.actions?.adminPostUrl }
-				className="aculect-ai-companion-learning-edit-form"
-			>
-				<input
-					type="hidden"
-					name="action"
-					value={ data.actions?.reviewMemoryAction }
-				/>
-				<input
-					type="hidden"
-					name="_wpnonce"
-					value={ data.actions?.reviewMemoryNonce }
-				/>
-				<input
-					type="hidden"
-					name="memory_key"
-					value={ record.key || '' }
-				/>
-				<input type="hidden" name="memory_action" value="update" />
-				<TextControl
-					label="Key"
-					name="memory_item[key]"
-					value={ formValues.key }
-					onChange={ updateValue( 'key' ) }
-				/>
-				<SelectControl
-					label="Domain"
-					name="memory_item[domain]"
-					value={ formValues.domain }
-					options={ Object.entries( LEARNING_DOMAIN_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'domain' ) }
-				/>
-				<TextareaControl
-					label="Value"
-					name="memory_item[value]"
-					value={ formValues.value }
-					onChange={ updateValue( 'value' ) }
-					rows={ 4 }
-				/>
-				<TextareaControl
-					label="Evidence"
-					name="memory_item[evidence]"
-					value={ formValues.evidence }
-					onChange={ updateValue( 'evidence' ) }
-					rows={ 3 }
-				/>
-				<SelectControl
-					label="Confidence"
-					name="memory_item[confidence]"
-					value={ formValues.confidence }
-					options={ Object.entries( LEARNING_CONFIDENCE_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'confidence' ) }
-				/>
-				<SelectControl
-					label="Status"
-					name="memory_item[status]"
-					value={ formValues.status }
-					options={ Object.entries( LEARNING_STATUS_LABELS ).map(
-						( [ value, label ] ) => ( { value, label } )
-					) }
-					onChange={ updateValue( 'status' ) }
-				/>
-				<input
-					type="hidden"
-					name="memory_item[source]"
-					value={ formValues.source }
-				/>
-				<div className="aculect-ai-companion-confirm-dialog__actions">
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={ onClose }
-					>
-						Cancel
-					</Button>
-					<Button
-						type="submit"
-						variant="primary"
-						disabled={
-							! data.actions?.reviewMemoryAction ||
-							! data.actions?.reviewMemoryNonce
-						}
-						accessibleWhenDisabled
-					>
-						Save Memory
-					</Button>
-				</div>
-			</form>
-		</Modal>
-	);
-}
-
-function MemoryRecordCard( { data, record } ) {
-	const [ isEditing, setIsEditing ] = useState( false );
-	const status = record.status || 'pending';
-	const domain = record.domain || 'content';
-	const isApproved = status === 'approved';
-	const isDismissed = status === 'dismissed';
-
-	return (
-		<article
-			className={ `aculect-ai-companion-learning-card aculect-ai-companion-memory-card is-${ status }` }
-		>
-			<div className="aculect-ai-companion-learning-card__header">
-				<div>
-					<h3>{ record.key || 'Memory item' }</h3>
-					<p className="aculect-ai-companion-learning-source">
-						<span>{ record.source || 'manual' }</span>
-					</p>
-				</div>
-				<div className="aculect-ai-companion-learning-card__badges">
-					<span
-						className={ `aculect-ai-companion-learning-pill is-${ domain }` }
-					>
-						{ learningDomainLabel( domain ) }
-					</span>
-					<span
-						className={ `aculect-ai-companion-learning-pill is-${ status }` }
-					>
-						{ learningStatusLabel( status ) }
-					</span>
-					<span className="aculect-ai-companion-learning-pill is-confidence">
-						{ learningConfidenceLabel( record.confidence ) }
-					</span>
-				</div>
-			</div>
-			<div className="aculect-ai-companion-learning-card__body">
-				<dl className="aculect-ai-companion-learning-details">
-					<div>
-						<dt>Value</dt>
-						<dd>{ record.value || '-' }</dd>
-					</div>
-					{ record.evidence && (
-						<div>
-							<dt>Evidence</dt>
-							<dd>{ record.evidence }</dd>
-						</div>
-					) }
-				</dl>
-			</div>
-			<div className="aculect-ai-companion-learning-card__footer">
-				<span className="aculect-ai-companion-learning-card__date">
-					{ connectionDateValue( record.updated_at, 'Updated' ) }
-				</span>
-				<div className="aculect-ai-companion-learning-actions">
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={ () => setIsEditing( true ) }
-					>
-						Edit
-					</Button>
-					{ ! isApproved && (
-						<MemoryRecordReviewForm
-							data={ data }
-							record={ record }
-							action="approve"
-							label="Approve"
-							icon={ check }
-						/>
-					) }
-					{ ! isDismissed && (
-						<MemoryRecordReviewForm
-							data={ data }
-							record={ record }
-							action="dismiss"
-							label="Dismiss"
-							icon={ trash }
-							destructive
-						/>
-					) }
-					<MemoryRecordReviewForm
-						data={ data }
-						record={ record }
-						action="delete"
-						label="Delete"
-						icon={ trash }
-						destructive
-					/>
-				</div>
-			</div>
-			{ isEditing && (
-				<MemoryRecordEditModal
-					data={ data }
-					record={ record }
-					onClose={ () => setIsEditing( false ) }
-				/>
-			) }
 		</article>
 	);
 }
@@ -1695,13 +1253,20 @@ function LearningSuggestionsDashboard( {
 	memoryRecords,
 	incidentReports,
 } ) {
-	const [ activeSurface, setActiveSurface ] = useState( 'suggestions' );
+	const [ activeSurface, setActiveSurface ] = useState( () =>
+		initialLearningSurface( window.location.search )
+	);
 	const items = learningSuggestionsList( learningSuggestions );
 	const summary = learningSuggestionsSummary( learningSuggestions );
 	const memories = memoryRecordsList( memoryRecords );
 	const memorySummary = memoryRecordsSummary( memoryRecords );
 	const incidents = incidentReportsList( incidentReports );
 	const incidentSummary = incidentReportsSummary( incidentReports );
+	const memoryPage = Math.max( 1, Number( memoryRecords?.page || 1 ) );
+	const memoryTotalPages = Math.max(
+		1,
+		Number( memoryRecords?.total_pages || 1 )
+	);
 	const surfaces = LEARNING_REVIEW_SURFACES.map( ( surface ) => {
 		if ( surface.id === 'memory' ) {
 			return {
@@ -1789,33 +1354,21 @@ function LearningSuggestionsDashboard( {
 					) ) }
 				</div>
 			</div>
-			<div
+			<AccessibleTabList
 				className="aculect-ai-companion-learning-surface-nav"
-				role="tablist"
-				aria-label="Learning review surfaces"
-			>
-				{ surfaces.map( ( surface ) => {
-					const isSelected = surface.id === activeSurface;
-					return (
-						<Button
-							key={ surface.id }
-							type="button"
-							variant={ isSelected ? 'primary' : 'secondary' }
-							isPressed={ isSelected }
-							role="tab"
-							aria-selected={ isSelected }
-							onClick={ () => setActiveSurface( surface.id ) }
-						>
-							<span>{ surface.label }</span>
-							<span className="aculect-ai-companion-learning-surface-nav__count">
-								{ surface.count }
-							</span>
-						</Button>
-					);
-				} ) }
-			</div>
-			{ activeSurface === 'memory' && (
-				<section className="aculect-ai-companion-memory-section">
+				label="Learning review surfaces"
+				tabs={ surfaces }
+				selectedId={ activeSurface }
+				onSelect={ setActiveSurface }
+			/>
+			{
+				<section
+					id="aculect-learning-panel-memory"
+					className="aculect-ai-companion-memory-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-memory"
+					hidden={ activeSurface !== 'memory' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Memory Records</h3>
 						<p>
@@ -1823,6 +1376,25 @@ function LearningSuggestionsDashboard( {
 							workflows after explicit review.
 						</p>
 					</div>
+					{ memoryRecords?.migration?.status === 'blocked' && (
+						<Notice status="warning" isDismissible={ false }>
+							<p>
+								Memory upgrade needs attention:{ ' ' }
+								{ memoryRecords.migration.blocked?.reason }
+							</p>
+							<p>{ memoryRecords.migration.recovery }</p>
+							<ActionForm
+								data={ data }
+								action={
+									data.actions?.retryMemoryMigrationAction
+								}
+								nonce={
+									data.actions?.retryMemoryMigrationNonce
+								}
+								label="Retry memory upgrade"
+							/>
+						</Notice>
+					) }
 					{ memories.length === 0 ? (
 						<EmptyState title="No memory records">
 							AI clients can call memory_bootstrap or memory_save
@@ -1833,17 +1405,27 @@ function LearningSuggestionsDashboard( {
 						<div className="aculect-ai-companion-learning-list">
 							{ memories.map( ( record ) => (
 								<MemoryRecordCard
-									key={ record.key }
+									key={ `${ record.namespace }:${ record.key }` }
 									data={ data }
 									record={ record }
 								/>
 							) ) }
 						</div>
 					) }
+					<MemoryPagination
+						page={ memoryPage }
+						totalPages={ memoryTotalPages }
+					/>
 				</section>
-			) }
-			{ activeSurface === 'incidents' && (
-				<section className="aculect-ai-companion-incident-section">
+			}
+			{
+				<section
+					id="aculect-learning-panel-incidents"
+					className="aculect-ai-companion-incident-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-incidents"
+					hidden={ activeSurface !== 'incidents' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Incident Reports</h3>
 						<p>
@@ -1868,9 +1450,15 @@ function LearningSuggestionsDashboard( {
 						</div>
 					) }
 				</section>
-			) }
-			{ activeSurface === 'suggestions' && (
-				<section className="aculect-ai-companion-learning-section">
+			}
+			{
+				<section
+					id="aculect-learning-panel-suggestions"
+					className="aculect-ai-companion-learning-section"
+					role="tabpanel"
+					aria-labelledby="aculect-learning-tab-suggestions"
+					hidden={ activeSurface !== 'suggestions' }
+				>
 					<div className="aculect-ai-companion-learning-section-heading">
 						<h3>Learning Suggestions</h3>
 						<p>
@@ -1896,7 +1484,7 @@ function LearningSuggestionsDashboard( {
 						</div>
 					) }
 				</section>
-			) }
+			}
 		</div>
 	);
 }
@@ -3025,24 +2613,6 @@ function connectionScopeLabel( scope ) {
 	return labels[ scope ] || scope;
 }
 
-function connectionDateValue( value, fallback = 'Never' ) {
-	const rawValue = String( value || '' ).trim();
-
-	if ( ! rawValue ) {
-		return fallback;
-	}
-
-	const parsedDate = new Date( rawValue.replace( ' ', 'T' ) );
-	if ( Number.isNaN( parsedDate.getTime() ) ) {
-		return rawValue;
-	}
-
-	return new Intl.DateTimeFormat( undefined, {
-		dateStyle: 'medium',
-		timeStyle: 'short',
-	} ).format( parsedDate );
-}
-
 function connectionRelativeExpiry( value ) {
 	const rawValue = String( value || '' ).trim();
 
@@ -4113,7 +3683,10 @@ function ConnectionsDataViews( {
 	if ( ! DataViewsComponent ) {
 		return (
 			<div className="aculect-ai-companion-data-view aculect-ai-companion-data-view--connections">
-				<DataViewLoadingState label="Loading connections table" />
+				<DataViewLoadingState
+					label="Loading connections table"
+					failed={ dataViewsModule?.loadError }
+				/>
 			</div>
 		);
 	}
@@ -5361,32 +4934,70 @@ function preferredConnectProviderId( providers ) {
 }
 
 function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
-	const selectedOption = connectAppOptionForProvider(
+	const fallbackOption = connectAppOptionForProvider(
 		selectedProvider?.id || '',
 		CONNECT_APP_OPTIONS
 	);
-	const actionUrl = safeExternalUrl(
-		selectedProvider?.primaryActionUrl || selectedOption.guideUrl
+	const pickerState = connectAppPickerState(
+		selectedProvider?.id || '',
+		CONNECT_APP_OPTIONS,
+		providers
 	);
-	const guideUrl = safeExternalUrl( selectedOption.guideUrl );
+	const selectedItem = pickerState.selectedItem;
+	const selectedOption = selectedItem?.option || fallbackOption;
+	const effectiveSelectedProvider = selectedItem?.provider || null;
+	const actionUrl = effectiveSelectedProvider
+		? safeExternalUrl(
+				effectiveSelectedProvider.primaryActionUrl ||
+					selectedOption.guideUrl
+		  )
+		: '';
+	const guideUrl = effectiveSelectedProvider
+		? safeExternalUrl( selectedOption.guideUrl )
+		: '';
+	const availableProviderIds = providers.map( ( provider ) => provider.id );
+	const handleOptionKeyDown = ( event ) => {
+		const nextOption = connectAppNavigationTarget(
+			event.key,
+			selectedOption.id,
+			CONNECT_APP_OPTIONS,
+			availableProviderIds
+		);
+
+		if ( ! nextOption ) {
+			return;
+		}
+
+		const provider = providers.find(
+			( item ) => item.id === nextOption.providerId
+		);
+
+		if ( ! provider ) {
+			return;
+		}
+
+		event.preventDefault();
+		onSelectProvider( provider.id );
+		event.currentTarget.parentElement
+			?.querySelector( `[data-connect-option-id="${ nextOption.id }"]` )
+			?.focus();
+	};
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-app-picker">
 			<div className="aculect-ai-companion-connect-app-picker__heading">
 				<h2>Choose an AI app</h2>
-				<p>Pick an app to see where to add your connection link.</p>
+				<p>Pick an app to see next steps.</p>
 			</div>
 			<div
 				className="aculect-ai-companion-connect-app-picker__options"
 				role="radiogroup"
 				aria-label="AI app"
+				aria-orientation="horizontal"
 			>
-				{ CONNECT_APP_OPTIONS.map( ( option ) => {
-					const provider = providers.find(
-						( item ) => item.id === option.providerId
-					);
-					const isSelected = selectedOption.id === option.id;
-
+				{ pickerState.items.map( ( item ) => {
+					const { option, provider, isSelected, tabIndex, disabled } =
+						item;
 					return (
 						<button
 							key={ option.id }
@@ -5396,8 +5007,13 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 							}` }
 							role="radio"
 							aria-checked={ isSelected }
-							disabled={ ! provider }
-							onClick={ () => onSelectProvider( provider.id ) }
+							tabIndex={ tabIndex }
+							data-connect-option-id={ option.id }
+							disabled={ disabled }
+							onClick={ () =>
+								provider && onSelectProvider( provider.id )
+							}
+							onKeyDown={ handleOptionKeyDown }
 						>
 							{ provider && (
 								<ConnectProviderBadge provider={ provider } />
@@ -5406,15 +5022,28 @@ function ConnectAppPicker( { providers, selectedProvider, onSelectProvider } ) {
 								<strong>{ option.label }</strong>
 								<span>{ option.brand }</span>
 							</span>
+							{ isSelected && (
+								<span
+									className="aculect-ai-companion-connect-app-option__check"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 14 } />
+								</span>
+							) }
 						</button>
 					);
 				} ) }
 			</div>
 			<div className="aculect-ai-companion-connect-app-picker__action">
-				{ selectedProvider && (
-					<ConnectProviderBadge provider={ selectedProvider } />
+				<span
+					className="aculect-ai-companion-connect-app-picker__action-icon"
+					aria-hidden="true"
+				>
+					<Icon icon={ info } size={ 18 } />
+				</span>
+				{ effectiveSelectedProvider && (
+					<p>{ selectedOption.description }</p>
 				) }
-				<p>{ selectedOption.description }</p>
 				<div className="aculect-ai-companion-connect-app-picker__actions">
 					{ guideUrl && (
 						<a
@@ -5455,79 +5084,6 @@ function ConnectReadinessBadge( { status } ) {
 	);
 }
 
-function ConnectToolFilteringGuidance( { provider, onCopy } ) {
-	const viewModel = connectToolFilteringViewModel( provider );
-
-	if ( ! viewModel ) {
-		return null;
-	}
-
-	const { provider: selectedProvider, guidance, copyFields } = viewModel;
-
-	return (
-		<section className="aculect-ai-companion-connect-card aculect-ai-companion-tool-filtering">
-			<details>
-				<summary>
-					<span>{ guidance.title }</span>
-					<span className="aculect-ai-companion-tool-filtering__summary-note">
-						{ guidance.advancedLabel }
-					</span>
-				</summary>
-				<div className="aculect-ai-companion-tool-filtering__content">
-					<section className="aculect-ai-companion-tool-filtering__provider">
-						<h3>{ selectedProvider.label }</h3>
-						<p>{ guidance.description }</p>
-						{ guidance.providerNote && (
-							<p className="aculect-ai-companion-help-text">
-								{ guidance.providerNote }
-							</p>
-						) }
-						<div className="aculect-ai-companion-tool-filtering__sets">
-							{ guidance.toolSets.map( ( toolSet ) => (
-								<article
-									key={ toolSet.id }
-									className="aculect-ai-companion-tool-filtering__set"
-								>
-									<strong>{ toolSet.label }</strong>
-									<p>{ toolSet.description }</p>
-									{ toolSet.readOnlyDefault && (
-										<p>{ guidance.readOnlyLabel }</p>
-									) }
-									{ toolSet.requiresExplicitApproval && (
-										<p>{ guidance.approvalLabel }</p>
-									) }
-									<code>
-										{ ( toolSet.toolNames || [] ).join(
-											', '
-										) }
-									</code>
-								</article>
-							) ) }
-						</div>
-						{ copyFields.map( ( field ) => (
-							<CopyField
-								key={ field.label }
-								label={ field.label }
-								value={ field.value }
-								copyButtonLabel={ guidance.copyButtonLabel }
-								onCopy={ ( value ) =>
-									copyToolFilteringField(
-										{ ...field, value },
-										onCopy
-									)
-								}
-							/>
-						) ) }
-						<p className="aculect-ai-companion-tool-filtering__warning">
-							{ guidance.warning }
-						</p>
-					</section>
-				</div>
-			</details>
-		</section>
-	);
-}
-
 function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 	const endpoint = String( mcpUrl || '' ).trim();
 	const hasEndpoint = endpoint !== '';
@@ -5540,16 +5096,19 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 
 	return (
 		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-card--url">
-			<div className="aculect-ai-companion-connect-section-heading">
+			<div className="aculect-ai-companion-connect-endpoint-heading">
+				<span
+					className="aculect-ai-companion-connect-endpoint-heading__icon"
+					aria-hidden="true"
+				>
+					<Icon icon={ link } size={ 20 } />
+				</span>
 				<div>
-					<div className="aculect-ai-companion-connect-section-heading__title">
-						<h2>Connection link</h2>
-						<span className="aculect-ai-companion-connect-apps-chip">
-							<Icon icon={ link } size={ 16 } />
-							Works with AI apps
-						</span>
-					</div>
-					<p>Copy this link into your AI app.</p>
+					<h2>Connection endpoint</h2>
+					<p>
+						Use this endpoint in your AI app to connect to your
+						site.
+					</p>
 				</div>
 			</div>
 			<div className="aculect-ai-companion-connect-url-panel">
@@ -5558,9 +5117,9 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 						label="Connection link"
 						value={ endpoint }
 						visuallyHiddenLabel={ true }
-						copyButtonLabel="Copy link"
+						copyButtonLabel="Copy endpoint"
 						onCopy={ ( value ) =>
-							onCopy( value, 'Connection link copied.' )
+							onCopy( value, 'Connection endpoint copied.' )
 						}
 					/>
 				) : (
@@ -5570,33 +5129,99 @@ function ConnectMcpUrlUtility( { mcpUrl, health, onCopy } ) {
 					</p>
 				) }
 			</div>
-			<div
-				className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
-				role="status"
-			>
-				<span
-					aria-hidden="true"
-					className="aculect-ai-companion-connect-info-message__icon"
-				>
-					<Icon icon={ statusIcon } size={ 16 } />
-				</span>
-				<div className="aculect-ai-companion-connect-info-message__content">
-					<div className="aculect-ai-companion-connect-info-message__summary">
-						<p>
-							<strong>{ status.title }</strong>{ ' ' }
-							{ status.description }
-						</p>
-						{ status.verified && (
-							<StatusBadge status="pass" label="Verified" />
-						) }
-					</div>
-					{ status.detail && <p>{ status.detail }</p> }
+			{ status.status === 'pass' ? (
+				<div className="aculect-ai-companion-connect-endpoint-meta">
+					<span className="is-verified">
+						<span
+							className="aculect-ai-companion-connect-endpoint-meta__verified-icon"
+							aria-hidden="true"
+						>
+							<Icon icon={ check } size={ 13 } />
+						</span>
+						Verified
+					</span>
+					<span
+						className="aculect-ai-companion-connect-endpoint-meta__separator"
+						aria-hidden="true"
+					>
+						•
+					</span>
+					<span className="aculect-ai-companion-connect-endpoint-meta__secure">
+						<Icon icon={ lock } size={ 16 } />
+						Contains no secrets
+					</span>
 				</div>
-			</div>
-			<p className="aculect-ai-companion-connect-secure-note">
-				<Icon icon={ lock } size={ 16 } />
-				This link contains no secrets.
-			</p>
+			) : (
+				<>
+					<div
+						className={ `aculect-ai-companion-connect-info-message is-${ status.status }` }
+						role="status"
+					>
+						<span
+							aria-hidden="true"
+							className="aculect-ai-companion-connect-info-message__icon"
+						>
+							<Icon icon={ statusIcon } size={ 16 } />
+						</span>
+						<div className="aculect-ai-companion-connect-info-message__content">
+							<p>
+								<strong>{ status.title }</strong>{ ' ' }
+								{ status.description }
+							</p>
+							{ status.detail && <p>{ status.detail }</p> }
+						</div>
+					</div>
+					<p className="aculect-ai-companion-connect-secure-note">
+						<Icon icon={ lock } size={ 16 } />
+						This endpoint contains no secrets.
+					</p>
+				</>
+			) }
+		</section>
+	);
+}
+
+function ConnectSetupSteps() {
+	const steps = [
+		{
+			icon: copy,
+			title: 'Copy endpoint',
+			description: 'Copy the endpoint from the left.',
+		},
+		{
+			icon: category,
+			title: 'Choose an AI app',
+			description: 'Select the app you’ll connect.',
+		},
+		{
+			icon: shield,
+			title: 'Authorize in WordPress',
+			description: 'Approve access when prompted.',
+		},
+	];
+
+	return (
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-setup-steps">
+			<h2>Finish setup</h2>
+			<ol>
+				{ steps.map( ( step, index ) => (
+					<li key={ step.title }>
+						<span className="aculect-ai-companion-connect-setup-steps__number">
+							{ index + 1 }
+						</span>
+						<span
+							className="aculect-ai-companion-connect-setup-steps__icon"
+							aria-hidden="true"
+						>
+							<Icon icon={ step.icon } size={ 18 } />
+						</span>
+						<span className="aculect-ai-companion-connect-setup-steps__copy">
+							<strong>{ step.title }</strong>
+							<small>{ step.description }</small>
+						</span>
+					</li>
+				) ) }
+			</ol>
 		</section>
 	);
 }
@@ -5685,57 +5310,159 @@ function PendingConnectionRequests( { requests } ) {
 	);
 }
 
-function ConnectCapabilitySummary( { permissionsUrl, onManagePermissions } ) {
+function connectAllowedRoleLabels( roleConnections ) {
+	const roleSettings =
+		roleConnections && typeof roleConnections === 'object'
+			? roleConnections
+			: {};
+	const options = Array.isArray( roleSettings.roleOptions )
+		? roleSettings.roleOptions
+		: [];
+	const optionLabels = new Map(
+		options.map( ( option ) => [ option.id, option.label ] )
+	);
+	const roleIds = [
+		'administrator',
+		...( roleSettings.enabled && Array.isArray( roleSettings.allowedRoles )
+			? roleSettings.allowedRoles
+			: [] ),
+	].filter( ( roleId, index, items ) => items.indexOf( roleId ) === index );
+	const labels = roleIds
+		.map( ( roleId ) => optionLabels.get( roleId ) || '' )
+		.filter( Boolean );
+
+	return labels.length > 0 ? labels.join( ', ' ) : 'Administrators';
+}
+
+function ConnectPermissionsSummary( {
+	roleConnections,
+	connectionsUrl,
+	permissionsUrl,
+	onViewConnections,
+	onManagePermissions,
+} ) {
+	const allowedRoles = connectAllowedRoleLabels( roleConnections );
+
 	return (
-		<section className="aculect-ai-companion-connect-capabilities">
-			<div className="aculect-ai-companion-connect-section-heading">
-				<div>
-					<h2>What your AI assistant can do</h2>
-					<p>
-						These actions are always subject to WordPress
-						permissions and Aculect settings.
-					</p>
+		<section className="aculect-ai-companion-connect-card aculect-ai-companion-connect-permissions">
+			<details open>
+				<summary className="aculect-ai-companion-connect-permissions__summary">
+					<span className="aculect-ai-companion-connect-permissions__heading">
+						<span
+							className="aculect-ai-companion-connect-permissions__shield"
+							aria-hidden="true"
+						>
+							<Icon icon={ shield } size={ 20 } />
+						</span>
+						<span className="aculect-ai-companion-connect-permissions__heading-copy">
+							<strong>Permissions</strong>
+							<small>
+								Review what your AI assistant can do in
+								WordPress.
+							</small>
+						</span>
+					</span>
+					<span className="aculect-ai-companion-connect-permissions__status">
+						<span className="aculect-ai-companion-connect-permissions__status-chip">
+							<Icon icon={ people } size={ 16 } />
+							OAuth consent required
+						</span>
+						<span className="aculect-ai-companion-connect-permissions__status-chip">
+							<Icon icon={ lock } size={ 16 } />
+							WordPress permissions enforced
+						</span>
+					</span>
+					<span
+						className="aculect-ai-companion-connect-permissions__chevron"
+						aria-hidden="true"
+					>
+						<Icon icon={ chevronDown } size={ 20 } />
+					</span>
+				</summary>
+				<div className="aculect-ai-companion-connect-permissions__content">
+					<div className="aculect-ai-companion-connect-permissions__grid">
+						<section>
+							<h3>Access policy</h3>
+							<dl>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Connection profile</dt>
+									<dd>Selected at authorization</dd>
+								</div>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Allowed roles</dt>
+									<dd>{ allowedRoles }</dd>
+								</div>
+								<div className="aculect-ai-companion-connect-permissions__policy-row">
+									<dt>Access level</dt>
+									<dd>
+										<span className="aculect-ai-companion-connect-permissions__access-level">
+											Read-only by default
+										</span>
+									</dd>
+								</div>
+							</dl>
+						</section>
+						<section>
+							<h3>Core OAuth scopes</h3>
+							<div className="aculect-ai-companion-connect-permissions__scopes">
+								<code>content:read</code>
+								<code>content:draft</code>
+							</div>
+							<p className="aculect-ai-companion-connect-permissions__scope-note">
+								These are Aculect&apos;s default connection
+								scopes. This site may support additional scopes.
+							</p>
+						</section>
+					</div>
+					<div className="aculect-ai-companion-connect-permissions__footer">
+						<ul aria-label="Connection safeguards">
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Write confirmation
+							</li>
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Dry-run preview
+							</li>
+							<li className="aculect-ai-companion-connect-permissions__safeguard">
+								<span
+									className="aculect-ai-companion-connect-permissions__safeguard-icon"
+									aria-hidden="true"
+								>
+									<Icon icon={ check } size={ 12 } />
+								</span>
+								Revoke anytime
+							</li>
+						</ul>
+						<div className="aculect-ai-companion-connect-permissions__actions">
+							<a
+								className="aculect-ai-companion-connect-permissions__action-link"
+								href={ connectionsUrl }
+								onClick={ onViewConnections }
+							>
+								View connections
+							</a>
+							<Button
+								href={ permissionsUrl }
+								variant="secondary"
+								onClick={ onManagePermissions }
+							>
+								Manage permissions
+							</Button>
+						</div>
+					</div>
 				</div>
-				<Button
-					href={ permissionsUrl }
-					variant="secondary"
-					onClick={ onManagePermissions }
-				>
-					Manage permissions
-				</Button>
-			</div>
-			<div className="aculect-ai-companion-connect-capability-grid">
-				<ConnectCapabilityCard
-					icon={ postContent }
-					title="Create and edit content"
-				>
-					Draft and update posts, pages, and custom content.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ media }
-					title="Manage media"
-					tone="green"
-				>
-					Upload, organize, and manage media files.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ comment }
-					title="Moderate comments"
-					tone="purple"
-				>
-					Review, reply to, and manage comments.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard
-					icon={ category }
-					title="Use SEO tools"
-					tone="orange"
-				>
-					View and update SEO data when supported.
-				</ConnectCapabilityCard>
-				<ConnectCapabilityCard icon={ shield } title="Secure by design">
-					You stay in control and can revoke access anytime.
-				</ConnectCapabilityCard>
-			</div>
+			</details>
 		</section>
 	);
 }
@@ -5796,6 +5523,8 @@ function abilitySearchText( ability ) {
 		ability.category,
 		ability.toolName,
 		ability.sourceLabel,
+		ability.surfaceType,
+		ability.policyState,
 	]
 		.join( ' ' )
 		.toLowerCase();
@@ -5824,70 +5553,51 @@ function sameStringSet( firstValue, secondValue ) {
 	return first.every( ( item ) => secondSet.has( item ) );
 }
 
-function activeConnectionLabel( count ) {
-	return `${ count } active connection${ count === 1 ? '' : 's' }`;
-}
-
-function normalizedAbilityRows( {
-	abilities,
-	enabledAbilities,
-	wpAbilities,
-	enabledWpAbilities,
-	activeConnectionCount,
-} ) {
-	const enabledAbilityIds = new Set( enabledAbilities );
+function normalizedAbilityRows( { wpAbilities, enabledWpAbilities } ) {
 	const enabledWpAbilityIds = new Set( enabledWpAbilities );
-	const firstParty = abilities.map( ( ability ) => ( {
-		id: String( ability.id || '' ),
-		title: String( ability.title || ability.id || 'Untitled ability' ),
-		description: String( ability.description || '' ),
-		group: normalizedAbilityGroup( ability.group ),
-		scope: String( ability.scope || 'content:read' ),
-		source: 'system',
-		sourceLabel: 'System',
-		readOnly: Boolean( ability.readOnly ),
-		enabled: enabledAbilityIds.has( ability.id ),
-		toolName: String( ability.toolName || ability.id || '' ),
-		assignedTo: enabledAbilityIds.has( ability.id )
-			? activeConnectionLabel( activeConnectionCount )
-			: 'Not exposed',
-		updated: 'Bundled registry',
-	} ) );
 	const wordpress = wpAbilities.map( ( ability ) => ( {
 		id: String( ability.id || '' ),
 		title: String( ability.title || ability.id || 'WordPress ability' ),
 		description: String( ability.description || '' ),
 		group: normalizedAbilityGroup( ability.category || 'WordPress API' ),
-		scope: ability.destructive ? 'write' : 'content:read',
+		scope: ability.readOnly ? 'Read-only' : 'Can change site',
 		source: 'wordpress',
-		sourceLabel: 'WordPress API',
+		sourceLabel: String(
+			ability.provider ||
+				ability.id?.split( '/' )[ 0 ] ||
+				'Unknown provider'
+		),
+		surfaceType: 'ability',
+		configurable: true,
+		policyState: enabledWpAbilityIds.has( ability.id )
+			? 'enabled'
+			: 'disabled',
 		readOnly: Boolean( ability.readOnly ),
 		destructive: Boolean( ability.destructive ),
+		defaultEnabled: Boolean( ability.defaultEnabled ),
+		decision: String( ability.decision || 'default' ),
 		enabled: enabledWpAbilityIds.has( ability.id ),
 		toolName: String( ability.id || '' ),
-		assignedTo: enabledWpAbilityIds.has( ability.id )
-			? activeConnectionLabel( activeConnectionCount )
-			: 'Not exposed',
 		updated: 'Runtime policy',
 	} ) );
 
-	return [ ...firstParty, ...wordpress ]
+	return wordpress
 		.filter( ( ability ) => ability.id )
-		.sort( sortAbilities );
+		.sort(
+			( first, second ) =>
+				first.sourceLabel.localeCompare( second.sourceLabel ) ||
+				sortAbilities( first, second )
+		);
 }
 
 function AbilityDashboard( {
 	data,
-	abilities,
-	enabledAbilities,
 	wpAbilities,
 	enabledWpAbilities,
 	confirmationGroups,
 	confirmationGroupOptions,
-	activeConnectionCount,
 	roleAbilitiesEnabled,
 	hasChanges,
-	onToggleAbility,
 	onToggleWpAbility,
 	onToggleConfirmationGroup,
 	onEnableAll,
@@ -5896,9 +5606,6 @@ function AbilityDashboard( {
 	onResetChanges,
 	onCopy,
 } ) {
-	const coreDefaultAbilities = Array.isArray( data.coreDefaultAbilities )
-		? data.coreDefaultAbilities
-		: EMPTY_ARRAY;
 	const dataViewsModule = useDataViewsModule();
 	const DataViewsComponent = dataViewsModule?.DataViews;
 	const filterSortAndPaginateRows = dataViewsModule?.filterSortAndPaginate;
@@ -5908,7 +5615,7 @@ function AbilityDashboard( {
 		page: 1,
 		perPage: 12,
 		sort: {
-			field: 'ability',
+			field: 'source',
 			direction: 'asc',
 		},
 		fields: [
@@ -5951,19 +5658,10 @@ function AbilityDashboard( {
 	const rows = useMemo(
 		() =>
 			normalizedAbilityRows( {
-				abilities,
-				enabledAbilities,
 				wpAbilities,
 				enabledWpAbilities,
-				activeConnectionCount,
 			} ),
-		[
-			abilities,
-			activeConnectionCount,
-			enabledAbilities,
-			enabledWpAbilities,
-			wpAbilities,
-		]
+		[ enabledWpAbilities, wpAbilities ]
 	);
 	const categoryOptions = useMemo(
 		() =>
@@ -5973,13 +5671,16 @@ function AbilityDashboard( {
 		[ rows ]
 	);
 	const sourceOptions = useMemo(
-		() => [
-			{ value: 'system', label: 'System' },
-			...( wpAbilities.length > 0
-				? [ { value: 'wordpress', label: 'WordPress API' } ]
-				: [] ),
-		],
-		[ wpAbilities.length ]
+		() =>
+			Array.from(
+				new Set( rows.map( ( ability ) => ability.sourceLabel ) )
+			)
+				.sort()
+				.map( ( provider ) => ( {
+					value: provider,
+					label: provider,
+				} ) ),
+		[ rows ]
 	);
 	const fields = useMemo(
 		() => [
@@ -5994,20 +5695,12 @@ function AbilityDashboard( {
 						<ToggleControl
 							label={ `${ ability.title } active state` }
 							checked={ ability.enabled }
-							onChange={ ( checked ) => {
-								if ( ability.source === 'wordpress' ) {
-									onToggleWpAbility(
-										ability.id,
-										Boolean( checked )
-									);
-									return;
-								}
-
-								onToggleAbility(
+							onChange={ ( checked ) =>
+								onToggleWpAbility(
 									ability.id,
 									Boolean( checked )
-								);
-							} }
+								)
+							}
 						/>
 					</div>
 				),
@@ -6048,13 +5741,21 @@ function AbilityDashboard( {
 								{ ability.sourceLabel }
 							</span>
 							<span>{ ability.group }</span>
+							{ ability.source === 'wordpress' &&
+								ability.decision === 'default' && (
+									<span>
+										{ ability.defaultEnabled
+											? 'Default enabled'
+											: 'Default disabled' }
+									</span>
+								) }
 						</div>
 					</div>
 				),
 			},
 			{
 				id: 'scope',
-				label: 'Scope',
+				label: 'Effect',
 				enableGlobalSearch: true,
 				getValue: ( { item } ) => item.scope,
 				render: ( { item: ability } ) => (
@@ -6068,26 +5769,23 @@ function AbilityDashboard( {
 								? 'Read-only'
 								: 'Can change site' }
 						</span>
-						<code>{ ability.scope }</code>
 					</div>
 				),
 			},
 			{
 				id: 'active_connections',
-				label: 'Active connections',
+				label: 'Policy state',
 				enableGlobalSearch: true,
-				getValue: ( { item } ) => item.assignedTo,
+				getValue: ( { item } ) => item.policyState,
 				render: ( { item: ability } ) => (
 					<div className="aculect-ai-companion-ability-connection-cell">
 						<strong>
-							{ ability.enabled ? activeConnectionCount : 0 }
+							{ ability.policyState.replaceAll( '-', ' ' ) }
 						</strong>
 						<span>
-							{ ability.enabled
-								? `active connection${
-										activeConnectionCount === 1 ? '' : 's'
-								  }`
-								: 'Not exposed' }
+							{ ability.configurable
+								? 'Global policy setting'
+								: 'Not directly configurable' }
 						</span>
 					</div>
 				),
@@ -6131,11 +5829,11 @@ function AbilityDashboard( {
 			},
 			{
 				id: 'source',
-				label: 'Source',
+				label: 'Provider',
 				elements: sourceOptions,
-				filterBy: { operators: [ 'isAny' ] },
+				filterBy: { operators: [ 'isAny' ], isPrimary: true },
 				enableGlobalSearch: true,
-				getValue: ( { item } ) => item.source,
+				getValue: ( { item } ) => item.sourceLabel,
 			},
 			{
 				id: 'actions',
@@ -6156,14 +5854,7 @@ function AbilityDashboard( {
 				),
 			},
 		],
-		[
-			activeConnectionCount,
-			categoryOptions,
-			onCopy,
-			onToggleAbility,
-			onToggleWpAbility,
-			sourceOptions,
-		]
+		[ categoryOptions, onCopy, onToggleWpAbility, sourceOptions ]
 	);
 	const { data: visibleRows, paginationInfo } = useMemo(
 		() =>
@@ -6195,14 +5886,6 @@ function AbilityDashboard( {
 				name="_wpnonce"
 				value={ data.actions?.saveAbilitiesNonce }
 			/>
-			{ enabledAbilities.map( ( id ) => (
-				<input
-					key={ id }
-					type="hidden"
-					name="enabled_abilities[]"
-					value={ id }
-				/>
-			) ) }
 			{ enabledWpAbilities.map( ( id ) => (
 				<input
 					key={ id }
@@ -6211,6 +5894,7 @@ function AbilityDashboard( {
 					value={ id }
 				/>
 			) ) }
+			<input type="hidden" name="confirmation_groups_present" value="1" />
 			{ confirmationGroups.map( ( group ) => (
 				<input
 					key={ group }
@@ -6258,7 +5942,10 @@ function AbilityDashboard( {
 								}
 							/>
 						) : (
-							<DataViewLoadingState label="Loading abilities table" />
+							<DataViewLoadingState
+								label="Loading abilities table"
+								failed={ dataViewsModule?.loadError }
+							/>
 						) }
 					</div>
 				</section>
@@ -6267,21 +5954,15 @@ function AbilityDashboard( {
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>About abilities</h3>
 						<p>
-							System rows come from the bundled registry.
-							WordPress Ability API rows appear only when public
-							abilities are registered on this site.
+							Manage third-party plugin abilities registered
+							through the WordPress Abilities API, organized by
+							provider.
 						</p>
-						{ coreDefaultAbilities.length > 0 && (
-							<p className="aculect-ai-companion-help-text">
-								{ coreDefaultAbilities.length } default core
-								read/discovery{ ' ' }
-								{ coreDefaultAbilities.length === 1
-									? 'ability is'
-									: 'abilities are' }{ ' ' }
-								always registered and stay outside the toggle
-								table.
-							</p>
-						) }
+						<p className="aculect-ai-companion-help-text">
+							WordPress Core and Aculect abilities are enabled by
+							default. OAuth scopes, role policy, and WordPress
+							permissions still control access to every ability.
+						</p>
 					</section>
 					<section className="aculect-ai-companion-abilities-panel">
 						<h3>Quick actions</h3>
@@ -6291,14 +5972,14 @@ function AbilityDashboard( {
 								variant="secondary"
 								onClick={ onEnableAll }
 							>
-								Enable all
+								Enable all third-party abilities
 							</Button>
 							<Button
 								type="button"
 								variant="secondary"
 								onClick={ onDisableAll }
 							>
-								Disable all
+								Disable all third-party abilities
 							</Button>
 							<Button
 								type="button"
@@ -6877,310 +6558,6 @@ function RoleAbilitiesEditor( {
 	);
 }
 
-function isPlainObject( value ) {
-	return value && typeof value === 'object' && ! Array.isArray( value );
-}
-
-function versionParts( version ) {
-	return String( version || '' )
-		.split( '.' )
-		.map( ( part ) => Number.parseInt( part, 10 ) || 0 );
-}
-
-function compareVersionsDescending( firstVersion, secondVersion ) {
-	const firstParts = versionParts( firstVersion );
-	const secondParts = versionParts( secondVersion );
-	const length = Math.max( firstParts.length, secondParts.length );
-
-	for ( let index = 0; index < length; index += 1 ) {
-		const firstPart = firstParts[ index ] || 0;
-		const secondPart = secondParts[ index ] || 0;
-
-		if ( firstPart !== secondPart ) {
-			return secondPart - firstPart;
-		}
-	}
-
-	return String( secondVersion ).localeCompare( String( firstVersion ) );
-}
-
-function releaseType( version ) {
-	const parts = versionParts( version );
-	const patch = parts[ 2 ] || 0;
-
-	if ( patch > 0 ) {
-		return 'Patch release';
-	}
-
-	const major = parts[ 0 ] || 0;
-	const minor = parts[ 1 ] || 0;
-
-	if ( major > 0 && minor === 0 ) {
-		return 'Major release';
-	}
-
-	return 'Minor release';
-}
-
-function safeExternalUrl( value ) {
-	try {
-		const url = new URL( String( value || '' ) );
-
-		return [ 'https:', 'http:' ].includes( url.protocol )
-			? url.toString()
-			: '';
-	} catch {
-		return '';
-	}
-}
-
-function normalizeChangelogEntries( changelog ) {
-	const entries = Object.entries(
-		isPlainObject( changelog ) ? changelog : {}
-	)
-		.map( ( [ version, entry ] ) => {
-			const entryData = isPlainObject( entry ) ? entry : {};
-			const date = String(
-				entryData.date ||
-					entryData.releaseDate ||
-					entryData.releasedAt ||
-					''
-			).trim();
-			const type = String( entryData.type || '' ).trim();
-
-			return {
-				version,
-				type: type || releaseType( version ),
-				date,
-				groups: Object.entries( entryData )
-					.filter(
-						( [ title ] ) => ! CHANGELOG_METADATA_KEYS.has( title )
-					)
-					.map( ( [ title, items ] ) => ( {
-						title,
-						items: Array.isArray( items )
-							? items.filter( ( item ) =>
-									String( item || '' ).trim()
-							  )
-							: [],
-					} ) )
-					.filter( ( group ) => group.items.length > 0 ),
-			};
-		} )
-		.filter( ( entry ) => entry.version );
-
-	return entries.sort( ( firstEntry, secondEntry ) =>
-		compareVersionsDescending( firstEntry.version, secondEntry.version )
-	);
-}
-
-function ChangelogDashboard( { changelog, metadata } ) {
-	const pluginMetadata = isPlainObject( metadata ) ? metadata : {};
-	const entries = normalizeChangelogEntries( changelog );
-	const latestVersion = entries[ 0 ]?.version || '';
-	const installedVersion =
-		pluginMetadata.version || pluginMetadata.stableTag || latestVersion;
-	const [ selectedVersion, setSelectedVersion ] = useState(
-		latestVersion || installedVersion || ''
-	);
-	const selectedEntry =
-		entries.find( ( entry ) => entry.version === selectedVersion ) ||
-		entries[ 0 ];
-	const wordpressOrgUrl = safeExternalUrl( pluginMetadata.wordpressOrgUrl );
-	const supportUrl = safeExternalUrl( pluginMetadata.supportUrl );
-	const reviewUrl = safeExternalUrl( pluginMetadata.reviewUrl );
-	const releaseDate = selectedEntry?.date || 'Not listed in changelog';
-	const metadataRows = [
-		{ label: 'Version', value: selectedEntry?.version || '-' },
-		{ label: 'Release date', value: releaseDate },
-		{ label: 'Type', value: selectedEntry?.type || 'Release' },
-		{ label: 'Tested up to', value: pluginMetadata.testedUpTo || '-' },
-		{ label: 'Requires WP', value: pluginMetadata.requiresAtLeast || '-' },
-		{ label: 'Requires PHP', value: pluginMetadata.requiresPhp || '-' },
-	];
-
-	if ( entries.length === 0 ) {
-		return (
-			<div className="aculect-ai-companion-changelog-dashboard">
-				<EmptyState title="No changelog entries">
-					Check the bundled changelog file or the WordPress.org
-					developer tab for release notes.
-				</EmptyState>
-			</div>
-		);
-	}
-
-	return (
-		<div className="aculect-ai-companion-changelog-dashboard">
-			{ wordpressOrgUrl && (
-				<div className="aculect-ai-companion-tab-actions">
-					<Button
-						href={ wordpressOrgUrl }
-						target="_blank"
-						rel="noreferrer noopener"
-						variant="secondary"
-					>
-						WordPress.org Changelog
-					</Button>
-				</div>
-			) }
-
-			<div className="aculect-ai-companion-changelog-layout">
-				<aside className="aculect-ai-companion-changelog-sidebar">
-					<h3 className="aculect-ai-companion-changelog-sidebar__title">
-						Versions
-					</h3>
-					<div className="aculect-ai-companion-changelog-version-list">
-						{ entries.map( ( entry ) => {
-							const isSelected =
-								entry.version === selectedEntry.version;
-
-							return (
-								<button
-									key={ entry.version }
-									type="button"
-									className={
-										isSelected ? 'is-selected' : ''
-									}
-									aria-pressed={ isSelected }
-									onClick={ () =>
-										setSelectedVersion( entry.version )
-									}
-								>
-									<span className="aculect-ai-companion-changelog-version-list__version">
-										{ entry.version }
-									</span>
-									<span className="aculect-ai-companion-changelog-version-list__meta">
-										{ entry.date || 'Date not listed' }
-									</span>
-									<span className="aculect-ai-companion-changelog-version-list__badges">
-										{ entry.version === latestVersion && (
-											<em>Latest</em>
-										) }
-										{ entry.version ===
-											installedVersion && (
-											<em>Installed</em>
-										) }
-									</span>
-								</button>
-							);
-						} ) }
-					</div>
-				</aside>
-
-				<section className="aculect-ai-companion-changelog-detail">
-					<div className="aculect-ai-companion-changelog-detail__header">
-						<div>
-							<span className="aculect-ai-companion-eyebrow">
-								Selected release
-							</span>
-							<h3 className="aculect-ai-companion-changelog-detail__version">
-								{ selectedEntry.version }
-							</h3>
-						</div>
-						<div className="aculect-ai-companion-changelog-detail__badges">
-							{ selectedEntry.version === latestVersion && (
-								<span className="aculect-ai-companion-changelog-detail__badge">
-									Latest
-								</span>
-							) }
-							{ selectedEntry.version === installedVersion && (
-								<span className="aculect-ai-companion-changelog-detail__badge">
-									Installed
-								</span>
-							) }
-						</div>
-					</div>
-
-					<div className="aculect-ai-companion-changelog-meta-grid">
-						{ metadataRows.map( ( item ) => (
-							<div
-								key={ item.label }
-								className="aculect-ai-companion-changelog-meta-grid__item"
-							>
-								<span className="aculect-ai-companion-changelog-meta-grid__label">
-									{ item.label }
-								</span>
-								<strong className="aculect-ai-companion-changelog-meta-grid__value">
-									{ item.value }
-								</strong>
-							</div>
-						) ) }
-					</div>
-
-					{ selectedEntry.groups.length > 0 ? (
-						<div className="aculect-ai-companion-changelog-notes">
-							{ selectedEntry.groups.map( ( group ) => (
-								<section
-									key={ group.title }
-									className="aculect-ai-companion-changelog-notes__group"
-								>
-									<h4 className="aculect-ai-companion-changelog-notes__title">
-										{ group.title }
-									</h4>
-									<ul className="aculect-ai-companion-changelog-notes__list">
-										{ group.items.map( ( item, index ) => (
-											<li
-												key={ `${ selectedEntry.version }-${ group.title }-${ index }` }
-											>
-												{ item }
-											</li>
-										) ) }
-									</ul>
-								</section>
-							) ) }
-						</div>
-					) : (
-						<EmptyState title="No release notes">
-							This version exists in the changelog source, but no
-							grouped notes were found.
-						</EmptyState>
-					) }
-				</section>
-			</div>
-
-			<div className="aculect-ai-companion-changelog-help">
-				<div className="aculect-ai-companion-changelog-help__item">
-					<h3 className="aculect-ai-companion-changelog-help__title">
-						Need help with an update?
-					</h3>
-					<p className="aculect-ai-companion-changelog-help__copy">
-						Use the support forum for release questions,
-						compatibility reports, or setup issues.
-					</p>
-					{ supportUrl && (
-						<a
-							href={ supportUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							Open support forum
-						</a>
-					) }
-				</div>
-				<div className="aculect-ai-companion-changelog-help__item">
-					<h3 className="aculect-ai-companion-changelog-help__title">
-						Share release feedback
-					</h3>
-					<p className="aculect-ai-companion-changelog-help__copy">
-						Reviews help prioritize improvements and surface
-						compatibility feedback for other WordPress users.
-					</p>
-					{ reviewUrl && (
-						<a
-							href={ reviewUrl }
-							target="_blank"
-							rel="noreferrer noopener"
-						>
-							Leave a review
-						</a>
-					) }
-				</div>
-			</div>
-		</div>
-	);
-}
-
 function SettingsApp() {
 	const initialSettingsData = window.aculectAICompanionSettingsData || {};
 	const [ settingsData, setSettingsData ] = useState( initialSettingsData );
@@ -7278,9 +6655,6 @@ function SettingsApp() {
 		data.sampleData && typeof data.sampleData === 'object'
 			? data.sampleData
 			: {};
-	const sampleDataTabs = Array.isArray( sampleData.tabs )
-		? sampleData.tabs
-		: EMPTY_ARRAY;
 	const activeSessionCount = Number( data.activeSessionCount || 0 );
 	const roleConnections =
 		data.roleConnections && typeof data.roleConnections === 'object'
@@ -7402,10 +6776,11 @@ function SettingsApp() {
 		! sameStringSet( enabledWpAbilities, originalEnabledWpAbilities ) ||
 		! sameStringSet( confirmationGroups, originalConfirmationGroups );
 	const helpLinks = uniqueHelpLinks( providers, pluginMetadata );
-	const shouldShowAccessControl = Boolean(
-		data.actions?.setLockdownAction && data.actions?.setLockdownNonce
-	);
 	const hasRealActiveConnections = activeSessionCount > 0;
+	const { setLockdownAction, setLockdownNonce } = data.actions || {};
+	const shouldShowAccessControl =
+		hasRealActiveConnections &&
+		Boolean( setLockdownAction && setLockdownNonce );
 	let accessStatusLabel = 'No active AI access';
 	let accessStatusDescription =
 		'Connect a real assistant to enable live connection controls. Preview rows do not change site access.';
@@ -7541,9 +6916,10 @@ function SettingsApp() {
 	const activeTabName = useActiveTabName( tabs );
 	const activeTab =
 		tabs.find( ( tab ) => tab.name === activeTabName ) || tabs[ 0 ];
-	const sampleDataActive = Boolean(
-		sampleData.enabled && sampleDataTabs.includes( activeTab.name )
-	);
+	const sampleDataActive =
+		Boolean( sampleData.enabled ) &&
+		Array.isArray( sampleData.appliedTabs ) &&
+		sampleData.appliedTabs.includes( activeTab.name );
 	const hydratedTabKey = Array.isArray( data.hydratedTabs )
 		? data.hydratedTabs.join( '|' )
 		: '';
@@ -7636,16 +7012,6 @@ function SettingsApp() {
 		settingsPayloadUrl,
 		settingsRestNonce,
 	] );
-
-	const toggleAbility = ( id, checked ) => {
-		setEnabledAbilities( ( current ) => {
-			if ( checked ) {
-				return Array.from( new Set( [ ...current, id ] ) );
-			}
-
-			return current.filter( ( item ) => item !== id );
-		} );
-	};
 
 	const toggleWpAbility = ( abilityId, checked ) => {
 		setEnabledWpAbilities( ( current ) => {
@@ -8174,14 +7540,20 @@ function SettingsApp() {
 												status={ endpointStatus }
 											/>
 										</div>
-										<p>Connect your site to an AI app.</p>
+										<p>
+											Connect your site to an AI app in
+											three simple steps.
+										</p>
 									</div>
 								</div>
-								<ConnectMcpUrlUtility
-									mcpUrl={ mcpUrl }
-									health={ connectionHealth }
-									onCopy={ copyValue }
-								/>
+								<div className="aculect-ai-companion-connect-step-row">
+									<ConnectMcpUrlUtility
+										mcpUrl={ mcpUrl }
+										health={ connectionHealth }
+										onCopy={ copyValue }
+									/>
+									<ConnectSetupSteps />
+								</div>
 								<ConnectAppPicker
 									providers={ providers }
 									selectedProvider={ selectedConnectProvider }
@@ -8191,18 +7563,22 @@ function SettingsApp() {
 										);
 									} }
 								/>
-								<ConnectToolFilteringGuidance
-									provider={ selectedConnectProvider }
-									onCopy={ copyValue }
-								/>
 								<PendingConnectionRequests
 									requests={ connectionRequests }
 								/>
-								<ConnectCapabilitySummary
+								<ConnectPermissionsSummary
+									roleConnections={ roleConnections }
+									connectionsUrl={ tabUrl(
+										'connections',
+										data.adminPageUrl
+									) }
 									permissionsUrl={ tabUrl(
 										'abilities',
 										data.adminPageUrl
 									) }
+									onViewConnections={ ( event ) =>
+										maybeSelectTab( event, 'connections' )
+									}
 									onManagePermissions={ ( event ) =>
 										maybeSelectTab( event, 'abilities' )
 									}
@@ -8332,30 +7708,21 @@ function SettingsApp() {
 							<>
 								<AbilityDashboard
 									data={ data }
-									abilities={ abilities }
-									enabledAbilities={ enabledAbilities }
 									wpAbilities={ wpAbilities }
 									enabledWpAbilities={ enabledWpAbilities }
 									confirmationGroups={ confirmationGroups }
 									confirmationGroupOptions={
 										confirmationGroupOptions
 									}
-									activeConnectionCount={ activeSessionCount }
 									roleAbilitiesEnabled={
 										roleAbilitiesEnabled
 									}
 									hasChanges={ hasAbilityChanges }
-									onToggleAbility={ toggleAbility }
 									onToggleWpAbility={ toggleWpAbility }
 									onToggleConfirmationGroup={
 										toggleConfirmationGroup
 									}
 									onEnableAll={ () => {
-										setEnabledAbilities(
-											abilities.map(
-												( ability ) => ability.id
-											)
-										);
 										setEnabledWpAbilities(
 											wpAbilities.map(
 												( ability ) => ability.id
@@ -8363,7 +7730,6 @@ function SettingsApp() {
 										);
 									} }
 									onDisableAll={ () => {
-										setEnabledAbilities( [] );
 										setEnabledWpAbilities( [] );
 									} }
 									onManageRoleAbilities={ () =>

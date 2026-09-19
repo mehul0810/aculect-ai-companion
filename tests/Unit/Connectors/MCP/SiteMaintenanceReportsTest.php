@@ -246,7 +246,7 @@ final class SiteMaintenanceReportsTest extends TestCase {
 				'acme/acme.php'   => (object) array(
 					'new_version'  => '2.0.0',
 					'tested'       => '6.7',
-					'requires_php' => '8.5',
+					'requires_php' => ( PHP_MAJOR_VERSION + 1 ) . '.0',
 					'package'      => 'https://downloads.example.test/acme.zip',
 				),
 				'other/other.php' => (object) array(

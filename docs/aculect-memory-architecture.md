@@ -1,0 +1,103 @@
+# Aculect Memory Architecture
+
+## Product contract
+
+Aculect Memory is the site-owned source of truth for durable AI context. Intelligence groups help an assistant navigate and interpret abilities; they never grant, hide, or revoke an ability. OAuth scopes, WordPress capabilities, role policy, record visibility, review state, and runtime safety remain independent authorization controls.
+
+Connected AI clients may read approved, relevant memory and propose changes. They do not overwrite approved site memory directly. Provider-native memory synchronization is optional, adapter-based, and enabled only when an official provider API and explicit administrator consent are available.
+
+## Ownership boundaries
+
+- `Intelligence\Memory` owns records, versions, review state, retrieval, history, tombstones, and the neutral synchronization contract.
+- `Connectors\MCP\FirstPartyAbilityModules` currently owns the compatibility MCP declarations; these declarations will move into a focused memory module provider as the public surface expands.
+- `Connectors\MCP\MemoryListService` maps approved-memory reads to the domain without owning persistence rules.
+- Provider-specific adapters belong to `Connectors` and depend inward on the neutral memory synchronization contract.
+- Admin UI consumes the same domain service as MCP. It must not implement separate save, rename, delete, or conflict rules.
+
+## Data model
+
+Each memory has a stable UUID and site-global legacy key, namespace, optional user owner, domain, value and evidence, visibility and sensitivity, review status, confidence, source, monotonically increasing version, content hash, validity window, and soft-deletion timestamp. The legacy key remains globally unique for compatibility; namespaces classify routing and visibility but do not create duplicate identities for the same key.
+
+Every accepted mutation also creates an append-only event. Events provide history, cache invalidation, and a cursor-based outbound change feed. The reserved connector-state table is available for future server-driven adapters; the current client-driven adapter uses deterministic proposal keys and caller-held checkpoints rather than an idle polling queue. Provider tokens remain in the existing protected OAuth/connector storage.
+
+## Write and conflict rules
+
+1. New AI-originated content is a pending proposal by default.
+2. Admin edits require the observed version. Compatibility APIs accept an optional expected version; database updates always compare the version read by the service. A stale version returns a conflict rather than overwriting a newer edit.
+3. Approved site state wins conflicts. Incoming provider changes never use last-write-wins.
+4. Forget operations create tombstones so connected clients can converge without resurrecting deleted memory.
+5. Sensitive or user-private memory is excluded from synchronization by default.
+
+## Retrieval path and budgets
+
+The chronological list uses namespace, review status, visibility, sensitivity and validity filters with local full-text filtering when `query` is supplied. It orders by update time and ID with keyset pagination; it does not rank results by relevance. Task recall is a separate optional mode of `memory_list`, selected by supplying `task`. It uses local full-text relevance first, stored confidence second, then update time and ID. No embedding service is required.
+
+### Task recall
+
+Call `memory_list` with `{"task":"brand voice for a product article","domain":"brand","budget_chars":6000,"per_page":10}`. Omit `query` and continuation cursors in this mode. Existing list/review calls keep their original response and pagination behavior.
+
+Recall considers only approved, currently valid, site-visible, normal-sensitivity records in the `site` namespace, including for administrators. It selects at most 50 candidates plus one lookahead row in SQL. Up to twelve optional prefix terms are extracted from the bounded task; this is lexical matching, not semantic understanding. An optional domain is a hard filter. Relevance is computed before the candidate limit, so an older matching record is not excluded merely because fifty newer records exist.
+
+The returned context pack defaults to a 6,000-byte JSON budget, configurable from 1,000 to 12,000 via `budget_chars`; bytes conservatively bound characters, not tokens. This budget covers the recall result object, not the MCP transport envelope. Whole records that do not fit are omitted and `truncated` is set. Values are never shortened, rewritten, or merged. Each selected record includes its source, evidence, stored confidence, version, update/expiry metadata when present, and selection explanation. Stored confidence is not independent verification. Competing guidance remains visible when it fits; this phase does not detect semantic contradictions or choose which rule is authoritative. Absence from a bounded result is not evidence that no rule exists.
+
+Missing full-text indexes and database failures return explicit errors. Recall does not refresh indexes, alter records, synchronize data, or cache authorization decisions. The focused `MemoryRecallTest` fixtures cover SQL ordering/eligibility, private/stale/future/deleted exclusion, JSON budgets, competing guidance, and malformed input. Actual relevance quality across languages remains dependent on the database tokenizer and corpus.
+
+- Maximum returned memories: 50; recommended recall default: 10.
+- Text search is applied in the database and supports bounded page traversal; callers never receive more than 50 rows per request.
+- Values and evidence remain bounded by the storage contract.
+- List/search queries select explicit columns and may skip exact totals.
+- Retrieval caching will key namespace, actor visibility, normalized query/filter, and latest event cursor when introduced.
+- Server-driven provider synchronization would require leased batches and retry backoff. The implemented MCP exchange is client-driven, opt-in and bounded; no periodic remote requests are scheduled.
+
+## Implemented client-driven exchange
+
+`memory_sync_pull` and `memory_sync_push` use the existing authenticated MCP transport. Both require a WordPress administrator and the explicit site filter `aculect_ai_companion_memory_sync_enabled` (default false). Pull requires `content:read`; push additionally requires `content:draft` and the existing confirmation gate. Intelligence grouping does not decide authorization.
+
+Enable only after the site owner approves the destination application's handling of shared context:
+
+```php
+add_filter( 'aculect_ai_companion_memory_sync_enabled', '__return_true' );
+```
+
+Pull begins with an ID-bounded snapshot and then returns ordered event deltas, at most 20 rows per request. Only currently approved, site-visible, normal-sensitivity, temporally valid content is exported. Other records yield content-free `remove` instructions. Clients must enforce expiration, apply invalidations, and stop using a replica older than five minutes. Cursors expire after five minutes and require a fresh snapshot. The event stream is eventually consistent: database auto-increment allocation is not commit ordering, so a concurrently committed older event may be repaired by the required full refresh rather than the next delta. This is not a transactional cross-system replica or an authorization cache.
+
+Push accepts at most 20 proposals with stable external `id`, positive `version`, and bounded `value`. Identity is scoped by the authenticated WordPress user, connector identifier and external revision. Imports are private pending proposals; supplied approval/privacy fields cannot bypass review. Replaying the same revision/value does not create another event; changing the value for the same revision returns a conflict. A newer external revision creates another proposal, never replaces approved site guidance. Partial failures do not advance the caller checkpoint. Retry rejected items with the same IDs; administrators explicitly approve and share appropriate proposals in Learning > Memory.
+
+These tools support an application-controlled memory bridge, not automatic access to ChatGPT/Claude/Cursor personal memory. [OpenAI's remote MCP contract](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) supplies the tool transport; [Claude's memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool) requires an application-owned client-side implementation. A custom client can map that implementation to the site exchange. No provider account, external API credential or remote data transfer is enabled during installation.
+
+Disable the filter or revoke the OAuth connection to stop subsequent access. Already disclosed data cannot be recalled from an external application; only enable applications whose deletion/retention behavior the owner accepts.
+
+## Migration and administration operations
+
+Legacy backfills preserve existing UUIDs and compare all observed fields before changing identity/hash metadata. A persisted ID cursor avoids starting each batch at the beginning; conflicting rows are reread, not overwritten. Memory, event and learning-review option writes require transactional tables and commit together. Failed review persistence rolls back both canonical memory and history, and invalidates WordPress option caches before retry.
+
+Large or unmeasurable schema changes pause automatically and show a reason/recovery action in Learning > Memory and index diagnostics. Other failures use exponential backoff capped at six hours and pause after eight attempts. Back up the database and resolve the reported issue during an approved maintenance window before using Retry migration. Retrying does not bypass the table-size guard. The existing `aculect_ai_companion_allow_large_memory_migration` filter is an operator override for a reviewed maintenance operation, not a routine recommendation. No migration deletes records.
+
+Admin pages use explicit fields, twenty-record pages and a 60-second totals cache invalidated after committed writes. Numbered admin pagination remains compatible; large-table deep-page cost is not claimed eliminated. Memory search uses keyset cursors, not offsets, and rejects malformed cursors explicitly.
+
+## Delivery phases
+
+### Phase 1: canonical, versioned foundation
+
+- Add versioned memory records, event history, tombstones, and connector checkpoint storage.
+- Expose bounded `memory_list`, `memory_save`, and `memory_bootstrap` compatibility operations.
+- Keep get/update/forget/history/change-feed behavior in the domain layer until their public MCP contracts and authorization scopes are completed.
+- Keep existing `content:read` and `content:draft` authorization working during the transition.
+
+### Phase 2: fine-grained consent and admin UX
+
+- Introduce `memory:read`, `memory:propose`, `memory:write`, `memory:sync`, and `memory:admin` with an explicit legacy-token compatibility policy.
+- Move the 9,000-line admin bundle's memory UI into focused components.
+- Add conflict review, history, visibility, expiry, sensitivity, and sync controls.
+
+### Phase 3: retrieval and adapters
+
+- Local full-text task recall is implemented; evaluate recall fixtures before introducing an optional embedding adapter.
+- Add provider adapters only for official APIs with explicit consent, per-connection allowlists, rate limiting, and deletion propagation.
+- Measure recall quality, p95 query time, queue delay, retry rates, and storage growth before changing defaults.
+
+## Acceptance and rollback
+
+Phase 1 passes when legacy rows remain readable, stale writes fail deterministically, tombstones appear in the change feed, non-admin callers cannot read unapproved/private memory, all queries are bounded, installer retries remain recoverable, and existing public memory tools retain compatible response fields.
+
+The migration is expand-only. Schema expansion is marked independently, while legacy UUID/hash identity and transactional-engine conversion continue through bounded background batches tracked by a separate migration version. Rolling back code leaves additive columns and tables intact; older code continues using `memory_key`, value, evidence, status, and timestamps. No rollback deletes memory or history.

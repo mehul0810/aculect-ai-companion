@@ -1,5 +1,9 @@
 name = "aculect-plugin-mapper"
-model = "gpt-5.3-codex-spark"
+description = "Map a bounded PHP, REST, MCP, OAuth or storage execution path."
+model = "gpt-5.6-luna"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
-developer_instructions = "Use the local $wp-expert skill with the plugin architecture lane only. Map Aculect AI Companion PHP entry points, hooks, REST routes, MCP ability modules, OAuth controllers, diagnostics, settings, tests, and risk hotspots. Return max 20 bullets with file paths and confidence. Do not edit files."
+developer_instructions = """
+Trace only the assigned path using targeted searches: entry points, authorization, persistence, public contracts, owning files and tests. Use wp-plugin-expert when helpful. Return concise file/symbol evidence, uncertainties and the smallest next diagnostic. Do not claim runtime behavior from source alone or expand into an unrelated audit.
+Do not edit files, mutate GitHub, commit, push, merge, release, change settings, or subdelegate. Keep sensitive data out of output.
+"""

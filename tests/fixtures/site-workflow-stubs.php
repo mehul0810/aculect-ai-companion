@@ -21,6 +21,21 @@ if ( ! class_exists( 'WP_Theme' ) ) {
 		 */
 		public function __construct( private array $data = array() ) {}
 
+		/** Return fixture existence. */
+		public function exists(): bool {
+			return array() !== $this->data;
+		}
+
+		/** Return fixture validation errors. */
+		public function errors(): WP_Error|false {
+			return ! empty( $this->data['Invalid'] ) ? new WP_Error( 'theme_invalid', 'Invalid fixture theme.' ) : false;
+		}
+
+		/** Return fixture network availability. */
+		public function is_allowed(): bool {
+			return (bool) ( $this->data['Allowed'] ?? true );
+		}
+
 		/**
 		 * Return one theme header.
 		 *
@@ -162,6 +177,9 @@ if ( ! function_exists( 'wp_get_theme' ) ) {
 		$themes = wp_get_themes();
 		if ( '' !== $stylesheet && isset( $themes[ $stylesheet ] ) && $themes[ $stylesheet ] instanceof WP_Theme ) {
 			return $themes[ $stylesheet ];
+		}
+		if ( '' !== $stylesheet ) {
+			return new WP_Theme();
 		}
 
 		$active = (string) ( $GLOBALS['aculect_ai_companion_test_active_stylesheet'] ?? '' );

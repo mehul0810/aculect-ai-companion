@@ -98,6 +98,13 @@ final class PluginTest extends TestCase {
 		);
 	}
 
+	public function test_authorize_paths_preserve_browser_oauth_without_canonical_redirects(): void {
+		foreach ( array( '/oauth/authorize', '/aculect-ai-companion/oauth/authorize', '/aculect-ai-companion/oauth/authorize/' ) as $path ) {
+			self::assertFalse( Plugin::instance()->filter_canonical_redirect( 'https://example.com/redirect', 'https://example.com' . $path ) );
+		}
+		self::assertSame( 'https://example.com/redirect', Plugin::instance()->filter_canonical_redirect( 'https://example.com/redirect', 'https://example.com/unrelated' ) );
+	}
+
 	public function test_first_install_timestamp_helper_is_idempotent(): void {
 		$first_installed_at = LocalSampleData::ensure_first_installed_at( 1704067200 );
 
@@ -109,9 +116,9 @@ final class PluginTest extends TestCase {
 	/**
 	 * Invoke a private method for focused unit coverage without widening runtime API.
 	 *
-	 * @param object      $object    Object instance.
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param object       $object    Object instance.
+	 * @param string       $method    Method name.
+	 * @param array<mixed> $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivate( object $object, string $method, array $arguments = array() ): mixed {

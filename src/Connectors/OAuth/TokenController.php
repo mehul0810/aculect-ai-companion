@@ -10,6 +10,7 @@ use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\RefreshTokenRepository;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use Aculect\AICompanion\Connectors\OAuth\Server\KeyManager;
 use Aculect\AICompanion\Diagnostics\Logger;
@@ -74,6 +75,10 @@ final class TokenController {
 		$timeline_event = $this->token_timeline_event( $request );
 		$timeline_auth  = $this->timeline_auth_context( $request );
 		$started_at     = microtime( true );
+
+		if ( ! Installer::issuer_binding_ready() ) {
+			return $this->error( 'temporarily_unavailable', 'OAuth client storage is being upgraded. Try again shortly.', 503 );
+		}
 
 		$logger->info(
 			'token.received',

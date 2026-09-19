@@ -6,7 +6,6 @@ namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
 use Aculect\AICompanion\Connectors\Helpers;
-use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Connectors\OAuth\TokenValidator;
 use Aculect\AICompanion\Diagnostics\Logger;
 use WP_REST_Request;
@@ -18,12 +17,33 @@ use WP_REST_Server;
  */
 final class McpController {
 
+	public const PROTOCOL_VERSION_CURRENT    = McpProtocolVersion::CURRENT;
+	public const PROTOCOL_VERSION_INITIAL    = McpProtocolVersion::INITIAL;
+	public const PROTOCOL_VERSION_LEGACY     = McpProtocolVersion::LEGACY;
+	public const SUPPORTED_PROTOCOL_VERSIONS = array(
+		self::PROTOCOL_VERSION_CURRENT,
+		McpProtocolVersion::TRANSITIONAL,
+		self::PROTOCOL_VERSION_LEGACY,
+		McpProtocolVersion::INITIAL,
+	);
 	/**
 	 * OAuth context resolved by the permission callback for the current request.
 	 *
 	 * @var array<string, mixed>
 	 */
 	private array $request_auth = array();
+
+	private string $request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
+	private AbilityExecutionGateway $execution_gateway;
+
+	/**
+	 * Construct the transport controller.
+	 *
+	 * @param AbilityExecutionGateway|null $execution_gateway Execution policy boundary.
+	 */
+	public function __construct( ?AbilityExecutionGateway $execution_gateway = null ) {
+		$this->execution_gateway = $execution_gateway ?? new AbilityExecutionGateway();
+	}
 
 	/**
 	 * Register the OAuth-protected MCP endpoint.
@@ -50,19 +70,19 @@ final class McpController {
 		);
 
 		add_filter( 'rest_post_dispatch', array( $this, 'filter_mcp_auth_response' ), 10, 3 );
+		McpTransportResponsePolicy::register_hooks();
 	}
 
 	/**
 	 * Authenticate MCP requests with the OAuth resource server.
 	 *
-	 * JSON-RPC notifications are auth-exempt per the MCP streamable HTTP
-	 * transport: they carry no id and receive an empty 202 acknowledgement.
-	 *
 	 * @param WP_REST_Request $request REST request.
 	 * @return true|\WP_Error
 	 */
 	public function check_mcp_permission( WP_REST_Request $request ): bool|\WP_Error {
+		McpTransportResponsePolicy::begin_request();
 		$this->request_auth = array();
+		$this->reset_request_protocol_version( $request );
 		McpToolAvailability::set_current_granted_scopes( null );
 
 		$request_error = ( new McpInputValidator() )->request_error( $request );
@@ -70,16 +90,18 @@ final class McpController {
 			return new \WP_Error( $request_error['code'], $request_error['message'], array( 'status' => 413 ) );
 		}
 
-		if ( $this->is_auth_exempt_notification( $request ) ) {
-			return true;
+		$transport_error = $this->transport_error( $request );
+		if ( null !== $transport_error ) {
+			return new \WP_Error( $transport_error['code'], $transport_error['message'], array( 'status' => $transport_error['status'] ) );
 		}
 
-		$auth = ( new TokenValidator() )->authenticate( $request );
+		$token_validator = new TokenValidator();
+		$auth            = $token_validator->authenticate( $request );
 		if ( array() === $auth ) {
 			( new Logger() )->warning(
 				'mcp.invalid_token',
 				'MCP request did not include a valid bearer token.',
-				$this->log_context( $this->rpc_method_from_request( $request ), '', 'invalid_token' ),
+				$this->log_context( $this->rpc_method_from_request( $request ), '', 'invalid_token', '', array(), $token_validator->failure_reason() ),
 				$request,
 				401
 			);
@@ -112,6 +134,27 @@ final class McpController {
 			return $response;
 		}
 
+		if ( $response instanceof WP_REST_Response ) {
+			$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			McpTransportResponsePolicy::apply_request_headers( $response );
+		}
+
+		$data = $response instanceof WP_REST_Response ? $response->get_data() : null;
+		if ( $response instanceof WP_REST_Response && is_array( $data ) && isset( $data['code'] ) && is_string( $data['code'] ) && $this->is_transport_error_code( $data['code'] ) ) {
+			$transport_response = new WP_REST_Response(
+				$this->rpc_error(
+					$this->rpc_id_from_request( $request ),
+					$this->transport_rpc_code( $data['code'] ),
+					(string) ( $data['message'] ?? 'Invalid MCP transport request.' ),
+					$this->transport_rpc_data( $data['code'], $request )
+				),
+				$response->get_status()
+			);
+			$transport_response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+			McpTransportResponsePolicy::apply_request_headers( $transport_response );
+			return $transport_response;
+		}
+
 		if ( ! $response instanceof WP_REST_Response || 401 !== $response->get_status() ) {
 			return $response;
 		}
@@ -125,20 +168,265 @@ final class McpController {
 	}
 
 	/**
-	 * Check whether the request is an auth-exempt JSON-RPC notification.
+	 * Validate the request origin and protocol-specific HTTP contract.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @return array{code: string, message: string, status: int}|null
+	 */
+	private function transport_error( WP_REST_Request $request ): ?array {
+		$this->reset_request_protocol_version( $request );
+
+		$origin = trim( (string) $request->get_header( 'origin' ) );
+		if ( '' !== $origin && ! $this->is_allowed_origin( $origin ) ) {
+			return array(
+				'code'    => 'invalid_mcp_origin',
+				'message' => 'The request Origin is not allowed for this MCP endpoint.',
+				'status'  => 403,
+			);
+		}
+
+		if ( 'POST' !== $request->get_method() ) {
+			return null;
+		}
+
+		$body           = (array) $request->get_json_params();
+		$method         = (string) ( $body['method'] ?? '' );
+		$version_header = (string) $request->get_header( 'mcp-protocol-version' );
+		if ( '' === $version_header ) {
+			if ( 'server/discover' === $method ) {
+				return array(
+					'code'    => 'missing_protocol_version',
+					'message' => 'MCP-Protocol-Version is required for server/discover.',
+					'status'  => 400,
+				);
+			}
+			$this->request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
+			return null;
+		}
+
+		$version = $this->decoded_mcp_header( $version_header );
+		if ( null === $version ) {
+			return array(
+				'code'    => 'invalid_mcp_protocol_version_header',
+				'message' => 'MCP-Protocol-Version must be a valid exact mirrored header value.',
+				'status'  => 400,
+			);
+		}
+
+		if ( ! in_array( $version, self::SUPPORTED_PROTOCOL_VERSIONS, true ) ) {
+			return array(
+				'code'    => 'unsupported_protocol_version',
+				'message' => 'The requested MCP protocol version is not supported.',
+				'status'  => 400,
+			);
+		}
+
+		$this->request_protocol_version = $version;
+		if ( self::PROTOCOL_VERSION_CURRENT !== $version ) {
+			return null;
+		}
+
+		$header_method = $this->decoded_mcp_header( (string) $request->get_header( 'mcp-method' ) );
+		if ( null === $header_method || '' === $header_method || ! hash_equals( $method, $header_method ) ) {
+			return array(
+				'code'    => 'invalid_mcp_method_header',
+				'message' => 'Mcp-Method must exactly match the JSON-RPC method.',
+				'status'  => 400,
+			);
+		}
+
+		$params       = isset( $body['params'] ) && is_array( $body['params'] ) ? $body['params'] : array();
+		$meta         = isset( $params['_meta'] ) && is_array( $params['_meta'] ) ? $params['_meta'] : array();
+		$capabilities = $meta['io.modelcontextprotocol/clientCapabilities'] ?? null;
+		$client_info  = $meta['io.modelcontextprotocol/clientInfo'] ?? null;
+		if ( ! isset( $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! is_string( $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! hash_equals( $version, $meta['io.modelcontextprotocol/protocolVersion'] )
+			|| ! is_array( $capabilities )
+			|| ( array() !== $capabilities && array_is_list( $capabilities ) )
+			|| ( null !== $client_info && ( ! is_array( $client_info )
+				|| ! isset( $client_info['name'], $client_info['version'] )
+				|| ! is_string( $client_info['name'] )
+				|| '' === $client_info['name']
+				|| ! is_string( $client_info['version'] )
+				|| '' === $client_info['version'] ) ) ) {
+			return array(
+				'code'    => 'invalid_mcp_request_metadata',
+				'message' => 'Request metadata must include the matching protocol version and client capabilities.',
+				'status'  => 400,
+			);
+		}
+
+		if ( in_array( $method, array( 'tools/call', 'resources/read', 'prompts/get' ), true ) ) {
+			$header_name = (string) $request->get_header( 'mcp-name' );
+			$body_name   = 'resources/read' === $method
+				? ( isset( $params['uri'] ) && is_string( $params['uri'] ) ? $params['uri'] : '' )
+				: ( isset( $params['name'] ) && is_string( $params['name'] ) ? $params['name'] : '' );
+			$decoded     = $this->decoded_mcp_header( $header_name );
+			if ( null === $decoded || '' === $decoded || ! hash_equals( $body_name, $decoded ) ) {
+				return array(
+					'code'    => 'invalid_mcp_name_header',
+					'message' => 'Mcp-Name must exactly match the requested tool, prompt, or resource name.',
+					'status'  => 400,
+				);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Decode a mirrored MCP header value, including the Base64 sentinel format.
+	 *
+	 * @param string $value Header value.
+	 */
+	private function decoded_mcp_header( string $value ): ?string {
+		if ( '' === $value || 4096 < strlen( $value ) ) {
+			return null;
+		}
+
+		if ( str_starts_with( $value, '=?base64?' ) && str_ends_with( $value, '?=' ) ) {
+			$encoded = substr( $value, 9, -2 );
+			if ( '' === $encoded || 4096 < strlen( $encoded ) || 1 !== preg_match( '/^[A-Za-z0-9+\/]+={0,2}$/D', $encoded ) ) {
+				return null;
+			}
+
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Required by the MCP mirrored-header sentinel contract.
+			$decoded = base64_decode( $encoded, true );
+			if ( false === $decoded || '' === $decoded || 2048 < strlen( $decoded ) || 1 !== preg_match( '//u', $decoded ) ) {
+				return null;
+			}
+
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Required to reject non-canonical mirrored-header encodings.
+			return hash_equals( $encoded, base64_encode( $decoded ) ) ? $decoded : null;
+		}
+
+		if ( trim( $value ) !== $value || 1 !== preg_match( '/^[\x20-\x7E]+$/D', $value ) ) {
+			return null;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Check whether a WordPress REST error came from the MCP transport boundary.
+	 *
+	 * @param string $code Error code.
+	 */
+	private function is_transport_error_code( string $code ): bool {
+		return in_array(
+			$code,
+			array(
+				'invalid_mcp_origin',
+				'missing_protocol_version',
+				'invalid_mcp_protocol_version_header',
+				'unsupported_protocol_version',
+				'invalid_mcp_method_header',
+				'invalid_mcp_request_metadata',
+				'invalid_mcp_name_header',
+			),
+			true
+		);
+	}
+
+	/**
+	 * Return the protocol-defined JSON-RPC code for a transport failure.
+	 *
+	 * @param string $code Error code.
+	 */
+	private function transport_rpc_code( string $code ): int {
+		if ( 'unsupported_protocol_version' === $code ) {
+			return -32022;
+		}
+
+		return 'invalid_mcp_origin' === $code ? -32600 : -32020;
+	}
+
+	/**
+	 * Build bounded public data for a transport error.
+	 *
+	 * @param string          $code    Error code.
+	 * @param WP_REST_Request $request REST request.
+	 * @return array<string, mixed>
+	 */
+	private function transport_rpc_data( string $code, WP_REST_Request $request ): array {
+		$data = array( 'code' => $code );
+		if ( 'unsupported_protocol_version' === $code ) {
+			$requested         = $this->decoded_mcp_header( (string) $request->get_header( 'mcp-protocol-version' ) );
+			$data['requested'] = null === $requested || 64 < strlen( $requested ) ? '' : $requested;
+			$data['supported'] = self::SUPPORTED_PROTOCOL_VERSIONS;
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Reset per-request protocol state and retain only a valid supported header.
+	 *
+	 * This runs before body-bound checks so an early response cannot inherit a
+	 * previous request's protocol or mislabel a current GET/413 response.
 	 *
 	 * @param WP_REST_Request $request REST request.
 	 */
-	private function is_auth_exempt_notification( WP_REST_Request $request ): bool {
-		if ( 'POST' !== $request->get_method() ) {
+	private function reset_request_protocol_version( WP_REST_Request $request ): void {
+		$this->request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
+		$version                        = $this->decoded_mcp_header( (string) $request->get_header( 'mcp-protocol-version' ) );
+		if ( null !== $version && in_array( $version, self::SUPPORTED_PROTOCOL_VERSIONS, true ) ) {
+			$this->request_protocol_version = $version;
+		}
+	}
+
+	/**
+	 * Validate a browser Origin using exact scheme, host, and effective port matching.
+	 *
+	 * @param string $origin Request Origin header.
+	 */
+	private function is_allowed_origin( string $origin ): bool {
+		$normalized = $this->normalized_origin( $origin );
+		if ( '' === $normalized ) {
 			return false;
 		}
 
-		$body = $request->get_json_params();
+		$allowed = array( Helpers::origin_from_url( Helpers::mcp_resource() ) );
+		// phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
+		$filtered = apply_filters( 'aculect-ai-companion/connectors/allowed_mcp_origins', $allowed );
+		if ( ! is_array( $filtered ) ) {
+			$filtered = $allowed;
+		}
 
-		return is_array( $body )
-			&& ! array_key_exists( 'id', $body )
-			&& str_starts_with( (string) ( $body['method'] ?? '' ), 'notifications/' );
+		foreach ( $filtered as $candidate ) {
+			if ( is_string( $candidate ) && hash_equals( $normalized, $this->normalized_origin( $candidate ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Normalize an absolute origin without accepting paths, credentials, or wildcards.
+	 *
+	 * @param string $origin Candidate origin.
+	 */
+	private function normalized_origin( string $origin ): string {
+		if ( 'null' === strtolower( $origin ) || str_contains( $origin, '*' ) ) {
+			return '';
+		}
+
+		$parts = wp_parse_url( $origin );
+		if ( ! is_array( $parts ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['query'] ) || isset( $parts['fragment'] ) ) {
+			return '';
+		}
+
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$path   = (string) ( $parts['path'] ?? '' );
+		if ( ! in_array( $scheme, array( 'http', 'https' ), true ) || '' === $host || ! in_array( $path, array( '', '/' ), true ) ) {
+			return '';
+		}
+
+		$port = isset( $parts['port'] ) ? (int) $parts['port'] : ( 'https' === $scheme ? 443 : 80 );
+		return $scheme . '://' . $host . ':' . $port;
 	}
 
 	/**
@@ -178,29 +466,12 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function describe( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->reset_request_protocol_version( $request );
 		if ( array() === $this->request_auth ) {
 			return $this->auth_challenge_response( null, $this->initial_auth_scope(), 401, 'invalid_token' );
 		}
 
-		if ( str_contains( (string) $request->get_header( 'accept' ), 'text/event-stream' ) ) {
-			$this->send_event_stream();
-		}
-
-		return array(
-			'name'           => 'Aculect AI Companion MCP',
-			'protocol'       => 'mcp',
-			'version'        => ACULECT_AI_COMPANION_VERSION,
-			'transport'      => 'streamable-http',
-			'auth'           => 'oauth2.1',
-			'authentication' => array(
-				'type'                  => 'oauth2.1',
-				'resource'              => Helpers::mcp_resource(),
-				'resource_metadata_url' => Helpers::protected_resource_metadata_url(),
-			),
-			'endpoints'      => array(
-				'http' => Helpers::mcp_resource(),
-			),
-		);
+		return McpTransportResponsePolicy::get_response( $request, $this->request_protocol_version );
 	}
 
 	/**
@@ -210,6 +481,8 @@ final class McpController {
 	 * @return WP_REST_Response|array<string, mixed>
 	 */
 	public function handle_rpc( WP_REST_Request $request ): WP_REST_Response|array {
+		$this->reset_request_protocol_version( $request );
+
 		$request_error = ( new McpInputValidator() )->request_error( $request );
 		if ( null !== $request_error ) {
 			return new WP_REST_Response(
@@ -223,6 +496,22 @@ final class McpController {
 					)
 				),
 				413
+			);
+		}
+
+		$transport_error = $this->transport_error( $request );
+		if ( null !== $transport_error ) {
+			return new WP_REST_Response(
+				$this->rpc_error(
+					$this->rpc_id_from_request( $request ),
+					$this->transport_rpc_code( $transport_error['code'] ),
+					'Invalid Request',
+					array_merge(
+						$this->transport_rpc_data( $transport_error['code'], $request ),
+						array( 'message' => $transport_error['message'] )
+					)
+				),
+				$transport_error['status']
 			);
 		}
 
@@ -244,6 +533,10 @@ final class McpController {
 		}
 
 		$method = (string) ( $body['method'] ?? '' );
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && 'notifications/initialized' === $method ) {
+			return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
+		}
+
 		if ( ! array_key_exists( 'id', $body ) && str_starts_with( $method, 'notifications/' ) ) {
 			return new WP_REST_Response( null, 202 );
 		}
@@ -257,8 +550,17 @@ final class McpController {
 
 		switch ( $method ) {
 			case 'initialize':
+				if ( ! McpProtocolVersion::uses_initialize( $this->request_protocol_version ) ) {
+					return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
+				}
+
+				$requested_version = isset( $body['params']['protocolVersion'] ) && is_string( $body['params']['protocolVersion'] ) ? $body['params']['protocolVersion'] : self::PROTOCOL_VERSION_INITIAL;
+				if ( ! McpProtocolVersion::uses_initialize( $requested_version ) ) {
+					// Initialization negotiates a supported alternative; subsequent headers remain strict.
+					$requested_version = McpProtocolVersion::TRANSITIONAL;
+				}
 				$started_at = microtime( true );
-				$result     = $this->initialize_payload();
+				$result     = $this->initialize_payload( $requested_version );
 				$this->record_timeline_event(
 					'initialize',
 					array(
@@ -268,12 +570,27 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->rpc_result( $id, $result );
+				return $this->rpc_result( $id, 'initialize', $result );
+
+			case 'server/discover':
+				return $this->rpc_result( $id, 'server/discover', $this->discover_payload(), true );
 
 			case 'tools/list':
 				$started_at = microtime( true );
 				$cursor     = isset( $body['params']['cursor'] ) && is_string( $body['params']['cursor'] ) ? $body['params']['cursor'] : '';
-				$result     = $this->list_tools( $cursor );
+				try {
+					$result = $this->list_tools( $cursor );
+				} catch ( \UnexpectedValueException ) {
+					( new Logger() )->error(
+						'mcp.invalid_tool_schema',
+						'An enabled MCP tool has an invalid current-protocol schema.',
+						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'invalid_tool_schema' ),
+						$request,
+						200
+					);
+
+					return $this->rpc_error( $id, -32603, 'Internal error', array( 'code' => 'invalid_tool_schema' ) );
+				}
 				$this->record_timeline_event(
 					'tools_list',
 					array(
@@ -284,276 +601,32 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->rpc_result( $id, $result );
+				return $this->rpc_result( $id, 'tools/list', $result );
 
 			case 'resources/list':
-				return $this->rpc_result( $id, ( new McpResourceRegistry() )->list_resources() );
+				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources(), true );
 
 			case 'resources/read':
-				return $this->rpc_result( $id, ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) ) );
+				$resource_result = ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) );
+				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+					&& isset( $resource_result['error'] )
+					&& in_array( $resource_result['error'], array( 'resource_not_found', 'invalid_resource_uri' ), true ) ) {
+					return $this->rpc_error(
+						$id,
+						-32602,
+						'Invalid params',
+						array( 'code' => (string) $resource_result['error'] )
+					);
+				}
+
+				return $this->rpc_result( $id, 'resources/read', $resource_result );
 
 			case 'tools/call':
-				$registry             = new AbilitiesRegistry();
-				$intelligence         = new IntelligenceRegistry();
-				$requested_tool       = (string) ( $body['params']['name'] ?? '' );
-				$tool                 = $intelligence->internal_id( $requested_tool );
-				$is_intelligence_tool = $intelligence->is_known( $tool );
-				if ( ! $is_intelligence_tool ) {
-					$tool = $registry->internal_id( $requested_tool );
-				}
+				$params  = isset( $body['params'] ) && is_array( $body['params'] ) ? $body['params'] : array();
+				$outcome = $this->execution_gateway->execute( new AbilityExecutionRequest( $params, $auth, $request ) );
 
-				$raw_arguments = $body['params']['arguments'] ?? array();
-				if ( ! is_array( $raw_arguments ) ) {
-					return $this->rpc_error(
-						$id,
-						-32602,
-						'Invalid params',
-						array(
-							'code'    => 'invalid_argument_type',
-							'message' => 'Tool arguments must be a JSON object.',
-						)
-					);
-				}
+				return $this->adapt_tool_execution_outcome( $id, $outcome );
 
-				$args         = $raw_arguments;
-				$module       = $is_intelligence_tool ? $intelligence->module( $tool ) : $registry->module( $tool );
-				$input_schema = null === $module ? array() : $this->input_schema_for_module( $module );
-				$input_error  = ( new McpInputValidator() )->arguments_error( $args, $input_schema, $tool );
-				if ( null !== $input_error ) {
-					return $this->rpc_error(
-						$id,
-						-32602,
-						'Invalid params',
-						array(
-							'code'    => $input_error['code'],
-							'message' => $input_error['message'],
-						)
-					);
-				}
-
-				$risk  = $this->tool_risk_level( $tool, $args );
-				$timer = microtime( true );
-				$this->record_timeline_event(
-					'tool_call_start',
-					array(
-						'method'         => 'tools/call',
-						'tool'           => $tool,
-						'status'         => 'started',
-						'risk_level'     => $risk,
-						'target_summary' => $this->timeline_target_summary( $tool, $args ),
-					),
-					$auth
-				);
-				$error = $is_intelligence_tool
-					? $this->intelligence_tool_call_error( $tool, $intelligence, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) )
-					: $this->tool_call_error( $tool, $registry, (int) ( $auth['user_id'] ?? 0 ), $this->profile_context_from_auth( $auth ) );
-
-				if ( 'unknown_tool' === $error ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'unknown_tool', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'unknown_tool',
-							'message' => 'Unknown tool.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.unknown_tool',
-						'MCP tool call referenced an unknown tool.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'unknown_tool', $tool ),
-						$request,
-						200
-					);
-					return $this->tool_error_result( $id, 'Unknown tool.' );
-				}
-
-				if ( 'tool_disabled' === $error ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_disabled', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'tool_disabled',
-							'message' => 'This ability is disabled in Aculect AI Companion settings.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.tool_disabled',
-						'MCP tool call referenced a disabled tool.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_disabled', $tool ),
-						$request,
-						200
-					);
-					return $this->tool_error_result( $id, 'This ability is disabled in Aculect AI Companion settings.' );
-				}
-
-				if ( 'tool_forbidden_for_role' === $error ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_for_role', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'tool_forbidden_for_role',
-							'message' => 'This ability is not available for the connected WordPress role.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.tool_forbidden_for_role',
-						'MCP tool call was blocked by role ability policy.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_forbidden_for_role', $tool ),
-						$request,
-						200
-					);
-					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress role.' );
-				}
-
-				if ( 'tool_hidden_by_profile' === $error ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_hidden_by_profile', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'tool_hidden_by_profile',
-							'message' => 'This ability is hidden by the selected MCP tool profile.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.tool_hidden_by_profile',
-						'MCP tool call was blocked by the selected tool profile.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_hidden_by_profile', $tool ),
-						$request,
-						200
-					);
-					return $this->tool_error_result( $id, 'This ability is hidden by the selected MCP tool profile.' );
-				}
-
-				if ( 'tool_forbidden_by_capability' === $error ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'tool_forbidden_by_capability', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'tool_forbidden_by_capability',
-							'message' => 'This ability is not available for the connected WordPress capabilities.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.tool_forbidden_by_capability',
-						'MCP tool call was blocked by WordPress capabilities.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'tool_forbidden_by_capability', $tool ),
-						$request,
-						200
-					);
-					return $this->tool_error_result( $id, 'This ability is not available for the connected WordPress capabilities.' );
-				}
-
-				if ( $this->is_access_paused( (int) ( $auth['user_id'] ?? 0 ) ) ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'access_paused', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'  => 'error',
-							'error'   => 'access_paused',
-							'message' => 'AI access is paused in Aculect AI Companion settings.',
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.access_paused',
-						'MCP tool call was blocked because AI access is paused.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'access_paused' ),
-						$request,
-						423
-					);
-					return $this->tool_error_result( $id, 'AI access is paused in Aculect AI Companion settings.' );
-				}
-
-				$required = $is_intelligence_tool ? $intelligence->required_scopes( $tool ) : $registry->required_scopes( $tool );
-				if ( ! $this->has_scopes( (array) ( $auth['scopes'] ?? array() ), $required ) ) {
-					$this->record_blocked_timeline_event( $tool, $args, $auth, 'insufficient_scope', $timer );
-					$this->record_tool_activity(
-						$tool,
-						$args,
-						array(
-							'status'          => 'error',
-							'error'           => 'insufficient_scope',
-							'message'         => 'The connection token does not include every required OAuth scope.',
-							'required_scopes' => $required,
-						),
-						$auth
-					);
-					( new Logger() )->warning(
-						'mcp.insufficient_scope',
-						'MCP tool call did not include every required OAuth scope.',
-						$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), 'insufficient_scope', $tool, $required ),
-						$request,
-						403
-					);
-					return $this->auth_challenge_response( $id, implode( ' ', $required ), 403, 'insufficient_scope' );
-				}
-
-				$execution              = $this->execute_tool_with_safety( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
-				$result                 = $execution['result'];
-				$args                   = $execution['args'];
-				$trusted_write_executed = $execution['trusted_write_executed'];
-
-				$activity_auth = $auth;
-				if ( $trusted_write_executed ) {
-					$activity_auth['write_permission_used'] = true;
-					( new Logger() )->info(
-						'mcp.trusted_write',
-						'MCP write tool executed through a trusted connection.',
-						array_merge(
-							$this->log_context( $method, (string) ( $auth['provider'] ?? '' ), '', $tool ),
-							array(
-								'access_level'             => (string) ( $auth['access_level'] ?? '' ),
-								'write_permission_enabled' => true,
-							)
-						),
-						$request,
-						200
-					);
-				}
-
-				$this->record_tool_activity( $tool, $args, $result, $activity_auth );
-				$this->record_timeline_event(
-					isset( $result['error'] ) ? 'error' : 'tool_call_end',
-					array(
-						'method'         => 'tools/call',
-						'tool'           => $tool,
-						'status'         => isset( $result['error'] ) ? 'error' : 'success',
-						'error_code'     => isset( $result['error'] ) && is_scalar( $result['error'] ) ? (string) $result['error'] : '',
-						'duration_ms'    => $this->duration_ms( $timer ),
-						'risk_level'     => $risk,
-						'target_summary' => $this->timeline_target_summary( $tool, $args, $result ),
-					),
-					$activity_auth
-				);
-
-				return $this->rpc_result(
-					$id,
-					array(
-						'content'           => array(
-							array(
-								'type' => 'text',
-								'text' => (string) wp_json_encode( $result ),
-							),
-						),
-						'structuredContent' => $result,
-					)
-				);
 		}
 
 		( new Logger() )->warning(
@@ -563,7 +636,10 @@ final class McpController {
 			$request,
 			200
 		);
-		return $this->rpc_error( $id, -32601, 'Method not found' );
+		$error = $this->rpc_error( $id, -32601, 'Method not found' );
+		return self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+			? new WP_REST_Response( $error, 404 )
+			: $error;
 	}
 
 	/**
@@ -573,43 +649,24 @@ final class McpController {
 	 * @param string   $provider        Provider slug.
 	 * @param string   $error_code      Optional error code.
 	 * @param string   $tool            Optional internal tool ID.
-	 * @param string[] $required_scopes Optional required scopes.
+	 * @param string[] $required_scopes  Optional required scopes.
+	 * @param string   $auth_failure_reason Fixed non-secret authentication failure category.
 	 * @return array<string, mixed>
 	 */
-	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array() ): array {
-		$context = array(
+	private function log_context( string $method, string $provider = '', string $error_code = '', string $tool = '', array $required_scopes = array(), string $auth_failure_reason = '' ): array {
+		$context               = array(
 			'provider'   => $provider,
 			'rpc_method' => $method,
 			'tool'       => $tool,
-		);
-
+		) + ( '' === $auth_failure_reason ? array() : array( 'auth_failure_reason' => $auth_failure_reason ) );
+		$context['request_id'] = McpTransportResponsePolicy::request_id();
 		if ( '' !== $error_code ) {
 			$context['error_code'] = $error_code;
 		}
-
 		if ( array() !== $required_scopes ) {
 			$context['required_scopes'] = array_values( array_map( 'strval', $required_scopes ) );
 		}
-
 		return $context;
-	}
-
-	/**
-	 * Return a minimal server-sent event stream for clients probing SSE support.
-	 *
-	 * Deliberately echoes and exits inside a REST callback: SSE cannot be
-	 * represented as a WP_REST_Response, and exiting skips rest_post_dispatch.
-	 * Auth has already passed in the permission callback by this point, so no
-	 * challenge headers are needed on this path.
-	 */
-	private function send_event_stream(): void {
-		status_header( 200 );
-		nocache_headers();
-		header( 'Content-Type: text/event-stream; charset=' . get_option( 'blog_charset' ) );
-		header( 'X-Accel-Buffering: no' );
-		echo ": aculect-ai-companion-mcp-stream\n\n";
-		flush();
-		exit;
 	}
 
 	/**
@@ -649,7 +706,7 @@ final class McpController {
 	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
 	 */
 	public function tools_list_page_for_user( int $user_id, ?array $granted_scopes = null, string $cursor = '', array $profile_context = array() ): array {
-		return $this->tools_list_page( $this->tools_for_user( $user_id, $granted_scopes, $profile_context ), $cursor );
+		return ( new McpToolListPager() )->page( $this->tools_for_user( $user_id, $granted_scopes, $profile_context ), $cursor );
 	}
 
 	/**
@@ -662,16 +719,10 @@ final class McpController {
 	}
 
 	/**
-	 * Tools returned per tools/list page. Below typical client truncation
-	 * thresholds while keeping most installs single-page.
-	 */
-	private const TOOLS_PAGE_SIZE = 60;
-
-	/**
 	 * Return the current tools/list page size for diagnostics.
 	 */
 	public static function tools_page_size(): int {
-		return self::TOOLS_PAGE_SIZE;
+		return McpToolListPager::page_size();
 	}
 
 	/**
@@ -687,7 +738,7 @@ final class McpController {
 		$user_id        = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
 		$granted_scopes = array_key_exists( 'scopes', $this->request_auth ) ? (array) $this->request_auth['scopes'] : null;
 
-		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor, $this->profile_context_from_auth( $this->request_auth ) );
+		return $this->tools_list_page_for_user( (int) $user_id, $granted_scopes, $cursor, AbilityExecutionGateway::profile_context_from_auth( $this->request_auth ) );
 	}
 
 	/**
@@ -702,142 +753,6 @@ final class McpController {
 		$modules = ( new McpToolAvailability() )->tool_modules_for_user( $user_id, null, null, $granted_scopes, $profile_context );
 
 		return array_values( array_map( array( $this, 'tool_from_module' ), $modules ) );
-	}
-
-	/**
-	 * Return one deterministic page from a complete tools/list descriptor set.
-	 *
-	 * @param list<array<string, mixed>> $tools  Complete tool descriptors.
-	 * @param string                     $cursor Opaque cursor from a previous page.
-	 * @return array{tools: list<array<string, mixed>>, nextCursor?: string, _meta: array<string, int|string|bool>}
-	 */
-	private function tools_list_page( array $tools, string $cursor = '' ): array {
-		$fingerprint = $this->tools_list_fingerprint( $tools );
-		$cursor_data = $this->tools_cursor_data( $cursor, $fingerprint );
-		$offset      = $cursor_data['fingerprint_matches'] ? $cursor_data['offset'] : 0;
-		$page        = array_slice( $tools, $offset, self::TOOLS_PAGE_SIZE );
-		$result      = array(
-			'tools' => $page,
-			'_meta' => array(
-				'aculect/toolListFingerprint' => $fingerprint,
-				'aculect/toolListVersion'     => ACULECT_AI_COMPANION_VERSION,
-				'aculect/totalTools'          => count( $tools ),
-				'aculect/pageSize'            => self::TOOLS_PAGE_SIZE,
-				'aculect/pageOffset'          => $offset,
-				'aculect/pageToolCount'       => count( $page ),
-				'aculect/cursorValid'         => $cursor_data['fingerprint_matches'],
-			),
-		);
-
-		if ( $offset + count( $page ) < count( $tools ) ) {
-			$result['nextCursor']                           = $this->tools_cursor_encode( $offset + count( $page ), $fingerprint );
-			$result['_meta']['aculect/nextCursorOffset']    = $offset + count( $page );
-			$result['_meta']['aculect/nextCursorVersioned'] = true;
-		}
-
-		return $result;
-	}
-
-	/**
-	 * Return deterministic, support-safe metadata fingerprint for a complete tools/list result.
-	 *
-	 * @param list<array<string, mixed>> $tools Complete tool descriptors.
-	 */
-	private function tools_list_fingerprint( array $tools ): string {
-		$json = wp_json_encode(
-			array(
-				'plugin_version' => ACULECT_AI_COMPANION_VERSION,
-				'tools'          => $this->canonicalize_tools_for_cursor( $tools ),
-			),
-			JSON_UNESCAPED_SLASHES
-		);
-
-		return hash( 'sha256', false === $json ? '' : $json );
-	}
-
-	/**
-	 * Keep cursor fingerprints stable without exposing request, token, or content data.
-	 *
-	 * @param list<array<string, mixed>> $tools Complete tool descriptors.
-	 * @return list<array<string, mixed>>
-	 */
-	private function canonicalize_tools_for_cursor( array $tools ): array {
-		return array_values(
-			array_map(
-				static function ( array $tool ): array {
-					return array(
-						'name'            => (string) ( $tool['name'] ?? '' ),
-						'title'           => (string) ( $tool['title'] ?? '' ),
-						'description'     => (string) ( $tool['description'] ?? '' ),
-						'inputSchema'     => $tool['inputSchema'] ?? array(),
-						'outputSchema'    => $tool['outputSchema'] ?? array(),
-						'annotations'     => $tool['annotations'] ?? array(),
-						'securitySchemes' => $tool['securitySchemes'] ?? array(),
-						'_meta'           => $tool['_meta'] ?? array(),
-					);
-				},
-				$tools
-			)
-		);
-	}
-
-	/**
-	 * Encode a tools/list cursor with the metadata fingerprint it belongs to.
-	 *
-	 * @param int    $offset      Next result offset.
-	 * @param string $fingerprint Current full tools/list fingerprint.
-	 */
-	private function tools_cursor_encode( int $offset, string $fingerprint ): string {
-		$json = wp_json_encode(
-			array(
-				'v'  => 2,
-				'o'  => max( 0, $offset ),
-				'fp' => $fingerprint,
-			),
-			JSON_UNESCAPED_SLASHES
-		);
-
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Opaque MCP pagination cursor, not obfuscation.
-		return base64_encode( false === $json ? (string) max( 0, $offset ) : $json );
-	}
-
-	/**
-	 * Decode a tools/list cursor into an offset plus fingerprint match status.
-	 *
-	 * @param string $cursor Opaque cursor value.
-	 * @param string $fingerprint Current full tools/list fingerprint.
-	 * @return array{offset:int, fingerprint_matches:bool}
-	 */
-	private function tools_cursor_data( string $cursor, string $fingerprint ): array {
-		if ( '' === $cursor ) {
-			return array(
-				'offset'              => 0,
-				'fingerprint_matches' => true,
-			);
-		}
-
-		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Opaque MCP pagination cursor, not obfuscation.
-		$decoded = base64_decode( $cursor, true );
-
-		if ( false === $decoded ) {
-			return array(
-				'offset'              => 0,
-				'fingerprint_matches' => false,
-			);
-		}
-
-		$payload = json_decode( $decoded, true );
-		if ( is_array( $payload ) ) {
-			return array(
-				'offset'              => absint( $payload['o'] ?? 0 ),
-				'fingerprint_matches' => hash_equals( $fingerprint, (string) ( $payload['fp'] ?? '' ) ),
-			);
-		}
-
-		return array(
-			'offset'              => max( 0, absint( $decoded ) ),
-			'fingerprint_matches' => true,
-		);
 	}
 
 	/**
@@ -856,7 +771,7 @@ final class McpController {
 			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
 		);
 
-		$input_schema = $this->input_schema_for_module( $module );
+		$input_schema = $this->schema_for_protocol( AbilityExecutionGateway::input_schema_for_module( $module ) );
 
 		$descriptor = array(
 			'name'            => $registry->tool_name( $module->id() ),
@@ -865,115 +780,71 @@ final class McpController {
 			'inputSchema'     => $input_schema,
 			'securitySchemes' => $security,
 			'_meta'           => $meta,
-			'annotations'     => $this->tool_annotations( $module ),
+			'annotations'     => ( new McpToolAnnotations() )->for_module( $module ),
 		);
 
 		$output_schema = $this->output_schema_for_module( $module );
 		if ( array() !== $output_schema ) {
-			$descriptor['outputSchema'] = $output_schema;
+			$descriptor['outputSchema'] = $this->schema_for_protocol( $output_schema );
 		}
 
 		return $descriptor;
 	}
 
 	/**
-	 * Return the effective public input schema for a module.
+	 * Prepare an advertised schema for the resolved request protocol.
 	 *
-	 * @param AbilityModuleInterface $module Ability module.
-	 * @return array<string, mixed>
+	 * Execution continues to validate the module's original schema. This method
+	 * only controls the bounded descriptor sent to the client.
+	 *
+	 * @param array<string, mixed> $schema Module schema.
+	 * @return array<string, mixed>|bool|\stdClass
+	 * @throws \UnexpectedValueException When a current schema is invalid.
 	 */
-	private function input_schema_for_module( AbilityModuleInterface $module ): array {
-		$schema = $module->input_schema();
+	private function schema_for_protocol( array $schema ): array|bool|\stdClass {
+		$result = ( new McpSchemaCompatibility() )->prepare( $schema, $this->request_protocol_version );
+		if ( ! $result['valid'] ) {
+			throw new \UnexpectedValueException( 'Invalid MCP tool schema.' );
+		}
 
-		return 'plugin.incident.report' === $module->id()
-			? $this->plugin_incident_report_input_schema( $schema )
-			: $schema;
-	}
-
-	/**
-	 * Return provider-facing tool annotations.
-	 *
-	 * @param AbilityModuleInterface $module Ability module.
-	 * @return array<string, bool>
-	 */
-	private function tool_annotations( AbilityModuleInterface $module ): array {
-		$risk = $this->tool_risk_level( $module->id(), array() );
-
-		return array(
-			'readOnlyHint'    => $module->is_read_only(),
-			'destructiveHint' => in_array( $risk, array( 'destructive', 'system' ), true ),
-			'idempotentHint'  => in_array( $module->id(), array( 'content_index.refresh_batch', 'memory.save', 'memory.bootstrap' ), true ),
-			'openWorldHint'   => in_array(
-				$module->id(),
-				array(
-					'content.create_item',
-					'content.update_item',
-					'content.update_block',
-					'content_media.search_cc0_images',
-					'content_media.apply_image',
-					'comments.create_item',
-					'comments.update_item',
-					'comments.bulk_update',
-					'media.upload_item',
-					'media.upload_image_data',
-					'wp_abilities.run',
-				),
-				true
-			),
-		);
-	}
-
-	/**
-	 * Add the standard write-safety controls to the incident report descriptor.
-	 *
-	 * The incident reporter is an always-on intelligence module, but it writes a
-	 * local option. Its public schema therefore needs the same controls as other
-	 * confirmation-gated write tools without changing its registry scope or
-	 * read-only metadata.
-	 *
-	 * @param array<string, mixed> $schema Incident report input schema.
-	 * @return array<string, mixed>
-	 */
-	private function plugin_incident_report_input_schema( array $schema ): array {
-		$properties                       = isset( $schema['properties'] ) && is_array( $schema['properties'] ) ? $schema['properties'] : array();
-		$properties['dry_run']            = array(
-			'type'        => 'boolean',
-			'description' => 'Preview the sanitized incident draft without storing it.',
-		);
-		$properties['confirmation_token'] = array(
-			'type'        => 'string',
-			'description' => 'Confirmation token from a previous preview of the same incident report.',
-		);
-		$properties['idempotency_key']    = array(
-			'type'        => 'string',
-			'description' => 'Optional stable key that makes retried report submissions replay-safe.',
-		);
-		$schema['properties']             = $properties;
-
-		return $schema;
+		return $result['schema'];
 	}
 
 	/**
 	 * Build the MCP initialize payload.
 	 *
+	 * @param string $protocol_version Negotiated protocol version.
 	 * @return array<string, mixed>
 	 */
-	private function initialize_payload(): array {
+	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_INITIAL ): array {
 		return array(
-			'protocolVersion' => '2025-06-18',
-			'serverInfo'      => array(
-				'name'    => 'Aculect AI Companion MCP',
-				'version' => ACULECT_AI_COMPANION_VERSION,
-			),
+			'protocolVersion' => $protocol_version,
+			'serverInfo'      => $this->server_info(),
 			'instructions'    => $this->mcp_instructions(),
 			'capabilities'    => array(
 				'tools'     => array(
-					'listChanged' => true,
+					'listChanged' => false,
 				),
 				'resources' => array(
-					'listChanged' => true,
+					'listChanged' => false,
 				),
 			),
+		);
+	}
+
+	/**
+	 * Build the stateless discovery result defined by MCP 2026-07-28.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function discover_payload(): array {
+		return array(
+			'supportedVersions' => self::SUPPORTED_PROTOCOL_VERSIONS,
+			'capabilities'      => array(
+				'tools'     => array( 'listChanged' => false ),
+				'resources' => array( 'listChanged' => false ),
+			),
+			'instructions'      => $this->mcp_instructions(),
 		);
 	}
 
@@ -981,38 +852,7 @@ final class McpController {
 	 * Return server-wide workflow guidance for MCP clients.
 	 */
 	private function mcp_instructions(): string {
-		return implode(
-			' ',
-			array(
-				'Aculect AI Companion is a WordPress MCP server with read-only Aculect Intelligence context tools and separately governed operational tools.',
-				'For ambiguous or multi-step work, call workflow_route_request first; when the workflow spans multiple tools, call workflow_session_start and pass workflow_session_id through workflow calls.',
-				'Clients that support MCP resources can call resources/list and resources/read for compact Aculect context such as capability directory, site summary, content model, workflow guides, brand profile, and approved memory.',
-				'When the user asks what is possible, what can be managed, or which abilities/workflows are available, call intelligence_capabilities_get_directory first.',
-				'When the task needs a repeatable multi-tool procedure, call workflow_guides_list and then workflow_guides_get for the chosen guide.',
-				'Before planning site, content, brand, or developer work, call the relevant context tool: intelligence_site_get_context, intelligence_content_get_context, intelligence_developer_get_context, or intelligence_brand_get_context.',
-				'Use the returned operations manifest to choose only available operational tools; unavailable operations explain global ability, role policy, or OAuth scope blockers.',
-				'Before planning WordPress core management, route/schema-dependent content work, or Site Editor compatibility, call core_schema_discover for bounded REST route, post type, taxonomy, status, revision, autosave, and capability discovery.',
-				'For ChatGPT company knowledge, deep research, and citation-oriented retrieval, call search first and then fetch with a returned ID before quoting or citing WordPress content.',
-				'For fast content discovery, prefer content_search_items, content_search_chunks, content_find_related, and content_find_internal_links before reading full posts; refresh stale index rows with content_index_refresh_batch when available.',
-				'For internal-link work, inspect content_internal_link_policy first, audit existing signals with content_audit_internal_links when the source or target state is unclear, then use content_find_internal_links and the reviewable suggestion flow before requesting any write.',
-				'For "do all" style collection work such as thin-page cleanup, create a workflow_loop after discovery, then use workflow_loop_run_next or workflow_loop_run_batch to process bounded items and report completion without resending the full item list.',
-				'Use memory_list for durable Aculect Intelligence guidance; do not require ChatGPT or Claude saved memory to understand the site. If memory_list is empty or missing obvious site guidance, call memory_bootstrap or memory_save with no key/value to prepare initial memory for admin review. Submit new durable guidance with intelligence_feedback_submit for admin review unless the user explicitly authorizes memory_save.',
-				'If the plugin, MCP connection, or an assistant workflow fails, call plugin_incident_report to store a local sanitized incident report with report_id and correlation_id, prepare a public GitHub issue draft, then create it through your own GitHub or browser tools when available.',
-				'When repeated MCP errors or poor tool choices happen, call mcp_learning_inspect_activity and submit a bounded learning suggestion with intelligence_feedback_submit when the owner should review durable guidance.',
-				'For site management planning or maintenance posture questions, call site_workflow_audit before recommending changes.',
-				'For Appearance > Editor, full-site editing, template, template part, navigation, global style, or theme design-token work, call site_editor_get_context first, then inspect templates or template parts as needed. Site Editor work is admin-level only; do not request filesystem or theme-file changes.',
-				'For classic menus, registered menu locations, wp_navigation entities, or Navigation block inventory, call navigation_get_context first and then use navigation_list_menus, navigation_list_locations, or navigation_list_items. This slice is read-only and does not implement menu writes or raw serialized block edits.',
-				'For WordPress core, plugin, or theme admin settings work, call admin_menu_get_context or admin_menu_get_navigation_target first. Use registered settings metadata for discovery only; do not read or write arbitrary wp_options.',
-				'For normal WordPress content creation or editing, call content_workflow_prepare_post first, then prefer content_workflow_create_draft, content_workflow_update_post, or seo_workflow_update_rankmath when available.',
-				'When an internal-link apply or other write preview returns confirmation_required, ask the user for confirmation and repeat the same tool call with confirmation_token before it expires.',
-				'For image workflows, use content_media_apply_image to import an existing attachment, public URL, externally generated image URL, direct image data, or Openverse CC0 result, then set featured media or insert core image/gallery/cover/media-text blocks without hand-stitching raw media and content calls.',
-				'When the user provides an image, screenshot, visual reference, grid, columns, cards, hero, landing page, service page, product page, or other page-layout direction, summarize the visual/layout requirements, discover layout blocks and patterns, and pass content_mode plus layout_intent to content_workflow_prepare_post before drafting.',
-				'Use atomic content, taxonomy, media, and SEO tools only when a workflow tool is unavailable or the user asks for a narrow direct operation.',
-				'If intelligence is incomplete, stale, or causes poor results, call intelligence_feedback_submit with a bounded learning suggestion for admin review.',
-				'Never use raw Custom HTML blocks or core/html; use registered WordPress blocks and patterns, and validate block content before write operations.',
-				'Pass a unique idempotency_key on create and update tool calls so network retries replay the stored result instead of duplicating work.',
-			)
-		);
+		return McpInstructions::text();
 	}
 
 	/**
@@ -1039,21 +879,7 @@ final class McpController {
 		}
 
 		if ( 'core_schema.discover' === $module->id() ) {
-			return $this->object_output_schema(
-				array(
-					'schema_version' => array( 'type' => 'string' ),
-					'description'    => array( 'type' => 'string' ),
-					'wordpress'      => array( 'type' => 'object' ),
-					'capabilities'   => array( 'type' => 'object' ),
-					'post_types'     => array( 'type' => 'array' ),
-					'taxonomies'     => array( 'type' => 'array' ),
-					'statuses'       => array( 'type' => 'array' ),
-					'rest'           => array( 'type' => 'object' ),
-					'features'       => array( 'type' => 'object' ),
-					'diagnostics'    => array( 'type' => 'array' ),
-				),
-				array( 'schema_version', 'wordpress', 'capabilities', 'post_types', 'taxonomies', 'statuses', 'rest', 'features', 'diagnostics' )
-			);
+			return McpOutputSchemaCatalog::core_schema();
 		}
 
 		if ( str_starts_with( $module->id(), 'users.' ) ) {
@@ -1505,138 +1331,6 @@ final class McpController {
 	}
 
 	/**
-	 * Execute an MCP tool from either the internal intelligence or ability registry.
-	 *
-	 * @param string               $tool                 Internal tool ID.
-	 * @param array<string, mixed> $args                 Tool arguments.
-	 * @param AbilitiesRegistry    $registry             User-managed ability registry.
-	 * @param IntelligenceRegistry $intelligence         Internal intelligence registry.
-	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
-	 * @param array<string, mixed> $auth                 OAuth token context.
-	 * @return array<string, mixed>
-	 */
-	private function execute_tool( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth = array() ): array {
-		return $is_intelligence_tool ? $intelligence->execute( $tool, $args, $this->intelligence_source_from_auth( $auth ) ) : $registry->execute( $tool, $args );
-	}
-
-	/**
-	 * Execute one MCP tool through the shared dry-run, confirmation, and replay controls.
-	 *
-	 * Plugin incident reporting derives its write behavior from module metadata
-	 * and uses the same approval path as user-managed abilities. Other internal
-	 * intelligence tools retain their existing handling.
-	 *
-	 * @param string               $tool                 Internal ability ID.
-	 * @param array<string, mixed> $args                 Tool arguments.
-	 * @param AbilitiesRegistry    $registry             Ability registry.
-	 * @param IntelligenceRegistry $intelligence         Intelligence registry.
-	 * @param bool                 $is_intelligence_tool Whether the tool is internal intelligence.
-	 * @param array<string, mixed> $auth                 OAuth token context.
-	 * @return array{result: array<string, mixed>, args: array<string, mixed>, trusted_write_executed: bool}
-	 */
-	private function execute_tool_with_safety( string $tool, array $args, AbilitiesRegistry $registry, IntelligenceRegistry $intelligence, bool $is_intelligence_tool, array $auth ): array {
-		$safety                     = new ToolSafety();
-		$is_incident_report         = $is_intelligence_tool && 'plugin.incident.report' === $tool && ! $intelligence->is_read_only( $tool );
-		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $registry->is_read_only( $tool ) );
-		$requires_confirmation      = $safety->requires_confirmation( $tool, $args );
-		$has_confirmation_token     = $is_write_tool && $safety->has_confirmation_token( $args );
-		$is_dry_run                 = $is_write_tool && $safety->is_dry_run( $args ) && ! $has_confirmation_token;
-		$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $registry, $auth, $is_intelligence_tool ? $intelligence : null );
-		$replay                     = $is_write_tool && ! $is_dry_run
-			? ( $safety->confirmation_replay( $tool, $args, $auth ) ?? $safety->idempotent_replay( $tool, $args, $auth ) )
-			: null;
-		$trusted_write_executed     = false;
-		$confirmation_validated     = $is_write_tool
-			&& ! $is_dry_run
-			&& null === $replay
-			&& ! $write_permission_unblocked
-			&& $requires_confirmation
-			&& $this->confirmation_token_validated( $tool, $args, $auth, $safety );
-		$invalid_confirmation       = $has_confirmation_token
-			&& ! $is_dry_run
-			&& null === $replay
-			&& ! $write_permission_unblocked
-			&& $requires_confirmation
-			&& ! $confirmation_validated;
-		$needs_confirmation_gate    = $is_write_tool
-			&& ! $is_dry_run
-			&& null === $replay
-			&& ! $write_permission_unblocked
-			&& $requires_confirmation
-			&& ! $has_confirmation_token
-			&& ! $confirmation_validated;
-
-		if ( null !== $replay ) {
-			$result = $replay;
-		} elseif ( $is_dry_run ) {
-			$result = $this->execute_tool( $tool, $args, $registry, $intelligence, $is_intelligence_tool, $auth );
-			if ( ! isset( $result['error'] ) ) {
-				if ( $write_permission_unblocked ) {
-					$result = $this->write_permission_preview_payload( $result );
-				} elseif ( $requires_confirmation ) {
-					$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth, $safety );
-				}
-			}
-		} elseif ( $invalid_confirmation ) {
-			$result = $this->invalid_confirmation_payload( $tool, $args, $auth );
-		} elseif ( $needs_confirmation_gate ) {
-			$preview_args            = $safety->strip_control_args( $args );
-			$preview_args['dry_run'] = true;
-			$preview                 = $this->execute_tool( $tool, $preview_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-			$result                  = isset( $preview['error'] )
-				? $preview
-				: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview, $safety );
-		} else {
-			$exec_args = $is_write_tool ? $safety->strip_control_args( $args ) : $args;
-			$result    = $this->execute_tool( $tool, $exec_args, $registry, $intelligence, $is_intelligence_tool, $auth );
-			if ( $is_write_tool && ! isset( $result['error'] ) ) {
-				$trusted_write_executed = $write_permission_unblocked;
-				if ( $trusted_write_executed ) {
-					$result = $this->trusted_write_result_payload( $result, $auth );
-				}
-				$safety->remember_write_result( $tool, $args, $auth, $result );
-			}
-			$args = $exec_args;
-		}
-
-		return array(
-			'result'                 => $result,
-			'args'                   => $args,
-			'trusted_write_executed' => $trusted_write_executed,
-		);
-	}
-
-	/**
-	 * Return the risk level used in MCP protocol responses and activity telemetry.
-	 *
-	 * @param string               $tool Internal ability ID.
-	 * @param array<string, mixed> $args Tool arguments.
-	 */
-	private function tool_risk_level( string $tool, array $args ): string {
-		if ( 'plugin.incident.report' === $tool ) {
-			return 'update';
-		}
-
-		return ( new ToolSafety() )->risk_level( $tool, $args );
-	}
-
-	/**
-	 * Record one MCP tool event without making activity storage part of request success.
-	 *
-	 * @param string               $tool   Internal tool ID.
-	 * @param array<string, mixed> $args   Tool arguments.
-	 * @param array<string, mixed> $result Tool result or error payload.
-	 * @param array<string, mixed> $auth   OAuth token context.
-	 */
-	private function record_tool_activity( string $tool, array $args, array $result, array $auth ): void {
-		try {
-			( new ActivityLogger() )->record_tool_call( $tool, $args, $result, $auth );
-		} catch ( \Throwable $throwable ) {
-			unset( $throwable );
-		}
-	}
-
-	/**
 	 * Record one MCP session timeline event without affecting protocol success.
 	 *
 	 * @param string               $event    Timeline event type.
@@ -1652,406 +1346,12 @@ final class McpController {
 	}
 
 	/**
-	 * Record a policy or authorization block in the MCP session timeline.
-	 *
-	 * @param string               $tool       Internal ability ID.
-	 * @param array<string, mixed> $args       Tool arguments.
-	 * @param array<string, mixed> $auth       OAuth token context.
-	 * @param string               $blocked_by Block reason.
-	 * @param float                $started_at Request start time.
-	 */
-	private function record_blocked_timeline_event( string $tool, array $args, array $auth, string $blocked_by, float $started_at ): void {
-		$this->record_timeline_event(
-			'blocked_by',
-			array(
-				'method'         => 'tools/call',
-				'tool'           => $tool,
-				'status'         => 'blocked',
-				'blocked_by'     => $blocked_by,
-				'error_code'     => $blocked_by,
-				'duration_ms'    => $this->duration_ms( $started_at ),
-				'risk_level'     => $this->tool_risk_level( $tool, $args ),
-				'target_summary' => $this->timeline_target_summary( $tool, $args ),
-			),
-			$auth
-		);
-	}
-
-	/**
-	 * Validate a confirmation token and emit a support-safe timeline event.
-	 *
-	 * @param string               $tool   Internal ability ID.
-	 * @param array<string, mixed> $args   Tool arguments.
-	 * @param array<string, mixed> $auth   OAuth token context.
-	 * @param ToolSafety           $safety Safety helper.
-	 */
-	private function confirmation_token_validated( string $tool, array $args, array $auth, ToolSafety $safety ): bool {
-		$validated = $safety->validate_confirmation_token( $tool, $args, $auth );
-		if ( $validated ) {
-			$this->record_timeline_event(
-				'confirmation_validated',
-				array(
-					'method'              => 'tools/call',
-					'tool'                => $tool,
-					'status'              => 'validated',
-					'confirmation_policy' => 'token',
-					'risk_level'          => $this->tool_risk_level( $tool, $args ),
-					'target_summary'      => $this->timeline_target_summary( $tool, $args ),
-				),
-				$auth
-			);
-		}
-
-		return $validated;
-	}
-
-	/**
-	 * Return bounded source metadata for intelligence feedback suggestions.
-	 *
-	 * @param array<string, mixed> $auth OAuth token context.
-	 * @return array<string, mixed>
-	 */
-	private function intelligence_source_from_auth( array $auth ): array {
-		return array(
-			'provider'    => (string) ( $auth['provider'] ?? 'mcp' ),
-			'client_id'   => (string) ( $auth['client_id'] ?? '' ),
-			'client_name' => (string) ( $auth['client_name'] ?? '' ),
-			'user_id'     => (int) ( $auth['user_id'] ?? 0 ),
-		);
-	}
-
-	/**
-	 * Add confirmation metadata to a dry-run preview.
-	 *
-	 * @param array<string,mixed>  $result Preview result.
-	 * @param string               $tool   Internal ability ID.
-	 * @param array<mixed>         $args   Tool arguments.
-	 * @param array<string, mixed> $auth   OAuth context.
-	 * @param ToolSafety           $safety Safety helper.
-	 * @return array<string,mixed>
-	 */
-	private function add_confirmation_metadata( array $result, string $tool, array $args, array $auth, ToolSafety $safety ): array {
-		$result['confirmation_required']     = true;
-		$result['confirmation_token']        = $safety->issue_confirmation_token( $tool, $args, $auth );
-		$result['confirmation_expires_in']   = $safety->confirmation_ttl();
-		$result['confirmation_instructions'] = 'Repeat the same tool call with confirmation_token before it expires to apply these changes.';
-		$this->record_timeline_event(
-			'confirmation_issued',
-			array(
-				'method'              => 'tools/call',
-				'tool'                => $tool,
-				'status'              => 'issued',
-				'confirmation_policy' => 'dry_run_preview',
-				'risk_level'          => $this->tool_risk_level( $tool, $args ),
-				'target_summary'      => $this->timeline_target_summary( $tool, $args, $result ),
-			),
-			$auth
-		);
-
-		return $result;
-	}
-
-	/**
-	 * Build a distinct response for an invalid, expired, or mismatched token.
-	 *
-	 * @param string               $tool Internal ability ID.
-	 * @param array<string, mixed> $args Tool arguments.
-	 * @param array<string, mixed> $auth OAuth context.
-	 * @return array<string, mixed>
-	 */
-	private function invalid_confirmation_payload( string $tool, array $args, array $auth ): array {
-		$this->record_timeline_event(
-			'blocked_by',
-			array(
-				'method'         => 'tools/call',
-				'tool'           => $tool,
-				'status'         => 'blocked',
-				'blocked_by'     => 'invalid_confirmation_token',
-				'error_code'     => 'invalid_confirmation_token',
-				'risk_level'     => $this->tool_risk_level( $tool, $args ),
-				'target_summary' => $this->timeline_target_summary( $tool, $args ),
-			),
-			$auth
-		);
-
-		return array(
-			'status'                => 'blocked',
-			'error'                 => 'invalid_confirmation_token',
-			'message'               => 'The confirmation token is invalid, expired, or does not match this tool call.',
-			'confirmation_required' => true,
-			'action'                => $tool,
-			'risk_level'            => $this->tool_risk_level( $tool, $args ),
-			'next_actions'          => array( 'Repeat the call without confirmation_token to request a new preview and token.' ),
-		);
-	}
-
-	/**
-	 * Build a confirmation-required response without applying the action.
-	 *
-	 * @param string               $tool    Internal ability ID.
-	 * @param array<mixed>         $args    Preview arguments.
-	 * @param array<string, mixed> $auth    OAuth context.
-	 * @param array<string, mixed> $preview Dry-run preview.
-	 * @param ToolSafety           $safety  Safety helper.
-	 * @return array<string,mixed>
-	 */
-	private function confirmation_required_payload( string $tool, array $args, array $auth, array $preview, ToolSafety $safety ): array {
-		$this->record_timeline_event(
-			'confirmation_issued',
-			array(
-				'method'              => 'tools/call',
-				'tool'                => $tool,
-				'status'              => 'issued',
-				'confirmation_policy' => 'required_before_write',
-				'risk_level'          => $this->tool_risk_level( $tool, $args ),
-				'target_summary'      => $this->timeline_target_summary( $tool, $args, $preview ),
-			),
-			$auth
-		);
-
-		return array(
-			'status'                    => 'confirmation_required',
-			'confirmation_required'     => true,
-			'confirmation_token'        => $safety->issue_confirmation_token( $tool, $args, $auth ),
-			'confirmation_expires_in'   => $safety->confirmation_ttl(),
-			'confirmation_instructions' => 'Repeat the same tool call with confirmation_token before it expires to apply these changes.',
-			'action'                    => $tool,
-			'risk_level'                => $this->tool_risk_level( $tool, $args ),
-			'preview'                   => $preview,
-		);
-	}
-
-	/**
-	 * Determine whether a connection can execute write tools without confirmation blockers.
-	 *
-	 * This does not bypass OAuth scopes, disabled abilities, role policy, global
-	 * pauses, or WordPress capability checks inside the tool implementation.
-	 *
-	 * @param string                    $tool         Internal ability ID.
-	 * @param AbilitiesRegistry         $registry     Ability registry.
-	 * @param array<string, mixed>      $auth         OAuth context.
-	 * @param IntelligenceRegistry|null $intelligence Intelligence registry for internal intelligence tools.
-	 */
-	private function write_permission_unblocks_tool( string $tool, AbilitiesRegistry $registry, array $auth, ?IntelligenceRegistry $intelligence = null ): bool {
-		$enabled   = in_array( $auth['write_permission_enabled'] ?? false, array( true, 1, '1' ), true )
-			|| ConnectionAccessLevel::allows_direct_write( (string) ( $auth['access_level'] ?? '' ) );
-		$read_only = null === $intelligence ? $registry->is_read_only( $tool ) : $intelligence->is_read_only( $tool );
-
-		return ! $read_only && $enabled;
-	}
-
-	/**
-	 * Mark a dry-run preview as directly executable for trusted write connections.
-	 *
-	 * @param array<string, mixed> $result Preview result.
-	 * @return array<string, mixed>
-	 */
-	private function write_permission_preview_payload( array $result ): array {
-		$result['confirmation_required']    = false;
-		$result['confirmation_policy']      = 'trusted_connection_direct_write';
-		$result['write_permission_enabled'] = true;
-		unset(
-			$result['confirmation_token'],
-			$result['confirmation_expires_in'],
-			$result['confirmation_instructions']
-		);
-
-		return $result;
-	}
-
-	/**
-	 * Mark a successful write as executed by an admin-trusted connection.
-	 *
-	 * @param array<string, mixed> $result Tool result.
-	 * @param array<string, mixed> $auth   OAuth token context.
-	 * @return array<string, mixed>
-	 */
-	private function trusted_write_result_payload( array $result, array $auth ): array {
-		$result['confirmation_required']    = false;
-		$result['confirmation_policy']      = 'trusted_connection_direct_write';
-		$result['write_permission_enabled'] = true;
-		$result['access_level']             = ConnectionAccessLevel::normalize( (string) ( $auth['access_level'] ?? '' ) );
-		unset(
-			$result['confirmation_token'],
-			$result['confirmation_expires_in'],
-			$result['confirmation_instructions']
-		);
-
-		return $result;
-	}
-
-	/**
-	 * Determine whether MCP tool calls are paused globally or for one user.
-	 *
-	 * @param int $user_id WordPress user ID.
-	 */
-	private function is_access_paused( int $user_id = 0 ): bool {
-		return AccessLockdown::is_paused() || UserAccessControl::is_paused( $user_id );
-	}
-
-	/**
 	 * Return elapsed milliseconds from a monotonic-enough request timestamp.
 	 *
 	 * @param float $started_at Request start timestamp.
 	 */
 	private function duration_ms( float $started_at ): int {
 		return max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
-	}
-
-	/**
-	 * Build a bounded target summary from safe identifiers only.
-	 *
-	 * @param string               $tool   Internal ability ID.
-	 * @param array<string, mixed> $args   Tool arguments.
-	 * @param array<string, mixed> $result Optional result payload.
-	 */
-	private function timeline_target_summary( string $tool, array $args, array $result = array() ): string {
-		$parts = array( $tool );
-
-		foreach ( array( 'id', 'post_id', 'term_id', 'suggestion_id', 'type', 'post_type', 'taxonomy', 'status' ) as $key ) {
-			$value = $result[ $key ] ?? $args[ $key ] ?? null;
-			if ( is_scalar( $value ) && '' !== (string) $value ) {
-				$parts[] = $key . ':' . ( is_numeric( $value ) ? (string) absint( $value ) : sanitize_key( (string) $value ) );
-			}
-		}
-
-		return substr( implode( ' ', array_filter( $parts ) ), 0, 160 );
-	}
-
-	/**
-	 * Return a tool-call block reason before dispatch, or an empty string if callable.
-	 *
-	 * @param string               $tool     Internal ability ID.
-	 * @param AbilitiesRegistry    $registry Ability registry.
-	 * @param int                  $user_id  WordPress user ID.
-	 * @param array<string, mixed> $profile_context Optional profile selection context.
-	 */
-	private function tool_call_error( string $tool, AbilitiesRegistry $registry, int $user_id = 0, array $profile_context = array() ): string {
-		if ( ! $registry->is_known( $tool ) ) {
-			return 'unknown_tool';
-		}
-
-		$is_policy_managed = ! $registry->is_derived_workflow( $tool ) && ! $registry->is_core_default( $tool ) && ! $registry->is_always_on_write_intelligence( $tool );
-		$role_policy       = new RoleAbilitiesPolicy();
-		$availability      = new McpToolAvailability();
-
-		if ( $is_policy_managed && ! $registry->is_enabled( $tool ) ) {
-			return 'tool_disabled';
-		}
-
-		if ( $is_policy_managed && ! $role_policy->is_allowed_for_user( $tool, $user_id, $registry ) ) {
-			return 'tool_forbidden_for_role';
-		}
-
-		if ( ! $availability->capabilities_available( $tool ) ) {
-			return 'tool_forbidden_by_capability';
-		}
-
-		$profile_resolution = ( new McpToolProfiles() )->resolve_for_user( $user_id, $registry, $profile_context );
-		if ( ! ( new McpToolProfiles() )->allows_ability( $tool, $profile_resolution['profile'], $registry ) ) {
-			return 'tool_hidden_by_profile';
-		}
-
-		foreach ( $registry->dependency_ids( $tool ) as $dependency_id ) {
-			$is_dependency_policy_managed = ! $registry->is_derived_workflow( $dependency_id ) && ! $registry->is_core_default( $dependency_id ) && ! $registry->is_always_on_write_intelligence( $dependency_id );
-
-			if ( $is_dependency_policy_managed && ! $registry->is_enabled( $dependency_id ) ) {
-				return 'tool_disabled';
-			}
-
-			if ( $is_dependency_policy_managed && ! $role_policy->is_allowed_for_user( $dependency_id, $user_id, $registry ) ) {
-				return 'tool_forbidden_for_role';
-			}
-
-			if ( ! $availability->capabilities_available( $dependency_id ) ) {
-				return 'tool_forbidden_by_capability';
-			}
-
-			if ( ! ( new McpToolProfiles() )->allows_ability( $dependency_id, $profile_resolution['profile'], $registry ) ) {
-				return 'tool_hidden_by_profile';
-			}
-		}
-
-		return '';
-	}
-
-	/**
-	 * Return an intelligence tool block reason before dispatch.
-	 *
-	 * @param string               $tool            Internal intelligence ID.
-	 * @param IntelligenceRegistry $intelligence    Intelligence registry.
-	 * @param AbilitiesRegistry    $registry        Ability registry.
-	 * @param int                  $user_id         WordPress user ID.
-	 * @param array<string, mixed> $profile_context Optional profile selection context.
-	 */
-	private function intelligence_tool_call_error( string $tool, IntelligenceRegistry $intelligence, AbilitiesRegistry $registry, int $user_id = 0, array $profile_context = array() ): string {
-		if ( ! ( new McpToolAvailability() )->capabilities_available( $tool ) ) {
-			return 'tool_forbidden_by_capability';
-		}
-
-		if ( $this->intelligence_tool_hidden_by_profile( $tool, $intelligence, $registry, $user_id, $profile_context ) ) {
-			return 'tool_hidden_by_profile';
-		}
-
-		return '';
-	}
-
-	/**
-	 * Check whether an intelligence tool is hidden by the selected profile.
-	 *
-	 * @param string               $tool            Internal intelligence ID.
-	 * @param IntelligenceRegistry $intelligence    Intelligence registry.
-	 * @param AbilitiesRegistry    $registry        Ability registry.
-	 * @param int                  $user_id         WordPress user ID.
-	 * @param array<string, mixed> $profile_context Profile selection context.
-	 */
-	private function intelligence_tool_hidden_by_profile( string $tool, IntelligenceRegistry $intelligence, AbilitiesRegistry $registry, int $user_id, array $profile_context ): bool {
-		$profiles = new McpToolProfiles();
-		$profile  = $profiles->resolve_for_user( $user_id, $registry, $profile_context )['profile'];
-		$module   = $intelligence->module( $tool );
-
-		return null !== $module && ! $profiles->allows_ability( $tool, $profile, $registry, $module );
-	}
-
-	/**
-	 * Return profile-selection context from OAuth token metadata.
-	 *
-	 * @param array<string, mixed> $auth OAuth context.
-	 * @return array<string, mixed>
-	 */
-	private function profile_context_from_auth( array $auth ): array {
-		$context = array();
-		foreach (
-			array(
-				'connection_profile'     => $auth['profile'] ?? $auth['provider_profile'] ?? '',
-				'role_default_profile'   => $auth['role_default_profile'] ?? '',
-				'global_default_profile' => $auth['global_default_profile'] ?? '',
-			) as $key => $value
-		) {
-			if ( is_scalar( $value ) && '' !== (string) $value ) {
-				$context[ $key ] = (string) $value;
-			}
-		}
-
-		return $context;
-	}
-
-	/**
-	 * Check whether a token includes every required scope.
-	 *
-	 * @param string[] $token_scopes Granted token scopes.
-	 * @param string[] $required     Required scopes.
-	 * @return bool
-	 */
-	private function has_scopes( array $token_scopes, array $required ): bool {
-		$token_scopes = array_map( 'strval', $token_scopes );
-		foreach ( $required as $scope ) {
-			if ( ! in_array( $scope, $token_scopes, true ) ) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**
@@ -2089,6 +1389,7 @@ final class McpController {
 		$response = new WP_REST_Response(
 			$this->rpc_result(
 				$id,
+				'authorization/challenge',
 				array(
 					'content'           => array(
 						array(
@@ -2106,6 +1407,8 @@ final class McpController {
 			$status
 		);
 		$response->header( 'WWW-Authenticate', TokenValidator::www_authenticate_header( $scope, $error ) );
+		$response->header( 'MCP-Protocol-Version', $this->request_protocol_version );
+		McpTransportResponsePolicy::apply_request_headers( $response );
 
 		return $response;
 	}
@@ -2120,6 +1423,7 @@ final class McpController {
 	private function tool_error_result( string|int|null $id, string $message ): array {
 		return $this->rpc_result(
 			$id,
+			'tools/call',
 			array(
 				'content'           => array(
 					array(
@@ -2134,13 +1438,72 @@ final class McpController {
 	}
 
 	/**
+	 * Adapt a policy-preserving execution outcome to the negotiated MCP response.
+	 *
+	 * The gateway owns every decision and side effect. This transport boundary
+	 * only selects the already-established legacy/current response encoding.
+	 *
+	 * @param string|int|null         $id      JSON-RPC request ID.
+	 * @param AbilityExecutionOutcome $outcome Gateway outcome.
+	 * @return array<string, mixed>|WP_REST_Response
+	 */
+	private function adapt_tool_execution_outcome( string|int|null $id, AbilityExecutionOutcome $outcome ): array|WP_REST_Response {
+		$data = $outcome->data;
+
+		return match ( $outcome->type ) {
+			AbilityExecutionGateway::OUTCOME_INVALID_PARAMS => $this->rpc_error(
+				$id,
+				-32602,
+				'Invalid params',
+				array(
+					'code'    => (string) ( $data['code'] ?? 'invalid_argument_type' ),
+					'message' => (string) ( $data['message'] ?? 'Tool arguments must be a JSON object.' ),
+				)
+			),
+			AbilityExecutionGateway::OUTCOME_UNKNOWN_TOOL => self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
+				? $this->rpc_error( $id, -32602, 'Invalid params', array( 'code' => 'unknown_tool' ) )
+				: $this->tool_error_result( $id, 'Unknown tool.' ),
+			AbilityExecutionGateway::OUTCOME_TOOL_ERROR => $this->tool_error_result( $id, (string) ( $data['message'] ?? 'Tool execution is not available.' ) ),
+			AbilityExecutionGateway::OUTCOME_AUTH_CHALLENGE => $this->auth_challenge_response(
+				$id,
+				implode( ' ', (array) ( $data['required_scopes'] ?? array() ) ),
+				403,
+				'insufficient_scope'
+			),
+			AbilityExecutionGateway::OUTCOME_SUCCESS => $this->rpc_result(
+				$id,
+				'tools/call',
+				array(
+					'content'           => array(
+						array(
+							'type' => 'text',
+							'text' => (string) wp_json_encode( (array) ( $data['result'] ?? array() ) ),
+						),
+					),
+					'structuredContent' => (array) ( $data['result'] ?? array() ),
+				)
+			),
+			default => $this->rpc_error( $id, -32603, 'Internal error' ),
+		};
+	}
+
+	/**
 	 * Wrap a JSON-RPC result.
 	 *
-	 * @param string|int|null     $id     JSON-RPC request ID.
-	 * @param array<string,mixed> $result Result payload.
+	 * @param string|int|null     $id                        JSON-RPC request ID.
+	 * @param string              $method                    JSON-RPC method.
+	 * @param array<string,mixed> $result                    Result payload.
+	 * @param bool                $authorization_independent Whether the result is public and user independent.
 	 * @return array<string, mixed>
 	 */
-	private function rpc_result( string|int|null $id, array $result ): array {
+	private function rpc_result( string|int|null $id, string $method, array $result, bool $authorization_independent = false ): array {
+		$result = ( new McpResultPolicy() )->shape( $this->request_protocol_version, $method, $result, $authorization_independent );
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+			$meta                                       = isset( $result['_meta'] ) && is_array( $result['_meta'] ) ? $result['_meta'] : array();
+			$meta['io.modelcontextprotocol/serverInfo'] = $this->server_info();
+			$result['_meta']                            = $meta;
+		}
+
 		return array(
 			'jsonrpc' => '2.0',
 			'id'      => $id,
@@ -2166,10 +1529,27 @@ final class McpController {
 			$error['data'] = $data;
 		}
 
-		return array(
+		$response = array(
 			'jsonrpc' => '2.0',
 			'id'      => $id,
 			'error'   => $error,
+		);
+		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version ) {
+			$response['_meta'] = array( 'io.modelcontextprotocol/serverInfo' => $this->server_info() );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Return bounded server identity metadata for current-protocol responses.
+	 *
+	 * @return array{name: string, version: string}
+	 */
+	private function server_info(): array {
+		return array(
+			'name'    => 'Aculect AI Companion MCP',
+			'version' => ACULECT_AI_COMPANION_VERSION,
 		);
 	}
 }

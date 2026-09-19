@@ -105,8 +105,10 @@ final class ThemeLifecycleAbilitiesTest extends TestCase {
 
 		self::assertSame( 3, $result['total'] );
 		self::assertTrue( $result['safety']['read_only'] );
-		self::assertFalse( $result['safety']['install_implemented'] );
-		self::assertFalse( $result['safety']['update_implemented'] );
+		self::assertTrue( $result['safety']['install_implemented'] );
+		self::assertTrue( $result['safety']['update_implemented'] );
+		self::assertTrue( $result['safety']['delete_implemented'] );
+		self::assertSame( 'native_wordpress_handoff', $result['safety']['upload_mode'] );
 		self::assertTrue( $result['safety']['switch_implemented'] );
 		self::assertFalse( $result['safety']['deactivate_implemented'] );
 		self::assertFalse( $result['safety']['deactivate_supported'] );

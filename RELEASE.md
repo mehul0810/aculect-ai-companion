@@ -13,12 +13,23 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.7.1` is the current production release.
-- `0.7.2` is the active patch train on `release/0.7.2`, based on the post-0.7.1 `main`.
-- Keep 0.7.2 focused on deferred connector compatibility, diagnostics, bounded release hardening, metadata, documentation, and proof.
-- Do not pull `0.8.0` custom workflow planning or breaking public-contract scope into the `0.7.2` train.
+- `0.7.2` is the current production release at tag and `main` commit `16d8e7776eca4a6cff1d569f595c973046be7620`.
+- `0.8.0` is the final metadata candidate on `release/0.8.0`, which was created at exact superseded `release/0.7.3` tip `3c9108c5a518cd64d0681e052e2a0f8296f2e498` so every reviewed 0.7.3 change is inherited without replay or tree drift.
+- The inherited scope includes safe WordPress Abilities controls, MCP 2026-07-28 transport and schema compatibility, provider interoperability, dependency/tooling remediation, and bounded reliability hardening.
+- The train includes packaged WordPress 7.1 final compatibility proof for native Abilities lifecycle execution, client-safe schema preparation, editor integration, and Connect keyboard behavior.
+- The release branch includes the reviewed OAuth issuer/DCR boundary.
+- Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`; do not claim it in 0.8.0.
+- Bounded site operations in this train cover existing classic-menu items, existing registered scalar fields, anonymous public-page inspection, native targeted maintenance and paginated official checksum comparisons. Their contracts, required confirmations and exclusions are recorded in `docs/0.8.0-site-operations.md`; they do not include block navigation writes, complex field builders, global cache purges or file repair.
+- The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog are synchronized to the `0.8.0` metadata candidate. Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.
+
+## Deferred Development Data
+- The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.
+- Existing development workflow tables and options are left untouched, including by the current uninstall path. No automatic migration or data cleanup is included; any later recovery or cleanup needs an explicit owner decision.
 
 ## Quality Gates
+- The 0.8.0 OAuth gate includes the owner's explicit rejected-token cache-header exception, documented in `docs/oauth-contract.md` and tracked in #531 for 0.8.1. Report it as deferred, not verified. Successful-token headers and every functional OAuth assertion remain mandatory.
+- The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
+- OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.
 - Security/privacy
 - Performance
 - Modularity/architecture

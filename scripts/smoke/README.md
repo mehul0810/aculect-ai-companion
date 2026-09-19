@@ -59,6 +59,31 @@ If `ACULECT_SMOKE_MCP_BEARER_TOKEN` is omitted, the UI smoke still runs and `sum
 
 ## MCP Live-Client Discovery Smoke
 
+For transport diagnosis use `npm run smoke:mcp-sdk` with
+`ACULECT_MCP_SMOKE_BASE_URL` and `ACULECT_MCP_SMOKE_BEARER_TOKEN` configured locally.
+It uses the pinned development-only MCP SDK with a 15-second deadline and bounded
+pagination/reconnects. It completes initialize, initialized notification, discovery,
+and one `site_get_info` call. Output includes only stage, protocol headers, HTTP
+status/content type, safe cache/edge headers, request correlation IDs, and error
+types/codes. It also records an unauthenticated challenge probe so OAuth status,
+`WWW-Authenticate`, and cache behavior can be checked before a bearer is used. It
+never prints raw server error bodies
+or tool results, which can contain private data. This checks Streamable HTTP,
+not the deprecated HTTP+SSE endpoint-event transport. OAuth consent and token
+refresh must be checked separately with MCP Inspector. Never paste tokens in chat.
+
+If Inspector fails before consent with an unknown-client error, compare the
+advertised authorization endpoint with the plugin REST authorization route using
+the same registered client and PKCE parameters. Different error templates or
+lookup outcomes can indicate a stale root-route shim, another plugin, or an
+infrastructure routing conflict. Inspect the deployed handler before changing
+OAuth client validation; do not bypass issuer binding or accept unknown clients.
+A working REST route alone does not prove the advertised OAuth flow works.
+
+The discovery script below remains a metadata determinism check, not a replacement
+for SDK or hosted-client proof. It sends both required Accept types, completes the
+initialized notification, and carries the negotiated version on subsequent calls.
+
 Run the focused live-client discovery smoke after connecting an external MCP client and minting a safe test access token:
 
 ```bash
@@ -71,3 +96,24 @@ npm run smoke:mcp-live-client
 The smoke calls `initialize` twice, follows every `tools/list` page twice, and records only counts, pagination status, and SHA-256 fingerprints. When `ACULECT_MCP_SMOKE_RECONNECT_PROOF_URL` is provided, it repeats `initialize` and full `tools/list` collection after the external client reconnect/cache-refresh proof step. Use `ACULECT_MCP_SMOKE_RECONNECT_WAIT_MS` when the tester needs a pause before that post-refresh check.
 
 The summary never writes bearer tokens or raw tool payloads. If reconnect proof is omitted, the baseline deterministic discovery check still runs and `summary.json` marks the external reconnect/cache-refresh proof as deferred.
+
+## MCP Local Wire Smoke
+
+Before using a live bearer token, run the no-secret local wire harness:
+
+```bash
+npm run smoke:mcp-local
+```
+
+The harness starts PHP's built-in server with the repository's WordPress-light
+fixtures, injects one deterministic fixture principal, and drives the actual
+`McpController` through HTTP using the pinned MCP SDK. It verifies the same
+`initialize` → `notifications/initialized` → paginated `tools/list` →
+`site_get_info` path as the live smoke, plus a negative bearer check. It does
+not contact WordPress, OAuth, Cloudflare, or an external client. The summary is
+written to `artifacts/smoke/mcp-local/latest/summary.json` and includes safe
+stage/status/error-code metadata and server-side fixture events.
+
+This harness is the first gate for transport, registry, tool execution, and
+fixture-runtime failures. Only after it passes should `npm run smoke:mcp-sdk`
+be used against a configured live endpoint.

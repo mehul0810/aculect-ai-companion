@@ -15,3 +15,5 @@ These tests bootstrap Composer autoloading and a small set of WordPress function
 ## Integration Tests
 
 Database-backed WordPress integration tests should be added separately when a flow needs real WordPress runtime behavior, for example OAuth table migrations, REST routing, or end-to-end authorization. Do not expand the unit bootstrap into a partial WordPress runtime.
+
+`tests/Integration/ExecutionClaims/real-database-concurrency.php` is a source-external process harness for the production execution-claim installer and store. The read-only-permission `Execution Claims Concurrency` pull-request workflow runs it against isolated MySQL 8.0/InnoDB and MariaDB 10.11/InnoDB services. It accepts only the workflow-provided disposable database environment variables and proves that eight simultaneous confirmation-token workers and eight simultaneous identity-bound idempotency workers each produce one authoritative owner and one side effect.

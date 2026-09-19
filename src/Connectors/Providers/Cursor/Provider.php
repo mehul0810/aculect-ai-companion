@@ -86,7 +86,7 @@ final class Provider implements ProviderInterface, ProviderMatcherInterface, Pro
 				'steps'       => array(
 					'Use the url key in Cursor mcp.json for the Aculect MCP endpoint; do not change it to httpUrl.',
 					'Leave manual headers, bearer tokens, and static OAuth client credentials empty because Aculect supports OAuth discovery and Dynamic Client Registration.',
-					'Only use Cursor static OAuth fields when an MCP provider requires a fixed client registration. The fixed Cursor redirect URI is cursor://anysphere.cursor-mcp/oauth/callback.',
+					'Only use Cursor static OAuth fields when an MCP provider requires a fixed client registration. Register https://www.cursor.com/agents/mcp/oauth/callback for web and Cursor Agents, and http://localhost:8787/callback for the desktop app.',
 					'After plugin updates or ability policy changes, toggle the Cursor MCP server off and on so Cursor refreshes tool metadata.',
 					'Do not use WordPress application passwords or raw REST credentials for Cursor MCP access.',
 				),

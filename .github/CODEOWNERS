@@ -1,0 +1,22 @@
+# OAuth contract ownership includes code, tests, dependencies and enforcement.
+/src/Connectors/OAuth/ @mehul0810
+/src/Connectors/Helpers.php @mehul0810
+/src/Plugin.php @mehul0810
+/src/Admin/OAuth* @mehul0810
+/src/Settings/ @mehul0810
+/src/Connectors/MCP/ @mehul0810
+/tests/Unit/Connectors/OAuth/ @mehul0810
+/tests/Integration/OAuth/ @mehul0810
+/tests/Integration/Browser/oauth* @mehul0810
+/tests/js/oauth* @mehul0810
+/tests/js/ci-* @mehul0810
+/bin/ @mehul0810
+/.github/ @mehul0810
+/composer.json @mehul0810
+/composer.lock @mehul0810
+/package.json @mehul0810
+/package-lock.json @mehul0810
+/AGENTS.md @mehul0810
+/RELEASE.md @mehul0810
+/TESTING.md @mehul0810
+/docs/oauth-contract.md @mehul0810

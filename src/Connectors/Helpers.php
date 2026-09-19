@@ -15,7 +15,7 @@ final class Helpers {
 	public const MCP_ROUTE                   = 'aculect-ai-companion/v1/mcp';
 	public const AUTHORIZATION_METADATA      = 'oauth-authorization-server';
 	public const PROTECTED_RESOURCE_METADATA = 'oauth-protected-resource';
-	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft' );
+	public const DEFAULT_SCOPES              = array( 'content:read', 'content:draft', 'offline_access' );
 
 	/**
 	 * Return the external site issuer used by OAuth metadata.
@@ -28,7 +28,7 @@ final class Helpers {
 	 * Return the authorization-server issuer used for MCP resource metadata.
 	 */
 	public static function authorization_server_issuer(): string {
-		return self::mcp_resource();
+		return self::issuer();
 	}
 
 	/**
@@ -54,7 +54,7 @@ final class Helpers {
 	 * Return the OAuth authorization endpoint URL.
 	 */
 	public static function authorization_endpoint(): string {
-		return self::normalize_url( self::external_base_url() . '/oauth/authorize' );
+		return self::normalize_url( self::external_base_url() . '/aculect-ai-companion/oauth/authorize' );
 	}
 
 	/**
@@ -215,7 +215,7 @@ final class Helpers {
 		}
 
 		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
-		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$host   = trim( strtolower( (string) ( $parts['host'] ?? '' ) ), '[]' );
 		$path   = (string) ( $parts['path'] ?? '' );
 
 		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) || array_key_exists( 'fragment', $parts ) ) {

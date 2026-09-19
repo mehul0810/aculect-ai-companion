@@ -135,12 +135,15 @@ final class WordPressAbilitiesDiagnostics {
 		}
 
 		$public       = $this->is_public( $ability );
-		$allowed      = ( new WordPressAbilitiesPolicy() )->is_allowed( $name );
+		$allowed      = ( new WordPressAbilitiesRegistrar() )->is_trusted_first_party_ability( $ability )
+			|| ( new WordPressAbilitiesPolicy() )->is_allowed( $name );
 		$schema_valid = $this->schema_valid( $ability );
 		$capable      = $this->permission_allowed( $ability );
 
 		return $base + array(
 			'registered'          => true,
+			'execution_route'     => 'direct_mcp',
+			'bridge_allowed'      => ( new WordPressAbilitiesPolicy() )->is_allowed( $name ),
 			'public'              => $public,
 			'allowed'             => $allowed,
 			'capable'             => $capable,
@@ -185,7 +188,13 @@ final class WordPressAbilitiesDiagnostics {
 			return $this->registered;
 		}
 
-		$abilities = call_user_func( 'wp_get_abilities' );
+		try {
+			$abilities = call_user_func( 'wp_get_abilities' );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return $this->registered;
+		}
 		if ( ! is_array( $abilities ) ) {
 			return $this->registered;
 		}
@@ -214,6 +223,10 @@ final class WordPressAbilitiesDiagnostics {
 		$blocked = array();
 
 		foreach ( $this->registered_abilities() as $name => $ability ) {
+			if ( ( new WordPressAbilitiesRegistrar() )->is_trusted_first_party_ability( $ability ) ) {
+				continue;
+			}
+
 			if ( $this->is_public( $ability ) && ! $policy->is_allowed( $name ) ) {
 				$blocked[] = $name;
 			}
@@ -237,12 +250,7 @@ final class WordPressAbilitiesDiagnostics {
 	 * @param object $ability Ability object.
 	 */
 	private function is_public( object $ability ): bool {
-		$meta = $this->method_array( $ability, 'get_meta' );
-		if ( isset( $meta['show_in_rest'] ) ) {
-			return (bool) $meta['show_in_rest'];
-		}
-
-		return isset( $meta['mcp'] ) && is_array( $meta['mcp'] ) && ! empty( $meta['mcp']['public'] );
+		return WordPressAbilityExposure::is_public( $ability );
 	}
 
 	/**
@@ -265,12 +273,24 @@ final class WordPressAbilitiesDiagnostics {
 			return true;
 		}
 
-		$callback = $ability->get_permission_callback();
+		try {
+			$callback = $ability->get_permission_callback();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 		if ( ! is_callable( $callback ) ) {
 			return true;
 		}
 
-		$result = call_user_func( $callback, array() );
+		try {
+			$result = call_user_func( $callback, array() );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 
 		return true === $result;
 	}
@@ -325,7 +345,13 @@ final class WordPressAbilitiesDiagnostics {
 			return '';
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
 
 		return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : '';
 	}
@@ -342,7 +368,13 @@ final class WordPressAbilitiesDiagnostics {
 			return array();
 		}
 
-		$value = $ability->{$method}();
+		try {
+			$value = $ability->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
 
 		return is_array( $value ) ? $value : array();
 	}

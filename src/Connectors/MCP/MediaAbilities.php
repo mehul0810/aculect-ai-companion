@@ -98,7 +98,8 @@ final class MediaAbilities extends AbstractAbilityService {
 			return $this->error( 'forbidden', 'You do not have permission to read this media item.' );
 		}
 
-		return $this->map_post( $attachment );
+		$state = ( new MediaExpectedState() )->token( $attachment );
+		return $this->map_post( $attachment ) + ( null === $state ? array() : array( 'expected_state' => $state ) );
 	}
 
 	/**
@@ -187,6 +188,10 @@ final class MediaAbilities extends AbstractAbilityService {
 		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to update this media item.' );
 		}
+		$state_error = ( new MediaExpectedState() )->error( $attachment, $data );
+		if ( null !== $state_error ) {
+			return $state_error;
+		}
 
 		$update = array( 'ID' => $attachment_id );
 		if ( array_key_exists( 'title', $data ) ) {
@@ -233,6 +238,10 @@ final class MediaAbilities extends AbstractAbilityService {
 			);
 		}
 
+		$state_error = ( new MediaExpectedState() )->error( $attachment, $data );
+		if ( null !== $state_error ) {
+			return $state_error;
+		}
 		if ( count( $update ) > 1 ) {
 			$result = wp_update_post( $update, true );
 			if ( is_wp_error( $result ) ) {
@@ -254,39 +263,7 @@ final class MediaAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function delete_media( array $data ): array {
-		$attachment_id = absint( $data['id'] ?? 0 );
-		$attachment    = get_post( $attachment_id );
-		if ( ! $attachment instanceof \WP_Post || 'attachment' !== $attachment->post_type ) {
-			return $this->error( 'not_found', 'Media item not found.' );
-		}
-
-		if ( ! current_user_can( 'delete_post', $attachment_id ) ) {
-			return $this->error( 'forbidden', 'You do not have permission to delete this media item.' );
-		}
-
-		if ( $this->is_dry_run( $data ) ) {
-			return $this->preview_response(
-				'media.delete_item',
-				$data,
-				array(
-					'type' => 'attachment',
-					'id'   => $attachment_id,
-				),
-				array( $this->change( 'status', $attachment->post_status, 'trash' ) ),
-				array( 'Media is moved to trash when possible; permanent deletion is not exposed by this tool.' )
-			);
-		}
-
-		$result = wp_trash_post( $attachment_id );
-		if ( ! $result instanceof \WP_Post ) {
-			return $this->error( 'media_trash_failed', 'Media item could not be moved to trash.' );
-		}
-
-		return array(
-			'id'      => $attachment_id,
-			'status'  => 'trash',
-			'message' => 'Media item moved to trash.',
-		);
+		return ( new SafeMediaTrash() )->execute( $data );
 	}
 
 	/**
@@ -304,6 +281,10 @@ final class MediaAbilities extends AbstractAbilityService {
 
 		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to rename this media item.' );
+		}
+		$state_error = ( new MediaExpectedState() )->error( $attachment, $data );
+		if ( null !== $state_error ) {
+			return $state_error;
 		}
 
 		$current_file = get_attached_file( $attachment_id );
@@ -336,6 +317,10 @@ final class MediaAbilities extends AbstractAbilityService {
 			);
 		}
 
+		$state_error = ( new MediaExpectedState() )->error( $attachment, $data );
+		if ( null !== $state_error ) {
+			return $state_error;
+		}
 		$renamed = array();
 		foreach ( $rename['operations'] as $operation ) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- Renaming an existing local uploads file in an authenticated MCP request.

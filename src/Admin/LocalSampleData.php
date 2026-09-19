@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Connectors\Helpers;
-use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -16,11 +15,8 @@ final class LocalSampleData {
 
 	public const OPTION_FIRST_INSTALLED_AT = 'aculect_ai_companion_first_installed_at';
 
-	private const ENVIRONMENT_TYPE     = 'local';
-	private const HOUR_IN_SECONDS      = 3600;
-	private const DAY_IN_SECONDS       = 86400;
-	private const HISTORY_WINDOW       = 14 * self::DAY_IN_SECONDS;
-	private const ACTIVE_EXPIRY_WINDOW = 30 * self::DAY_IN_SECONDS;
+	private const ENVIRONMENT_TYPE = 'local';
+	private const HOUR_IN_SECONDS  = 3600;
 
 	private int $now_utc;
 
@@ -67,7 +63,7 @@ final class LocalSampleData {
 	}
 
 	/**
-	 * Add sample rows to empty local listing payloads.
+	 * Add sample rows to empty local review payloads, excluding Connections.
 	 *
 	 * @param array<string, mixed> $payload                   Settings payload.
 	 * @param string               $payload_tab               Hydrated payload tab.
@@ -80,12 +76,6 @@ final class LocalSampleData {
 		}
 
 		$applied_tabs = array();
-
-		if ( 'connections' === $payload_tab && $this->has_empty_sessions( $payload ) ) {
-			$payload['sessions']        = $this->active_sessions();
-			$payload['revokedSessions'] = $this->revoked_sessions();
-			$applied_tabs[]             = 'connections';
-		}
 
 		if ( 'abilities' === $payload_tab && 0 === $real_active_session_count ) {
 			$applied_tabs[] = 'abilities';
@@ -115,15 +105,6 @@ final class LocalSampleData {
 		$payload['sampleData'] = $this->metadata( $applied_tabs );
 
 		return $payload;
-	}
-
-	/**
-	 * Check whether the connections payload has no rows to render.
-	 *
-	 * @param array<string, mixed> $payload Settings payload.
-	 */
-	private function has_empty_sessions( array $payload ): bool {
-		return empty( $payload['sessions'] ) && empty( $payload['revokedSessions'] );
 	}
 
 	/**
@@ -174,166 +155,6 @@ final class LocalSampleData {
 		$health = $payload['connectionHealth'] ?? array();
 
 		return ! is_array( $health ) || empty( $health['items'] );
-	}
-
-	/**
-	 * Return active connector session samples.
-	 *
-	 * @return list<array<string, mixed>>
-	 */
-	private function active_sessions(): array {
-		$history_start = $this->history_start_timestamp();
-		$created_at    = array(
-			$this->bounded_timestamp( $history_start, $this->installed_at, $this->now_utc - ( 8 * self::HOUR_IN_SECONDS ) ),
-			$this->bounded_timestamp( $history_start + ( 3 * self::HOUR_IN_SECONDS ), $this->installed_at, $this->now_utc - ( 6 * self::HOUR_IN_SECONDS ) ),
-			$this->bounded_timestamp( $history_start + ( 7 * self::HOUR_IN_SECONDS ), $this->installed_at, $this->now_utc - ( 4 * self::HOUR_IN_SECONDS ) ),
-		);
-
-		return array(
-			$this->session(
-				'sample-session-chatgpt',
-				'local-chatgpt-demo',
-				'ChatGPT Local QA',
-				'chatgpt',
-				1,
-				'Local Administrator',
-				array( 'Administrator' ),
-				array( 'content:read', 'content:draft' ),
-				true,
-				ConnectionAccessLevel::WRITE,
-				$created_at[0],
-				$this->bounded_timestamp( $created_at[0] + ( 2 * self::DAY_IN_SECONDS ), $created_at[0], $this->now_utc - 5400 ),
-				$this->future_expiry_timestamp( $created_at[0] )
-			),
-			$this->session(
-				'sample-session-claude',
-				'local-claude-demo',
-				'Claude Content Review',
-				'claude',
-				2,
-				'Editorial Lead',
-				array( 'Editor' ),
-				array( 'content:read' ),
-				false,
-				ConnectionAccessLevel::READ,
-				$created_at[1],
-				$this->bounded_timestamp( $created_at[1] + self::DAY_IN_SECONDS, $created_at[1], $this->now_utc - 3600 ),
-				$this->future_expiry_timestamp( $created_at[1] + self::HOUR_IN_SECONDS )
-			),
-			$this->session(
-				'sample-session-codex',
-				'local-codex-demo',
-				'Codex Release Helper',
-				'codex',
-				3,
-				'Developer Admin',
-				array( 'Administrator', 'Editor' ),
-				array( 'content:read', 'content:draft' ),
-				true,
-				ConnectionAccessLevel::WRITE,
-				$created_at[2],
-				$this->bounded_timestamp( $created_at[2] + ( 12 * self::HOUR_IN_SECONDS ), $created_at[2], $this->now_utc - 1800 ),
-				$this->future_expiry_timestamp( $created_at[2] + ( 2 * self::HOUR_IN_SECONDS ) )
-			),
-		);
-	}
-
-	/**
-	 * Return revoked connector session samples.
-	 *
-	 * @return list<array<string, mixed>>
-	 */
-	private function revoked_sessions(): array {
-		$created_at   = $this->bounded_timestamp(
-			$this->history_start_timestamp() - ( 4 * self::HOUR_IN_SECONDS ),
-			$this->installed_at,
-			$this->now_utc - ( 10 * self::HOUR_IN_SECONDS )
-		);
-		$last_used_at = $this->bounded_timestamp(
-			$created_at + ( 6 * self::HOUR_IN_SECONDS ),
-			$created_at,
-			$this->now_utc - ( 5 * self::HOUR_IN_SECONDS )
-		);
-		$expires_at   = $this->bounded_timestamp(
-			$last_used_at + ( 6 * self::HOUR_IN_SECONDS ),
-			$last_used_at,
-			$this->now_utc - self::HOUR_IN_SECONDS
-		);
-
-		$session = $this->session(
-			'sample-session-revoked',
-			'local-revoked-demo',
-			'Retired Test Assistant',
-			'chatgpt',
-			4,
-			'Former Reviewer',
-			array( 'Author' ),
-			array( 'content:read' ),
-			false,
-			ConnectionAccessLevel::READ,
-			$created_at,
-			$last_used_at,
-			$expires_at
-		);
-
-		$session['status'] = 'revoked';
-
-		return array( $session );
-	}
-
-	/**
-	 * Build one connector session sample.
-	 *
-	 * @param string $id                       Sample row ID.
-	 * @param string $client_id                OAuth client ID.
-	 * @param string $client_name              Client display name.
-	 * @param string $provider                 Provider key.
-	 * @param int    $user_id                  WordPress user ID.
-	 * @param string $user                     User display name.
-	 * @param array  $roles                    User roles.
-	 * @param array  $scopes                   Granted scopes.
-	 * @param bool   $write_permission_enabled Direct write permission flag.
-	 * @param string $access_level             Access level.
-	 * @param int    $created_at               Created timestamp.
-	 * @param int    $last_used_at             Last activity timestamp.
-	 * @param int    $expires_at               Expiry timestamp.
-	 * @phpstan-param list<string> $roles
-	 * @phpstan-param list<string> $scopes
-	 * @return array<string, mixed>
-	 */
-	private function session(
-		string $id,
-		string $client_id,
-		string $client_name,
-		string $provider,
-		int $user_id,
-		string $user,
-		array $roles,
-		array $scopes,
-		bool $write_permission_enabled,
-		string $access_level,
-		int $created_at,
-		int $last_used_at,
-		int $expires_at
-	): array {
-		return array(
-			'id'                       => $id,
-			'client_id'                => $client_id,
-			'client_name'              => $client_name,
-			'provider'                 => $provider,
-			'user_id'                  => $user_id,
-			'user'                     => $user,
-			'user_roles'               => $roles,
-			'scopes'                   => $scopes,
-			'resource'                 => Helpers::mcp_resource(),
-			'status'                   => 'active',
-			'created_at'               => $this->format_datetime( $created_at ),
-			'last_used_at'             => $this->format_datetime( $last_used_at ),
-			'expires_at'               => $this->format_datetime( $expires_at ),
-			'write_permission_enabled' => $write_permission_enabled,
-			'access_level'             => ConnectionAccessLevel::normalize( $access_level ),
-			'is_sample'                => true,
-		);
 	}
 
 	/**
@@ -773,7 +594,7 @@ final class LocalSampleData {
 		return array(
 			'enabled'         => true,
 			'environmentType' => self::ENVIRONMENT_TYPE,
-			'tabs'            => array( 'connections', 'abilities', 'activity', 'learning', 'diagnostics', 'logs' ),
+			'tabs'            => array( 'abilities', 'activity', 'learning', 'diagnostics', 'logs' ),
 			'appliedTabs'     => array_values( array_unique( $applied_tabs ) ),
 			'message'         => __( 'Preview data - these are examples, not real connections or activity.', 'aculect-ai-companion' ),
 		);
@@ -787,14 +608,6 @@ final class LocalSampleData {
 		}
 
 		return min( $installed_at, $this->now_utc );
-	}
-
-	private function history_start_timestamp(): int {
-		return max( $this->installed_at, $this->now_utc - self::HISTORY_WINDOW );
-	}
-
-	private function future_expiry_timestamp( int $anchor_timestamp ): int {
-		return max( $anchor_timestamp, $this->now_utc ) + self::ACTIVE_EXPIRY_WINDOW;
 	}
 
 	private function bounded_timestamp( int $preferred, int $minimum, int $maximum ): int {

@@ -39,20 +39,20 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 			'status'        => 'ready',
 			'type'          => 'navigation_menu',
 			'label'         => 'Navigation Intelligence',
-			'description'   => 'Read-only WordPress navigation context and inventory for classic menus, classic menu locations, and wp_navigation entities. No writes are implemented in this slice.',
+			'description'   => 'Read-only navigation context. Separate guarded tools update classic items, assign classic locations, update or recover database navigation, and delete eligible menus or trash editor records with explicit confirmation. Menu creation remains unsupported.',
 			'theme'         => $theme,
 			'navigation'    => $summary,
 			'capabilities'  => array(
 				'can_read'            => true,
-				'can_write'           => false,
+				'can_write'           => current_user_can( 'edit_theme_options' ),
 				'required_capability' => 'edit_theme_options',
 			),
 			'write_support' => $this->write_support_policy(),
 			'safety'        => array(
-				'writes_implemented'                  => false,
+				'writes_implemented'                  => true,
 				'raw_string_navigation_edits_allowed' => false,
 				'explicit_location_reassignment_only_for_writes' => true,
-				'preserve_unknown_blocks_for_future_writes' => true,
+				'preserve_unknown_blocks_for_future_writes' => false,
 				'validate_parsed_block_structure_before_save' => true,
 				'fail_closed_on_unsupported_write_structures' => true,
 			),
@@ -60,6 +60,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'Use navigation_list_menus to inventory readable classic menus and wp_navigation entities.',
 				'Use navigation_list_locations to inspect registered classic menu locations before planning any explicit reassignment.',
 				'Use navigation_list_items with menu_id, navigation_id, or location for bounded item-level inventory only.',
+				'Use navigation_read_item then navigation_update_item for existing classic items; navigation_read_location_context then navigation_assign_location for locations; site_editor_read_record then site_editor_update_record or site_editor_restore_record for existing database navigation. Writes require fresh state, permission and confirmation; consult capabilities before calling.',
 			),
 			'read_only'     => true,
 		);
@@ -467,21 +468,12 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 	}
 
 	/**
-	 * Return policy metadata for future writes.
+	 * Describe implemented write surfaces separately from caller authorization.
 	 *
 	 * @return array<string, mixed>
 	 */
 	private function write_support_policy(): array {
-		return array(
-			'implemented'                          => false,
-			'current_slice'                        => 'read_only_inventory',
-			'classic_location_reassignment'        => 'explicit_only_with_confirmation_and_audit',
-			'block_navigation_write_model'         => 'nested_mixed_block_capable',
-			'preserve_unknown_custom_blocks_attrs' => true,
-			'validate_parsed_block_structure'      => true,
-			'raw_string_navigation_edits_allowed'  => false,
-			'fail_closed_with_recovery_guidance'   => true,
-		);
+		return NavigationWriteSupport::describe();
 	}
 
 	/**

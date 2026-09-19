@@ -40,7 +40,7 @@ final class LocalSampleDataTest extends TestCase {
 		self::assertSame( $now, LocalSampleData::ensure_first_installed_at( $now + 3600 ) );
 	}
 
-	public function test_sample_connection_dates_stay_between_install_and_now(): void {
+	public function test_connections_never_receive_local_sample_rows(): void {
 		$installed_at = 1704067200;
 		$now          = 1704456000;
 		$samples      = new LocalSampleData( $now, $installed_at );
@@ -54,19 +54,9 @@ final class LocalSampleDataTest extends TestCase {
 			0
 		);
 
-		foreach ( $payload['sessions'] as $session ) {
-			self::assertTrue( $session['is_sample'] );
-			self::assertStringStartsWith( 'sample-session-', (string) $session['id'] );
-			self::assertGreaterThanOrEqual( $installed_at, $this->utc_timestamp( (string) $session['created_at'] ) );
-			self::assertGreaterThanOrEqual( $this->utc_timestamp( (string) $session['created_at'] ), $this->utc_timestamp( (string) $session['last_used_at'] ) );
-			self::assertLessThanOrEqual( $now, $this->utc_timestamp( (string) $session['last_used_at'] ) );
-			self::assertGreaterThan( $now, $this->utc_timestamp( (string) $session['expires_at'] ) );
-		}
-
-		self::assertTrue( $payload['revokedSessions'][0]['is_sample'] );
-		self::assertGreaterThanOrEqual( $installed_at, $this->utc_timestamp( (string) $payload['revokedSessions'][0]['created_at'] ) );
-		self::assertGreaterThanOrEqual( $this->utc_timestamp( (string) $payload['revokedSessions'][0]['created_at'] ), $this->utc_timestamp( (string) $payload['revokedSessions'][0]['last_used_at'] ) );
-		self::assertLessThanOrEqual( $now, $this->utc_timestamp( (string) $payload['revokedSessions'][0]['last_used_at'] ) );
+		self::assertSame( array(), $payload['sessions'] );
+		self::assertSame( array(), $payload['revokedSessions'] );
+		self::assertSame( array(), $payload['sampleData']['appliedTabs'] );
 	}
 
 	public function test_activity_learning_logs_and_diagnostics_rows_are_flagged_and_bounded(): void {

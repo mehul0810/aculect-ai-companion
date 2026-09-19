@@ -2,9 +2,9 @@
 Contributors: mehul0810
 Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.7.2
+Stable tag: 0.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,6 +25,7 @@ MCP stands for Model Context Protocol. In Aculect AI Companion, MCP gives suppor
 = Why use Aculect AI Companion? =
 
 * Connect WordPress to ChatGPT, Claude, Grok, and other MCP-compatible AI apps
+* Offer one bounded, read-only WebMCP page-context tool on public pages in compatible browsers without exposing backend management abilities
 * Create, update, and organize WordPress content through controlled AI workflows
 * Audit internal linking, review link opportunities, and apply approved suggestions through MCP
 * Work with posts, pages, custom post types, categories, tags, comments, and media
@@ -42,6 +43,12 @@ Setup is designed to be simple:
 4. Approve the connection on the screen that appears.
 
 After approval, Aculect AI Companion checks the connected WordPress user's permissions before every action. You can also choose exactly what your AI assistant can do and disconnect assistants at any time.
+
+= Provider-specific setup notes =
+
+* ChatGPT custom apps use an approved snapshot of MCP tools. After an Aculect ability or schema change, refresh the app actions in ChatGPT workspace settings; Business apps may need to be recreated and republished.
+* Claude API integrations should use the `mcp-client-2025-11-20` beta header and reference Aculect from exactly one `mcp_toolset`. Use tool allowlisting and `defer_loading` to reduce initial context. Anthropic documents that the MCP connector is not eligible for Zero Data Retention.
+* Cursor remote MCP setup uses the connection URL with the `url` key. When fixed OAuth registration is required, use `https://www.cursor.com/agents/mcp/oauth/callback` for web and Cursor Agents or `http://localhost:8787/callback` for the desktop app. Toggle the MCP server off and on after ability changes to refresh tool metadata.
 
 = Features =
 
@@ -110,6 +117,7 @@ Content groups:
 * List terms for a supported taxonomy with pagination
 * Create a category, tag, or custom content group
 * Update a category, tag, or custom content group
+* Assign or clear existing categories, tags, or custom taxonomy terms on a content item
 * Assign or clear an image for supported taxonomy terms
 
 Comments:
@@ -246,7 +254,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.7.2 release notes.
+8. Changelog tab with the current 0.8.0 release notes.
 
 == Development ==
 
@@ -274,6 +282,29 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.8.0 =
+
+* Isolated browser OAuth authorization at a plugin-owned route to avoid conflicts with other OAuth providers; retained the legacy route for compatibility.
+* Added guarded editor record and classic-menu deletion with explicit confirmation, while refusing user deletion and sensitive user information retrieval.
+* Added bounded Tools inspection and native handoffs, safe core settings, content recovery, navigation location management, and guarded media trash handling.
+* Fixed the REST OAuth authorization entry to send already logged-in browsers directly to consent while preserving login, permission and consent checks.
+* Added confirmed existing classic-menu item updates and registered scalar custom-field editing with permission, schema and stale-state checks.
+* Added bounded public rendered-page inspection, targeted native cache and soft rewrite maintenance, and read-only WordPress.org file checksum comparisons.
+* Added MCP 2026-07-28 transport support, authenticated server discovery, strict request metadata, version-aware schemas and results, and continued 2025-06-18 compatibility.
+* Unified capability discovery with a paginated catalog, default-enabled WordPress and Aculect capabilities, and a third-party-only Abilities screen with explicit administrator choices and preserved runtime permissions.
+* Hardened OAuth registrations with issuer-bound web, native, and legacy DCR profiles, RFC 9207 redirects, bounded resumable backfill, and no-network CIMD handling.
+* Made confirmed and idempotent MCP writes transactionally replay-safe across overlapping workers. Execution aliases, request payloads, tools, and identities are stored as bounded hashes; raw tokens, arguments, and identity fields are never persisted. Successful replay results are retained in bounded JSON.
+* Added compatibility for the native Abilities lifecycle and client schema preparation, editor integration, and Connect keyboard behavior on WordPress 7.1.
+* Improved MCP/OAuth connection diagnostics with exact metadata validation, safe challenge reporting, and request correlation without exposing tokens or request payloads.
+* Fixed Connect app picker arrow, Home, and End navigation, including unavailable-provider fallback and disabled-option focus handling.
+* Added a first-class taxonomy assignment ability so AI clients can discoverably assign or clear existing categories, tags, and custom taxonomy terms on content items.
+* Added site-owned Aculect Memory with versioned records, history, and opt-in client-driven synchronization. Imported proposals remain private and pending review; this does not synchronize provider-owned personal memory stores.
+* Improved memory review with namespace and version checks, bounded database queries, and visible migration recovery. Failed learning approvals roll back their memory and history changes together.
+* Hardened WebMCP page-context extraction with bounded traversal and output, hidden/form-content exclusion, and sanitized links.
+* Kept intelligence groups as navigation and guidance while preserving OAuth scopes, WordPress capabilities, and explicit approval requirements for ability execution.
+* Added scoped MySQL 8 and MariaDB 10.11 OAuth/claims proofs, stricter production-package validation, a development-advisory inventory, and a clean production dependency audit.
+* Hardened MCP responses against WordPress, CDN, and reverse-proxy caching while preserving safe CORS exposure for protocol and correlation headers.
 
 = 0.7.2 =
 
@@ -444,6 +475,10 @@ Composer dependencies for production releases are installed with:
 
 == Upgrade Notice ==
 
+= 0.8.0 =
+
+Existing OAuth clients are issuer-bound in resumable batches. Registration and credential issuance stay unavailable until verified. Aculect does not fetch Client ID Metadata Documents; use DCR. Changing the external site URL does not rebind credentials and may require reconnecting assistants.
+
 = 0.7.2 =
 
 Adds current AI-client guidance, safer OAuth client handling, clearer connection diagnostics, and stricter production-package hygiene.
@@ -462,7 +497,7 @@ Fixes the Learning tab review layout, adds Rank Math redirect and recent 404 wor
 
 = 0.6.0 =
 
-Adds provider compatibility, canonical search/fetch, workflow routing, workflow sessions, MCP resources, site audit, Site Editor and Admin Menu intelligence, WordPress Abilities diagnostics, trusted connection access controls, stricter MCP schemas, safer scheduling validation, and plugin incident reporting for MCP workflows.
+Adds provider compatibility, search/fetch, workflow and MCP resource guidance, site audit, Abilities diagnostics, and safer MCP access controls.
 
 = 0.5.3 =
 

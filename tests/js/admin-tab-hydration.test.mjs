@@ -13,6 +13,10 @@ const ADMIN_APP_SOURCE = readFileSync(
 	new URL( '../../src/index.js', import.meta.url ),
 	'utf8'
 );
+const ACCESSIBLE_TABS_SOURCE = readFileSync(
+	new URL( '../../src/accessible-tabs.mjs', import.meta.url ),
+	'utf8'
+);
 
 test( 'normalizes legacy tab aliases', () => {
 	assert.equal( normalizeTabName( 'about' ), 'overview' );
@@ -192,19 +196,31 @@ test( 'activity labels pre-auth refresh rejections as identity unavailable', () 
 test( 'learning review surfaces render behind explicit active-state checks', () => {
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/const \[ activeSurface, setActiveSurface \] = useState\( 'suggestions' \)/
+		/initialLearningSurface\( window\.location\.search \)/
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'suggestions' && \(\s*<section className="aculect-ai-companion-learning-section">/s
+		/<section[^>]+aculect-learning-panel-suggestions[^>]+hidden=\{ activeSurface !== 'suggestions' \}/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'memory' && \(\s*<section className="aculect-ai-companion-memory-section">/s
+		/<section[^>]+aculect-learning-panel-memory[^>]+hidden=\{ activeSurface !== 'memory' \}/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/activeSurface === 'incidents' && \(\s*<section className="aculect-ai-companion-incident-section">/s
+		/<section[^>]+aculect-learning-panel-incidents[^>]+hidden=\{ activeSurface !== 'incidents' \}/s
+	);
+	assert.match( ADMIN_APP_SOURCE, /<AccessibleTabList/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /role="tablist"/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /role="tab"/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /aria-selected=\{ selected \}/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /aria-controls=/ );
+	assert.match( ACCESSIBLE_TABS_SOURCE, /tabIndex=\{ selected \? 0 : -1 \}/ );
+	assert.doesNotMatch( ACCESSIBLE_TABS_SOURCE, /isPressed=/ );
+	assert.doesNotMatch( ACCESSIBLE_TABS_SOURCE, /aria-pressed/ );
+	assert.match(
+		ACCESSIBLE_TABS_SOURCE,
+		/'ArrowLeft', 'ArrowRight', 'Home', 'End'/
 	);
 	assert.doesNotMatch(
 		ADMIN_APP_SOURCE,
@@ -268,18 +284,15 @@ test( 'diagnostics expose bounded OAuth capacity recovery without rendering clie
 	assert.doesNotMatch( ADMIN_APP_SOURCE, /client_secret_hash/ );
 } );
 
-test( 'sample connection rows render preview badges and hide real action controls', () => {
+test( 'connections never use local preview rows or preview-only actions', () => {
+	assert.doesNotMatch( ADMIN_APP_SOURCE, /sample-session-/ );
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/session\.isSample && <SampleBadge label="Preview" \/>/
+		/const sampleDataActive =\s*\n\s*Boolean\( sampleData\.enabled \) &&/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,
-		/if \( session\.isSample \) \{\s*return renderUnavailableAction\( 'Preview only' \);\s*\}/s
-	);
-	assert.match(
-		ADMIN_APP_SOURCE,
-		/const canManage =\s*! session\.isSample &&\s*session\.status !== 'revoked'/s
+		/Array\.isArray\( sampleData\.appliedTabs \)[\s\S]*sampleData\.appliedTabs\.includes\( activeTab\.name \)/s
 	);
 } );
 
@@ -287,6 +300,10 @@ test( 'real connection state stays separate from sample rows in the connections 
 	assert.match(
 		ADMIN_APP_SOURCE,
 		/const hasRealActiveConnections = activeSessionCount > 0;/
+	);
+	assert.match(
+		ADMIN_APP_SOURCE,
+		/const shouldShowAccessControl =\s*\n\s*hasRealActiveConnections &&\s*\n\s*Boolean\(/s
 	);
 	assert.match(
 		ADMIN_APP_SOURCE,

@@ -284,6 +284,8 @@ final class UserRoleCapabilitiesDiscovery extends AbstractAbilityService {
 	private function privacy_notice(): array {
 		return array(
 			'safe_fields_only' => true,
+			'user_deletion'    => UserPrivacyPolicy::deletion(),
+			'sensitive_data'   => UserPrivacyPolicy::sensitive_data(),
 			'excluded_fields'  => array( 'email', 'application_passwords', 'sessions', 'tokens', 'reset_keys', 'raw_user_meta', 'private_user_meta', 'password_hashes', 'allcaps', 'raw_caps', 'network_inventory' ),
 		);
 	}

@@ -197,7 +197,7 @@ abstract class AbstractAbilityService {
 				return array( 'error' => $this->error( 'invalid_taxonomy', 'Taxonomy is not assigned to this post type.' ) );
 			}
 
-			if ( ! current_user_can( $taxonomy->cap->assign_terms ) ) {
+			if ( ! is_object( $taxonomy->cap ) || ! property_exists( $taxonomy->cap, 'assign_terms' ) || ! is_scalar( $taxonomy->cap->assign_terms ) || '' === (string) $taxonomy->cap->assign_terms || ! current_user_can( (string) $taxonomy->cap->assign_terms ) ) {
 				return array( 'error' => $this->error( 'forbidden', 'You do not have permission to assign terms in this taxonomy.' ) );
 			}
 
@@ -270,7 +270,11 @@ abstract class AbstractAbilityService {
 	 */
 	protected function apply_taxonomy_assignments( int $post_id, array $assignments ): array {
 		foreach ( $assignments as $taxonomy_name => $term_ids ) {
-			$result = wp_set_object_terms( $post_id, $term_ids, $taxonomy_name, false );
+			try {
+				$result = wp_set_object_terms( $post_id, $term_ids, $taxonomy_name, false );
+			} catch ( \Throwable ) {
+				return array( 'error' => $this->error( 'taxonomy_assignment_failed', 'Taxonomy terms could not be assigned.' ) );
+			}
 			if ( is_wp_error( $result ) ) {
 				return array( 'error' => $this->error( (string) $result->get_error_code(), $result->get_error_message() ) );
 			}

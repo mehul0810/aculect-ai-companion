@@ -11,6 +11,8 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationResult;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -19,7 +21,7 @@ use PHPUnit\Framework\TestCase;
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused repository test replaces wpdb with an isolated adapter.
 
 /**
- * Verifies repeated successful DCR requests replace unused duplicate rows.
+ * Verifies DCR retries preserve pending registrations and prune stale duplicates.
  */
 final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
@@ -34,6 +36,7 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$GLOBALS['wpdb']     = new OAuthDcrSqliteWpdb();
+		delete_option( 'aculect_ai_companion_oauth_issuer_backfill' );
 	}
 
 	protected function tearDown(): void {
@@ -48,8 +51,9 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_identical_public_client_retries_do_not_grow_total_rows(): void {
+	public function test_identical_public_client_retries_preserve_pending_registrations(): void {
 		$repository = new ClientRepository();
+		$client_ids = array();
 
 		for ( $attempt = 0; $attempt < 20; ++$attempt ) {
 			$result = $repository->create_client_result(
@@ -60,6 +64,7 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 
 			self::assertSame( ClientRegistrationResult::CREATED, $result->status() );
 			self::assertNotNull( $result->client() );
+			$client_ids[] = $result->client()['client_id'];
 		}
 
 		/**
@@ -69,8 +74,45 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 		 */
 		$wpdb = $GLOBALS['wpdb'];
 
-		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients' ) );
-		self::assertSame( 1, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+		self::assertCount( 20, array_unique( $client_ids ) );
+		self::assertSame( 20, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+		foreach ( $client_ids as $client_id ) {
+			self::assertSame( 1, $wpdb->prepared_scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s', $client_id ) );
+		}
+	}
+
+	public function test_recent_matching_client_survives_delayed_consent_at_capacity(): void {
+		$wpdb        = $this->wpdb();
+		$redirect    = 'http://localhost/delayed/callback';
+		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect ) );
+		self::assertNotNull( $fingerprint );
+		for ( $index = 0; $index < 100; ++$index ) {
+			$this->seed_client( $wpdb, 'pending-' . $index, $fingerprint );
+		}
+		$wpdb->query( $wpdb->prepare( 'UPDATE wp_aculect_ai_companion_oauth_clients SET created_at = %s', gmdate( 'Y-m-d H:i:s', time() - 12 * HOUR_IN_SECONDS ) ) );
+
+		$result = ( new ClientRepository() )->create_client_result( 'MCP Client', array( $redirect ), false );
+
+		self::assertSame( ClientRegistrationResult::CAPACITY_EXCEEDED, $result->status() );
+		self::assertSame( 100, $wpdb->scalar( 'SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE revoked = 0' ) );
+	}
+
+	public function test_confidential_retries_preserve_distinct_credentials(): void {
+		$repository = new ClientRepository();
+		$redirects  = array( 'https://chatgpt.com/oauth/callback' );
+		$first      = $repository->create_client_result( 'ChatGPT', $redirects )->client();
+		$second     = $repository->create_client_result( 'ChatGPT', $redirects )->client();
+
+		self::assertNotNull( $first );
+		self::assertNotNull( $second );
+		self::assertNotSame( $first['client_id'], $second['client_id'] );
+		self::assertNotEmpty( $first['client_secret'] );
+		self::assertNotSame( $first['client_secret'], $second['client_secret'] );
+		foreach ( array( $first, $second ) as $client ) {
+			$rows = $this->wpdb()->get_results( $this->wpdb()->prepare( 'SELECT * FROM wp_aculect_ai_companion_oauth_clients WHERE client_id = %s AND revoked = 0', $client['client_id'] ), ARRAY_A );
+			self::assertCount( 1, $rows );
+			self::assertTrue( wp_check_password( $client['client_secret'], $rows[0]['client_secret_hash'] ) );
+		}
 	}
 
 	public function test_capacity_full_does_not_remove_unrelated_dormant_clients_or_hash_secret(): void {
@@ -101,7 +143,7 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 	public function test_capacity_retry_replaces_only_its_same_fingerprint_unused_client(): void {
 		$wpdb         = $this->wpdb();
 		$redirect_uri = 'http://localhost/retry/callback';
-		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
+		$fingerprint  = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
 
 		self::assertNotNull( $fingerprint );
 
@@ -146,7 +188,7 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 	public function test_same_fingerprint_cleanup_preserves_live_access_code_and_refresh_clients(): void {
 		$wpdb         = $this->wpdb();
 		$redirect_uri = 'http://localhost/live/callback';
-		$fingerprint = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
+		$fingerprint  = ClientRegistrationFingerprint::from_redirect_uris( array( $redirect_uri ) );
 
 		self::assertNotNull( $fingerprint );
 
@@ -229,6 +271,25 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 		);
 	}
 
+	public function test_real_sqlite_issuer_backfill_resumes_after_bounded_first_batch(): void {
+		$wpdb = $this->wpdb();
+		for ( $index = 0; $index < 101; ++$index ) {
+			$this->seed_client( $wpdb, 'legacy-' . $index, hash( 'sha256', 'legacy-' . $index ) );
+		}
+		$wpdb->query( "UPDATE wp_aculect_ai_companion_oauth_clients SET issuer_hash = ''" );
+
+		$method = new \ReflectionMethod( Installer::class, 'backfill_client_issuer_bindings' );
+		$method->invoke( null );
+
+		self::assertSame( 1, $wpdb->scalar( "SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE issuer_hash = ''" ) );
+		self::assertSame( '', get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+
+		$method->invoke( null );
+
+		self::assertSame( 0, $wpdb->scalar( "SELECT COUNT(*) FROM wp_aculect_ai_companion_oauth_clients WHERE issuer_hash = ''" ) );
+		self::assertSame( IssuerBinding::hash(), get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+	}
+
 	private function wpdb(): OAuthDcrSqliteWpdb {
 		/**
 		 * SQLite adapter used by this test.
@@ -250,6 +311,8 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 				'provider'                 => 'mcp',
 				'redirect_uris'            => '["http:\/\/localhost\/callback"]',
 				'registration_fingerprint' => $fingerprint,
+				'issuer_hash'              => hash( 'sha256', 'https://example.com' ),
+				'application_type'         => 'legacy',
 				'user_id'                  => null,
 				'is_confidential'          => 0,
 				'revoked'                  => 0,
@@ -269,6 +332,8 @@ final class OAuthDcrSqlitePersistenceTest extends TestCase {
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- This real-database test adapter is intentionally local to its test.
 final class OAuthDcrSqliteWpdb {
 
+	public string $last_error = '';
+
 	public string $prefix = 'wp_';
 
 	private PDO $pdo;
@@ -286,6 +351,8 @@ final class OAuthDcrSqliteWpdb {
 				provider TEXT NOT NULL,
 				redirect_uris TEXT NOT NULL,
 				registration_fingerprint TEXT NOT NULL DEFAULT \'\',
+				issuer_hash TEXT NOT NULL DEFAULT \'\',
+				application_type TEXT NOT NULL DEFAULT \'legacy\',
 				user_id INTEGER NULL,
 				is_confidential INTEGER NOT NULL DEFAULT 1,
 				revoked INTEGER NOT NULL DEFAULT 0,
@@ -354,8 +421,23 @@ final class OAuthDcrSqliteWpdb {
 		return $this->pdo->exec( $query );
 	}
 
-	public function get_var( string $query ): int {
-		return (int) $this->pdo->query( $query )->fetchColumn();
+	public function get_var( string $query ): int|string|null {
+		$value = $this->pdo->query( $query )->fetchColumn();
+
+		return false === $value ? null : $value;
+	}
+
+	/**
+	 * Return associative rows from the isolated SQLite database.
+	 *
+	 * @param string $query  Prepared SQL query.
+	 * @param string $output Requested output shape.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function get_results( string $query, string $output ): array {
+		unset( $output );
+
+		return $this->pdo->query( $query )->fetchAll( PDO::FETCH_ASSOC );
 	}
 
 	/**
@@ -379,6 +461,34 @@ final class OAuthDcrSqliteWpdb {
 		$statement    = $this->pdo->prepare( $sql );
 
 		return $statement->execute( $data ) ? $statement->rowCount() : false;
+	}
+
+	/**
+	 * Update matching rows in the isolated SQLite database.
+	 *
+	 * @param string               $table        Table name.
+	 * @param array<string, mixed> $data         Updated values.
+	 * @param array<string, mixed> $where        Equality predicates.
+	 * @param string[]             $formats      Ignored wpdb formats.
+	 * @param string[]             $where_format Ignored wpdb formats.
+	 */
+	public function update( string $table, array $data, array $where, array $formats, array $where_format ): int|false {
+		unset( $formats, $where_format );
+
+		$set   = array_map( static fn( string $column ): string => '"' . $column . '" = :set_' . $column, array_keys( $data ) );
+		$match = array_map( static fn( string $column ): string => '"' . $column . '" = :where_' . $column, array_keys( $where ) );
+		$sql   = sprintf( 'UPDATE "%s" SET %s WHERE %s', $table, implode( ', ', $set ), implode( ' AND ', $match ) );
+		$args  = array();
+		foreach ( $data as $column => $value ) {
+			$args[ 'set_' . $column ] = $value;
+		}
+		foreach ( $where as $column => $value ) {
+			$args[ 'where_' . $column ] = $value;
+		}
+
+		$statement = $this->pdo->prepare( $sql );
+
+		return $statement->execute( $args ) ? $statement->rowCount() : false;
 	}
 
 	public function scalar( string $query ): int {

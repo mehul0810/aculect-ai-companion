@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Intelligence;
 
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -37,6 +39,9 @@ final class LearningSuggestionRepository {
 		'approved',
 		'dismissed',
 	);
+
+	public function __construct( private ?LearningSuggestionQueueStorage $storage = null ) {
+	}
 
 	/**
 	 * Queue a sanitized learning suggestion for admin review.
@@ -75,9 +80,16 @@ final class LearningSuggestionRepository {
 			'source'           => $this->sanitize_source( $source ),
 		);
 
-		$items   = $this->all();
+		$state   = $this->queue_state();
+		$items   = $state['items'];
 		$items[] = $suggestion;
-		$this->save( $items );
+		if ( ! $this->save( $state, $items ) ) {
+			return array(
+				'status'  => 'rejected',
+				'error'   => 'storage_error',
+				'message' => 'The learning suggestion could not be saved. Please retry.',
+			);
+		}
 
 		return array(
 			'status'        => 'queued',
@@ -153,7 +165,8 @@ final class LearningSuggestionRepository {
 			return false;
 		}
 
-		$items   = $this->all();
+		$state   = $this->queue_state();
+		$items   = $state['items'];
 		$updated = false;
 		$status  = 'approve' === $action ? 'approved' : 'dismissed';
 
@@ -172,12 +185,7 @@ final class LearningSuggestionRepository {
 		}
 		unset( $item );
 
-		if ( $updated ) {
-			$this->save( $items );
-			$this->sync_memory_for_reviewed_item( $reviewed_item );
-		}
-
-		return $updated;
+		return $updated && $this->sync_memory_for_reviewed_item( $reviewed_item, $state, $items );
 	}
 
 	/**
@@ -198,7 +206,8 @@ final class LearningSuggestionRepository {
 			return false;
 		}
 
-		$items   = $this->all();
+		$state   = $this->queue_state();
+		$items   = $state['items'];
 		$updated = false;
 
 		$updated_item = array();
@@ -220,43 +229,49 @@ final class LearningSuggestionRepository {
 		}
 		unset( $item );
 
-		if ( $updated ) {
-			$this->save( $items );
-			$this->sync_memory_for_reviewed_item( $updated_item );
-		}
-
-		return $updated;
+		return $updated && $this->sync_memory_for_reviewed_item( $updated_item, $state, $items );
 	}
 
 	/**
 	 * Sync approved or dismissed learning suggestions into durable memory.
 	 *
-	 * @param array<string, mixed> $item Learning suggestion item.
+	 * @param array<string, mixed>                                                        $item  Learning suggestion item.
+	 * @param array{exists:bool,value:mixed,token:string,items:list<array<string,mixed>>} $state Prior queue snapshot.
+	 * @param list<array<string,mixed>>                                                   $items Updated review queue.
 	 */
-	private function sync_memory_for_reviewed_item( array $item ): void {
+	private function sync_memory_for_reviewed_item( array $item, array $state, array $items ): bool {
 		$key    = $this->memory_key( $item );
 		$status = (string) ( $item['status'] ?? 'pending' );
 		if ( '' === $key || 'pending' === $status ) {
-			return;
+			return $this->save( $state, $items );
 		}
 
-		$memory = new ContentIndexRepository();
-		if ( 'dismissed' === $status ) {
-			$memory->delete_memory( $key );
-			return;
+		$memory = new MemoryService();
+		try {
+			$result = $memory->review(
+				array(
+					'key'        => $key,
+					'domain'     => (string) ( $item['domain'] ?? 'content' ),
+					'value'      => (string) ( $item['suggested_update'] ?? '' ),
+					'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
+					'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
+					'status'     => 'approved',
+					'visibility' => 'site',
+					'source'     => 'learning',
+				),
+				'dismissed' === $status,
+				fn (): bool => $this->save( $state, $items, true ),
+				function (): void {
+					$this->dispatch_deferred_update();
+				}
+			);
+			return 'success' === ( $result['status'] ?? '' ) || ( 'memory_not_found' === ( $result['error'] ?? '' ) && $this->save( $state, $items ) );
+		} finally {
+			// update_option may populate persistent cache before a transaction is rolled back.
+			wp_cache_delete( self::OPTION, 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
 		}
-
-		$memory->upsert_memory(
-			array(
-				'key'        => $key,
-				'domain'     => (string) ( $item['domain'] ?? 'content' ),
-				'value'      => (string) ( $item['suggested_update'] ?? '' ),
-				'evidence'   => trim( (string) ( $item['issue'] ?? '' ) . ' ' . (string) ( $item['evidence'] ?? '' ) . ' ' . (string) ( $item['review_note'] ?? '' ) ),
-				'confidence' => (string) ( $item['confidence'] ?? 'medium' ),
-				'status'     => 'approved',
-				'source'     => 'learning',
-			)
-		);
 	}
 
 	/**
@@ -265,6 +280,9 @@ final class LearningSuggestionRepository {
 	 * @param array<string, mixed> $item Learning suggestion item.
 	 */
 	private function memory_key( array $item ): string {
+		if ( ! empty( $item['memory_key'] ) ) {
+			return (string) $item['memory_key'];
+		}
 		$id     = sanitize_key( (string) ( $item['id'] ?? '' ) );
 		$domain = sanitize_key( (string) ( $item['domain'] ?? 'content' ) );
 
@@ -284,9 +302,24 @@ final class LearningSuggestionRepository {
 	 * @return list<array<string, mixed>>
 	 */
 	private function all(): array {
-		$stored = get_option( self::OPTION, array() );
+		return $this->queue_state()['items'];
+	}
+
+	/**
+	 * Return a normalized queue alongside its exact persistence snapshot.
+	 *
+	 * @return array{exists:bool,value:mixed,token:string,items:list<array<string,mixed>>}
+	 */
+	private function queue_state(): array {
+		$state  = $this->storage()->read();
+		$stored = $state['value'];
 		if ( ! is_array( $stored ) ) {
-			return array();
+			return array(
+				'exists' => $state['exists'],
+				'value'  => $stored,
+				'token'  => $state['token'],
+				'items'  => array(),
+			);
 		}
 
 		$items = array();
@@ -299,17 +332,64 @@ final class LearningSuggestionRepository {
 			}
 		}
 
-		return $items;
+		return array(
+			'exists' => $state['exists'],
+			'value'  => $stored,
+			'token'  => $state['token'],
+			'items'  => $items,
+		);
 	}
 
 	/**
 	 * Persist a bounded suggestion list.
 	 *
-	 * @param list<array<string, mixed>> $items Stored suggestions.
+	 * @param array{exists:bool,value:mixed,token:string,items:list<array<string,mixed>>} $state  Prior queue snapshot.
+	 * @param list<array<string, mixed>>                                                  $items  Stored suggestions.
+	 * @param bool                                                                        $defer_update_action Whether to dispatch option actions after a transaction commits.
 	 */
-	private function save( array $items ): void {
+	private function save( array $state, array $items, bool $defer_update_action = false ): bool {
 		$items = array_values( array_slice( $items, -self::MAX_SUGGESTIONS ) );
-		update_option( self::OPTION, $items, false );
+		$saved = $this->storage()->compare_and_swap( $state['exists'], $state['value'], $state['token'], $items );
+		if ( false === $saved ) {
+			return false;
+		}
+		if ( ! $state['exists'] ) {
+			return true;
+		}
+		if ( $defer_update_action ) {
+			$this->deferred_update = array(
+				'old' => $state['value'],
+				'new' => $saved,
+			);
+			return true;
+		}
+
+		$this->storage()->dispatch_updated( $state['value'], $saved );
+
+		return true;
+	}
+
+	/**
+	 * Deferred post-commit option actions.
+	 *
+	 * @var array{old:mixed,new:list<array<string,mixed>>}|null
+	 */
+	private ?array $deferred_update = null;
+
+	/** Dispatch a successful review's option actions after its transaction commits. */
+	private function dispatch_deferred_update(): void {
+		if ( null === $this->deferred_update ) {
+			return;
+		}
+
+		$update                = $this->deferred_update;
+		$this->deferred_update = null;
+		$this->storage()->dispatch_updated( $update['old'], $update['new'] );
+	}
+
+	/** Return the focused queue persistence collaborator. */
+	private function storage(): LearningSuggestionQueueStorage {
+		return $this->storage ??= new LearningSuggestionQueueStorage();
 	}
 
 	/**
@@ -326,6 +406,7 @@ final class LearningSuggestionRepository {
 
 		return array(
 			'id'               => $id,
+			'memory_key'       => $this->memory_key( $item ),
 			'domain'           => $this->sanitize_enum( $item['domain'] ?? '', self::DOMAINS, 'content' ),
 			'issue'            => $this->sanitize_text( $item['issue'] ?? '', 500 ),
 			'evidence'         => $this->sanitize_text( $item['evidence'] ?? '', 1200 ),

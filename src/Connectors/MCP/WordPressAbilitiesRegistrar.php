@@ -15,6 +15,10 @@ final class WordPressAbilitiesRegistrar {
 		'plugin.incident.report',
 	);
 
+	private const REGISTRATION_MARKER_KEY = 'aculect_internal_registration';
+
+	private static ?string $registration_marker = null;
+
 	/**
 	 * Cached first-party WordPress Ability names.
 	 *
@@ -38,14 +42,18 @@ final class WordPressAbilitiesRegistrar {
 			return;
 		}
 
-		call_user_func(
-			'wp_register_ability_category',
-			self::CATEGORY,
-			array(
-				'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
-				'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
-			)
-		);
+		try {
+			call_user_func(
+				'wp_register_ability_category',
+				self::CATEGORY,
+				array(
+					'label'       => __( 'Aculect Intelligence', 'aculect-ai-companion' ),
+					'description' => __( 'Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion.', 'aculect-ai-companion' ),
+				)
+			);
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+		}
 	}
 
 	/**
@@ -57,11 +65,17 @@ final class WordPressAbilitiesRegistrar {
 		}
 
 		foreach ( $this->read_only_module_registrations() as $registration ) {
-			call_user_func(
-				'wp_register_ability',
-				$this->ability_name( $registration['module'] ),
-				$this->ability_args( $registration['module'], $registration['execute'] )
-			);
+			try {
+				call_user_func(
+					'wp_register_ability',
+					$this->ability_name( $registration['module'] ),
+					$this->ability_args( $registration['module'], $registration['execute'] )
+				);
+			} catch ( \Throwable $throwable ) {
+				unset( $throwable );
+
+				continue;
+			}
 		}
 	}
 
@@ -97,6 +111,33 @@ final class WordPressAbilitiesRegistrar {
 	 */
 	public function is_first_party_read_intelligence( string $name ): bool {
 		return in_array( sanitize_text_field( $name ), $this->ability_names(), true );
+	}
+
+	/**
+	 * Verify an ability was registered by this request's Aculect registrar.
+	 *
+	 * @param object $ability WordPress Ability object.
+	 */
+	public function is_trusted_first_party_ability( object $ability ): bool {
+		if ( ! method_exists( $ability, 'get_name' ) || ! method_exists( $ability, 'get_meta' ) ) {
+			return false;
+		}
+
+		try {
+			$name = $ability->get_name();
+			$meta = $ability->get_meta();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
+
+		return is_string( $name )
+			&& $this->is_first_party_read_intelligence( $name )
+			&& is_array( $meta )
+			&& isset( $meta[ self::REGISTRATION_MARKER_KEY ] )
+			&& is_string( $meta[ self::REGISTRATION_MARKER_KEY ] )
+			&& hash_equals( $this->registration_marker(), $meta[ self::REGISTRATION_MARKER_KEY ] );
 	}
 
 	/**
@@ -226,18 +267,31 @@ final class WordPressAbilitiesRegistrar {
 			'execute_callback'    => static fn( mixed $input = array() ): array => $execute( is_array( $input ) ? $input : array() ),
 			'permission_callback' => $this->permission_callback_for_module( $module ),
 			'meta'                => array(
-				'show_in_rest' => true,
-				'annotations'  => array(
+				self::REGISTRATION_MARKER_KEY => $this->registration_marker(),
+				'public'                      => true,
+				'show_in_rest'                => true,
+				'annotations'                 => array(
 					'readonly'    => true,
 					'destructive' => false,
 					'idempotent'  => true,
 				),
-				'mcp'          => array(
+				'mcp'                         => array(
 					'public' => true,
 					'tool'   => ( new AbilitiesRegistry() )->tool_name( $module->id() ),
 				),
 			),
 		);
+	}
+
+	/**
+	 * Return the request-local marker used to distinguish Aculect registrations.
+	 */
+	private function registration_marker(): string {
+		if ( null === self::$registration_marker ) {
+			self::$registration_marker = bin2hex( random_bytes( 16 ) );
+		}
+
+		return self::$registration_marker;
 	}
 
 	/**
@@ -302,6 +356,12 @@ final class WordPressAbilitiesRegistrar {
 					'quality_summary'    => array( 'type' => 'object' ),
 					'error'              => array( 'type' => 'string' ),
 					'message'            => array( 'type' => 'string' ),
+					'terminal'           => array( 'type' => 'boolean' ),
+					'failed_step'        => array( 'type' => 'string' ),
+					'rollback_status'    => array( 'type' => 'string' ),
+					'recovery'           => array( 'type' => 'string' ),
+					'expected_modified'  => array( 'type' => 'string' ),
+					'current_modified'   => array( 'type' => 'string' ),
 				)
 			);
 		}

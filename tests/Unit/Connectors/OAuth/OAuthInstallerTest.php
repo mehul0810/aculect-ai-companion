@@ -11,6 +11,7 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -28,6 +29,7 @@ final class OAuthInstallerTest extends TestCase {
 
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		unset( $GLOBALS['aculect_ai_companion_test_db_delta_callback'] );
+		delete_option( 'aculect_ai_companion_oauth_issuer_backfill' );
 	}
 
 	protected function tearDown(): void {
@@ -58,6 +60,10 @@ final class OAuthInstallerTest extends TestCase {
 
 		self::assertIsString( $sql );
 		self::assertStringContainsString( "registration_fingerprint char(64) NOT NULL DEFAULT ''", $sql );
+		self::assertStringContainsString( "issuer_hash char(64) NOT NULL DEFAULT ''", $sql );
+		self::assertStringContainsString( "application_type varchar(16) NOT NULL DEFAULT 'legacy'", $sql );
+		self::assertStringContainsString( 'KEY issuer_revoked (issuer_hash, revoked)', $sql );
+		self::assertSame( 1, substr_count( $sql, 'issuer_hash char(64)' ) );
 		self::assertStringContainsString( 'write_permission_enabled tinyint(1) NOT NULL DEFAULT 0', $sql );
 		self::assertStringContainsString( "access_level varchar(32) NOT NULL DEFAULT 'read'", $sql );
 		self::assertStringContainsString( 'KEY provider_registration_revoked (provider, registration_fingerprint, revoked)', $sql );
@@ -65,9 +71,55 @@ final class OAuthInstallerTest extends TestCase {
 		self::assertStringContainsString( 'KEY active_refresh (revoked, expires_at, access_token_hash)', $sql );
 	}
 
+	public function test_issuer_backfill_is_bounded_resumable_and_marks_only_verified_completion(): void {
+		$wpdb                   = new FakeOAuthInstallerWpdb();
+		$wpdb->existing_tables  = array( 'wp_aculect_ai_companion_oauth_clients' );
+		$wpdb->results          = array( array( 'id' => '12' ) );
+		$wpdb->issuer_remaining = '12';
+		$wpdb->update_result    = 0;
+		$GLOBALS['wpdb']        = $wpdb;
+
+		$this->invokePrivateStatic( 'backfill_client_issuer_bindings' );
+
+		self::assertSame(
+			array( 'wp_aculect_ai_companion_oauth_clients', '', 100 ),
+			$wpdb->prepared[0]['args']
+		);
+		self::assertSame( '', get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+
+		$wpdb->update_result    = 1;
+		$wpdb->issuer_remaining = null;
+		$this->invokePrivateStatic( 'backfill_client_issuer_bindings' );
+
+		self::assertSame( IssuerBinding::hash(), get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+		self::assertSame( IssuerBinding::hash(), $wpdb->updates[1]['data']['issuer_hash'] );
+		self::assertSame(
+			array(
+				'id'          => 12,
+				'issuer_hash' => '',
+			),
+			$wpdb->updates[1]['where']
+		);
+	}
+
+	public function test_issuer_backfill_does_not_mark_completion_when_final_read_fails(): void {
+		$wpdb                    = new FakeOAuthInstallerWpdb();
+		$wpdb->results           = array( array( 'id' => '12' ) );
+		$wpdb->update_result     = 0;
+		$wpdb->issuer_remaining  = null;
+		$wpdb->issuer_read_error = 'Forced final issuer verification failure.';
+		$GLOBALS['wpdb']         = $wpdb;
+
+		$this->invokePrivateStatic( 'backfill_client_issuer_bindings' );
+
+		self::assertSame( '', get_option( 'aculect_ai_companion_oauth_issuer_backfill', '' ) );
+		self::assertFalse( Installer::issuer_binding_ready() );
+		self::assertSame( 'Forced final issuer verification failure.', $wpdb->last_error );
+	}
+
 	public function test_backfill_updates_valid_empty_registration_fingerprints_in_batches(): void {
-		$wpdb          = new FakeOAuthInstallerWpdb();
-		$wpdb->results = array(
+		$wpdb            = new FakeOAuthInstallerWpdb();
+		$wpdb->results   = array(
 			array(
 				'id'            => '12',
 				'redirect_uris' => '["https:\/\/example.com\/b","https:\/\/example.com\/a"]',
@@ -109,7 +161,7 @@ final class OAuthInstallerTest extends TestCase {
 		$wpdb->prefix          = 'wp_7_';
 		$wpdb->client_rows     = array( 'existing-client-row' );
 		$GLOBALS['wpdb']       = $wpdb;
-		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = static function ( string $sql ) use ( $wpdb ): array {
 			$wpdb->db_delta_queries[] = $sql;
 			$wpdb->existing_tables[]  = 'wp_7_aculect_ai_companion_oauth_auth_codes';
@@ -132,7 +184,7 @@ final class OAuthInstallerTest extends TestCase {
 			'wp_aculect_ai_companion_oauth_refresh_tokens',
 		);
 		$GLOBALS['wpdb']       = $wpdb;
-		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
 
 		self::assertFalse( Installer::install( true ) );
 		self::assertSame( array( 'auth_codes' ), Installer::missing_table_keys() );
@@ -148,19 +200,19 @@ final class OAuthInstallerTest extends TestCase {
 			'wp_7_aculect_ai_companion_oauth_auth_codes',
 		);
 		$GLOBALS['wpdb']       = $wpdb;
-		update_option( 'aculect_ai_companion_oauth_db_version', '2026.06.03.1', false );
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
 
 		Installer::activate();
 
-		self::assertSame( 4, $wpdb->get_var_calls );
+		self::assertGreaterThanOrEqual( 4, $wpdb->get_var_calls );
 		self::assertSame( array(), Installer::missing_table_keys() );
 	}
 
 	/**
 	 * Invoke a private static method for focused unit coverage.
 	 *
-	 * @param string      $method    Method name.
-	 * @param list<mixed> $arguments Method arguments.
+	 * @param string $method    Method name.
+	 * @param array  $arguments Method arguments.
 	 * @return mixed
 	 */
 	private function invokePrivateStatic( string $method, array $arguments = array() ): mixed {
@@ -177,18 +229,63 @@ final class OAuthInstallerTest extends TestCase {
  */
 final class FakeOAuthInstallerWpdb {
 
+	/**
+	 * Last database error, matching wpdb's public error surface.
+	 *
+	 * @var string
+	 */
+	public string $last_error = '';
+
 	public string $prefix = 'wp_';
 
-	/** @var list<string> */
+	/**
+	 * Existing table names.
+	 *
+	 * @var list<string>
+	 */
 	public array $existing_tables = array();
 
-	/** @var list<string> */
+	/**
+	 * Preserved client rows.
+	 *
+	 * @var list<string>
+	 */
 	public array $client_rows = array();
 
-	/** @var list<string> */
+	/**
+	 * Captured dbDelta statements.
+	 *
+	 * @var list<string>
+	 */
 	public array $db_delta_queries = array();
 
+	/**
+	 * Number of scalar reads performed by the installer.
+	 *
+	 * @var int
+	 */
 	public int $get_var_calls = 0;
+
+	/**
+	 * Remaining blank issuer row returned by the test double.
+	 *
+	 * @var string|null
+	 */
+	public ?string $issuer_remaining = null;
+
+	/**
+	 * Error injected during final issuer verification.
+	 *
+	 * @var string
+	 */
+	public string $issuer_read_error = '';
+
+	/**
+	 * Update result returned by the test double.
+	 *
+	 * @var int
+	 */
+	public int $update_result = 1;
 
 	/**
 	 * Prepared SQL calls.
@@ -239,10 +336,13 @@ final class FakeOAuthInstallerWpdb {
 		return $this->results;
 	}
 
-	public function get_var( string $query ): string {
-		unset( $query );
+	public function get_var( string $query ): ?string {
 
 		++$this->get_var_calls;
+		if ( str_contains( $query, 'WHERE issuer_hash = %s' ) ) {
+			$this->last_error = $this->issuer_read_error;
+			return $this->issuer_remaining;
+		}
 		$table = (string) ( $this->prepared[ array_key_last( $this->prepared ) ]['args'][0] ?? '' );
 
 		return in_array( $table, $this->existing_tables, true ) ? $table : '';
@@ -274,6 +374,6 @@ final class FakeOAuthInstallerWpdb {
 			'where' => $where,
 		);
 
-		return 1;
+		return $this->update_result;
 	}
 }

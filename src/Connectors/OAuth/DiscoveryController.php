@@ -16,6 +16,12 @@ use WP_REST_Server;
 final class DiscoveryController {
 
 	/**
+	 * Keep public discovery cache entries short enough that endpoint and
+	 * capability changes do not remain pinned in connector caches for an hour.
+	 */
+	private const PUBLIC_METADATA_CACHE_MAX_AGE = 300;
+
+	/**
 	 * Register root-level well-known rewrite rules.
 	 */
 	public function add_rewrite_rules(): void {
@@ -119,17 +125,14 @@ final class DiscoveryController {
 		$response = new WP_REST_Response(
 			array(
 				'resource'                              => $resource,
-				'authorization_servers'                 => array(
-					Helpers::authorization_server_issuer(),
-					Helpers::issuer(),
-				),
+				'authorization_servers'                 => array( Helpers::authorization_server_issuer() ),
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_documentation'                => 'https://github.com/mehul0810/aculect-ai-companion',
 				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 			),
 			200
 		);
-		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Cache-Control', 'public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		$response->header( 'Access-Control-Allow-Origin', '*' );
 
 		return $response;
@@ -143,10 +146,9 @@ final class DiscoveryController {
 	 */
 	public function authorization_server_metadata( string $requested_issuer_path = '' ): WP_REST_Response {
 		$site_issuer_path      = untrailingslashit( (string) wp_parse_url( Helpers::issuer(), PHP_URL_PATH ) );
-		$mcp_issuer_path       = untrailingslashit( Helpers::resource_path( Helpers::authorization_server_issuer() ) );
 		$requested_issuer_path = untrailingslashit( $requested_issuer_path );
 
-		if ( '' !== $requested_issuer_path && $requested_issuer_path !== $site_issuer_path && $requested_issuer_path !== $mcp_issuer_path ) {
+		if ( '' !== $requested_issuer_path && $requested_issuer_path !== $site_issuer_path ) {
 			( new Logger() )->warning(
 				'metadata.invalid_issuer',
 				'Authorization server metadata was requested for an unknown issuer path.',
@@ -154,7 +156,6 @@ final class DiscoveryController {
 					'error_code'            => 'invalid_issuer',
 					'requested_issuer_path' => $requested_issuer_path,
 					'site_issuer_path'      => $site_issuer_path,
-					'mcp_issuer_path'       => $mcp_issuer_path,
 				),
 				null,
 				404
@@ -162,11 +163,9 @@ final class DiscoveryController {
 			return new WP_REST_Response( array( 'error' => 'invalid_issuer' ), 404 );
 		}
 
-		$issuer = $requested_issuer_path === $mcp_issuer_path ? Helpers::authorization_server_issuer() : Helpers::issuer();
-
 		$response = new WP_REST_Response(
 			array(
-				'issuer'                                => $issuer,
+				'issuer'                                => Helpers::authorization_server_issuer(),
 				'authorization_endpoint'                => Helpers::authorization_endpoint(),
 				'token_endpoint'                        => Helpers::token_endpoint(),
 				'registration_endpoint'                 => Helpers::registration_endpoint(),
@@ -175,13 +174,14 @@ final class DiscoveryController {
 				'token_endpoint_auth_methods_supported' => TokenEndpointAuthMethod::supported(),
 				'code_challenge_methods_supported'      => array( 'S256' ),
 				'client_id_metadata_document_supported' => false,
+				'authorization_response_iss_parameter_supported' => true,
 				'scopes_supported'                      => Helpers::supported_scopes(),
 				'resource_indicators_supported'         => true,
 				'protected_resources'                   => array( Helpers::mcp_resource() ),
 			),
 			200
 		);
-		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Cache-Control', 'public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		$response->header( 'Access-Control-Allow-Origin', '*' );
 
 		return $response;
@@ -217,7 +217,7 @@ final class DiscoveryController {
 
 		status_header( $response->get_status() );
 		header( 'Content-Type: application/json; charset=' . get_option( 'blog_charset' ) );
-		header( 'Cache-Control: public, max-age=3600' );
+		header( 'Cache-Control: public, max-age=' . self::PUBLIC_METADATA_CACHE_MAX_AGE );
 		header( 'Access-Control-Allow-Origin: *' );
 		echo wp_json_encode( $response->get_data(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
 		exit;

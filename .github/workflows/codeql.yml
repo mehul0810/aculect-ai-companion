@@ -1,12 +1,8 @@
 name: CodeQL
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_call:
+  workflow_dispatch:
   schedule:
     - cron: "24 3 * * 1"
 
@@ -15,10 +11,15 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: codeql-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze JavaScript
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
@@ -28,14 +29,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           languages: ${{ matrix.language }}
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           category: /language:${{ matrix.language }}

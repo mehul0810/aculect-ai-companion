@@ -364,50 +364,78 @@ final class McpToolManifest {
 	}
 
 	/**
-	 * Return profile-aware tool visibility diagnostics for an export.
+	 * Return profile-aware tool navigation diagnostics for an export.
 	 *
 	 * @param array<string, mixed> $session       Active connector session context.
 	 * @param array<string, mixed> $tools_payload Current MCP tools/list payload.
 	 * @return array<string, mixed>
 	 */
 	private function profile_context( array $session, array $tools_payload ): array {
-		$scopes       = $this->session_scopes( $session );
-		$profile_id   = $this->profile_id( $session, $scopes );
-		$profile      = $this->profile_definition( $profile_id );
-		$visible      = $this->tool_names_from_payload( $tools_payload );
-		$baseline     = $this->tool_names_from_payload( ( new McpController() )->tool_manifest_for_user( $this->current_user_id(), null ) );
-		$hidden       = array_values( array_diff( $baseline, $visible ) );
-		$hidden_by    = array();
-		$scope_aware  = null !== $scopes;
-		$registry     = new \Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry();
-		$active_scope = null === $scopes ? array() : $scopes;
+		$scopes         = $this->session_scopes( $session );
+		$profile_id     = $this->profile_id( $session, $scopes );
+		$profile        = $this->profile_definition( $profile_id );
+		$visible        = $this->tool_names_from_payload( $tools_payload );
+		$baseline       = $this->tool_names_from_payload( ( new McpController() )->tool_manifest_for_user( $this->current_user_id(), null ) );
+		$unavailable    = array_values( array_diff( $baseline, $visible ) );
+		$unavailable_by = array();
+		$scope_aware    = null !== $scopes;
+		$registry       = new \Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry();
+		$active_scope   = null === $scopes ? array() : $scopes;
+		$profiles       = new \Aculect\AICompanion\Connectors\MCP\McpToolProfiles();
+		$profile_map    = $profiles->profiles( $registry );
+		$guidance       = is_array( $profile_map[ $profile_id ] ?? null ) ? $profile_map[ $profile_id ] : null;
+		$intelligence   = new \Aculect\AICompanion\Connectors\MCP\IntelligenceRegistry();
+		$recommended    = null === $guidance
+			? $visible
+			: array_values(
+				array_filter(
+					$visible,
+					static function ( string $tool_name ) use ( $guidance, $intelligence, $profiles, $registry ): bool {
+						$ability_id = $registry->internal_id( $tool_name );
+						$module     = $registry->module( $ability_id );
+						if ( null === $module ) {
+							$ability_id = $intelligence->internal_id( $tool_name );
+							$module     = $intelligence->module( $ability_id );
+						}
 
-		foreach ( $hidden as $tool_name ) {
-			$ability_id      = $registry->internal_id( $tool_name );
-			$required_scopes = $registry->required_scopes( $ability_id );
-			$missing_scopes  = $scope_aware ? $this->missing_scopes( $required_scopes, $active_scope ) : array();
-			$hidden_by[]     = array(
+						return $profiles->recommends_ability( $ability_id, $guidance, $registry, $module );
+					}
+				)
+			);
+		$deprioritized  = array_values( array_diff( $visible, $recommended ) );
+
+		foreach ( $unavailable as $tool_name ) {
+			$ability_id       = $registry->internal_id( $tool_name );
+			$required_scopes  = $registry->required_scopes( $ability_id );
+			$missing_scopes   = $scope_aware ? $this->missing_scopes( $required_scopes, $active_scope ) : array();
+			$unavailable_by[] = array(
 				'tool'            => $tool_name,
 				'ability_id'      => $ability_id,
-				'reason'          => array() === $missing_scopes ? 'profile_filtered' : 'oauth_scope',
+				'reason'          => array() === $missing_scopes ? 'authorization_policy' : 'oauth_scope',
 				'required_scopes' => array_values( $required_scopes ),
 				'missing_scopes'  => $missing_scopes,
 			);
 		}
 
 		return array(
-			'id'                => $profile_id,
-			'label'             => $profile['label'],
-			'description'       => $profile['description'],
-			'source'            => $this->profile_source( $session, $scopes ),
-			'scope_aware'       => $scope_aware,
-			'granted_scopes'    => $active_scope,
-			'visible_tools'     => $visible,
-			'visible_count'     => count( $visible ),
-			'hidden_tools'      => $hidden,
-			'hidden_count'      => count( $hidden ),
-			'hidden_by_profile' => $hidden_by,
-			'required_tools'    => $profile['required_tools'],
+			'id'                       => $profile_id,
+			'label'                    => $profile['label'],
+			'description'              => $profile['description'],
+			'source'                   => $this->profile_source( $session, $scopes ),
+			'scope_aware'              => $scope_aware,
+			'granted_scopes'           => $active_scope,
+			'visible_tools'            => $visible,
+			'visible_count'            => count( $visible ),
+			'guidance_only'            => true,
+			'recommended_tools'        => $recommended,
+			'deprioritized_tools'      => $deprioritized,
+			'unavailable_tools'        => $unavailable,
+			'unavailable_count'        => count( $unavailable ),
+			'unavailable_tools_detail' => $unavailable_by,
+			'hidden_tools'             => $unavailable,
+			'hidden_count'             => count( $unavailable ),
+			'hidden_by_profile'        => array(),
+			'required_tools'           => $profile['required_tools'],
 		);
 	}
 
@@ -454,17 +482,17 @@ final class McpToolManifest {
 		$profiles = array(
 			'read_only_audit'    => array(
 				'label'          => 'Read-only audit',
-				'description'    => 'Read-only discovery, diagnostics, retrieval, and site readiness workflows.',
+				'description'    => 'Prioritizes read-only discovery, diagnostics, retrieval, and site readiness workflows.',
 				'required_tools' => array( 'workflow_route_request', 'core_schema_discover', 'site_workflow_audit', 'workflow_guides_list', 'workflow_guides_get' ),
 			),
 			'content_management' => array(
 				'label'          => 'Content management',
-				'description'    => 'Content planning, draft creation, updates, media application, SEO, and review workflows.',
+				'description'    => 'Prioritizes content planning, draft creation, updates, media application, SEO, and review workflows.',
 				'required_tools' => array( 'workflow_route_request', 'content_workflow_prepare_post', 'content_workflow_create_draft', 'content_workflow_update_post', 'workflow_session_start' ),
 			),
 			'site_management'    => array(
 				'label'          => 'Site management',
-				'description'    => 'Site readiness, Site Editor, site navigation, admin navigation, and safe management discovery workflows.',
+				'description'    => 'Prioritizes site readiness, Site Editor, site navigation, admin navigation, and safe management discovery workflows.',
 				'required_tools' => array( 'workflow_route_request', 'site_workflow_audit', 'site_editor_get_context', 'navigation_get_context', 'admin_menu_get_context', 'core_schema_discover' ),
 			),
 			'unscoped'           => array(

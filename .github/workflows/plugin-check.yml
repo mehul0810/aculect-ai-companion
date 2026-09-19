@@ -1,0 +1,65 @@
+name: Release Package Plugin Check
+
+on:
+  workflow_call:
+    inputs:
+      package-artifact-name:
+        type: string
+        required: true
+      package-sha256:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  plugin-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.package-artifact-name }}
+          path: release/
+      - name: Verify exact package
+        env:
+          EXPECTED_SHA256: ${{ inputs.package-sha256 }}
+        run: |
+          cd release
+          sha256sum --check aculect-ai-companion.zip.sha256
+          test "$(sha256sum aculect-ai-companion.zip | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+          unzip -q aculect-ai-companion.zip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "20.19.0"
+      - name: Configure Plugin Check
+        run: |
+          PLUGIN_DIR="$(realpath release/aculect-ai-companion)"
+          cat > .wp-env.json <<JSON
+          {
+            "core": "https://wordpress.org/wordpress-7.1.zip",
+            "port": 8880,
+            "testsEnvironment": false,
+            "plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
+            "mappings": {"wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}"}
+          }
+          JSON
+          npm install --global @wordpress/env@11.6.0
+      - name: Start WordPress
+        run: wp-env start --update
+      - name: Check installable plugin
+        run: |
+          for attempt in $(seq 1 12); do
+            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          wp-env run cli wp core is-installed
+          wp-env run cli wp plugin activate aculect-ai-companion
+          wp-env run cli wp plugin check aculect-ai-companion --format=json --ignore-warnings --exclude-files=.wp-env.json --slug=aculect-ai-companion --require=./wp-content/plugins/plugin-check/cli.php
+      - name: Stop WordPress
+        if: always()
+        run: wp-env stop

@@ -34,6 +34,33 @@ if ( ! is_array( $config ) ) {
 	exit( 2 );
 }
 
+// Historical growth starts when the target branch adopts this configuration.
+// Missing history or a removed configuration must not masquerade as adoption.
+if ( null !== $changed_from ) {
+	$base_commit = git_output( $root, 'rev-parse --verify --end-of-options ' . escapeshellarg( $changed_from . '^{commit}' ) );
+	if ( null === $base_commit || ! preg_match( '/^[a-f0-9]{40,64}$/', $base_commit ) ) {
+		fwrite( STDERR, "Cannot resolve modularity comparison revision.\n" );
+		exit( 2 );
+	}
+	$base_config = git_output( $root, 'ls-tree --name-only ' . escapeshellarg( $base_commit ) . ' -- ' . escapeshellarg( $config_path ) );
+	if ( null === $base_config ) {
+		fwrite( STDERR, "Cannot inspect modularity comparison configuration.\n" );
+		exit( 2 );
+	}
+	if ( '' === $base_config ) {
+		$config_history = git_output( $root, 'log -1 --format=%H ' . escapeshellarg( $base_commit ) . ' -- ' . escapeshellarg( $config_path ) );
+		$shallow = git_output( $root, 'rev-parse --is-shallow-repository' );
+		if ( '' !== $config_history || 'false' !== $shallow ) {
+			fwrite( STDERR, "Cannot establish initial modularity adoption: configuration was removed or history is incomplete.\n" );
+			exit( 2 );
+		}
+		echo "Initial modularity adoption: enforcing current ceilings and dependencies; no governed base for historical growth.\n";
+		$changed_from = null;
+	} else {
+		$changed_from = $base_commit;
+	}
+}
+
 $exceptions = array();
 foreach ( (array) ( $config['exceptions'] ?? array() ) as $exception ) {
 	if ( ! is_array( $exception ) || ! isset( $exception['path'], $exception['max_lines'], $exception['owner'], $exception['reason'], $exception['issue'], $exception['target'] ) ) {
@@ -245,4 +272,14 @@ function git_file_line_count( string $root, string $revision, string $path ): ?i
 	$status = 0;
 	exec( $command, $output, $status );
 	return 0 === $status ? count( $output ) : null;
+}
+
+/**
+ * Return Git output, retaining a distinct failure result.
+ */
+function git_output( string $root, string $arguments ): ?string {
+	$output = array();
+	$status = 0;
+	exec( 'git -C ' . escapeshellarg( $root ) . ' ' . $arguments . ' 2>/dev/null', $output, $status );
+	return 0 === $status ? trim( implode( "\n", $output ) ) : null;
 }

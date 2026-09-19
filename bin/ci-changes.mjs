@@ -40,8 +40,12 @@ const rules = [
 		checks: [ 'wordpress' ],
 	},
 	{
-		test: /^tests\/Integration\/(?:Browser|Memory)\//,
+		test: /^tests\/Integration\/(?:Browser|Memory|OAuth)\//,
 		checks: [ 'browser', 'package' ],
+	},
+	{
+		test: /^tests\/Unit\/Connectors\/OAuth\//,
+		checks: [ 'package', 'browser' ],
 	},
 	{
 		test: /^(?:\.distignore|assets\/|languages\/)/,
@@ -61,7 +65,7 @@ function pathChecks( path ) {
 		return selected;
 	}
 	if (
-		/^(?:\.github\/|\.codex\/|bin\/|composer\.|aculect-ai-companion\.php$|src\/Plugin\.php$|tests\/(?:bootstrap\.php$|fixtures\/))/.test(
+		/^(?:\.github\/|\.codex\/|bin\/|composer\.|aculect-ai-companion\.php$|src\/Plugin\.php$|tests\/(?:bootstrap\.php$|fixtures\/|js\/(?:oauth|ci-)))/.test(
 			path
 		)
 	) {

@@ -1,0 +1,94 @@
+name: Packaged OAuth Contract
+
+on:
+  workflow_call:
+    inputs:
+      package-artifact-name:
+        type: string
+        required: true
+      package-sha256:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  oauth-contract:
+    name: OAuth connection contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.package-artifact-name }}
+          path: release/
+      - name: Verify exact tested package
+        env:
+          EXPECTED_SHA256: ${{ inputs.package-sha256 }}
+        run: |
+          cd release
+          sha256sum --check aculect-ai-companion.zip.sha256
+          test "$(sha256sum aculect-ai-companion.zip | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+          unzip -q aculect-ai-companion.zip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "20.19.0"
+      - name: Configure disposable WordPress
+        run: |
+          node --input-type=module -e '
+          import { writeFileSync } from "node:fs";
+          writeFileSync(".wp-env.json", JSON.stringify({
+            core: "https://wordpress.org/wordpress-7.1.zip",
+            port: 8884, phpVersion: "8.2", testsEnvironment: false, plugins: [],
+            mappings: {
+              "wp-content/plugins/aculect-ai-companion": process.cwd() + "/release/aculect-ai-companion",
+              "wp-content/aculect-oauth-proof": process.cwd() + "/tests/Integration/OAuth"
+            }
+          }));'
+          npm install --global @wordpress/env@11.6.0
+          wp-env start --update
+      - name: Prepare isolated OAuth fixture
+        run: |
+          # Waiting for fixture boot is not a retry of a failed OAuth request.
+          for attempt in $(seq 1 12); do
+            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          wp-env run cli wp core is-installed
+          wp-env run cli wp plugin activate aculect-ai-companion
+          wp-env run cli wp user create workflow-admin workflow-admin@example.test --role=administrator --user_pass=workflow-admin-password
+          wp-env run cli env ACULECT_OAUTH_FIXTURE_OPT_IN=1 wp eval-file wp-content/aculect-oauth-proof/setup.php
+          npx playwright install --with-deps chromium
+      - name: Prove OAuth contract without retries
+        id: oauth
+        env:
+          ACULECT_WP_BASE_URL: http://localhost:8884
+          ACULECT_WP_ADMIN_USER: workflow-admin
+          ACULECT_WP_ADMIN_PASSWORD: workflow-admin-password
+          ACULECT_OAUTH_FIXTURE_OPT_IN: "1"
+        run: node tests/Integration/Browser/oauth-contract.mjs
+      - name: Flag failure and owner approval boundary
+        if: failure()
+        env:
+          CONTRACT_OUTCOME: ${{ steps.oauth.outcome }}
+        run: |
+          echo '::error::OAuth release gate failed. Release blocked. Diagnose the failed stage; explicit owner approval is required before changing OAuth behavior or weakening its tests.'
+          if [ "$CONTRACT_OUTCOME" = failure ]; then
+            echo 'OAuth contract failed on its first attempt. No automatic retry or authentication workaround is permitted.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'OAuth environment/package setup failed before contract completion. This is not a passing OAuth test or proof of a product regression.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Stop disposable WordPress
+        if: always()
+        run: wp-env stop

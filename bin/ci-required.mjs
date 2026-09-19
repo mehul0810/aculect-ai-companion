@@ -15,6 +15,7 @@ export function failedChecks( needs ) {
 		php: flags.php === 'true',
 		assets: flags.assets === 'true',
 		package: flags.package === 'true',
+		'oauth-contract': flags.package === 'true',
 		database: [ 'claims', 'oauth' ].some(
 			( name ) => flags[ name ] === 'true'
 		),

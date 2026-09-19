@@ -13,6 +13,7 @@
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
     "smoke:mcp-sdk": "node scripts/smoke/mcp-sdk-client.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
+    "smoke:oauth-browser": "node tests/Integration/Browser/oauth-contract.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",
     "test:js": "node --test tests/js/*.test.mjs",
     "format": "wp-scripts format"

@@ -191,6 +191,15 @@ jobs:
       security-events: write
     uses: ./.github/workflows/php-security.yml
 
+  oauth-contract:
+    name: Packaged OAuth proof
+    needs: [changes, package]
+    if: needs.changes.outputs.package == 'true'
+    uses: ./.github/workflows/oauth-contract.yml
+    with:
+      package-sha256: ${{ needs.package.outputs.sha256 }}
+      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
+
   codeql:
     name: JavaScript security
     needs: changes
@@ -204,7 +213,7 @@ jobs:
   required:
     name: Required CI
     if: always()
-    needs: [changes, php, assets, package, database, wordpress, browser, security, codeql]
+    needs: [changes, php, assets, package, database, wordpress, browser, security, codeql, oauth-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

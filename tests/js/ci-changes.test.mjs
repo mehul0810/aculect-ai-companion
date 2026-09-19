@@ -173,6 +173,7 @@ test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing requ
 		'browser',
 		'security',
 		'codeql',
+		'oauth-contract',
 	];
 	const needs = {
 		changes: {
@@ -213,6 +214,7 @@ test( 'aggregate allows only detector-authorized skips', () => {
 		'browser',
 		'security',
 		'codeql',
+		'oauth-contract',
 	];
 	const needs = {
 		changes: {

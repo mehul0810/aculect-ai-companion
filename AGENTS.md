@@ -17,26 +17,24 @@
 - Domain ownership is directional: Intelligence and Activity cannot import MCP services directly. Add a neutral port or adapter when a boundary needs to cross layers.
 
 ## Project Subagents
-- Project subagents live in `.codex/agents`; keep concurrency to three threads by policy. `.codex/config.toml` limits agent depth to one; do not restore the obsolete `agents.max_threads` setting when `multi_agent_v2` is enabled.
-- Use `aculect-plugin-mapper` for read-only PHP/MCP/OAuth/admin architecture mapping.
-- Use `aculect-admin-ui-mapper` for read-only settings UI, React, CSS, and build-surface mapping.
-- Use `aculect-ci-log-summarizer` for bounded CI, PHPUnit, PHPStan, WPCS, npm, build, and release log summaries.
-- Use `aculect-narrow-fixer` only when the parent agent provides exact files, behavior, and validation commands; it must not commit, push, or broaden scope.
-- Use `aculect-mcp-oauth-reviewer` for high-risk MCP, OAuth, ability-policy, security, and diagnostics review.
-- Use `aculect-release-reviewer` before release merges, production package checks, or wp.org-facing release work.
-- Use `gpt-5.6-luna` with `max` reasoning effort for all project subagents, including mapping, narrow fixes, MCP/OAuth review, release review, and delegated runtime validation.
-- If `gpt-5.6-luna` with `max` reasoning is unavailable in the active runtime, report the blocker and ask the owner before substituting another model or reasoning effort.
+- Project profiles live in `.codex/agents`. `.codex/config.toml` allows two child agents plus the parent, with depth one. Children must not delegate. Do not restore `agents.max_threads`.
+- The minimum model is `gpt-5.6-luna` for the parent and all ad hoc, built-in, reviewer, and behavior-validation agents. Keep a compliant stronger parent model; never use an older or lower-capability model, even for trivial work or as a fallback.
+- All repository profiles explicitly select Luna. Mapping and log analysis use `medium`, bounded implementation and behavior proof use `high`, and security/release review use `max`. Reasoning effort is separate from model capability.
+- For a justified escalation or unavailable Luna, use an available `gpt-5.6-terra`, `gpt-5.6-sol`, or `gpt-6-astra` with supported reasoning effort; record the reason. Do not infer eligibility from a model-name prefix. Unknown models need an owner decision; never silently downgrade.
+- Before spawning, check the actual model and effort selected by the runtime. When custom profiles are unavailable, pass their instructions and explicit model/effort to the supported spawn tool. Full-history inheritance must not bypass the model floor.
+- Configuration defaults are not a runtime prohibition on explicit overrides. The parent must enforce the model floor on every spawn and stop/reassign any noncompliant worker before relying on its work.
 
 ## When To Spawn Project Subagents
-- Subagents do not run automatically just because profiles exist; the parent agent must decide and launch them when task scope warrants delegation.
-- Spawn `aculect-plugin-mapper` when a task needs broad PHP/MCP/OAuth/diagnostics orientation before implementation.
-- Spawn `aculect-admin-ui-mapper` when a task touches settings UI layout, React state, CSS, screenshots, or admin UX.
-- Spawn `aculect-ci-log-summarizer` when CI, PHPUnit, PHPStan, WPCS, npm, build, or release logs are long enough that summarizing them separately saves time.
-- Spawn `aculect-narrow-fixer` only after the parent isolates exact files, expected behavior, and validation commands.
-- Spawn `aculect-mcp-oauth-reviewer` before merging high-risk MCP/OAuth/ability-policy changes or after conflict resolutions in those areas.
-- Spawn `aculect-release-reviewer` before tagging, prerelease, production release, or syncing release branches into `main`/`develop`.
-- Do not spawn subagents for small single-file edits, straightforward copy/config changes, or tasks where acceptance criteria are not yet clear.
-- The parent agent owns the final decision, validation evidence, commits, pushes, PR base selection, and release actions.
+- Work directly on small, understood fixes, documentation, configuration, and short CI failures. Delegate only an independent question or implementation slice that saves useful time, or a required independent review. Do not launch the full roster by default.
+- Choose one mapper for the unresolved boundary: `aculect-plugin-mapper` for PHP/hooks/REST/MCP/OAuth/storage, or `aculect-admin-ui-mapper` for React/state/styles/editor/admin flows. Use both only when their assignments do not overlap. Mapping does not constitute review or rendered proof.
+- Use `aculect-ci-log-summarizer` for long or multi-job failures; give it immutable run/job IDs and let the parent continue independent work. Preserve the first failure and distinguish infrastructure from product failures.
+- Use `aculect-narrow-fixer` only after specifying exact files or an isolated checkout, expected behavior, constraints, and validation. At most one writer may own a file at a time. Shared-checkout edits require disjoint file ownership.
+- Require a fresh `aculect-mcp-oauth-reviewer` before integrating high-risk authentication, permissions, privacy, destructive-operation, or MCP contract changes. It must not be the implementer; include a reviewed revision and revisit affected findings after changes or conflict resolution.
+- Use a fresh `aculect-behavior-validator` for changed critical user flows and release golden workflows. Supply the observable contract, exact runtime/ZIP and checksum, synthetic fixtures, permitted mutations, and evidence destination. Do not fork implementation history or provide source/diff explanations. Source inspection contaminates source-blind proof and must be reported.
+- Require `aculect-release-reviewer` before production integration, beta/stable publication, or release synchronization. Routine package builds and small release-document edits do not each need a new reviewer. Reuse evidence only when its tested revision or unchanged scope is demonstrated.
+- Every assignment states objective, acceptance criteria, repo/branch/SHA, owned files, non-goals, environment/mutation limits, validation, and stop condition. Use a fresh concise handoff for independent review; reuse workers only within the same bounded assignment.
+- Workers return findings or changes, exact revision/artifact, commands and results, untested boundaries, and blockers. They must not commit, push, create/edit GitHub entities, merge, release, change settings, or subdelegate. The parent owns those actions under existing authorization.
+- Keep checkpoints to meaningful changes, avoid duplicate testing and unchanged polling, and stop workers that overlap or drift. Agent completion is not acceptance: the parent inspects the actual diff and evidence before integration.
 
 ## PHP and WordPress Coding
 - Follow WPCS (`WordPress-Core`, `WordPress-Docs`, `WordPress-Extra`).

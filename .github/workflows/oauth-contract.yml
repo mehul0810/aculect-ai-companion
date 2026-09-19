@@ -68,7 +68,7 @@ jobs:
           wp-env run cli wp core is-installed
           wp-env run cli wp plugin activate aculect-ai-companion
           wp-env run cli wp user create workflow-admin workflow-admin@example.test --role=administrator --user_pass=workflow-admin-password
-          wp-env run cli env ACULECT_OAUTH_FIXTURE_OPT_IN=1 wp eval-file wp-content/aculect-oauth-proof/setup.php
+          wp-env run cli env ACULECT_OAUTH_FIXTURE_OPT_IN=1 wp eval 'require "wp-content/aculect-oauth-proof/setup.php";'
           npx playwright install --with-deps chromium
       - name: Prove OAuth contract without retries
         id: oauth

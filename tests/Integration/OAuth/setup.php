@@ -2,7 +2,7 @@
 /**
  * Install disposable OAuth contract-test hooks in the WordPress fixture.
  *
- * This file is invoked with `wp eval-file` by the OAuth browser workflow. It
+ * This file is required through `wp eval` by the OAuth browser workflow. It
  * writes a small MU plugin so the competitor rewrite and lifecycle probe are
  * present on subsequent HTTP requests without changing the product package.
  *
@@ -142,7 +142,7 @@ if ( false === file_put_contents( $fixture_path, $fixture, LOCK_EX ) ) {
 
 require_once $fixture_path;
 
-// wp eval-file runs before a normal HTTP init. Register the fixture's native
+// WP-CLI runs before a normal HTTP init. Register the fixture's native
 // rewrite callback in this process before flushing the disposable site.
 aculect_oauth_contract_register_competitor_rewrite();
 flush_rewrite_rules( true );

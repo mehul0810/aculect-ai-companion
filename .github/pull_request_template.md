@@ -29,6 +29,10 @@
 - PHPStan baseline justification:
 - UI or workflow proof:
   - [ ] Screenshot, screen recording, CLI output, or reason not applicable is included for UI/workflow-visible changes.
+- OAuth contract:
+  - [ ] OAuth behavior is unchanged, or explicit owner approval for the exact behavior change is linked below.
+  - [ ] OAuth assertions and release gates were not weakened to hide a failure; first-attempt failures and their diagnosis are reported.
+- OAuth owner approval / reason not applicable:
 
 ## Release Train
 

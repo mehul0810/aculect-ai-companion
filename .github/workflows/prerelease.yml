@@ -21,9 +21,15 @@ jobs:
     with:
       package-sha256: ${{ needs.package.outputs.sha256 }}
       package-artifact-name: ${{ needs.package.outputs.artifact-name }}
+  oauth-contract:
+    needs: package
+    uses: ./.github/workflows/oauth-contract.yml
+    with:
+      package-sha256: ${{ needs.package.outputs.sha256 }}
+      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
   publish:
     name: Attach verified prerelease artifact
-    needs: [package, plugin-check]
+    needs: [package, plugin-check, oauth-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

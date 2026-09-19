@@ -47,6 +47,10 @@
 - Use REST `permission_callback` for every route.
 
 ## Security and OAuth
+- Owner-approved 0.8.0-only exception: rejected credential-free token response cache headers are deferred to #531 in 0.8.1. Report the gap explicitly; preserve all functional/security assertions and strict successful-token cache checks. The version-limited exception must not apply to 0.8.1 or later.
+- Treat the working beta13 OAuth flow as a protected behavioral contract. A failing OAuth test blocks release and requires a redacted diagnosis and explicit owner approval before changing discovery, routing, registration, login/consent, client storage, scopes, PKCE, token issuance, refresh, or revocation behavior.
+- Do not weaken, skip, delete, or rewrite OAuth assertions to make a failure pass without explicit owner approval. Tests and CI safeguards are part of the protected contract. Approval to add tests is not approval to change the OAuth flow.
+- Preserve first-attempt failure evidence. A passing retry does not erase a regression or establish its cause. Classify fixture/infrastructure, origin/plugin, metadata/cache, and edge/provider failures separately; never automatically disable security or change authentication to recover.
 - Use OAuth 2.1 style flows with PKCE for user-authorized access.
 - Primary connector UX must be endpoint-only: paste the MCP endpoint into ChatGPT or Claude, then complete WordPress OAuth consent.
 - Support Dynamic Client Registration (DCR) for plug-and-play clients; do not expose manual OAuth fields in the primary UX.

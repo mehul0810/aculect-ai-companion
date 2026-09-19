@@ -107,6 +107,7 @@ final class AuthorizationController {
 	 * @param WP_REST_Request|null  $request Optional REST request for logging.
 	 */
 	private function authorize_with_params( array $params, ?WP_REST_Request $request = null ): void {
+		nocache_headers();
 		( new Logger() )->info(
 			'authorize.received',
 			'OAuth authorization request received.',
@@ -154,6 +155,7 @@ final class AuthorizationController {
 	 * Process an approve or deny decision from the consent screen.
 	 */
 	public function handle_admin_consent(): void {
+		nocache_headers();
 		$request_token = $this->posted_request_token();
 
 		if ( ! is_user_logged_in() ) {
@@ -516,6 +518,7 @@ final class AuthorizationController {
 	 * @param array<string, string> $params       Response query parameters.
 	 */
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
+		nocache_headers();
 		$location = $this->authorization_response_location( $redirect_uri, $params );
 		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
 		wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
@@ -892,19 +895,9 @@ final class AuthorizationController {
 	 * @return array<string, string>
 	 */
 	private function persisted_params( array $params ): array {
-		$allowed = array(
-			'response_type',
-			'client_id',
-			'redirect_uri',
-			'scope',
-			'state',
-			'code_challenge',
-			'code_challenge_method',
-			'resource',
-		);
-		$output  = array();
+		$output = array();
 
-		foreach ( $allowed as $key ) {
+		foreach ( self::OAUTH_PARAMS as $key ) {
 			if ( isset( $params[ $key ] ) && '' !== (string) $params[ $key ] ) {
 				$output[ $key ] = (string) $params[ $key ];
 			}

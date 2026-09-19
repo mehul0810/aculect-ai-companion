@@ -82,6 +82,8 @@
 - Prefer asynchronous operations for long-running external calls.
 
 ## Maintenance Workflow
+- Use `npm run check:local` as the canonical pre-push gate. Style lint runs locally; essential tests/static analysis, secrets/dependency checks and packaged OAuth remain hosted. Do not equate a local receipt with a hosted OAuth pass.
+- Use `npm run check:release` for clean-revision local package preflight. Full release compatibility/browser/security proof and exact-package OAuth remain mandatory in the release workflow; missing infrastructure is a blocker, not an authorized skip.
 - Run: `composer test` and JS lint/build before releases.
 - Keep README and route/tool schema docs updated with behavior changes.
 - Maintain backward compatibility for public tool names and response shapes where practical.

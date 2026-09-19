@@ -2,20 +2,18 @@ import { pathToFileURL } from 'node:url';
 import { checks } from './ci-changes.mjs';
 
 export function failedChecks( needs ) {
-	const flags = needs.changes?.outputs || {};
+	const quality = needs.quality;
+	const flags = quality?.outputs || {};
 	if (
 		checks.some(
 			( name ) => ! [ 'true', 'false' ].includes( flags[ name ] )
 		)
 	) {
-		return [ 'changes' ];
+		return [ 'quality' ];
 	}
+
 	const expected = {
-		changes: true,
-		php: flags.php === 'true',
-		assets: flags.assets === 'true',
-		package: flags.package === 'true',
-		'oauth-contract': flags.package === 'true',
+		quality: true,
 		database: [ 'claims', 'oauth' ].some(
 			( name ) => flags[ name ] === 'true'
 		),
@@ -23,7 +21,9 @@ export function failedChecks( needs ) {
 		browser: flags.browser === 'true',
 		security: flags.security === 'true',
 		codeql: flags.codeql === 'true',
+		'oauth-contract': flags.quality === 'true',
 	};
+
 	return Object.entries( expected )
 		.filter( ( [ name, required ] ) => {
 			const result = needs[ name ]?.result;

@@ -3,9 +3,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const checks = [
-	'php',
-	'assets',
-	'package',
+	'quality',
 	'claims',
 	'oauth',
 	'wordpress',
@@ -14,79 +12,93 @@ export const checks = [
 	'codeql',
 ];
 
+const full = () => new Set( checks );
+
 const rules = [
 	{
-		test: /\.php$|^(?:phpstan|phpcs|phpunit)/,
-		checks: [ 'php' ],
-		// Shared PHP callers can change storage or authorization behavior indirectly.
-		production: [ 'package', 'wordpress', 'browser', 'claims', 'oauth' ],
+		test: /\.php$|^(?:phpstan|phpcs|phpunit)/i,
+		checks: [ 'quality' ],
+		// Shared PHP callers can change storage or authorization behavior
+		// indirectly. Keep the conservative integration fan-out for production.
+		production: [ 'claims', 'oauth', 'wordpress', 'browser' ],
 	},
 	{
-		test: /\.(?:[cm]?js|jsx|tsx?|scss|css)$|^(?:package(?:-lock)?\.json|\.nvmrc|eslint\.|webpack\.)/,
-		checks: [ 'assets' ],
-		production: [ 'package', 'browser' ],
+		test: /\.(?:[cm]?js|jsx|tsx?|scss|css)$|^(?:package(?:-lock)?\.json|\.nvmrc|eslint\.|webpack\.)/i,
+		checks: [ 'quality' ],
+		production: [ 'browser' ],
 	},
 	{
-		test: /\.(?:[cm]?js|jsx|tsx?)$|^(?:package(?:-lock)?\.json|webpack\.)/,
-		checks: [ 'codeql' ],
-	},
-	{
-		test: /^(?:src\/Connectors\/(?:MCP|OAuth)\/|tests\/(?:Integration\/ExecutionClaims|Unit\/Connectors)\/)/,
+		test: /^src\/Connectors\/(?:MCP|OAuth)\/|^tests\/Integration\/(?:ExecutionClaims|OAuth)\/|^tests\/Unit\/Connectors\//i,
 		checks: [ 'claims', 'oauth', 'wordpress' ],
 	},
-	{ test: /^tests\/integration\/oauth-/, checks: [ 'oauth' ] },
 	{
-		test: /^tests\/Integration\/WordPressAbilities\//,
+		test: /^tests\/integration\/oauth-/i,
+		checks: [ 'oauth' ],
+	},
+	{
+		test: /^tests\/Integration\/WordPressAbilities\//i,
 		checks: [ 'wordpress' ],
 	},
 	{
-		test: /^tests\/Integration\/(?:Browser|Memory|OAuth)\//,
-		checks: [ 'browser', 'package' ],
+		test: /^tests\/Integration\/(?:Browser|Memory|OAuth)\//i,
+		checks: [ 'browser', 'quality' ],
 	},
 	{
-		test: /^tests\/Unit\/Connectors\/OAuth\//,
-		checks: [ 'package', 'browser' ],
+		test: /^tests\/Unit\/Connectors\/OAuth\//i,
+		checks: [ 'quality', 'browser' ],
 	},
 	{
-		test: /^(?:\.distignore|assets\/|languages\/)/,
-		checks: [ 'package', 'browser' ],
+		test: /^(?:\.distignore|assets\/|languages\/)/i,
+		checks: [ 'quality', 'browser' ],
 	},
 ];
 
 function pathChecks( path ) {
-	// Documentation and configuration may also contain secrets.
-	const selected = new Set( [ 'security' ] );
+	// WordPress.org metadata ships in the ZIP, unlike developer documentation.
+	if ( path === 'readme.txt' ) {
+		return full();
+	}
+	// Maintainer-agent metadata cannot change the shipped plugin.
+	if ( /^\.codex\/(?:agents\/|config\.toml$)/i.test( path ) ) {
+		return new Set();
+	}
+
+	// Documentation still receives the quality job's always-on metadata/secrets
+	// scan, but never starts a separate Semgrep or integration matrix.
+	const selected = new Set();
 	if (
 		/^(?:docs\/|README|CHANGELOG|CONTRIBUTING|AGENTS|DESIGN|TESTING|RELEASE|SECURITY|LICENSE)/i.test(
 			path
 		) &&
-		/\.(?:md|txt)$/.test( path )
+		/\.(?:md|txt)$/i.test( path )
 	) {
 		return selected;
 	}
+
+	// CI, bootstrap, dependency, and policy changes are intentionally fail
+	// safe. They can affect the detector or every proof.
 	if (
-		/^(?:\.github\/|\.codex\/|bin\/|composer\.|aculect-ai-companion\.php$|src\/Plugin\.php$|tests\/(?:bootstrap\.php$|fixtures\/|js\/(?:oauth|ci-)))/.test(
+		/^(?:\.github\/|\.codex\/|bin\/|composer\.|package\.json$|package-lock\.json$|aculect-ai-companion\.php$|src\/Plugin\.php$|tests\/(?:bootstrap\.php$|fixtures\/|js\/(?:oauth|ci-|local-checks)))/.test(
 			path
 		)
 	) {
-		return new Set( checks );
+		return full();
 	}
+
 	let known = false;
 	for ( const rule of rules ) {
 		if ( rule.test.test( path ) ) {
 			known = true;
 			rule.checks.forEach( ( name ) => selected.add( name ) );
-			if ( ! /^tests\//.test( path ) ) {
+			if ( ! /^tests\//i.test( path ) ) {
 				rule.production?.forEach( ( name ) => selected.add( name ) );
 			}
 		}
 	}
-	return known ? selected : new Set( checks );
+	return known ? selected : full();
 }
 
 /**
- * Unknown paths and unavailable history deliberately request every proof.
- *
  * @param {string[]} paths    Changed repository-relative paths.
  * @param {boolean}  forceAll Request all checks when history is unavailable.
  * @return {Object} Boolean check selections.
@@ -100,9 +112,6 @@ export function classifyChanges( paths, forceAll = false ) {
 			result[ name ] = true;
 		}
 	}
-	if ( result.package ) {
-		result.assets = true; // The package consumes this run's canonical build.
-	}
 	return result;
 }
 
@@ -114,7 +123,7 @@ function git( args ) {
 }
 
 export function changedPaths( eventName, event, runGit = git ) {
-	if ( eventName === 'workflow_dispatch' ) {
+	if ( eventName === 'workflow_dispatch' || eventName === 'workflow_call' ) {
 		return null;
 	}
 	const base =
@@ -155,15 +164,31 @@ export function changedPaths( eventName, event, runGit = git ) {
 	}
 }
 
+export function selectChecks( eventName, event, paths, forceFull = false ) {
+	const releasePullRequest =
+		eventName === 'pull_request' &&
+		event.pull_request?.base?.ref === 'main';
+	return classifyChanges(
+		paths || [],
+		paths === null || forceFull || releasePullRequest
+	);
+}
+
 if (
 	process.argv[ 1 ] &&
 	import.meta.url === pathToFileURL( process.argv[ 1 ] ).href
 ) {
+	const eventName = process.env.GITHUB_EVENT_NAME || '';
 	const event = JSON.parse(
 		readFileSync( process.env.GITHUB_EVENT_PATH, 'utf8' )
 	);
-	const paths = changedPaths( process.env.GITHUB_EVENT_NAME, event );
-	const result = classifyChanges( paths || [], paths === null );
+	const paths = changedPaths( eventName, event );
+	const result = selectChecks(
+		eventName,
+		event,
+		paths,
+		process.env.CI_FULL === 'true'
+	);
 	const output =
 		Object.entries( result )
 			.map( ( [ name, value ] ) => name + '=' + value )

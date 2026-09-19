@@ -4,6 +4,9 @@
   "private": true,
   "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {
+    "check:ci": "node bin/check-project.mjs ci",
+    "check:local": "node bin/check-project.mjs local",
+    "check:release": "node bin/check-project.mjs release",
     "build": "wp-scripts build",
     "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",

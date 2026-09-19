@@ -3,6 +3,8 @@ name: PHP Security
 on:
   workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: "42 3 * * 3"
 
 permissions:
   actions: read

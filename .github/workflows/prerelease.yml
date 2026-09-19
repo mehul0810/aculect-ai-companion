@@ -14,22 +14,23 @@ concurrency:
 jobs:
   package:
     if: github.event.release.prerelease
-    uses: ./.github/workflows/package.yml
+    name: Full prepublication CI gate and package
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      full: true
   plugin-check:
     needs: package
     uses: ./.github/workflows/plugin-check.yml
     with:
       package-sha256: ${{ needs.package.outputs.sha256 }}
       package-artifact-name: ${{ needs.package.outputs.artifact-name }}
-  oauth-contract:
-    needs: package
-    uses: ./.github/workflows/oauth-contract.yml
-    with:
-      package-sha256: ${{ needs.package.outputs.sha256 }}
-      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
   publish:
     name: Attach verified prerelease artifact
-    needs: [package, plugin-check, oauth-contract]
+    needs: [package, plugin-check]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

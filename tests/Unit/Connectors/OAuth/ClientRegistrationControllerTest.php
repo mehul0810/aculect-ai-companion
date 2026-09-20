@@ -11,12 +11,17 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\TokenEndpointAuthMethod;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
+
+// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused DCR tests replace wpdb with an isolated test double.
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- The wpdb test double is intentionally local to this test.
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads a repository-local JSON fixture.
 
 /**
  * Verifies DCR metadata is narrowed before storage.
@@ -28,12 +33,14 @@ final class ClientRegistrationControllerTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
+		$this->original_wpdb                          = $GLOBALS['wpdb'] ?? null;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 		$GLOBALS['aculect_ai_companion_test_hooks']   = array(
 			'actions' => array(),
 			'filters' => array(),
 		);
+		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
+		update_option( 'aculect_ai_companion_oauth_issuer_backfill', IssuerBinding::hash(), false );
 	}
 
 	protected function tearDown(): void {
@@ -123,10 +130,13 @@ final class ClientRegistrationControllerTest extends TestCase {
 		$data = $response->get_data();
 		self::assertIsArray( $data );
 		self::assertSame( TokenEndpointAuthMethod::CLIENT_SECRET_POST, $data['token_endpoint_auth_method'] );
+		self::assertSame( 'legacy', $data['application_type'] );
 		self::assertNotEmpty( $data['client_secret'] );
 		self::assertSame( 0, $data['client_secret_expires_at'] );
 		self::assertSame( 1, $wpdb->inserts[0]['data']['is_confidential'] );
 		self::assertNotEmpty( $wpdb->inserts[0]['data']['client_secret_hash'] );
+		self::assertSame( IssuerBinding::hash(), $wpdb->inserts[0]['data']['issuer_hash'] );
+		self::assertSame( 'legacy', $wpdb->inserts[0]['data']['application_type'] );
 	}
 
 	public function test_registration_honors_client_secret_basic_confidential_clients(): void {
@@ -180,6 +190,78 @@ final class ClientRegistrationControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'client_secret_expires_at', $data );
 		self::assertSame( 0, $wpdb->inserts[0]['data']['is_confidential'] );
 		self::assertNull( $wpdb->inserts[0]['data']['client_secret_hash'] );
+	}
+
+	public function test_application_type_strictly_partitions_web_and_native_redirects(): void {
+		$GLOBALS['wpdb'] = new FakeDcrWpdb();
+		$controller      = new ClientRegistrationController();
+
+		$web = $controller->register_client(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'client_name'      => 'Hosted client',
+					'application_type' => 'web',
+					'redirect_uris'    => array( 'https://client.example/callback' ),
+				)
+			)
+		);
+		self::assertInstanceOf( WP_REST_Response::class, $web );
+		self::assertSame( 'web', $web->get_data()['application_type'] );
+
+		$native = $controller->register_client(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'client_name'      => 'Native client',
+					'application_type' => 'native',
+					'redirect_uris'    => array( 'http://127.0.0.1/callback' ),
+				)
+			)
+		);
+		self::assertInstanceOf( WP_REST_Response::class, $native );
+		self::assertSame( 'native', $native->get_data()['application_type'] );
+
+		foreach (
+			array(
+				array( 'web', 'http://localhost/callback' ),
+				array( 'native', 'https://client.example/callback' ),
+				array( 'legacy', 'https://client.example/callback' ),
+				array( 'desktop', 'https://client.example/callback' ),
+			)
+			as $fixture
+		) {
+			$rejected = $controller->register_client(
+				new WP_REST_Request(
+					array(),
+					array(),
+					array(
+						'application_type' => $fixture[0],
+						'redirect_uris'    => array( $fixture[1] ),
+					)
+				)
+			);
+			self::assertInstanceOf( WP_Error::class, $rejected );
+			self::assertContains( $rejected->get_error_code(), array( 'invalid_client_metadata', 'invalid_redirect_uri' ) );
+		}
+	}
+
+	public function test_registration_fails_closed_until_issuer_backfill_is_complete(): void {
+		delete_option( 'aculect_ai_companion_oauth_issuer_backfill' );
+
+		$response = ( new ClientRegistrationController() )->register_client(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array( 'redirect_uris' => array( 'https://client.example/callback' ) )
+			)
+		);
+
+		self::assertInstanceOf( WP_Error::class, $response );
+		self::assertSame( 'temporarily_unavailable', $response->get_error_code() );
+		self::assertSame( array( 'status' => 503 ), $response->get_error_data() );
 	}
 
 	public function test_registration_rejects_unsupported_token_endpoint_auth_method(): void {

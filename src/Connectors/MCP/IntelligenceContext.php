@@ -134,6 +134,7 @@ final class IntelligenceContext {
 
 		return array(
 			'type'                 => 'capability_directory',
+			'catalog'              => ( new CapabilityCatalog() )->discover( $args ),
 			'label'                => 'MCP Capability Help Directory',
 			'description'          => 'Safe startup summary for questions like what can you do, detect available abilities, or what workflows are possible.',
 			'detail'               => $detail,
@@ -178,7 +179,7 @@ final class IntelligenceContext {
 				'Which WordPress admin page should I use for this plugin or core setting?',
 			),
 			'next_actions'         => array(
-				'For planning, call the relevant intelligence context tool before using write tools.',
+				'Use catalog pages for complete capability discovery, then load the relevant site or content context before planning writes.',
 				'Use available workflow tools for normal content creation and editing.',
 				'For Appearance > Editor work, call site_editor_get_context before planning changes.',
 				'For core, plugin, or theme settings work, call admin_menu_get_context or admin_menu_get_navigation_target first.',

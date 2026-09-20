@@ -10,7 +10,11 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Intelligence;
 
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
+use Aculect\AICompanion\Intelligence\LearningSuggestionQueueStorage;
+use Aculect\AICompanion\Intelligence\Memory\MemoryService;
 use PHPUnit\Framework\TestCase;
+
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Generic.Commenting.DocComment.MissingShort, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.FunctionComment.ParamNameNoMatch, Squiz.Commenting.FunctionComment.IncorrectTypeHint, WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused wpdb double remains local to this test.
 
 /**
  * Verifies learning suggestions remain bounded, sanitized, and review-first.
@@ -27,11 +31,16 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
 		$this->wpdb          = new LearningSuggestionMemoryWpdb();
 
-		$GLOBALS['wpdb']                                  = $this->wpdb;
+		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
 	}
 
 	protected function tearDown(): void {
+		unset(
+			$GLOBALS['aculect_ai_companion_test_failed_option_updates'],
+			$GLOBALS['aculect_ai_companion_test_failed_option_adds'],
+			$GLOBALS['aculect_ai_companion_test_filter_callbacks']
+		);
 		if ( null !== $this->original_wpdb ) {
 			$GLOBALS['wpdb'] = $this->original_wpdb;
 		} else {
@@ -72,6 +81,20 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( 'Prefer concise enterprise copy.', $payload['items'][0]['suggested_update'] );
 	}
 
+	public function test_submit_reports_storage_failure_and_allows_retry(): void {
+		$repository = new LearningSuggestionRepository();
+		$input      = array(
+			'issue'            => 'Missing site context.',
+			'suggested_update' => 'Keep an approved site description.',
+		);
+		$GLOBALS['aculect_ai_companion_test_failed_option_adds'] = array( 'aculect_ai_companion_learning_suggestions' );
+		self::assertSame( 'storage_error', $repository->submit( $input )['error'] );
+		self::assertSame( array(), get_option( 'aculect_ai_companion_learning_suggestions', array() ) );
+		unset( $GLOBALS['aculect_ai_companion_test_failed_option_adds'] );
+		self::assertSame( 'queued', $repository->submit( $input )['status'] );
+		self::assertCount( 1, get_option( 'aculect_ai_companion_learning_suggestions', array() ) );
+	}
+
 	public function test_submit_preserves_known_grok_provider_attribution(): void {
 		$repository = new LearningSuggestionRepository();
 		$result     = $repository->submit(
@@ -104,6 +127,123 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( array(), get_option( 'aculect_ai_companion_learning_suggestions', array() ) );
 	}
 
+	public function test_absent_queue_submission_runs_update_veto_filters_once(): void {
+		$filters = array();
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array(
+			'pre_update_option_aculect_ai_companion_learning_suggestions' => static function ( mixed $next, mixed $previous, string $option ) use ( &$filters ): mixed {
+				$filters[] = array( 'specific', $previous, $option, $next[0]['issue'] ?? '' );
+				return $next;
+			},
+			'pre_update_option' => static function ( mixed $next, string $option, mixed $previous ) use ( &$filters ): mixed {
+				$filters[] = array( 'generic', $previous, $option, $next[0]['issue'] ?? '' );
+				return $next;
+			},
+		);
+
+		self::assertSame(
+			'queued',
+			( new LearningSuggestionRepository() )->submit(
+				array(
+					'issue'            => 'Absent queue filter coverage',
+					'suggested_update' => 'Retain update veto behavior before insertion.',
+				)
+			)['status']
+		);
+		self::assertSame(
+			array(
+				array( 'specific', false, 'aculect_ai_companion_learning_suggestions', 'Absent queue filter coverage' ),
+				array( 'generic', false, 'aculect_ai_companion_learning_suggestions', 'Absent queue filter coverage' ),
+			),
+			$filters
+		);
+	}
+
+	public function test_successful_existing_queue_update_dispatches_wordpress_actions(): void {
+		$dispatches = array();
+		$repository = new LearningSuggestionRepository(
+			new LearningSuggestionQueueStorage(
+				static function ( string $hook_name, mixed ...$arguments ) use ( &$dispatches ): void {
+					$dispatches[] = array(
+						'hook_name' => $hook_name,
+						'args'      => $arguments,
+					);
+				}
+			)
+		);
+		$repository->submit(
+			array(
+				'issue'            => 'First queue item',
+				'suggested_update' => 'Create the option before update actions.',
+			)
+		);
+
+		self::assertSame(
+			'queued',
+			$repository->submit(
+				array(
+					'issue'            => 'Second queue item',
+					'suggested_update' => 'Successful CAS emits standard option actions.',
+				)
+			)['status']
+		);
+		self::assertSame(
+			array(
+				'update_option',
+				'update_option_aculect_ai_companion_learning_suggestions',
+				'updated_option',
+			),
+			array_column( $dispatches, 'hook_name' )
+		);
+		self::assertSame( 'aculect_ai_companion_learning_suggestions', $dispatches[0]['args'][0] );
+		self::assertCount( 1, $dispatches[0]['args'][1] );
+		self::assertCount( 2, $dispatches[0]['args'][2] );
+		self::assertSame( $dispatches[0]['args'][1], $dispatches[1]['args'][0] );
+		self::assertSame( $dispatches[0]['args'][2], $dispatches[1]['args'][1] );
+		self::assertSame( 'aculect_ai_companion_learning_suggestions', $dispatches[1]['args'][2] );
+		self::assertSame( $dispatches[0]['args'], $dispatches[2]['args'] );
+	}
+
+	public function test_sql_cas_uses_authoritative_raw_token_and_portable_hex_equality(): void {
+		$original_options = $GLOBALS['aculect_ai_companion_test_options'];
+		$original_wpdb    = $GLOBALS['wpdb'];
+		unset( $GLOBALS['aculect_ai_companion_test_options'] );
+		$wpdb            = new LearningSuggestionQueueStorageWpdb( 'malformed-stored-value' );
+		$GLOBALS['wpdb'] = $wpdb;
+
+		try {
+			$storage = new LearningSuggestionQueueStorage();
+			$state   = $storage->read();
+			self::assertSame( 'malformed-stored-value', $state['token'] );
+			self::assertSame(
+				array(),
+				$storage->compare_and_swap( true, $state['value'], $state['token'], array() )
+			);
+			self::assertStringContainsString( 'HEX(option_value) =', $wpdb->last_query );
+			self::assertStringContainsString( strtoupper( bin2hex( 'malformed-stored-value' ) ), $wpdb->last_query );
+			self::assertStringNotContainsString( 'BINARY', $wpdb->last_query );
+		} finally {
+			$GLOBALS['aculect_ai_companion_test_options'] = $original_options;
+			$GLOBALS['wpdb']                              = $original_wpdb;
+		}
+	}
+
+	public function test_sqlite_hex_cas_requires_an_uppercase_raw_token(): void {
+		// phpcs:ignore WordPress.DB.RestrictedClasses.mysql__PDO -- This isolated SQLite fixture proves cross-database HEX case semantics.
+		$database = new \PDO( 'sqlite::memory:' );
+		$database->exec( 'CREATE TABLE wp_options (option_name TEXT PRIMARY KEY, option_value BLOB NOT NULL)' );
+		$raw = "Queue\xfftoken";
+		$database->prepare( 'INSERT INTO wp_options (option_name, option_value) VALUES (?, ?)' )->execute( array( 'queue', $raw ) );
+
+		$token     = strtoupper( bin2hex( $raw ) );
+		$lowercase = $database->prepare( 'UPDATE wp_options SET option_value = ? WHERE option_name = ? AND HEX(option_value) = ?' );
+		$lowercase->execute( array( 'lowercase-would-be-wrong', 'queue', strtolower( $token ) ) );
+		self::assertSame( 0, $lowercase->rowCount() );
+
+		$uppercase = $database->prepare( 'UPDATE wp_options SET option_value = ? WHERE option_name = ? AND HEX(option_value) = ?' );
+		$uppercase->execute( array( 'uppercase-cas-match', 'queue', $token ) );
+		self::assertSame( 1, $uppercase->rowCount() );
+	}
+
 	public function test_review_updates_status_without_mutating_suggestion_text(): void {
 		$repository = new LearningSuggestionRepository();
 		$result     = $repository->submit(
@@ -128,7 +268,7 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertSame( 'learning', $this->wpdb->rows[ 'learning.content.' . $id ]['source'] );
 	}
 
-	public function test_dismissing_approved_learning_removes_synced_memory(): void {
+	public function test_dismissing_approved_learning_tombstones_synced_memory(): void {
 		$repository = new LearningSuggestionRepository();
 		$result     = $repository->submit(
 			array(
@@ -143,7 +283,8 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertArrayHasKey( 'learning.content.' . $id, $this->wpdb->rows );
 
 		self::assertTrue( $repository->review( $id, 'dismiss', 'No longer needed.' ) );
-		self::assertArrayNotHasKey( 'learning.content.' . $id, $this->wpdb->rows );
+		self::assertNotEmpty( $this->wpdb->rows[ 'learning.content.' . $id ]['deleted_at'] );
+		self::assertSame( 'dismissed', $this->wpdb->rows[ 'learning.content.' . $id ]['status'] );
 	}
 
 	public function test_update_edits_pending_suggestion_without_changing_status(): void {
@@ -196,12 +337,247 @@ final class LearningSuggestionRepositoryTest extends TestCase {
 		self::assertCount( 100, $stored );
 		self::assertSame( 'Issue 5', $stored[0]['issue'] );
 	}
+
+	public function test_stale_submission_fails_without_replacing_a_concurrent_submission(): void {
+		$dispatches = array();
+		$repository = new LearningSuggestionRepository(
+			new LearningSuggestionQueueStorage(
+				static function ( string $hook_name, mixed ...$arguments ) use ( &$dispatches ): void {
+					unset( $hook_name, $arguments );
+					$dispatches[] = true;
+				}
+			)
+		);
+		self::assertSame(
+			'queued',
+			$repository->submit(
+				array(
+					'issue'            => 'Existing queue item',
+					'suggested_update' => 'Keep the existing item.',
+				)
+			)['status']
+		);
+
+		$interleaved = false;
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array(
+			'pre_update_option_aculect_ai_companion_learning_suggestions' => static function ( mixed $next, mixed $previous ) use ( &$interleaved ): mixed {
+				unset( $previous );
+				if ( ! $interleaved ) {
+					$interleaved = true;
+					( new LearningSuggestionRepository() )->submit(
+						array(
+							'issue'            => 'Concurrent submission',
+							'suggested_update' => 'Keep this independently queued item.',
+						)
+					);
+				}
+
+				return $next;
+			},
+		);
+
+		$stale = $repository->submit(
+			array(
+				'issue'            => 'Stale submission',
+				'suggested_update' => 'This must not replace the concurrent item.',
+			)
+		);
+		unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks'] );
+
+		self::assertSame( 'storage_error', $stale['error'] );
+		self::assertSame( array(), $dispatches );
+		self::assertSame(
+			'queued',
+			$repository->submit(
+				array(
+					'issue'            => 'Stale submission retry',
+					'suggested_update' => 'Retry from a fresh queue snapshot.',
+				)
+			)['status']
+		);
+
+		$issues = array_column( $repository->admin_payload()['items'], 'issue' );
+		self::assertContains( 'Concurrent submission', $issues );
+		self::assertContains( 'Stale submission retry', $issues );
+		self::assertNotContains( 'Stale submission', $issues );
+	}
+
+	public function test_stale_edit_fails_without_replacing_a_concurrent_submission(): void {
+		$repository = new LearningSuggestionRepository();
+		$queued     = $repository->submit(
+			array(
+				'issue'            => 'Original issue',
+				'suggested_update' => 'Original guidance',
+			)
+		);
+		$id         = (string) $queued['suggestion']['id'];
+
+		$interleaved = false;
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array(
+			'pre_update_option_aculect_ai_companion_learning_suggestions' => static function ( mixed $next, mixed $previous ) use ( &$interleaved ): mixed {
+				unset( $previous );
+				if ( ! $interleaved ) {
+					$interleaved = true;
+					( new LearningSuggestionRepository() )->submit(
+						array(
+							'issue'            => 'Submission during edit',
+							'suggested_update' => 'Unrelated queue state is retained.',
+						)
+					);
+				}
+
+				return $next;
+			},
+		);
+
+		self::assertFalse(
+			$repository->update(
+				$id,
+				array(
+					'issue'            => 'Stale edited issue',
+					'suggested_update' => 'Stale edited guidance',
+				)
+			)
+		);
+		unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks'] );
+
+		$items = array_column( $repository->admin_payload()['items'], null, 'id' );
+		self::assertSame( 'Original issue', $items[ $id ]['issue'] );
+		self::assertContains( 'Submission during edit', array_column( $items, 'issue' ) );
+		self::assertTrue(
+			$repository->update(
+				$id,
+				array(
+					'issue'            => 'Retried edited issue',
+					'suggested_update' => 'Retry from a fresh queue snapshot',
+				)
+			)
+		);
+	}
+
+	public function test_failed_memory_write_does_not_approve_and_can_be_retried(): void {
+		$repository                    = new LearningSuggestionRepository();
+		$result                        = $repository->submit(
+			array(
+				'issue'            => 'Issue',
+				'suggested_update' => 'Guidance',
+			)
+		);
+		$id                            = $result['suggestion']['id'];
+		$this->wpdb->transaction_fails = true;
+		self::assertFalse( $repository->review( $id, 'approve' ) );
+		self::assertSame( 'pending', $repository->admin_payload()['items'][0]['status'] );
+		$this->wpdb->transaction_fails = false;
+		self::assertTrue( $repository->review( $id, 'approve' ) );
+	}
+
+	public function test_failed_dismissal_and_edit_are_not_reported_as_success(): void {
+		$repository = new LearningSuggestionRepository();
+		$result     = $repository->submit(
+			array(
+				'issue'            => 'Issue',
+				'suggested_update' => 'Original',
+			)
+		);
+		$id         = $result['suggestion']['id'];
+		self::assertTrue( $repository->review( $id, 'approve' ) );
+		$this->wpdb->transaction_fails = true;
+		self::assertFalse( $repository->review( $id, 'dismiss' ) );
+		self::assertFalse(
+			$repository->update(
+				$id,
+				array(
+					'issue'            => 'Issue',
+					'suggested_update' => 'Changed',
+				)
+			)
+		);
+		self::assertSame( 'approved', $repository->admin_payload()['items'][0]['status'] );
+		self::assertSame( 'Original', $repository->admin_payload()['items'][0]['suggested_update'] );
+	}
+
+	public function test_domain_change_preserves_synced_memory_identity(): void {
+		$repository = new LearningSuggestionRepository();
+		$result     = $repository->submit(
+			array(
+				'domain'           => 'site',
+				'issue'            => 'Issue',
+				'suggested_update' => 'Original',
+			)
+		);
+		$id         = $result['suggestion']['id'];
+		self::assertTrue( $repository->review( $id, 'approve' ) );
+		self::assertTrue(
+			$repository->update(
+				$id,
+				array(
+					'domain'           => 'brand',
+					'issue'            => 'Issue',
+					'suggested_update' => 'Changed',
+				)
+			)
+		);
+		self::assertCount( 1, $this->wpdb->rows );
+		self::assertSame( 'brand', $this->wpdb->rows[ 'learning.site.' . $id ]['domain'] );
+	}
+
+	public function test_batch_reuses_storage_engine_validation(): void {
+		$items = array();
+		for ( $i = 0; $i < 100; ++$i ) {
+			$items[] = array(
+				'key'   => 'batch.' . $i,
+				'value' => 'Bounded memory',
+			);
+		}
+		$result = ( new MemoryService() )->save_batch( $items );
+		self::assertCount( 100, $result['saved'] );
+		self::assertSame( 2, $this->wpdb->engine_queries );
+	}
+
+	public function test_option_failure_rolls_back_memory_and_history(): void {
+		$dispatches = array();
+		$repository = new LearningSuggestionRepository(
+			new LearningSuggestionQueueStorage(
+				static function ( string $hook_name, mixed ...$arguments ) use ( &$dispatches ): void {
+					unset( $arguments );
+					$dispatches[] = $hook_name;
+				}
+			)
+		);
+		$result     = $repository->submit(
+			array(
+				'issue'            => 'Issue',
+				'suggested_update' => 'Guidance',
+			)
+		);
+		$id         = $result['suggestion']['id'];
+		$GLOBALS['aculect_ai_companion_test_failed_option_updates'] = array( 'aculect_ai_companion_learning_suggestions' );
+		self::assertFalse( $repository->review( $id, 'approve' ) );
+		self::assertSame( 'pending', $repository->admin_payload()['items'][0]['status'] );
+		self::assertCount( 0, $this->wpdb->rows );
+		self::assertCount( 0, $this->wpdb->events );
+		self::assertSame( array(), $dispatches );
+		unset( $GLOBALS['aculect_ai_companion_test_failed_option_updates'] );
+		self::assertTrue( $repository->review( $id, 'approve' ) );
+		self::assertCount( 1, $this->wpdb->events );
+		self::assertSame(
+			array(
+				'update_option',
+				'update_option_aculect_ai_companion_learning_suggestions',
+				'updated_option',
+			),
+			$dispatches
+		);
+	}
 }
 
 /**
  * Minimal wpdb double for memory sync side effects.
  */
 final class LearningSuggestionMemoryWpdb {
+	private array $snapshot        = array();
+	public bool $transaction_fails = false;
+	public int $engine_queries     = 0;
 
 	public string $prefix = 'wp_';
 
@@ -209,6 +585,9 @@ final class LearningSuggestionMemoryWpdb {
 	 * @var array<string, array<string, mixed>>
 	 */
 	public array $rows = array();
+
+	/** @var list<array<string, mixed>> */
+	public array $events = array();
 
 	/**
 	 * @var array<int, mixed>
@@ -219,6 +598,19 @@ final class LearningSuggestionMemoryWpdb {
 		$this->last_args = $args;
 
 		return $query;
+	}
+
+	public function query( string $query ): int|false {
+		if ( $this->transaction_fails && 'START TRANSACTION' === $query ) {
+			return false;
+		}
+		if ( 'START TRANSACTION' === $query ) {
+			$this->snapshot = array( $this->rows, $this->events, $GLOBALS['aculect_ai_companion_test_options'] );
+		}
+		if ( 'ROLLBACK' === $query && array() !== $this->snapshot ) {
+			[ $this->rows, $this->events, $GLOBALS['aculect_ai_companion_test_options'] ] = $this->snapshot;
+		}
+		return 1;
 	}
 
 	public function get_var( string $query ): ?int {
@@ -234,9 +626,13 @@ final class LearningSuggestionMemoryWpdb {
 	 * @param array<int, string>   $formats Insert formats.
 	 */
 	public function insert( string $table, array $data, array $formats ): int {
-		unset( $table, $formats );
+		unset( $formats );
+		if ( str_contains( $table, 'memory_events' ) ) {
+			$this->events[] = $data;
+			return 1;
+		}
 
-		$data['id']                                  = count( $this->rows ) + 1;
+		$data['id']                                 = count( $this->rows ) + 1;
 		$this->rows[ (string) $data['memory_key'] ] = $data;
 
 		return 1;
@@ -252,6 +648,14 @@ final class LearningSuggestionMemoryWpdb {
 		unset( $table, $formats, $where_formats );
 
 		$key = (string) ( $where['memory_key'] ?? '' );
+		if ( '' === $key && isset( $where['id'] ) ) {
+			foreach ( $this->rows as $candidate_key => $row ) {
+				if ( (int) ( $row['id'] ?? 0 ) === (int) $where['id'] ) {
+					$key = $candidate_key;
+					break;
+				}
+			}
+		}
 		if ( isset( $this->rows[ $key ] ) ) {
 			$this->rows[ $key ] = array_merge( $this->rows[ $key ], $data );
 		}
@@ -280,12 +684,50 @@ final class LearningSuggestionMemoryWpdb {
 	 * @return array<string, mixed>|null
 	 */
 	public function get_row( string $query, string $output ): ?array {
-		unset( $query, $output );
+		unset( $output );
+		if ( str_contains( $query, 'information_schema.TABLES' ) ) {
+			++$this->engine_queries;
+			return array(
+				'Name'   => (string) ( $this->last_args[0] ?? '' ),
+				'Engine' => 'InnoDB',
+			);
+		}
 
 		return $this->rows[ $this->last_memory_key() ] ?? null;
 	}
 
 	private function last_memory_key(): string {
 		return (string) ( $this->last_args[1] ?? '' );
+	}
+}
+
+/**
+ * Minimal direct-options double for portable queue CAS query coverage.
+ */
+final class LearningSuggestionQueueStorageWpdb {
+	public string $options    = 'wp_options';
+	public string $last_query = '';
+
+	public function __construct( private string $option_value ) {
+	}
+
+	public function prepare( string $query, mixed ...$args ): string {
+		foreach ( $args as $argument ) {
+			$query = preg_replace( '/%s/', "'" . addslashes( (string) $argument ) . "'", $query, 1 ) ?? $query;
+		}
+
+		return $query;
+	}
+
+	public function get_var( string $query ): string {
+		$this->last_query = $query;
+
+		return $this->option_value;
+	}
+
+	public function query( string $query ): int {
+		$this->last_query = $query;
+
+		return 1;
 	}
 }

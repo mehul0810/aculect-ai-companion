@@ -184,6 +184,6 @@ final class UserRoleCapabilitiesDiscoveryTest extends TestCase {
 		self::assertFalse( $operations['user_access']['roles_summary']['available'] );
 		self::assertSame( 'capability', $operations['user_access']['roles_summary']['blocked_by'] );
 		self::assertFalse( $operations['user_access']['list_safe']['available'] );
-		self::assertSame( 'global_disabled', $operations['user_access']['list_safe']['blocked_by'] );
+		self::assertSame( 'capability', $operations['user_access']['list_safe']['blocked_by'] );
 	}
 }

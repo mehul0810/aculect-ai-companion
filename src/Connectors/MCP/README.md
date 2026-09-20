@@ -16,6 +16,15 @@ When adding or changing tools:
 
 This separation prevents client-specific validation rules from leaking into the plugin's internal ability model.
 
+## Bounded Site Operations
+
+The 0.8.0 tools add existing classic-menu item updates, registered scalar content
+fields, anonymous rendered-page inspection, targeted native maintenance, and
+read-only official checksum comparisons. The four new writes always require
+confirmation, including trusted connections. See the
+[tool contracts and safety limits](../../../docs/0.8.0-site-operations.md) for
+inputs, permissions, concurrency, external-request limits and recovery.
+
 ## Workflow Routing And Sessions
 
 `workflow_route_request` is the first-party entry point for ambiguous or
@@ -84,10 +93,15 @@ through tools.
 
 ## Aculect Intelligence
 
-Aculect Intelligence tools are always-on read-only MCP context tools. They are
-not user-managed abilities, do not appear in the admin Abilities list, and are
-not controlled by global or role-based ability toggles. They still require an
-authenticated connection, the `content:read` OAuth scope, and active AI access.
+Aculect Intelligence is a categorized context surface and navigation guide, not
+an entitlement layer that hides operational abilities. Intelligence entries
+appear in the admin catalog but are not directly controlled by global or
+role-based ability toggles. Profiles may recommend or deprioritize tools for a
+task, but they never grant or deny access. Most tools are read-only context;
+reviewed feedback and incident-report tools can write bounded local records.
+Every tool still requires an authenticated connection, its declared OAuth
+scopes, applicable global and role policy, WordPress capability checks, and
+active AI access.
 
 The intelligence layer is divided into these context domains:
 
@@ -126,6 +140,21 @@ flows through WordPress ability permissions, Aculect AI Companion ability toggle
 scopes. Keep `wp_abilities_run` treated as write-capable because third-party
 abilities may modify data even when their names are not obvious.
 
+Public native Core abilities are enabled by default after implementation-origin
+verification. Third-party abilities require administrator enablement in the
+Abilities tab, including read-only registrations. Existing explicit decisions
+are retained. This decision never bypasses WordPress permission callbacks or
+the MCP/OAuth boundary. Provider namespaces are grouping labels, not proof of
+ownership. Aculect capabilities are enabled by default through their direct
+tools and are not managed in this tab.
+
+`intelligence_capabilities_get_directory` returns a canonical `catalog` with
+`items`, `total`, `page`, `per_page`, and `has_more`. Request subsequent pages
+to enumerate authorized Aculect tools and enabled native abilities, without
+duplicate Aculect mirrors. Each entry gives its execution route and required
+scopes; native execution can remain unavailable when `wp_abilities_run` is not
+authorized. Existing directory fields and tool aliases remain compatible.
+
 ## Content Surface
 
 Aculect AI Companion's built-in user-managed MCP abilities cover posts/pages/custom post types, taxonomies,
@@ -135,10 +164,19 @@ should stay deterministic, paginated where applicable, and capability-checked at
 execution time.
 
 `plugin_lifecycle.list_plugins` and `plugin_lifecycle.get_plugin` provide
-read-only installed-plugin lifecycle status: active/network-active state, cached
-update availability, recovery pause state, multisite context, and capability
-blockers. They must not install, update, activate, deactivate, delete,
-uninstall, edit, execute, or expose raw plugin code.
+installed-plugin lifecycle status: active/network-active state, cached update
+availability, recovery pause state, multisite context, and capability blockers.
+`plugin_lifecycle.install_plugin` installs an inactive plugin from the
+WordPress.org directory through the WordPress core upgrader.
+`plugin_lifecycle.update_plugin` applies an update already present in
+WordPress' cached update metadata through the core upgrader without forcing a
+remote check. `plugin_lifecycle.activate_plugin` and
+`plugin_lifecycle.deactivate_plugin` remain site-scoped, confirmation-gated
+operations. All lifecycle writes require the normal MCP/OAuth, role, capability,
+dry-run, confirmation, lockdown, and activity/audit boundaries. Network-wide
+operations, automatic update scheduling, arbitrary ZIP uploads, plugin
+deletion/uninstall, file editing, code execution, and raw plugin payloads remain
+out of scope.
 
 `theme_lifecycle.list_themes` and `theme_lifecycle.get_theme` provide read-only
 installed-theme lifecycle status: active state, parent and child relationships,
@@ -156,6 +194,15 @@ or raw serialized navigation string edits. Future writes must preserve
 unknown/custom blocks and attrs, validate parsed block structure before save,
 and fail closed with recovery guidance.
 
+`admin_menu.get_context` and `admin_menu.list_pages` include both dynamically
+registered admin pages and a bounded fallback map for WordPress core's
+Dashboard, Tools, Appearance, and Settings submenus. This makes core navigation
+discoverable from non-admin MCP requests while keeping settings values and
+arbitrary option writes out of the surface. Live WordPress menu metadata takes
+precedence over fallback entries, and conditional routes follow the active
+theme, site, and capability state. Use typed domain abilities and existing
+confirmation/capability gates for any future changes.
+
 `content_create_item` and `content_update_item` accept an `author` user ID when
 the connected WordPress user can assign authors for the target post type. The
 target user must exist and be able to own that post type. Omitting `author`
@@ -167,6 +214,12 @@ that maps taxonomy slugs to existing term IDs or term slugs, for example
 implementation validates that each taxonomy is exposed by WordPress, assigned to
 the target post type, and assignable by the connected user. It only assigns
 existing terms; term creation remains handled by `taxonomy_create_term`.
+
+`taxonomy_assign_terms` exposes that same assignment behavior as a dedicated
+tool for an existing content item. It accepts one post ID, one taxonomy slug,
+and existing term IDs; an empty `terms` array intentionally clears the
+selected taxonomy. The tool preserves the content write capability checks,
+dry-run preview, and `expected_modified_gmt` conflict protection.
 
 Content create and update tools can assign an existing image attachment as the
 featured image through `featured_media`. Use media upload/list tools first when
@@ -247,9 +300,9 @@ and never requires write approval. Reporting stores a local report, so after
 the capability check it follows the same approval contract as other writes: a
 connection with Write access can submit directly, while a read-only connection
 receives a short-lived `confirmation_token` for the exact report payload.
-WordPress capability, selected tool-profile policy, OAuth scope, and
+WordPress capability, global and role ability policy, OAuth scope, and
 confirmation failures are evaluated separately so clients can surface the
-actual blocker.
+actual blocker. The selected tool profile remains navigation guidance only.
 
 Comment workflows support review filters for moderation status, post, author,
 author email, author user ID, search, and date ranges. Replies are created with

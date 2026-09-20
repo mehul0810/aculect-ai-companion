@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\OAuth\Database;
 
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationFingerprint;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 
 /**
  * Owns Aculect AI Companion's OAuth storage schema and legacy token migration.
@@ -18,10 +19,12 @@ final class Installer {
 
 	// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned OAuth protocol tables require uncached reads/writes and controlled schema changes.
 
-	private const DB_VERSION                 = '2026.06.03.1';
+	private const DB_VERSION                 = '2026.08.19.1';
 	private const OPTION_DB_VERSION          = 'aculect_ai_companion_oauth_db_version';
 	private const OPTION_MIGRATED_LEGACY     = 'aculect_ai_companion_oauth_legacy_migrated';
+	private const OPTION_ISSUER_BACKFILL     = 'aculect_ai_companion_oauth_issuer_backfill';
 	private const FINGERPRINT_BACKFILL_LIMIT = 500;
+	private const ISSUER_BACKFILL_LIMIT      = 100;
 
 	/**
 	 * Create or update the OAuth tables and migrate option-backed legacy state.
@@ -49,6 +52,10 @@ final class Installer {
 			self::backfill_client_registration_fingerprints();
 		}
 
+		if ( IssuerBinding::hash() !== (string) get_option( self::OPTION_ISSUER_BACKFILL, '' ) ) {
+			self::backfill_client_issuer_bindings();
+		}
+
 		self::migrate_legacy_option_tokens();
 
 		return true;
@@ -59,6 +66,17 @@ final class Installer {
 	 */
 	public static function activate(): void {
 		self::install( true );
+	}
+
+	/**
+	 * Return whether the clients schema and bounded issuer backfill are complete.
+	 *
+	 * Registration and credential endpoints fail closed until this marker has
+	 * been written after a database read proves no blank issuer rows remain.
+	 */
+	public static function issuer_binding_ready(): bool {
+		return version_compare( (string) get_option( self::OPTION_DB_VERSION, '0' ), self::DB_VERSION, '>=' )
+			&& hash_equals( IssuerBinding::hash(), (string) get_option( self::OPTION_ISSUER_BACKFILL, '' ) );
 	}
 
 	/**
@@ -110,6 +128,7 @@ final class Installer {
 
 		delete_option( self::OPTION_DB_VERSION );
 		delete_option( self::OPTION_MIGRATED_LEGACY );
+		delete_option( self::OPTION_ISSUER_BACKFILL );
 	}
 
 	/**
@@ -160,6 +179,8 @@ final class Installer {
             provider varchar(40) NOT NULL DEFAULT 'mcp',
             redirect_uris longtext NOT NULL,
             registration_fingerprint char(64) NOT NULL DEFAULT '',
+			issuer_hash char(64) NOT NULL DEFAULT '',
+			application_type varchar(16) NOT NULL DEFAULT 'legacy',
             user_id bigint(20) unsigned DEFAULT NULL,
             is_confidential tinyint(1) NOT NULL DEFAULT 1,
             revoked tinyint(1) NOT NULL DEFAULT 0,
@@ -169,6 +190,7 @@ final class Installer {
             UNIQUE KEY client_id (client_id),
             KEY provider (provider),
             KEY provider_registration_revoked (provider, registration_fingerprint, revoked),
+			KEY issuer_revoked (issuer_hash, revoked),
             KEY user_id (user_id),
             KEY revoked (revoked),
             KEY revoked_updated_at (revoked, updated_at)
@@ -289,6 +311,59 @@ final class Installer {
 				array( '%s' ),
 				array( '%d' )
 			);
+		}
+	}
+
+	/**
+	 * Bind existing DCR clients to the issuer that owns this schema.
+	 *
+	 * Each request handles at most ISSUER_BACKFILL_LIMIT rows. Failed writes
+	 * leave rows blank and therefore keep all credential endpoints closed. The
+	 * completion marker is written only after a final bounded existence query.
+	 */
+	private static function backfill_client_issuer_bindings(): void {
+		global $wpdb;
+
+		$table = self::table_names()['clients'];
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id FROM %i WHERE issuer_hash = %s ORDER BY id ASC LIMIT %d',
+				$table,
+				'',
+				self::ISSUER_BACKFILL_LIMIT
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return;
+		}
+
+		$issuer_hash = IssuerBinding::hash();
+		foreach ( $rows as $row ) {
+			$id = absint( $row['id'] ?? 0 );
+			if ( $id <= 0 ) {
+				continue;
+			}
+
+			$wpdb->update(
+				$table,
+				array( 'issuer_hash' => $issuer_hash ),
+				array(
+					'id'          => $id,
+					'issuer_hash' => '',
+				),
+				array( '%s' ),
+				array( '%d', '%s' )
+			);
+		}
+
+		$wpdb->last_error = '';
+		$remaining        = $wpdb->get_var(
+			$wpdb->prepare( 'SELECT id FROM %i WHERE issuer_hash = %s ORDER BY id ASC LIMIT 1', $table, '' )
+		);
+		if ( '' === trim( (string) $wpdb->last_error ) && null === $remaining ) {
+			update_option( self::OPTION_ISSUER_BACKFILL, $issuer_hash, false );
 		}
 	}
 

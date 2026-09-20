@@ -28,7 +28,7 @@ These values are generated from `Aculect\AICompanion\Connectors\Helpers`:
 - Protected resource metadata: `/.well-known/oauth-protected-resource` and resource-path variant
 - Authorization server metadata: `/.well-known/oauth-authorization-server` and issuer-path variant
 - Dynamic client registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
-- Authorization endpoint: `/oauth/authorize`
+- Authorization endpoint: `/aculect-ai-companion/oauth/authorize`
 - Token endpoint: `/wp-json/aculect-ai-companion/v1/oauth/token`
 
 The MCP endpoint must be the only primary value shown to users. Metadata and OAuth URLs belong in advanced diagnostics only.
@@ -61,6 +61,11 @@ Current rule:
 
 Regression check: inspect `tools/list` and confirm every returned `tools[].name` matches `^[a-zA-Z0-9_-]{1,64}$`.
 
+Client or host-specific prefixes that appear in connector traces are owned by
+the host namespace; Aculect only controls the safe public tool name returned by
+`tools/list`. Do not infer a server-side arbitrary-prefix feature from those
+trace names.
+
 Intelligence context `operations` entries are structured as `{ ability_id, tool, available, blocked_by, required_scopes, read_only }`. Admin/global ability settings and role policy decide whether an operation is callable. Intelligence should choose among `available: true` tools; unavailable entries exist to explain blocked workflows without implying WordPress data is missing.
 
 When Claude appears to see fewer tools than ChatGPT, export the MCP tool manifest from `AI Companion > Diagnostics` or from the active connection's actions menu. The export captures the exact `tools/list` payload for the selected WordPress user plus `ability_policy` details:
@@ -80,6 +85,14 @@ The primary setup had to be reduced to one field: the MCP endpoint. Showing clie
 Unauthenticated MCP requests must advertise OAuth through a bearer challenge and metadata. ChatGPT uses that to discover the authorization server and DCR endpoint.
 
 The protected resource metadata needs to point to the canonical MCP resource and supported authorization servers. The authorization server metadata needs to advertise authorization, token, registration, supported scopes, PKCE `S256`, and resource indicators.
+
+Authorization responses include the RFC 9207 `iss` parameter on both success
+and error redirects, and discovery advertises
+`authorization_response_iss_parameter_supported: true`. Public metadata is
+short-lived (`max-age=300`) so connector caches do not pin endpoint changes for
+an hour. Token authentication advertises only the methods implemented by this
+server: `none`, `client_secret_basic`, and `client_secret_post`; CIMD is
+disabled and `private_key_jwt` is intentionally not supported.
 
 ### Dynamic Client Registration Must Not 429 Valid Requests
 
@@ -103,13 +116,13 @@ The authorize endpoint previously sent logged-out users to `wp-login.php` with `
 
 Current rule:
 
-- If the user is already logged in, `/oauth/authorize` redirects directly to the Aculect AI Companion wp-admin consent screen.
+- If the user is already logged in, `/aculect-ai-companion/oauth/authorize` redirects directly to the Aculect AI Companion wp-admin consent screen.
 - If the user is logged out, `wp_login_url()` uses the Aculect AI Companion wp-admin consent screen as `redirect_to`.
 - Consent approval/denial posts to `admin-post.php` with nonce validation.
 
 ### Root Authorize URL Compatibility
 
-Some flows can hit `/oauth/authorize` outside the REST namespace. The rewrite rule handles that root URL directly so normal browser cookies remain available before redirecting to the wp-admin consent screen.
+Discovery advertises `/aculect-ai-companion/oauth/authorize`, outside the REST namespace, so normal browser cookies remain available before redirecting to the wp-admin consent screen. The legacy `/oauth/authorize` alias is retained, but another OAuth provider may claim that shared path. Use the advertised plugin-owned route for new connections and refresh cached discovery metadata after updating.
 
 ## Common Errors We Hit
 
@@ -133,7 +146,7 @@ Regression check: force a low cap in a fixture, verify the response is sanitized
 
 Cause: authorize flow did not cleanly hand off to wp-admin consent and relied on REST route state.
 
-Fix: validate the OAuth request first, then send logged-in users directly to `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Fix: validate the OAuth request first, then send logged-in users directly to `admin.php?page=aculect-ai-companion-oauth-consent` with the stored request token.
 
 Regression check: with an authenticated browser session, OAuth authorize should show the consent screen without landing on `wp-login.php`.
 
@@ -141,9 +154,9 @@ Regression check: with an authenticated browser session, OAuth authorize should 
 
 Cause: `wp_login_url()` used the REST authorize URL as `redirect_to`.
 
-Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including the OAuth request parameters.
+Fix: `redirect_to` must be the Aculect AI Companion admin consent URL, including its stored request token.
 
-Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Regression check: in a logged-out browser, authorize should redirect to login with `redirect_to` containing `admin.php?page=aculect-ai-companion-oauth-consent`.
 
 ### ChatGPT Says The MCP Server Does Not Implement OAuth
 
@@ -189,7 +202,7 @@ ACULECT_SMOKE_COOKIE_HEADER='wordpress_logged_in_...=...' \
 composer smoke:oauth
 ```
 
-Expected: DCR returns `201`, logged-out authorize redirects to `wp-login.php` with `redirect_to` targeting `options-general.php?page=aculect-ai-companion&view=oauth-consent`, and logged-in authorize redirects directly to the consent screen.
+Expected: DCR returns `201`, logged-out authorize redirects to `wp-login.php` with `redirect_to` targeting `admin.php?page=aculect-ai-companion-oauth-consent`, and logged-in authorize redirects directly to the consent screen.
 
 The script prints only sanitized pass/fail output. It does not print cookies, client secrets, tokens, authorization codes, or raw response bodies. Increase retry coverage with `ACULECT_SMOKE_DCR_ATTEMPTS=3` or `--dcr-attempts=3` when validating DCR retry behavior.
 
@@ -212,12 +225,12 @@ Expected: response is `201`.
 ```bash
 base='http://localhost:8895'
 client_id='CLIENT_FROM_DCR_RESPONSE'
-curl -sSI "$base/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke-1&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
+curl -sSI "$base/aculect-ai-companion/oauth/authorize?response_type=code&client_id=$client_id&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fsmoke&scope=content%3Aread+content%3Adraft&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL&code_challenge_method=S256&resource=$base%2Fwp-json%2Faculect-ai-companion%2Fv1%2Fmcp&state=oauth_smoke_state" \
   | tr -d '\r' \
   | grep -Ei '^(HTTP/|location:)'
 ```
 
-Expected: `302` to `wp-login.php` with `redirect_to` containing `options-general.php?page=aculect-ai-companion&view=oauth-consent`.
+Expected: `302` to `wp-login.php` with `redirect_to` containing `admin.php?page=aculect-ai-companion-oauth-consent`.
 
 ### Logged-In Authorize Should Go Directly To Consent
 

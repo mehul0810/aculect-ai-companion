@@ -1,0 +1,106 @@
+name: Packaged WordPress Proof
+
+on:
+  workflow_call:
+    inputs:
+      package-artifact-name:
+        type: string
+        required: true
+      package-sha256:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-wordpress:
+    name: Packaged plugin WP 7.1 and browser proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Download canonical package from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.package-artifact-name }}
+          path: release/
+      - name: Verify immutable package before extraction
+        env:
+          EXPECTED_SHA256: ${{ inputs.package-sha256 }}
+        run: |
+          cd release
+          sha256sum --check aculect-ai-companion.zip.sha256
+          test "$(sha256sum aculect-ai-companion.zip | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+          unzip -q aculect-ai-companion.zip
+      - name: Setup Node for WordPress environment
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked browser dependencies
+        run: npm ci
+
+      - name: Use the proven wp-env runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          # wp-env 11.6.0 exits without initialization under the asset Node 24 runtime.
+          node-version: "20.19.0"
+
+      - name: Configure packaged WordPress environment
+        env:
+          PLUGIN_DIR: ${{ github.workspace }}/release/aculect-ai-companion
+        run: |
+          cat > .wp-env.json <<JSON
+          {
+            "core": "https://wordpress.org/wordpress-7.1.zip",
+            "port": 8882,
+            "testsEnvironment": false,
+            "plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
+            "mappings": {
+              "wp-content/plugins/aculect-ai-companion": "${PLUGIN_DIR}",
+              "wp-content/aculect-memory-proofs": "${GITHUB_WORKSPACE}/tests/Integration/Memory"
+            }
+          }
+          JSON
+          npm install --global @wordpress/env@11.6.0
+
+      - name: Start packaged WordPress
+        run: wp-env start --update
+
+      - name: Wait for packaged WordPress
+        run: |
+          for attempt in $(seq 1 12); do
+            if wp-env run cli wp core is-installed >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          wp-env run cli wp core is-installed
+
+      - name: Activate package and run Plugin Check
+        run: |
+          wp-env run cli wp plugin activate aculect-ai-companion
+          wp-env run cli wp plugin check aculect-ai-companion --format=json --ignore-warnings --exclude-files=.wp-env.json --slug=aculect-ai-companion --require=./wp-content/plugins/plugin-check/cli.php > "${RUNNER_TEMP}/plugin-check-results.txt"
+          cat "${RUNNER_TEMP}/plugin-check-results.txt"
+
+      - name: Prove real memory review rollback, migration CAS and sync replay
+        run: wp-env run cli wp --user=admin eval-file wp-content/aculect-memory-proofs/wp-memory-proof.php aculect-disposable-memory-proof --use-include
+
+      - name: Install Chromium for browser proof
+        run: npx playwright install --with-deps chromium
+
+      - name: Create browser proof administrator
+        run: wp-env run cli wp user create workflow-admin workflow-admin@example.test --role=administrator --user_pass=workflow-admin-password
+
+      - name: Prove packaged settings and custom workflow absence
+        env:
+          ACULECT_WP_BASE_URL: http://localhost:8882
+          ACULECT_WP_ADMIN_USER: workflow-admin
+          ACULECT_WP_ADMIN_PASSWORD: workflow-admin-password
+        run: node tests/Integration/Browser/workflow-admin.mjs
+
+      - name: Stop WordPress
+        if: always()
+        run: wp-env stop

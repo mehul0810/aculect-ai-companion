@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaim;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimDecision;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimStoreInterface;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\WordPressExecutionClaimStore;
+
 /**
  * Centralizes MCP dry-run and confirmation safety controls.
  */
@@ -14,7 +19,140 @@ final class ToolSafety {
 	private const CONFIRMATION_TTL    = 600;
 	private const CONSUMED_RESULT_TTL = 3600;
 	private const IDEMPOTENCY_TTL     = 86400;
-	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key' );
+	private const CONTROL_KEYS        = array( 'dry_run', 'confirmation_token', 'idempotency_key', '_aculect_confirmation_binding' );
+
+	private ExecutionClaimStoreInterface $claim_store;
+
+	public function __construct( ?ExecutionClaimStoreInterface $claim_store = null ) {
+		$this->claim_store = $claim_store ?? new WordPressExecutionClaimStore();
+	}
+
+	/**
+	 * Resolve or acquire the authoritative claim for one write execution.
+	 *
+	 * Existing completed transients are compatibility inputs only. The claim
+	 * store resolves an existing database row first and imports a legacy result
+	 * only when no authoritative row exists.
+	 *
+	 * @param string               $tool         Internal ability ID.
+	 * @param array<string, mixed> $args         Tool arguments including controls.
+	 * @param array<string, mixed> $auth         OAuth context.
+	 * @param bool                 $allow_create Whether this call may start execution.
+	 */
+	public function claim_write_execution( string $tool, array $args, array $auth, bool $allow_create ): ExecutionClaimDecision {
+		$confirmation_hash = $this->confirmation_key_hash( $args );
+		$idempotency_hash  = $this->idempotency_key_hash( $args, $auth );
+		if ( null === $confirmation_hash && null === $idempotency_hash ) {
+			return ExecutionClaimDecision::missing();
+		}
+
+		$legacy_result    = $this->confirmation_replay( $tool, $args, $auth );
+		$legacy_idem      = $this->idempotent_replay( $tool, $args, $auth );
+		$legacy_key_reuse = is_array( $legacy_idem ) && 'idempotency_key_reuse' === ( $legacy_idem['error'] ?? '' );
+		if ( null === $legacy_result && is_array( $legacy_idem ) && ! $legacy_key_reuse ) {
+			$legacy_result = $legacy_idem;
+		}
+
+		return $this->claim_store->claim(
+			$this->payload_hash( $tool, $args, $auth ),
+			hash( 'sha256', $tool ),
+			$this->identity_hash( $auth ),
+			$confirmation_hash,
+			$idempotency_hash,
+			$allow_create,
+			$legacy_result,
+			$legacy_key_reuse,
+			null === $idempotency_hash ? self::CONSUMED_RESULT_TTL : self::IDEMPOTENCY_TTL
+		);
+	}
+
+	public function mark_claim_running( ExecutionClaim $claim ): bool {
+		return $this->claim_store->mark_running( $claim );
+	}
+
+	/**
+	 * Publish the authoritative result before compatibility transients.
+	 *
+	 * @param ExecutionClaim      $claim Exact owner/fence handle.
+	 * @param string              $tool  Internal ability ID.
+	 * @param array<string,mixed> $args  Original arguments including controls.
+	 * @param array<string,mixed> $auth  OAuth context.
+	 * @param array<string,mixed> $result Successful result.
+	 */
+	public function complete_claim( ExecutionClaim $claim, string $tool, array $args, array $auth, array $result ): bool {
+		$retention = null === $this->idempotency_key_hash( $args, $auth ) ? self::CONSUMED_RESULT_TTL : self::IDEMPOTENCY_TTL;
+		if ( ! $this->claim_store->complete( $claim, $result, $retention ) ) {
+			return false;
+		}
+
+		$this->remember_write_result( $tool, $args, $auth, $result );
+		$this->claim_store->prune_completed();
+
+		return true;
+	}
+
+	public function release_claim( ExecutionClaim $claim ): bool {
+		return $this->claim_store->release( $claim );
+	}
+
+	public function mark_claim_uncertain( ExecutionClaim $claim ): bool {
+		return $this->claim_store->mark_uncertain( $claim );
+	}
+
+	/**
+	 * Determine whether a request carries an execution alias.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 */
+	public function has_execution_alias( array $args ): bool {
+		return null !== $this->confirmation_key_hash( $args ) || '' !== $this->idempotency_key_arg( $args );
+	}
+
+	/**
+	 * Convert a non-acquired claim decision into the bounded public result.
+	 *
+	 * @param ExecutionClaimDecision $decision Authoritative claim decision.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	public function claim_decision_result( ExecutionClaimDecision $decision ): ?array {
+		if ( ExecutionClaimDecision::REPLAY === $decision->type ) {
+			return $decision->result();
+		}
+		if ( ExecutionClaimDecision::IN_PROGRESS === $decision->type ) {
+			return array(
+				'status'      => 'blocked',
+				'error'       => 'execution_in_progress',
+				'message'     => 'This write is already being processed.',
+				'retry_after' => $decision->retry_after,
+			);
+		}
+		if ( ExecutionClaimDecision::KEY_REUSE === $decision->type ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'idempotency_key_reuse',
+				'message' => 'This idempotency_key was already used with different arguments. Use a new key for new work.',
+			);
+		}
+		if ( ExecutionClaimDecision::UNCERTAIN === $decision->type ) {
+			return $this->execution_uncertain_result();
+		}
+
+		return null;
+	}
+
+	/**
+	 * Return the bounded uncertain-outcome result.
+	 *
+	 * @return array<string, string>
+	 */
+	public function execution_uncertain_result(): array {
+		return array(
+			'status'  => 'blocked',
+			'error'   => 'execution_uncertain',
+			'message' => 'The previous write outcome could not be confirmed. Do not retry automatically.',
+		);
+	}
 
 	/**
 	 * Return selectable non-read-only ability groups.
@@ -110,6 +248,10 @@ final class ToolSafety {
 	 * @param array<mixed> $args Tool arguments.
 	 */
 	public function risk_level( string $tool, array $args ): string {
+		$lifecycle_risk = ExtensionLifecyclePolicy::risk( $tool );
+		if ( null !== $lifecycle_risk ) {
+			return $lifecycle_risk;
+		}
 		$status         = isset( $args['status'] ) && is_scalar( $args['status'] ) ? sanitize_key( (string) $args['status'] ) : '';
 		$comment_status = match ( $status ) {
 			'pending', 'unapproved', 'unapprove' => 'hold',
@@ -132,9 +274,19 @@ final class ToolSafety {
 			'content.update_block' => 'update',
 			'content_workflow.update_post' => array_key_exists( 'content', $args ) || array_key_exists( 'section_map', $args ) ? 'destructive' : 'update',
 			'content_media.apply_image' => 'insert_block' === sanitize_key( (string) ( $args['target'] ?? '' ) ) ? 'destructive' : 'update',
-			'plugin_lifecycle.activate_plugin',
-			'plugin_lifecycle.deactivate_plugin',
-			'theme_lifecycle.switch_theme' => 'system',
+			'revisions.restore_content',
+			'content.restore_trashed',
+			'navigation.assign_location',
+			'navigation.delete_menu',
+			'site_editor.delete_record',
+			'site_editor.update_record',
+			'site_editor.set_style',
+			'site_editor.restore_record' => 'destructive',
+			'navigation.update_item',
+			'content_fields.update_field',
+			'maintenance.clean_post_cache',
+			'maintenance.flush_rewrite_rules' => 'system',
+			'taxonomy.delete_term' => 'destructive',
 			'comments.create_item' => 'approve' === $comment_status ? 'publish' : 'draft',
 			'comments.update_item' => match ( $comment_status ) {
 				'trash', 'spam' => 'destructive',
@@ -155,6 +307,7 @@ final class ToolSafety {
 			'content_internal_link.suggestion_apply',
 			'plugin.incident.report',
 			'memory.save',
+			'memory.sync_push',
 			'memory.bootstrap',
 			'seo_workflow.update_rankmath',
 			'media.rename_file',
@@ -163,6 +316,7 @@ final class ToolSafety {
 			'media.upload_image_data',
 			'redirects.create',
 			'taxonomy.create_term',
+			'taxonomy.assign_terms',
 			'taxonomy.set_term_image',
 			'taxonomy.update_term' => 'update',
 			default => 'read',
@@ -185,7 +339,7 @@ final class ToolSafety {
 			return true;
 		}
 
-		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap', 'plugin.incident.report' ), true ) ) {
+		if ( in_array( $tool, array( 'memory.save', 'memory.bootstrap', 'memory.sync_push', 'plugin.incident.report' ), true ) ) {
 			return true;
 		}
 
@@ -203,9 +357,10 @@ final class ToolSafety {
 	 *
 	 * @param string               $tool Internal ability ID.
 	 * @param array<mixed>         $args Tool arguments.
-	 * @param array<string, mixed> $auth OAuth context.
+	 * @param array<string, mixed> $auth    OAuth context.
+	 * @param array<string, mixed> $binding Server-resolved execution binding.
 	 */
-	public function issue_confirmation_token( string $tool, array $args, array $auth ): string {
+	public function issue_confirmation_token( string $tool, array $args, array $auth, array $binding = array() ): string {
 		$token = bin2hex( random_bytes( 16 ) );
 
 		set_transient(
@@ -216,6 +371,7 @@ final class ToolSafety {
 				'user_id'      => (int) ( $auth['user_id'] ?? 0 ),
 				'client_id'    => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
 				'provider'     => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+				'binding'      => $this->sanitize_binding( $binding ),
 				'expires_at'   => time() + self::CONFIRMATION_TTL,
 			),
 			self::CONFIRMATION_TTL
@@ -244,6 +400,21 @@ final class ToolSafety {
 	}
 
 	/**
+	 * Return a server-resolved binding stored with a confirmation token.
+	 *
+	 * The execution gateway calls this only after validating the token against
+	 * the caller, tool, and original arguments.
+	 *
+	 * @param array<mixed> $args Tool arguments containing the confirmation token.
+	 * @return array<string, mixed>
+	 */
+	public function confirmation_binding( array $args ): array {
+		$stored = $this->stored_confirmation( $args );
+
+		return is_array( $stored['binding'] ?? null ) ? $stored['binding'] : array();
+	}
+
+	/**
 	 * Mark a confirmation token consumed and remember the successful result.
 	 *
 	 * @param string               $tool   Internal ability ID.
@@ -257,6 +428,8 @@ final class ToolSafety {
 			return;
 		}
 
+		$stored  = $this->stored_confirmation( $args );
+		$binding = is_array( $stored['binding'] ?? null ) ? $stored['binding'] : array();
 		set_transient(
 			$this->transient_key( $token ),
 			array(
@@ -265,6 +438,7 @@ final class ToolSafety {
 				'user_id'      => (int) ( $auth['user_id'] ?? 0 ),
 				'client_id'    => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
 				'provider'     => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+				'binding'      => $binding,
 				'consumed'     => true,
 				'result'       => $result,
 			),
@@ -389,6 +563,42 @@ final class ToolSafety {
 	}
 
 	/**
+	 * Return the hash-only confirmation alias used by claim storage.
+	 *
+	 * @param array<mixed> $args Tool arguments.
+	 */
+	private function confirmation_key_hash( array $args ): ?string {
+		$token = $this->confirmation_token_arg( $args );
+		return '' === $token ? null : hash( 'sha256', "confirmation\0" . $token );
+	}
+
+	/**
+	 * Return the authenticated identity-bound idempotency alias.
+	 *
+	 * @param array<mixed>         $args Tool arguments.
+	 * @param array<string, mixed> $auth OAuth context.
+	 */
+	private function idempotency_key_hash( array $args, array $auth ): ?string {
+		$key = $this->idempotency_key_arg( $args );
+		return '' === $key ? null : hash( 'sha256', "idempotency\0" . $this->identity_hash( $auth ) . "\0" . $key );
+	}
+
+	/**
+	 * Hash the exact authenticated identity without persisting its raw fields.
+	 *
+	 * @param array<string, mixed> $auth OAuth context.
+	 */
+	private function identity_hash( array $auth ): string {
+		$identity = array(
+			'user_id'   => (int) ( $auth['user_id'] ?? 0 ),
+			'client_id' => sanitize_text_field( (string) ( $auth['client_id'] ?? '' ) ),
+			'provider'  => sanitize_key( (string) ( $auth['provider'] ?? 'mcp' ) ),
+		);
+
+		return hash( 'sha256', (string) wp_json_encode( $identity ) );
+	}
+
+	/**
 	 * Load the stored confirmation row for the supplied token argument.
 	 *
 	 * @param array<mixed> $args Tool arguments.
@@ -457,6 +667,39 @@ final class ToolSafety {
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Keep server-issued bindings small, scalar, and deterministic.
+	 *
+	 * @param mixed $value Candidate binding value.
+	 * @param int   $depth Current recursion depth.
+	 * @return mixed
+	 */
+	private function sanitize_binding( mixed $value, int $depth = 0 ): mixed {
+		if ( $depth > 2 ) {
+			return null;
+		}
+		if ( is_array( $value ) ) {
+			$sanitized = array();
+			foreach ( array_slice( $value, 0, 24, true ) as $key => $item ) {
+				if ( ! is_scalar( $key ) ) {
+					continue;
+				}
+				$normalized = $this->sanitize_binding( $item, $depth + 1 );
+				if ( null !== $normalized ) {
+					$sanitized[ substr( sanitize_key( (string) $key ), 0, 64 ) ] = $normalized;
+				}
+			}
+			ksort( $sanitized );
+
+			return $sanitized;
+		}
+		if ( ! is_scalar( $value ) ) {
+			return null;
+		}
+
+		return substr( sanitize_text_field( (string) $value ), 0, 512 );
 	}
 
 	/**

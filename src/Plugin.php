@@ -12,6 +12,7 @@ use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\Installer as ExecutionClaimsInstaller;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer as OAuthInstaller;
@@ -21,6 +22,8 @@ use Aculect\AICompanion\Connectors\OAuth\TokenController;
 use Aculect\AICompanion\Diagnostics\Database\Installer as DiagnosticsInstaller;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\Database\Installer as IntelligenceInstaller;
+use Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator;
+use Aculect\AICompanion\WebMCP\WebMcpAssets;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -29,7 +32,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class Plugin {
 
-	private const REWRITE_VERSION        = '2026.05.11.1';
+	private const REWRITE_VERSION        = '2026.09.18.1';
 	private const OPTION_REWRITE_VERSION = 'aculect_ai_companion_rewrite_version';
 
 	private static ?self $instance = null;
@@ -61,6 +64,7 @@ final class Plugin {
 	 * Run activation tasks that require immediate persistence.
 	 */
 	public static function activate(): void {
+		ExecutionClaimsInstaller::activate();
 		OAuthInstaller::activate();
 		DiagnosticsInstaller::activate();
 		ActivityInstaller::activate();
@@ -109,9 +113,14 @@ final class Plugin {
 		add_action( 'aculect_ai_companion_content_index_refresh_recovery', array( $this, 'handle_content_index_refresh_job' ), 10, 1 );
 		add_action( ContentIndexer::STALE_SWEEP_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
 		add_action( ContentIndexer::STALE_SWEEP_RECOVERY_HOOK, array( $this, 'handle_content_index_stale_sweep' ) );
+		add_action( ContentIndexer::INDEX_RETRY_HOOK, array( $this, 'handle_content_index_retry' ), 10, 1 );
+		add_action( MemorySchemaMigrator::HOOK, array( MemorySchemaMigrator::class, 'run_scheduled_batch' ) );
 		( new EditorInternalLinkSuggestions() )->register();
+		( new WebMcpAssets() )->register();
+		( new \Aculect\AICompanion\Admin\PrivateSettingForm() )->register();
 
 		OAuthInstaller::install();
+		ExecutionClaimsInstaller::install();
 		DiagnosticsInstaller::install();
 		ActivityInstaller::install();
 		IntelligenceInstaller::install();
@@ -136,6 +145,7 @@ final class Plugin {
 		'save_brand'                   => 'handle_save_brand',
 		'review_learning_suggestion'   => 'handle_review_learning_suggestion',
 		'review_memory_item'           => 'handle_review_memory_item',
+		'retry_memory_migration'       => 'handle_retry_memory_migration',
 		'run_connection_diagnostics'   => 'handle_run_connection_diagnostics',
 		'revoke_stale_oauth_client'    => 'handle_revoke_stale_oauth_client',
 		'run_content_index_sweep'      => 'handle_run_content_index_sweep',
@@ -260,7 +270,7 @@ final class Plugin {
 		}
 
 		$path = (string) wp_parse_url( $requested_url, PHP_URL_PATH );
-		if ( str_starts_with( $path, '/.well-known/oauth-' ) || '/oauth/authorize' === untrailingslashit( $path ) ) {
+		if ( str_starts_with( $path, '/.well-known/oauth-' ) || in_array( untrailingslashit( $path ), array( '/oauth/authorize', '/aculect-ai-companion/oauth/authorize' ), true ) ) {
 			return false;
 		}
 
@@ -328,16 +338,8 @@ final class Plugin {
 		}
 
 		$this->content_index_saved_posts[ $post_id ] = true;
-		$deferred                                    = $indexer->defer_index_post_result( $post_id );
-		if ( $deferred['scheduled'] ) {
-			$this->content_index_deferred_posts[ $post_id ] = true;
-			return;
-		}
-
-		$result = $indexer->index_post( $post_id );
-		if ( 'error' !== ( $result['status'] ?? '' ) ) {
-			$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
-		}
+		$indexer->defer_index_post_result( $post_id );
+		$this->content_index_deferred_posts[ $post_id ] = true;
 	}
 
 	/**
@@ -345,6 +347,15 @@ final class Plugin {
 	 */
 	public function handle_content_index_stale_sweep(): void {
 		( new ContentIndexer() )->run_stale_sweep();
+	}
+
+	/**
+	 * Retry persisting/scheduling one deferred index item without indexing inline.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function handle_content_index_retry( int $post_id ): void {
+		( new ContentIndexer() )->retry_deferred_index( $post_id );
 	}
 
 	/**
@@ -428,23 +439,7 @@ final class Plugin {
 		}
 
 		$this->content_index_deferred_posts[ $post_id ] = true;
-		$keep_deferred_guard                            = false;
-		try {
-			$deferred = $indexer->defer_index_post_result( $post_id );
-			if ( $deferred['scheduled'] ) {
-				$keep_deferred_guard = true;
-				return;
-			}
-
-			$result = $indexer->index_post( $post_id );
-			if ( 'error' !== ( $result['status'] ?? '' ) ) {
-				$indexer->finalize_deferred_index( $post_id, $deferred['queue_token'] );
-			}
-		} finally {
-			if ( ! $keep_deferred_guard ) {
-				unset( $this->content_index_deferred_posts[ $post_id ] );
-			}
-		}
+		$indexer->defer_index_post_result( $post_id );
 	}
 
 	/**
@@ -496,5 +491,7 @@ final class Plugin {
 	private static function add_rewrite_rules(): void {
 		( new DiscoveryController() )->add_rewrite_rules();
 		add_rewrite_rule( '^oauth/authorize/?$', 'index.php?aculect_ai_companion_oauth_authorize=1', 'top' );
+		// Keep the legacy alias, but advertise an owned path that other OAuth plugins do not claim.
+		add_rewrite_rule( '^aculect-ai-companion/oauth/authorize/?$', 'index.php?aculect_ai_companion_oauth_authorize=1', 'top' );
 	}
 }

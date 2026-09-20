@@ -29,12 +29,19 @@ final class SettingsTransferTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
+		$GLOBALS['aculect_ai_companion_test_options']      = array();
+		$GLOBALS['aculect_ai_companion_test_wp_abilities'] = array();
 	}
 
 	public function test_export_payload_contains_safe_settings_only(): void {
 		$registry = new AbilitiesRegistry();
 		$registry->save_enabled_ids( array( 'content.get_item', 'content.update_item' ) );
+		( new WordPressAbilitiesPolicy() )->save_decisions(
+			array(
+				'example/read'  => true,
+				'example/write' => false,
+			)
+		);
 		( new ToolSafety() )->save_confirmation_groups( array( 'Content' ) );
 		RoleAbilitiesPolicy::set_editing_enabled( true );
 		update_option(
@@ -65,6 +72,14 @@ final class SettingsTransferTest extends TestCase {
 		self::assertSame( SettingsTransfer::SCHEMA, $payload['schema'] );
 		self::assertSame( SettingsTransfer::SCHEMA_VERSION, $payload['schemaVersion'] );
 		self::assertSame( array( 'content.get_item', 'content.update_item' ), $payload['settings']['enabledAbilities'] );
+		self::assertSame( array( 'example/read' ), $payload['settings']['enabledWpAbilities'] );
+		self::assertSame(
+			array(
+				'example/read'  => true,
+				'example/write' => false,
+			),
+			$payload['settings']['wpAbilityDecisions']
+		);
 		self::assertSame( array( 'Content' ), $payload['settings']['confirmationGroups'] );
 		self::assertTrue( $payload['settings']['roleAbilityPolicyEditingEnabled'] );
 		self::assertSame( array( 'content.get_item' ), $payload['settings']['roleAbilityPolicies']['editor'] );
@@ -86,6 +101,11 @@ final class SettingsTransferTest extends TestCase {
 			'settings'      => array(
 				'enabledAbilities'                => array( 'content.get_item', 'unknown.tool' ),
 				'enabledWpAbilities'              => array( 'wp/example', '<b>wp/html</b>' ),
+				'wpAbilityDecisions'              => array(
+					'wp/example'  => true,
+					'wp/disabled' => false,
+					'invalid'     => true,
+				),
 				'confirmationGroups'              => array( 'Content', 'Unknown Group' ),
 				'roleAbilityPolicyEditingEnabled' => true,
 				'roleAbilityPolicies'             => array(
@@ -110,8 +130,17 @@ final class SettingsTransferTest extends TestCase {
 
 		self::assertTrue( ( new SettingsTransfer() )->import_payload( $payload ) );
 
-		self::assertSame( array( 'content.get_item' ), ( new AbilitiesRegistry() )->enabled_ids() );
-		self::assertSame( array( 'wp/example', 'wp/html' ), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
+		self::assertSame( array( 'content.get_item' ), get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES ) );
+		self::assertContains( 'content.update_item', ( new AbilitiesRegistry() )->enabled_ids() );
+		self::assertNotContains( 'unknown.tool', ( new AbilitiesRegistry() )->enabled_ids() );
+		self::assertSame( array( 'wp/example' ), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
+		self::assertSame(
+			array(
+				'wp/disabled' => false,
+				'wp/example'  => true,
+			),
+			( new WordPressAbilitiesPolicy() )->saved_decisions()
+		);
 		self::assertSame( array( 'Content' ), ( new ToolSafety() )->confirmation_groups() );
 		self::assertTrue( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame(
@@ -159,7 +188,12 @@ final class SettingsTransferTest extends TestCase {
 		self::assertTrue( ( new SettingsTransfer() )->import_payload( $payload ) );
 		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame( array(), ( new RoleAbilitiesPolicy() )->saved_policies( $registry ) );
-		self::assertSame( array( 'content.get_item' ), ( new RoleAbilitiesPolicy() )->allowed_ids_for_role( 'editor', $registry ) );
+		$allowed = ( new RoleAbilitiesPolicy() )->allowed_ids_for_role( 'editor', $registry );
+		self::assertContains( 'content.get_item', $allowed );
+		self::assertNotContains( 'content.update_item', $allowed );
+		foreach ( $allowed as $id ) {
+			self::assertTrue( $registry->is_read_only( $id ) );
+		}
 	}
 
 	public function test_reset_restores_defaults_without_protocol_storage_cleanup(): void {
@@ -182,6 +216,8 @@ final class SettingsTransferTest extends TestCase {
 
 		self::assertNull( get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES, null ) );
 		self::assertSame( array(), ( new WordPressAbilitiesPolicy() )->allowed_ids() );
+		self::assertNull( get_option( WordPressAbilitiesPolicy::OPTION_ABILITY_DECISIONS, null ) );
+		self::assertNull( get_option( WordPressAbilitiesPolicy::OPTION_POLICY_INITIALIZED, null ) );
 		self::assertSame( array(), ( new ToolSafety() )->confirmation_groups() );
 		self::assertFalse( RoleAbilitiesPolicy::is_editing_enabled() );
 		self::assertSame( array(), ( new RoleAbilitiesPolicy() )->saved_policies( new AbilitiesRegistry() ) );

@@ -120,8 +120,30 @@ final class NavigationMenuDiscoveryAbilitiesTest extends TestCase {
 		self::assertSame( 'classic_theme', $result['navigation']['theme_mode'] );
 		self::assertSame( 'classic_menu', $result['navigation']['primary_surface'] );
 		self::assertSame( 2, $result['navigation']['registered_location_count'] );
-		self::assertFalse( $result['write_support']['implemented'] );
+		self::assertTrue( $result['write_support']['implemented'] );
+		self::assertTrue( $result['write_support']['block_writes_implemented'] );
+		self::assertTrue( $result['write_support']['location_writes_implemented'] );
+		self::assertSame( 'navigation_update_item', $result['write_support']['update_tool'] );
 		self::assertFalse( $result['safety']['raw_string_navigation_edits_allowed'] );
+	}
+
+	public function test_discovery_names_real_guarded_tools_without_promising_creation_or_authorization(): void {
+		$result   = $this->abilities->get_context();
+		$policy   = $result['write_support'];
+		$registry = new \Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry();
+		foreach ( array( 'read_before_write', 'update_tool', 'location_read_tool', 'location_update_tool', 'block_read_tool', 'block_update_tool', 'block_recovery_tool', 'block_deletion_tool', 'menu_deletion_read_tool', 'menu_deletion_tool' ) as $key ) {
+			self::assertArrayHasKey( $registry->internal_id( $policy[ $key ] ), $registry->definitions() );
+		}
+		self::assertTrue( $result['read_only'] );
+		self::assertFalse( $policy['creation_implemented'] );
+		self::assertTrue( $policy['deletion_implemented'] );
+		self::assertStringContainsString( 'Explicit confirmation required', $policy['deletion_policy'] );
+		self::assertFalse( $policy['preserve_unknown_custom_blocks_attrs'] );
+		self::assertFalse( $result['safety']['preserve_unknown_blocks_for_future_writes'] );
+		self::assertSame( 'existing_database_record_native_block_allowlist', $policy['block_navigation_write_model'] );
+		self::assertStringContainsString( 'not permissions', $policy['authorization'] );
+		self::assertStringNotContainsString( 'writes are unsupported', implode( ' ', $result['next_actions'] ) );
+		self::assertSame( $policy, $this->abilities->list_menus()['summary']['write_support'] );
 	}
 
 	public function test_list_items_resolves_classic_location_to_assigned_menu(): void {

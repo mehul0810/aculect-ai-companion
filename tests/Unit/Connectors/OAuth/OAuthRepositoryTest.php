@@ -22,6 +22,7 @@ use Aculect\AICompanion\Connectors\OAuth\Entities\AccessTokenEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ScopeEntity;
 use Aculect\AICompanion\Connectors\OAuth\RequestContext;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
@@ -66,6 +67,86 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( $access_hash, $code_hash );
 		self::assertMatchesRegularExpression( '/^[a-f0-9]{64}$/', $access_hash );
 		self::assertNotSame( $raw, $access_hash );
+	}
+
+	public function test_cimd_url_client_identifier_is_rejected_without_database_or_network_activity(): void {
+		$GLOBALS['wpdb']                               = new class() {
+			public string $prefix = 'wp_';
+
+			public function get_row(): never {
+				throw new \RuntimeException( 'CIMD must not query client storage.' );
+			}
+		};
+		$GLOBALS['aculect_ai_companion_test_http_get'] = static function (): never {
+			throw new \RuntimeException( 'CIMD must not fetch a metadata document.' );
+		};
+
+		try {
+			self::assertNull( ( new ClientRepository() )->getClientEntity( 'https://metadata.example/client.json' ) );
+			self::assertNull( ( new ClientRepository() )->getClientEntity( 'https://metadata.example/' . str_repeat( 'a', 5000 ) ) );
+		} finally {
+			unset( $GLOBALS['aculect_ai_companion_test_http_get'] );
+		}
+	}
+
+	public function test_child_credential_revocation_checks_require_current_non_revoked_client_join(): void {
+		$repositories = array(
+			new AuthCodeRepository(),
+			new AccessTokenRepository(),
+			new RefreshTokenRepository(),
+		);
+		$methods      = array( 'isAuthCodeRevoked', 'isAccessTokenRevoked', 'isRefreshTokenRevoked' );
+
+		foreach ( $repositories as $index => $repository ) {
+			$wpdb            = new FakeAccessTokenWpdb();
+			$wpdb->row       = array(
+				'revoked'    => '0',
+				'expires_at' => '2099-01-01 00:00:00',
+			);
+			$GLOBALS['wpdb'] = $wpdb;
+
+			self::assertFalse( $repository->{$methods[ $index ]}( 'credential-id' ) );
+			self::assertStringContainsString( 'INNER JOIN %i clients', $wpdb->prepared[0]['query'] );
+			self::assertStringContainsString( 'clients.issuer_hash = %s', $wpdb->prepared[0]['query'] );
+			self::assertStringContainsString( 'clients.revoked = 0', $wpdb->prepared[0]['query'] );
+			self::assertContains( IssuerBinding::hash(), $wpdb->prepared[0]['args'] );
+		}
+	}
+
+	public function test_cross_issuer_client_cannot_persist_a_new_credential(): void {
+		$wpdb            = new FakeAccessTokenWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+		$token           = $this->access_token_entity( 'token-id', 'client-id', '7' );
+		$client          = $token->getClient();
+		self::assertInstanceOf( ClientEntity::class, $client );
+		$client->setIssuerHash( hash( 'sha256', 'https://different.example' ) );
+
+		$this->expectException( \UnexpectedValueException::class );
+		$this->expectExceptionMessage( 'not bound to the current issuer' );
+
+		( new AccessTokenRepository() )->persistNewAccessToken( $token );
+	}
+
+	public function test_failed_access_token_insert_stops_issuance_before_session_revocation(): void {
+		$wpdb                = new FakeAccessTokenWpdb();
+		$wpdb->insert_result = false;
+		$GLOBALS['wpdb']     = $wpdb;
+
+		try {
+			( new AccessTokenRepository() )->persistNewAccessToken( $this->access_token_entity( 'new-token', 'chatgpt-client', '7' ) );
+			self::fail( 'A failed insert must abort token issuance.' );
+		} catch ( \League\OAuth2\Server\Exception\OAuthServerException $exception ) {
+			self::assertSame( 'server_error', $exception->getErrorType() );
+			self::assertSame( 500, $exception->getHttpStatusCode() );
+			$response = $exception->generateHttpResponse( Psr7Bridge::response() );
+			$payload  = json_decode( (string) $response->getBody(), true );
+			self::assertArrayNotHasKey( 'access_token', $payload );
+			self::assertArrayNotHasKey( 'refresh_token', $payload );
+		}
+
+		self::assertSame( array( 'insert' ), $wpdb->operations );
+		self::assertSame( array(), $wpdb->updates );
+		self::assertSame( array(), $wpdb->queries );
 	}
 
 	public function test_refresh_token_support_context_uses_hashed_lookup_and_safe_connection_fields(): void {
@@ -397,7 +478,7 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( ConnectionAccessLevel::WRITE, $wpdb->inserts[0]['data']['access_level'] );
 	}
 
-	public function test_new_access_token_revokes_older_matching_provider_sessions(): void {
+	public function test_new_access_token_revokes_older_sessions_for_the_same_oauth_client_only(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
 
@@ -413,21 +494,18 @@ final class OAuthRepositoryTest extends TestCase {
 
 		self::assertSame( array( 'insert', 'query', 'query' ), $wpdb->operations );
 		self::assertSame( 'chatgpt-client-2', $wpdb->inserts[0]['data']['client_id'] );
-		self::assertStringContainsString( 'current_client.provider <> %s', $wpdb->prepared[0]['query'] );
-		self::assertStringContainsString( 'clients.provider = current_client.provider', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.client_id = %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'access_tokens.token_hash <> %s', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'COALESCE(access_tokens.user_id, 0) = %d', $wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
-		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][5] );
-		self::assertSame( hash( 'sha256', 'new-chatgpt-token' ), $wpdb->prepared[0]['args'][7] );
-		self::assertSame( 7, $wpdb->prepared[0]['args'][8] );
-		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $wpdb->prepared[0]['args'][9] );
-		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][14] );
+		self::assertSame( hash( 'sha256', 'new-chatgpt-token' ), $wpdb->prepared[0]['args'][4] );
+		self::assertSame( 7, $wpdb->prepared[0]['args'][5] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/mcp', $wpdb->prepared[0]['args'][6] );
+		self::assertSame( 'chatgpt-client-2', $wpdb->prepared[0]['args'][7] );
 		self::assertStringContainsString( 'WHERE access_tokens.revoked = 1', $wpdb->prepared[1]['query'] );
 	}
 
-	public function test_revoke_superseded_active_sessions_deduplicates_known_providers_but_not_generic_clients(): void {
+	public function test_revoke_superseded_active_sessions_matches_the_same_oauth_client(): void {
 		$wpdb            = new FakeAccessTokenWpdb();
 		$GLOBALS['wpdb'] = $wpdb;
 
@@ -436,12 +514,9 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 1, $revoked );
 		self::assertSame( array( 'query', 'query' ), $wpdb->operations );
 		self::assertStringContainsString( 'newer_refresh.expires_at > older_refresh.expires_at', $wpdb->prepared[0]['query'] );
-		self::assertStringContainsString( 'newer_client.provider = older_client.provider', $wpdb->prepared[0]['query'] );
 		self::assertStringContainsString( 'newer.client_id = older.client_id', $wpdb->prepared[0]['query'] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][0] );
-		self::assertSame( '2026-06-01 00:00:00', $wpdb->prepared[0]['args'][7] );
-		self::assertSame( '2026-06-01 00:00:00', $wpdb->prepared[0]['args'][8] );
-		self::assertSame( 25, $wpdb->prepared[0]['args'][13] );
+		self::assertSame( 25, $wpdb->prepared[0]['args'][7] );
 		self::assertStringContainsString( 'WHERE access_tokens.revoked = 1', $wpdb->prepared[1]['query'] );
 	}
 
@@ -537,7 +612,8 @@ final class OAuthRepositoryTest extends TestCase {
 		self::assertSame( 'wp_aculect_ai_companion_oauth_access_tokens', $wpdb->prepared[0]['args'][8] );
 		self::assertSame( 'wp_aculect_ai_companion_oauth_refresh_tokens', $wpdb->prepared[0]['args'][9] );
 		self::assertSame( '2026-05-28 00:00:00', $wpdb->prepared[0]['args'][10] );
-		self::assertSame( 25, $wpdb->prepared[0]['args'][11] );
+		self::assertStringContainsString( 'clients.created_at < %s', $wpdb->prepared[0]['query'] );
+		self::assertSame( 25, $wpdb->prepared[0]['args'][12] );
 	}
 
 	public function test_duplicate_client_cleanup_uses_order_insensitive_redirect_fingerprints(): void {
@@ -862,6 +938,7 @@ final class OAuthRepositoryTest extends TestCase {
 		$client = new ClientEntity();
 		$client->setIdentifier( $client_id );
 		$client->setName( 'Test client' );
+		$client->setIssuerHash( IssuerBinding::hash() );
 
 		$token = new AccessTokenEntity();
 		$token->setIdentifier( $identifier );
@@ -890,6 +967,8 @@ final class OAuthRepositoryTest extends TestCase {
 				'provider'                 => 'mcp',
 				'redirect_uris'            => '["https:\/\/example.com\/callback"]',
 				'registration_fingerprint' => ClientRegistrationFingerprint::from_redirect_uris( array( 'https://example.com/callback' ) ),
+				'issuer_hash'              => hash( 'sha256', 'https://example.com' ),
+				'application_type'         => 'legacy',
 				'user_id'                  => null,
 				'is_confidential'          => '1',
 				'revoked'                  => '0',
@@ -937,6 +1016,8 @@ final class FakeAccessTokenWpdb {
 	 * @var array<int, array{table: string, data: array<string, mixed>}>
 	 */
 	public array $inserts = array();
+
+	public int|false $insert_result = 1;
 
 	/**
 	 * Operation order.
@@ -1058,7 +1139,7 @@ final class FakeAccessTokenWpdb {
 		);
 		$this->operations[] = 'insert';
 
-		return 1;
+		return $this->insert_result;
 	}
 
 	/**

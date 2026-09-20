@@ -42,12 +42,26 @@ and 2025-11-25; this does not claim support for every optional feature added by
 those protocol revisions.
 
 Client ID Metadata Documents (CIMD) are intentionally not advertised or fetched
-in 0.7.2. Fetching a URL supplied as a client identifier from a WordPress origin
+in this authorization profile. Fetching a URL supplied as a client identifier from a WordPress origin
 would require a separately reviewed SSRF, redirect-chain, response-size, cache,
 and client-identity trust boundary. Authorization metadata therefore reports
 `client_id_metadata_document_supported: false`, and URL-shaped unknown client
 identifiers receive the same stable `invalid_client` behavior as other unknown
 clients. Compatible clients should use the advertised DCR endpoint.
+
+The normalized externally reachable site root is the sole authorization-server
+issuer. Client rows store its SHA-256 identity; authorization codes, access
+tokens, and refresh tokens remain issuer-bound through authoritative joins to
+that current, non-revoked client row. Existing client rows are bound in bounded,
+resumable batches after the additive schema upgrade. Registration and credential
+issuance stay closed until the backfill is verified complete. Changing the
+external root does not silently rebind existing credentials.
+
+DCR accepts explicit `application_type` values `web` and `native`. Web clients
+may register HTTPS redirects only; native clients may register narrow HTTP
+loopback redirects only. Requests that omit the field retain the pre-profile
+`legacy` union so existing DCR clients remain compatible. Authorization success,
+denial, and client-safe error redirects include the exact RFC 9207 `iss` value.
 
 Hosted HTTPS redirects remain exact matches. Native clients may vary only the
 port of a registered `http://localhost/...` or `http://127.0.0.1/...` loopback
@@ -93,3 +107,5 @@ core APIs instead of custom SQL.
 - Client secrets are stored with WordPress password hashing.
 - Access-token and refresh-token checks query the current database state so
   revocation works immediately.
+- Rollback leaves additive issuer/application columns intact. They are removed
+  only when the existing opt-in plugin-data uninstall path drops OAuth tables.

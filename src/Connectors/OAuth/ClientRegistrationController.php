@@ -6,6 +6,7 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
+use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use WP_Error;
@@ -55,6 +56,10 @@ final class ClientRegistrationController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function register_client( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		if ( ! Installer::issuer_binding_ready() ) {
+			return new WP_Error( 'temporarily_unavailable', 'OAuth client storage is being upgraded. Try again shortly.', array( 'status' => 503 ) );
+		}
+
 		$body = $request->get_json_params();
 		if ( ! is_array( $body ) ) {
 			$body = array();
@@ -66,6 +71,10 @@ final class ClientRegistrationController {
 		$raw_redirect_uris = $this->raw_redirect_uris( (array) ( $body['redirect_uris'] ?? array() ) );
 		$provider          = Helpers::provider_from_client( $client_name, $raw_redirect_uris );
 		$auth_method       = TokenEndpointAuthMethod::from_registration_request( $body['token_endpoint_auth_method'] ?? null );
+		$application_type  = ApplicationType::from_registration_request(
+			$body['application_type'] ?? null,
+			array_key_exists( 'application_type', $body )
+		);
 
 		$logger->info(
 			'dcr.received',
@@ -96,7 +105,11 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_client_metadata', 'Unsupported token_endpoint_auth_method.', array( 'status' => 400 ) );
 		}
 
-		$redirect_uris = $this->redirect_uris( $raw_redirect_uris );
+		if ( '' === $application_type ) {
+			return new WP_Error( 'invalid_client_metadata', 'Unsupported application_type.', array( 'status' => 400 ) );
+		}
+
+		$redirect_uris = $this->redirect_uris( $raw_redirect_uris, $application_type );
 		if ( array() === $redirect_uris ) {
 			$logger->warning(
 				'dcr.invalid_redirect_uri',
@@ -113,7 +126,7 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
-		$result = ( new ClientRepository() )->create_client_result( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null );
+		$result = ( new ClientRepository() )->create_client_result( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null, $application_type );
 		$client = $result->client();
 
 		if ( ClientRegistrationResult::CAPACITY_EXCEEDED === $result->status() ) {
@@ -189,6 +202,7 @@ final class ClientRegistrationController {
 			'grant_types'                => array( 'authorization_code', 'refresh_token' ),
 			'response_types'             => array( 'code' ),
 			'token_endpoint_auth_method' => $auth_method,
+			'application_type'           => $application_type,
 			'scope'                      => implode( ' ', Helpers::supported_scopes() ),
 		);
 
@@ -203,10 +217,11 @@ final class ClientRegistrationController {
 	/**
 	 * Validate and de-duplicate redirect URIs supplied by the client.
 	 *
-	 * @param array<int, mixed> $uris Raw redirect URI values.
+	 * @param array<int, mixed> $uris             Raw redirect URI values.
+	 * @param string            $application_type Registered DCR application type.
 	 * @return string[]
 	 */
-	private function redirect_uris( array $uris ): array {
+	private function redirect_uris( array $uris, string $application_type = ApplicationType::LEGACY ): array {
 		$valid = array();
 		foreach ( $uris as $uri ) {
 			if ( ! is_scalar( $uri ) ) {
@@ -214,7 +229,7 @@ final class ClientRegistrationController {
 			}
 
 			$uri = esc_url_raw( (string) $uri );
-			if ( '' !== $uri && Helpers::is_allowed_redirect_uri( $uri ) ) {
+			if ( '' !== $uri && RedirectUriPolicy::allows_registration( $uri, $application_type ) ) {
 				$valid[] = $uri;
 			}
 		}

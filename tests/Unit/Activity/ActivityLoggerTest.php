@@ -120,6 +120,44 @@ final class ActivityLoggerTest extends TestCase {
 		);
 	}
 
+	public function test_plugin_lifecycle_activity_uses_plugin_target_and_safe_basename_metadata(): void {
+		$logger   = new ActivityLogger();
+		$target   = $this->invokePrivate(
+			$logger,
+			'target',
+			array(
+				'plugin_lifecycle.update_plugin',
+				array( 'plugin' => 'acme/acme.php' ),
+				array(
+					'status'  => 'updated',
+					'changed' => true,
+					'plugin'  => array( 'plugin' => 'acme/acme.php' ),
+				),
+			)
+		);
+		$metadata = $this->invokePrivate(
+			$logger,
+			'safe_argument_metadata',
+			array(
+				'plugin_lifecycle.update_plugin',
+				array(
+					'plugin'  => 'acme/acme.php',
+					'package' => 'https://private.example/plugin.zip',
+				),
+			)
+		);
+
+		self::assertSame(
+			array(
+				'type' => 'plugin',
+				'id'   => null,
+			),
+			$target
+		);
+		self::assertSame( 'acme/acme.php', $metadata['plugin'] );
+		self::assertArrayNotHasKey( 'package', $metadata );
+	}
+
 	public function test_target_handles_workflow_and_index_events_without_payloads(): void {
 		$workflow_target = $this->invokePrivate(
 			new ActivityLogger(),

@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused uninstall tests replace wpdb with a local test double.
 
 /**
- * Verifies uninstall.php removes all opt-in plugin data.
+ * Verifies supported cleanup without deleting deferred development data.
  */
 final class UninstallTest extends TestCase {
 
@@ -40,12 +40,16 @@ final class UninstallTest extends TestCase {
 			'aculect_ai_companion_oauth_last_pruned_at'   => 123,
 			'aculect_ai_companion_oauth_prune_failure_retry_after' => 456,
 			'aculect_ai_companion_oauth_prune_lock_expires_at' => 456,
+			'aculect_ai_companion_execution_claims_db_version' => '2026.08.19.1',
 			'aculect_ai_companion_secret_storage_key'     => 'delete-secret-storage-key',
 			'aculect_ai_companion_logging_enabled'        => '1',
 			'aculect_ai_companion_log_retention_days'     => 90,
 			'aculect_ai_companion_pending_index_ids'      => array( 10, 11 ),
 			'aculect_ai_companion_site_editor_snapshot'   => array( 'fingerprint' => 'site-editor' ),
 			'aculect_ai_companion_admin_menu_snapshot'    => array( 'fingerprint' => 'admin-menu' ),
+			'aculect_ai_companion_workflows_db_version'   => '2026.08.19.1',
+			'aculect_ai_companion_workflows_db_verification' => array( 'status' => 'valid' ),
+			'aculect_ai_companion_workflow_audit_db_version' => '2026.08.29.1',
 		);
 	}
 
@@ -75,12 +79,17 @@ final class UninstallTest extends TestCase {
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_last_pruned_at', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_failure_retry_after', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_oauth_prune_lock_expires_at', 'missing' ) );
+		self::assertSame( 'missing', get_option( 'aculect_ai_companion_execution_claims_db_version', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_secret_storage_key', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_pending_index_ids', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_site_editor_snapshot', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_admin_menu_snapshot', 'missing' ) );
+		self::assertSame( '2026.08.19.1', get_option( 'aculect_ai_companion_workflows_db_version', 'missing' ) );
+		self::assertSame( array( 'status' => 'valid' ), get_option( 'aculect_ai_companion_workflows_db_verification', 'missing' ) );
+		self::assertSame( '2026.08.29.1', get_option( 'aculect_ai_companion_workflow_audit_db_version', 'missing' ) );
 		self::assertSame( 'missing', get_option( 'aculect_ai_companion_remove_data_on_uninstall', 'missing' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_oauth_clients' ) );
+		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_execution_claims' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_logs' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_companion_activity' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_content_index' ) );
@@ -89,6 +98,11 @@ final class UninstallTest extends TestCase {
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_memory_items' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_jobs' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'wp_aculect_ai_cache' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_runs' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_run_steps' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_audit' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflows' ) );
+		self::assertFalse( $this->wpdb->has_query_fragment( 'wp_aculect_ai_workflow_versions' ) );
 	}
 }
 

@@ -102,7 +102,8 @@ final class AbilitiesRegistryTest extends TestCase {
 
 		$this->registry->save_enabled_ids( array( 'content.update_item' ) );
 
-		self::assertSame( array( 'content.update_item' ), $this->registry->enabled_ids() );
+		self::assertSame( array( 'content.update_item' ), get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES ) );
+		self::assertContains( 'content.create_item', $this->registry->enabled_ids() );
 		self::assertContains( 'search', $this->registry->policy_enabled_ids() );
 		self::assertContains( 'content.update_item', $this->registry->policy_enabled_ids() );
 		self::assertTrue( $this->registry->is_enabled( 'search' ) );
@@ -238,6 +239,8 @@ final class AbilitiesRegistryTest extends TestCase {
 				'site.list_plugins',
 				'plugin_lifecycle.list_plugins',
 				'plugin_lifecycle.get_plugin',
+				'plugin_lifecycle.install_plugin',
+				'plugin_lifecycle.update_plugin',
 				'plugin_lifecycle.activate_plugin',
 				'plugin_lifecycle.deactivate_plugin',
 				'theme_lifecycle.list_themes',
@@ -326,9 +329,11 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'site.get_info', 'site.get_health' ), $this->registry->dependency_ids( 'site_workflow_audit' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.get_health' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'site.list_plugins' ) );
-		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
-		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
-		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.activate_plugin' ) );
+			self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle_list_plugins' ) );
+			self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'plugin_lifecycle.get_plugin' ) );
+			self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.install_plugin' ) );
+			self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_update_plugin' ) );
+			self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle.activate_plugin' ) );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'plugin_lifecycle_deactivate_plugin' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle.list_themes' ) );
 		self::assertSame( array( 'content:read' ), $this->registry->required_scopes( 'theme_lifecycle_get_theme' ) );
@@ -387,6 +392,20 @@ final class AbilitiesRegistryTest extends TestCase {
 		self::assertSame( array( 'stylesheet' ), $theme_schema['required'] );
 		self::assertSame( array( 'content:draft' ), $this->registry->required_scopes( 'theme_lifecycle_switch_theme' ) );
 		self::assertFalse( $this->registry->is_read_only( 'theme_lifecycle_switch_theme' ) );
+
+		$install_schema = $this->registry->input_schema( 'plugin_lifecycle.install_plugin' );
+		self::assertArrayHasKey( 'slug', $install_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $install_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $install_schema['properties'] );
+		self::assertSame( array( 'slug' ), $install_schema['required'] );
+		self::assertFalse( $this->registry->is_read_only( 'plugin_lifecycle.install_plugin' ) );
+
+		$update_schema = $this->registry->input_schema( 'plugin_lifecycle.update_plugin' );
+		self::assertArrayHasKey( 'plugin', $update_schema['properties'] );
+		self::assertArrayHasKey( 'dry_run', $update_schema['properties'] );
+		self::assertArrayHasKey( 'confirmation_token', $update_schema['properties'] );
+		self::assertSame( array( 'plugin' ), $update_schema['required'] );
+		self::assertFalse( $this->registry->is_read_only( 'plugin_lifecycle.update_plugin' ) );
 	}
 
 	public function test_saving_enabled_ids_sanitizes_unknown_values_and_public_aliases(): void {
@@ -417,7 +436,7 @@ final class AbilitiesRegistryTest extends TestCase {
 				'content.list_items',
 				'content.create_item',
 			),
-			$this->registry->enabled_ids()
+			get_option( AbilitiesRegistry::OPTION_ENABLED_ABILITIES )
 		);
 	}
 }

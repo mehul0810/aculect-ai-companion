@@ -117,6 +117,10 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 		if ( null === $target ) {
 			return $this->error( 'theme_not_found', 'Requested theme is not installed.' );
 		}
+		$blocker = ExtensionActivationGuard::theme( $stylesheet );
+		if ( null !== $blocker ) {
+			return $blocker;
+		}
 
 		if ( true === $target['active'] ) {
 			return $this->switch_noop_result( $target, 'already_active', 'Theme is already active on this site.' );
@@ -135,8 +139,8 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 		switch_theme( $stylesheet );
 
 		$updated = $this->theme_inventory_item( $stylesheet );
-		if ( null === $updated ) {
-			return $this->error( 'theme_not_found', 'Requested theme is not installed.' );
+		if ( null === $updated || empty( $updated['active'] ) ) {
+			return $this->error( 'theme_switch_postcondition_failed', 'WordPress did not activate the requested theme.' );
 		}
 
 		return array(
@@ -406,10 +410,12 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 	private function safety_metadata(): array {
 		return array(
 			'read_only'                    => true,
-			'install_implemented'          => false,
-			'update_implemented'           => false,
+			'install_implemented'          => true,
+			'update_implemented'           => true,
 			'switch_implemented'           => true,
-			'delete_implemented'           => false,
+			'delete_implemented'           => true,
+			'search_implemented'           => true,
+			'upload_mode'                  => 'native_wordpress_handoff',
 			'deactivate_implemented'       => false,
 			'deactivate_supported'         => false,
 			'option_writes'                => false,
@@ -448,7 +454,7 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 			'filesystem_paths_included'      => false,
 			'secret_values_included'         => false,
 			'rollback_requires_confirmation' => true,
-			'unsupported_operations'         => array( 'install', 'update', 'delete', 'deactivate' ),
+			'unsupported_operations'         => array( 'deactivate' ),
 		);
 	}
 
@@ -509,7 +515,7 @@ final class ThemeLifecycleAbilities extends AbstractAbilityService {
 		return array(
 			'Switching themes can change frontend templates, navigation rendering, widgets, and block theme settings immediately.',
 			'Rollback is available by switching back to the previous theme through the same theme lifecycle tool.',
-			'This first beta slice switches to an already-installed theme only; install, update, delete, and deactivate remain out of scope.',
+			'This operation switches to an installed theme only; package changes and deletion require separate confirmed tools.',
 		);
 	}
 

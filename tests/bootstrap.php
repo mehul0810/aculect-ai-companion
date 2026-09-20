@@ -20,10 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
-
-if ( ! defined( 'ACULECT_AI_COMPANION_VERSION' ) ) {
-	define( 'ACULECT_AI_COMPANION_VERSION', '0.6.0' );
-}
+require_once __DIR__ . '/Support/TestBootstrap.php';
 
 if ( ! defined( 'ACULECT_AI_COMPANION_PLUGIN_FILE' ) ) {
 	define( 'ACULECT_AI_COMPANION_PLUGIN_FILE', dirname( __DIR__ ) . '/aculect-ai-companion.php' );
@@ -509,11 +506,9 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 	 * @param int|string          $object_id  Object ID.
 	 * @param string|array<mixed> $taxonomies Taxonomy names.
 	 * @param array<string,mixed> $args       Query args.
-	 * @return list<WP_Term>
+	 * @return list<WP_Term>|list<int>
 	 */
 	function wp_get_object_terms( int|string $object_id, string|array $taxonomies, array $args = array() ): array {
-		unset( $args );
-
 		$object_id = absint( $object_id );
 		$allowed   = array_map( 'strval', (array) $taxonomies );
 		$assigned  = $GLOBALS['aculect_ai_companion_test_object_terms'][ $object_id ] ?? array();
@@ -528,7 +523,7 @@ if ( ! function_exists( 'wp_get_object_terms' ) ) {
 
 		usort( $terms, static fn( WP_Term $a, WP_Term $b ): int => $a->term_id <=> $b->term_id );
 
-		return $terms;
+		return 'ids' === ( $args['fields'] ?? '' ) ? array_map( static fn( WP_Term $term ): int => $term->term_id, $terms ) : $terms;
 	}
 }
 
@@ -817,6 +812,11 @@ if ( ! function_exists( 'current_user_can' ) ) {
 	 * @param mixed  ...$args    Capability args.
 	 */
 	function current_user_can( string $capability, mixed ...$args ): bool {
+		$capability_callback = $GLOBALS['aculect_ai_companion_test_capability_callback'] ?? null;
+		if ( is_callable( $capability_callback ) ) {
+			return (bool) $capability_callback( $capability, $args, get_current_user_id() );
+		}
+
 		$denied = $GLOBALS['aculect_ai_companion_test_denied_caps'] ?? array();
 		if ( 'read_post' === $capability && isset( $args[0] ) ) {
 			$denied_post_ids = $GLOBALS['aculect_ai_companion_test_denied_post_ids'] ?? array();
@@ -1808,6 +1808,20 @@ if ( ! function_exists( 'get_current_user_id' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_set_current_user' ) ) {
+	/**
+	 * Set the deterministic WordPress principal for request-path tests.
+	 *
+	 * @param int $user_id User ID.
+	 * @return object
+	 */
+	function wp_set_current_user( int $user_id ): object {
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = $user_id;
+
+		return $GLOBALS['aculect_ai_companion_test_users'][ $user_id ] ?? (object) array( 'ID' => $user_id );
+	}
+}
+
 if ( ! function_exists( 'wp_create_nonce' ) ) {
 	/**
 	 * Return deterministic test nonces.
@@ -2580,6 +2594,33 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		 */
 		public function get_header( string $key ): string {
 			return $this->headers[ strtolower( $key ) ] ?? $this->headers[ $key ] ?? '';
+		}
+
+		/**
+		 * Return request headers.
+		 *
+		 * @return array<string, string>
+		 */
+		public function get_headers(): array {
+			return $this->headers;
+		}
+
+		/**
+		 * Return query parameters.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_query_params(): array {
+			return $this->params;
+		}
+
+		/**
+		 * Return body parameters.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_body_params(): array {
+			return array();
 		}
 
 		/**

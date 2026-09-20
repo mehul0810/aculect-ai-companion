@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Admin;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
-use Aculect\AICompanion\Activity\ActivityRepository;
 use Aculect\AICompanion\Brand\BrandProfile;
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\MCP\AccessLockdown;
-use Aculect\AICompanion\Connectors\MCP\AbilityModuleInterface;
 use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
-use Aculect\AICompanion\Connectors\MCP\McpToolAvailability;
+use Aculect\AICompanion\Connectors\MCP\McpSurfaceCatalog;
 use Aculect\AICompanion\Connectors\MCP\PluginIncidentReporter;
 use Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy;
 use Aculect\AICompanion\Connectors\MCP\ToolSafety;
@@ -30,6 +28,7 @@ use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
+use Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -207,18 +206,17 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function settings_payload( ?string $requested_tab = null ): array {
-		$payload_tab      = null === $requested_tab
+		$payload_tab          = null === $requested_tab
 			? $this->current_payload_tab()
 			: $this->normalize_payload_tab( $requested_tab );
-		$access_tokens    = new AccessTokenRepository();
-		$ability_registry = new AbilitiesRegistry();
-		$sample_data      = new LocalSampleData();
-		$access_tokens->revoke_superseded_active_sessions();
+		$access_tokens        = new AccessTokenRepository();
+		$ability_registry     = new AbilitiesRegistry();
+		$sample_data          = new LocalSampleData();
 		$real_session_count   = $access_tokens->active_token_count();
 		$active_session_count = $real_session_count;
 
 		$payload = array_merge(
-			$this->base_payload( $payload_tab, $active_session_count, $access_tokens ),
+			$this->base_payload( $payload_tab, $active_session_count ),
 			$this->connection_payload( $payload_tab, $access_tokens, $ability_registry ),
 			$this->ability_payload( $payload_tab, $ability_registry ),
 			$this->tab_payload( $payload_tab ),
@@ -233,12 +231,11 @@ final class SettingsPage {
 	/**
 	 * Return shared settings data that is cheap enough for every tab.
 	 *
-	 * @param string                $payload_tab          Normalized payload tab.
-	 * @param int                   $active_session_count Active OAuth session count.
-	 * @param AccessTokenRepository $access_tokens Access token repository.
+	 * @param string $payload_tab          Normalized payload tab.
+	 * @param int    $active_session_count Active OAuth session count.
 	 * @return array<string, mixed>
 	 */
-	private function base_payload( string $payload_tab, int $active_session_count, AccessTokenRepository $access_tokens ): array {
+	private function base_payload( string $payload_tab, int $active_session_count ): array {
 		return array(
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
@@ -256,14 +253,13 @@ final class SettingsPage {
 			'connectorLogoUrls'  => $this->connector_logo_urls(),
 			'isConnected'        => $active_session_count > 0,
 			'activeSessionCount' => $active_session_count,
-			'connectSessions'    => $access_tokens->list_active_sessions(),
 			'accessPaused'       => AccessLockdown::is_paused(),
 			'currentUserId'      => get_current_user_id(),
 			'mcpUrl'             => Helpers::mcp_resource(),
 			'connectionRequests' => $this->connection_requests(),
 			'providers'          => $this->providers(),
 			'status'             => $this->status(),
-			'diagnostics'        => $this->diagnostics( 'logs' === $payload_tab ),
+			'diagnostics'        => ( new SettingsDiagnosticsPayloadBuilder( $this->settings_url() ) )->build( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
 			'roleAbilities'      => $this->role_abilities_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
@@ -300,53 +296,7 @@ final class SettingsPage {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function connection_sessions_with_effective_abilities( array $sessions, AbilitiesRegistry $registry ): array {
-		if ( array() === $sessions ) {
-			return $sessions;
-		}
-
-		$availability = new McpToolAvailability();
-
-		return array_map(
-			function ( array $session ) use ( $availability, $registry ): array {
-				$user_id = absint( $session['user_id'] ?? 0 );
-				$scopes  = array_values( array_map( 'strval', (array) ( $session['scopes'] ?? array() ) ) );
-				$modules = $availability->ability_modules_for_user( $user_id, $registry, $scopes );
-				$policy  = $availability->ability_policy_for_user( $user_id, $registry, $scopes );
-				$writes  = array_filter(
-					$modules,
-					static fn( AbilityModuleInterface $module ): bool => ! $module->is_read_only()
-				);
-
-				$session['effective_abilities']           = array_values(
-					array_map(
-						fn( AbilityModuleInterface $module ): array => array(
-							'id'          => $module->id(),
-							'toolName'    => $registry->tool_name( $module->id() ),
-							'title'       => $module->title(),
-							'description' => $module->description(),
-							'scopes'      => $module->required_scopes(),
-							'readOnly'    => $module->is_read_only(),
-						),
-						$modules
-					)
-				);
-				$session['effective_write_ability_count'] = count( $writes );
-				$session['effective_ability_summary']     = array(
-					'available_count'          => count( $modules ),
-					'write_count'              => count( $writes ),
-					'blocked_by_global_count'  => count( (array) ( $policy['blocked_by_global_ids'] ?? array() ) ),
-					'blocked_by_role_count'    => count( (array) ( $policy['blocked_by_role_ids'] ?? array() ) ),
-					'default_read_only_policy' => true === ( $policy['default_read_only_policy'] ?? false ),
-					'explicit_role_policy'     => true === ( $policy['explicit_role_policy'] ?? false ),
-					'scope_aware'              => true === ( $policy['scope_aware'] ?? false ),
-					'missing_user'             => true === ( $policy['missing_user'] ?? false ),
-					'missing_role'             => true === ( $policy['missing_role'] ?? false ),
-				);
-
-				return $session;
-			},
-			$sessions
-		);
+		return ( new SettingsConnectionPayloadBuilder() )->build( $sessions, $registry );
 	}
 
 	/**
@@ -362,6 +312,7 @@ final class SettingsPage {
 			$tool_safety                 = new ToolSafety();
 			self::$ability_payload_cache = array(
 				'abilities'                => $ability_registry->public_definitions(),
+				'abilityCatalog'           => ( new McpSurfaceCatalog() )->public_definitions(),
 				'coreDefaultAbilities'     => $ability_registry->core_default_public_definitions(),
 				'enabledAbilities'         => $ability_registry->enabled_ids(),
 				'wpAbilities'              => $wp_abilities->public_definitions(),
@@ -390,9 +341,10 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function tab_payload( string $payload_tab ): array {
+		$activity_builder = new SettingsActivityPayloadBuilder();
 		$activity_payload = 'activity' === $payload_tab
-			? $this->activity_payload()
-			: $this->empty_activity_payload();
+			? $activity_builder->build( $_GET, $this->settings_url() ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
+			: SettingsActivityPayloadBuilder::empty_payload();
 		$brand_profile    = 'brand' === $payload_tab
 			? ( new BrandProfile() )->admin_payload()
 			: array();
@@ -425,30 +377,10 @@ final class SettingsPage {
 	 * @return array<string, mixed>
 	 */
 	private function memory_payload(): array {
-		$payload = ( new ContentIndexRepository() )->list_memories(
-			array(
-				'status'   => '',
-				'per_page' => 50,
-			)
-		);
-		$items   = is_array( $payload['items'] ?? null ) ? $payload['items'] : array();
-		$summary = array(
-			'total'     => (int) ( $payload['total'] ?? count( $items ) ),
-			'approved'  => 0,
-			'pending'   => 0,
-			'dismissed' => 0,
-		);
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination filter.
+		$page = max( 1, absint( $_GET['memory_page'] ?? 1 ) );
 
-		foreach ( $items as $item ) {
-			$status = (string) ( is_array( $item ) ? ( $item['status'] ?? 'pending' ) : 'pending' );
-			if ( array_key_exists( $status, $summary ) ) {
-				++$summary[ $status ];
-			}
-		}
-
-		$payload['summary'] = $summary;
-
-		return $payload;
+		return ( new MemoryAdminQuery() )->page( $page );
 	}
 
 	/**
@@ -458,12 +390,13 @@ final class SettingsPage {
 	 */
 	private function empty_memory_payload(): array {
 		return array(
-			'items'    => array(),
-			'total'    => 0,
-			'page'     => 1,
-			'per_page' => 50,
-			'context'  => 'compact',
-			'summary'  => array(
+			'items'       => array(),
+			'total'       => 0,
+			'page'        => 1,
+			'per_page'    => 50,
+			'total_pages' => 1,
+			'context'     => 'compact',
+			'summary'     => array(
 				'total'     => 0,
 				'approved'  => 0,
 				'pending'   => 0,
@@ -517,6 +450,8 @@ final class SettingsPage {
 			'saveBrandAction'                 => 'aculect_ai_companion_save_brand',
 			'reviewLearningSuggestionAction'  => 'aculect_ai_companion_review_learning_suggestion',
 			'reviewMemoryAction'              => 'aculect_ai_companion_review_memory_item',
+			'retryMemoryMigrationAction'      => 'aculect_ai_companion_retry_memory_migration',
+			'retryMemoryMigrationNonce'       => wp_create_nonce( 'aculect_ai_companion_retry_memory_migration' ),
 			'runDiagnosticsAction'            => 'aculect_ai_companion_run_connection_diagnostics',
 			'revokeStaleOAuthClientAction'    => 'aculect_ai_companion_revoke_stale_oauth_client',
 			'runContentIndexSweepAction'      => 'aculect_ai_companion_run_content_index_sweep',
@@ -608,20 +543,15 @@ final class SettingsPage {
 	public function handle_save_abilities(): void {
 		$this->guard_action( 'aculect_ai_companion_save_abilities' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['enabled_abilities'] )
-			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_abilities'] ) )
-			: array();
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		( new AbilitiesRegistry() )->save_enabled_ids( $enabled );
-
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$confirmation_groups = isset( $_POST['confirmation_required_groups'] )
 			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['confirmation_required_groups'] ) )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
+		// Third-party saves must not clear controls omitted by a client form.
+		if ( isset( $_POST['confirmation_groups_present'] ) || isset( $_POST['confirmation_required_groups'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce.
+			( new ToolSafety() )->save_confirmation_groups( $confirmation_groups );
+		}
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
 		$enabled_wp_abilities = isset( $_POST['enabled_wp_abilities'] )
@@ -922,45 +852,30 @@ final class SettingsPage {
 			? (array) wp_unslash( $_POST['memory_item'] )
 			: array();
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		$repository = new ContentIndexRepository();
-		$updated    = false;
-
-		if ( 'delete' === $action ) {
-			$result  = $repository->delete_memory( $original_key );
-			$updated = 'success' === ( $result['status'] ?? '' );
-		} else {
-			$status = match ( $action ) {
-				'approve' => 'approved',
-				'dismiss' => 'dismissed',
-				default => sanitize_key( (string) ( $memory_item['status'] ?? 'pending' ) ),
-			};
-			$key = sanitize_text_field( (string) ( $memory_item['key'] ?? $original_key ) );
-
-			$result = $repository->upsert_memory(
-				array(
-					'key'        => $key,
-					'domain'     => $memory_item['domain'] ?? 'content',
-					'value'      => $memory_item['value'] ?? '',
-					'evidence'   => $memory_item['evidence'] ?? '',
-					'confidence' => $memory_item['confidence'] ?? 'medium',
-					'status'     => $status,
-					'source'     => $memory_item['source'] ?? 'admin',
-				)
-			);
-
-			$updated = 'success' === ( $result['status'] ?? '' );
-			if ( $updated && '' !== $original_key && $key !== $original_key ) {
-				$repository->delete_memory( $original_key );
-			}
-		}
-
+		$updated = ( new MemoryReviewAction() )->execute( $action, $original_key, $memory_item );
 		wp_safe_redirect(
 			add_query_arg(
 				array(
 					'page'            => 'aculect-ai-companion',
 					'tab'             => 'learning',
 					'memory_reviewed' => $updated ? $action : 'not_updated',
+				),
+				$this->settings_url()
+			)
+		);
+		exit;
+	}
+
+	/** Schedule an operator-approved retry without running DDL in the request. */
+	public function handle_retry_memory_migration(): void {
+		$this->guard_action( 'aculect_ai_companion_retry_memory_migration' );
+		( new \Aculect\AICompanion\Intelligence\Database\MemorySchemaMigrator() )->retry();
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'             => self::PAGE_SLUG,
+					'tab'              => 'learning',
+					'learning_surface' => 'memory',
 				),
 				$this->settings_url()
 			)
@@ -1260,202 +1175,6 @@ final class SettingsPage {
 			'status'              => 'disabled',
 			'pendingCount'        => 0,
 			'items'               => array(),
-		);
-	}
-
-	/**
-	 * Return diagnostic settings and the current log page for the React app.
-	 *
-	 * @param bool $include_logs Whether to load paginated log rows.
-	 * @return array<string, mixed>
-	 */
-	private function diagnostics( bool $include_logs = false ): array {
-		$enabled  = LogSettings::is_enabled();
-		$oauth    = new ClientRepository();
-		$capacity = $oauth->capacity_status();
-
-		return array(
-			'loggingEnabled' => $enabled,
-			'retentionDays'  => LogSettings::retention_days(),
-			'oauthClients'   => array(
-				'capacity'    => $capacity,
-				'recoverable' => $capacity['recoverable'] > 0
-					? $oauth->list_recoverable_clients()
-					: array(),
-			),
-			'logs'           => $enabled && $include_logs
-				? $this->logs_payload()
-				: $this->empty_logs_payload(),
-		);
-	}
-
-	/**
-	 * Return a paginated AI activity payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function activity_payload(): array {
-		$repository  = new ActivityRepository();
-		$per_page    = 50;
-		$filters     = $this->activity_filters();
-		$total       = $repository->count( $filters );
-		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
-		$page        = min( max( 1, (int) $filters['page'] ), $total_pages );
-		$filters     = array_merge(
-			$filters,
-			array(
-				'page'     => $page,
-				'per_page' => $per_page,
-			)
-		);
-
-		return array(
-			'summary'    => $repository->summary( $filters ),
-			'items'      => $repository->list( $filters ),
-			'total'      => $total,
-			'page'       => $page,
-			'perPage'    => $per_page,
-			'totalPages' => $total_pages,
-			'filters'    => $filters,
-			'prevUrl'    => $page > 1 ? $this->activity_page_url( $filters, $page - 1 ) : '',
-			'nextUrl'    => $page < $total_pages
-				? $this->activity_page_url( $filters, $page + 1 )
-				: '',
-		);
-	}
-
-	/**
-	 * Return the default empty AI activity payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function empty_activity_payload(): array {
-		return array(
-			'summary'    => array(),
-			'items'      => array(),
-			'total'      => 0,
-			'page'       => 1,
-			'perPage'    => 50,
-			'totalPages' => 1,
-			'filters'    => array(
-				'page'      => 1,
-				'action'    => '',
-				'status'    => '',
-				'user_id'   => 0,
-				'assistant' => '',
-				'search'    => '',
-				'range'     => '7d',
-			),
-			'prevUrl'    => '',
-			'nextUrl'    => '',
-		);
-	}
-
-	/**
-	 * Return sanitized activity filters from the current admin URL.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function activity_filters(): array {
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only admin filters.
-		$range = isset( $_GET['activity_range'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_range'] ) ) : '7d';
-		if ( ! in_array( $range, array( '24h', '7d', '30d', '90d', 'all' ), true ) ) {
-			$range = '7d';
-		}
-
-		return array(
-			'page'      => isset( $_GET['activity_page'] ) ? max( 1, absint( $_GET['activity_page'] ) ) : 1,
-			'action'    => isset( $_GET['activity_action'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_action'] ) ) : '',
-			'status'    => isset( $_GET['activity_status'] ) ? sanitize_key( wp_unslash( (string) $_GET['activity_status'] ) ) : '',
-			'user_id'   => isset( $_GET['activity_user'] ) ? absint( $_GET['activity_user'] ) : 0,
-			'assistant' => isset( $_GET['activity_assistant'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_assistant'] ) ) : '',
-			'search'    => isset( $_GET['activity_search'] ) ? sanitize_text_field( wp_unslash( (string) $_GET['activity_search'] ) ) : '',
-			'range'     => $range,
-		);
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-	}
-
-	/**
-	 * Build an Activity tab pagination URL.
-	 *
-	 * @param array<string, mixed> $filters Activity filters.
-	 * @param int                  $page    Page number.
-	 */
-	private function activity_page_url( array $filters, int $page ): string {
-		return add_query_arg(
-			array_filter(
-				array(
-					'page'               => 'aculect-ai-companion',
-					'tab'                => 'activity',
-					'activity_page'      => max( 1, $page ),
-					'activity_action'    => (string) ( $filters['action'] ?? '' ),
-					'activity_status'    => (string) ( $filters['status'] ?? '' ),
-					'activity_user'      => (int) ( $filters['user_id'] ?? 0 ),
-					'activity_assistant' => (string) ( $filters['assistant'] ?? '' ),
-					'activity_search'    => (string) ( $filters['search'] ?? '' ),
-					'activity_range'     => (string) ( $filters['range'] ?? '7d' ),
-				),
-				static fn( mixed $value ): bool => '' !== $value && 0 !== $value
-			),
-			$this->settings_url()
-		);
-	}
-
-	/**
-	 * Return a paginated diagnostic log payload.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function logs_payload(): array {
-		$repository = new LogRepository();
-		$per_page   = 50;
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only pagination parameter.
-		$page        = isset( $_GET['logs_page'] ) ? max( 1, absint( $_GET['logs_page'] ) ) : 1;
-		$total       = $repository->count();
-		$total_pages = max( 1, (int) ceil( $total / $per_page ) );
-		$page        = min( $page, $total_pages );
-
-		return array(
-			'items'      => $repository->list( $page, $per_page ),
-			'total'      => $total,
-			'page'       => $page,
-			'perPage'    => $per_page,
-			'totalPages' => $total_pages,
-			'prevUrl'    => $page > 1 ? $this->logs_page_url( $page - 1 ) : '',
-			'nextUrl'    => $page < $total_pages ? $this->logs_page_url( $page + 1 ) : '',
-		);
-	}
-
-	/**
-	 * Return an empty log payload when logging is disabled.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function empty_logs_payload(): array {
-		return array(
-			'items'      => array(),
-			'total'      => 0,
-			'page'       => 1,
-			'perPage'    => 50,
-			'totalPages' => 1,
-			'prevUrl'    => '',
-			'nextUrl'    => '',
-		);
-	}
-
-	/**
-	 * Build a Logs tab pagination URL.
-	 *
-	 * @param int $page Log page.
-	 */
-	private function logs_page_url( int $page ): string {
-		return add_query_arg(
-			array(
-				'page'      => 'aculect-ai-companion',
-				'tab'       => 'logs',
-				'logs_page' => max( 1, $page ),
-			),
-			$this->settings_url()
 		);
 	}
 

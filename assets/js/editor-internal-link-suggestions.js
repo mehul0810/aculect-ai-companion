@@ -1,13 +1,18 @@
 ( function ( wp, settings ) {
+	const PluginDocumentSettingPanel =
+		wp && wp.editor && wp.editor.PluginDocumentSettingPanel
+			? wp.editor.PluginDocumentSettingPanel
+			: wp && wp.editPost && wp.editPost.PluginDocumentSettingPanel;
+
 	if (
 		! wp ||
 		! settings ||
 		! wp.apiFetch ||
 		! wp.components ||
 		! wp.data ||
-		! wp.editPost ||
 		! wp.element ||
-		! wp.plugins
+		! wp.plugins ||
+		! PluginDocumentSettingPanel
 	) {
 		return;
 	}
@@ -16,7 +21,6 @@
 	const { Button, Notice, Spinner } = wp.components;
 	const { createElement: el, useEffect, useState } = wp.element;
 	const { useSelect } = wp.data;
-	const { PluginDocumentSettingPanel } = wp.editPost;
 	const { __ } = wp.i18n || { __: ( value ) => value };
 	const { registerPlugin } = wp.plugins;
 	const APPLY_DISABLED_REASON = __(

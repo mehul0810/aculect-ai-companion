@@ -42,6 +42,32 @@ Open `AI Companion > Connect` in WordPress:
 - Read compact MCP resources for capability, site, Site Editor, admin menu, content, brand, workflow, and memory context.
 - Connect and disconnect AI assistants.
 
+## WordPress Tools boundaries
+
+- `tools.prepare_handoff` returns a capability-checked native screen for Import,
+  Export, Site Health, Export Personal Data, or Erase Personal Data. It does not
+  execute operations or verify completion. Users handle files, requester details,
+  verification, downloads, and erasure confirmation manually in WordPress; these
+  inputs must not be captured through AI chat or browser automation.
+- `site.get_health` uses `view_site_health_checks`. Its selected configuration
+  signals are not full native Site Health coverage. REST URL discovery is not a
+  connectivity test, update information is cached, and native aggregate counters
+  are reported with unknown freshness when available. Missing counters are not a pass.
+- Navigation to Theme File Editor, Plugin File Editor, or Delete Site includes an
+  explicit `not_allowed` operation policy. No file-editing or site-deletion
+  operation is provided. Other navigation targets also do not grant execution authority.
+- `site.health_info` reads fixed, redacted fields from four native Info sections:
+  core, server, database, and constants. Private-marked fields, paths, identities,
+  arbitrary constants, and third-party sections are excluded. This is not a full
+  debug dump; native WordPress builds the diagnostics before projection.
+- `tools.privacy_request_status` reads one known native request ID and action
+  with the corresponding export/erasure capability. It returns lifecycle state
+  only, never requester details, confirmation keys, archives, or a job percentage.
+  A completed native request does not prove that no personal data remains.
+- Full native health test execution and importer/exporter jobs remain in their
+  native screens. Handoffs do not provide an Aculect-managed job engine or report
+  browser-only per-exporter/eraser progress.
+
 ## Supported AI Tools
 
 Aculect AI Companion keeps the primary setup surface focused on:
@@ -65,6 +91,12 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - Read one content item by ID.
 - Create a post, page, or custom content item.
 - Update title, content, excerpt, slug, or status for an existing item.
+- Discover, read and update permitted existing registered scalar custom fields with schema validation and confirmation.
+
+### Navigation
+
+- Inspect classic and block navigation sources.
+- Read and update existing classic-menu item labels, custom-link URLs, parent, order, target and rel with state checks and confirmation.
 
 ### Content Groups
 
@@ -72,6 +104,7 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - List terms for a supported taxonomy with pagination.
 - Create a category, tag, or custom content group.
 - Update a category, tag, or custom content group.
+- Assign or clear existing categories, tags, or custom taxonomy terms on a content item.
 
 ### Comments
 
@@ -91,6 +124,9 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 - View WordPress version, PHP version, active theme, and basic site metadata.
 - List installed plugins and active state for users who can manage plugins.
 - List installed themes and active state for users who can manage themes.
+- Inspect bounded public server-rendered headings, links and head metadata without forwarding credentials.
+- Request targeted native post-cache invalidation or a current-site soft rewrite flush with administrator confirmation.
+- Compare bounded batches of installed core or plugin files against official WordPress.org checksums; unsupported packages are not treated as verified.
 
 ### WordPress Abilities
 
@@ -130,13 +166,201 @@ Internal-link intelligence is intentionally assistant-first. Use `content_intern
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
-This internal module registry is the foundation for the broader third-party action pack work tracked in #21. For now, third-party WordPress Abilities are bridged through the dedicated `wp_abilities.*` MCP tools and policy controls instead of letting external code inject arbitrary MCP tools directly.
+For task-focused memory, call `memory_list` with `task`, an optional `domain`, and `budget_chars` (default 6000). This returns relevant approved site guidance with source/evidence, relevance scores and selection explanations within a bounded JSON context pack. Existing chronological listing and administrator review remain available when `task` is omitted. See [Aculect Memory architecture](docs/aculect-memory-architecture.md#task-recall) for eligibility, budgets and limitations.
+
+WordPress and Aculect capabilities are enabled by default, subject to connection scopes, role permissions and runtime safety checks. The Abilities tab lists public third-party WordPress abilities grouped by provider, with explicit enable/disable controls. Plugins adopting the WordPress Abilities API need no curated integration. The capability directory's paginated `catalog` lists available direct tools and enabled native abilities with their execution routes; Aculect mirrors appear only once. Existing third-party decisions and legacy first-party selections are retained for rollback.
+
+### WebMCP Progressive Enhancement
+
+On logged-out, published, non-password-protected pages, Aculect registers one read-only WebMCP tool when the browser exposes `document.modelContext`. `aculect_get_page_context` returns a bounded summary of visible main-page content and, only when requested, up to four same-origin links. URLs exclude query strings and fragments, output is marked read-only and untrusted, and the result is capped at 1,500 characters.
+
+WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Registration is deduplicated, cleaned up on page exit, and restored when returning through the browser's back/forward cache. Registration failures are contained and retryable; navigation links require an explicit boolean opt-in. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter.
 
 ### Public Interfaces
 
 - MCP: `/wp-json/aculect-ai-companion/v1/mcp`
 - OAuth registration: `/wp-json/aculect-ai-companion/v1/oauth/register`
-- OAuth authorization: `/oauth/authorize`
+- OAuth authorization: `/aculect-ai-companion/oauth/authorize`
 - OAuth token: `/wp-json/aculect-ai-companion/v1/oauth/token`
 - Protected resource metadata: `/.well-known/oauth-protected-resource`
 - Authorization server metadata: `/.well-known/oauth-authorization-server`
+
+Repeated OAuth registrations receive independent credentials and preserve recent
+registrations awaiting consent. Matching duplicates are only eligible for bounded
+cleanup after the existing stale-client threshold (24 hours by default) and when
+no live access token, authorization code, or refresh token protects them. The
+active-client capacity limit still applies. Access-token storage failures abort
+issuance before this persistence path revokes superseded sessions.
+
+The endpoint is stateless: JSON-RPC messages use POST, while an authenticated
+GET that explicitly accepts `text/event-stream` receives a short priming SSE
+event only for the pre-`2026-07-28` compatibility revisions. Current
+`2026-07-28` requests are POST-only and return HTTP 405 for GET, as required by
+the current Streamable HTTP transport. The priming event does not create a
+server session or deliver server-initiated notifications. The endpoint
+supports MCP `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26`.
+Requests that omit `MCP-Protocol-Version` use the `2025-03-26` compatibility
+contract. Requests using `2026-07-28` must send matching
+`MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`,
+`resources/read`, and `prompts/get`) `Mcp-Name` headers plus the required
+per-request protocol and client-capability metadata. `server/discover`
+advertises the supported versions. The `2026-07-28` contract does not use the
+initialize lifecycle; the earlier revisions retain
+`initialize` / `notifications/initialized`. An initialize request for another
+version receives a supported initialize-era version; the client must accept
+that version before continuing. The endpoint does not advertise an `endpoint`
+event or a separate message channel for server notifications. Per-connection
+ability and role policy can make `tools/list` vary by authenticated user;
+`listChanged: false` means the server does not provide change notifications,
+so clients should re-list after reconnecting or after an administrator changes
+ability policy. Current-protocol tool cursors that are invalid or stale
+restart at page zero and include the non-secret `_meta.aculect/cursorError`
+diagnostic (`invalid_cursor` or `stale_cursor`).
+Current-protocol discovery and
+static resource lists include public cache hints, while authorization-dependent
+tool lists and resource reads remain private with a zero TTL. Current responses
+also identify the Aculect MCP server and use JSON-RPC invalid-params errors for
+unknown tools and resources.
+All MCP HTTP responses are explicitly non-cacheable across WordPress, CDN, and
+reverse-proxy cache directives. Responses include an opaque
+`X-Aculect-MCP-Request-ID`; when opt-in diagnostics record an MCP failure, this
+ID can be matched to that log entry and never contains OAuth or request-payload
+data.
+Browser requests are accepted only from the exact public connector origin or
+origins explicitly approved with the
+`aculect-ai-companion/connectors/allowed_mcp_origins` filter; wildcards are not
+accepted. JSON-RPC notifications require the same OAuth authentication as other
+MCP requests. The server does not advertise list-change notifications or
+MCP `prompts/*` methods; prompts are intentionally outside the current
+product capability boundary. OAuth discovery advertises RFC 9207 `iss`
+responses, which are appended to both success and error authorization
+redirects. The server supports `none` and
+`client_secret_basic`/`client_secret_post` token authentication for registered
+clients; `private_key_jwt` and client metadata document (CIMD) authentication
+are intentionally unsupported and must not be assumed from public metadata.
+
+### Private settings input
+
+The `settings.private_targets`, `settings.private_input`, and
+`settings.private_status` abilities provide discovery, a WordPress-hosted form,
+and a value-free outcome. The assistant receives a link; the administrator opens
+it manually, enters the value outside chat, and confirms the update. Inline
+MCP Apps forms are not implemented.
+
+Supported targets are site title, tagline, named timezone, posts per page
+(1–100), default category ID, and OpenAI/Anthropic/Google connector API keys.
+The same private form also supports start of week (0–6), RSS item count
+(1–100) and excerpt mode, default comment/ping status, comment moderation,
+threaded comments and depth (2–10), comments per page (1–100), thumbnail crop,
+and thumbnail/medium/large image dimensions (0–4096 pixels). These are fixed,
+server-validated options, not arbitrary option access. Image-size changes apply
+to future image processing; existing images are not regenerated.
+Connector keys require the native connector registry and an installed SDK
+provider, without constant or environment overrides. Permalinks use a link to
+the native WordPress screen; arbitrary options and other sensitive settings
+are not supported.
+
+Forms require HTTPS, `manage_options`, and a session nonce. Requests expire
+after ten minutes, belong to one administrator and originating site, and permit
+one submission. Multisite requests cannot be reused on another site.
+Creating another request invalidates that administrator's previous request.
+Expiry invalidates access; it does not physically delete the value-free request
+metadata. Temporary metadata/lock cleanup on uninstall remains a known limitation.
+Only request metadata and a keyed state fingerprint are stored in the handoff;
+no input value is accepted in an MCP tool schema or returned in its result.
+Browser submissions record only the administrator, fixed target, and outcome
+in Aculect activity; the audit API does not accept the input value.
+SDK configuration checks are not a guarantee of provider account validity.
+Rejected input does not intentionally replace the prior option. Concurrent
+Aculect submissions are serialized and stale state is rejected; unrelated
+native/plugin writers do not participate in that lock.
+
+Keys use native WordPress option storage, not a new encrypted vault. Trusted
+hosting, backups, provider SDKs, and installed plugins can still access them.
+This feature does not erase a secret already pasted into chat or control a
+third-party client's recording. Do not automate or capture the private form.
+
+### Content revision recovery
+
+`revisions.compare_content` compares one saved revision with its parent post or
+page and returns change flags, byte counts and an `expected_state` token,
+alongside target IDs, current status and fixed safety warnings. It never returns
+historical field text or metadata values.
+`revisions.restore_content` restores title, content and excerpt only. It requires
+the existing `content:draft` OAuth write scope, native read/edit permission (and
+publishing permission for live, private or scheduled content), fresh state,
+an available native revision system, no other-editor lock, and explicit
+confirmation even on trusted-write connections. A matching recovery revision
+must be verified before writing and still exist after the update.
+
+Status is preserved: restoring a published post changes its live content.
+Metadata, terms, featured media, slugs, source files and the whole site are not
+restored. Normal WordPress save hooks still run. Native revision retention can
+prune history, and state/lock checks are not an atomic lock against other native
+or plugin writers. An unverified outcome is terminal and must be inspected
+manually, not retried automatically. Autosaves, trashed content and custom post
+types are outside this initial recovery contract. This is not a full-site backup.
+
+## Plugin and theme lifecycle
+
+Lifecycle tools are separately enabled MCP abilities, subject to OAuth scopes,
+role policies, and the corresponding native WordPress capabilities. Directory
+search sends the supplied search text to WordPress.org; never include secrets.
+Returned descriptions are untrusted metadata, not instructions or endorsements.
+
+| Operation | Plugins | Themes |
+| --- | --- | --- |
+| Inventory and details | `plugin_lifecycle.list_plugins`, `get_plugin` | `theme_lifecycle.list_themes`, `get_theme` |
+| WordPress.org search | `plugin_lifecycle.search_plugins` | `theme_lifecycle.search_themes` |
+| WordPress.org install | `plugin_lifecycle.install_plugin` | `theme_lifecycle.install_theme` |
+| Cached WordPress.org update | `plugin_lifecycle.update_plugin` | `theme_lifecycle.update_theme` |
+| ZIP upload handoff | `plugin_lifecycle.upload_plugin` | `theme_lifecycle.upload_theme` |
+| Protected deletion | `plugin_lifecycle.delete_plugin` | `theme_lifecycle.delete_theme` |
+| Activation | `activate_plugin`, `deactivate_plugin` | `switch_theme` |
+
+ZIP tools **only return the native HTTPS WordPress upload screen**. The user
+selects a trusted ZIP and confirms upload, installation, or replacement in
+WordPress. Aculect neither receives the file through MCP nor claims the handoff
+completed an installation. Private download URLs, license keys, and filesystem
+credentials must not be sent through chat. Native WordPress owns upload limits,
+archive validation, replacement confirmation, and displayed results.
+
+File mutations require a preview and explicit confirmation, including on trusted
+write connections. Installation does not automatically activate an extension.
+Automated theme package changes support standalone themes only; child-theme
+packages stay in the native upload/maintenance workflow so an unpreviewed parent
+is never installed implicitly. Theme package changes and deletion are single-site
+only; plugin updates also reject multisite. Package writes require direct filesystem access and allowed
+file modifications. Credential-based filesystem transports and arbitrary
+package URLs are unsupported. Cached update availability is not a forced remote
+update check, and a version postcondition is not a malware or compatibility audit.
+Plugin downloads must name the confirmed slug and version; mutable latest ZIP
+URLs are rejected. Uncertain package writes consume the confirmation attempt
+and require native inspection before any new preview, not an automatic retry.
+
+Deletion protects active extensions, Aculect itself, shared plugin directories,
+and installed dependents. A parent theme required by an installed child cannot be
+deleted. The confirmed target must still match its preview. **Plugin uninstall
+hooks may permanently remove settings or other data**; obtain explicit approval
+and a verified backup before deletion. There is no automatic restore guarantee.
+Native maintenance outside Aculect is not serialized by MCP execution claims.
+Disable the affected ability to stop new assistant calls if an operation fails;
+inspect native WordPress state before retrying an uncertain outcome.
+Theme deletion is limited to the default theme directory; other registered
+theme roots require native maintenance to avoid deleting a same-named directory.
+
+Theme switching validates native theme availability and compatibility and checks
+the resulting active theme. Plugin activation respects native dependency checks;
+self-deactivation must be performed manually in WordPress.
+
+Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
+default. Hosts behind a verified reverse proxy may supply a stable, non-secret
+fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`
+filter; the plugin does not trust forwarded headers automatically.
+
+OAuth discovery advertises `/aculect-ai-companion/oauth/authorize` to avoid
+collisions with plugins that claim the generic `/oauth/authorize` route. The old
+route remains a compatibility alias where another plugin has not claimed it.
+After upgrading, invalidate cached OAuth discovery documents and refresh the
+connector metadata before reconnecting. The update refreshes WordPress rewrite
+rules, but cannot evict hosting/CDN caches that run before WordPress.

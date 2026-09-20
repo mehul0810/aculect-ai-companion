@@ -1,0 +1,409 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+	changedPaths,
+	checks,
+	classifyChanges,
+	selectChecks,
+} from '../../bin/ci-changes.mjs';
+import { failedChecks } from '../../bin/ci-required.mjs';
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+test( 'documentation keeps secrets scanning without rebuilding the plugin', () => {
+	const result = classifyChanges( [ 'docs/setup.md' ] );
+	assert.ok( checks.every( ( key ) => result[ key ] === false ) );
+	const ci = readFileSync(
+		new URL( '../../.github/workflows/ci.yml', import.meta.url ),
+		'utf8'
+	);
+	assert.match( ci, /name: Scan repository secrets\n        run:/ );
+	assert.match(
+		ci,
+		/semgrep\/semgrep:1\.176\.0\s+semgrep scan --config p\/secrets/
+	);
+} );
+
+test( 'unknown files and unavailable history fail safe to every check', () => {
+	for ( const result of [
+		classifyChanges( [ 'new-bootstrap.conf' ] ),
+		classifyChanges( [], true ),
+	] ) {
+		assert.ok( checks.every( ( key ) => result[ key ] ) );
+	}
+} );
+
+test( 'shared bootstrap and CI changes require every proof', () => {
+	for ( const path of [
+		'src/Plugin.php',
+		'composer.lock',
+		'.github/workflows/ci.yml',
+		'bin/ci-changes.mjs',
+	] ) {
+		assert.ok(
+			checks.every( ( key ) => classifyChanges( [ path ] )[ key ] )
+		);
+	}
+} );
+
+test( 'MCP callers cover execution claims, OAuth and native abilities', () => {
+	const result = classifyChanges( [
+		'src/Connectors/MCP/AbilityExecutionGateway.php',
+	] );
+	for ( const key of [ 'claims', 'oauth', 'wordpress', 'quality' ] ) {
+		assert.equal( result[ key ], true );
+	}
+} );
+
+test( 'frontend requires quality and keeps browser proof local', () => {
+	for ( const path of [
+		'src/admin/connect.js',
+		'src/Admin/memory/MemoryRecordCard.js',
+	] ) {
+		const result = classifyChanges( [ path ] );
+		assert.equal( result.quality, true );
+		assert.equal( result.oauth, false );
+		assert.equal( result.claims, false );
+		assert.equal( result.wordpress, false );
+	}
+} );
+
+test( 'memory integration-only edits remain in the quality lane', () => {
+	const result = classifyChanges( [
+		'tests/Integration/Memory/wp-memory-proof.php',
+	] );
+	assert.equal( result.quality, true );
+} );
+
+test( 'packaged proof separates asset tooling from the proven wp-env runtime', () => {
+	const workflow = readFileSync(
+		new URL(
+			'../../.github/workflows/workflow-proof.yml',
+			import.meta.url
+		),
+		'utf8'
+	);
+	assert.ok(
+		workflow.indexOf( 'run: npm ci' ) <
+			workflow.indexOf( 'node-version: "20.19.0"' )
+	);
+	assert.ok(
+		workflow.indexOf( 'node-version: "20.19.0"' ) <
+			workflow.indexOf( 'npm install --global @wordpress/env@11.6.0' )
+	);
+	assert.match(
+		workflow,
+		/wp-memory-proof\.php aculect-disposable-memory-proof --use-include/
+	);
+} );
+
+const base = 'a'.repeat( 40 );
+const head = 'b'.repeat( 40 );
+
+test( 'PR ranges use merge-base and include both sides of a rename', () => {
+	const calls = [];
+	const paths = changedPaths(
+		'pull_request',
+		{ pull_request: { base: { sha: base }, head: { sha: head } } },
+		( args ) => {
+			calls.push( args );
+			return args[ 0 ] === 'merge-base'
+				? base + '\n'
+				: 'src/Old.php\0src/New.php\0';
+		}
+	);
+	assert.deepEqual( paths, [ 'src/Old.php', 'src/New.php' ] );
+	assert.deepEqual( calls[ 0 ], [ 'merge-base', base, head ] );
+	assert.ok( calls[ 1 ].includes( '--no-renames' ) );
+} );
+
+test( 'direct release push compares event before and after without skipping proof', () => {
+	const calls = [];
+	const paths = changedPaths(
+		'push',
+		{ before: base, after: head },
+		( args ) => {
+			calls.push( args );
+			return 'src/Plugin.php\0';
+		}
+	);
+	assert.equal( calls.length, 1 );
+	assert.ok( calls[ 0 ].includes( base ) && calls[ 0 ].includes( head ) );
+	assert.ok( checks.every( ( key ) => classifyChanges( paths )[ key ] ) );
+} );
+
+test( 'new branches, missing objects and manual validation select full coverage', () => {
+	assert.equal(
+		changedPaths( 'push', { before: '0'.repeat( 40 ), after: head } ),
+		null
+	);
+	assert.equal(
+		changedPaths( 'push', { before: base, after: head }, () => {
+			throw new Error( 'missing' );
+		} ),
+		null
+	);
+	assert.equal( changedPaths( 'workflow_dispatch', {} ), null );
+} );
+
+test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing required jobs', () => {
+	const flags = classifyChanges( [], true );
+	const names = [
+		'database',
+		'wordpress',
+		'php-compatibility',
+		'security',
+		'codeql',
+		'oauth-contract',
+	];
+	const needs = {
+		quality: {
+			result: 'success',
+			outputs: Object.fromEntries(
+				Object.entries( flags ).map( ( [ key, value ] ) => [
+					key,
+					String( value ),
+				] )
+			),
+		},
+		...Object.fromEntries(
+			names.map( ( name ) => [ name, { result: 'success' } ] )
+		),
+	};
+	assert.deepEqual( failedChecks( needs ), [] );
+	for ( const result of [ 'skipped', 'failure', 'cancelled', undefined ] ) {
+		assert.deepEqual(
+			failedChecks( { ...needs, quality: { ...needs.quality, result } } ),
+			[ 'quality' ]
+		);
+	}
+	assert.deepEqual(
+		failedChecks( {
+			...needs,
+			quality: { ...needs.quality, result: 'failure' },
+		} ),
+		[ 'quality' ]
+	);
+} );
+
+test( 'aggregate allows only detector-authorized skips', () => {
+	const names = [
+		'database',
+		'wordpress',
+		'php-compatibility',
+		'security',
+		'codeql',
+		'oauth-contract',
+	];
+	const needs = {
+		quality: {
+			result: 'success',
+			outputs: Object.fromEntries(
+				checks.map( ( name ) => [ name, 'false' ] )
+			),
+		},
+		...Object.fromEntries(
+			names.map( ( name ) => [ name, { result: 'skipped' } ] )
+		),
+	};
+	assert.deepEqual( failedChecks( needs ), [] );
+	assert.deepEqual(
+		failedChecks( {
+			...needs,
+			quality: { result: 'success', outputs: {} },
+		} ),
+		[ 'quality' ]
+	);
+	assert.deepEqual(
+		failedChecks( {
+			...needs,
+			'php-compatibility': { result: 'failure' },
+		} ),
+		[ 'php-compatibility' ]
+	);
+} );
+
+test( 'consolidated workflows retain supported integration proofs', () => {
+	const read = ( name ) =>
+		readFileSync(
+			new URL( '../../.github/workflows/' + name, import.meta.url ),
+			'utf8'
+		);
+	const database = read( 'database-proof.yml' );
+	for ( const proof of [
+		'real-database-concurrency.php',
+		'oauth-issuer-engine.php',
+	] ) {
+		assert.ok( database.includes( proof ), proof );
+	}
+	for ( const name of [ 'aculect_claims_proof', 'aculect_oauth_proof' ] ) {
+		assert.ok( database.includes( name ) );
+	}
+	assert.ok( ! database.includes( 'Integration/Workflows' ) );
+	assert.ok( ! checks.includes( 'workflows' ) );
+	assert.ok(
+		! existsSync(
+			new URL(
+				'../../.github/workflows/workflow-runner-proof.yml',
+				import.meta.url
+			)
+		)
+	);
+	const packaged = read( 'workflow-proof.yml' );
+	assert.ok( packaged.includes( 'workflow-admin.mjs' ) );
+	assert.ok( ! packaged.includes( 'wp-options-retry-cache.php' ) );
+	assert.ok( ! packaged.includes( 'Integration/Workflows' ) );
+	assert.ok( packaged.includes( 'wp plugin check' ) );
+	assert.ok(
+		packaged.includes(
+			'wp-memory-proof.php aculect-disposable-memory-proof'
+		)
+	);
+	assert.ok( ! packaged.includes( 'npm run build' ) );
+	const ci = read( 'ci.yml' );
+	const php = read( 'php-compatibility.yml' );
+	const wordpress = read( 'wordpress-abilities.yml' );
+	assert.match( ci, /pull_request:\n  workflow_dispatch:/ );
+	assert.doesNotMatch( ci, /\n  push:/ );
+	assert.doesNotMatch( ci, /name: Packaged WordPress and browser proof/ );
+	for ( const version of [ '"8.3"', '"8.4"', '"8.5"' ] ) {
+		assert.ok( php.includes( version ) );
+	}
+	assert.match( ci, /php-version: "8\.2"/ );
+	for ( const version of [ '"6.9"', '"7.0"', '"7.1"' ] ) {
+		assert.ok( wordpress.includes( version ) );
+	}
+	assert.match( ci, /name: PHP compatibility/ );
+	assert.match( ci, /name: Required CI\n    if: always\(\)/ );
+} );
+
+test( 'agent metadata and ordinary JS unit tests avoid unrelated matrices', () => {
+	for ( const path of [
+		'.codex/agents/aculect-release-reviewer.toml',
+		'.codex/config.toml',
+	] ) {
+		assert.ok(
+			Object.values( classifyChanges( [ path ] ) ).every(
+				( value ) => ! value
+			)
+		);
+	}
+	const unit = classifyChanges( [ 'tests/js/editor-records.test.mjs' ] );
+	assert.equal( unit.quality, true );
+	for ( const flag of checks.filter( ( name ) => name !== 'quality' ) ) {
+		assert.equal( unit[ flag ], false );
+	}
+	for ( const path of [
+		'readme.txt',
+		'.codex/modularity-rules.php',
+		'tests/js/local-checks.test.mjs',
+	] ) {
+		assert.ok(
+			Object.values( classifyChanges( [ path ] ) ).every( Boolean )
+		);
+	}
+} );
+
+test( 'main integration and reusable/manual release validation always require all proofs', () => {
+	for ( const result of [
+		selectChecks(
+			'pull_request',
+			{ pull_request: { base: { ref: 'main' } } },
+			[ 'docs/setup.md' ]
+		),
+		selectChecks( 'release', {}, null, true ),
+		selectChecks(
+			'workflow_dispatch',
+			{},
+			changedPaths( 'workflow_dispatch', {} )
+		),
+		selectChecks(
+			'workflow_call',
+			{},
+			changedPaths( 'workflow_call', {} )
+		),
+	] ) {
+		assert.ok( checks.every( ( name ) => result[ name ] ) );
+	}
+} );
+
+test( 'release uploader is idempotent and refuses mismatched existing artifacts', ( t ) => {
+	const directory = mkdtempSync(
+		join( tmpdir(), 'aculect-release-upload-test-' )
+	);
+	t.after( () => rmSync( directory, { recursive: true, force: true } ) );
+	for ( const name of [ 'release', 'remote', 'bin' ] ) {
+		mkdirSync( join( directory, name ) );
+	}
+	const zip = 'verified-fixture-package';
+	const digest = createHash( 'sha256' ).update( zip ).digest( 'hex' );
+	writeFileSync( join( directory, 'release/aculect-ai-companion.zip' ), zip );
+	writeFileSync(
+		join( directory, 'release/aculect-ai-companion.zip.sha256' ),
+		digest + '  aculect-ai-companion.zip\n'
+	);
+	for ( const name of [
+		'aculect-ai-companion.zip',
+		'aculect-ai-companion.zip.sha256',
+	] ) {
+		copyFileSync(
+			join( directory, 'release', name ),
+			join( directory, 'remote', name )
+		);
+	}
+	const mock =
+		'#!/bin/sh\ncase "$2" in\nview) printf "%s\\n" "$MOCK_EXISTING";;\ndownload) cp "$MOCK_REMOTE/$5" "$7/$5";;\nupload) printf "%s\\n" "$4" >> "$MOCK_UPLOAD_LOG";;\n*) exit 70;;\nesac\n';
+	writeFileSync( join( directory, 'bin/gh' ), mock );
+	chmodSync( join( directory, 'bin/gh' ), 0o755 );
+	const env = {
+		...process.env,
+		PATH: join( directory, 'bin' ) + ':' + process.env.PATH + ':/sbin',
+		RELEASE_TAG: 'test-only',
+		EXPECTED_SHA256: digest,
+		MOCK_REMOTE: join( directory, 'remote' ),
+		MOCK_UPLOAD_LOG: join( directory, 'uploads' ),
+		RUNNER_TEMP: directory,
+	};
+	const script = fileURLToPath(
+		new URL( '../../bin/ci-upload-release.sh', import.meta.url )
+	);
+	const run = ( existing, args = [] ) =>
+		spawnSync( 'bash', [ script, ...args ], {
+			cwd: directory,
+			env: { ...env, MOCK_EXISTING: existing },
+			encoding: 'utf8',
+			timeout: 5000,
+		} );
+	assert.equal( run( '', [ '--check-only' ] ).status, 0 );
+	assert.equal( existsSync( env.MOCK_UPLOAD_LOG ), false );
+	const existing =
+		'aculect-ai-companion.zip\naculect-ai-companion.zip.sha256';
+	assert.equal( run( existing ).status, 0 );
+	assert.equal( existsSync( env.MOCK_UPLOAD_LOG ), false );
+	writeFileSync(
+		join( directory, 'remote/aculect-ai-companion.zip' ),
+		'different-package'
+	);
+	const conflict = run( existing );
+	assert.notEqual( conflict.status, 0 );
+	assert.match( conflict.stdout, /Refusing to overwrite/ );
+	assert.equal( existsSync( env.MOCK_UPLOAD_LOG ), false );
+	assert.equal( run( '' ).status, 0 );
+	assert.deepEqual(
+		readFileSync( env.MOCK_UPLOAD_LOG, 'utf8' ).trim().split( '\n' ),
+		[ 'aculect-ai-companion.zip', 'aculect-ai-companion.zip.sha256' ]
+	);
+} );

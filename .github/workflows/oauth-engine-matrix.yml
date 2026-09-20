@@ -1,0 +1,18 @@
+name: OAuth Engine Matrix
+
+# Manual focused proof. Automatic coverage is selected by CI on every PR base and release push.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oauth-manual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    uses: ./.github/workflows/database-proof.yml
+    with:
+      oauth: true

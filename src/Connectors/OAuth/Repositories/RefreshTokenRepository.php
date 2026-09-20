@@ -6,7 +6,9 @@ namespace Aculect\AICompanion\Connectors\OAuth\Repositories;
 
 use Aculect\AICompanion\Connectors\OAuth\Database\BoundedPruner;
 use Aculect\AICompanion\Connectors\OAuth\Database\Installer;
+use Aculect\AICompanion\Connectors\OAuth\BoundClientGuard;
 use Aculect\AICompanion\Connectors\OAuth\Entities\RefreshTokenEntity;
+use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use League\OAuth2\Server\Entities\RefreshTokenEntityInterface;
 use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 
@@ -36,6 +38,8 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	 */
 	public function persistNewRefreshToken( RefreshTokenEntityInterface $refreshTokenEntity ): void {
 		global $wpdb;
+
+		BoundClientGuard::assert_current( $refreshTokenEntity->getAccessToken()->getClient() );
 
 		$table = Installer::table_names()['refresh_tokens'];
 		$wpdb->insert(
@@ -71,9 +75,22 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 	public function isRefreshTokenRevoked( string $tokenId ): bool {
 		global $wpdb;
 
-		$table = Installer::table_names()['refresh_tokens'];
-		$row   = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT revoked, expires_at FROM %i WHERE token_hash = %s', $table, $this->hash_identifier( $tokenId ) ),
+		$tables = Installer::table_names();
+		$row    = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT refresh_tokens.revoked, refresh_tokens.expires_at
+				FROM %i refresh_tokens
+				INNER JOIN %i access_tokens ON access_tokens.token_hash = refresh_tokens.access_token_hash
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
+				WHERE refresh_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0',
+				$tables['refresh_tokens'],
+				$tables['access_tokens'],
+				$tables['clients'],
+				$this->hash_identifier( $tokenId ),
+				IssuerBinding::hash()
+			),
 			ARRAY_A
 		);
 
@@ -111,14 +128,17 @@ final class RefreshTokenRepository implements RefreshTokenRepositoryInterface {
 				'SELECT refresh_tokens.revoked, refresh_tokens.expires_at,
 					access_tokens.id AS connection_id, access_tokens.client_id, clients.provider
 				FROM %i refresh_tokens
-				LEFT JOIN %i access_tokens ON access_tokens.token_hash = refresh_tokens.access_token_hash
-				LEFT JOIN %i clients ON clients.client_id = access_tokens.client_id
+				INNER JOIN %i access_tokens ON access_tokens.token_hash = refresh_tokens.access_token_hash
+				INNER JOIN %i clients ON clients.client_id = access_tokens.client_id
 				WHERE refresh_tokens.token_hash = %s
+				AND clients.issuer_hash = %s
+				AND clients.revoked = 0
 				LIMIT 1',
 				$tables['refresh_tokens'],
 				$tables['access_tokens'],
 				$tables['clients'],
-				$this->hash_identifier( $tokenId )
+				$this->hash_identifier( $tokenId ),
+				IssuerBinding::hash()
 			),
 			ARRAY_A
 		);

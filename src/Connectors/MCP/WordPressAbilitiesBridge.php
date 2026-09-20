@@ -28,36 +28,32 @@ final class WordPressAbilitiesBridge {
 		$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
 		$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 50 ) ) );
 
-		$abilities = array_filter(
-			$this->abilities(),
-			fn ( object $ability ): bool => $this->incident_list_discovery_allowed( $ability )
-		);
-		$items     = array_values(
-			array_filter(
-				array_map( array( $this, 'map_ability' ), $abilities ),
-				static function ( array $ability ) use ( $search, $category ): bool {
-					if ( empty( $ability['public'] ) ) {
-						return false;
-					}
+		$items = array();
+		foreach ( $this->abilities() as $ability ) {
+			if ( ! $this->incident_list_discovery_allowed( $ability ) ) {
+				continue;
+			}
 
-					if ( empty( $ability['allowed'] ) ) {
-						return false;
-					}
+			$mapped = $this->safe_map_ability( $ability );
+			if ( null === $mapped || empty( $mapped['public'] ) || empty( $mapped['allowed'] ) ) {
+				continue;
+			}
 
-					if ( '' !== $category && $category !== $ability['category'] ) {
-						return false;
-					}
+			if ( '' !== $category && $category !== $mapped['category'] ) {
+				continue;
+			}
 
-					if ( '' === $search ) {
-						return true;
-					}
-
-					$haystack = strtolower( implode( ' ', array( $ability['id'], $ability['title'], $ability['description'] ) ) );
-					return str_contains( $haystack, strtolower( $search ) );
+			if ( '' !== $search ) {
+				$haystack = strtolower( implode( ' ', array( $mapped['id'], $mapped['title'], $mapped['description'] ) ) );
+				if ( ! str_contains( $haystack, strtolower( $search ) ) ) {
+					continue;
 				}
-			)
-		);
+			}
 
+			$items[] = $mapped;
+		}
+
+		usort( $items, static fn( array $a, array $b ): int => strcmp( $a['id'], $b['id'] ) );
 		$total = count( $items );
 		$items = array_slice( $items, ( $page - 1 ) * $per_page, $per_page );
 
@@ -97,16 +93,21 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'forbidden', 'You do not have permission to discover this WordPress ability.' );
 		}
 
-		return $this->map_ability( $ability, true );
+		$mapped = $this->safe_map_ability( $ability, true );
+		return null === $mapped ? $this->error( 'ability_metadata_unavailable', 'This WordPress ability returned invalid metadata.' ) : $mapped;
 	}
 
 	/**
-	 * Execute a WordPress ability through its registered callback.
+	 * Execute a WordPress ability through its registered lifecycle.
 	 *
 	 * @param array<string, mixed> $args Tool arguments.
 	 * @return array<string, mixed>
 	 */
 	public function run( array $args ): array {
+		$id = $args['id'] ?? $args['name'] ?? null;
+		if ( is_string( $id ) && 'core/get-user-info' === sanitize_text_field( $id ) ) {
+			return UserPrivacyPolicy::sensitive_data();
+		}
 		if ( ! function_exists( 'wp_get_abilities' ) ) {
 			return $this->unavailable();
 		}
@@ -128,21 +129,26 @@ final class WordPressAbilitiesBridge {
 			return $this->error( 'not_executable', 'This WordPress ability cannot be executed.' );
 		}
 
-		$input      = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
-		$permission = $this->permission_result( $ability, $input );
-		if ( $permission instanceof WP_Error ) {
-			return $this->error( (string) $permission->get_error_code(), $permission->get_error_message() );
-		}
+		$input = isset( $args['arguments'] ) && is_array( $args['arguments'] ) ? $args['arguments'] : array();
+		try {
+			$result = $ability->execute( $input );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
 
-		if ( true !== $permission ) {
+			return $this->error( 'ability_execution_failed', 'The WordPress ability failed without returning a safe result.' );
+		}
+		if ( $result instanceof WP_Error && 'ability_invalid_permissions' === $result->get_error_code() ) {
 			return $this->error( 'forbidden', 'You do not have permission to execute this WordPress ability.' );
 		}
 
-		$result = $ability->execute( $input );
+		$normalized = $this->normalize_result( $result );
+		if ( ! $normalized['valid'] ) {
+			return $this->error( 'invalid_ability_result', 'The WordPress ability returned data that could not be represented safely.' );
+		}
 
 		return array(
 			'ability' => $this->ability_name( $ability ),
-			'result'  => $this->normalize_result( $result ),
+			'result'  => $normalized['value'],
 		);
 	}
 
@@ -156,7 +162,13 @@ final class WordPressAbilitiesBridge {
 			return array();
 		}
 
-		$abilities = call_user_func( 'wp_get_abilities' );
+		try {
+			$abilities = call_user_func( 'wp_get_abilities' );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
 		if ( ! is_array( $abilities ) ) {
 			return array();
 		}
@@ -205,7 +217,17 @@ final class WordPressAbilitiesBridge {
 			return true;
 		}
 
-		return true === $this->permission_result( $ability, array() );
+		if ( ! method_exists( $ability, 'check_permissions' ) ) {
+			return false;
+		}
+
+		try {
+			return true === $ability->check_permissions( array() );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return false;
+		}
 	}
 
 	/**
@@ -228,12 +250,35 @@ final class WordPressAbilitiesBridge {
 		);
 
 		if ( $include_full ) {
-			$item['inputSchema']  = $this->method_array( $ability, 'get_input_schema' );
-			$item['outputSchema'] = $this->method_array( $ability, 'get_output_schema' );
+			$item['inputSchema']  = $this->client_schema( $this->method_array( $ability, 'get_input_schema' ) );
+			$item['outputSchema'] = $this->client_schema( $this->method_array( $ability, 'get_output_schema' ) );
 			$item['meta']         = $meta;
 		}
 
 		return $item;
+	}
+
+	/**
+	 * Map an external ability without allowing malformed plugin code to abort discovery.
+	 *
+	 * @param object $ability      Ability object.
+	 * @param bool   $include_full Whether to include schemas and raw metadata.
+	 * @return array<string, mixed>|null
+	 */
+	private function safe_map_ability( object $ability, bool $include_full = false ): ?array {
+		try {
+			$mapped = $this->map_ability( $ability, $include_full );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return null;
+		}
+
+		if ( '' === (string) ( $mapped['id'] ?? '' ) || '' === (string) ( $mapped['title'] ?? '' ) || '' === (string) ( $mapped['description'] ?? '' ) ) {
+			return null;
+		}
+
+		return $mapped;
 	}
 
 	/**
@@ -263,16 +308,7 @@ final class WordPressAbilitiesBridge {
 	 * @return bool
 	 */
 	private function is_public_ability( object $ability ): bool {
-		$meta = $this->ability_meta( $ability );
-		if ( isset( $meta['show_in_rest'] ) ) {
-			return (bool) $meta['show_in_rest'];
-		}
-
-		if ( isset( $meta['mcp'] ) && is_array( $meta['mcp'] ) && array_key_exists( 'public', $meta['mcp'] ) ) {
-			return (bool) $meta['mcp']['public'];
-		}
-
-		return false;
+		return WordPressAbilityExposure::is_public( $ability );
 	}
 
 	/**
@@ -294,74 +330,19 @@ final class WordPressAbilitiesBridge {
 	}
 
 	/**
-	 * Execute the registered WordPress Ability permission callback when available.
+	 * Prepare a registered JSON Schema for client exposure when core supports it.
 	 *
-	 * @param object               $ability Ability object.
-	 * @param array<string, mixed> $input   Ability input.
-	 * @return bool|WP_Error
-	 */
-	private function permission_result( object $ability, array $input ): bool|WP_Error {
-		foreach ( array( 'check_permission', 'has_permission', 'can_execute' ) as $method ) {
-			if ( method_exists( $ability, $method ) ) {
-				return $this->normalize_permission_result(
-					$this->call_permission_callback(
-						static fn ( array $permission_input ): mixed => $ability->{$method}( $permission_input ),
-						$input
-					)
-				);
-			}
-		}
-
-		if ( method_exists( $ability, 'get_permission_callback' ) ) {
-			$callback = $ability->get_permission_callback();
-			if ( is_callable( $callback ) ) {
-				return $this->normalize_permission_result( $this->call_permission_callback( $callback, $input ) );
-			}
-		}
-
-		$meta = $this->ability_meta( $ability );
-		if ( isset( $meta['permission_callback'] ) && is_callable( $meta['permission_callback'] ) ) {
-			return $this->normalize_permission_result( $this->call_permission_callback( $meta['permission_callback'], $input ) );
-		}
-
-		return new WP_Error(
-			'permission_callback_unavailable',
-			'This WordPress ability cannot be executed because its permission callback is unavailable.'
-		);
-	}
-
-	/**
-	 * Call a permission callback and convert thrown failures into a safe error.
+	 * Registered schemas remain the canonical server-side validation contract.
 	 *
-	 * @param callable             $callback Permission callback.
-	 * @param array<string, mixed> $input    Ability input.
-	 * @return mixed
+	 * @param array<string, mixed> $schema Registered JSON Schema.
+	 * @return array<string, mixed>
 	 */
-	private function call_permission_callback( callable $callback, array $input ): mixed {
-		try {
-			return call_user_func( $callback, $input );
-		} catch ( \Throwable $throwable ) {
-			unset( $throwable );
-
-			return new WP_Error(
-				'permission_callback_failed',
-				'The WordPress ability permission callback could not be evaluated.'
-			);
-		}
-	}
-
-	/**
-	 * Normalize a WordPress Ability permission result.
-	 *
-	 * @param mixed $result Permission callback result.
-	 * @return bool|WP_Error
-	 */
-	private function normalize_permission_result( mixed $result ): bool|WP_Error {
-		if ( $result instanceof WP_Error ) {
-			return $result;
+	private function client_schema( array $schema ): array {
+		if ( function_exists( 'wp_prepare_json_schema_for_client' ) ) {
+			return wp_prepare_json_schema_for_client( $schema );
 		}
 
-		return true === $result;
+		return $schema;
 	}
 
 	/**
@@ -376,7 +357,14 @@ final class WordPressAbilitiesBridge {
 			return '';
 		}
 
-		$value = $object->{$method}();
+		try {
+			$value = $object->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
+
 		return is_scalar( $value ) ? (string) $value : '';
 	}
 
@@ -392,7 +380,14 @@ final class WordPressAbilitiesBridge {
 			return array();
 		}
 
-		$value = $object->{$method}();
+		try {
+			$value = $object->{$method}();
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return array();
+		}
+
 		return is_array( $value ) ? $value : array();
 	}
 
@@ -400,18 +395,37 @@ final class WordPressAbilitiesBridge {
 	 * Normalize ability execution results into JSON-safe data.
 	 *
 	 * @param mixed $result Ability result.
-	 * @return mixed
+	 * @return array{valid: bool, value: mixed}
 	 */
-	private function normalize_result( mixed $result ): mixed {
+	private function normalize_result( mixed $result ): array {
 		if ( $result instanceof WP_Error ) {
-			return $this->error( (string) $result->get_error_code(), $result->get_error_message() );
+			$result = $this->error( (string) $result->get_error_code(), $result->get_error_message() );
 		}
 
 		if ( $result instanceof WP_REST_Response ) {
-			return $result->get_data();
+			$result = $result->get_data();
 		}
 
-		return $result;
+		$encoded = wp_json_encode( $result );
+		if ( ! is_string( $encoded ) ) {
+			return array(
+				'valid' => false,
+				'value' => null,
+			);
+		}
+
+		$decoded = json_decode( $encoded, true );
+		if ( JSON_ERROR_NONE !== json_last_error() ) {
+			return array(
+				'valid' => false,
+				'value' => null,
+			);
+		}
+
+		return array(
+			'valid' => true,
+			'value' => $decoded,
+		);
 	}
 
 	/**

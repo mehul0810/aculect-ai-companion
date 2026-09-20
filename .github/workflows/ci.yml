@@ -2,49 +2,87 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
-      - "release/**"
-  push:
-    branches:
-      - main
-      - develop
-      - "release/**"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      full:
+        description: Run every proof before publication
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      artifact-name:
+        description: Exact package artifact produced by the quality gate
+        value: ${{ jobs.quality.outputs.artifact-name }}
+      sha256:
+        description: SHA256 of the exact package artifact
+        value: ${{ jobs.quality.outputs.sha256 }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' && github.event_name != 'workflow_call' }}
 
 jobs:
-  php:
-    name: PHP Quality
+  quality:
+    name: Quality, build and package
     runs-on: ubuntu-latest
-
+    timeout-minutes: 25
+    outputs:
+      quality: ${{ steps.scope.outputs.quality }}
+      claims: ${{ steps.scope.outputs.claims }}
+      oauth: ${{ steps.scope.outputs.oauth }}
+      wordpress: ${{ steps.scope.outputs.wordpress }}
+      security: ${{ steps.scope.outputs.security }}
+      codeql: ${{ steps.scope.outputs.codeql }}
+      artifact-name: aculect-ai-companion-package-${{ github.sha }}-${{ github.run_attempt }}
+      sha256: ${{ steps.digest.outputs.sha256 }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Classify complete event diff
+        id: scope
+        env:
+          CI_FULL: ${{ inputs.full }}
+        run: node bin/ci-changes.mjs
+
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        if: steps.scope.outputs.quality == 'true'
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           coverage: none
           tools: composer:v2
 
-      - name: Validate composer metadata
-        run: composer validate --strict
+      - name: Cache Composer downloads
+        if: steps.scope.outputs.quality == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ runner.os }}-php82-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php82-
 
-      - name: Install composer dependencies
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.quality == 'true'
         run: composer install --prefer-dist --no-progress --no-interaction
 
+      - name: Enforce modularity ratchet for pull requests
+        if: steps.scope.outputs.quality == 'true' && github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from="origin/${BASE_REF}"
+
       - name: Require PHPStan baseline justification when baseline changes
-        if: github.event_name == 'pull_request'
+        if: steps.scope.outputs.quality == 'true' && github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           BASE_REF: ${{ github.base_ref }}
@@ -58,72 +96,106 @@ jobs:
             exit 1
           fi
 
-      - name: Run PHP CI checks and tests
-        run: composer ci:php
-
-  assets:
-    name: Assets
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install npm dependencies
+      - name: Install locked JavaScript dependencies
+        if: steps.scope.outputs.quality == 'true'
         run: npm ci
 
-      - name: Lint JavaScript
-        run: npm run lint:js -- --quiet
+      - name: Run essential quality checks and build once
+        if: steps.scope.outputs.quality == 'true'
+        run: npm run check:ci
 
-      - name: Lint styles
-        run: npm run lint:css
+      - name: Scan repository secrets
+        run: >-
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.176.0
+          semgrep scan --config p/secrets --exclude vendor --exclude node_modules
+          --exclude release --metrics=off --error .
 
-      - name: Run JavaScript tests
-        run: npm run test:js
-
-      - name: Build assets
-        run: npm run build
-
-  package:
-    name: Production Package
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.2"
-          coverage: none
-          tools: composer:v2
-
-      - name: Install production composer dependencies
+      - name: Install production Composer dependencies
+        if: steps.scope.outputs.quality == 'true'
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-progress --no-interaction
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Package and verify the canonical production archive
+        if: steps.scope.outputs.quality == 'true'
+        run: bash bin/ci-package.sh
+
+      - name: Record immutable package checksum
+        if: steps.scope.outputs.quality == 'true'
+        id: digest
+        run: echo "sha256=$(cut -d ' ' -f 1 release/aculect-ai-companion.zip.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload canonical package
+        if: steps.scope.outputs.quality == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aculect-ai-companion-package-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            release/aculect-ai-companion.zip
+            release/aculect-ai-companion.zip.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+  database:
+    name: Real database proofs
+    needs: quality
+    if: needs.quality.outputs.claims == 'true' || needs.quality.outputs.oauth == 'true'
+    uses: ./.github/workflows/database-proof.yml
+    with:
+      claims: ${{ needs.quality.outputs.claims == 'true' }}
+      oauth: ${{ needs.quality.outputs.oauth == 'true' }}
+
+  wordpress:
+    name: Native WordPress contract
+    needs: quality
+    if: needs.quality.outputs.wordpress == 'true'
+    uses: ./.github/workflows/wordpress-abilities.yml
+
+  php-compatibility:
+    name: PHP compatibility
+    needs: quality
+    if: needs.quality.outputs.quality == 'true'
+    uses: ./.github/workflows/php-compatibility.yml
+
+  security:
+    name: PHP security scan
+    needs: quality
+    if: needs.quality.outputs.security == 'true'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/php-security.yml
+
+  oauth-contract:
+    name: Packaged OAuth proof
+    needs: quality
+    if: needs.quality.outputs.quality == 'true'
+    uses: ./.github/workflows/oauth-contract.yml
+    with:
+      package-sha256: ${{ needs.quality.outputs.sha256 }}
+      package-artifact-name: ${{ needs.quality.outputs.artifact-name }}
+
+  codeql:
+    name: JavaScript security analysis
+    needs: quality
+    if: needs.quality.outputs.codeql == 'true'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/codeql.yml
+
+  required:
+    name: Required CI
+    if: always()
+    needs: [quality, database, wordpress, php-compatibility, security, codeql, oauth-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build
-
-      - name: Prepare plugin package
-        run: |
-          mkdir -p "${GITHUB_WORKSPACE}/release/aculect-ai-companion"
-          rsync -rc --exclude-from="$GITHUB_WORKSPACE/.distignore" "$GITHUB_WORKSPACE/" "${GITHUB_WORKSPACE}/release/aculect-ai-companion/" --delete --delete-excluded
-
-      - name: Verify production package contents
-        run: php bin/verify-production-package.php release/aculect-ai-companion
+      - name: Require every applicable proof to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: node bin/ci-required.mjs

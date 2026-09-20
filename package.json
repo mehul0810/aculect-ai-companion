@@ -1,16 +1,22 @@
 {
   "name": "aculect-ai-companion",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {
+    "check:ci": "node bin/check-project.mjs ci",
+    "check:local": "node bin/check-project.mjs local",
+    "check:release": "node bin/check-project.mjs release",
     "build": "wp-scripts build",
     "start": "wp-scripts start",
     "lint:js": "wp-scripts lint-js",
     "lint:css": "wp-scripts lint-style",
     "smoke:release-fixture": "node scripts/smoke/release-fixture.mjs",
+    "smoke:mcp-local": "node scripts/smoke/mcp-local.mjs",
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
+    "smoke:mcp-sdk": "node scripts/smoke/mcp-sdk-client.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
+    "smoke:oauth-browser": "node tests/Integration/Browser/oauth-contract.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",
     "test:js": "node --test tests/js/*.test.mjs",
     "format": "wp-scripts format"
@@ -20,22 +26,32 @@
     "npm": ">=11"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@playwright/test": "^1.60.0",
     "@wordpress/components": "^33.1.0",
     "@wordpress/dataviews": "^14.3.0",
     "@wordpress/element": "^6.46.0",
     "@wordpress/icons": "^13.1.0",
-    "@wordpress/scripts": "^32.2.0"
+    "@wordpress/scripts": "^32.2.0",
+    "axe-core": "^4.13.0"
   },
   "overrides": {
+    "@puppeteer/browsers": "^3.2.1",
+    "adm-zip": "^0.6.0",
     "copy-webpack-plugin": {
       "serialize-javascript": "^7.0.5"
     },
+    "lighthouse": "^13.4.1",
     "markdownlint-cli": {
-      "minimatch": "^3.1.5"
+      ".": "^0.49.1",
+      "minimatch": "^10.2.5"
     },
+    "puppeteer-core": "^25.8.0",
+    "qs": "^6.16.0",
     "shell-quote": "^1.8.4",
     "webpack-dev-server": "^5.2.2",
-    "uuid": "^11.1.1"
+    "sockjs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

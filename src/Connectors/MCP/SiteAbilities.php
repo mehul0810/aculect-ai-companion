@@ -71,7 +71,7 @@ final class SiteAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	public function get_site_health(): array {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( 'view_site_health_checks' ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to view site health information.' );
 		}
 
@@ -101,21 +101,27 @@ final class SiteAbilities extends AbstractAbilityService {
 		);
 
 		return array(
-			'status'       => $this->health_status( $checks ),
-			'checks'       => $checks,
-			'environment'  => array(
+			'status'         => $this->health_status( $checks ),
+			'coverage'       => 'selected_configuration_signals_not_full_native_site_health',
+			'native_summary' => NativeHealthSummary::read(),
+			'freshness'      => array(
+				'updates'  => 'cached',
+				'rest_api' => 'url_discovery_only_not_connectivity_test',
+			),
+			'checks'         => $checks,
+			'environment'    => array(
 				'wordpress_version' => get_bloginfo( 'version' ),
 				'php_version'       => PHP_VERSION,
 				'environment_type'  => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production',
 				'multisite'         => is_multisite(),
 			),
-			'active_theme' => array(
+			'active_theme'   => array(
 				'name'       => $theme->get( 'Name' ),
 				'stylesheet' => $theme->get_stylesheet(),
 				'template'   => $theme->get_template(),
 				'version'    => $theme->get( 'Version' ),
 			),
-			'plugins'      => array(
+			'plugins'        => array(
 				'active_count'      => count( (array) get_option( 'active_plugins', array() ) ),
 				'updates_available' => $update_counts['plugins'],
 			),

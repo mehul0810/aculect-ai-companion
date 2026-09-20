@@ -32,6 +32,7 @@ final class ContentAbilitiesTest extends TestCase {
 					'post_title'   => 'Existing Draft',
 					'post_content' => '<!-- wp:paragraph --><p>Existing content.</p><!-- /wp:paragraph -->',
 					'post_excerpt' => 'Existing excerpt',
+					'post_modified_gmt' => '2026-08-26 10:00:00',
 				)
 			),
 		);
@@ -265,6 +266,20 @@ final class ContentAbilitiesTest extends TestCase {
 		self::assertSame( 1, $diff_by_field['content']['before']['value']['block_count'] );
 		self::assertSame( array( 'core/paragraph' ), $diff_by_field['content']['after']['value']['blocks'] );
 		self::assertStringContainsString( 'Updated content body', $diff_by_field['content']['after']['value']['summary'] );
+	}
+
+	public function test_update_item_rejects_stale_modified_token_before_preview_or_write(): void {
+		$result = ( new ContentAbilities() )->update_item(
+			array(
+				'id'                    => 123,
+				'title'                 => 'Stale update',
+				'expected_modified_gmt' => '2026-08-26 09:00:00',
+				'dry_run'               => true,
+			)
+		);
+
+		self::assertSame( 'conflict', $result['error'] );
+		self::assertSame( '2026-08-26 10:00:00', $result['current_modified'] );
 	}
 
 	public function test_update_item_dry_run_redacts_previous_content_fields_without_read_access(): void {

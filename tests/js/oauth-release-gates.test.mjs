@@ -19,26 +19,22 @@ test( 'OAuth fixture and unit-contract edits cannot skip packaged proof', () => 
 		'tests/js/ci-changes.test.mjs',
 	] ) {
 		const flags = classifyChanges( [ path ] );
-		assert.equal( flags.package, true );
-		assert.equal( flags.assets, true );
+		assert.equal( flags.quality, true );
 	}
 } );
 
 test( 'every canonical package requires OAuth proof in the aggregate', () => {
 	const flags = classifyChanges( [ 'src/Connectors/Helpers.php' ] );
 	const names = [
-		'php',
-		'assets',
-		'package',
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',
 	];
 	const needs = {
-		changes: {
+		quality: {
 			result: 'success',
 			outputs: Object.fromEntries(
 				Object.entries( flags ).map( ( [ key, value ] ) => [
@@ -65,11 +61,25 @@ test( 'both release publishers depend on exact-package OAuth proof', () => {
 		const content = workflow( name );
 		assert.match(
 			content,
-			/oauth-contract:\n    needs: package\n    uses: \.\/\.github\/workflows\/oauth-contract\.yml/
+			/uses: \.\/\.github\/workflows\/ci\.yml[\s\S]*?full: true/
 		);
 		const publishing = content.slice( content.indexOf( '\n  publish:' ) );
-		assert.match( publishing, /needs: \[[^\]\n]*oauth-contract[^\]\n]*\]/ );
+		assert.match( publishing, /needs: \[[^\]\n]*package[^\]\n]*\]/ );
 	}
+	const ci = workflow( 'ci.yml' );
+	assert.match(
+		ci,
+		/oauth-contract:\n    name: Packaged OAuth proof\n    needs: quality\n    if: needs\.quality\.outputs\.quality == 'true'\n    uses: \.\/\.github\/workflows\/oauth-contract\.yml/
+	);
+	assert.match( ci, /needs: \[[^\]\n]*oauth-contract[^\]\n]*\]/ );
+	assert.match(
+		ci,
+		/package-sha256: \$\{\{ needs\.quality\.outputs\.sha256 \}\}/
+	);
+	assert.match(
+		ci,
+		/package-artifact-name: \$\{\{ needs\.quality\.outputs\.artifact-name \}\}/
+	);
 	const content = workflow( 'oauth-contract.yml' );
 	assert.match(
 		content,

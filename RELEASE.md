@@ -27,6 +27,9 @@
 - Existing development workflow tables and options are left untouched, including by the current uninstall path. No automatic migration or data cleanup is included; any later recovery or cleanup needs an explicit owner decision.
 
 ## Quality Gates
+- Local preparation starts with `npm run check:release` from a clean committed checkout. Its receipt pins local checks and the production ZIP; it is preflight evidence, not a complete release decision or hosted-connector proof.
+- Browser/admin UI proof is local: run `npm run smoke:release-ui` with safe disposable-site inputs when applicable and record its artifact. Hosted CI retains WPCS, the minimum PHP 8.2 quality gate, PHP 8.3/8.4/8.5 compatibility, WordPress 6.9/7.0/7.1, security, database and exact-package OAuth gates.
+- Routine PR checks are consolidated and risk-selected; full validation remains required for release integration and publication. The full gate must build one canonical artifact and pass that exact artifact to packaged proofs and publication. No tag/release/deployment is performed by local check commands or manual CI validation.
 - The 0.8.0 OAuth gate includes the owner's explicit rejected-token cache-header exception, documented in `docs/oauth-contract.md` and tracked in #531 for 0.8.1. Report it as deferred, not verified. Successful-token headers and every functional OAuth assertion remain mandatory.
 - The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
 - OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.

@@ -4,6 +4,7 @@ import {
 	changedPaths,
 	checks,
 	classifyChanges,
+	selectChecks,
 } from '../../bin/ci-changes.mjs';
 import { failedChecks } from '../../bin/ci-required.mjs';
 import {
@@ -24,9 +25,16 @@ import { fileURLToPath } from 'node:url';
 
 test( 'documentation keeps secrets scanning without rebuilding the plugin', () => {
 	const result = classifyChanges( [ 'docs/setup.md' ] );
-	assert.equal( result.security, true );
-	assert.equal( result.package, false );
-	assert.equal( result.php, false );
+	assert.ok( checks.every( ( key ) => result[ key ] === false ) );
+	const ci = readFileSync(
+		new URL( '../../.github/workflows/ci.yml', import.meta.url ),
+		'utf8'
+	);
+	assert.match( ci, /name: Scan repository secrets\n        run:/ );
+	assert.match(
+		ci,
+		/semgrep\/semgrep:1\.176\.0\s+semgrep scan --config p\/secrets/
+	);
 } );
 
 test( 'unknown files and unavailable history fail safe to every check', () => {
@@ -55,40 +63,29 @@ test( 'MCP callers cover execution claims, OAuth and native abilities', () => {
 	const result = classifyChanges( [
 		'src/Connectors/MCP/AbilityExecutionGateway.php',
 	] );
-	for ( const key of [
-		'claims',
-		'oauth',
-		'wordpress',
-		'php',
-		'assets',
-		'package',
-	] ) {
+	for ( const key of [ 'claims', 'oauth', 'wordpress', 'quality' ] ) {
 		assert.equal( result[ key ], true );
 	}
 } );
 
-test( 'frontend requires one build and packaged browser proof', () => {
+test( 'frontend requires quality and keeps browser proof local', () => {
 	for ( const path of [
 		'src/admin/connect.js',
 		'src/Admin/memory/MemoryRecordCard.js',
 	] ) {
 		const result = classifyChanges( [ path ] );
-		assert.equal( result.assets, true );
-		assert.equal( result.package, true );
-		assert.equal( result.browser, true );
+		assert.equal( result.quality, true );
 		assert.equal( result.oauth, false );
 		assert.equal( result.claims, false );
 		assert.equal( result.wordpress, false );
 	}
 } );
 
-test( 'memory integration-only edits run the existing packaged WordPress proof', () => {
+test( 'memory integration-only edits remain in the quality lane', () => {
 	const result = classifyChanges( [
 		'tests/Integration/Memory/wp-memory-proof.php',
 	] );
-	for ( const name of [ 'php', 'assets', 'package', 'browser' ] ) {
-		assert.equal( result[ name ], true );
-	}
+	assert.equal( result.quality, true );
 } );
 
 test( 'packaged proof separates asset tooling from the proven wp-env runtime', () => {
@@ -165,18 +162,15 @@ test( 'new branches, missing objects and manual validation select full coverage'
 test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing required jobs', () => {
 	const flags = classifyChanges( [], true );
 	const names = [
-		'php',
-		'assets',
-		'package',
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',
 	];
 	const needs = {
-		changes: {
+		quality: {
 			result: 'success',
 			outputs: Object.fromEntries(
 				Object.entries( flags ).map( ( [ key, value ] ) => [
@@ -191,59 +185,54 @@ test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing requ
 	};
 	assert.deepEqual( failedChecks( needs ), [] );
 	for ( const result of [ 'skipped', 'failure', 'cancelled', undefined ] ) {
-		assert.deepEqual( failedChecks( { ...needs, php: { result } } ), [
-			'php',
-		] );
+		assert.deepEqual(
+			failedChecks( { ...needs, quality: { ...needs.quality, result } } ),
+			[ 'quality' ]
+		);
 	}
 	assert.deepEqual(
 		failedChecks( {
 			...needs,
-			changes: { ...needs.changes, result: 'failure' },
+			quality: { ...needs.quality, result: 'failure' },
 		} ),
-		[ 'changes' ]
+		[ 'quality' ]
 	);
 } );
 
 test( 'aggregate allows only detector-authorized skips', () => {
 	const names = [
-		'php',
-		'assets',
-		'package',
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',
 	];
 	const needs = {
-		changes: {
+		quality: {
 			result: 'success',
 			outputs: Object.fromEntries(
-				checks.map( ( name ) => [
-					name,
-					String( name === 'security' ),
-				] )
+				checks.map( ( name ) => [ name, 'false' ] )
 			),
 		},
 		...Object.fromEntries(
-			names.map( ( name ) => [
-				name,
-				{ result: name === 'security' ? 'success' : 'skipped' },
-			] )
+			names.map( ( name ) => [ name, { result: 'skipped' } ] )
 		),
 	};
 	assert.deepEqual( failedChecks( needs ), [] );
 	assert.deepEqual(
 		failedChecks( {
 			...needs,
-			changes: { result: 'success', outputs: {} },
+			quality: { result: 'success', outputs: {} },
 		} ),
-		[ 'changes' ]
+		[ 'quality' ]
 	);
 	assert.deepEqual(
-		failedChecks( { ...needs, assets: { result: 'failure' } } ),
-		[ 'assets' ]
+		failedChecks( {
+			...needs,
+			'php-compatibility': { result: 'failure' },
+		} ),
+		[ 'php-compatibility' ]
 	);
 } );
 
@@ -285,8 +274,70 @@ test( 'consolidated workflows retain supported integration proofs', () => {
 	);
 	assert.ok( ! packaged.includes( 'npm run build' ) );
 	const ci = read( 'ci.yml' );
-	assert.match( ci, /pull_request:\n  push:/ );
+	const php = read( 'php-compatibility.yml' );
+	const wordpress = read( 'wordpress-abilities.yml' );
+	assert.match( ci, /pull_request:\n  workflow_dispatch:/ );
+	assert.doesNotMatch( ci, /\n  push:/ );
+	assert.doesNotMatch( ci, /name: Packaged WordPress and browser proof/ );
+	for ( const version of [ '"8.3"', '"8.4"', '"8.5"' ] ) {
+		assert.ok( php.includes( version ) );
+	}
+	assert.match( ci, /php-version: "8\.2"/ );
+	for ( const version of [ '"6.9"', '"7.0"', '"7.1"' ] ) {
+		assert.ok( wordpress.includes( version ) );
+	}
+	assert.match( ci, /name: PHP compatibility/ );
 	assert.match( ci, /name: Required CI\n    if: always\(\)/ );
+} );
+
+test( 'agent metadata and ordinary JS unit tests avoid unrelated matrices', () => {
+	for ( const path of [
+		'.codex/agents/aculect-release-reviewer.toml',
+		'.codex/config.toml',
+	] ) {
+		assert.ok(
+			Object.values( classifyChanges( [ path ] ) ).every(
+				( value ) => ! value
+			)
+		);
+	}
+	const unit = classifyChanges( [ 'tests/js/editor-records.test.mjs' ] );
+	assert.equal( unit.quality, true );
+	for ( const flag of checks.filter( ( name ) => name !== 'quality' ) ) {
+		assert.equal( unit[ flag ], false );
+	}
+	for ( const path of [
+		'readme.txt',
+		'.codex/modularity-rules.php',
+		'tests/js/local-checks.test.mjs',
+	] ) {
+		assert.ok(
+			Object.values( classifyChanges( [ path ] ) ).every( Boolean )
+		);
+	}
+} );
+
+test( 'main integration and reusable/manual release validation always require all proofs', () => {
+	for ( const result of [
+		selectChecks(
+			'pull_request',
+			{ pull_request: { base: { ref: 'main' } } },
+			[ 'docs/setup.md' ]
+		),
+		selectChecks( 'release', {}, null, true ),
+		selectChecks(
+			'workflow_dispatch',
+			{},
+			changedPaths( 'workflow_dispatch', {} )
+		),
+		selectChecks(
+			'workflow_call',
+			{},
+			changedPaths( 'workflow_call', {} )
+		),
+	] ) {
+		assert.ok( checks.every( ( name ) => result[ name ] ) );
+	}
 } );
 
 test( 'release uploader is idempotent and refuses mismatched existing artifacts', ( t ) => {

@@ -18,7 +18,7 @@ export function failedChecks( needs ) {
 			( name ) => flags[ name ] === 'true'
 		),
 		wordpress: flags.wordpress === 'true',
-		browser: flags.browser === 'true',
+		'php-compatibility': flags.quality === 'true',
 		security: flags.security === 'true',
 		codeql: flags.codeql === 'true',
 		'oauth-contract': flags.quality === 'true',

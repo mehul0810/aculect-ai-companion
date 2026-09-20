@@ -19,6 +19,7 @@ export function checkPlan( mode ) {
 		[ 'composer', 'check:modularity' ],
 		[ 'composer', 'analyse' ],
 		[ 'composer', 'test:unit' ],
+		[ 'composer', 'lint:wpcs' ],
 		[ 'npm', 'run', 'test:js' ],
 		[ 'npm', 'run', 'build' ],
 		[ 'composer', 'audit', '--locked', '--no-dev' ],
@@ -26,7 +27,6 @@ export function checkPlan( mode ) {
 	];
 	if ( mode !== 'ci' ) {
 		plan.push(
-			[ 'composer', 'lint:wpcs' ],
 			[ 'npm', 'run', 'lint:js', '--', '--quiet' ],
 			[ 'npm', 'run', 'lint:css' ],
 			[ 'git', 'diff', '--check', 'HEAD' ]
@@ -181,7 +181,7 @@ export function main( args = process.argv.slice( 2 ) ) {
 		receipt.finishedAt = new Date().toISOString();
 		receipt.scope =
 			mode === 'release'
-				? 'Local release preflight only; hosted packaged OAuth, browser, security and compatibility gates remain required.'
+				? 'Local release preflight only; hosted packaged OAuth, security and compatibility gates remain required. Run smoke:release-ui locally when browser proof applies.'
 				: 'Development validation; not release authorization.';
 		writeFileSync( output, JSON.stringify( receipt, null, 2 ) + '\n' );
 		process.stdout.write( `Validation receipt: ${ output }\n` );

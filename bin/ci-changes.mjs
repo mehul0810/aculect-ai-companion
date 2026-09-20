@@ -7,7 +7,6 @@ export const checks = [
 	'claims',
 	'oauth',
 	'wordpress',
-	'browser',
 	'security',
 	'codeql',
 ];
@@ -20,12 +19,11 @@ const rules = [
 		checks: [ 'quality' ],
 		// Shared PHP callers can change storage or authorization behavior
 		// indirectly. Keep the conservative integration fan-out for production.
-		production: [ 'claims', 'oauth', 'wordpress', 'browser' ],
+		production: [ 'claims', 'oauth', 'wordpress' ],
 	},
 	{
 		test: /\.(?:[cm]?js|jsx|tsx?|scss|css)$|^(?:package(?:-lock)?\.json|\.nvmrc|eslint\.|webpack\.)/i,
 		checks: [ 'quality' ],
-		production: [ 'browser' ],
 	},
 	{
 		test: /^src\/Connectors\/(?:MCP|OAuth)\/|^tests\/Integration\/(?:ExecutionClaims|OAuth)\/|^tests\/Unit\/Connectors\//i,
@@ -41,15 +39,15 @@ const rules = [
 	},
 	{
 		test: /^tests\/Integration\/(?:Browser|Memory|OAuth)\//i,
-		checks: [ 'browser', 'quality' ],
+		checks: [ 'quality' ],
 	},
 	{
 		test: /^tests\/Unit\/Connectors\/OAuth\//i,
-		checks: [ 'quality', 'browser' ],
+		checks: [ 'quality' ],
 	},
 	{
 		test: /^(?:\.distignore|assets\/|languages\/)/i,
-		checks: [ 'quality', 'browser' ],
+		checks: [ 'quality' ],
 	},
 ];
 

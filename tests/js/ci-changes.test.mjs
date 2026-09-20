@@ -68,27 +68,24 @@ test( 'MCP callers cover execution claims, OAuth and native abilities', () => {
 	}
 } );
 
-test( 'frontend requires one build and packaged browser proof', () => {
+test( 'frontend requires quality and keeps browser proof local', () => {
 	for ( const path of [
 		'src/admin/connect.js',
 		'src/Admin/memory/MemoryRecordCard.js',
 	] ) {
 		const result = classifyChanges( [ path ] );
 		assert.equal( result.quality, true );
-		assert.equal( result.browser, true );
 		assert.equal( result.oauth, false );
 		assert.equal( result.claims, false );
 		assert.equal( result.wordpress, false );
 	}
 } );
 
-test( 'memory integration-only edits run the existing packaged WordPress proof', () => {
+test( 'memory integration-only edits remain in the quality lane', () => {
 	const result = classifyChanges( [
 		'tests/Integration/Memory/wp-memory-proof.php',
 	] );
-	for ( const name of [ 'quality', 'browser' ] ) {
-		assert.equal( result[ name ], true );
-	}
+	assert.equal( result.quality, true );
 } );
 
 test( 'packaged proof separates asset tooling from the proven wp-env runtime', () => {
@@ -167,7 +164,7 @@ test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing requ
 	const names = [
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',
@@ -206,7 +203,7 @@ test( 'aggregate allows only detector-authorized skips', () => {
 	const names = [
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',
@@ -231,8 +228,11 @@ test( 'aggregate allows only detector-authorized skips', () => {
 		[ 'quality' ]
 	);
 	assert.deepEqual(
-		failedChecks( { ...needs, browser: { result: 'failure' } } ),
-		[ 'browser' ]
+		failedChecks( {
+			...needs,
+			'php-compatibility': { result: 'failure' },
+		} ),
+		[ 'php-compatibility' ]
 	);
 } );
 
@@ -274,8 +274,19 @@ test( 'consolidated workflows retain supported integration proofs', () => {
 	);
 	assert.ok( ! packaged.includes( 'npm run build' ) );
 	const ci = read( 'ci.yml' );
+	const php = read( 'php-compatibility.yml' );
+	const wordpress = read( 'wordpress-abilities.yml' );
 	assert.match( ci, /pull_request:\n  workflow_dispatch:/ );
 	assert.doesNotMatch( ci, /\n  push:/ );
+	assert.doesNotMatch( ci, /name: Packaged WordPress and browser proof/ );
+	for ( const version of [ '"8.3"', '"8.4"', '"8.5"' ] ) {
+		assert.ok( php.includes( version ) );
+	}
+	assert.match( ci, /php-version: "8\.2"/ );
+	for ( const version of [ '"6.9"', '"7.0"', '"7.1"' ] ) {
+		assert.ok( wordpress.includes( version ) );
+	}
+	assert.match( ci, /name: PHP compatibility/ );
 	assert.match( ci, /name: Required CI\n    if: always\(\)/ );
 } );
 

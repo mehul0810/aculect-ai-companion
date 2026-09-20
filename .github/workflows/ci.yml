@@ -35,7 +35,6 @@ jobs:
       claims: ${{ steps.scope.outputs.claims }}
       oauth: ${{ steps.scope.outputs.oauth }}
       wordpress: ${{ steps.scope.outputs.wordpress }}
-      browser: ${{ steps.scope.outputs.browser }}
       security: ${{ steps.scope.outputs.security }}
       codeql: ${{ steps.scope.outputs.codeql }}
       artifact-name: aculect-ai-companion-package-${{ github.sha }}-${{ github.run_attempt }}
@@ -150,14 +149,11 @@ jobs:
     if: needs.quality.outputs.wordpress == 'true'
     uses: ./.github/workflows/wordpress-abilities.yml
 
-  browser:
-    name: Packaged WordPress and browser proof
+  php-compatibility:
+    name: PHP compatibility
     needs: quality
-    if: needs.quality.outputs.browser == 'true'
-    uses: ./.github/workflows/workflow-proof.yml
-    with:
-      package-sha256: ${{ needs.quality.outputs.sha256 }}
-      package-artifact-name: ${{ needs.quality.outputs.artifact-name }}
+    if: needs.quality.outputs.quality == 'true'
+    uses: ./.github/workflows/php-compatibility.yml
 
   security:
     name: PHP security scan
@@ -191,7 +187,7 @@ jobs:
   required:
     name: Required CI
     if: always()
-    needs: [quality, database, wordpress, browser, security, codeql, oauth-contract]
+    needs: [quality, database, wordpress, php-compatibility, security, codeql, oauth-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

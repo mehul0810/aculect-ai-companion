@@ -47,7 +47,7 @@
 The PHPUnit suite deliberately uses WordPress-light stubs and cannot prove the
 native Abilities API lifecycle. `.github/workflows/wordpress-abilities.yml`
 runs `tests/Integration/WordPressAbilities/contract.php` in `wp-env` against
-the supported WordPress matrix (6.8.1 compatibility, 6.9, and 7.1). The contract verifies native
+the latest three maintained WordPress releases (6.9, 7.0, and 7.1). The contract verifies native
 registration, object schemas, public exposure metadata, permission callback
 return types, and the expected Aculect read abilities. Older core versions
 without `wp_get_abilities()` report an explicit skip.
@@ -56,11 +56,11 @@ without `wp_get_abilities()` report an explicit skip.
 
 - Install the locked dependencies with `composer install` and `npm ci`, using PHP 8.2+ and the Node version in `.nvmrc`.
 - Run `npm run check:local` before pushing: Composer validation, PHP syntax, modularity, PHPStan, PHPUnit, JS tests/build, runtime dependency audits, WPCS, JS/CSS lint and diff hygiene. `npm run check:local -- --list` lists commands without running them.
-- `npm run check:ci` is the shared essential subset without style lint. CI also runs the base-relative modularity ratchet and secrets scan. Style checks remain mandatory locally, not separate hosted jobs.
+- `npm run check:ci` is the shared essential subset and includes WPCS. CI also runs the base-relative modularity ratchet and secrets scan. JavaScript and CSS style lint remain mandatory locally.
 - Run `npm run check:release` from a clean committed checkout for local release preflight. It adds the existing no-secret MCP/metadata fixtures, then builds and verifies the canonical production ZIP in an isolated temporary clone. It does not modify the developer's installed dependencies or publish anything. Git, PHP/Composer, Node/npm, Bash, rsync, zip and shasum are required; dependency installs and audits need network access.
 - Check receipts are written under ignored `artifacts/smoke/checks/`, recording the commit, dirty-state flag, tracked diff digest, completed stages and pass/fail result. Release receipts also identify the retained temporary checkout, ZIP and checksum. These receipts are evidence, not trusted attestations or permission to release.
-- Local release preflight does **not** replace the real WordPress/database/browser/OAuth matrix. Synthetic fixture smoke is not hosted connector or Cloudflare proof. The full hosted release gate remains mandatory before publication.
-- Routine PR CI targets three jobs: Quality/package, packaged OAuth, and Required CI. Relevant changes add database, native WordPress and browser proofs. Release integration PRs and full validation run the complete matrix. Branch pushes do not duplicate PR runs; manual full validation is available for branches without a PR.
+- Local release preflight does **not** replace the hosted WordPress/PHP/database/OAuth matrix. Synthetic fixture smoke is not hosted connector or Cloudflare proof. Browser/admin UI proof runs locally with `npm run smoke:release-ui` and safe disposable-site inputs when applicable.
+- Routine PR CI keeps Quality/package on the minimum PHP 8.2 (including WPCS), PHP 8.3/8.4/8.5 compatibility, packaged OAuth, and Required CI. Relevant changes add database and WordPress 6.9/7.0/7.1 proofs. Release integration PRs and full validation run the complete hosted matrix. Branch pushes do not duplicate PR runs; manual full validation is available for branches without a PR.
 - `Required CI` rejects failed, cancelled, missing and unexpectedly skipped applicable jobs. Workflow configuration is not proof that GitHub branch protection is enabled; owner approval and repository settings remain separate.
 - Broad Semgrep PHP and CodeQL analysis run in the full release gate and on their documented schedules/on demand. Secrets scanning remains part of routine Quality.
 - If `phpstan-baseline.neon` changes, the PR body must include a non-empty `PHPStan baseline justification:` line that explains the reviewed reason for the baseline delta.

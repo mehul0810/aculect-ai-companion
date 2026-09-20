@@ -28,7 +28,7 @@ test( 'every canonical package requires OAuth proof in the aggregate', () => {
 	const names = [
 		'database',
 		'wordpress',
-		'browser',
+		'php-compatibility',
 		'security',
 		'codeql',
 		'oauth-contract',

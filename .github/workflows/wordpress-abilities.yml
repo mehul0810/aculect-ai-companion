@@ -16,8 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         wordpress:
-          - "6.8.1"
           - "6.9"
+          - "7.0"
           - "7.1"
 
     steps:

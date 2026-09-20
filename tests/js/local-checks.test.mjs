@@ -17,12 +17,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkPlan } from '../../bin/check-project.mjs';
 
-test( 'local checks include every CI command plus local style and diff checks', () => {
+test( 'local checks include every CI command plus asset style and diff checks', () => {
 	const ci = checkPlan( 'ci' );
 	assert.deepEqual( checkPlan( 'local' ).slice( 0, ci.length ), ci );
-	assert.ok(
-		checkPlan( 'local' ).some( ( cmd ) => cmd.includes( 'lint:wpcs' ) )
-	);
+	assert.ok( ci.some( ( cmd ) => cmd.includes( 'lint:wpcs' ) ) );
 	assert.ok(
 		checkPlan( 'local' ).some( ( cmd ) => cmd.includes( 'lint:css' ) )
 	);
@@ -30,6 +28,16 @@ test( 'local checks include every CI command plus local style and diff checks', 
 	assert.ok( ci.some( ( cmd ) => cmd.includes( 'test:unit' ) ) );
 	assert.ok( ci.some( ( cmd ) => cmd.includes( 'audit' ) ) );
 	assert.throws( () => checkPlan( 'skip-oauth' ) );
+} );
+
+test( 'local browser proof remains an explicit credentialed smoke command', () => {
+	const packageJson = JSON.parse(
+		readFileSync( new URL( '../../package.json', import.meta.url ), 'utf8' )
+	);
+	assert.equal(
+		packageJson.scripts[ 'smoke:release-ui' ],
+		'node scripts/smoke/release-ui.mjs'
+	);
 } );
 
 test( 'release preflight includes local checks and no-secret smoke, never publication', () => {

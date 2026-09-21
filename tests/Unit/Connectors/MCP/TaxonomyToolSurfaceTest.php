@@ -60,7 +60,10 @@ final class TaxonomyToolSurfaceTest extends TestCase {
 		self::assertSame( array( 'post_id', 'taxonomy', 'terms' ), $assign_schema['required'] );
 		self::assertSame( 'array', $assign_schema['properties']['terms']['type'] );
 		self::assertSame( 100, $assign_schema['properties']['terms']['maxItems'] );
-		self::assertSame( 'integer', $assign_schema['properties']['terms']['items']['type'] );
+		self::assertSame( array( 'integer', 'string' ), $assign_schema['properties']['terms']['items']['type'] );
+		self::assertSame( 1, $assign_schema['properties']['terms']['items']['minimum'] );
+		self::assertSame( 1, $assign_schema['properties']['terms']['items']['minLength'] );
+		self::assertSame( 200, $assign_schema['properties']['terms']['items']['maxLength'] );
 		self::assertArrayHasKey( 'expected_modified_gmt', $assign_schema['properties'] );
 	}
 

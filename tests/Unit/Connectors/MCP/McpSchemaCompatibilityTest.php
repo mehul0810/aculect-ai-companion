@@ -257,6 +257,32 @@ final class McpSchemaCompatibilityTest extends TestCase {
 		self::assertTrue( $shared_result['valid'] );
 	}
 
+	public function test_object_graph_validation_emits_no_php_deprecations(): void {
+		$deprecations = array();
+		$handler      = static function ( int $severity, string $message ) use ( &$deprecations ): bool {
+			if ( E_DEPRECATED === $severity ) {
+				$deprecations[] = $message;
+				return true;
+			}
+
+			return false;
+		};
+
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Regression test captures PHP 8.5 deprecations before they corrupt MCP JSON.
+		set_error_handler( $handler );
+		try {
+			$result = ( new McpSchemaCompatibility() )->prepare(
+				array( 'properties' => (object) array( 'title' => (object) array( 'type' => 'string' ) ) ),
+				McpProtocolVersion::CURRENT
+			);
+		} finally {
+			restore_error_handler();
+		}
+
+		self::assertTrue( $result['valid'] );
+		self::assertSame( array(), $deprecations );
+	}
+
 	public function test_external_references_fail_in_every_supported_subschema_position(): void {
 		$external = array( '$ref' => 'https://example.com/schema.json' );
 		$schemas  = array();

@@ -51,10 +51,12 @@ final class TaxonomyAbilityModules {
 					),
 					'terms'                 => array(
 						'type'        => 'array',
-						'description' => 'Existing term IDs. Use taxonomy.list_terms to discover IDs, or an empty array to clear this taxonomy from the content item.',
+						'description' => 'Existing term IDs or exact term slugs. Use taxonomy.list_terms to discover values, or an empty array to clear this taxonomy from the content item.',
 						'items'       => array(
-							'type'    => 'integer',
-							'minimum' => 1,
+							'type'      => array( 'integer', 'string' ),
+							'minimum'   => 1,
+							'minLength' => 1,
+							'maxLength' => 200,
 						),
 						'maxItems'    => 100,
 					),

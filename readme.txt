@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.8.0
+Stable tag: 0.8.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -254,7 +254,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.8.0 release notes.
+8. Changelog tab with the current 0.8.1 release notes.
 
 == Development ==
 
@@ -282,6 +282,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.8.1 =
+
+* Fixed PHP 8.5 deprecations in MCP schema traversal so protocol responses remain valid JSON.
+* Added no-store and no-cache headers to every OAuth token response, including rejected requests.
+* Added support for assigning existing taxonomy terms by exact slug as well as term ID; terms are never created implicitly.
+* Updated bundled development dependencies to patched adm-zip and SVGO releases.
 
 = 0.8.0 =
 
@@ -474,6 +481,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.8.1 =
+
+Improves PHP 8.5 MCP compatibility, OAuth response cache safety, taxonomy assignment, and dependency security without changing the established OAuth flow.
 
 = 0.8.0 =
 

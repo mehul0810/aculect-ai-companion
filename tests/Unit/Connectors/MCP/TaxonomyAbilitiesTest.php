@@ -105,6 +105,41 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( array( 1, 2 ), array_column( $GLOBALS['aculect_ai_companion_test_object_terms'][200], 'term_id' ) );
 	}
 
+	public function test_assign_terms_treats_numeric_strings_as_slugs_and_deduplicates_mixed_values(): void {
+		$numeric_slug = new \WP_Term(
+			array(
+				'term_id'  => 3,
+				'name'     => '2026',
+				'slug'     => '2026',
+				'taxonomy' => 'product_group',
+			)
+		);
+		$GLOBALS['aculect_ai_companion_test_terms']['product_group'][3] = $numeric_slug;
+
+		$result = ( new TaxonomyAssignmentAbilities() )->assign_terms(
+			array(
+				'post_id'  => 200,
+				'taxonomy' => 'product_group',
+				'terms'    => array( '2026', 1, 'news', 1 ),
+			)
+		);
+
+		self::assertSame( 'success', $result['status'] );
+		self::assertSame( array( 1, 3 ), $result['term_ids'] );
+	}
+
+	public function test_assign_terms_rejects_malformed_term_identifiers(): void {
+		$result = ( new TaxonomyAssignmentAbilities() )->assign_terms(
+			array(
+				'post_id'  => 200,
+				'taxonomy' => 'product_group',
+				'terms'    => array( array( 'slug' => 'guides' ) ),
+			)
+		);
+
+		self::assertSame( 'invalid_terms', $result['error'] );
+	}
+
 	public function test_assign_terms_empty_list_clears_taxonomy(): void {
 		$result = ( new TaxonomyAssignmentAbilities() )->assign_terms(
 			array(

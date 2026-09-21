@@ -103,6 +103,18 @@ final class TokenControllerTest extends TestCase {
 		self::assertSame( 'no-cache', $response->header( 'Pragma' ) );
 	}
 
+	public function test_all_token_responses_override_cacheable_headers(): void {
+		$response = new WP_REST_Response( array( 'access_token' => 'synthetic-test-token' ), 200 );
+		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Pragma', 'cache' );
+
+		$result = $this->invokePrivate( new TokenController(), 'with_no_store_headers', array( $response ) );
+
+		self::assertSame( $response, $result );
+		self::assertSame( 'no-store', $result->header( 'Cache-Control' ) );
+		self::assertSame( 'no-cache', $result->header( 'Pragma' ) );
+	}
+
 	public function test_server_error_description_does_not_expose_exception_details(): void {
 		$description = $this->invokePrivate( new TokenController(), 'server_error_description' );
 

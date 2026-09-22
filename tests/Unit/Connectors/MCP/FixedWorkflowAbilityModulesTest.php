@@ -45,7 +45,7 @@ final class FixedWorkflowAbilityModulesTest extends TestCase {
 			array_column( $projection, 'id' )
 		);
 		self::assertSame(
-			'6b7c49c09d066a388baf4ad813610d568f1886a5fc39a5b8aec979f7f36e18f1',
+			'4d9589435c42ff673a588d132e0f5e46a056abcfb20aad0fb470cf85eeaa5690',
 			hash( 'sha256', wp_json_encode( $projection, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) )
 		);
 	}

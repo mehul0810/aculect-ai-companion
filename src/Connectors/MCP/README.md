@@ -217,9 +217,14 @@ existing terms; term creation remains handled by `taxonomy_create_term`.
 
 `taxonomy_assign_terms` exposes that same assignment behavior as a dedicated
 tool for an existing content item. It accepts one post ID, one taxonomy slug,
-and existing term IDs; an empty `terms` array intentionally clears the
+and existing term IDs or exact canonical term slugs; an empty `terms` array intentionally clears the
 selected taxonomy. The tool preserves the content write capability checks,
 dry-run preview, and `expected_modified_gmt` conflict protection.
+
+The `content_workflow_create_draft` and `content_workflow_update_post` tools
+accept the same mixed ID/slug arrays. Slugs must match their stored canonical
+form exactly; display names, surrounding whitespace, and other noncanonical
+strings are rejected before assignment. Numeric strings are slugs, not IDs.
 
 Content create and update tools can assign an existing image attachment as the
 featured image through `featured_media`. Use media upload/list tools first when

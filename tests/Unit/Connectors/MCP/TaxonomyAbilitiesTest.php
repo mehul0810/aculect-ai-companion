@@ -140,6 +140,21 @@ final class TaxonomyAbilitiesTest extends TestCase {
 		self::assertSame( 'invalid_terms', $result['error'] );
 	}
 
+	public function test_noncanonical_slugs_are_rejected_without_writes(): void {
+		$before = $GLOBALS['aculect_ai_companion_test_object_terms'];
+		foreach ( array( ' News! ', 'NEWS', ' news', 'news ', '' ) as $slug ) {
+			$result = ( new TaxonomyAssignmentAbilities() )->assign_terms(
+				array(
+					'post_id'  => 200,
+					'taxonomy' => 'product_group',
+					'terms'    => array( $slug ),
+				)
+			);
+			self::assertSame( 'invalid_terms', $result['error'] );
+			self::assertSame( $before, $GLOBALS['aculect_ai_companion_test_object_terms'] );
+		}
+	}
+
 	public function test_assign_terms_empty_list_clears_taxonomy(): void {
 		$result = ( new TaxonomyAssignmentAbilities() )->assign_terms(
 			array(

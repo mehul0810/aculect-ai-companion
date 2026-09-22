@@ -67,6 +67,21 @@ final class TaxonomyToolSurfaceTest extends TestCase {
 		self::assertArrayHasKey( 'expected_modified_gmt', $assign_schema['properties'] );
 	}
 
+	public function test_workflow_taxonomy_schemas_accept_slugs_and_reject_invalid_types(): void {
+		foreach ( array( 'content_workflow_create_draft', 'content_workflow_update_post' ) as $tool ) {
+			$schema    = ( new AbilitiesRegistry() )->input_schema( $tool );
+			$taxonomy  = $schema['properties']['taxonomies'];
+			$wrapper   = array(
+				'type'       => 'object',
+				'properties' => array( 'taxonomies' => $taxonomy ),
+			);
+			$validator = new \Aculect\AICompanion\Connectors\MCP\McpInputValidator();
+			self::assertNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( 1, 'news', '2026' ) ) ), $wrapper ) );
+			self::assertNotNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( true ) ) ), $wrapper ) );
+			self::assertNotNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( '' ) ) ), $wrapper ) );
+		}
+	}
+
 	public function test_controller_manifest_contains_taxonomy_term_tools(): void {
 		$manifest = ( new McpController() )->tool_manifest_for_user( 1 );
 		$names    = array_column( $manifest['tools'], 'name' );

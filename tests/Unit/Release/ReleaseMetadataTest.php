@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  * Verifies release metadata stays synchronized across package surfaces.
  */
 final class ReleaseMetadataTest extends TestCase {
-	private const EXPECTED_VERSION = '0.8.0';
+	private const EXPECTED_VERSION = '0.8.1';
 
 	public function test_release_metadata_is_synchronized_for_current_version(): void {
 		$root       = dirname( __DIR__, 3 );
@@ -45,7 +45,7 @@ final class ReleaseMetadataTest extends TestCase {
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
 		self::assertSame( self::EXPECTED_VERSION, $release_version );
 		self::assertArrayHasKey( $release_version, $log );
-		self::assertSame( '2026-08-20', $log[ $release_version ]['date'] ?? '' );
+		self::assertSame( '2026-09-21', $log[ $release_version ]['date'] ?? '' );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
@@ -62,15 +62,15 @@ final class ReleaseMetadataTest extends TestCase {
 				self::assertStringContainsString( '* ' . $note, $readme );
 			}
 		}
-		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nExisting OAuth clients are issuer-bound in resumable batches.", $readme );
+		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nImproves PHP 8.5 MCP compatibility, OAuth response cache safety, taxonomy assignment, and dependency security without changing the established OAuth flow.", $readme );
+		self::assertStringContainsString( "= 0.8.0 =\n\nExisting OAuth clients are issuer-bound in resumable batches.", $readme );
 		self::assertStringContainsString( 'Registration and credential issuance stay unavailable until verified.', $readme );
 		self::assertStringContainsString( 'Changing the external site URL does not rebind credentials and may require reconnecting assistants.', $readme );
-		self::assertStringContainsString( '`0.7.2` is the current production release', $governance );
-		self::assertStringContainsString( '`0.8.0` is the final metadata candidate on `release/0.8.0`', $governance );
-		self::assertStringContainsString( 'every reviewed 0.7.3 change is inherited without replay or tree drift', $governance );
-		self::assertStringContainsString( 'Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`', $governance );
-		self::assertStringContainsString( 'synchronized to the `0.8.0` metadata candidate', $governance );
-		self::assertStringContainsString( 'Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.', $governance );
+		self::assertStringContainsString( '`0.8.0` is the current production release at tag and `main` commit `ddf11b49b8638c23793eb87a8079fa0e63b9f3fc`.', $governance );
+		self::assertStringContainsString( '`0.8.1` is the maintenance candidate on `release/0.8.1`, based on the exact 0.8.0 production commit.', $governance );
+		self::assertStringContainsString( 'Production remains `0.8.0` until the owner separately authorizes the exact tag and publication workflow.', $governance );
+		self::assertStringContainsString( 'Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.1.', $governance );
+		self::assertStringContainsString( 'must remain synchronized to `0.8.1`', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

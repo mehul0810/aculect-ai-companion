@@ -1,6 +1,6 @@
 {
   "name": "aculect-ai-companion",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Aculect AI Companion WordPress plugin assets tooling",
   "scripts": {
@@ -37,7 +37,7 @@
   },
   "overrides": {
     "@puppeteer/browsers": "^3.2.1",
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "copy-webpack-plugin": {
       "serialize-javascript": "^7.0.5"
     },

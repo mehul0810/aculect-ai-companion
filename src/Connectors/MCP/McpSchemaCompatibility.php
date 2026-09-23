@@ -116,7 +116,7 @@ final class McpSchemaCompatibility {
 
 			if ( $leaving ) {
 				if ( $current instanceof \stdClass ) {
-					$seen_objects->detach( $current );
+					$seen_objects->offsetUnset( $current );
 				} elseif ( '' !== $identity ) {
 					unset( $seen_references[ $identity ] );
 				}
@@ -149,11 +149,11 @@ final class McpSchemaCompatibility {
 			}
 
 			if ( $current instanceof \stdClass ) {
-				if ( $seen_objects->contains( $current ) ) {
+				if ( $seen_objects->offsetExists( $current ) ) {
 					return $this->error( 'invalid_schema', 'The schema must not contain recursive object references.' );
 				}
 
-				$seen_objects->attach( $current );
+				$seen_objects->offsetSet( $current );
 				$pending[] = array( $current, $depth, true, '' );
 				$children  = get_object_vars( $current );
 			} elseif ( is_array( $current ) ) {

@@ -60,8 +60,26 @@ final class TaxonomyToolSurfaceTest extends TestCase {
 		self::assertSame( array( 'post_id', 'taxonomy', 'terms' ), $assign_schema['required'] );
 		self::assertSame( 'array', $assign_schema['properties']['terms']['type'] );
 		self::assertSame( 100, $assign_schema['properties']['terms']['maxItems'] );
-		self::assertSame( 'integer', $assign_schema['properties']['terms']['items']['type'] );
+		self::assertSame( array( 'integer', 'string' ), $assign_schema['properties']['terms']['items']['type'] );
+		self::assertSame( 1, $assign_schema['properties']['terms']['items']['minimum'] );
+		self::assertSame( 1, $assign_schema['properties']['terms']['items']['minLength'] );
+		self::assertSame( 200, $assign_schema['properties']['terms']['items']['maxLength'] );
 		self::assertArrayHasKey( 'expected_modified_gmt', $assign_schema['properties'] );
+	}
+
+	public function test_workflow_taxonomy_schemas_accept_slugs_and_reject_invalid_types(): void {
+		foreach ( array( 'content_workflow_create_draft', 'content_workflow_update_post' ) as $tool ) {
+			$schema    = ( new AbilitiesRegistry() )->input_schema( $tool );
+			$taxonomy  = $schema['properties']['taxonomies'];
+			$wrapper   = array(
+				'type'       => 'object',
+				'properties' => array( 'taxonomies' => $taxonomy ),
+			);
+			$validator = new \Aculect\AICompanion\Connectors\MCP\McpInputValidator();
+			self::assertNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( 1, 'news', '2026' ) ) ), $wrapper ) );
+			self::assertNotNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( true ) ) ), $wrapper ) );
+			self::assertNotNull( $validator->arguments_error( array( 'taxonomies' => array( 'category' => array( '' ) ) ), $wrapper ) );
+		}
 	}
 
 	public function test_controller_manifest_contains_taxonomy_term_tools(): void {

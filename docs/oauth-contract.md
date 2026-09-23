@@ -28,6 +28,10 @@ On 19 September 2026 the owner deferred token-error cache-header hardening to is
 
 Taxonomy assignment remains term-ID-only in 0.8.0. Slug support is separately tracked in #532 for 0.8.1.
 
+### 0.8.1 resolution
+
+The 0.8.1 candidate removes the version-limited cache-header exception: successful and rejected token responses are normalized to `Cache-Control: no-store` and `Pragma: no-cache`. Taxonomy assignment accepts an existing positive term ID or exact term slug, while retaining the no-implicit-creation boundary. Neither change alters discovery, registration, authorization, consent, PKCE, token issuance, refresh, revocation, scopes, or client storage.
+
 ## Enforcement and scope
 
 `oauth-contract.yml` tests the canonical ZIP in disposable WordPress using synthetic users and a local callback. CI's Required CI aggregate rejects missing/failed/cancelled/skipped OAuth proof whenever a package is required. Both beta asset attachment and production deployment depend directly on the same exact-package proof.

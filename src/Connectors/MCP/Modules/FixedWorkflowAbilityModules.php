@@ -449,7 +449,7 @@ final class FixedWorkflowAbilityModules {
 
 	/** @return array<string, mixed> */
 	private function taxonomy_assignment_schema( string $description ): array {
-		return array( 'type' => 'object', 'description' => $description . ' Each taxonomy value should be an array of existing term IDs.', 'additionalProperties' => array( 'type' => 'array', 'description' => 'Existing term IDs for one taxonomy.', 'items' => array( 'type' => 'integer', 'minimum' => 1 ), 'maxItems' => 100 ) );
+		return array( 'type' => 'object', 'description' => $description . ' Each taxonomy value should be an array of existing term IDs or exact term slugs.', 'additionalProperties' => array( 'type' => 'array', 'description' => 'Existing term IDs or exact term slugs for one taxonomy.', 'items' => array( 'type' => array( 'integer', 'string' ), 'minimum' => 1, 'minLength' => 1, 'maxLength' => 200 ), 'maxItems' => 100 ) );
 	}
 }
 // phpcs:enable

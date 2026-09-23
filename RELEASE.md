@@ -13,14 +13,12 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.7.2` is the current production release at tag and `main` commit `16d8e7776eca4a6cff1d569f595c973046be7620`.
-- `0.8.0` is the final metadata candidate on `release/0.8.0`, which was created at exact superseded `release/0.7.3` tip `3c9108c5a518cd64d0681e052e2a0f8296f2e498` so every reviewed 0.7.3 change is inherited without replay or tree drift.
-- The inherited scope includes safe WordPress Abilities controls, MCP 2026-07-28 transport and schema compatibility, provider interoperability, dependency/tooling remediation, and bounded reliability hardening.
-- The train includes packaged WordPress 7.1 final compatibility proof for native Abilities lifecycle execution, client-safe schema preparation, editor integration, and Connect keyboard behavior.
-- The release branch includes the reviewed OAuth issuer/DCR boundary.
-- Keep MCP Apps embedded UI and `ui://` product scope in `0.9.0`; do not claim it in 0.8.0.
-- Bounded site operations in this train cover existing classic-menu items, existing registered scalar fields, anonymous public-page inspection, native targeted maintenance and paginated official checksum comparisons. Their contracts, required confirmations and exclusions are recorded in `docs/0.8.0-site-operations.md`; they do not include block navigation writes, complex field builders, global cache purges or file repair.
-- The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog are synchronized to the `0.8.0` metadata candidate. Production remains `0.7.2` until the owner separately authorizes the exact tag and publication workflow.
+- `0.8.0` is the current production release at tag and `main` commit `ddf11b49b8638c23793eb87a8079fa0e63b9f3fc`.
+- `0.8.1` is the maintenance candidate on `release/0.8.1`, based on the exact 0.8.0 production commit.
+- The candidate fixes PHP 8.5 MCP schema traversal, requires no-store/no-cache headers on every OAuth token response, accepts existing taxonomy terms by exact slug or ID without creating terms, and includes patched adm-zip and SVGO development dependencies.
+- Preserve the reviewed 0.8.0 OAuth issuer/DCR boundary. These maintenance fixes do not authorize changes to discovery, registration, authorization, consent, PKCE, token issuance, refresh, revocation, scopes, or client storage.
+- Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.1.
+- The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog must remain synchronized to `0.8.1`. Production remains `0.8.0` until the owner separately authorizes the exact tag and publication workflow.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.
@@ -30,7 +28,7 @@
 - Local preparation starts with `npm run check:release` from a clean committed checkout. Its receipt pins local checks and the production ZIP; it is preflight evidence, not a complete release decision or hosted-connector proof.
 - Browser/admin UI proof is local: run `npm run smoke:release-ui` with safe disposable-site inputs when applicable and record its artifact. Hosted CI retains WPCS, the minimum PHP 8.2 quality gate, PHP 8.3/8.4/8.5 compatibility, WordPress 6.9/7.0/7.1, security, database and exact-package OAuth gates.
 - Routine PR checks are consolidated and risk-selected; full validation remains required for release integration and publication. The full gate must build one canonical artifact and pass that exact artifact to packaged proofs and publication. No tag/release/deployment is performed by local check commands or manual CI validation.
-- The 0.8.0 OAuth gate includes the owner's explicit rejected-token cache-header exception, documented in `docs/oauth-contract.md` and tracked in #531 for 0.8.1. Report it as deferred, not verified. Successful-token headers and every functional OAuth assertion remain mandatory.
+- The 0.8.0 rejected-token cache-header exception is historical and does not apply to 0.8.1. Every successful and rejected token response must include `Cache-Control: no-store` and `Pragma: no-cache`; every functional OAuth assertion remains mandatory.
 - The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
 - OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.
 - Security/privacy

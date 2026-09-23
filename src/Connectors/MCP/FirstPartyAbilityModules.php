@@ -12,9 +12,7 @@ use RuntimeException;
  * Builds first-party MCP ability modules.
  */
 final class FirstPartyAbilityModules {
-
 	private const MAX_SERIALIZED_CONTENT_BYTES = 300000;
-
 	private readonly AbilityModuleFactory $module_factory;
 
 	public function __construct( ?AbilityModuleFactory $module_factory = null ) {
@@ -2369,13 +2367,15 @@ final class FirstPartyAbilityModules {
 	private function taxonomy_assignment_schema( string $description ): array {
 		return array(
 			'type'                 => 'object',
-			'description'          => $description . ' Each taxonomy value should be an array of existing term IDs.',
+			'description'          => $description . ' Each taxonomy value should be an array of existing term IDs or exact term slugs.',
 			'additionalProperties' => array(
 				'type'        => 'array',
-				'description' => 'Existing term IDs for one taxonomy.',
+				'description' => 'Existing term IDs or exact term slugs for one taxonomy.',
 				'items'       => array(
-					'type'    => 'integer',
-					'minimum' => 1,
+					'type'      => array( 'integer', 'string' ),
+					'minimum'   => 1,
+					'minLength' => 1,
+					'maxLength' => 200,
 				),
 				'maxItems'    => 100,
 			),

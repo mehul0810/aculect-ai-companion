@@ -166,7 +166,7 @@ final class TokenController {
 				$timeline_auth
 			);
 
-			return Psr7Bridge::to_rest_response( $response );
+			return $this->with_no_store_headers( Psr7Bridge::to_rest_response( $response ) );
 		} catch ( OAuthServerException $exception ) {
 			$refresh_context = $this->refresh_rejection_context( $request, $exception->getErrorType() );
 			$timeline_auth   = $this->correlate_timeline_auth( $timeline_auth, $refresh_context );
@@ -192,7 +192,7 @@ final class TokenController {
 				),
 				$timeline_auth
 			);
-			return Psr7Bridge::to_rest_response( $exception->generateHttpResponse( Psr7Bridge::response() ) );
+			return $this->with_no_store_headers( Psr7Bridge::to_rest_response( $exception->generateHttpResponse( Psr7Bridge::response() ) ) );
 		} catch ( Exception $exception ) {
 			unset( $exception );
 			$logger->error(
@@ -468,6 +468,15 @@ final class TokenController {
 			),
 			$status
 		);
+		return $this->with_no_store_headers( $response );
+	}
+
+	/**
+	 * Prevent every token endpoint response from being stored by clients or intermediaries.
+	 *
+	 * @param WP_REST_Response $response Token endpoint response.
+	 */
+	private function with_no_store_headers( WP_REST_Response $response ): WP_REST_Response {
 		$response->header( 'Cache-Control', 'no-store' );
 		$response->header( 'Pragma', 'no-cache' );
 

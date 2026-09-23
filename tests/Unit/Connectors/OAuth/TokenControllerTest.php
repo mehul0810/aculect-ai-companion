@@ -103,6 +103,35 @@ final class TokenControllerTest extends TestCase {
 		self::assertSame( 'no-cache', $response->header( 'Pragma' ) );
 	}
 
+	public function test_all_token_responses_override_cacheable_headers(): void {
+		$response = new WP_REST_Response( array( 'access_token' => 'synthetic-test-token' ), 200 );
+		$response->header( 'Cache-Control', 'public, max-age=3600' );
+		$response->header( 'Pragma', 'cache' );
+
+		$result = $this->invokePrivate( new TokenController(), 'with_no_store_headers', array( $response ) );
+
+		self::assertSame( $response, $result );
+		self::assertSame( 'no-store', $result->header( 'Cache-Control' ) );
+		self::assertSame( 'no-cache', $result->header( 'Pragma' ) );
+	}
+
+	public function test_rate_limit_response_preserves_retry_and_prevents_caching(): void {
+		$data     = array(
+			'code' => \Aculect\AICompanion\Connectors\OAuth\RateLimiter::ERROR_CODE,
+			'data' => array( 'retry_after' => 42 ),
+		);
+		$response = new WP_REST_Response( $data, 429 );
+		$result   = \Aculect\AICompanion\Connectors\OAuth\RateLimiter::filter_retry_after_header( $response );
+		self::assertSame( 429, $result->get_status() );
+		self::assertSame( $data, $result->get_data() );
+		self::assertSame( '42', $result->header( 'Retry-After' ) );
+		self::assertSame( 'no-store', $result->header( 'Cache-Control' ) );
+		self::assertSame( 'no-cache', $result->header( 'Pragma' ) );
+		$unrelated = new WP_REST_Response( array( 'code' => 'unrelated' ), 429 );
+		self::assertSame( $unrelated, \Aculect\AICompanion\Connectors\OAuth\RateLimiter::filter_retry_after_header( $unrelated ) );
+		self::assertNotSame( 'no-store', $unrelated->header( 'Cache-Control' ) );
+	}
+
 	public function test_server_error_description_does_not_expose_exception_details(): void {
 		$description = $this->invokePrivate( new TokenController(), 'server_error_description' );
 

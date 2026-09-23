@@ -106,7 +106,7 @@ final class McpLocalFixtureTest extends TestCase {
 		self::assertFalse( $call['result']['isError'] ?? false );
 		$payload = json_decode( (string) ( $call['result']['content'][0]['text'] ?? '' ), true );
 		self::assertIsArray( $payload );
-		self::assertSame( '0.8.0', $payload['aculect_ai_companion_version'] ?? null );
+		self::assertSame( '0.8.1', $payload['aculect_ai_companion_version'] ?? null );
 		self::assertSame( 'Aculect Local MCP Fixture', $payload['name'] ?? null );
 	}
 

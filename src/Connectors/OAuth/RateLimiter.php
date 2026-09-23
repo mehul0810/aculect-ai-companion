@@ -99,6 +99,8 @@ final class RateLimiter {
 
 		$retry_after = absint( $data['data']['retry_after'] ?? 60 );
 		$response->header( 'Retry-After', (string) max( 1, $retry_after ) );
+		$response->header( 'Cache-Control', 'no-store' );
+		$response->header( 'Pragma', 'no-cache' );
 
 		return $response;
 	}

@@ -243,7 +243,10 @@ abstract class AbstractAbilityService {
 				$term = get_term( absint( $candidate ), $taxonomy_name );
 			} elseif ( is_string( $candidate ) ) {
 				$slug = sanitize_title( $candidate );
-				$term = '' === $slug ? null : get_term_by( 'slug', $slug, $taxonomy_name );
+				if ( '' === $slug || $candidate !== $slug ) {
+					return array( 'error' => $this->error( 'invalid_terms', 'Provide an exact existing term slug.' ) );
+				}
+				$term = get_term_by( 'slug', $slug, $taxonomy_name );
 			} else {
 				return array( 'error' => $this->error( 'invalid_terms', 'Taxonomy terms must be existing term IDs or slugs.' ) );
 			}

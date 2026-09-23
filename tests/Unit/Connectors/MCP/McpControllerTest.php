@@ -1467,7 +1467,7 @@ final class McpControllerTest extends TestCase {
 		self::assertArrayHasKey( 'taxonomies', $create_schema['properties'] );
 		self::assertIsArray( $create_schema['properties']['taxonomies']['additionalProperties'] );
 		self::assertSame( 'array', $create_schema['properties']['taxonomies']['additionalProperties']['type'] );
-		self::assertSame( 'integer', $create_schema['properties']['taxonomies']['additionalProperties']['items']['type'] );
+		self::assertSame( array( 'integer', 'string' ), $create_schema['properties']['taxonomies']['additionalProperties']['items']['type'] );
 		self::assertArrayHasKey( 'date', $create_schema['properties'] );
 		self::assertSame( 300000, $create_schema['properties']['content']['maxLength'] );
 		self::assertSame( array( 'draft', 'future', 'pending', 'private', 'publish', 'trash' ), $create_schema['properties']['status']['enum'] );

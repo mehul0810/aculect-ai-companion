@@ -13,12 +13,12 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.8.0` is the current production release at tag and `main` commit `ddf11b49b8638c23793eb87a8079fa0e63b9f3fc`.
-- `0.8.1` is the maintenance candidate on `release/0.8.1`, based on the exact 0.8.0 production commit.
+- `0.8.0` remains the latest published production release; its release tag points to original production commit `ddf11b49b8638c23793eb87a8079fa0e63b9f3fc`.
+- `0.8.1` is the maintenance candidate, with `2026-09-23` as its planned publication date. A changelog date records the plan, not a completed release.
 - The candidate fixes PHP 8.5 MCP schema traversal, requires no-store/no-cache headers on every OAuth token response, accepts existing taxonomy terms by exact slug or ID without creating terms, and includes patched adm-zip and SVGO development dependencies.
 - Preserve the reviewed 0.8.0 OAuth issuer/DCR boundary. These maintenance fixes do not authorize changes to discovery, registration, authorization, consent, PKCE, token issuance, refresh, revocation, scopes, or client storage.
 - Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.1.
-- The plugin header, runtime constant, package metadata, WordPress.org stable tag, changelog, and translation catalog must remain synchronized to `0.8.1`. Production remains `0.8.0` until the owner separately authorizes the exact tag and publication workflow.
+- Candidate package metadata may target `0.8.1`; production remains `0.8.0` until the owner explicitly approves the exact tag and publication workflow. Never imply that a planned date or candidate metadata means production was released.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.

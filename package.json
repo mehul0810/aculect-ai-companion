@@ -15,6 +15,7 @@
     "smoke:mcp-local": "node scripts/smoke/mcp-local.mjs",
     "smoke:mcp-live-client": "node scripts/smoke/mcp-live-client.mjs",
     "smoke:mcp-sdk": "node scripts/smoke/mcp-sdk-client.mjs",
+    "smoke:mcp-apps-ui": "node tests/Integration/Browser/mcp-apps-site-info.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
     "smoke:oauth-browser": "node tests/Integration/Browser/oauth-contract.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",

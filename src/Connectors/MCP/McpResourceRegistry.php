@@ -19,33 +19,43 @@ final class McpResourceRegistry {
 	/**
 	 * Return available MCP resources.
 	 *
+	 * @param bool $mcp_apps_enabled Whether the client negotiated MCP Apps.
 	 * @return array{resources: list<array<string, string>>}
 	 */
-	public function list_resources(): array {
-		return array(
-			'resources' => array(
-				$this->resource( 'aculect://capabilities/directory', 'Aculect Capability Directory', 'Current WordPress MCP abilities, workflows, intelligence surfaces, and blockers.' ),
-				$this->resource( 'aculect://site/summary', 'Aculect Site Summary', 'Stable site, theme, locale, and connector context.' ),
-				$this->resource( 'aculect://site-editor/context', 'Aculect Site Editor Context', 'Theme-aware Appearance > Editor context, templates, template parts, global settings, styles, blocks, and patterns.' ),
-				$this->resource( 'aculect://admin/menu', 'Aculect Admin Menu Context', 'Visible WordPress admin navigation, settings surfaces, and safe task routing metadata.' ),
-				$this->resource( 'aculect://content/model', 'Aculect Content Model', 'Content types, taxonomy, block, pattern, and authoring constraints.' ),
-				$this->resource( 'aculect://brand/profile', 'Aculect Brand Profile', 'Saved and detected brand guidance for content and design decisions.' ),
-				$this->resource( 'aculect://workflow/guides', 'Aculect Workflow Guides', 'Compact policy-aware workflow guide summaries.' ),
-				$this->resource( 'aculect://memory/approved', 'Aculect Approved Memory', 'Approved durable local memory items used by future workflows.' ),
-			),
+	public function list_resources( bool $mcp_apps_enabled = false ): array {
+		$resources = array(
+			$this->resource( 'aculect://capabilities/directory', 'Aculect Capability Directory', 'Current WordPress MCP abilities, workflows, intelligence surfaces, and blockers.' ),
+			$this->resource( 'aculect://site/summary', 'Aculect Site Summary', 'Stable site, theme, locale, and connector context.' ),
+			$this->resource( 'aculect://site-editor/context', 'Aculect Site Editor Context', 'Theme-aware Appearance > Editor context, templates, template parts, global settings, styles, blocks, and patterns.' ),
+			$this->resource( 'aculect://admin/menu', 'Aculect Admin Menu Context', 'Visible WordPress admin navigation, settings surfaces, and safe task routing metadata.' ),
+			$this->resource( 'aculect://content/model', 'Aculect Content Model', 'Content types, taxonomy, block, pattern, and authoring constraints.' ),
+			$this->resource( 'aculect://brand/profile', 'Aculect Brand Profile', 'Saved and detected brand guidance for content and design decisions.' ),
+			$this->resource( 'aculect://workflow/guides', 'Aculect Workflow Guides', 'Compact policy-aware workflow guide summaries.' ),
+			$this->resource( 'aculect://memory/approved', 'Aculect Approved Memory', 'Approved durable local memory items used by future workflows.' ),
 		);
+		if ( $mcp_apps_enabled ) {
+			$resources[] = ( new McpAppsSiteInfoResource() )->descriptor();
+		}
+
+		return array( 'resources' => $resources );
 	}
 
 	/**
 	 * Read one MCP resource.
 	 *
 	 * @param array<string, mixed> $args JSON-RPC params.
+	 * @param bool                 $mcp_apps_enabled Whether the client negotiated MCP Apps.
 	 * @return array<string, mixed>
 	 */
-	public function read_resource( array $args ): array {
+	public function read_resource( array $args, bool $mcp_apps_enabled = false ): array {
 		$uri = is_scalar( $args['uri'] ?? null ) ? (string) $args['uri'] : '';
 		if ( '' === $uri ) {
 			return $this->error( 'invalid_resource_uri', 'Provide a resource URI returned by resources/list.' );
+		}
+		if ( McpAppsNegotiation::SITE_INFO_URI === $uri ) {
+			return $mcp_apps_enabled
+				? ( new McpAppsSiteInfoResource() )->read()
+				: $this->unknown_resource( $uri );
 		}
 
 		$data = match ( $uri ) {

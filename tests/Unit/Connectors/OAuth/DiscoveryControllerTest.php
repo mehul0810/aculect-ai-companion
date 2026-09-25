@@ -44,6 +44,18 @@ final class DiscoveryControllerTest extends TestCase {
 		self::assertSame( 'public, max-age=300', $controller->authorization_server_metadata()->header( 'Cache-Control' ) );
 	}
 
+	public function test_path_specific_protected_resource_metadata_matches_the_mcp_challenge(): void {
+		$resource      = Helpers::mcp_resource();
+		$resource_path = Helpers::resource_path( $resource );
+		$metadata_url  = Helpers::protected_resource_metadata_url( $resource );
+		$response      = ( new DiscoveryController() )->protected_resource_metadata( $resource_path );
+
+		self::assertSame( 'https://example.com/.well-known/oauth-protected-resource/wp-json/aculect-ai-companion/v1/mcp', $metadata_url );
+		self::assertSame( 200, $response->get_status() );
+		self::assertSame( $resource, $response->get_data()['resource'] );
+		self::assertSame( array( Helpers::authorization_server_issuer() ), $response->get_data()['authorization_servers'] );
+	}
+
 	public function test_reverse_proxy_external_root_is_the_sole_canonical_issuer(): void {
 		$previous_callbacks = $GLOBALS['aculect_ai_companion_test_filter_callbacks'] ?? array();
 		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect-ai-companion/connectors/external_url'] =

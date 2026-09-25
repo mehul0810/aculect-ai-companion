@@ -34,6 +34,7 @@ final class McpController {
 	private array $request_auth = array();
 
 	private string $request_protocol_version = self::PROTOCOL_VERSION_INITIAL;
+	private bool $mcp_apps_ui_enabled        = false;
 	private AbilityExecutionGateway $execution_gateway;
 
 	/**
@@ -532,7 +533,8 @@ final class McpController {
 			$id = null;
 		}
 
-		$method = (string) ( $body['method'] ?? '' );
+		$method                    = (string) ( $body['method'] ?? '' );
+		$this->mcp_apps_ui_enabled = McpAppsNegotiation::enabled_for_request( $method, $body, $this->request_protocol_version, $this->request_auth );
 		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && 'notifications/initialized' === $method ) {
 			return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
 		}
@@ -560,7 +562,7 @@ final class McpController {
 					$requested_version = McpProtocolVersion::TRANSITIONAL;
 				}
 				$started_at = microtime( true );
-				$result     = $this->initialize_payload( $requested_version );
+				$result     = $this->initialize_payload( $requested_version, $this->mcp_apps_ui_enabled );
 				$this->record_timeline_event(
 					'initialize',
 					array(
@@ -573,7 +575,8 @@ final class McpController {
 				return $this->rpc_result( $id, 'initialize', $result );
 
 			case 'server/discover':
-				return $this->rpc_result( $id, 'server/discover', $this->discover_payload(), true );
+				// Keep discovery private and uncached across the site's opt-in/opt-out transition.
+				return $this->rpc_result( $id, 'server/discover', McpAppsNegotiation::discovery_payload( self::SUPPORTED_PROTOCOL_VERSIONS, $this->mcp_instructions() ) );
 
 			case 'tools/list':
 				$started_at = microtime( true );
@@ -604,10 +607,11 @@ final class McpController {
 				return $this->rpc_result( $id, 'tools/list', $result );
 
 			case 'resources/list':
-				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources(), true );
+				// The opt-in changes the resource list by client capability; never cache either variant.
+				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources( $this->mcp_apps_ui_enabled ) );
 
 			case 'resources/read':
-				$resource_result = ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ) );
+				$resource_result = ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ), $this->mcp_apps_ui_enabled );
 				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
 					&& isset( $resource_result['error'] )
 					&& in_array( $resource_result['error'], array( 'resource_not_found', 'invalid_resource_uri' ), true ) ) {
@@ -765,10 +769,12 @@ final class McpController {
 		$registry = new AbilitiesRegistry();
 		$scopes   = $module->required_scopes();
 		$security = $this->security_schemes( $scopes );
-		$meta     = array(
-			'securitySchemes'                => $security,
-			'openai/toolInvocation/invoking' => $this->tool_invocation_status( $module, 'Running' ),
-			'openai/toolInvocation/invoked'  => $this->tool_invocation_status( $module, 'Finished' ),
+		$meta     = McpAppsNegotiation::tool_metadata(
+			$module->id(),
+			$security,
+			$this->tool_invocation_status( $module, 'Running' ),
+			$this->tool_invocation_status( $module, 'Finished' ),
+			$this->mcp_apps_ui_enabled
 		);
 
 		$input_schema = $this->schema_for_protocol( AbilityExecutionGateway::input_schema_for_module( $module ) );
@@ -814,37 +820,25 @@ final class McpController {
 	 * Build the MCP initialize payload.
 	 *
 	 * @param string $protocol_version Negotiated protocol version.
+	 * @param bool   $mcp_apps_enabled Whether the client negotiated MCP Apps.
 	 * @return array<string, mixed>
 	 */
-	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_INITIAL ): array {
+	private function initialize_payload( string $protocol_version = self::PROTOCOL_VERSION_INITIAL, bool $mcp_apps_enabled = false ): array {
 		return array(
 			'protocolVersion' => $protocol_version,
 			'serverInfo'      => $this->server_info(),
 			'instructions'    => $this->mcp_instructions(),
-			'capabilities'    => array(
-				'tools'     => array(
-					'listChanged' => false,
+			'capabilities'    => McpAppsNegotiation::initialize_capabilities(
+				array(
+					'tools'     => array(
+						'listChanged' => false,
+					),
+					'resources' => array(
+						'listChanged' => false,
+					),
 				),
-				'resources' => array(
-					'listChanged' => false,
-				),
+				$mcp_apps_enabled
 			),
-		);
-	}
-
-	/**
-	 * Build the stateless discovery result defined by MCP 2026-07-28.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function discover_payload(): array {
-		return array(
-			'supportedVersions' => self::SUPPORTED_PROTOCOL_VERSIONS,
-			'capabilities'      => array(
-				'tools'     => array( 'listChanged' => false ),
-				'resources' => array( 'listChanged' => false ),
-			),
-			'instructions'      => $this->mcp_instructions(),
 		);
 	}
 

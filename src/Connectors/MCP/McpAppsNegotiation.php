@@ -134,6 +134,29 @@ final class McpAppsNegotiation {
 	}
 
 	/**
+	 * Attach a legacy Apps session only when this initialize call can issue one.
+	 *
+	 * @param array<string, mixed> $envelope JSON-RPC initialize response.
+	 * @param array<string, mixed> $params Initialize request parameters.
+	 * @param array<string, mixed> $auth Authenticated OAuth context.
+	 * @param string               $session_id Existing protocol session ID.
+	 * @return \WP_REST_Response|array<string, mixed>
+	 */
+	public static function initialize_http_response( array $envelope, array $params, array $auth, string $session_id = '' ): \WP_REST_Response|array {
+		$issued_session_id = self::create_legacy_session_id( $params, $auth, $session_id );
+		if ( null === $issued_session_id ) {
+			return $envelope;
+		}
+
+		$result                 = (array) ( $envelope['result'] ?? array() );
+		$result['capabilities'] = self::initialize_capabilities( (array) ( $result['capabilities'] ?? array() ), true );
+		$envelope['result']     = $result;
+		$response               = new \WP_REST_Response( $envelope );
+		$response->header( 'MCP-Session-Id', $issued_session_id );
+		return $response;
+	}
+
+	/**
 	 * Add the negotiated extension to an initialize capability map.
 	 *
 	 * @param array<string, mixed> $capabilities Server capability map.

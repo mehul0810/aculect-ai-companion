@@ -572,7 +572,7 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->initialize_rpc_response( $id, $result, (array) ( $body['params'] ?? array() ), $auth, (string) $request->get_header( 'mcp-session-id' ) );
+				return McpAppsNegotiation::initialize_http_response( $this->rpc_result( $id, 'initialize', $result ), (array) ( $body['params'] ?? array() ), $auth, (string) $request->get_header( 'mcp-session-id' ) );
 
 			case 'server/discover':
 				// Keep discovery private and uncached across the site's opt-in/opt-out transition.
@@ -849,28 +849,6 @@ final class McpController {
 				$mcp_apps_enabled
 			),
 		);
-	}
-
-	/**
-	 * Return initialize JSON and attach the optional legacy Apps session header.
-	 *
-	 * @param string|int|null      $id     JSON-RPC request ID.
-	 * @param array<string, mixed> $result Initialize result.
-	 * @param array<string, mixed> $params Initialize request parameters.
-	 * @param array<string, mixed> $auth   Authenticated OAuth context.
-	 * @param string               $session_id Existing protocol session ID, when supplied.
-	 * @return WP_REST_Response|array<string, mixed>
-	 */
-	private function initialize_rpc_response( string|int|null $id, array $result, array $params, array $auth, string $session_id = '' ): WP_REST_Response|array {
-		$issued_session_id = McpAppsNegotiation::create_legacy_session_id( $params, $auth, $session_id );
-		if ( null === $issued_session_id ) {
-			return $this->rpc_result( $id, 'initialize', $result );
-		}
-
-		$result['capabilities'] = McpAppsNegotiation::initialize_capabilities( (array) ( $result['capabilities'] ?? array() ), true );
-		$http_response          = new WP_REST_Response( $this->rpc_result( $id, 'initialize', $result ) );
-		$http_response->header( 'MCP-Session-Id', $issued_session_id );
-		return $http_response;
 	}
 
 	/**

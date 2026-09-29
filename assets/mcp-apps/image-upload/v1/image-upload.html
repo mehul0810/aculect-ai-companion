@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>Upload an image to WordPress</title>
+	<style>:root {
+	color-scheme: light dark;
+	font: 16px/1.5 system-ui, sans-serif;
+	--bg: #f5f7fa;
+	--surface: #fff;
+	--text: #172638;
+	--muted: #506176;
+	--border: #d6dee8;
+	--accent: #1554a8;
+}
+
+:root[data-theme="dark"] {
+	--bg: #111a25;
+	--surface: #1c2836;
+	--text: #f0f5fa;
+	--muted: #b9c8d7;
+	--border: #425365;
+	--accent: #91bdff;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+}
+
+main {
+	max-width: 680px;
+	margin: auto;
+	padding: clamp(18px, 4vw, 32px);
+}
+
+.eyebrow {
+	margin: 0 0 8px;
+	color: var(--accent);
+	font-size: 0.76rem;
+	font-weight: 800;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+h1 {
+	margin: 0 0 10px;
+	font-size: clamp(1.45rem, 3vw, 1.9rem);
+	line-height: 1.2;
+}
+
+p {
+	color: var(--muted);
+}
+
+.card {
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--surface);
+	padding: 18px;
+}
+
+button {
+	min-height: 44px;
+	border: 0;
+	border-radius: 8px;
+	padding: 9px 16px;
+	background: var(--accent);
+	color: #fff;
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+:focus-visible {
+	outline: 3px solid var(--accent);
+	outline-offset: 3px;
+}
+
+#status {
+	min-height: 1.5em;
+}
+</style>
+</head>
+<body>
+	<main aria-labelledby="heading">
+		<p class="eyebrow">WordPress Media Library</p>
+		<h1 id="heading">Upload an image</h1>
+		<section class="card">
+			<p>The next step opens this site’s WordPress admin upload screen. Sign in if prompted, choose a JPEG, PNG, or WebP image, and upload it directly to this site’s Media Library.</p>
+			<p>WordPress will show an attachment ID after a successful upload. Return here and provide that ID to continue. Uploading alone does not change any post.</p>
+			<p id="status" role="status" aria-live="polite">No file has been selected or uploaded by this widget.</p>
+			<button id="open" type="button" disabled>Open WordPress upload</button>
+		</section>
+	</main>
+	<script type="application/json" id="handoff-url">__ACULECT_UPLOAD_HANDOFF_URL_JSON__</script>
+	<script>/* MCP Apps bridge. */
+( ( scope ) => {
+	const PROTOCOL = '2026-01-26';
+	const RPC = '2.0';
+	const MAX_PENDING = 16;
+	const isRecord = ( value ) =>
+		value !== null && typeof value === 'object' && ! Array.isArray( value );
+
+	function createBridge( options ) {
+		const view = options.windowRef;
+		const parent = view.parent;
+		const allowedTools = new Set( options.readOnlyTools ?? [] );
+		const pending = new Map();
+		let nextId = 1;
+		let connected = false;
+		let closed = false;
+		let started = false;
+		let hostContext = {};
+		const timeoutMs = Math.min(
+			30000,
+			Math.max( 1000, options.timeoutMs ?? 10000 )
+		);
+
+		function notify( method, params = {} ) {
+			parent.postMessage( { jsonrpc: RPC, method, params }, '*' );
+		}
+
+		function request( method, params ) {
+			if ( closed || pending.size >= MAX_PENDING ) {
+				return Promise.reject(
+					new Error( 'Widget bridge is unavailable.' )
+				);
+			}
+			const id = nextId++;
+			return new Promise( ( resolve, reject ) => {
+				const timer = view.setTimeout( () => {
+					pending.delete( id );
+					reject( new Error( 'Host did not respond.' ) );
+				}, timeoutMs );
+				pending.set( id, { resolve, reject, timer } );
+				parent.postMessage( { jsonrpc: RPC, id, method, params }, '*' );
+			} );
+		}
+
+		function finishResponse( message ) {
+			const item = pending.get( message.id );
+			if ( ! item ) {
+				return;
+			}
+			pending.delete( message.id );
+			view.clearTimeout( item.timer );
+			if ( isRecord( message.error ) ) {
+				item.reject( new Error( 'The host declined the request.' ) );
+			} else if ( Object.hasOwn( message, 'result' ) ) {
+				item.resolve( message.result );
+			} else {
+				item.reject( new Error( 'Invalid host response.' ) );
+			}
+		}
+
+		function receive( event ) {
+			if (
+				closed ||
+				event.source !== parent ||
+				! isRecord( event.data )
+			) {
+				return;
+			}
+			const message = event.data;
+			if ( message.jsonrpc !== RPC ) {
+				return;
+			}
+			if (
+				Number.isSafeInteger( message.id ) &&
+				! Object.hasOwn( message, 'method' )
+			) {
+				finishResponse( message );
+				return;
+			}
+			if ( ! connected || typeof message.method !== 'string' ) {
+				return;
+			}
+			if ( message.method === 'ui/resource-teardown' ) {
+				if (
+					Number.isSafeInteger( message.id ) ||
+					( typeof message.id === 'string' &&
+						message.id.length <= 128 )
+				) {
+					parent.postMessage(
+						{ jsonrpc: RPC, id: message.id, result: {} },
+						'*'
+					);
+				}
+				close();
+				return;
+			}
+			if (
+				message.method === 'ui/notifications/host-context-changed' &&
+				isRecord( message.params )
+			) {
+				hostContext = { ...hostContext, ...message.params };
+				options.onEvent( {
+					type: 'host-context',
+					context: { ...hostContext },
+				} );
+				return;
+			}
+			const eventTypes = {
+				'ui/notifications/tool-input': 'tool-input',
+				'ui/notifications/tool-input-partial': 'tool-input-partial',
+				'ui/notifications/tool-result': 'tool-result',
+				'ui/notifications/tool-cancelled': 'tool-cancelled',
+			};
+			if ( Object.hasOwn( eventTypes, message.method ) ) {
+				options.onEvent( {
+					type: eventTypes[ message.method ],
+					params: message.params,
+				} );
+			}
+		}
+
+		function close() {
+			if ( closed ) {
+				return;
+			}
+			closed = true;
+			connected = false;
+			view.removeEventListener( 'message', receive );
+			for ( const item of pending.values() ) {
+				view.clearTimeout( item.timer );
+				item.reject( new Error( 'Widget bridge closed.' ) );
+			}
+			pending.clear();
+			options.onEvent( { type: 'closed' } );
+		}
+
+		async function start() {
+			if ( started || parent === view ) {
+				throw new Error( 'Widget needs a host iframe.' );
+			}
+			started = true;
+			view.addEventListener( 'message', receive );
+			try {
+				const result = await request( 'ui/initialize', {
+					protocolVersion: PROTOCOL,
+					appInfo: options.appInfo,
+					appCapabilities: {
+						availableDisplayModes: [ 'inline', 'fullscreen' ],
+					},
+				} );
+				if (
+					! isRecord( result ) ||
+					result.protocolVersion !== PROTOCOL
+				) {
+					throw new Error( 'Unsupported MCP Apps host.' );
+				}
+				hostContext = isRecord( result.hostContext )
+					? result.hostContext
+					: {};
+				connected = true;
+				notify( 'ui/notifications/initialized' );
+				options.onEvent( {
+					type: 'ready',
+					context: { ...hostContext },
+				} );
+			} catch ( error ) {
+				close();
+				throw error;
+			}
+		}
+
+		function callReadOnlyTool( name, args = {} ) {
+			if (
+				! connected ||
+				! allowedTools.has( name ) ||
+				! isRecord( args )
+			) {
+				return Promise.reject(
+					new Error( 'Tool call is not permitted by this widget.' )
+				);
+			}
+			return request( 'tools/call', { name, arguments: args } );
+		}
+
+		function openLink( url ) {
+			let parsed;
+			try {
+				parsed = new URL( url );
+			} catch {
+				/* Invalid URL. */
+			}
+			if ( ! connected || ! parsed || parsed.protocol !== 'https:' ) {
+				return Promise.reject(
+					new Error( 'Only HTTPS links are supported.' )
+				);
+			}
+			return request( 'ui/open-link', { url: parsed.href } );
+		}
+
+		function updateModelContext( content ) {
+			if (
+				! connected ||
+				! isRecord( content ) ||
+				JSON.stringify( content ).length > 16384
+			) {
+				return Promise.reject(
+					new Error( 'Invalid model context update.' )
+				);
+			}
+			return request( 'ui/update-model-context', content );
+		}
+
+		function requestDisplayMode( mode ) {
+			if (
+				! connected ||
+				! [ 'inline', 'fullscreen' ].includes( mode ) ||
+				! hostContext.availableDisplayModes?.includes( mode )
+			) {
+				return Promise.reject(
+					new Error( 'Display mode is unavailable.' )
+				);
+			}
+			return request( 'ui/request-display-mode', { mode } );
+		}
+
+		// ChatGPT additions are optional and never part of baseline transport.
+		function optionalOpenAI() {
+			const api = view.openai;
+			return Object.freeze( {
+				openExternal:
+					typeof api?.openExternal === 'function'
+						? ( url ) => api.openExternal( { href: url } )
+						: null,
+			} );
+		}
+
+		return Object.freeze( {
+			start,
+			close,
+			callReadOnlyTool,
+			openLink,
+			updateModelContext,
+			requestDisplayMode,
+			optionalOpenAI,
+			isConnected: () => connected,
+			getHostContext: () => ( { ...hostContext } ),
+		} );
+	}
+
+	scope.AculectWidgetBridge = Object.freeze( { createBridge, PROTOCOL } );
+} )( globalThis );
+
+( ( scope ) => {
+	const bridge = scope.AculectWidgetBridge.createBridge( {
+		windowRef: scope,
+		appInfo: { name: 'Aculect Image Upload Handoff', version: '1.0.0' },
+		readOnlyTools: [],
+		onEvent( event ) {
+			if ( event.type === 'ready' || event.type === 'host-context' ) {
+				const theme = event.context?.theme;
+				scope.document.documentElement.dataset.theme = [
+					'light',
+					'dark',
+				].includes( theme )
+					? theme
+					: 'auto';
+				scope.document.getElementById( 'open' ).disabled = false;
+			}
+		},
+	} );
+	const button = scope.document.getElementById( 'open' );
+	const status = scope.document.getElementById( 'status' );
+
+	button.addEventListener( 'click', async () => {
+		button.disabled = true;
+		status.textContent = 'Opening the WordPress upload screen…';
+		try {
+			const url = JSON.parse(
+				scope.document.getElementById( 'handoff-url' ).textContent
+			);
+			await bridge.openLink( url );
+			status.textContent =
+				'WordPress upload screen opened. Upload there, then return with the attachment ID WordPress shows. No image was uploaded by this widget.';
+		} catch {
+			status.textContent =
+				'The host could not open the WordPress upload screen. No file was uploaded.';
+		} finally {
+			button.disabled = ! bridge.isConnected();
+		}
+	} );
+
+	bridge.start().catch( () => {
+		status.textContent =
+			'This host could not start the secure WordPress handoff. No file was uploaded.';
+	} );
+} )( globalThis );
+</script>
+</body>
+</html>

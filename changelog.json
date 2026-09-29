@@ -1,4 +1,19 @@
 {
+	"0.9.0": {
+		"date": "2026-09-29",
+		"New": [
+			"Added opt-in MCP Apps resources and a Site Information card for compatible clients, with the existing text response preserved for other clients.",
+			"Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.",
+			"Added post-update revision review, layout and pattern selection, and a direct WordPress Media Library image-upload handoff for supported MCP Apps."
+		],
+		"Improved": [
+			"Added read-only Agent Readiness diagnostics and clearer Cloudflare connection guidance without claiming that edge challenges can be bypassed."
+		],
+		"Fixed": [],
+		"Reliability": [
+			"Included versioned MCP Apps assets and packaged core Skills in production-package verification."
+		]
+	},
 	"0.8.1": {
 		"date": "2026-09-23",
 		"New": [],

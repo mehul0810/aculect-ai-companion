@@ -142,6 +142,7 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 
 - [Contributing guidelines](CONTRIBUTING.md)
 - [Release-candidate regression checklist](docs/release-candidate-regression-checklist.md)
+- [MCP Skills in 0.9.0](docs/mcp-skills-0.9.md)
 - [Security policy](SECURITY.md)
 
 ## Developer Notes
@@ -165,6 +166,27 @@ Safe baseline read/discovery modules can be classified as `core_default` in `Abi
 Internal-link intelligence is intentionally assistant-first. Use `content_internal_link_policy`, `content_audit_internal_links`, `content_find_internal_links`, and the reviewed suggestion flow to inspect policy, audit existing link health, find candidates, and only then dry-run or apply a reviewed update with the normal confirmation safeguards. This capability is not exposed as a dedicated admin tab.
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
+
+The current stateless MCP revision (`2026-07-28`) also advertises the stable
+`io.modelcontextprotocol/skills` extension. Compatible authenticated clients
+can enumerate built-in `wordpress-site-audit`, `content-optimization`, and
+`wordpress-troubleshooting` Agent Skills with `skills/list` / `skills/get`, then
+read their packaged `SKILL.md` through `resources/read`. Their manifests carry
+the exact content SHA-256 and byte size. A skill is listed only when its
+required tools are exposed to that authenticated connection; skills are
+declarative guidance and do not create a separate execution or permission
+path. Earlier protocol revisions are unchanged. The administrator-only Skills
+tab can create, edit, enable, duplicate, delete, import, and export bounded
+site-local Markdown skills and references. Every import, including a
+replacement, lands disabled until the administrator reviews and enables it.
+Edits carry the version and digest
+of the skill that was opened, so a stale admin page cannot silently replace a
+newer edit. Active plugins may declare additional read-only Markdown skills
+through the `aculect_ai_companion_mcp_skill_providers` filter, keyed by exact
+plugin basename; malformed, conflicting, inactive, or unmet-dependency
+declarations are hidden. Neither a custom nor plugin skill can grant a tool.
+A public `.well-known` skills index is not published while its draft format
+and interoperability remain unsettled.
 
 For task-focused memory, call `memory_list` with `task`, an optional `domain`, and `budget_chars` (default 6000). This returns relevant approved site guidance with source/evidence, relevance scores and selection explanations within a bounded JSON context pack. Existing chronological listing and administrator review remain available when `task` is omitted. See [Aculect Memory architecture](docs/aculect-memory-architecture.md#task-recall) for eligibility, budgets and limitations.
 
@@ -201,7 +223,7 @@ server session or deliver server-initiated notifications. The endpoint
 supports MCP `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26`.
 Requests that omit `MCP-Protocol-Version` use the `2025-03-26` compatibility
 contract. Requests using `2026-07-28` must send matching
-`MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`,
+`MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`, `skills/get`,
 `resources/read`, and `prompts/get`) `Mcp-Name` headers plus the required
 per-request protocol and client-capability metadata. `server/discover`
 advertises the supported versions. The `2026-07-28` contract does not use the

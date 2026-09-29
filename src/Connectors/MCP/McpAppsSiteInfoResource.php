@@ -29,7 +29,7 @@ final class McpAppsSiteInfoResource {
 	 * @return array<string, mixed>
 	 */
 	public function read(): array {
-		$path = dirname( __DIR__, 3 ) . '/assets/mcp-apps/site-info.html';
+		$path = dirname( __DIR__, 3 ) . '/assets/mcp-apps/site-info/v1/site-info.html';
 		$html = is_readable( $path ) ? file_get_contents( $path ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads a fixed plugin-packaged asset, not a remote URL.
 		if ( ! is_string( $html ) ) {
 			return array(

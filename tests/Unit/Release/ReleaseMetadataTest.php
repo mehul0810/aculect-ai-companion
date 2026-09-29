@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  * Verifies release metadata stays synchronized across package surfaces.
  */
 final class ReleaseMetadataTest extends TestCase {
-	private const EXPECTED_VERSION = '0.8.1';
+	private const EXPECTED_VERSION = '0.9.0';
 
 	public function test_release_metadata_is_synchronized_for_current_version(): void {
 		$root       = dirname( __DIR__, 3 );
@@ -36,7 +36,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['version'] ?? '' ) );
 		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 		self::assertStringContainsString( 'Project-Id-Version: Aculect AI Companion ' . self::EXPECTED_VERSION, $pot );
-		self::assertSame( 119, substr_count( $pot, "\nmsgid " ) );
+		self::assertSame( 165, substr_count( $pot, "\nmsgid " ) );
 		self::assertStringContainsString( 'msgid "Settings"', $pot );
 		self::assertStringContainsString( 'msgid "Review connection request"', $pot );
 		self::assertStringContainsString( 'msgid "AI access"', $pot );
@@ -45,7 +45,8 @@ final class ReleaseMetadataTest extends TestCase {
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
 		self::assertSame( self::EXPECTED_VERSION, $release_version );
 		self::assertArrayHasKey( $release_version, $log );
-		self::assertSame( '2026-09-23', $log[ $release_version ]['date'] ?? '' );
+		self::assertSame( '2026-09-29', $log[ $release_version ]['date'] ?? '' );
+		self::assertSame( '2026-09-23', $log['0.8.1']['date'] ?? '' );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
@@ -62,16 +63,17 @@ final class ReleaseMetadataTest extends TestCase {
 				self::assertStringContainsString( '* ' . $note, $readme );
 			}
 		}
-		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nImproves PHP 8.5 MCP compatibility, OAuth response cache safety, taxonomy assignment, and dependency security without changing the established OAuth flow.", $readme );
+		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nAdds opt-in MCP Apps presentation and authenticated MCP Skills. Existing OAuth connections and text-only MCP clients retain their established behavior; visual responses depend on host support and the site opt-in.", $readme );
+		self::assertStringContainsString( '= 0.8.1 =', $readme );
 		self::assertStringContainsString( "= 0.8.0 =\n\nExisting OAuth clients are issuer-bound in resumable batches.", $readme );
 		self::assertStringContainsString( 'Registration and credential issuance stay unavailable until verified.', $readme );
 		self::assertStringContainsString( 'Changing the external site URL does not rebind credentials and may require reconnecting assistants.', $readme );
-		self::assertStringContainsString( '`0.8.0` remains the latest published production release; its release tag points to original production commit `ddf11b49b8638c23793eb87a8079fa0e63b9f3fc`.', $governance );
-		self::assertStringContainsString( '`0.8.1` is the maintenance candidate, with `2026-09-23` as its planned publication date. A changelog date records the plan, not a completed release.', $governance );
-		self::assertStringContainsString( 'production remains `0.8.0` until the owner explicitly approves the exact tag and publication workflow.', $governance );
+		self::assertStringContainsString( '`0.8.1` is the latest published production release; its tag points to `68b81cd9c92adc0825ef09c3a63a924859ad9c99` on `main`.', $governance );
+		self::assertStringContainsString( '`0.9.0` is the active release candidate on `release/0.9.0`.', $governance );
+		self::assertStringContainsString( 'production remains `0.8.1` until the owner explicitly approves the exact production merge, tag, and publication workflow.', $governance );
 		self::assertStringContainsString( 'Never imply that a planned date or candidate metadata means production was released.', $governance );
-		self::assertStringContainsString( 'Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.1.', $governance );
-		self::assertStringContainsString( 'Candidate package metadata may target `0.8.1`', $governance );
+		self::assertStringContainsString( 'Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta', $governance );
+		self::assertStringContainsString( 'Candidate package metadata may target `0.9.0`', $governance );
 	}
 
 	public function test_prerelease_workflow_builds_published_prereleases_only(): void {

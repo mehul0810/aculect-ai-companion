@@ -19,10 +19,13 @@ final class McpResourceRegistry {
 	/**
 	 * Return available MCP resources.
 	 *
-	 * @param bool $mcp_apps_enabled Whether the client negotiated MCP Apps.
+	 * @param bool  $mcp_apps_enabled Whether the client negotiated MCP Apps.
+	 * @param bool  $mcp_skills_enabled Whether the client uses a compatible Skills protocol.
+	 * @param array $available_abilities Ability IDs exposed to the current connection.
+	 * @phpstan-param list<string> $available_abilities Ability IDs exposed to the current connection.
 	 * @return array{resources: list<array<string, string>>}
 	 */
-	public function list_resources( bool $mcp_apps_enabled = false ): array {
+	public function list_resources( bool $mcp_apps_enabled = false, bool $mcp_skills_enabled = false, array $available_abilities = array() ): array {
 		$resources = array(
 			$this->resource( 'aculect://capabilities/directory', 'Aculect Capability Directory', 'Current WordPress MCP abilities, workflows, intelligence surfaces, and blockers.' ),
 			$this->resource( 'aculect://site/summary', 'Aculect Site Summary', 'Stable site, theme, locale, and connector context.' ),
@@ -35,6 +38,14 @@ final class McpResourceRegistry {
 		);
 		if ( $mcp_apps_enabled ) {
 			$resources[] = ( new McpAppsSiteInfoResource() )->descriptor();
+			$resources[] = ( new McpAppsPostUpdateResource() )->descriptor();
+			$resources[] = ( new McpAppsPatternPickerResource() )->descriptor();
+			if ( current_user_can( 'upload_files' ) ) {
+				$resources[] = ( new McpAppsImageUploadResource() )->descriptor();
+			}
+		}
+		if ( $mcp_skills_enabled ) {
+			$resources = array_merge( $resources, ( new McpSkillsRegistry() )->resource_descriptors( $available_abilities ) );
 		}
 
 		return array( 'resources' => $resources );
@@ -45,9 +56,12 @@ final class McpResourceRegistry {
 	 *
 	 * @param array<string, mixed> $args JSON-RPC params.
 	 * @param bool                 $mcp_apps_enabled Whether the client negotiated MCP Apps.
+	 * @param bool                 $mcp_skills_enabled Whether the client uses a compatible Skills protocol.
+	 * @param array                $available_abilities Ability IDs exposed to the current connection.
+	 * @phpstan-param list<string> $available_abilities Ability IDs exposed to the current connection.
 	 * @return array<string, mixed>
 	 */
-	public function read_resource( array $args, bool $mcp_apps_enabled = false ): array {
+	public function read_resource( array $args, bool $mcp_apps_enabled = false, bool $mcp_skills_enabled = false, array $available_abilities = array() ): array {
 		$uri = is_scalar( $args['uri'] ?? null ) ? (string) $args['uri'] : '';
 		if ( '' === $uri ) {
 			return $this->error( 'invalid_resource_uri', 'Provide a resource URI returned by resources/list.' );
@@ -55,6 +69,26 @@ final class McpResourceRegistry {
 		if ( McpAppsNegotiation::SITE_INFO_URI === $uri ) {
 			return $mcp_apps_enabled
 				? ( new McpAppsSiteInfoResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( McpAppsNegotiation::POST_UPDATE_URI === $uri ) {
+			return $mcp_apps_enabled
+				? ( new McpAppsPostUpdateResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( McpAppsNegotiation::PATTERN_PICKER_URI === $uri ) {
+			return $mcp_apps_enabled
+				? ( new McpAppsPatternPickerResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( McpAppsImageUploadResource::URI === $uri ) {
+			return $mcp_apps_enabled && current_user_can( 'upload_files' )
+				? ( new McpAppsImageUploadResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( str_starts_with( $uri, 'skill://' ) ) {
+			return $mcp_skills_enabled
+				? ( new McpSkillsRegistry() )->read_resource( $uri, $available_abilities )
 				: $this->unknown_resource( $uri );
 		}
 

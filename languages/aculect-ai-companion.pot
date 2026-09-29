@@ -2,122 +2,302 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Aculect AI Companion 0.8.1\n"
+"Project-Id-Version: Aculect AI Companion 0.9.0\n"
 "Report-Msgid-Bugs-To: https://github.com/mehul0810/aculect-ai-companion/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-20 00:00+0530\n"
+"POT-Creation-Date: 2026-09-29 00:00+0530\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: aculect-ai-companion\n"
 
 #. Plugin Name of the plugin
-#: aculect-ai-companion.php:3
-#: src/Admin/SettingsPage.php:81
+#: aculect-ai-companion.php
+#: src/Admin/SettingsPage.php:82
 #: src/Admin/UserAccessControls.php:119
 msgid "Aculect AI Companion"
 msgstr ""
 
 #. Plugin URI of the plugin
-#: aculect-ai-companion.php:4
+#: aculect-ai-companion.php
 msgid "https://aculect.com"
 msgstr ""
 
 #. Description of the plugin
-#: aculect-ai-companion.php:5
+#: aculect-ai-companion.php
 msgid "Connect WordPress with AI. Aculect AI Companion helps you manage content, comments, media, and more with your AI assistant."
 msgstr ""
 
 #. Author of the plugin
-#: aculect-ai-companion.php:9
+#: aculect-ai-companion.php
 msgid "Mehul Gohil"
 msgstr ""
 
 #. Author URI of the plugin
-#: aculect-ai-companion.php:10
+#: aculect-ai-companion.php
 msgid "https://mehulgohil.com"
 msgstr ""
 
-#: src/Activity/ActivityLogger.php:445
+#: src/Activity/ActivityLogger.php:449
 msgid "Refresh was rejected before a WordPress identity was available. This request did not authenticate a WordPress session. Reconnect the assistant to restore access."
 msgstr ""
 
 #. translators: 1: timeline event, 2: event status.
-#: src/Activity/ActivityLogger.php:450
+#: src/Activity/ActivityLogger.php:454
 #, php-format
 msgid "MCP session timeline event %1$s recorded with %2$s status."
 msgstr ""
 
-#: src/Admin/LocalSampleData.php:778
+#: src/Admin/LocalSampleData.php:599
 msgid "Preview data - these are examples, not real connections or activity."
 msgstr ""
 
-#: src/Admin/SettingsPage.php:82
+#: src/Admin/McpImageUploadPage.php:42
+msgid "Upload an image for Aculect"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:43
+msgid "Aculect image upload"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:53
+msgid "You cannot upload media on this site."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:64
+msgid "Upload an image"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:65
+msgid "Upload directly to this site’s WordPress Media Library. No image is sent through Aculect or the assistant."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:68
+msgid "Image uploaded to the Media Library."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:69
+msgid "Attachment ID:"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:72
+msgid "Return to the assistant and provide this attachment ID. A later action must check your permission for the attachment again; this upload does not perform that action."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:78
+msgid "Choose a JPEG, PNG, or WebP image"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:80
+msgid "Maximum 5 MB, 4096 pixels on either side, and 12 megapixels. Your site may enforce a lower upload limit."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:81
+msgid "Upload to WordPress"
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:211
+msgid "Your WordPress account cannot upload media on this site."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:212
+msgid "This upload form expired. Reload the page and try again."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:213
+msgid "The image is empty or exceeds this site’s upload size limit. Choose a smaller image."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:214
+msgid "Choose a valid JPEG, PNG, or WebP image within the stated dimensions."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:215
+msgid "WordPress could not save the image. Check the Media Library and retry if it is not there."
+msgstr ""
+
+#: src/Admin/McpImageUploadPage.php:216
+msgid "Choose an image and try again."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:24
+msgid "Sign in and request a fresh form."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:36
+msgid "An HTTPS administrator session is required."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:45
+msgid "This request expired or belongs to another account. Request a fresh form."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:50
+msgid "The form could not be verified. Request a fresh form."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:88
+msgid "Aculect private settings"
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:90
+msgid "Update a WordPress setting privately"
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:92
+msgid "Enter the value here, not in your AI chat. Aculect sends only the outcome back to the assistant. This form expires after ten minutes."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:95
+msgid "The key will be checked using the WordPress AI provider SDK, which may contact its provider, and stored using WordPress Connectors storage. Hosting and other installed plugins remain part of the trusted environment."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:107
+msgid "Maximum 300 UTF-8 bytes; some characters use multiple bytes."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:107
+msgid "Use the format shown in the field label. Required fields cannot be blank."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:108
+msgid "Submitting replaces this setting. Invalid input leaves the existing value unchanged and requires a fresh form. To cancel, close this page."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:109
+msgid "Confirm and update"
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:112
+msgid "Setting updated. You can return to your assistant."
+msgstr ""
+
+#: src/Admin/PrivateSettingForm.php:112
+msgid "This request is no longer pending. If the update did not complete, request a new form. No input value is shown."
+msgstr ""
+
+#: src/Admin/SettingsPage.php:83
 msgid "AI Companion"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:89
 #: src/Admin/SettingsPage.php:90
+#: src/Admin/SettingsPage.php:91
 msgid "Aculect AI Companion OAuth Consent"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:151
-#: src/Admin/SettingsPage.php:1782
+#: src/Admin/SettingsPage.php:153
+#: src/Admin/SettingsPage.php:1592
 #: src/Admin/UserAccessControls.php:327
 msgid "Insufficient permissions."
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1095
+#: src/Admin/SettingsPage.php:1014
 msgid "Connection trust updated for assistant session."
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1376
-#: src/Admin/SettingsPage.php:1377
+#: src/Admin/SettingsPage.php:1212
+#: src/Admin/SettingsPage.php:1213
 msgid "Overview"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1381
-#: src/Admin/SettingsPage.php:1382
+#: src/Admin/SettingsPage.php:1217
+#: src/Admin/SettingsPage.php:1218
 msgid "Connect"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1386
-#: src/Admin/SettingsPage.php:1387
+#: src/Admin/SettingsPage.php:1222
+#: src/Admin/SettingsPage.php:1223
 msgid "Connections"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1391
-#: src/Admin/SettingsPage.php:1392
+#: src/Admin/SettingsPage.php:1227
+#: src/Admin/SettingsPage.php:1228
 msgid "Abilities"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1396
-#: src/Admin/SettingsPage.php:1397
+#: src/Admin/SettingsPage.php:1232
+#: src/Admin/SettingsPage.php:1233
 msgid "Activity"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1401
-#: src/Admin/SettingsPage.php:1402
+#: src/Admin/SettingsPage.php:1237
+#: src/Admin/SettingsPage.php:1238
 msgid "Learning"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1406
-#: src/Admin/SettingsPage.php:1407
+#: src/Admin/SettingsPage.php:1242
+#: src/Admin/SettingsPage.php:1243
 msgid "Diagnostics"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1411
-#: src/Admin/SettingsPage.php:1412
+#: src/Admin/SettingsPage.php:1247
+#: src/Admin/SettingsPage.php:1248
 #: src/Connectors/Providers/ClientToolFilterGuidance.php:45
 msgid "Advanced"
 msgstr ""
 
-#: src/Admin/SettingsPage.php:1416
-#: src/Admin/SettingsPage.php:1417
+#: src/Admin/SettingsPage.php:1252
+#: src/Admin/SettingsPage.php:1253
 msgid "Changelog"
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:63
+msgid "Disabled on this site."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:63
+msgid "Dependencies are unavailable on this site."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:103
+msgid "The Skill ID must match the requested URL."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:125
+msgid "The delete request contains unsupported fields."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:142
+msgid "Provide a boolean enabled value and optional matching revision."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:160
+msgid "Provide a valid custom Skill ID."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:183
+msgid "Provide a valid Skill package and optional boolean replacement choice."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:192
+msgid "Reload the existing Skill before replacing it."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:223
+msgid "The Skill document payload contains unsupported fields."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:227
+msgid "The Skill ID, Markdown, references, or enabled value is invalid."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:244
+msgid "Provide both the expected Skill version and digest."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:248
+msgid "Reload the Skill to provide its current version and digest."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:258
+msgid "The expected Skill revision is invalid."
+msgstr ""
+
+#: src/Admin/SkillsRestController.php:302
+msgid "The Skill request failed."
 msgstr ""
 
 #: src/Admin/UserAccessControls.php:54
@@ -230,186 +410,190 @@ msgstr ""
 msgid "AI Companion connection URL"
 msgstr ""
 
-#: src/Connectors/MCP/WordPressAbilitiesRegistrar.php:49
+#: src/Connectors/MCP/WordPressAbilitiesRegistrar.php:50
 msgid "Aculect Intelligence"
 msgstr ""
 
-#: src/Connectors/MCP/WordPressAbilitiesRegistrar.php:50
+#: src/Connectors/MCP/WordPressAbilitiesRegistrar.php:51
 msgid "Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:376
+#: src/Connectors/OAuth/AuthorizationController.php:378
 msgid "Connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:377
+#: src/Connectors/OAuth/AuthorizationController.php:379
 msgid "Review connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:379
+#: src/Connectors/OAuth/AuthorizationController.php:381
 msgid "is requesting permission to connect to your WordPress site through Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:383
+#: src/Connectors/OAuth/AuthorizationController.php:385
 msgid "Connection details"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:385
+#: src/Connectors/OAuth/AuthorizationController.php:387
 msgid "Assistant"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:386
+#: src/Connectors/OAuth/AuthorizationController.php:388
 msgid "Account"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:386
+#: src/Connectors/OAuth/AuthorizationController.php:388
 msgid "Detected during authorization"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:387
+#: src/Connectors/OAuth/AuthorizationController.php:389
 msgid "Site"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:388
+#: src/Connectors/OAuth/AuthorizationController.php:390
 msgid "Connection method"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:388
+#: src/Connectors/OAuth/AuthorizationController.php:390
 msgid "Secure OAuth"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:389
+#: src/Connectors/OAuth/AuthorizationController.php:391
 msgid "Requested"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:389
+#: src/Connectors/OAuth/AuthorizationController.php:391
 msgid "Just now"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:390
+#: src/Connectors/OAuth/AuthorizationController.php:392
 msgid "Status"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:390
+#: src/Connectors/OAuth/AuthorizationController.php:392
 msgid "Waiting for approval"
 msgstr ""
 
 #. translators: %s: AI assistant name, for example ChatGPT.
-#: src/Connectors/OAuth/AuthorizationController.php:395
+#: src/Connectors/OAuth/AuthorizationController.php:397
 #, php-format
 msgid "What %s will be able to do"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:396
+#: src/Connectors/OAuth/AuthorizationController.php:398
 msgid "After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:399
+#: src/Connectors/OAuth/AuthorizationController.php:401
 msgid "Manage content"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:399
+#: src/Connectors/OAuth/AuthorizationController.php:401
 msgid "Create and update posts, pages, and custom content."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:400
+#: src/Connectors/OAuth/AuthorizationController.php:402
 msgid "Manage media"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:400
+#: src/Connectors/OAuth/AuthorizationController.php:402
 msgid "Upload, organize, and manage media files."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:401
+#: src/Connectors/OAuth/AuthorizationController.php:403
 msgid "Moderate comments"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:401
+#: src/Connectors/OAuth/AuthorizationController.php:403
 msgid "Review, reply to, and manage comments."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:402
+#: src/Connectors/OAuth/AuthorizationController.php:404
 msgid "Use custom tools"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:402
+#: src/Connectors/OAuth/AuthorizationController.php:404
 msgid "Use site-specific tools exposed by Aculect."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:406
+#: src/Connectors/OAuth/AuthorizationController.php:408
 msgid "Security and privacy"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:408
+#: src/Connectors/OAuth/AuthorizationController.php:410
 msgid "Secure OAuth authentication"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:408
+#: src/Connectors/OAuth/AuthorizationController.php:410
 msgid "The connection is authorized through WordPress."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:409
+#: src/Connectors/OAuth/AuthorizationController.php:411
 msgid "No passwords shared"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:409
+#: src/Connectors/OAuth/AuthorizationController.php:411
 msgid "Your WordPress credentials are never shared with the AI assistant."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:410
+#: src/Connectors/OAuth/AuthorizationController.php:412
 msgid "Respects WordPress permissions"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:410
+#: src/Connectors/OAuth/AuthorizationController.php:412
 msgid "Access is limited by user role, capabilities, and Aculect settings."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:411
+#: src/Connectors/OAuth/AuthorizationController.php:413
 msgid "Access can be revoked anytime"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:411
+#: src/Connectors/OAuth/AuthorizationController.php:413
 msgid "You can remove the connection from the Connections tab."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:412
+#: src/Connectors/OAuth/AuthorizationController.php:414
 msgid "All actions are logged"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:412
+#: src/Connectors/OAuth/AuthorizationController.php:414
 msgid "Aculect records activity for visibility and auditability."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:414
+#: src/Connectors/OAuth/AuthorizationController.php:416
 msgid "You can manage or revoke this connection at any time from the Connections page."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:421
+#: src/Connectors/OAuth/AuthorizationController.php:423
 msgid "Deny"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:422
+#: src/Connectors/OAuth/AuthorizationController.php:424
 msgid "Approve connection"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:441
-#: src/Connectors/OAuth/AuthorizationController.php:451
+#: src/Connectors/OAuth/AuthorizationController.php:443
+#: src/Connectors/OAuth/AuthorizationController.php:453
 msgid "AI assistant"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:465
-msgid "Read site content and safe site information"
-msgstr ""
-
-#: src/Connectors/OAuth/AuthorizationController.php:469
-msgid "Create and update content, terms, comments, and media"
-msgstr ""
-
-#: src/Connectors/OAuth/AuthorizationController.php:474
+#: src/Connectors/OAuth/OAuthScopePolicy.php:40
 msgid "Use approved Aculect AI Companion actions"
 msgstr ""
 
-#: src/Connectors/OAuth/Repositories/AccessTokenRepository.php:372
+#: src/Connectors/OAuth/OAuthScopePolicy.php:46
+msgid "Read site content and safe site information"
+msgstr ""
+
+#: src/Connectors/OAuth/OAuthScopePolicy.php:47
+msgid "Create and update content, terms, comments, and media"
+msgstr ""
+
+#: src/Connectors/OAuth/OAuthScopePolicy.php:48
+msgid "Keep this connection active with refresh tokens until it is revoked or expires"
+msgstr ""
+
+#: src/Connectors/OAuth/Repositories/AccessTokenRepository.php:378
 msgid "Unknown user"
 msgstr ""
 
@@ -519,6 +703,6 @@ msgstr ""
 msgid "%s copied."
 msgstr ""
 
-#: src/Plugin.php:302
+#: src/Plugin.php:308
 msgid "Settings"
 msgstr ""

@@ -282,9 +282,21 @@ final class SettingsPageTest extends TestCase {
 
 		self::assertSame( 'connections', $payload['payloadTab'] );
 		self::assertContains( 'connections', $payload['hydratedTabs'] );
+		self::assertSame( 'https://example.com/wp-json/aculect-ai-companion/v1/skills', $payload['skillsApiUrl'] );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.revoked = 0' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'refresh_tokens.expires_at >= %s' ) );
 		self::assertTrue( $this->wpdb->has_query_fragment( 'WHERE access_tokens.revoked = 1' ) );
+
+		$skills_payload = ( new SettingsPage() )->rest_settings_payload(
+			new WP_REST_Request(
+				// @phpstan-ignore-next-line Test bootstrap WP_REST_Request accepts parameter arrays.
+				array(
+					'tab' => 'skills',
+				)
+			)
+		)->get_data();
+		self::assertSame( 'skills', $skills_payload['payloadTab'] );
+		self::assertContains( 'skills', $skills_payload['hydratedTabs'] );
 	}
 
 	public function test_connections_payload_includes_effective_ability_details(): void {
@@ -459,6 +471,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'aculect-ai-companion/v1', $routes[0]['namespace'] );
 		self::assertSame( '/settings-payload', $routes[0]['route'] );
 		self::assertSame( array( $page, 'can_manage_settings' ), $routes[0]['args']['permission_callback'] );
+		self::assertContains( '/skills', array_column( $routes, 'route' ) );
 
 		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
 		self::assertFalse( $page->can_manage_settings() );

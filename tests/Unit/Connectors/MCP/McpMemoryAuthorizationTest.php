@@ -120,7 +120,6 @@ final class McpMemoryAuthorizationTest extends TestCase {
 
 	private function setPrivateProperty( object $object, string $name, mixed $value ): void {
 		$property = new ReflectionProperty( $object, $name );
-		$property->setAccessible( true );
 		$property->setValue( $object, $value );
 	}
 }

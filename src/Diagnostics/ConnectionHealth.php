@@ -421,7 +421,8 @@ final class ConnectionHealth {
 			),
 			'guidance'        => array(
 				'Do not challenge Aculect connector routes with browser challenges, Under Attack mode, Bot Fight Mode, Super Bot Fight Mode, or WAF challenge actions.',
-				'Use a narrow skip rule for Aculect routes only; do not bypass all /wp-json/ traffic.',
+				'Basic Cloudflare Bot Fight Mode cannot be skipped by a WAF custom rule. If it challenges connector traffic, turn it off for this hostname or use a Cloudflare product that supports scoped exceptions.',
+				'Super Bot Fight Mode can use a narrow WAF skip rule for Aculect routes only; do not bypass all /wp-json/ traffic.',
 				'Use Cloudflare Full or Full (strict) SSL/TLS for proxied connector hostnames, not Flexible.',
 				'If diagnostics logs are empty after a failed connection or tool call, the request may have been blocked before WordPress loaded.',
 			),
@@ -432,7 +433,7 @@ final class ConnectionHealth {
 				'cloudflare_compatibility',
 				'warn',
 				'Cloudflare headers were detected for this request.',
-				'Create a narrow Cloudflare rule that skips browser challenges and bot challenges for Aculect connector routes, and avoid Flexible SSL/TLS on the connector hostname.',
+				'If basic Bot Fight Mode challenges connector traffic, a WAF skip rule cannot exempt it. Disable basic Bot Fight Mode or use a product with scoped exceptions; for Super Bot Fight Mode and WAF challenges, use a narrow Aculect-route rule. Avoid Flexible SSL/TLS.',
 				$details
 			);
 		}
@@ -819,8 +820,8 @@ final class ConnectionHealth {
 		return $this->item(
 			$id,
 			'fail',
-			'The request reached a blocking layer before the plugin could answer.',
-			'If Cloudflare is enabled, use the Cloudflare compatibility diagnostic guidance to skip browser and bot challenges for Aculect connector routes, and avoid Flexible SSL on proxied DNS for this domain.',
+			'The endpoint returned HTTP 403; this check alone cannot tell whether WordPress or an edge layer returned it.',
+			'Compare redacted Cloudflare Security Events with WordPress diagnostics before changing rules. Basic Bot Fight Mode cannot be skipped by a WAF rule; Super Bot Fight Mode and WAF challenges can use scoped exceptions. Avoid Flexible SSL on proxied DNS.',
 			array(
 				'url'        => $url,
 				'httpStatus' => $status,

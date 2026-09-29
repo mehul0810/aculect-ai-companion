@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>Choose a WordPress pattern</title>
+	<style>__ACULECT_WIDGET_CSS__</style>
+</head>
+<body>
+	<main aria-labelledby="heading">
+		<header>
+			<p class="eyebrow">WordPress patterns</p>
+			<h1 id="heading">Choose a layout</h1>
+			<p class="intro">Explore patterns available on this site. Choosing one shares its identifier with the assistant; it does not add content.</p>
+		</header>
+		<div id="notice" class="notice" role="status" aria-live="polite">Waiting for available patterns.</div>
+		<section id="picker" hidden aria-label="Available patterns">
+			<div class="filters">
+				<label>Search patterns<input id="search" type="search" maxlength="100" autocomplete="off" placeholder="Title, category, block…"></label>
+				<label>Source<select id="source"><option value="">All sources</option></select></label>
+				<label>Compatibility<select id="compatibility"><option value="">All statuses</option><option value="compatible">Compatible</option><option value="incompatible">Incompatible</option><option value="unknown">Not verified</option></select></label>
+			</div>
+			<p id="count" class="count" role="status" aria-live="polite"></p>
+			<div id="cards" class="cards" role="list"></div>
+			<p id="empty" class="empty" hidden>No patterns match these filters. Clear a filter or ask the assistant to refresh the list.</p>
+			<div class="paging"><button id="previous" type="button">Previous</button><span id="page-label"></span><button id="next" type="button">Next</button></div>
+		</section>
+	</main>
+	<script>__ACULECT_WIDGET_JS__</script>
+</body>
+</html>

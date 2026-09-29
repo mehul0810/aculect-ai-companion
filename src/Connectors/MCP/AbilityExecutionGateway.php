@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Connectors\MCP;
 
 use Aculect\AICompanion\Activity\ActivityLogger;
+use Aculect\AICompanion\Admin\McpApprovalQueue;
 use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaimDecision;
+use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaim;
 use Aculect\AICompanion\Connectors\OAuth\ConnectionAccessLevel;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Closure;
@@ -31,6 +33,7 @@ final class AbilityExecutionGateway {
 	private IntelligenceRegistry $intelligence;
 	private McpInputValidator $input_validator;
 	private ToolSafety $safety;
+	private McpAppApprovalHandoff $approval_handoff;
 
 	/**
 	 * Create Activity Logger instances for best-effort execution observability.
@@ -70,6 +73,13 @@ final class AbilityExecutionGateway {
 		$this->safety                    = $safety ?? new ToolSafety();
 		$this->activity_logger_factory   = $activity_logger_factory ?? static fn (): ActivityLogger => new ActivityLogger();
 		$this->diagnostic_logger_factory = $diagnostic_logger_factory ?? static fn (): Logger => new Logger();
+		$this->approval_handoff          = new McpAppApprovalHandoff(
+			$this->registry,
+			$this->safety,
+			function ( string $event, array $metadata, array $auth ): void {
+				$this->record_timeline_event( $event, $metadata, $auth );
+			}
+		);
 	}
 
 	/**
@@ -376,34 +386,53 @@ final class AbilityExecutionGateway {
 	private function execute_tool_with_safety( string $tool, array $args, bool $is_intelligence_tool, array $auth ): array {
 		$is_incident_report         = $is_intelligence_tool && 'plugin.incident.report' === $tool && ! $this->intelligence->is_read_only( $tool );
 		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $this->registry->is_read_only( $tool ) );
-		$requires_confirmation      = $this->safety->requires_confirmation( $tool, $args );
+		$is_approval_candidate      = $this->approval_handoff->is_candidate( $tool, $is_intelligence_tool );
 		$has_confirmation_token     = $is_write_tool && $this->safety->has_confirmation_token( $args );
 		$is_dry_run                 = $is_write_tool && $this->safety->is_dry_run( $args ) && ! $has_confirmation_token;
 		$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $auth, $is_intelligence_tool );
-		$trusted_write_executed     = false;
-		$confirmation_validated     = $is_write_tool
+		$requires_confirmation      = $this->safety->requires_confirmation( $tool, $args ) || ( $is_approval_candidate && ! $write_permission_unblocked );
+		$approval                   = $this->approval_handoff->prepare( $tool, $args, $auth, $is_intelligence_tool, $is_write_tool, $requires_confirmation, $is_dry_run, $has_confirmation_token, $write_permission_unblocked );
+		$args                       = $approval['args'];
+		if ( is_array( $approval['early_result'] ) ) {
+			return array(
+				'result'                 => $approval['early_result'],
+				'args'                   => $args,
+				'trusted_write_executed' => false,
+			);
+		}
+		$is_approval_candidate    = $approval['candidate'];
+		$approval_handoff         = $approval['handoff'];
+		$approval_store           = $approval['store'];
+		$approval_policy          = $approval['policy'];
+		$approval_capability_args = $approval['capability_args'];
+		$approval_status          = $approval['status'];
+		$approval_validated       = $approval['validated'];
+		$approval_alias           = $approval['alias'];
+		$trusted_write_executed   = false;
+		$confirmation_validated   = $is_write_tool
 			&& ! $is_dry_run
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& $this->confirmation_token_validated( $tool, $args, $auth );
-		$allow_claim_create         = $write_permission_unblocked || ! $requires_confirmation || $confirmation_validated;
-		$claim_decision             = $is_write_tool && ! $is_dry_run
-			? $this->safety->claim_write_execution( $tool, $args, $auth, $allow_claim_create )
+		$allow_claim_create       = $write_permission_unblocked || ! $requires_confirmation || $confirmation_validated || ( 'approved' === $approval_status && null !== $approval_alias );
+		$claim_decision           = $is_write_tool && ! $is_dry_run && ( ! $approval_handoff || $approval_validated )
+			? $this->safety->claim_write_execution( $tool, $args, $auth, $allow_claim_create, $approval_alias )
 			: ExecutionClaimDecision::missing();
-		$claim_result               = $this->safety->claim_decision_result( $claim_decision );
-		$invalid_confirmation       = $has_confirmation_token
+		$claim_result             = $this->safety->claim_decision_result( $claim_decision );
+		$invalid_confirmation     = $has_confirmation_token
 			&& ! $is_dry_run
 			&& null === $claim_result
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& ! $confirmation_validated;
-		$needs_confirmation_gate    = $is_write_tool
+		$needs_confirmation_gate  = $is_write_tool
 			&& ! $is_dry_run
 			&& null === $claim_result
 			&& ! $write_permission_unblocked
 			&& $requires_confirmation
 			&& ! $has_confirmation_token
-			&& ! $confirmation_validated;
+			&& ! $confirmation_validated
+			&& ! $approval_validated;
 
 		if ( null !== $claim_result ) {
 			$result = $claim_result;
@@ -412,75 +441,33 @@ final class AbilityExecutionGateway {
 			if ( ! isset( $result['error'] ) ) {
 				if ( $write_permission_unblocked ) {
 					$result = $this->write_permission_preview_payload( $result );
-				} elseif ( $requires_confirmation ) {
+				} elseif ( $requires_confirmation && ! $is_approval_candidate ) {
 					$result = $this->add_confirmation_metadata( $result, $tool, $args, $auth );
+				} elseif ( $requires_confirmation ) {
+					$result = $this->approval_handoff->preview_payload( $result );
 				}
 			}
 		} elseif ( $invalid_confirmation ) {
 			$result = $this->invalid_confirmation_payload( $tool, $args, $auth );
 		} elseif ( $needs_confirmation_gate ) {
-			$preview_args            = $this->safety->strip_control_args( $args );
-			$preview_args['dry_run'] = true;
-			$preview                 = $this->execute_tool( $tool, $preview_args, $is_intelligence_tool, $auth );
-			$result                  = isset( $preview['error'] )
-				? $preview
-					: $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
-		} else {
-			$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
-			$binding   = $this->lifecycle_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
-			if ( isset( $binding['error'] ) ) {
-				$this->release_claim_if_present( $claim_decision );
-				return array(
-					'result'                 => $binding,
-					'args'                   => $args,
-					'trusted_write_executed' => false,
-				);
-			}
-			if ( array() !== $binding ) {
-				$exec_args[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] = $binding;
-			}
-			$claim = $claim_decision->claim();
-			if ( $is_write_tool && $this->safety->has_execution_alias( $args ) && null === $claim ) {
-				$result = $this->safety->execution_uncertain_result();
-			} elseif ( null !== $claim && ! $this->safety->mark_claim_running( $claim ) ) {
-				$result = $this->safety->execution_uncertain_result();
-			} elseif ( null === $claim ) {
-				$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
+			$preview_args                = $this->safety->strip_control_args( $args );
+			$preview_args['dry_run']     = true;
+			$approval_target_fingerprint = $approval_handoff && null !== $approval_store
+				? $approval_store->target_state_fingerprint_for( absint( $args['id'] ?? 0 ) )
+				: null;
+			$preview                     = $this->execute_tool( $tool, $preview_args, $is_intelligence_tool, $auth );
+			if ( isset( $preview['error'] ) ) {
+				$result = $preview;
+			} elseif ( $approval_handoff && $approval_store instanceof PendingOperationApprovalStore && is_string( $auth['token_id'] ?? null ) ) {
+				$result = $this->approval_handoff->create_pending( $tool, $args, $preview_args, $preview, $auth, $approval_store, $approval_policy, $approval_capability_args, $approval_target_fingerprint );
 			} else {
-				try {
-					$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
-				} catch ( \Throwable ) {
-					$this->safety->mark_claim_uncertain( $claim );
-					$result = $this->safety->execution_uncertain_result();
-				}
+				$result = $this->confirmation_required_payload( $tool, $preview_args, $auth, $preview );
 			}
-
-			$is_terminal_partial = isset( $result['error'] )
-				&& 'partial_write' === $result['error']
-				&& true === ( $result['terminal'] ?? false );
-			if ( null !== $claim && $is_terminal_partial ) {
-				if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
-					$result = $this->safety->execution_uncertain_result();
-				}
-			} elseif ( null !== $claim && isset( $result['error'] ) && 'execution_uncertain' !== $result['error'] ) {
-				if ( ! $this->safety->release_claim( $claim ) ) {
-					$result = $this->safety->execution_uncertain_result();
-				}
-			} elseif ( $is_write_tool && ! isset( $result['error'] ) ) {
-				$trusted_write_executed = $write_permission_unblocked;
-				if ( $trusted_write_executed ) {
-					$result = $this->trusted_write_result_payload( $result, $auth );
-				}
-
-				if ( null !== $claim ) {
-					if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
-						$result = $this->safety->execution_uncertain_result();
-					}
-				} else {
-					$this->safety->remember_write_result( $tool, $args, $auth, $result );
-				}
-			}
-			$args = $exec_args;
+		} else {
+			$execution              = $this->run_execution_branch( $tool, $args, $is_intelligence_tool, $auth, $is_write_tool, $has_confirmation_token, $write_permission_unblocked, $claim_decision, $approval );
+			$result                 = $execution['result'];
+			$args                   = $execution['args'];
+			$trusted_write_executed = $execution['trusted_write_executed'];
 		}
 
 		return array(
@@ -488,6 +475,102 @@ final class AbilityExecutionGateway {
 			'args'                   => $args,
 			'trusted_write_executed' => $trusted_write_executed,
 		);
+	}
+
+	/**
+	 * Complete lifecycle binding, one-use approval consumption and claim finalization.
+	 *
+	 * @param string                 $tool Tool ID.
+	 * @param array<string,mixed>    $args Normalized arguments.
+	 * @param bool                   $is_intelligence_tool Intelligence tool flag.
+	 * @param array<string,mixed>    $auth OAuth context.
+	 * @param bool                   $is_write_tool Write tool flag.
+	 * @param bool                   $has_confirmation_token Existing confirmation flag.
+	 * @param bool                   $write_permission_unblocked Direct-write policy flag.
+	 * @param ExecutionClaimDecision $claim_decision Existing claim decision.
+	 * @param array<string,mixed>    $approval Prepared approval context.
+	 * @return array{result:array<string,mixed>,args:array<string,mixed>,trusted_write_executed:bool}
+	 */
+	private function run_execution_branch( string $tool, array $args, bool $is_intelligence_tool, array $auth, bool $is_write_tool, bool $has_confirmation_token, bool $write_permission_unblocked, ExecutionClaimDecision $claim_decision, array $approval ): array {
+		$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
+		$binding   = $this->lifecycle_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
+		if ( isset( $binding['error'] ) ) {
+			$this->release_claim_if_present( $claim_decision );
+			return array(
+				'result'                 => $binding,
+				'args'                   => $args,
+				'trusted_write_executed' => false,
+			);
+		}
+		if ( array() !== $binding ) {
+			$exec_args[ PluginLifecycleAbilities::CONFIRMATION_BINDING_KEY ] = $binding;
+		}
+		$claim             = $claim_decision->claim();
+		$approval_consumed = false;
+		if ( $is_write_tool && ( $this->safety->has_execution_alias( $args ) || null !== $approval['alias'] ) && null === $claim ) {
+			$result = $this->safety->execution_uncertain_result();
+		} elseif ( null !== $claim && ! $this->safety->mark_claim_running( $claim ) ) {
+			$result = $this->safety->execution_uncertain_result();
+		} elseif ( 'approved' === $approval['status'] && $approval['store'] instanceof PendingOperationApprovalStore && ! ( $approval_consumed = $this->approval_handoff->consume( $approval['store'], $tool, $args, $auth, $approval['capability_args'], $approval['policy'], $approval['request'] ) ) ) { // phpcs:ignore Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure, Generic.CodeAnalysis.AssignmentInCondition.Found -- Set the one-use flag from the atomic consume result.
+			if ( null !== $claim && ! $this->safety->release_claim( $claim ) ) {
+				$result = $this->safety->execution_uncertain_result();
+			} else {
+				$result = $this->approval_handoff->blocked_payload( 'stale' );
+			}
+		} elseif ( null === $claim ) {
+			$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
+		} else {
+			try {
+				$result = $this->execute_tool( $tool, $exec_args, $is_intelligence_tool, $auth );
+			} catch ( \Throwable ) {
+				$this->safety->mark_claim_uncertain( $claim );
+				$result = $this->safety->execution_uncertain_result();
+			}
+		}
+		if ( $approval_consumed ) {
+			$this->approval_handoff->record_execution_result( $tool, $auth, $result, $approval['request'] );
+		}
+		$trusted_write_executed = $is_write_tool && ! isset( $result['error'] ) && $write_permission_unblocked;
+		if ( $trusted_write_executed ) {
+			$result = $this->trusted_write_result_payload( $result, $auth );
+		}
+		$this->finalize_execution_claim( $claim, $is_write_tool, $tool, $args, $auth, $result );
+		return array(
+			'result'                 => $result,
+			'args'                   => $exec_args,
+			'trusted_write_executed' => $trusted_write_executed,
+		);
+	}
+
+	/**
+	 * Finalize one claim according to success, terminal partial, and retry semantics.
+	 *
+	 * @param ExecutionClaim|null $claim Exact owner/fence handle.
+	 * @param bool                $is_write_tool Whether this operation is a write.
+	 * @param string              $tool Tool identifier.
+	 * @param array<string,mixed> $args Normalized request arguments.
+	 * @param array<string,mixed> $auth OAuth context.
+	 * @param array<string,mixed> $result Result by reference for uncertainty replacement.
+	 */
+	private function finalize_execution_claim( ?\Aculect\AICompanion\Connectors\MCP\ExecutionClaims\ExecutionClaim $claim, bool $is_write_tool, string $tool, array $args, array $auth, array &$result ): void {
+		$is_terminal_partial = isset( $result['error'] ) && 'partial_write' === $result['error'] && true === ( $result['terminal'] ?? false );
+		if ( null !== $claim && $is_terminal_partial ) {
+			if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
+				$result = $this->safety->execution_uncertain_result();
+			}
+		} elseif ( null !== $claim && isset( $result['error'] ) && 'execution_uncertain' !== $result['error'] ) {
+			if ( ! $this->safety->release_claim( $claim ) ) {
+				$result = $this->safety->execution_uncertain_result();
+			}
+		} elseif ( $is_write_tool && ! isset( $result['error'] ) ) {
+			if ( null !== $claim ) {
+				if ( ! $this->safety->complete_claim( $claim, $tool, $args, $auth, $result ) ) {
+					$result = $this->safety->execution_uncertain_result();
+				}
+			} else {
+				$this->safety->remember_write_result( $tool, $args, $auth, $result );
+			}
+		}
 	}
 
 	/**

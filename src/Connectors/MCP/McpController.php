@@ -258,16 +258,16 @@ final class McpController {
 			);
 		}
 
-		if ( in_array( $method, array( 'tools/call', 'resources/read', 'prompts/get' ), true ) ) {
+		if ( in_array( $method, array( 'tools/call', 'resources/read', 'prompts/get', 'skills/get' ), true ) ) {
 			$header_name = (string) $request->get_header( 'mcp-name' );
-			$body_name   = 'resources/read' === $method
+			$body_name   = in_array( $method, array( 'resources/read', 'skills/get' ), true )
 				? ( isset( $params['uri'] ) && is_string( $params['uri'] ) ? $params['uri'] : '' )
 				: ( isset( $params['name'] ) && is_string( $params['name'] ) ? $params['name'] : '' );
 			$decoded     = $this->decoded_mcp_header( $header_name );
 			if ( null === $decoded || '' === $decoded || ! hash_equals( $body_name, $decoded ) ) {
 				return array(
 					'code'    => 'invalid_mcp_name_header',
-					'message' => 'Mcp-Name must exactly match the requested tool, prompt, or resource name.',
+					'message' => 'Mcp-Name must exactly match the requested tool, prompt, skill, or resource name.',
 					'status'  => 400,
 				);
 			}
@@ -534,7 +534,7 @@ final class McpController {
 		}
 
 		$method                    = (string) ( $body['method'] ?? '' );
-		$this->mcp_apps_ui_enabled = McpAppsNegotiation::enabled_for_request( $method, $body, $this->request_protocol_version, $this->request_auth );
+		$this->mcp_apps_ui_enabled = McpAppsNegotiation::enabled_for_request( $method, $body, $this->request_protocol_version, $this->request_auth, (string) $request->get_header( 'mcp-session-id' ) );
 		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && 'notifications/initialized' === $method ) {
 			return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
 		}
@@ -562,7 +562,7 @@ final class McpController {
 					$requested_version = McpProtocolVersion::TRANSITIONAL;
 				}
 				$started_at = microtime( true );
-				$result     = $this->initialize_payload( $requested_version, $this->mcp_apps_ui_enabled );
+				$result     = $this->initialize_payload( $requested_version );
 				$this->record_timeline_event(
 					'initialize',
 					array(
@@ -572,11 +572,13 @@ final class McpController {
 					),
 					$auth
 				);
-				return $this->rpc_result( $id, 'initialize', $result );
+				return $this->initialize_rpc_response( $id, $result, (array) ( $body['params'] ?? array() ), $auth, (string) $request->get_header( 'mcp-session-id' ) );
 
 			case 'server/discover':
 				// Keep discovery private and uncached across the site's opt-in/opt-out transition.
-				return $this->rpc_result( $id, 'server/discover', McpAppsNegotiation::discovery_payload( self::SUPPORTED_PROTOCOL_VERSIONS, $this->mcp_instructions() ) );
+				$discovery = McpAppsNegotiation::discovery_payload( self::SUPPORTED_PROTOCOL_VERSIONS, $this->mcp_instructions() );
+				$discovery = McpSkillsNegotiation::add_discovery_capability( $discovery, $this->request_protocol_version );
+				return $this->rpc_result( $id, 'server/discover', $discovery );
 
 			case 'tools/list':
 				$started_at = microtime( true );
@@ -608,26 +610,33 @@ final class McpController {
 
 			case 'resources/list':
 				// The opt-in changes the resource list by client capability; never cache either variant.
-				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources( $this->mcp_apps_ui_enabled ) );
+				$skills_enabled = McpSkillsNegotiation::enabled_for_protocol( $this->request_protocol_version );
+				$available      = $skills_enabled ? ( new McpSkillsRpcHandler() )->available_tool_ids( $this->request_auth ) : array();
+				return $this->rpc_result( $id, 'resources/list', ( new McpResourceRegistry() )->list_resources( $this->mcp_apps_ui_enabled, $skills_enabled, $available ) );
 
 			case 'resources/read':
-				$resource_result = ( new McpResourceRegistry() )->read_resource( (array) ( $body['params'] ?? array() ), $this->mcp_apps_ui_enabled );
-				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version
-					&& isset( $resource_result['error'] )
-					&& in_array( $resource_result['error'], array( 'resource_not_found', 'invalid_resource_uri' ), true ) ) {
-					return $this->rpc_error(
-						$id,
-						-32602,
-						'Invalid params',
-						array( 'code' => (string) $resource_result['error'] )
-					);
+				$resource = ( new McpNegotiatedResourceReader() )->read( $body['params'] ?? array(), $this->mcp_apps_ui_enabled, $this->request_protocol_version, $this->request_auth );
+				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && isset( $resource['error'] ) && in_array( $resource['error'], array( 'resource_not_found', 'invalid_resource_uri', 'skill_not_found' ), true ) ) {
+					return $this->rpc_error( $id, -32602, 'Invalid params', array( 'code' => (string) $resource['error'] ) );
 				}
+				return $this->rpc_result( $id, 'resources/read', $resource );
 
-				return $this->rpc_result( $id, 'resources/read', $resource_result );
+			case 'skills/list':
+			case 'skills/get':
+				$skills = ( new McpSkillsRpcHandler() )->handle( $method, $body['params'] ?? array(), $this->request_protocol_version, $this->request_auth );
+				if ( isset( $skills['unsupported'] ) ) {
+					break;
+				}
+				return isset( $skills['error_code'] )
+					? $this->rpc_error( $id, (int) $skills['error_code'], (string) $skills['error_message'], (array) $skills['error_data'] )
+					: $this->rpc_result( $id, $method, $skills );
 
 			case 'tools/call':
 				$params  = isset( $body['params'] ) && is_array( $body['params'] ) ? $body['params'] : array();
-				$outcome = $this->execution_gateway->execute( new AbilityExecutionRequest( $params, $auth, $request ) );
+				$outcome = McpAppsNegotiation::with_request_enabled(
+					$this->mcp_apps_ui_enabled,
+					fn (): AbilityExecutionOutcome => $this->execution_gateway->execute( new AbilityExecutionRequest( $params, $auth, $request ) )
+				);
 
 				return $this->adapt_tool_execution_outcome( $id, $outcome );
 
@@ -840,6 +849,28 @@ final class McpController {
 				$mcp_apps_enabled
 			),
 		);
+	}
+
+	/**
+	 * Return initialize JSON and attach the optional legacy Apps session header.
+	 *
+	 * @param string|int|null      $id     JSON-RPC request ID.
+	 * @param array<string, mixed> $result Initialize result.
+	 * @param array<string, mixed> $params Initialize request parameters.
+	 * @param array<string, mixed> $auth   Authenticated OAuth context.
+	 * @param string               $session_id Existing protocol session ID, when supplied.
+	 * @return WP_REST_Response|array<string, mixed>
+	 */
+	private function initialize_rpc_response( string|int|null $id, array $result, array $params, array $auth, string $session_id = '' ): WP_REST_Response|array {
+		$issued_session_id = McpAppsNegotiation::create_legacy_session_id( $params, $auth, $session_id );
+		if ( null === $issued_session_id ) {
+			return $this->rpc_result( $id, 'initialize', $result );
+		}
+
+		$result['capabilities'] = McpAppsNegotiation::initialize_capabilities( (array) ( $result['capabilities'] ?? array() ), true );
+		$http_response          = new WP_REST_Response( $this->rpc_result( $id, 'initialize', $result ) );
+		$http_response->header( 'MCP-Session-Id', $issued_session_id );
+		return $http_response;
 	}
 
 	/**
@@ -1467,15 +1498,7 @@ final class McpController {
 			AbilityExecutionGateway::OUTCOME_SUCCESS => $this->rpc_result(
 				$id,
 				'tools/call',
-				array(
-					'content'           => array(
-						array(
-							'type' => 'text',
-							'text' => (string) wp_json_encode( (array) ( $data['result'] ?? array() ) ),
-						),
-					),
-					'structuredContent' => (array) ( $data['result'] ?? array() ),
-				)
+				( new McpToolResultPresenter() )->present( (array) ( $data['result'] ?? array() ) )
 			),
 			default => $this->rpc_error( $id, -32603, 'Internal error' ),
 		};

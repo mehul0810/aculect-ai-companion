@@ -305,6 +305,23 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( 'fail', $result['status'] );
 	}
 
+	public function test_mcp_403_does_not_guess_whether_edge_or_wordpress_blocked_it(): void {
+		$GLOBALS['aculect_ai_companion_test_http_get'] = static fn (): array => array(
+			'body'     => '',
+			'headers'  => array(),
+			'response' => array(
+				'code'    => 403,
+				'message' => 'Forbidden',
+			),
+		);
+
+		$result = $this->invokePrivate( new ConnectionHealth(), 'check_mcp_auth_challenge' );
+
+		self::assertSame( 'fail', $result['status'] );
+		self::assertStringContainsString( 'cannot tell whether WordPress or an edge layer', $result['message'] );
+		self::assertStringContainsString( 'Cloudflare Security Events', $result['remediation'] );
+	}
+
 	public function test_mcp_tool_manifest_check_reports_local_tool_summary(): void {
 		$result = $this->invokePrivate( new ConnectionHealth(), 'check_mcp_tool_manifest' );
 
@@ -400,6 +417,7 @@ final class ConnectionHealthTest extends TestCase {
 		self::assertSame( 'test-ray', $result['details']['detected_by']['cf-ray'] );
 		self::assertSame( 'challenge', $result['details']['detected_by']['cf-mitigated'] );
 		self::assertStringContainsString( 'Flexible SSL', $result['remediation'] );
+		self::assertStringContainsString( 'a WAF skip rule cannot exempt it', $result['remediation'] );
 	}
 
 	public function test_transient_persistence_check_requires_second_run(): void {

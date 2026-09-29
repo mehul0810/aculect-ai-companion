@@ -41,12 +41,14 @@
       "@analyse:mcp:site-operations",
       "@analyse:mcp:editor-recovery",
       "@analyse:mcp:modules",
-      "@analyse:mcp:extensions"
+      "@analyse:mcp:extensions",
+      "@analyse:mcp:0.9"
     ],
     "analyse:mcp:site-operations": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/ContentRevisionRecovery.php src/Connectors/MCP/NavigationItemWriteAbilities.php src/Connectors/MCP/NavigationItemState.php src/Connectors/MCP/RegisteredFieldAbilities.php src/Connectors/MCP/RegisteredFieldPolicy.php src/Connectors/MCP/RenderedPageInspectionAbilities.php src/Connectors/MCP/RenderedPageEvidence.php src/Connectors/MCP/TargetedMaintenanceAbilities.php src/Connectors/MCP/IntegrityChecksumAbilities.php src/Connectors/MCP/ChecksumFileInspector.php src/Connectors/MCP/SiteHealthInfo.php src/Connectors/MCP/PrivacyRequestStatus.php src/Connectors/MCP/NativeHealthSummary.php src/Connectors/MCP/ToolsHandoffAbilities.php src/Connectors/MCP/ToolsOperationPolicy.php",
     "analyse:mcp:editor-recovery": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/EditorRecordAbilities.php src/Connectors/MCP/EditorRecordState.php src/Connectors/MCP/EditorStylePolicy.php src/Connectors/MCP/EditorContentPolicy.php src/Connectors/MCP/NativePostRecoveryPoint.php src/Connectors/MCP/TrashedContentRecovery.php src/Connectors/MCP/SafeMediaTrash.php src/Connectors/MCP/MediaExpectedState.php src/Connectors/MCP/NavigationLocationAbilities.php src/Connectors/MCP/EditorRecordDeletion.php src/Connectors/MCP/EditorRecordDeletionSnapshot.php src/Connectors/MCP/NavigationMenuDeletion.php src/Connectors/MCP/NavigationMenuDeletionState.php",
     "analyse:mcp:modules": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/Modules src/Connectors/MCP/MemoryListSchema.php",
     "analyse:mcp:extensions": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/Extension*.php src/Connectors/MCP/ThemePackage*.php",
+    "analyse:mcp:0.9": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=1G src/Connectors/MCP/McpAppsContentUpdate.php src/Connectors/MCP/McpAppsImageUploadResource.php src/Connectors/MCP/McpAppsPatternPickerResource.php src/Connectors/MCP/McpAppsPostUpdateResource.php src/Connectors/MCP/McpAppsPostUpdateResult.php src/Connectors/MCP/McpNegotiatedResourceReader.php src/Connectors/MCP/McpToolResultPresenter.php src/Connectors/MCP/McpSkillProviderRegistry.php src/Connectors/MCP/McpSkillsNegotiation.php src/Connectors/MCP/McpSkillsRegistry.php src/Connectors/MCP/McpSkillsRpcHandler.php src/Connectors/MCP/PatternPickerCandidates.php src/Connectors/MCP/PatternPickerFilter.php src/Connectors/MCP/Skills",
     "analyse:core": "phpstan analyse --configuration=phpstan.neon.dist --memory-limit=2G src/Activity src/Admin src/Settings src/Connectors/OAuth src/Connectors/Providers src/Connectors/Helpers.php src/Diagnostics src/Intelligence src/WebMCP src/Plugin.php aculect-ai-companion.php",
     "analyse": [
       "@analyse:mcp",

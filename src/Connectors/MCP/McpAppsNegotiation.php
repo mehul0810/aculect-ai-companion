@@ -9,12 +9,41 @@ namespace Aculect\AICompanion\Connectors\MCP;
  */
 final class McpAppsNegotiation {
 
-	public const EXTENSION     = 'io.modelcontextprotocol/ui';
-	public const MIME_TYPE     = 'text/html;profile=mcp-app';
-	public const SITE_INFO_URI = 'ui://aculect/site-info/v1.html';
+	public const EXTENSION          = 'io.modelcontextprotocol/ui';
+	public const MIME_TYPE          = 'text/html;profile=mcp-app';
+	public const SITE_INFO_URI      = 'ui://aculect/site-info/v1.html';
+	public const POST_UPDATE_URI    = 'ui://aculect/post-update/v1.html';
+	public const PATTERN_PICKER_URI = 'ui://aculect/pattern-picker/v1.html';
 
-	private const CAPABILITY_TRANSIENT_PREFIX = 'aculect_ai_companion_mcp_ui_';
-	private const CAPABILITY_TTL              = 86400;
+	private const SESSION_PURPOSE        = 'aculect.mcp-apps-session.v1';
+	private const SESSION_TTL            = 86400;
+	private const MAX_FUTURE_SKEW        = 60;
+	private static bool $request_enabled = false;
+
+	/**
+	 * Run one ability inside the server-derived Apps negotiation context.
+	 *
+	 * @template T
+	 * @param bool         $enabled Whether this authenticated request negotiated Apps.
+	 * @param callable():T $callback Ability execution.
+	 * @return T
+	 */
+	public static function with_request_enabled( bool $enabled, callable $callback ): mixed {
+		$previous              = self::$request_enabled;
+		self::$request_enabled = $enabled;
+		try {
+			return $callback();
+		} finally {
+			self::$request_enabled = $previous;
+		}
+	}
+
+	/**
+	 * Report the active authenticated-request negotiation state.
+	 */
+	public static function request_enabled(): bool {
+		return self::enabled() && self::$request_enabled;
+	}
 
 	/**
 	 * Check whether the experimental feature has been explicitly enabled.
@@ -26,21 +55,19 @@ final class McpAppsNegotiation {
 	/**
 	 * Resolve MCP Apps support for the current authenticated RPC request.
 	 *
-	 * Initialize based clients are remembered briefly by OAuth access token. The
-	 * stateless protocol requires capabilities on every request and never uses
-	 * the remembered value as a fallback.
+	 * Legacy clients are scoped by their protocol session ID, not the OAuth
+	 * access token, because one token can be shared by parallel client sessions
+	 * and is rotated during refresh. The stateless protocol requires capabilities
+	 * on every request and never uses session state as a fallback.
 	 *
 	 * @param string               $method   JSON-RPC method.
 	 * @param array<string, mixed> $body     Complete JSON-RPC request.
 	 * @param string               $version  Negotiated MCP protocol version.
 	 * @param array<string, mixed> $auth     Authenticated OAuth context.
+	 * @param string               $session_id Protocol session identifier, when supplied.
 	 */
-	public static function enabled_for_request( string $method, array $body, string $version, array $auth ): bool {
-		$token_id = is_string( $auth['token_id'] ?? null ) ? $auth['token_id'] : '';
-
+	public static function enabled_for_request( string $method, array $body, string $version, array $auth, string $session_id = '' ): bool {
 		if ( ! self::enabled() ) {
-			self::forget_session( $token_id );
-
 			return false;
 		}
 
@@ -50,17 +77,60 @@ final class McpAppsNegotiation {
 				return false;
 			}
 
-			$supported = self::client_supports_initialize( $params );
-			self::remember_session( $token_id, $supported );
-
-			return $supported;
+			return self::client_supports_initialize( $params );
 		}
 
 		if ( McpProtocolVersion::CURRENT === $version ) {
 			return self::client_supports_stateless_request( $params );
 		}
 
-		return self::remembered_session_supports_apps( $token_id );
+		return self::remembered_session_supports_apps( $session_id, $auth );
+	}
+
+	/**
+	 * Create a protocol session ID for an opted-in legacy MCP Apps client.
+	 *
+	 * The value is stateless and carries no OAuth credential. Its MAC binds the
+	 * UI negotiation to the stable OAuth client, WordPress user, and site, allowing
+	 * the same initialized session to continue after access-token rotation.
+	 *
+	 * @param array<string, mixed> $params Initialize parameters.
+	 * @param array<string, mixed> $auth   Authenticated OAuth context.
+	 * @param string               $session_id Client-provided protocol session ID.
+	 */
+	public static function create_legacy_session_id( array $params, array $auth, string $session_id = '' ): ?string {
+		if ( ! self::enabled() || ! self::client_supports_initialize( $params ) ) {
+			return null;
+		}
+
+		$client_id = is_string( $auth['client_id'] ?? null ) ? $auth['client_id'] : '';
+		$user_id   = is_numeric( $auth['user_id'] ?? null ) ? (int) $auth['user_id'] : 0;
+		if ( '' === $client_id || $user_id < 1 ) {
+			return null;
+		}
+
+		if ( '' !== $session_id && self::valid_legacy_session_id( $session_id, $client_id, $user_id ) ) {
+			return $session_id;
+		}
+
+		try {
+			$nonce = bin2hex( random_bytes( 12 ) );
+			$salt  = wp_salt( 'auth' );
+		} catch ( \Throwable ) {
+			return null;
+		}
+
+		if ( '' === $salt ) {
+			return null;
+		}
+
+		$issued_at = time();
+		if ( $issued_at > 0xffffffff ) {
+			return null;
+		}
+		$timestamp = sprintf( '%08x', $issued_at );
+		$mac       = self::session_mac( $timestamp, $nonce, $client_id, $user_id, $salt );
+		return $timestamp . $nonce . substr( $mac, 0, 32 );
 	}
 
 	/**
@@ -126,6 +196,16 @@ final class McpAppsNegotiation {
 				'resourceUri' => self::SITE_INFO_URI,
 				'visibility'  => array( 'model' ),
 			);
+		} elseif ( $apps_enabled && 'content_workflow.update_post' === $ability_id ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::POST_UPDATE_URI,
+				'visibility'  => array( 'model' ),
+			);
+		} elseif ( $apps_enabled && 'intelligence.patterns.list_available' === $ability_id ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::PATTERN_PICKER_URI,
+				'visibility'  => array( 'model' ),
+			);
 		}
 
 		return $metadata;
@@ -182,50 +262,60 @@ final class McpAppsNegotiation {
 	}
 
 	/**
-	 * Remember the legacy initialize negotiation for one OAuth access token.
+	 * Check a stateless legacy MCP Apps session ID and its authenticated binding.
 	 *
-	 * @param string $token_id OAuth access token identifier.
-	 * @param bool   $supported Client support state.
+	 * @param string               $session_id Protocol session identifier.
+	 * @param array<string, mixed> $auth       Authenticated OAuth context.
 	 */
-	private static function remember_session( string $token_id, bool $supported ): void {
-		if ( '' === $token_id ) {
-			return;
-		}
+	private static function remembered_session_supports_apps( string $session_id, array $auth ): bool {
+		$client_id = is_string( $auth['client_id'] ?? null ) ? $auth['client_id'] : '';
+		$user_id   = is_numeric( $auth['user_id'] ?? null ) ? (int) $auth['user_id'] : 0;
 
-		$key = self::transient_key( $token_id );
-		if ( $supported ) {
-			set_transient( $key, true, self::CAPABILITY_TTL );
-		} else {
-			delete_transient( $key );
-		}
+		return '' !== $client_id && $user_id > 0 && self::valid_legacy_session_id( $session_id, $client_id, $user_id );
 	}
 
 	/**
-	 * Check whether this OAuth client has a recent initialize negotiation.
+	 * Validate the timestamp and 128-bit MAC in a stateless protocol session identifier.
 	 *
-	 * @param string $token_id OAuth access token identifier.
+	 * @param string $session_id Protocol session identifier.
+	 * @param string $client_id  Authenticated OAuth client identifier.
+	 * @param int    $user_id    Authenticated WordPress user ID.
 	 */
-	private static function remembered_session_supports_apps( string $token_id ): bool {
-		return '' !== $token_id && true === get_transient( self::transient_key( $token_id ) );
-	}
-
-	/**
-	 * Clear one client's cached negotiation.
-	 *
-	 * @param string $token_id OAuth access token identifier.
-	 */
-	private static function forget_session( string $token_id ): void {
-		if ( '' !== $token_id ) {
-			delete_transient( self::transient_key( $token_id ) );
+	private static function valid_legacy_session_id( string $session_id, string $client_id, int $user_id ): bool {
+		if ( 1 !== preg_match( '/\A([a-f0-9]{8})([a-f0-9]{24})([a-f0-9]{32})\z/', $session_id, $matches ) ) {
+			return false;
 		}
+
+		$issued_at = hexdec( $matches[1] );
+		$now       = time();
+		if ( $issued_at > $now + self::MAX_FUTURE_SKEW || $issued_at < $now - self::SESSION_TTL ) {
+			return false;
+		}
+
+		try {
+			$salt = wp_salt( 'auth' );
+		} catch ( \Throwable ) {
+			return false;
+		}
+		if ( '' === $salt ) {
+			return false;
+		}
+
+		$expected_mac = substr( self::session_mac( $matches[1], $matches[2], $client_id, $user_id, $salt ), 0, 32 );
+		return hash_equals( $expected_mac, $matches[3] );
 	}
 
 	/**
-	 * Hash OAuth token IDs so transient names reveal no credentials.
+	 * Calculate a domain-separated session MAC bound to the authenticated client, user, and site.
 	 *
-	 * @param string $token_id OAuth access token identifier.
+	 * @param string $timestamp Timestamp component from the ID.
+	 * @param string $nonce     Random nonce component from the ID.
+	 * @param string $client_id Authenticated OAuth client identifier.
+	 * @param int    $user_id   Authenticated WordPress user ID.
+	 * @param string $salt      WordPress authentication salt.
 	 */
-	private static function transient_key( string $token_id ): string {
-		return self::CAPABILITY_TRANSIENT_PREFIX . hash( 'sha256', $token_id );
+	private static function session_mac( string $timestamp, string $nonce, string $client_id, int $user_id, string $salt ): string {
+		$binding = self::SESSION_PURPOSE . "\0" . $timestamp . "\0" . $nonce . "\0" . get_current_blog_id() . "\0" . $client_id . "\0" . $user_id;
+		return hash_hmac( 'sha256', $binding, $salt );
 	}
 }

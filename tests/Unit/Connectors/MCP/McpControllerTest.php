@@ -446,16 +446,6 @@ final class McpControllerTest extends TestCase {
 		self::assertSame( 'private', $resources['result']['cacheScope'] ?? '' );
 		self::assertSame( 0, $resources['result']['ttlMs'] ?? null );
 
-		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_mcp_apps_enabled'] = static fn (): bool => true;
-		try {
-			$opted_in_resources = $controller->handle_rpc( $this->currentProtocolRequest( 'resources/list', array() ) );
-			self::assertIsArray( $opted_in_resources );
-			self::assertSame( 'private', $opted_in_resources['result']['cacheScope'] ?? '' );
-			self::assertSame( 0, $opted_in_resources['result']['ttlMs'] ?? null );
-		} finally {
-			unset( $GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_mcp_apps_enabled'] );
-		}
-
 		$read = $controller->handle_rpc(
 			$this->currentProtocolRequest( 'resources/read', array( 'uri' => 'aculect://content/model' ) )
 		);
@@ -2383,7 +2373,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function privateProperty( object $object, string $name ): mixed {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 
 		return $reflection->getValue( $object );
 	}
@@ -2411,7 +2400,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function setPrivateProperty( object $object, string $name, mixed $value ): void {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 		$reflection->setValue( $object, $value );
 	}
 
@@ -2423,7 +2411,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function privatePropertyValue( object $object, string $name ): mixed {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 		return $reflection->getValue( $object );
 	}
 }

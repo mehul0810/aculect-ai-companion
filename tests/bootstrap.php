@@ -2479,7 +2479,7 @@ if ( ! class_exists( 'WP_Block_Patterns_Registry' ) ) {
 		 * @param array<string,mixed> $pattern Pattern metadata.
 		 */
 		public function register( string $name, array $pattern ): bool {
-			$pattern['name'] = $pattern['name'] ?? $name;
+			$pattern['name'] = $name;
 
 			$GLOBALS['aculect_ai_companion_test_patterns'][ $name ] = $pattern;
 
@@ -2489,10 +2489,10 @@ if ( ! class_exists( 'WP_Block_Patterns_Registry' ) ) {
 		/**
 		 * Return all registered test patterns.
 		 *
-		 * @return array<string, array<string, mixed>>
+		 * @return list<array<string, mixed>>
 		 */
 		public function get_all_registered(): array {
-			return $GLOBALS['aculect_ai_companion_test_patterns'];
+			return array_values( $GLOBALS['aculect_ai_companion_test_patterns'] );
 		}
 
 		/**
@@ -2577,14 +2577,14 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 			private string $body = ''
 		) {}
 
-		/**
-		 * Return one request parameter.
-		 *
-		 * @param string $key Parameter name.
-		 * @return mixed
-		 */
+		/** Return one request parameter. */
 		public function get_param( string $key ): mixed {
 			return $this->params[ $key ] ?? null;
+		}
+
+		/** Return route captures independently of body parameters. */
+		public function get_url_params(): array {
+			return $this->params;
 		}
 
 		/**

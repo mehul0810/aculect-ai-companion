@@ -21,6 +21,7 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
+use Aculect\AICompanion\Diagnostics\AgentReadinessDiagnostics;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogRepository;
 use Aculect\AICompanion\Diagnostics\LogSettings;
@@ -117,6 +118,7 @@ final class SettingsPage {
 				),
 			)
 		);
+		( new SkillsRestController() )->register_rest_routes();
 	}
 
 	/**
@@ -240,10 +242,11 @@ final class SettingsPage {
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
 			'payloadTab'         => $payload_tab,
-			'hydratedTabs'       => $this->hydrated_tabs( $payload_tab ),
+			'hydratedTabs'       => ( new SettingsTabHydration() )->hydrated_tabs( $payload_tab ),
 			'adminPageUrl'       => esc_url_raw( $this->settings_url() ),
 			'settingsPayloadUrl' => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
 			'settingsRestNonce'  => wp_create_nonce( 'wp_rest' ),
+			'skillsApiUrl'       => esc_url_raw( rest_url( 'aculect-ai-companion/v1/skills' ) ),
 			'brandIconUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
 			),
@@ -263,6 +266,7 @@ final class SettingsPage {
 			'roleConnections'    => $this->role_connections_payload(),
 			'roleAbilities'      => $this->role_abilities_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
+			'agentReadiness'     => ( new AgentReadinessDiagnostics() )->last_result(),
 		);
 	}
 
@@ -1028,6 +1032,7 @@ final class SettingsPage {
 		$this->guard_action( 'aculect_ai_companion_run_connection_diagnostics' );
 
 		( new ConnectionHealth() )->run();
+		( new AgentReadinessDiagnostics() )->run();
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -1315,38 +1320,12 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Return tabs that have complete data in the current localized payload.
-	 *
-	 * @param string $payload_tab Normalized payload tab.
-	 * @return list<string>
-	 */
-	private function hydrated_tabs( string $payload_tab ): array {
-		$tabs = array( 'overview', 'connect', 'diagnostics', 'advanced' );
-
-		$tab_specific_payloads = array(
-			'connections',
-			'abilities',
-			'activity',
-			'learning',
-			'brand',
-			'logs',
-			'changelog',
-		);
-
-		if ( in_array( $payload_tab, $tab_specific_payloads, true ) ) {
-			$tabs[] = $payload_tab;
-		}
-
-		return array_values( array_unique( $tabs ) );
-	}
-
-	/**
 	 * Return every tab name that can be represented by localized data.
 	 *
 	 * @return list<string>
 	 */
 	private function payload_tabs(): array {
-		return array_merge( array_column( $this->settings_tabs(), 'tab' ), array( 'brand', 'logs' ) );
+		return array_merge( array_column( $this->settings_tabs(), 'tab' ), array( 'brand', 'logs', 'skills' ) );
 	}
 
 	/**

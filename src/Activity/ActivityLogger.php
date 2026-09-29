@@ -26,6 +26,14 @@ final class ActivityLogger {
 		'blocked_by',
 		'confirmation_issued',
 		'confirmation_validated',
+		'approval_pending',
+		'approval_decision',
+		'approval_consumed',
+		'approval_execution',
+		'approval_replay',
+		'approval_stale',
+		'approval_mismatch',
+		'approval_expiry',
 		'error',
 	);
 
@@ -421,6 +429,13 @@ final class ActivityLogger {
 
 		if ( isset( $metadata['error_code'] ) && is_scalar( $metadata['error_code'] ) ) {
 			$context['error_code'] = substr( sanitize_key( (string) $metadata['error_code'] ), 0, 100 );
+		}
+
+		if ( isset( $metadata['approval_ref'] ) && is_string( $metadata['approval_ref'] ) && 1 === preg_match( '/^[a-f0-9]{16}$/', $metadata['approval_ref'] ) ) {
+			$context['approval_ref'] = $metadata['approval_ref'];
+		}
+		if ( isset( $metadata['expired_count'] ) && is_numeric( $metadata['expired_count'] ) ) {
+			$context['expired_count'] = max( 0, min( 25, (int) $metadata['expired_count'] ) );
 		}
 
 		return $context;

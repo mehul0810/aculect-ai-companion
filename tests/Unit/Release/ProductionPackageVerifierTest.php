@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Release;
 
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_mkdir, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.WP.AlternativeFunctions.file_system_operations_rmdir, WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec -- Package staging tests create disposable local fixtures and invoke the production CLI verifier.
+
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -100,6 +102,12 @@ final class ProductionPackageVerifierTest extends TestCase {
 		);
 		$this->write_file( $source . '/aculect-ai-companion.php', "<?php\n" );
 		$this->write_file( $source . '/design-qa.md', "Internal design QA notes.\n" );
+		$this->write_file( $source . '/assets/mcp-apps/runtime/v1/fixture.html', "<p>Test fixture</p>\n" );
+		$this->write_file( $source . '/src/Admin/McpApprovalQueue.php', "<?php\n" );
+		$this->write_file( $source . '/src/Connectors/MCP/McpAppApprovalHandoff.php', "<?php\n" );
+		$this->write_file( $source . '/src/Connectors/MCP/PendingApprovalInstaller.php', "<?php\n" );
+		$this->write_file( $source . '/src/Connectors/MCP/PendingApprovalCanonicalizer.php', "<?php\n" );
+		$this->write_file( $source . '/src/Connectors/MCP/PendingOperationApprovalStore.php', "<?php\n" );
 
 		try {
 			$result = $this->run_package_staging( $source, $package );
@@ -108,6 +116,12 @@ final class ProductionPackageVerifierTest extends TestCase {
 			self::assertFileExists( $package . '/aculect-ai-companion.php' );
 			self::assertFileDoesNotExist( $package . '/artifacts' );
 			self::assertFileDoesNotExist( $package . '/design-qa.md' );
+			self::assertFileDoesNotExist( $package . '/assets/mcp-apps/runtime' );
+			self::assertFileExists( $package . '/src/Admin/McpApprovalQueue.php' );
+			self::assertFileExists( $package . '/src/Connectors/MCP/McpAppApprovalHandoff.php' );
+			self::assertFileExists( $package . '/src/Connectors/MCP/PendingApprovalInstaller.php' );
+			self::assertFileExists( $package . '/src/Connectors/MCP/PendingApprovalCanonicalizer.php' );
+			self::assertFileExists( $package . '/src/Connectors/MCP/PendingOperationApprovalStore.php' );
 		} finally {
 			$this->remove_directory( $parent );
 		}
@@ -125,6 +139,15 @@ final class ProductionPackageVerifierTest extends TestCase {
 		self::assertTrue( mkdir( $package . '/build', 0755, true ) );
 		foreach ( array( 'index.asset.php', 'index.js', 'style-index.css', 'style-index-rtl.css' ) as $asset ) {
 			$this->write_file( $package . '/build/' . $asset, '' );
+		}
+		foreach ( array( 'site-info/v1/site-info.html', 'post-update/v1/post-update.html', 'pattern-picker/v1/pattern-picker.html', 'image-upload/v1/image-upload.html' ) as $asset ) {
+			$this->write_file( $package . '/assets/mcp-apps/' . $asset, '' );
+		}
+		foreach ( array( 'wordpress-site-audit', 'content-optimization', 'wordpress-troubleshooting' ) as $skill ) {
+			$this->write_file( $package . '/skills/core/' . $skill . '/SKILL.md', '' );
+		}
+		foreach ( array( 'src/Admin/McpApprovalQueue.php', 'src/Connectors/MCP/McpAppApprovalHandoff.php', 'src/Connectors/MCP/PendingApprovalInstaller.php', 'src/Connectors/MCP/PendingApprovalCanonicalizer.php', 'src/Connectors/MCP/PendingOperationApprovalStore.php' ) as $path ) {
+			$this->write_file( $package . '/' . $path, "<?php\n" );
 		}
 
 		return $package;

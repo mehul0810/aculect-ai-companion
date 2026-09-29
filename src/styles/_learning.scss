@@ -66,6 +66,12 @@
 	min-width: 0;
 }
 
+.aculect-ai-companion-learning-section[hidden],
+.aculect-ai-companion-memory-section[hidden],
+.aculect-ai-companion-incident-section[hidden] {
+	display: none;
+}
+
 .aculect-ai-companion-learning-section-heading {
 	display: grid;
 	gap: 4px;

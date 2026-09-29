@@ -49,6 +49,15 @@ final class McpResultPolicyTest extends TestCase {
 		self::assertArrayNotHasKey( 'cacheScope', $result );
 	}
 
+	public function test_skill_results_remain_private_when_caller_claims_authorization_independent(): void {
+		$policy = new McpResultPolicy();
+		foreach ( array( 'skills/list', 'skills/get' ) as $method ) {
+			$result = $policy->shape( McpProtocolVersion::CURRENT, $method, array(), true );
+			self::assertSame( 0, $result['ttlMs'], $method );
+			self::assertSame( 'private', $result['cacheScope'], $method );
+		}
+	}
+
 	public function test_unknown_protocol_is_rejected(): void {
 		$this->expectException( \InvalidArgumentException::class );
 

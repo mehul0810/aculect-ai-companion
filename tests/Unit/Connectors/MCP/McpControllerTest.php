@@ -229,8 +229,8 @@ final class McpControllerTest extends TestCase {
 		self::assertIsArray( $response );
 		self::assertSame( McpController::SUPPORTED_PROTOCOL_VERSIONS, $response['result']['supportedVersions'] ?? array() );
 		self::assertSame( 'complete', $response['result']['resultType'] ?? '' );
-		self::assertSame( 'public', $response['result']['cacheScope'] ?? '' );
-		self::assertSame( 3600000, $response['result']['ttlMs'] ?? 0 );
+		self::assertSame( 'private', $response['result']['cacheScope'] ?? '' );
+		self::assertSame( 0, $response['result']['ttlMs'] ?? null );
 		self::assertSame( 'Aculect AI Companion MCP', $response['result']['_meta']['io.modelcontextprotocol/serverInfo']['name'] ?? '' );
 
 		$initialize = $controller->handle_rpc(
@@ -443,8 +443,8 @@ final class McpControllerTest extends TestCase {
 
 		$resources = $controller->handle_rpc( $this->currentProtocolRequest( 'resources/list', array() ) );
 		self::assertIsArray( $resources );
-		self::assertSame( 'public', $resources['result']['cacheScope'] ?? '' );
-		self::assertSame( 3600000, $resources['result']['ttlMs'] ?? null );
+		self::assertSame( 'private', $resources['result']['cacheScope'] ?? '' );
+		self::assertSame( 0, $resources['result']['ttlMs'] ?? null );
 
 		$read = $controller->handle_rpc(
 			$this->currentProtocolRequest( 'resources/read', array( 'uri' => 'aculect://content/model' ) )
@@ -2373,7 +2373,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function privateProperty( object $object, string $name ): mixed {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 
 		return $reflection->getValue( $object );
 	}
@@ -2401,7 +2400,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function setPrivateProperty( object $object, string $name, mixed $value ): void {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 		$reflection->setValue( $object, $value );
 	}
 
@@ -2413,7 +2411,6 @@ final class McpControllerTest extends TestCase {
 	 */
 	private function privatePropertyValue( object $object, string $name ): mixed {
 		$reflection = new ReflectionProperty( $object, $name );
-		$reflection->setAccessible( true );
 		return $reflection->getValue( $object );
 	}
 }

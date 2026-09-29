@@ -38,10 +38,14 @@ final class ToolSafety {
 	 * @param array<string, mixed> $args         Tool arguments including controls.
 	 * @param array<string, mixed> $auth         OAuth context.
 	 * @param bool                 $allow_create Whether this call may start execution.
+	 * @param string|null          $approval_claim_alias Internal exact-operation alias after WordPress approval.
 	 */
-	public function claim_write_execution( string $tool, array $args, array $auth, bool $allow_create ): ExecutionClaimDecision {
+	public function claim_write_execution( string $tool, array $args, array $auth, bool $allow_create, ?string $approval_claim_alias = null ): ExecutionClaimDecision {
 		$confirmation_hash = $this->confirmation_key_hash( $args );
-		$idempotency_hash  = $this->idempotency_key_hash( $args, $auth );
+		if ( null === $confirmation_hash && is_string( $approval_claim_alias ) && 1 === preg_match( '/^[a-f0-9]{64}$/', $approval_claim_alias ) ) {
+			$confirmation_hash = hash( 'sha256', "approval\0" . $approval_claim_alias );
+		}
+		$idempotency_hash = $this->idempotency_key_hash( $args, $auth );
 		if ( null === $confirmation_hash && null === $idempotency_hash ) {
 			return ExecutionClaimDecision::missing();
 		}

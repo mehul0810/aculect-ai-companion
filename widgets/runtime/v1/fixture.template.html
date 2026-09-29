@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>Aculect widget fixture</title>
+	<style>__ACULECT_WIDGET_CSS__</style>
+</head>
+<body>
+	<main class="card" aria-labelledby="title">
+		<p class="eyebrow">WordPress site</p>
+		<h1 id="title">Connected site</h1>
+		<p id="site-url" hidden></p>
+		<p id="status" role="status" aria-live="polite">Loading site information…</p>
+		<dl id="details" aria-label="Site details" hidden>
+			<dt>WordPress</dt><dd data-field="wordpress"></dd>
+			<dt>Theme</dt><dd data-field="theme"></dd>
+			<dt>Locale</dt><dd data-field="locale"></dd>
+			<dt>Time zone</dt><dd data-field="timezone"></dd>
+		</dl>
+		<div class="actions">
+			<button id="refresh" type="button" disabled>Refresh</button>
+			<button id="open-site" type="button" hidden>Open site</button>
+			<button id="expand" type="button" hidden>Expand</button>
+			<button id="share" type="button" hidden>Share site name with assistant</button>
+			<button id="about" type="button">About this view</button>
+		</div>
+	</main>
+	<dialog id="about-dialog" aria-labelledby="dialog-title">
+		<h2 id="dialog-title">About this view</h2>
+		<p>This fixture uses the connected site's read-only information tool. The host decides whether to open links or change display mode.</p>
+		<button id="close-dialog" type="button">Close</button>
+	</dialog>
+	<script>__ACULECT_WIDGET_JS__</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>Content update result</title>
+	<style>__ACULECT_WIDGET_CSS__</style>
+</head>
+<body>
+	<main class="card" aria-labelledby="panel-heading">
+		<p class="eyebrow">WordPress content</p>
+		<h1 id="panel-heading">Update result</h1>
+		<p id="status" class="status" role="status" aria-live="polite" data-state="loading">Loading</p>
+		<p id="message" aria-live="polite">Waiting for the update result.</p>
+		<section id="content" aria-label="Updated content" hidden>
+			<h2 id="title"></h2>
+			<dl>
+				<dt>Content type</dt><dd id="content-type"></dd>
+				<dt>Current status</dt><dd id="post-status"></dd>
+				<dt>Completed</dt><dd><time id="completed"></time></dd>
+				<dt>Revision</dt><dd id="revision"></dd>
+			</dl>
+		</section>
+		<section id="approval" aria-label="Pending WordPress approval" hidden>
+			<h2>WordPress approval required</h2>
+			<p id="approval-risk"></p>
+			<p id="approval-target"></p>
+			<p><strong>Changed fields:</strong> <span id="approval-changes"></span></p>
+			<p id="approval-expiry"></p>
+			<p>Your WordPress decision records approval only. It does not run the update; the MCP client must resubmit the exact operation, and WordPress rechecks access and policy.</p>
+		</section>
+		<div id="actions" class="actions" aria-label="Content links" hidden>
+			<button type="button" data-link="view" hidden>View page</button>
+			<button type="button" data-link="edit" hidden>Edit in WordPress</button>
+			<button type="button" data-link="compare" hidden>Compare revision</button>
+			<button type="button" data-link="undo" hidden>Review prior revision</button>
+			<button type="button" data-link="approval_queue" hidden>Review in WordPress</button>
+		</div>
+		<section id="undo" class="undo" aria-label="Recovery guidance" hidden>
+			<h2>Review recovery options</h2>
+			<p id="undo-hint"></p>
+		</section>
+	</main>
+	<script>__ACULECT_WIDGET_JS__</script>
+</body>
+</html>

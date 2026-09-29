@@ -8,6 +8,8 @@
 
 declare(strict_types=1);
 
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- This CLI verifier uses bounded local files and subprocesses to inspect a prepared package.
+
 $root_dir    = dirname( __DIR__ );
 $release_dir = $argv[1] ?? $root_dir . '/release';
 $release_dir = rtrim( (string) $release_dir, '/\\' );
@@ -25,11 +27,23 @@ $required_paths = array(
 	'build/style-index.css',
 	'build/style-index-rtl.css',
 	'vendor/autoload.php',
+	'assets/mcp-apps/site-info/v1/site-info.html',
+	'assets/mcp-apps/post-update/v1/post-update.html',
+	'assets/mcp-apps/pattern-picker/v1/pattern-picker.html',
+	'assets/mcp-apps/image-upload/v1/image-upload.html',
+	'src/Admin/McpApprovalQueue.php',
+	'src/Connectors/MCP/McpAppApprovalHandoff.php',
+	'src/Connectors/MCP/PendingApprovalInstaller.php',
+	'src/Connectors/MCP/PendingApprovalCanonicalizer.php',
+	'src/Connectors/MCP/PendingOperationApprovalStore.php',
+	'skills/core/wordpress-site-audit/SKILL.md',
+	'skills/core/content-optimization/SKILL.md',
+	'skills/core/wordpress-troubleshooting/SKILL.md',
 );
 
-foreach ( $required_paths as $path ) {
-	if ( ! file_exists( $release_dir . '/' . $path ) ) {
-		$failures[] = "Required production path is missing: {$path}";
+foreach ( $required_paths as $required_path ) {
+	if ( ! file_exists( $release_dir . '/' . $required_path ) ) {
+		$failures[] = "Required production path is missing: {$required_path}";
 	}
 }
 
@@ -61,6 +75,7 @@ $forbidden_paths = array(
 	'scripts',
 	'TESTING.md',
 	'RELEASE.md',
+	'assets/mcp-apps/runtime',
 	'DESIGN.md',
 	'design-qa.md',
 	'composer.json',
@@ -78,9 +93,9 @@ $forbidden_paths = array(
 	'vendor/bin',
 );
 
-foreach ( $forbidden_paths as $path ) {
-	if ( file_exists( $release_dir . '/' . $path ) ) {
-		$failures[] = "Development-only path is present: {$path}";
+foreach ( $forbidden_paths as $forbidden_path ) {
+	if ( file_exists( $release_dir . '/' . $forbidden_path ) ) {
+		$failures[] = "Development-only path is present: {$forbidden_path}";
 	}
 }
 

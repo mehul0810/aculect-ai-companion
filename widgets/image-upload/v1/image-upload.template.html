@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>Upload an image to WordPress</title>
+	<style>__ACULECT_WIDGET_CSS__</style>
+</head>
+<body>
+	<main aria-labelledby="heading">
+		<p class="eyebrow">WordPress Media Library</p>
+		<h1 id="heading">Upload an image</h1>
+		<section class="card">
+			<p>The next step opens this site’s WordPress admin upload screen. Sign in if prompted, choose a JPEG, PNG, or WebP image, and upload it directly to this site’s Media Library.</p>
+			<p>WordPress will show an attachment ID after a successful upload. Return here and provide that ID to continue. Uploading alone does not change any post.</p>
+			<p id="status" role="status" aria-live="polite">No file has been selected or uploaded by this widget.</p>
+			<button id="open" type="button" disabled>Open WordPress upload</button>
+		</section>
+	</main>
+	<script type="application/json" id="handoff-url">__ACULECT_UPLOAD_HANDOFF_URL_JSON__</script>
+	<script>__ACULECT_WIDGET_JS__</script>
+</body>
+</html>

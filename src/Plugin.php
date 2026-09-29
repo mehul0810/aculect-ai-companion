@@ -7,10 +7,13 @@ namespace Aculect\AICompanion;
 use Aculect\AICompanion\Activity\Database\Installer as ActivityInstaller;
 use Aculect\AICompanion\Admin\EditorInternalLinkSuggestions;
 use Aculect\AICompanion\Admin\LocalSampleData;
+use Aculect\AICompanion\Admin\McpImageUploadPage;
+use Aculect\AICompanion\Admin\McpApprovalQueue;
 use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Admin\UserAccessControls;
 use Aculect\AICompanion\Connectors\MCP\McpController;
 use Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint;
+use Aculect\AICompanion\Connectors\MCP\PendingOperationApprovalStore;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesRegistrar;
 use Aculect\AICompanion\Connectors\MCP\ExecutionClaims\Installer as ExecutionClaimsInstaller;
 use Aculect\AICompanion\Connectors\OAuth\AuthorizationController;
@@ -118,6 +121,9 @@ final class Plugin {
 		( new EditorInternalLinkSuggestions() )->register();
 		( new WebMcpAssets() )->register();
 		( new \Aculect\AICompanion\Admin\PrivateSettingForm() )->register();
+		( new McpImageUploadPage() )->register();
+		( new McpApprovalQueue() )->register();
+		( new PendingOperationApprovalStore() )->register_cleanup();
 
 		OAuthInstaller::install();
 		ExecutionClaimsInstaller::install();

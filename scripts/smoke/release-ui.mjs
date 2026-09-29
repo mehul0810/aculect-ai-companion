@@ -38,6 +38,7 @@ const TABS = [
 	{ name: 'connect', label: 'Connect' },
 	{ name: 'connections', label: 'Connections' },
 	{ name: 'abilities', label: 'Abilities' },
+	{ name: 'skills', label: 'Skills' },
 	{ name: 'activity', label: 'Activity' },
 	{ name: 'learning', label: 'Learning' },
 	{ name: 'diagnostics', label: 'Diagnostics' },
@@ -289,6 +290,14 @@ async function verifyLearningSurfaces( page ) {
 		await learningSectionHeading( page, label ).waitFor( {
 			state: 'visible',
 		} );
+		const visiblePanels = page.locator(
+			'.aculect-ai-companion-learning-dashboard [role="tabpanel"]:visible'
+		);
+		if ( ( await visiblePanels.count() ) !== 1 ) {
+			throw new Error(
+				`${ label } must be the only visible Learning review panel.`
+			);
+		}
 
 		const selected = await button.getAttribute( 'aria-selected' );
 		if ( selected !== 'true' ) {
@@ -445,6 +454,12 @@ async function captureTab( page, config, runDir, viewport, tab ) {
 
 	if ( tab.name === 'learning' ) {
 		await verifyLearningSurfaces( page );
+	}
+
+	if ( tab.name === 'skills' ) {
+		await page.locator( '.aculect-skills__card' ).first().waitFor( {
+			state: 'visible',
+		} );
 	}
 
 	if ( tab.name === 'connect' ) {

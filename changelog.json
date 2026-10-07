@@ -1,4 +1,18 @@
 {
+	"0.8.2": {
+		"date": "2026-10-07",
+		"New": [],
+		"Improved": [
+			"Hardened OAuth client redirects with WordPress safe-redirect validation while preserving registered HTTPS and loopback callbacks."
+		],
+		"Fixed": [
+			"Added a second redirect boundary that rejects a final OAuth response when its host differs from the validated client callback."
+		],
+		"Reliability": [
+			"Added regression coverage for registered-host enforcement and malformed callback handling.",
+			"Updated the bundled phpseclib runtime dependency to the patched 3.0.57 release."
+		]
+	},
 	"0.8.1": {
 		"date": "2026-09-23",
 		"New": [],

@@ -294,9 +294,7 @@ final class AuthorizationController {
 				),
 				$this->timeline_auth_context( $params, $client )
 			);
-			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-			wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
-			exit;
+			$this->redirect_to_validated_client( $redirect_uri, $location );
 		} catch ( OAuthServerException $exception ) {
 			$this->record_timeline_event(
 				'error',
@@ -518,10 +516,26 @@ final class AuthorizationController {
 	 * @param array<string, string> $params       Response query parameters.
 	 */
 	private function redirect_to_client( string $redirect_uri, array $params ): never {
-		nocache_headers();
 		$location = $this->authorization_response_location( $redirect_uri, $params );
-		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-		wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
+		$this->redirect_to_validated_client( $redirect_uri, $location );
+	}
+
+	/**
+	 * Redirect through WordPress's safe-redirect boundary to a validated client.
+	 *
+	 * OAuth clients legitimately use external callback hosts, so the host from
+	 * the already validated redirect URI is allowed only for this operation.
+	 * WordPress then reparses the final response location and falls back to a
+	 * local URL if its host no longer matches that validated destination.
+	 *
+	 * @param string $redirect_uri Validated client redirect URI.
+	 * @param string $location     Final OAuth response location.
+	 */
+	private function redirect_to_validated_client( string $redirect_uri, string $location ): never {
+		if ( ! ValidatedClientRedirect::send( $redirect_uri, $location ) ) {
+			$this->render_error( 'Connection redirect failed', 'Aculect AI Companion could not return to the requesting application.', 500 );
+		}
+
 		exit;
 	}
 

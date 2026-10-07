@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.8.1
+Stable tag: 0.8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -245,6 +245,10 @@ Yes. If your DNS record is proxied through Cloudflare and SSL/TLS mode is set to
 
 Yes. Aculect AI Companion can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.
 
+= Where do I report security bugs found in this plugin? =
+
+Please report security bugs found in the source code of the Aculect AI Companion plugin through the [Patchstack Vulnerability Disclosure Program](https://patchstack.com/database/vdp/cbfe33ed-4024-49b5-a693-c93757d1fe22). The Patchstack team will assist you with verification, CVE assignment, and notify the developers of this plugin.
+
 == Screenshots ==
 
 1. Overview tab showing the 0.7.0 AI Companion experience.
@@ -254,7 +258,7 @@ Yes. Aculect AI Companion can work with supported custom post types and custom t
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.8.1 release notes.
+8. Changelog tab with the current 0.8.2 release notes.
 
 == Development ==
 
@@ -282,6 +286,13 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.8.2 =
+
+* Hardened OAuth client redirects with WordPress safe-redirect validation while preserving registered HTTPS and loopback callbacks.
+* Added a second redirect boundary that rejects a final OAuth response when its host differs from the validated client callback.
+* Added regression coverage for registered-host enforcement and malformed callback handling.
+* Updated the bundled phpseclib runtime dependency to the patched 3.0.57 release.
 
 = 0.8.1 =
 
@@ -481,6 +492,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.8.2 =
+
+Adds a second WordPress safe-redirect check for OAuth responses, keeps valid registered callbacks working, updates the bundled phpseclib runtime, and publishes the Patchstack VDP reporting link.
 
 = 0.8.1 =
 

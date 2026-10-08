@@ -27,7 +27,7 @@ use WP_REST_Server;
  */
 final class AuthorizationController {
 
-	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize';
+	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize_identity_v2';
 	private const CONSENT_REQUEST_PARAM = 'request_token';
 	private const CONSENT_REQUEST_TTL   = 600;
 	private const OAUTH_PARAMS          = array(
@@ -362,11 +362,17 @@ final class AuthorizationController {
 	private function render_consent_markup( string $request_token, array $params, ClientEntity $client, string $resource ): void {
 		unset( $resource );
 
-		$site_name = get_bloginfo( 'name' );
-		$site_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
-		$scope     = $this->scope_from_params( $params );
-		$actions   = $this->scope_summary( $scope );
-		$assistant = $this->client_label( $client );
+		$site_name          = get_bloginfo( 'name' );
+		$site_host          = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		$scope              = $this->scope_from_params( $params );
+		$actions            = $this->scope_summary( $scope );
+		$identity           = ConsentClientIdentity::from_authorization(
+			$client,
+			(string) ( $params['client_id'] ?? '' ),
+			(string) ( $params['redirect_uri'] ?? '' )
+		);
+		$assistant          = $identity->label();
+		$capability_subject = $identity->is_verified() ? $assistant : __( 'this client', 'aculect-ai-companion' );
 
 		nocache_headers();
 		?>
@@ -376,13 +382,24 @@ final class AuthorizationController {
 			<div class="aculect-ai-companion-oauth-eyebrow"><?php echo esc_html__( 'Connection request', 'aculect-ai-companion' ); ?></div>
 			<h1 id="aculect-ai-companion-oauth-title" class="aculect-ai-companion-oauth-title"><?php echo esc_html__( 'Review connection request', 'aculect-ai-companion' ); ?></h1>
 			<p class="aculect-ai-companion-oauth-copy">
-				<?php echo esc_html( $assistant ); ?> <?php echo esc_html__( 'is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
+				<?php if ( $identity->is_verified() ) : ?>
+					<?php echo esc_html( $assistant ); ?> <?php echo esc_html__( 'is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
+				<?php else : ?>
+					<?php echo esc_html__( 'An unverified OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
+				<?php endif; ?>
 			</p>
 			<div class="aculect-ai-companion-oauth-panels">
 				<section class="aculect-ai-companion-oauth-panel">
 					<h2><?php echo esc_html__( 'Connection details', 'aculect-ai-companion' ); ?></h2>
+					<?php if ( ! $identity->is_verified() ) : ?>
+						<p class="aculect-ai-companion-oauth-warning"><strong><?php echo esc_html__( 'Unverified client identity', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'The client name is self-reported. Confirm the return URL and client ID before approving.', 'aculect-ai-companion' ); ?></span></p>
+					<?php endif; ?>
 					<dl class="aculect-ai-companion-oauth-details">
-						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Assistant', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $assistant ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client identity', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $assistant ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Identity check', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->is_verified() ? __( 'Verified provider callback', 'aculect-ai-companion' ) : __( 'Not verified by Aculect', 'aculect-ai-companion' ) ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client-provided name', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->declared_name() ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Return URL', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->redirect_uri() ); ?></code></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client ID', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->client_identifier() ); ?></code></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Account', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html__( 'Detected during authorization', 'aculect-ai-companion' ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Site', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( '' !== $site_host ? $site_host : $site_name ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Connection method', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html__( 'Secure OAuth', 'aculect-ai-companion' ); ?></dd></div>
@@ -392,7 +409,7 @@ final class AuthorizationController {
 				</section>
 				<section class="aculect-ai-companion-oauth-panel">
 					<?php /* translators: %s: AI assistant name, for example ChatGPT. */ ?>
-					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), $assistant ) ); ?></h2>
+					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), $capability_subject ) ); ?></h2>
 					<p><?php echo esc_html__( 'After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings.', 'aculect-ai-companion' ); ?></p>
 					<p class="aculect-ai-companion-oauth-scope"><?php echo esc_html( $actions ); ?></p>
 					<ul class="aculect-ai-companion-oauth-capabilities">
@@ -424,31 +441,6 @@ final class AuthorizationController {
 	</div>
 </div>
 		<?php
-	}
-
-	/**
-	 * Return a user-facing assistant label for consent screens.
-	 *
-	 * @param ClientEntity $client Registered OAuth client.
-	 */
-	private function client_label( ClientEntity $client ): string {
-		$labels = array(
-			'chatgpt' => 'ChatGPT',
-			'claude'  => 'Claude',
-			'codex'   => 'Codex',
-			'cursor'  => 'Cursor',
-			'gemini'  => 'Gemini',
-			'mcp'     => __( 'AI assistant', 'aculect-ai-companion' ),
-		);
-
-		$provider = sanitize_key( $client->getProvider() );
-		if ( isset( $labels[ $provider ] ) ) {
-			return (string) $labels[ $provider ];
-		}
-
-		$name = trim( (string) $client->getName() );
-
-		return '' !== $name ? $name : __( 'AI assistant', 'aculect-ai-companion' );
 	}
 
 	/**

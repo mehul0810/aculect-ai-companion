@@ -45,7 +45,7 @@ final class ReleaseMetadataTest extends TestCase {
 		$release_version = preg_replace( '/-(?:alpha|beta|rc)\.\d+$/', '', (string) ( $package['version'] ?? '' ) );
 		self::assertSame( self::EXPECTED_VERSION, $release_version );
 		self::assertArrayHasKey( $release_version, $log );
-		self::assertSame( '2026-10-08', $log[ $release_version ]['date'] ?? '' );
+		self::assertSame( '2026-10-12', $log[ $release_version ]['date'] ?? '' );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
 			self::assertIsArray( $entry );
@@ -67,7 +67,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( 'Registration and credential issuance stay unavailable until verified.', $readme );
 		self::assertStringContainsString( 'Changing the external site URL does not rebind credentials and may require reconnecting assistants.', $readme );
 		self::assertStringContainsString( '`0.8.2` remains the latest published production release; its release tag points to commit `1abc6adb2e233e016528d97919f81348322aea48`.', $governance );
-		self::assertStringContainsString( '`0.8.3` is the security maintenance candidate, with `2026-10-08` as its planned publication date. A changelog date records the plan, not a completed release.', $governance );
+		self::assertStringContainsString( '`0.8.3` is the security maintenance candidate, with `2026-10-12` as its planned publication date. A changelog date records the plan, not a completed release.', $governance );
 		self::assertStringContainsString( 'production remains `0.8.2` until the approved release workflow successfully publishes the exact validated commit.', $governance );
 		self::assertStringContainsString( 'Never imply that candidate metadata means production was released.', $governance );
 		self::assertStringContainsString( 'Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.3.', $governance );

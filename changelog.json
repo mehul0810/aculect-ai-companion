@@ -1,6 +1,6 @@
 {
 	"0.8.3": {
-		"date": "2026-10-08",
+		"date": "2026-10-12",
 		"New": [],
 		"Improved": [
 			"OAuth consent now shows the client-provided name, selected return URL, client ID, and identity-verification status before approval."

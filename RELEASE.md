@@ -14,7 +14,7 @@
 
 ## Current Pre-1.0 Train
 - `0.8.2` remains the latest published production release; its release tag points to commit `1abc6adb2e233e016528d97919f81348322aea48`.
-- `0.8.3` is the security maintenance candidate, with `2026-10-08` as its planned publication date. A changelog date records the plan, not a completed release.
+- `0.8.3` is the security maintenance candidate, with `2026-10-12` as its planned publication date. A changelog date records the plan, not a completed release.
 - The candidate prevents self-reported Dynamic Client Registration names and stored provider attribution from becoming trusted OAuth consent identity. Consent derives any verified provider label from the selected, validated, exact provider-controlled callback and shows the callback, client ID, and declared name to the approving user.
 - Preserve the reviewed 0.8.2 OAuth issuer, public DCR, PKCE, token, scope, redirect, and client-storage contracts. Generic and native clients remain functional and are presented as unverified when their callback cannot prove a provider identity.
 - Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.3.

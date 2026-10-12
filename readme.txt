@@ -4,7 +4,7 @@ Tags: ai, mcp, chatgpt, claude, content
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.8.2
+Stable tag: 0.8.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -258,7 +258,7 @@ Please report security bugs found in the source code of the Aculect AI Companion
 5. Activity tab showing sanitized MCP activity across writes, reads, workflows, blocked calls, and batch jobs.
 6. Learning tab for reviewing assistant feedback and durable Aculect Intelligence suggestions.
 7. Diagnostics tab for checking endpoint, OAuth, MCP, and environment readiness.
-8. Changelog tab with the current 0.8.2 release notes.
+8. Changelog tab with the current 0.8.3 release notes.
 
 == Development ==
 
@@ -286,6 +286,12 @@ Composer dependencies for production releases are installed with:
 `composer install --no-dev --prefer-dist --optimize-autoloader`
 
 == Changelog ==
+
+= 0.8.3 =
+
+* OAuth consent now shows the client-provided name, selected return URL, client ID, and identity-verification status before approval.
+* Prevented self-reported client names and stored provider attribution from being presented as verified provider identity on OAuth consent.
+* Added regression coverage for existing spoofed registrations, mixed and deceptive callback forms, documented provider callbacks, and generic OAuth clients.
 
 = 0.8.2 =
 
@@ -492,6 +498,10 @@ Composer dependencies for production releases are installed with:
 * Added clearer privacy notes and extra safety checks for testing.
 
 == Upgrade Notice ==
+
+= 0.8.3 =
+
+Hardens OAuth consent identity for new and existing registrations while preserving documented provider callbacks and standards-compatible generic clients.
 
 = 0.8.2 =
 

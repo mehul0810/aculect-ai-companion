@@ -13,12 +13,12 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.8.1` remains the latest published production release; its release tag points to commit `68b81cd9c92adc0825ef09c3a63a924859ad9c99`.
-- `0.8.2` is the security maintenance candidate, with `2026-10-07` as its planned publication date. A changelog date records the plan, not a completed release.
-- The candidate routes OAuth client responses through WordPress safe-redirect validation, permits only the host from the already validated callback for that operation, updates the bundled phpseclib runtime to 3.0.57, and publishes the Patchstack VDP reporting link.
-- Preserve the reviewed 0.8.1 OAuth issuer, DCR, consent, PKCE, token, scope, and client-storage contracts. The maintenance patch changes only the final redirect sink boundary and its regression coverage.
-- Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.2.
-- Candidate package metadata may target `0.8.2`; production remains `0.8.1` until the approved release workflow successfully publishes the exact validated commit. Never imply that candidate metadata means production was released.
+- `0.8.2` remains the latest published production release; its release tag points to commit `1abc6adb2e233e016528d97919f81348322aea48`.
+- `0.8.3` is the security maintenance candidate, with `2026-10-12` as its planned publication date. A changelog date records the plan, not a completed release.
+- The candidate prevents self-reported Dynamic Client Registration names and stored provider attribution from becoming trusted OAuth consent identity. Consent derives any verified provider label from the selected, validated, exact provider-controlled callback and shows the callback, client ID, and declared name to the approving user.
+- Preserve the reviewed 0.8.2 OAuth issuer, public DCR, PKCE, token, scope, redirect, and client-storage contracts. Generic and native clients remain functional and are presented as unverified when their callback cannot prove a provider identity.
+- Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.3.
+- Candidate package metadata may target `0.8.3`; production remains `0.8.2` until the approved release workflow successfully publishes the exact validated commit. Never imply that candidate metadata means production was released.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.

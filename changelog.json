@@ -1,4 +1,17 @@
 {
+	"0.8.3": {
+		"date": "2026-10-12",
+		"New": [],
+		"Improved": [
+			"OAuth consent now shows the client-provided name, selected return URL, client ID, and identity-verification status before approval."
+		],
+		"Fixed": [
+			"Prevented self-reported client names and stored provider attribution from being presented as verified provider identity on OAuth consent."
+		],
+		"Reliability": [
+			"Added regression coverage for existing spoofed registrations, mixed and deceptive callback forms, documented provider callbacks, and generic OAuth clients."
+		]
+	},
 	"0.8.2": {
 		"date": "2026-10-07",
 		"New": [],

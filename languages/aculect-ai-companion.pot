@@ -2,7 +2,7 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Aculect AI Companion 0.8.2\n"
+"Project-Id-Version: Aculect AI Companion 0.8.3\n"
 "Report-Msgid-Bugs-To: https://github.com/mehul0810/aculect-ai-companion/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -238,27 +238,63 @@ msgstr ""
 msgid "Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:376
+#: src/Connectors/OAuth/AuthorizationController.php:382
 msgid "Connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:377
+#: src/Connectors/OAuth/AuthorizationController.php:383
 msgid "Review connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:379
+#: src/Connectors/OAuth/AuthorizationController.php:386
 msgid "is requesting permission to connect to your WordPress site through Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:383
+#: src/Connectors/OAuth/AuthorizationController.php:388
+msgid "An unverified OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion."
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:393
 msgid "Connection details"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:385
-msgid "Assistant"
+#: src/Connectors/OAuth/AuthorizationController.php:395
+msgid "Unverified client identity"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:386
+#: src/Connectors/OAuth/AuthorizationController.php:395
+msgid "The client name is self-reported. Confirm the return URL and client ID before approving."
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:398
+msgid "Client identity"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:399
+msgid "Identity check"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:399
+msgid "Verified provider callback"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:399
+msgid "Not verified by Aculect"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:400
+msgid "Client-provided name"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:401
+msgid "Return URL"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:402
+msgid "Client ID"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:403
 msgid "Account"
 msgstr ""
 
@@ -392,9 +428,16 @@ msgstr ""
 msgid "Approve connection"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:441
-#: src/Connectors/OAuth/AuthorizationController.php:451
-msgid "AI assistant"
+#: src/Connectors/OAuth/AuthorizationController.php:375
+msgid "this client"
+msgstr ""
+
+#: src/Connectors/OAuth/ConsentClientIdentity.php:64
+msgid "Unverified OAuth client"
+msgstr ""
+
+#: src/Connectors/OAuth/ConsentClientIdentity.php:65
+msgid "Not provided"
 msgstr ""
 
 #: src/Connectors/OAuth/AuthorizationController.php:465

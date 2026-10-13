@@ -186,4 +186,3 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
           CI_EXPECTED: '{"oauth":true,"release":${{ inputs.release-proof }}}'
         run: node bin/ci-required.mjs
-

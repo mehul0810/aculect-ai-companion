@@ -91,7 +91,7 @@ test( 'memory integration-only edits remain in the quality lane', () => {
 
 test( 'release package proof keeps the guarded memory runtime and locked browser dependencies', () => {
 	const workflow = readFileSync(
-		new URL( '../../.github/workflows/plugin-check.yml', import.meta.url ),
+		new URL( '../../.github/workflows/package-proof.yml', import.meta.url ),
 		'utf8'
 	);
 	assert.ok(
@@ -199,14 +199,7 @@ test( 'new branches, missing objects and manual validation select full coverage'
 
 test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing required jobs', () => {
 	const flags = classifyChanges( [], true );
-	const names = [
-		'database',
-		'wordpress',
-		'php-compatibility',
-		'security',
-		'codeql',
-		'oauth-contract',
-	];
+	const names = [ 'database', 'compatibility', 'security', 'package-proof' ];
 	const needs = {
 		quality: {
 			result: 'success',
@@ -238,14 +231,7 @@ test( 'aggregate rejects unexpectedly skipped, cancelled, failed or missing requ
 } );
 
 test( 'aggregate allows only detector-authorized skips', () => {
-	const names = [
-		'database',
-		'wordpress',
-		'php-compatibility',
-		'security',
-		'codeql',
-		'oauth-contract',
-	];
+	const names = [ 'database', 'compatibility', 'security', 'package-proof' ];
 	const needs = {
 		quality: {
 			result: 'success',
@@ -268,9 +254,9 @@ test( 'aggregate allows only detector-authorized skips', () => {
 	assert.deepEqual(
 		failedChecks( {
 			...needs,
-			'php-compatibility': { result: 'failure' },
+			compatibility: { result: 'failure' },
 		} ),
-		[ 'php-compatibility' ]
+		[ 'compatibility' ]
 	);
 } );
 
@@ -300,7 +286,7 @@ test( 'consolidated workflows retain supported integration proofs', () => {
 			)
 		)
 	);
-	const packaged = read( 'plugin-check.yml' );
+	const packaged = read( 'package-proof.yml' );
 	assert.ok( packaged.includes( 'workflow-admin.mjs' ) );
 	assert.ok( ! packaged.includes( 'wp-options-retry-cache.php' ) );
 	assert.ok( ! packaged.includes( 'Integration/Workflows' ) );
@@ -312,19 +298,18 @@ test( 'consolidated workflows retain supported integration proofs', () => {
 	);
 	assert.ok( ! packaged.includes( 'npm run build' ) );
 	const ci = read( 'ci.yml' );
-	const php = read( 'php-compatibility.yml' );
-	const wordpress = read( 'wordpress-abilities.yml' );
+	const compatibility = read( 'compatibility.yml' );
 	assert.match( ci, /pull_request:\n  workflow_dispatch:/ );
 	assert.doesNotMatch( ci, /\n  push:/ );
 	assert.doesNotMatch( ci, /name: Packaged WordPress and browser proof/ );
 	for ( const version of [ '"8.3"', '"8.4"', '"8.5"' ] ) {
-		assert.ok( php.includes( version ) );
+		assert.ok( compatibility.includes( version ) );
 	}
 	assert.match( ci, /php-version: "8\.2"/ );
 	for ( const version of [ '"6.9"', '"7.0"', '"7.1"' ] ) {
-		assert.ok( wordpress.includes( version ) );
+		assert.ok( compatibility.includes( version ) );
 	}
-	assert.match( ci, /name: PHP compatibility/ );
+	assert.match( ci, /name: PHP and WordPress compatibility/ );
 	assert.match( ci, /name: Required CI\n    if: always\(\)/ );
 } );
 

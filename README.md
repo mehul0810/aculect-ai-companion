@@ -1,6 +1,6 @@
 # Aculect AI Companion
 
-[![CodeQL](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/codeql.yml/badge.svg)](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/codeql.yml)
+[![Security](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/security.yml/badge.svg)](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/security.yml)
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4.svg)
 ![WordPress 6.5+](https://img.shields.io/badge/WordPress-6.5%2B-21759b.svg)
 ![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)

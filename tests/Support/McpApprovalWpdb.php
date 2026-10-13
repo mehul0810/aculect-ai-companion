@@ -111,6 +111,15 @@ final class McpApprovalWpdb {
 		if ( ! $this->table_exists ) {
 			return null;
 		}
+		if ( str_contains( $this->last_query, 'SELECT id, blog_id, user_id, tool_name, operation_fingerprint' ) ) {
+			[ , $blog, $now, $limit ] = $this->last_args;
+			$rows = array_values( array_filter( $this->rows, static fn ( array $row ): bool => (int) $row['blog_id'] === (int) $blog && $row['expires_at'] <= $now ) );
+			usort( $rows, static fn ( array $a, array $b ): int => (int) $a['id'] <=> (int) $b['id'] );
+			return array_map(
+				static fn ( array $row ): array => array_intersect_key( $row, array_flip( array( 'id', 'blog_id', 'user_id', 'tool_name', 'operation_fingerprint' ) ) ),
+				array_slice( $rows, 0, (int) $limit )
+			);
+		}
 		[ , $blog, $user, $status, $now, $limit ] = $this->last_args;
 		$rows                                     = array_values(
 			array_filter(
@@ -191,18 +200,16 @@ final class McpApprovalWpdb {
 			return 1;
 		}
 		if ( str_starts_with( $query, 'DELETE ' ) ) {
-			[ , $now, $limit ] = array_pad( $args, 3, 0 );
-			$removed           = 0;
-			foreach ( $this->rows as $id => $row ) {
-				if ( $removed >= (int) $limit ) {
-					break;
-				}
-				if ( $row['expires_at'] <= $now ) {
-					unset( $this->rows[ $id ] );
-					++$removed;
-				}
+			if ( ( $args[0] ?? '' ) !== $this->prefix . 'aculect_ai_companion_pending_approvals' ) {
+				return 1;
 			}
-			return $removed;
+			[ , $id, $blog, $now ] = $args;
+			$row = $this->rows[ (int) $id ] ?? null;
+			if ( ! is_array( $row ) || (int) $row['blog_id'] !== (int) $blog || $row['expires_at'] > $now ) {
+				return 0;
+			}
+			unset( $this->rows[ (int) $id ] );
+			return 1;
 		}
 		return false;
 	}

@@ -450,7 +450,13 @@ final class AbilityExecutionGateway {
 		} elseif ( $invalid_confirmation ) {
 			$result = $this->invalid_confirmation_payload( $tool, $args, $auth );
 		} elseif ( $needs_confirmation_gate ) {
-			$preview_args                = $this->safety->strip_control_args( $args );
+			$preview_args = $this->safety->strip_control_args( $args );
+			if ( $approval_handoff && ! isset( $preview_args['expected_modified_gmt'] ) ) {
+				$target = get_post( absint( $args['id'] ?? 0 ) );
+				if ( $target instanceof \WP_Post && current_user_can( 'edit_post', (int) $target->ID ) ) {
+					$preview_args['expected_modified_gmt'] = (string) $target->post_modified_gmt;
+				}
+			}
 			$preview_args['dry_run']     = true;
 			$approval_target_fingerprint = $approval_handoff && null !== $approval_store
 				? $approval_store->target_state_fingerprint_for( absint( $args['id'] ?? 0 ) )
@@ -493,7 +499,10 @@ final class AbilityExecutionGateway {
 	 */
 	private function run_execution_branch( string $tool, array $args, bool $is_intelligence_tool, array $auth, bool $is_write_tool, bool $has_confirmation_token, bool $write_permission_unblocked, ExecutionClaimDecision $claim_decision, array $approval ): array {
 		$exec_args = $is_write_tool ? $this->safety->strip_control_args( $args ) : $args;
-		$binding   = $this->lifecycle_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
+		if ( 'approved' === $approval['status'] && ! isset( $exec_args['expected_modified_gmt'] ) && is_array( $approval['request'] ) ) {
+			$exec_args['expected_modified_gmt'] = (string) ( $approval['request']['review_summary']['target_version'] ?? '' );
+		}
+		$binding = $this->lifecycle_execution_binding( $tool, $args, $has_confirmation_token, $write_permission_unblocked, $auth );
 		if ( isset( $binding['error'] ) ) {
 			$this->release_claim_if_present( $claim_decision );
 			return array(

@@ -108,6 +108,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 		$this->write_file( $source . '/src/Connectors/MCP/PendingApprovalInstaller.php', "<?php\n" );
 		$this->write_file( $source . '/src/Connectors/MCP/PendingApprovalCanonicalizer.php', "<?php\n" );
 		$this->write_file( $source . '/src/Connectors/MCP/PendingOperationApprovalStore.php', "<?php\n" );
+		$this->write_file( $source . '/src/Connectors/MCP/Skills/AgentSkillsDiscoveryCatalog.php', "<?php\n" );
 
 		try {
 			$result = $this->run_package_staging( $source, $package );
@@ -122,6 +123,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 			self::assertFileExists( $package . '/src/Connectors/MCP/PendingApprovalInstaller.php' );
 			self::assertFileExists( $package . '/src/Connectors/MCP/PendingApprovalCanonicalizer.php' );
 			self::assertFileExists( $package . '/src/Connectors/MCP/PendingOperationApprovalStore.php' );
+			self::assertFileExists( $package . '/src/Connectors/MCP/Skills/AgentSkillsDiscoveryCatalog.php' );
 		} finally {
 			$this->remove_directory( $parent );
 		}
@@ -146,7 +148,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 		foreach ( array( 'wordpress-site-audit', 'content-optimization', 'wordpress-troubleshooting' ) as $skill ) {
 			$this->write_file( $package . '/skills/core/' . $skill . '/SKILL.md', '' );
 		}
-		foreach ( array( 'src/Admin/McpApprovalQueue.php', 'src/Connectors/MCP/McpAppApprovalHandoff.php', 'src/Connectors/MCP/PendingApprovalInstaller.php', 'src/Connectors/MCP/PendingApprovalCanonicalizer.php', 'src/Connectors/MCP/PendingOperationApprovalStore.php' ) as $path ) {
+		foreach ( array( 'src/Admin/McpApprovalQueue.php', 'src/Connectors/MCP/McpAppApprovalHandoff.php', 'src/Connectors/MCP/PendingApprovalInstaller.php', 'src/Connectors/MCP/PendingApprovalCanonicalizer.php', 'src/Connectors/MCP/PendingOperationApprovalStore.php', 'src/Connectors/MCP/Skills/AgentSkillsDiscoveryCatalog.php' ) as $path ) {
 			$this->write_file( $package . '/' . $path, "<?php\n" );
 		}
 

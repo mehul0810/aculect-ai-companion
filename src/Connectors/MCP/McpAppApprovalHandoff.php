@@ -66,12 +66,6 @@ final class McpAppApprovalHandoff {
 	 */
 	public function prepare( string $tool, array $args, array $auth, bool $is_intelligence_tool, bool $is_write_tool, bool $requires_confirmation, bool $is_dry_run, bool $has_confirmation_token, bool $write_permission_unblocked ): array {
 		$candidate = $this->is_candidate( $tool, $is_intelligence_tool );
-		if ( $candidate && ! isset( $args['expected_modified_gmt'] ) ) {
-			$target = get_post( absint( $args['id'] ?? 0 ) );
-			if ( $target instanceof \WP_Post && current_user_can( 'edit_post', (int) $target->ID ) ) {
-				$args['expected_modified_gmt'] = (string) $target->post_modified_gmt;
-			}
-		}
 
 		$empty = array(
 			'args'            => $args,
@@ -157,7 +151,7 @@ final class McpAppApprovalHandoff {
 			$this->record_event( 'approval_stale', 'blocked', $tool, $auth, 'target_unavailable' );
 			return $this->blocked_payload( 'unsupported' );
 		}
-		$summary = $this->summary_from_preview( $tool, $args, $preview );
+		$summary = $this->summary_from_preview( $tool, $args, $preview_args, $preview );
 		if ( null === $summary ) {
 			$this->record_event( 'approval_mismatch', 'blocked', $tool, $auth, 'summary_unsupported' );
 			return $this->blocked_payload( 'unsupported' );
@@ -362,15 +356,16 @@ final class McpAppApprovalHandoff {
 	 *
 	 * @param string              $tool Tool ID.
 	 * @param array<string,mixed> $args Exact normalized arguments.
+	 * @param array<string,mixed> $preview_args Version-bound dry-run arguments.
 	 * @param array<string,mixed> $preview Server-authored dry-run result.
 	 * @return array<string,mixed>|null
 	 */
-	private function summary_from_preview( string $tool, array $args, array $preview ): ?array {
+	private function summary_from_preview( string $tool, array $args, array $preview_args, array $preview ): ?array {
 		$post_id = absint( $args['id'] ?? 0 );
 		$post    = get_post( $post_id );
 		$diff    = is_array( $preview['diff'] ?? null ) ? $preview['diff'] : array();
 		$fields  = is_array( $diff['fields'] ?? null ) ? $diff['fields'] : array();
-		$version = is_string( $args['expected_modified_gmt'] ?? null ) ? $args['expected_modified_gmt'] : '';
+		$version = is_string( $preview_args['expected_modified_gmt'] ?? null ) ? $preview_args['expected_modified_gmt'] : '';
 		if ( array() !== array_intersect( array( 'meta_title', 'meta_description', 'focus_keywords', 'workflow_session_id' ), array_keys( $args ) ) ) {
 			return null;
 		}
@@ -381,13 +376,20 @@ final class McpAppApprovalHandoff {
 		$changes         = array();
 		$risk_categories = array();
 		foreach ( $fields as $field ) {
-			if ( ! is_array( $field ) || ! is_string( $field['field'] ?? null ) || true !== ( $field['changed'] ?? null ) ) {
+			if ( ! is_array( $field ) || ! is_string( $field['field'] ?? null ) || ! is_bool( $field['changed'] ?? null ) ) {
 				return null;
 			}
 			$before = $this->diff_value( $field['before'] ?? null );
 			$after  = $this->diff_value( $field['after'] ?? null );
 			if ( null === $before || null === $after ) {
 				return null;
+			}
+			if ( false === $field['changed'] ) {
+				// A no-op field needs a readable, identical server diff, but no human decision.
+				if ( ! is_array( $field['before'] ) || ! is_array( $field['after'] ) || ! array_key_exists( 'value', $field['before'] ) || ! array_key_exists( 'value', $field['after'] ) || $field['before']['value'] !== $field['after']['value'] ) {
+					return null;
+				}
+				continue;
 			}
 			$label           = sanitize_text_field( str_replace( array( '.', '_' ), ' ', $field['field'] ) );
 			$changes[]       = array(
@@ -396,6 +398,9 @@ final class McpAppApprovalHandoff {
 				'after'  => $after,
 			);
 			$risk_categories = array_merge( $risk_categories, $this->risk_categories( $field['field'], $field['after'] ?? null ) );
+		}
+		if ( array() === $changes ) {
+			return null;
 		}
 
 		$risk_categories = array_values( array_unique( $risk_categories ) );

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Activity\ActivityLogger;
 use Closure;
 
 /**
@@ -51,7 +52,12 @@ final class PendingOperationApprovalStore {
 		if ( 0 >= $id || 1 !== preg_match( '/^[a-f0-9]{64}$/', $fingerprint ) ) {
 			return '';
 		}
-		$site_actor = implode( "\0", array( (string) get_current_blog_id(), (string) get_current_user_id() ) );
+		$blog_id = absint( $request['blog_id'] ?? get_current_blog_id() );
+		$user_id = absint( $request['user_id'] ?? get_current_user_id() );
+		if ( 0 >= $blog_id || 0 >= $user_id ) {
+			return '';
+		}
+		$site_actor = implode( "\0", array( (string) $blog_id, (string) $user_id ) );
 		return substr( hash_hmac( 'sha256', "aculect.approval-audit.v1\0" . $site_actor . "\0" . $id . "\0" . $fingerprint, wp_salt( 'auth' ) ), 0, 16 );
 	}
 
@@ -560,7 +566,7 @@ final class PendingOperationApprovalStore {
 	}
 
 	/**
-	 * Delete a bounded number of expired rows to limit sensitive payload retention.
+	 * Delete expired rows one at a time so each removed proposal has its own audit reference.
 	 *
 	 * @param int $limit Maximum rows to delete in this call.
 	 */
@@ -570,15 +576,74 @@ final class PendingOperationApprovalStore {
 		}
 		global $wpdb;
 		$limit = max( 1, min( 1000, $limit ) );
-		$sql   = $wpdb->prepare(
-			'DELETE FROM %i WHERE expires_at <= %s LIMIT %d',
-			PendingApprovalInstaller::table_name(),
-			gmdate( 'Y-m-d H:i:s', ( $this->clock )() ),
-			$limit
+		$now   = gmdate( 'Y-m-d H:i:s', ( $this->clock )() );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT id, blog_id, user_id, tool_name, operation_fingerprint FROM %i WHERE blog_id = %d AND expires_at <= %s ORDER BY id ASC LIMIT %d',
+				PendingApprovalInstaller::table_name(),
+				get_current_blog_id(),
+				$now,
+				$limit
+			),
+			ARRAY_A
 		);
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above; bounded row count.
-		$result = $wpdb->query( $sql );
-		return false === $result ? 0 : max( 0, (int) $result );
+		if ( ! is_array( $rows ) ) {
+			return 0;
+		}
+		$removed = 0;
+		foreach ( $rows as $row ) {
+			$id = absint( $row['id'] ?? 0 );
+			if ( 0 >= $id ) {
+				continue;
+			}
+			$sql = $wpdb->prepare(
+				'DELETE FROM %i WHERE id = %d AND blog_id = %d AND expires_at <= %s LIMIT 1',
+				PendingApprovalInstaller::table_name(),
+				$id,
+				get_current_blog_id(),
+				$now
+			);
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above; one exact expired row.
+			if ( 1 !== (int) $wpdb->query( $sql ) ) {
+				continue;
+			}
+			++$removed;
+			$this->record_expiry( $row );
+		}
+		return $removed;
+	}
+
+	/**
+	 * Record only the expired proposal's opaque reference and actor/site identity.
+	 *
+	 * @param array<string,mixed> $row Expired row metadata without ciphertext.
+	 */
+	private function record_expiry( array $row ): void {
+		$tool      = is_string( $row['tool_name'] ?? null ) ? $row['tool_name'] : '';
+		$reference = self::audit_reference( $row );
+		if ( ! $this->valid_tool( $tool ) || '' === $reference ) {
+			return;
+		}
+		try {
+			( new ActivityLogger() )->record_timeline_event(
+				'approval_expiry',
+				array(
+					'method'              => 'approval_cleanup',
+					'tool'                => $tool,
+					'status'              => 'blocked',
+					'result_class'        => 'expired',
+					'confirmation_policy' => 'wordpress_human_approval',
+					'approval_ref'        => $reference,
+				),
+				array(
+					'provider' => 'mcp',
+					'user_id'  => absint( $row['user_id'] ?? 0 ),
+				)
+			);
+		} catch ( \Throwable $throwable ) {
+			// Cleanup must not retain expired rows when audit storage is unavailable.
+			unset( $throwable );
+		}
 	}
 
 	/**

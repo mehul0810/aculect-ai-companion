@@ -159,6 +159,18 @@ final class McpSkillProviderRegistry {
 	}
 
 	/**
+	 * Return only fixed, packaged core sources for private discovery adapters.
+	 *
+	 * Site-authored and third-party provider content is intentionally not read.
+	 * Connection-specific availability remains the authenticated MCP registry's job.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	public function packaged_core_sources(): array {
+		return $this->core_entries( null );
+	}
+
+	/**
 	 * Read packaged core Skills from fixed plugin-owned paths.
 	 *
 	 * @param list<string>|null $available_tool_ids Exact MCP tool IDs available to the current connection.

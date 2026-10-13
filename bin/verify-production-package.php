@@ -36,6 +36,7 @@ $required_paths = array(
 	'src/Connectors/MCP/PendingApprovalInstaller.php',
 	'src/Connectors/MCP/PendingApprovalCanonicalizer.php',
 	'src/Connectors/MCP/PendingOperationApprovalStore.php',
+	'src/Connectors/MCP/Skills/AgentSkillsDiscoveryCatalog.php',
 	'skills/core/wordpress-site-audit/SKILL.md',
 	'skills/core/content-optimization/SKILL.md',
 	'skills/core/wordpress-troubleshooting/SKILL.md',

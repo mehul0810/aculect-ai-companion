@@ -29,6 +29,7 @@ final class McpAppApprovalGatewayTest extends TestCase {
 	private mixed $previous_post_meta;
 	private mixed $previous_filter_callbacks;
 	private mixed $previous_users;
+	private mixed $previous_blocks;
 	private \McpApprovalWpdb $wpdb;
 
 	protected function setUp(): void {
@@ -39,6 +40,7 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		$this->previous_post_meta                     = $GLOBALS['aculect_ai_companion_test_post_meta'] ?? null;
 		$this->previous_filter_callbacks              = $GLOBALS['aculect_ai_companion_test_filter_callbacks'] ?? null;
 		$this->previous_users                         = $GLOBALS['aculect_ai_companion_test_users'] ?? null;
+		$this->previous_blocks                        = $GLOBALS['aculect_ai_companion_test_blocks'] ?? null;
 		$this->wpdb                                   = new \McpApprovalWpdb();
 		$GLOBALS['wpdb']                              = $this->wpdb;
 		$GLOBALS['aculect_ai_companion_test_options'] = array();
@@ -84,6 +86,7 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		$this->restore_global( 'aculect_ai_companion_test_post_meta', $this->previous_post_meta );
 		$this->restore_global( 'aculect_ai_companion_test_filter_callbacks', $this->previous_filter_callbacks );
 		$this->restore_global( 'aculect_ai_companion_test_users', $this->previous_users );
+		$this->restore_global( 'aculect_ai_companion_test_blocks', $this->previous_blocks );
 		PendingApprovalInstaller::reset_request_cache();
 		parent::tearDown();
 	}
@@ -101,9 +104,15 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		self::assertSame( 'Approved title', $this->post_title() );
 		self::assertSame( 'consumed', $this->wpdb->rows[ $id ]['status'] ?? '' );
 
+		$post = get_post( 123 );
+		self::assertInstanceOf( \WP_Post::class, $post );
+		$post->post_modified_gmt = '2026-09-25 10:01:00';
+		$post->post_title        = 'Later human edit';
+
 		$replay = $this->call_app( $gateway, $request );
 		self::assertSame( 'success', $replay->data['result']['outcome'] ?? '' );
-		self::assertSame( 'Approved title', $this->post_title() );
+		self::assertSame( 'Later human edit', $this->post_title() );
+		self::assertSame( 'consumed', $this->wpdb->rows[ $id ]['status'] ?? '' );
 
 		$this->set_post_title( 'Original title' );
 		$other_session = $this->call_app( $gateway, $this->request( 'session-b', 'Approved title' ) );
@@ -156,6 +165,153 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		self::assertArrayNotHasKey( 'arguments', $events[0]['metadata'] );
 	}
 
+	public function test_retry_without_client_idempotency_key_replays_after_target_version_changes(): void {
+		$gateway = $this->gateway();
+		$request = $this->request( 'session-no-key', 'Approved without key', false );
+		self::assertSame( 'approval_pending', $this->call_app( $gateway, $request )->data['result']['status'] ?? '' );
+		$id = $this->approve_pending_request();
+		self::assertSame( 'success', $this->call_app( $gateway, $request )->data['result']['outcome'] ?? '' );
+		$post = get_post( 123 );
+		self::assertInstanceOf( \WP_Post::class, $post );
+		$post->post_title        = 'Later human edit';
+		$post->post_modified_gmt = '2026-09-25 10:01:00';
+
+		$replayed = $this->call_app( $gateway, $request )->data['result'];
+		self::assertTrue( $replayed['replayed'] ?? false );
+		self::assertSame( 'Later human edit', $this->post_title() );
+		self::assertSame( 'consumed', $this->wpdb->rows[ $id ]['status'] ?? '' );
+	}
+
+	public function test_mixed_changed_title_and_unchanged_status_can_receive_exact_human_approval(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$content = '<!-- wp:paragraph --><p>Approved content.</p><!-- /wp:paragraph -->';
+		$gateway = $this->gateway();
+		$request = $this->request(
+			'session-mixed',
+			'Approved title',
+			false,
+			array(
+				'content' => $content,
+				'status'  => 'draft',
+			)
+		);
+		$pending = $this->call_app( $gateway, $request );
+
+		self::assertSame( 'approval_pending', $pending->data['result']['status'] ?? '' );
+		self::assertSame( 'Original title', $this->post_title() );
+		self::assertSame( 'Original content', get_post( 123 )->post_content );
+		$id     = max( array_keys( $this->wpdb->rows ) );
+		$record = ( new PendingOperationApprovalStore() )->find_pending_for_current_actor( $id );
+		self::assertIsArray( $record );
+		self::assertSame( array( 'title', 'content' ), array_column( $record['review_summary']['changes'], 'label' ) );
+
+		$this->approve_pending_request();
+		$executed = $this->call_app( $gateway, $request );
+		self::assertSame( 'success', $executed->data['result']['outcome'] ?? '' );
+		self::assertSame( 'Approved title', $this->post_title() );
+		self::assertSame( $content, get_post( 123 )->post_content );
+		self::assertSame( 'draft', get_post( 123 )->post_status );
+		self::assertSame( 'consumed', $this->wpdb->rows[ $id ]['status'] ?? '' );
+	}
+
+	public function test_all_no_op_fields_do_not_create_an_approval(): void {
+		$result = $this->call_app(
+			$this->gateway(),
+			$this->request( 'session-no-op', 'Original title', false, array( 'status' => 'draft' ) )
+		);
+
+		self::assertSame( 'approval_unsupported', $result->data['result']['error'] ?? '' );
+		self::assertTrue( $result->data['result']['no_write'] ?? false );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( 'Original title', $this->post_title() );
+	}
+
+	public function test_unsupported_metadata_stays_blocked_even_with_a_changed_title(): void {
+		$result = $this->call_app(
+			$this->gateway(),
+			$this->request( 'session-unsupported', 'Approved title', false, array( 'meta_title' => 'Unsupported metadata' ) )
+		);
+
+		self::assertSame( 'approval_unsupported', $result->data['result']['error'] ?? '' );
+		self::assertTrue( $result->data['result']['no_write'] ?? false );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( 'Original title', $this->post_title() );
+	}
+
+	public function test_malformed_no_op_or_unsupported_diff_cannot_create_an_approval(): void {
+		$handoff          = new McpAppApprovalHandoff(
+			new AbilitiesRegistry(),
+			new ToolSafety( new InMemoryExecutionClaimStore() ),
+			static function (): void {}
+		);
+		$store            = new PendingOperationApprovalStore();
+		$unchanged_status = array(
+			'field'   => 'status',
+			'changed' => false,
+			'before'  => array(
+				'available' => true,
+				'value'     => 'draft',
+			),
+			'after'   => array(
+				'available' => true,
+				'value'     => 'draft',
+			),
+		);
+		$preview          = array(
+			'target'  => array( 'id' => 123 ),
+			'dry_run' => true,
+			'diff'    => array(
+				'fields'      => array(
+					array(
+						'field'   => 'title',
+						'changed' => true,
+						'before'  => array(
+							'available' => true,
+							'value'     => 'Original title',
+						),
+						'after'   => array(
+							'available' => true,
+							'value'     => 'Approved title',
+						),
+					),
+					$unchanged_status,
+				),
+				'unsupported' => array(),
+			),
+		);
+		$invalid_fields   = array(
+			'unreadable_before' => array( 'before' => array( 'available' => false ) ),
+			'unreadable_after'  => array( 'after' => array( 'available' => false ) ),
+			'missing_value'     => array( 'before' => array( 'available' => true ) ),
+			'non_boolean'       => array( 'changed' => 0 ),
+			'unequal_values'    => array(
+				'after' => array(
+					'available' => true,
+					'value'     => 'publish',
+				),
+			),
+		);
+		foreach ( $invalid_fields as $label => $changes ) {
+			$candidate                      = $preview;
+			$candidate['diff']['fields'][1] = array_replace( $unchanged_status, $changes );
+			$result                         = $this->create_pending_from_preview( $handoff, $store, $candidate );
+			self::assertSame( 'approval_unsupported', $result['error'] ?? '', $label );
+			self::assertTrue( $result['no_write'] ?? false, $label );
+			self::assertSame( array(), $this->wpdb->rows, $label );
+		}
+		$preview['diff']['unsupported'] = array( 'unreviewable_field' );
+		$result                         = $this->create_pending_from_preview( $handoff, $store, $preview );
+		self::assertSame( 'approval_unsupported', $result['error'] ?? '' );
+		self::assertSame( array(), $this->wpdb->rows );
+	}
+
 	public function test_declined_exact_call_stays_blocked_without_writing(): void {
 		$gateway = $this->gateway();
 		$request = $this->request( 'session-a', 'Declined title' );
@@ -173,15 +329,41 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		return new AbilityExecutionGateway( null, null, null, new ToolSafety( new InMemoryExecutionClaimStore() ) );
 	}
 
-	private function request( string $session, string $title ): AbilityExecutionRequest {
+	private function create_pending_from_preview( McpAppApprovalHandoff $handoff, PendingOperationApprovalStore $store, array $preview ): array {
+		return $handoff->create_pending(
+			'content_workflow.update_post',
+			array(
+				'id'     => 123,
+				'title'  => 'Approved title',
+				'status' => 'draft',
+			),
+			array( 'expected_modified_gmt' => '2026-09-25 10:00:00' ),
+			$preview,
+			array(
+				'client_id' => 'malformed-diff-client',
+				'token_id'  => 'malformed-diff-token',
+				'user_id'   => 7,
+			),
+			$store,
+			'policy-fingerprint',
+			array( 123 ),
+			str_repeat( 'a', 64 )
+		);
+	}
+
+	private function request( string $session, string $title, bool $with_idempotency_key = true, array $additional_arguments = array() ): AbilityExecutionRequest {
+		$arguments = array(
+			'id'    => 123,
+			'title' => $title,
+		);
+		$arguments = array_merge( $arguments, $additional_arguments );
+		if ( $with_idempotency_key ) {
+			$arguments['idempotency_key'] = 'approval-gateway-same-key';
+		}
 		return new AbilityExecutionRequest(
 			array(
 				'name'      => 'content_workflow_update_post',
-				'arguments' => array(
-					'id'              => 123,
-					'title'           => $title,
-					'idempotency_key' => 'approval-gateway-same-key',
-				),
+				'arguments' => $arguments,
 			),
 			array(
 				'user_id'      => 7,

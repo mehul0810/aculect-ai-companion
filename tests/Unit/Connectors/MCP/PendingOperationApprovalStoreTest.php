@@ -293,6 +293,36 @@ final class PendingOperationApprovalStoreTest extends TestCase {
 		self::assertArrayNotHasKey( PendingOperationApprovalStore::CLEANUP_HOOK, $GLOBALS['aculect_ai_companion_test_scheduled_events'] );
 	}
 
+	public function test_expiry_cleanup_records_distinct_opaque_audit_references_for_each_removed_proposal(): void {
+		$store  = $this->store();
+		$first  = $this->create_request( $store, array( 'title' => 'Private first proposal' ) );
+		$second = $this->create_request( $store, array( 'title' => 'Private second proposal' ) );
+		self::assertIsInt( $first );
+		self::assertIsInt( $second );
+		$first_reference  = PendingOperationApprovalStore::audit_reference( $store->find_pending_for_current_actor( $first ) ?? array() );
+		$second_reference = PendingOperationApprovalStore::audit_reference( $store->find_pending_for_current_actor( $second ) ?? array() );
+		self::assertNotSame( $first_reference, $second_reference );
+
+		$this->now += PendingOperationApprovalStore::TTL_SECONDS + 1;
+		self::assertSame( 1, $store->prune_expired( 1 ) );
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 0;
+		self::assertSame( 1, $store->prune_expired( 1 ) );
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 17;
+		self::assertSame( 0, $store->prune_expired( 1 ) );
+		$references = array();
+		foreach ( $this->wpdb->activity_rows as $event ) {
+			if ( 'mcp.timeline.approval_expiry' !== ( $event['action'] ?? '' ) ) {
+				continue;
+			}
+			$context = json_decode( (string) ( $event['context'] ?? '' ), true );
+			self::assertIsArray( $context );
+			$references[] = $context['approval_ref'] ?? '';
+			self::assertSame( 17, (int) ( $event['user_id'] ?? 0 ) );
+			self::assertStringNotContainsString( 'Private', (string) $event['context'] );
+		}
+		self::assertEqualsCanonicalizing( array( $first_reference, $second_reference ), $references );
+	}
+
 	public function test_invalid_payload_size_depth_and_capability_fail_closed(): void {
 		$store = $this->store();
 		$deep  = 'too deep';

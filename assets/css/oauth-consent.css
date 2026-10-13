@@ -48,6 +48,20 @@
 	line-height: 1.6;
 }
 
+.aculect-ai-companion-oauth-warning {
+	display: grid;
+	gap: 4px;
+	margin: 0 0 16px;
+	padding: 14px 16px;
+	border-left: 4px solid #dba617;
+	background: #fcf9e8;
+}
+
+.aculect-ai-companion-oauth-warning span {
+	color: #50575e;
+	line-height: 1.5;
+}
+
 .aculect-ai-companion-oauth-capabilities li,
 .aculect-ai-companion-oauth-security-list li {
 	margin-bottom: 14px;

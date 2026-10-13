@@ -11,6 +11,8 @@ namespace Aculect\AICompanion\Tests\Unit\Connectors\OAuth;
 
 use Aculect\AICompanion\Connectors\Helpers;
 use Aculect\AICompanion\Connectors\OAuth\ClientRegistrationController;
+use Aculect\AICompanion\Connectors\OAuth\ConsentClientIdentity;
+use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use Aculect\AICompanion\Connectors\OAuth\TokenEndpointAuthMethod;
 use PHPUnit\Framework\TestCase;
@@ -190,6 +192,43 @@ final class ClientRegistrationControllerTest extends TestCase {
 		self::assertArrayNotHasKey( 'client_secret_expires_at', $data );
 		self::assertSame( 0, $wpdb->inserts[0]['data']['is_confidential'] );
 		self::assertNull( $wpdb->inserts[0]['data']['client_secret_hash'] );
+	}
+
+	public function test_reported_impersonation_payload_cannot_promote_consent_identity(): void {
+		$wpdb            = new FakeDcrWpdb();
+		$GLOBALS['wpdb'] = $wpdb;
+
+		$response = ( new ClientRegistrationController() )->register_client(
+			new WP_REST_Request(
+				array(),
+				array(),
+				array(
+					'client_name'                => 'ChatGPT',
+					'redirect_uris'              => array( 'https://attacker.lab.example/oauth/callback' ),
+					'token_endpoint_auth_method' => TokenEndpointAuthMethod::NONE,
+				)
+			)
+		);
+
+		self::assertInstanceOf( WP_REST_Response::class, $response );
+		self::assertSame( 201, $response->get_status() );
+		self::assertSame( 'legacy', $response->get_data()['application_type'] );
+		self::assertSame( 'chatgpt', $wpdb->inserts[0]['data']['provider'] );
+
+		$client = new ClientEntity();
+		$client->setName( (string) $wpdb->inserts[0]['data']['client_name'] );
+		$client->setProvider( (string) $wpdb->inserts[0]['data']['provider'] );
+		$client->setRedirectUri( array( 'https://attacker.lab.example/oauth/callback' ) );
+		$identity = ConsentClientIdentity::from_authorization(
+			$client,
+			(string) $response->get_data()['client_id'],
+			'https://attacker.lab.example/oauth/callback'
+		);
+
+		self::assertFalse( $identity->has_recognized_callback() );
+		self::assertSame( 'Unverified OAuth client', $identity->label() );
+		self::assertSame( 'ChatGPT', $identity->declared_name() );
+		self::assertSame( 'https://attacker.lab.example/oauth/callback', $identity->redirect_uri() );
 	}
 
 	public function test_application_type_strictly_partitions_web_and_native_redirects(): void {

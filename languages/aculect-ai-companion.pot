@@ -418,163 +418,206 @@ msgstr ""
 msgid "Site, admin menu, Site Editor, content, brand, block, pattern, search, memory, and incident history intelligence exposed by Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:378
+#: src/Connectors/OAuth/AuthorizationController.php:381
 msgid "Connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:379
+#: src/Connectors/OAuth/AuthorizationController.php:382
 msgid "Review connection request"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:381
-msgid "is requesting permission to connect to your WordPress site through Aculect AI Companion."
+#: src/Connectors/OAuth/AuthorizationController.php:383
+msgid "An OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:385
+#: src/Connectors/OAuth/AuthorizationController.php:386
 msgid "Connection details"
 msgstr ""
 
 #: src/Connectors/OAuth/AuthorizationController.php:387
-msgid "Assistant"
+msgid "Client identity is not verified"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:388
-msgid "Account"
-msgstr ""
-
-#: src/Connectors/OAuth/AuthorizationController.php:388
-msgid "Detected during authorization"
+#: src/Connectors/OAuth/AuthorizationController.php:387
+msgid "The client name is self-reported. A recognized provider return URL does not verify who registered this client. Confirm the return URL and client ID before approving."
 msgstr ""
 
 #: src/Connectors/OAuth/AuthorizationController.php:389
+msgid "Recognized return destination"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:390
+msgid "Return URL check"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:390
+msgid "Matches a documented provider callback"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:390
+msgid "No documented provider callback match"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:374
+msgid "No documented provider match"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:391
+msgid "Client-provided name"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:392
+msgid "Return URL"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:393
+msgid "Client ID"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:394
+msgid "Account"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:394
+msgid "Detected during authorization"
+msgstr ""
+
+#: src/Connectors/OAuth/AuthorizationController.php:395
 msgid "Site"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:390
+#: src/Connectors/OAuth/AuthorizationController.php:396
 msgid "Connection method"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:390
+#: src/Connectors/OAuth/AuthorizationController.php:396
 msgid "Secure OAuth"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:391
+#: src/Connectors/OAuth/AuthorizationController.php:397
 msgid "Requested"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:391
+#: src/Connectors/OAuth/AuthorizationController.php:397
 msgid "Just now"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:392
+#: src/Connectors/OAuth/AuthorizationController.php:398
 msgid "Status"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:392
+#: src/Connectors/OAuth/AuthorizationController.php:398
 msgid "Waiting for approval"
 msgstr ""
 
-#. translators: %s: AI assistant name, for example ChatGPT.
-#: src/Connectors/OAuth/AuthorizationController.php:397
+#. translators: %s: OAuth client reference, for example "this client".
+#: src/Connectors/OAuth/AuthorizationController.php:403
 #, php-format
 msgid "What %s will be able to do"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:398
+#: src/Connectors/OAuth/AuthorizationController.php:404
 msgid "After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:401
+#: src/Connectors/OAuth/AuthorizationController.php:407
 msgid "Manage content"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:401
+#: src/Connectors/OAuth/AuthorizationController.php:407
 msgid "Create and update posts, pages, and custom content."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:402
+#: src/Connectors/OAuth/AuthorizationController.php:408
 msgid "Manage media"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:402
+#: src/Connectors/OAuth/AuthorizationController.php:408
 msgid "Upload, organize, and manage media files."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:403
+#: src/Connectors/OAuth/AuthorizationController.php:409
 msgid "Moderate comments"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:403
+#: src/Connectors/OAuth/AuthorizationController.php:409
 msgid "Review, reply to, and manage comments."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:404
+#: src/Connectors/OAuth/AuthorizationController.php:410
 msgid "Use custom tools"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:404
+#: src/Connectors/OAuth/AuthorizationController.php:410
 msgid "Use site-specific tools exposed by Aculect."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:408
+#: src/Connectors/OAuth/AuthorizationController.php:414
 msgid "Security and privacy"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:410
+#: src/Connectors/OAuth/AuthorizationController.php:416
 msgid "Secure OAuth authentication"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:410
+#: src/Connectors/OAuth/AuthorizationController.php:416
 msgid "The connection is authorized through WordPress."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:411
+#: src/Connectors/OAuth/AuthorizationController.php:417
 msgid "No passwords shared"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:411
+#: src/Connectors/OAuth/AuthorizationController.php:417
 msgid "Your WordPress credentials are never shared with the AI assistant."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:412
+#: src/Connectors/OAuth/AuthorizationController.php:418
 msgid "Respects WordPress permissions"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:412
+#: src/Connectors/OAuth/AuthorizationController.php:418
 msgid "Access is limited by user role, capabilities, and Aculect settings."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:413
+#: src/Connectors/OAuth/AuthorizationController.php:419
 msgid "Access can be revoked anytime"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:413
+#: src/Connectors/OAuth/AuthorizationController.php:419
 msgid "You can remove the connection from the Connections tab."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:414
+#: src/Connectors/OAuth/AuthorizationController.php:420
 msgid "All actions are logged"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:414
+#: src/Connectors/OAuth/AuthorizationController.php:420
 msgid "Aculect records activity for visibility and auditability."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:416
+#: src/Connectors/OAuth/AuthorizationController.php:422
 msgid "You can manage or revoke this connection at any time from the Connections page."
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:423
+#: src/Connectors/OAuth/AuthorizationController.php:429
 msgid "Deny"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:424
+#: src/Connectors/OAuth/AuthorizationController.php:430
 msgid "Approve connection"
 msgstr ""
 
-#: src/Connectors/OAuth/AuthorizationController.php:443
-#: src/Connectors/OAuth/AuthorizationController.php:453
-msgid "AI assistant"
+#: src/Connectors/OAuth/AuthorizationController.php:403
+msgid "this client"
+msgstr ""
+
+#: src/Connectors/OAuth/ConsentClientIdentity.php:65
+msgid "Unverified OAuth client"
+msgstr ""
+
+#: src/Connectors/OAuth/ConsentClientIdentity.php:66
+msgid "Not provided"
 msgstr ""
 
 #: src/Connectors/OAuth/OAuthScopePolicy.php:40

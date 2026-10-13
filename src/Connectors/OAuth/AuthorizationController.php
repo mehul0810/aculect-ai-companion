@@ -27,7 +27,7 @@ use WP_REST_Server;
  */
 final class AuthorizationController {
 
-	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize';
+	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize_identity_v2';
 	private const CONSENT_REQUEST_PARAM = 'request_token';
 	private const CONSENT_REQUEST_TTL   = 600;
 	private const OAUTH_PARAMS          = array(
@@ -294,9 +294,7 @@ final class AuthorizationController {
 				),
 				$this->timeline_auth_context( $params, $client )
 			);
-			// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-			wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
-			exit;
+			$this->redirect_to_client( $redirect_uri, $location );
 		} catch ( OAuthServerException $exception ) {
 			$this->record_timeline_event(
 				'error',
@@ -364,11 +362,16 @@ final class AuthorizationController {
 	private function render_consent_markup( string $request_token, array $params, ClientEntity $client, string $resource ): void {
 		unset( $resource );
 
-		$site_name = get_bloginfo( 'name' );
-		$site_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
-		$scope     = $this->scope_from_params( $params );
-		$actions   = $this->scope_summary( $scope );
-		$assistant = $this->client_label( $client );
+		$site_name          = get_bloginfo( 'name' );
+		$site_host          = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		$scope              = $this->scope_from_params( $params );
+		$actions            = $this->scope_summary( $scope );
+		$identity           = ConsentClientIdentity::from_authorization(
+			$client,
+			(string) ( $params['client_id'] ?? '' ),
+			(string) ( $params['redirect_uri'] ?? '' )
+		);
+		$return_destination = $identity->has_recognized_callback() ? $identity->label() : __( 'No documented provider match', 'aculect-ai-companion' );
 
 		nocache_headers();
 		?>
@@ -377,14 +380,17 @@ final class AuthorizationController {
 		<div class="aculect-ai-companion-oauth-brand">Aculect AI Companion</div>
 			<div class="aculect-ai-companion-oauth-eyebrow"><?php echo esc_html__( 'Connection request', 'aculect-ai-companion' ); ?></div>
 			<h1 id="aculect-ai-companion-oauth-title" class="aculect-ai-companion-oauth-title"><?php echo esc_html__( 'Review connection request', 'aculect-ai-companion' ); ?></h1>
-			<p class="aculect-ai-companion-oauth-copy">
-				<?php echo esc_html( $assistant ); ?> <?php echo esc_html__( 'is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
-			</p>
+			<p class="aculect-ai-companion-oauth-copy"><?php echo esc_html__( 'An OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?></p>
 			<div class="aculect-ai-companion-oauth-panels">
 				<section class="aculect-ai-companion-oauth-panel">
 					<h2><?php echo esc_html__( 'Connection details', 'aculect-ai-companion' ); ?></h2>
+					<p class="aculect-ai-companion-oauth-warning"><strong><?php echo esc_html__( 'Client identity is not verified', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'The client name is self-reported. A recognized provider return URL does not verify who registered this client. Confirm the return URL and client ID before approving.', 'aculect-ai-companion' ); ?></span></p>
 					<dl class="aculect-ai-companion-oauth-details">
-						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Assistant', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $assistant ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Recognized return destination', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $return_destination ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Return URL check', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->has_recognized_callback() ? __( 'Matches a documented provider callback', 'aculect-ai-companion' ) : __( 'No documented provider callback match', 'aculect-ai-companion' ) ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client-provided name', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->declared_name() ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Return URL', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->redirect_uri() ); ?></code></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client ID', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->client_identifier() ); ?></code></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Account', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html__( 'Detected during authorization', 'aculect-ai-companion' ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Site', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( '' !== $site_host ? $site_host : $site_name ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Connection method', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html__( 'Secure OAuth', 'aculect-ai-companion' ); ?></dd></div>
@@ -393,8 +399,8 @@ final class AuthorizationController {
 					</dl>
 				</section>
 				<section class="aculect-ai-companion-oauth-panel">
-					<?php /* translators: %s: AI assistant name, for example ChatGPT. */ ?>
-					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), $assistant ) ); ?></h2>
+					<?php /* translators: %s: OAuth client reference, for example "this client". */ ?>
+					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), __( 'this client', 'aculect-ai-companion' ) ) ); ?></h2>
 					<p><?php echo esc_html__( 'After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings.', 'aculect-ai-companion' ); ?></p>
 					<p class="aculect-ai-companion-oauth-scope"><?php echo esc_html( $actions ); ?></p>
 					<ul class="aculect-ai-companion-oauth-capabilities">
@@ -426,31 +432,6 @@ final class AuthorizationController {
 	</div>
 </div>
 		<?php
-	}
-
-	/**
-	 * Return a user-facing assistant label for consent screens.
-	 *
-	 * @param ClientEntity $client Registered OAuth client.
-	 */
-	private function client_label( ClientEntity $client ): string {
-		$labels = array(
-			'chatgpt' => 'ChatGPT',
-			'claude'  => 'Claude',
-			'codex'   => 'Codex',
-			'cursor'  => 'Cursor',
-			'gemini'  => 'Gemini',
-			'mcp'     => __( 'AI assistant', 'aculect-ai-companion' ),
-		);
-
-		$provider = sanitize_key( $client->getProvider() );
-		if ( isset( $labels[ $provider ] ) ) {
-			return (string) $labels[ $provider ];
-		}
-
-		$name = trim( (string) $client->getName() );
-
-		return '' !== $name ? $name : __( 'AI assistant', 'aculect-ai-companion' );
 	}
 
 	/**
@@ -514,14 +495,15 @@ final class AuthorizationController {
 	/**
 	 * Redirect back to a validated OAuth client redirect URI.
 	 *
-	 * @param string                $redirect_uri Registered redirect URI.
-	 * @param array<string, string> $params       Response query parameters.
+	 * @param string                       $redirect_uri Registered redirect URI.
+	 * @param array<string, string>|string $response     Response query parameters or a completed response location.
 	 */
-	private function redirect_to_client( string $redirect_uri, array $params ): never {
-		nocache_headers();
-		$location = $this->authorization_response_location( $redirect_uri, $params );
-		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- OAuth redirect URI is validated against the registered client before redirecting.
-		wp_redirect( $location, 302, 'Aculect AI Companion OAuth' );
+	private function redirect_to_client( string $redirect_uri, array|string $response ): never {
+		$location = is_array( $response ) ? $this->authorization_response_location( $redirect_uri, $response ) : $response;
+		if ( ! ValidatedClientRedirect::send( $redirect_uri, $location ) ) {
+			$this->render_error( 'Connection redirect failed', 'Aculect AI Companion could not return to the requesting application.', 500 );
+		}
+
 		exit;
 	}
 

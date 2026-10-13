@@ -253,6 +253,10 @@ Yes. If your DNS record is proxied through Cloudflare and SSL/TLS mode is set to
 
 Yes. Aculect AI Companion can work with supported custom post types and custom taxonomies when they are visible through WordPress and the connected user has the required permissions.
 
+= Where do I report security bugs found in this plugin? =
+
+Please report security bugs found in the source code of the Aculect AI Companion plugin through the [Patchstack Vulnerability Disclosure Program](https://patchstack.com/database/vdp/cbfe33ed-4024-49b5-a693-c93757d1fe22). The Patchstack team will assist you with verification, CVE assignment, and notify the developers of this plugin.
+
 == Screenshots ==
 
 1. Overview tab showing the 0.7.0 AI Companion experience.
@@ -298,6 +302,19 @@ Composer dependencies for production releases are installed with:
 * Added post-update revision review, layout and pattern selection, and a direct WordPress Media Library image-upload handoff for supported MCP Apps.
 * Added read-only Agent Readiness diagnostics and clearer Cloudflare connection guidance without claiming that edge challenges can be bypassed.
 * Included versioned MCP Apps assets and packaged core Skills in production-package verification.
+
+= 0.8.3 =
+
+* OAuth consent now shows the client-provided name, selected return URL, client ID, and identity-verification status before approval.
+* Prevented self-reported client names and stored provider attribution from being presented as verified provider identity on OAuth consent.
+* Added regression coverage for existing spoofed registrations, mixed and deceptive callback forms, documented provider callbacks, and generic OAuth clients.
+
+= 0.8.2 =
+
+* Hardened OAuth client redirects with WordPress safe-redirect validation while preserving registered HTTPS and loopback callbacks.
+* Added a second redirect boundary that rejects a final OAuth response when its host differs from the validated client callback.
+* Added regression coverage for registered-host enforcement and malformed callback handling.
+* Updated the bundled phpseclib runtime dependency to the patched 3.0.57 release.
 
 = 0.8.1 =
 
@@ -501,6 +518,14 @@ Composer dependencies for production releases are installed with:
 = 0.9.0 =
 
 Adds opt-in MCP Apps presentation and authenticated MCP Skills. Existing OAuth connections and text-only MCP clients retain their established behavior; visual responses depend on host support and the site opt-in.
+
+= 0.8.3 =
+
+Hardens OAuth consent identity for new and existing registrations while preserving documented provider callbacks and standards-compatible generic clients.
+
+= 0.8.2 =
+
+Adds a second WordPress safe-redirect check for OAuth responses, keeps valid registered callbacks working, updates the bundled phpseclib runtime, and publishes the Patchstack VDP reporting link.
 
 = 0.8.1 =
 

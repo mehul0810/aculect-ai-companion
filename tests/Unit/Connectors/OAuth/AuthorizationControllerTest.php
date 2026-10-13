@@ -212,8 +212,8 @@ final class AuthorizationControllerTest extends TestCase {
 
 	public function test_consent_markup_uses_connection_request_framing(): void {
 		$client = new ClientEntity();
-		$client->setName( 'OpenAI ChatGPT Connector' );
-		$client->setProvider( 'chatgpt' );
+		$client->setName( 'Unrelated client' );
+		$client->setProvider( 'mcp' );
 
 		ob_start();
 		$this->invokePrivate(
@@ -224,7 +224,7 @@ final class AuthorizationControllerTest extends TestCase {
 				array(
 					'response_type'         => 'code',
 					'client_id'             => 'client-1',
-					'redirect_uri'          => 'https://chatgpt.com/oauth/callback',
+					'redirect_uri'          => 'https://chatgpt.com/connector_platform_oauth_redirect',
 					'scope'                 => 'content:read content:draft',
 					'code_challenge'        => str_repeat( 'a', 43 ),
 					'code_challenge_method' => 'S256',
@@ -238,17 +238,77 @@ final class AuthorizationControllerTest extends TestCase {
 
 		self::assertStringContainsString( 'Review connection request', $html );
 		self::assertStringContainsString(
-			'ChatGPT is requesting permission to connect to your WordPress site through Aculect AI Companion.',
+			'An OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion.',
 			$html
 		);
 		self::assertStringContainsString( 'Connection details', $html );
-		self::assertStringContainsString( 'What ChatGPT will be able to do', $html );
+		self::assertStringContainsString( 'What this client will be able to do', $html );
+		self::assertStringContainsString( 'Client identity is not verified', $html );
+		self::assertStringContainsString( 'Matches a documented provider callback', $html );
+		self::assertStringContainsString( 'Recognized return destination', $html );
+		self::assertStringContainsString( 'ChatGPT', $html );
+		self::assertStringContainsString( 'Unrelated client', $html );
+		self::assertStringContainsString( 'https://chatgpt.com/connector_platform_oauth_redirect', $html );
+		self::assertStringContainsString( 'client-1', $html );
 		self::assertStringContainsString( 'Security and privacy', $html );
 		self::assertStringContainsString( 'Approve connection', $html );
 		self::assertStringContainsString( 'Deny', $html );
 		self::assertStringContainsString( 'name="request_token"', $html );
+		self::assertStringContainsString( 'nonce-aculect_ai_companion_oauth_authorize_identity_v2', $html );
 		self::assertStringNotContainsString( 'name="client_id"', $html );
 		self::assertStringNotContainsString( 'Approve AI assistant access', $html );
+		self::assertStringNotContainsString( 'ChatGPT is requesting permission', $html );
+		self::assertStringNotContainsString( 'What ChatGPT will be able to do', $html );
+		self::assertStringNotContainsString( 'Verified provider callback', $html );
+	}
+
+	public function test_consent_markup_does_not_promote_spoofed_existing_provider_state(): void {
+		$client = new ClientEntity();
+		$client->setName( 'ChatGPT' );
+		$client->setProvider( 'chatgpt' );
+
+		ob_start();
+		$this->invokePrivate(
+			new AuthorizationController(),
+			'render_consent_markup',
+			array(
+				'abcdef1234567890',
+				array(
+					'response_type'         => 'code',
+					'client_id'             => 'attacker-client',
+					'redirect_uri'          => 'https://attacker.example/oauth/callback',
+					'scope'                 => 'content:read content:draft',
+					'code_challenge'        => str_repeat( 'a', 43 ),
+					'code_challenge_method' => 'S256',
+					'resource'              => Helpers::mcp_resource(),
+				),
+				$client,
+				Helpers::mcp_resource(),
+			)
+		);
+		$html = (string) ob_get_clean();
+
+		self::assertStringContainsString( 'An OAuth client is requesting permission', $html );
+		self::assertStringContainsString( 'Client identity is not verified', $html );
+		self::assertStringContainsString( 'No documented provider callback match', $html );
+		self::assertStringContainsString( 'No documented provider match', $html );
+		self::assertStringContainsString( 'Client-provided name', $html );
+		self::assertStringContainsString( 'ChatGPT', $html );
+		self::assertStringContainsString( 'https://attacker.example/oauth/callback', $html );
+		self::assertStringContainsString( 'attacker-client', $html );
+		self::assertStringContainsString( 'What this client will be able to do', $html );
+		self::assertStringNotContainsString( 'ChatGPT is requesting permission', $html );
+		self::assertStringNotContainsString( 'What ChatGPT will be able to do', $html );
+	}
+
+	public function test_pre_083_consent_nonce_cannot_approve_after_identity_boundary_upgrade(): void {
+		$legacy_nonce         = wp_create_nonce( 'aculect_ai_companion_oauth_authorize' );
+		$current              = new \ReflectionClass( AuthorizationController::class );
+		$current_nonce_action = (string) $current->getConstant( 'NONCE_ACTION' );
+
+		self::assertSame( 'aculect_ai_companion_oauth_authorize_identity_v2', $current_nonce_action );
+		self::assertFalse( wp_verify_nonce( $legacy_nonce, $current_nonce_action ) );
+		self::assertTrue( wp_verify_nonce( wp_create_nonce( $current_nonce_action ), $current_nonce_action ) );
 	}
 
 	public function test_load_consent_request_returns_null_for_expired_request(): void {

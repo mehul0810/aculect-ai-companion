@@ -36,7 +36,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['version'] ?? '' ) );
 		self::assertSame( self::EXPECTED_VERSION, (string) ( $lockfile['packages']['']['version'] ?? '' ) );
 		self::assertStringContainsString( 'Project-Id-Version: Aculect AI Companion ' . self::EXPECTED_VERSION, $pot );
-		self::assertSame( 165, substr_count( $pot, "\nmsgid " ) );
+		self::assertSame( 176, substr_count( $pot, "\nmsgid " ) );
 		self::assertStringContainsString( 'msgid "Settings"', $pot );
 		self::assertStringContainsString( 'msgid "Review connection request"', $pot );
 		self::assertStringContainsString( 'msgid "AI access"', $pot );
@@ -46,6 +46,8 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertSame( self::EXPECTED_VERSION, $release_version );
 		self::assertArrayHasKey( $release_version, $log );
 		self::assertSame( '2026-09-29', $log[ $release_version ]['date'] ?? '' );
+		self::assertSame( '2026-10-12', $log['0.8.3']['date'] ?? '' );
+		self::assertSame( '2026-10-07', $log['0.8.2']['date'] ?? '' );
 		self::assertSame( '2026-09-23', $log['0.8.1']['date'] ?? '' );
 		foreach ( $log as $version => $entry ) {
 			self::assertIsString( $version );
@@ -64,13 +66,17 @@ final class ReleaseMetadataTest extends TestCase {
 			}
 		}
 		self::assertStringContainsString( '= ' . self::EXPECTED_VERSION . " =\n\nAdds opt-in MCP Apps presentation and authenticated MCP Skills. Existing OAuth connections and text-only MCP clients retain their established behavior; visual responses depend on host support and the site opt-in.", $readme );
+		self::assertStringContainsString( '= 0.8.3 =', $readme );
+		self::assertStringContainsString( '= 0.8.2 =', $readme );
+		self::assertStringContainsString( "= 0.8.3 =\n\nHardens OAuth consent identity for new and existing registrations while preserving documented provider callbacks and standards-compatible generic clients.", $readme );
 		self::assertStringContainsString( '= 0.8.1 =', $readme );
 		self::assertStringContainsString( "= 0.8.0 =\n\nExisting OAuth clients are issuer-bound in resumable batches.", $readme );
 		self::assertStringContainsString( 'Registration and credential issuance stay unavailable until verified.', $readme );
 		self::assertStringContainsString( 'Changing the external site URL does not rebind credentials and may require reconnecting assistants.', $readme );
-		self::assertStringContainsString( '`0.8.1` is the latest published production release; its tag points to `68b81cd9c92adc0825ef09c3a63a924859ad9c99` on `main`.', $governance );
+		self::assertStringContainsString( '`0.8.3` is the latest published production release. Its tag points to `eb3c770d99f7f5db78c8e1fd981a57e4f9099c26` on `main`', $governance );
 		self::assertStringContainsString( '`0.9.0` is the active release candidate on `release/0.9.0`.', $governance );
-		self::assertStringContainsString( 'production remains `0.8.1` until the owner explicitly approves the exact production merge, tag, and publication workflow.', $governance );
+		self::assertStringContainsString( 'Preserve the reviewed 0.8.2 final OAuth redirect boundary and 0.8.3 consent identity disclosures', $governance );
+		self::assertStringContainsString( 'production remains `0.8.3` until the owner explicitly approves the exact production merge, tag, and publication workflow.', $governance );
 		self::assertStringContainsString( 'Never imply that a planned date or candidate metadata means production was released.', $governance );
 		self::assertStringContainsString( 'Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta', $governance );
 		self::assertStringContainsString( 'Candidate package metadata may target `0.9.0`', $governance );

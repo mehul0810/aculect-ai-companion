@@ -13,12 +13,12 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.8.1` is the latest published production release; its tag points to `68b81cd9c92adc0825ef09c3a63a924859ad9c99` on `main`.
+- `0.8.3` is the latest published production release. Its tag points to `eb3c770d99f7f5db78c8e1fd981a57e4f9099c26` on `main`, and the production workflow reported a successful WordPress.org deployment on 2026-10-12.
 - `0.9.0` is the active release candidate on `release/0.9.0`. Its changelog date is a candidate-preparation date, not evidence of beta or production publication.
 - The candidate adds opt-in MCP Apps presentation, authenticated MCP Skills, site-local custom Skill administration, and read-only Agent Readiness diagnostics. The owner chose a private, schema-neutral Agent Skills discovery foundation for 0.9.0 and deferred the public index and experience to 1.0.0. Do not publish an experimental endpoint merely for a scanner mark.
-- Preserve the reviewed OAuth issuer/DCR, authorization, consent, PKCE, token, refresh, revocation, scope, and client-storage behavior. Any failing OAuth contract blocks release, and a flow change needs separate explicit owner approval.
+- Preserve the reviewed 0.8.2 final OAuth redirect boundary and 0.8.3 consent identity disclosures alongside the issuer, DCR, authorization, PKCE, token, refresh, revocation, scope, and client-storage contracts. Generic and native clients remain functional and are presented as unverified when their callback cannot prove a provider identity. Any failing OAuth contract blocks release, and a flow change needs separate explicit owner approval.
 - Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta on a suitable hostname. Local fixtures and a loopback WordPress site cannot claim Cloudflare compatibility. Record these as beta validation gaps; do not mark them passed or silently remove them from the 0.9.0 milestone.
-- Candidate package metadata may target `0.9.0`; production remains `0.8.1` until the owner explicitly approves the exact production merge, tag, and publication workflow. Never imply that a planned date or candidate metadata means production was released.
+- Candidate package metadata may target `0.9.0`; production remains `0.8.3` until the owner explicitly approves the exact production merge, tag, and publication workflow. Never imply that a planned date or candidate metadata means production was released.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.
@@ -28,7 +28,7 @@
 - Local preparation starts with `npm run check:release` from a clean committed checkout. Its receipt pins local checks and the production ZIP; it is preflight evidence, not a complete release decision or hosted-connector proof.
 - Browser/admin UI proof is local: run `npm run smoke:release-ui` with safe disposable-site inputs when applicable and record its artifact. Hosted CI retains WPCS, the minimum PHP 8.2 quality gate, PHP 8.3/8.4/8.5 compatibility, WordPress 6.9/7.0/7.1, security, database and exact-package OAuth gates.
 - Routine PR checks are consolidated and risk-selected; full validation remains required for release integration and publication. The full gate must build one canonical artifact and pass that exact artifact to packaged proofs and publication. No tag/release/deployment is performed by local check commands or manual CI validation.
-- The 0.8.0 rejected-token cache-header exception is historical and does not apply to 0.8.1. Every successful and rejected token response must include `Cache-Control: no-store` and `Pragma: no-cache`; every functional OAuth assertion remains mandatory.
+- The 0.8.0 rejected-token cache-header exception is historical and does not apply to 0.8.1 or later. Every successful and rejected token response must include `Cache-Control: no-store` and `Pragma: no-cache`; every functional OAuth assertion remains mandatory.
 - The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
 - OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.
 - Security/privacy

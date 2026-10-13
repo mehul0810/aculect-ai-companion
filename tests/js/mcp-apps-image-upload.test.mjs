@@ -45,6 +45,13 @@ test( 'image upload app is a credential-free, explicit WordPress human handoff',
 	assert.match( template, /upload it directly to this site’s Media Library/ );
 	assert.match( html, /bridge\.openLink\( url \)/ );
 	assert.match( widget, /No image was uploaded by this widget/ );
+	assert.match( template, /label for="upload-address"/ );
+	assert.match( template, /id="upload-address" type="text" readonly/ );
+	assert.match( template, /aria-describedby="manual-guidance"/ );
+	assert.match(
+		template,
+		/do not share your sign-in details with the assistant/
+	);
 	assert.match( html, /application\/json/ );
 	assert.match( resource, /current_user_can\( 'upload_files' \)/ );
 	assert.match( resource, /admin_url\( 'admin\.php\?page=' \./ );

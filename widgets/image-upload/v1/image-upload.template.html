@@ -17,6 +17,11 @@
 			<p>WordPress will show an attachment ID after a successful upload. Return here and provide that ID to continue. Uploading alone does not change any post.</p>
 			<p id="status" role="status" aria-live="polite">No file has been selected or uploaded by this widget.</p>
 			<button id="open" type="button" disabled>Open WordPress upload</button>
+			<div id="manual-handoff" hidden>
+				<p id="manual-guidance">If this host cannot open WordPress, copy this address into your browser. Sign in to WordPress there; do not share your sign-in details with the assistant.</p>
+				<label for="upload-address">WordPress upload address</label>
+				<input id="upload-address" type="text" readonly aria-describedby="manual-guidance" spellcheck="false">
+			</div>
 		</section>
 	</main>
 	<script type="application/json" id="handoff-url">__ACULECT_UPLOAD_HANDOFF_URL_JSON__</script>

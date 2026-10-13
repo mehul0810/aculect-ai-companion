@@ -7,6 +7,7 @@
 	--muted: #506176;
 	--border: #d6dee8;
 	--accent: #1554a8;
+	--accent-text: #fff;
 }
 
 :root[data-theme="dark"] {
@@ -16,6 +17,7 @@
 	--muted: #b9c8d7;
 	--border: #425365;
 	--accent: #91bdff;
+	--accent-text: #111a25;
 }
 
 * {
@@ -66,7 +68,7 @@ button {
 	border-radius: 8px;
 	padding: 9px 16px;
 	background: var(--accent);
-	color: #fff;
+	color: var(--accent-text);
 	font: inherit;
 	font-weight: 700;
 	cursor: pointer;
@@ -74,7 +76,24 @@ button {
 
 button:disabled {
 	opacity: 0.6;
-	cursor: wait;
+	cursor: not-allowed;
+}
+
+label {
+	display: block;
+	font-weight: 600;
+}
+
+input {
+	width: 100%;
+	min-height: 44px;
+	margin-top: 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 9px 12px;
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
 }
 
 :focus-visible {

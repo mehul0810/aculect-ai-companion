@@ -63,6 +63,7 @@ without `wp_get_abilities()` report an explicit skip.
 - Routine PR CI keeps Quality/package on the minimum PHP 8.2 (including WPCS), PHP 8.3/8.4/8.5 compatibility, packaged OAuth, and Required CI. Relevant changes add database and WordPress 6.9/7.0/7.1 proofs. Release integration PRs and full validation run the complete hosted matrix. Branch pushes do not duplicate PR runs; manual full validation is available for branches without a PR.
 - `Required CI` rejects failed, cancelled, missing and unexpectedly skipped applicable jobs. Workflow configuration is not proof that GitHub branch protection is enabled; owner approval and repository settings remain separate.
 - Broad Semgrep PHP and CodeQL analysis run in the full release gate and on their documented schedules/on demand. Secrets scanning remains part of routine Quality.
+- `plugin-check.yml` owns exact-ZIP release Plugin Check, guarded memory rollback/migration/replay and bounded admin/removed-route browser proofs. Both release publishers depend on it. Those checks share one disposable localhost:8882 WordPress environment; broad responsive/admin UI smoke remains the separate local command.
 - If `phpstan-baseline.neon` changes, the PR body must include a non-empty `PHPStan baseline justification:` line that explains the reviewed reason for the baseline delta.
 
 ## Release and Proof Checks

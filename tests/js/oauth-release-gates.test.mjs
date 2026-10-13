@@ -65,6 +65,11 @@ test( 'both release publishers depend on exact-package OAuth proof', () => {
 		);
 		const publishing = content.slice( content.indexOf( '\n  publish:' ) );
 		assert.match( publishing, /needs: \[[^\]\n]*package[^\]\n]*\]/ );
+		assert.match( publishing, /needs: \[[^\]\n]*plugin-check[^\]\n]*\]/ );
+		assert.match(
+			content,
+			/uses: \.\/\.github\/workflows\/plugin-check\.yml/
+		);
 	}
 	const ci = workflow( 'ci.yml' );
 	assert.match(

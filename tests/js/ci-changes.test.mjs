@@ -14,6 +14,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	readdirSync,
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
@@ -88,12 +89,9 @@ test( 'memory integration-only edits remain in the quality lane', () => {
 	assert.equal( result.quality, true );
 } );
 
-test( 'packaged proof separates asset tooling from the proven wp-env runtime', () => {
+test( 'release package proof keeps the guarded memory runtime and locked browser dependencies', () => {
 	const workflow = readFileSync(
-		new URL(
-			'../../.github/workflows/workflow-proof.yml',
-			import.meta.url
-		),
+		new URL( '../../.github/workflows/plugin-check.yml', import.meta.url ),
 		'utf8'
 	);
 	assert.ok(
@@ -108,6 +106,46 @@ test( 'packaged proof separates asset tooling from the proven wp-env runtime', (
 		workflow,
 		/wp-memory-proof\.php aculect-disposable-memory-proof --use-include/
 	);
+	assert.match( workflow, /"port": 8882/ );
+	assert.match( workflow, /ACULECT_WP_BASE_URL: http:\/\/localhost:8882/ );
+	assert.match(
+		workflow,
+		/node tests\/Integration\/Browser\/workflow-admin\.mjs/
+	);
+	assert.doesNotMatch( workflow, /continue-on-error: true|npm run build/ );
+} );
+
+test( 'every retained reusable workflow has a caller or an independent entry point', () => {
+	const directory = new URL( '../../.github/workflows/', import.meta.url );
+	const workflows = readdirSync( directory ).filter( ( name ) =>
+		name.endsWith( '.yml' )
+	);
+	const contents = workflows.map( ( name ) =>
+		readFileSync( new URL( name, directory ), 'utf8' )
+	);
+	const callers = new Set(
+		contents.flatMap( ( content ) =>
+			Array.from(
+				content.matchAll( /uses: \.\/\.github\/workflows\/([^\s]+)/g ),
+				( match ) => match[ 1 ]
+			)
+		)
+	);
+	for ( const name of callers ) {
+		assert.ok(
+			workflows.includes( name ),
+			`Missing reusable workflow: ${ name }`
+		);
+	}
+	for ( const [ index, name ] of workflows.entries() ) {
+		assert.ok(
+			callers.has( name ) ||
+				/\n  (?:pull_request|workflow_dispatch|schedule|release):/.test(
+					contents[ index ]
+				),
+			`Workflow has no caller or independent trigger: ${ name }`
+		);
+	}
 } );
 
 const base = 'a'.repeat( 40 );
@@ -262,7 +300,7 @@ test( 'consolidated workflows retain supported integration proofs', () => {
 			)
 		)
 	);
-	const packaged = read( 'workflow-proof.yml' );
+	const packaged = read( 'plugin-check.yml' );
 	assert.ok( packaged.includes( 'workflow-admin.mjs' ) );
 	assert.ok( ! packaged.includes( 'wp-options-retry-cache.php' ) );
 	assert.ok( ! packaged.includes( 'Integration/Workflows' ) );

@@ -76,6 +76,7 @@ final class ReleaseMetadataTest extends TestCase {
 		self::assertStringContainsString( '`0.8.3` is the latest published production release. Its tag points to `eb3c770d99f7f5db78c8e1fd981a57e4f9099c26` on `main`', $governance );
 		self::assertStringContainsString( '`0.9.0` is the active release candidate on `release/0.9.0`.', $governance );
 		self::assertStringContainsString( 'Preserve the reviewed 0.8.2 final OAuth redirect boundary and 0.8.3 consent identity disclosures', $governance );
+		self::assertStringContainsString( 'Consent treats every registering client identity as unverified; a documented provider callback identifies only the return destination.', $governance );
 		self::assertStringContainsString( 'production remains `0.8.3` until the owner explicitly approves the exact production merge, tag, and publication workflow.', $governance );
 		self::assertStringContainsString( 'Never imply that a planned date or candidate metadata means production was released.', $governance );
 		self::assertStringContainsString( 'Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta', $governance );

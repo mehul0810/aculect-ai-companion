@@ -15,6 +15,36 @@
 - Diff hygiene: `git diff --check`
 - Modularity budgets and dependency boundaries: `composer check:modularity`. For the pull-request ratchet (legacy files may not grow), run `php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from=origin/<base-branch>`.
 
+## Development Dependency Updates
+
+- Keep Node 24/npm 11 for dependency installation and asset checks. The hosted
+  WordPress fixtures still switch to Node 20 after installation; do not raise
+  that fixture requirement or change the supported WordPress/PHP matrix to
+  accommodate a development dependency update.
+- Run `node --test tests/js/development-dependencies.test.mjs`, `npm ls --all`,
+  and `npm audit --package-lock-only` as well as the existing local/release gates.
+  The regression tests inspect every locked copy, reject the unpatched
+  `sprintf-js` chain, and exercise the affected YAML, shell quoting, CSS minifier
+  and Markdown math APIs. A manifest override alone is not proof: npm can retain
+  stale nested lock entries, so verify a fresh `npm ci` and the installed tree.
+- The Istanbul override moves only `@istanbuljs/load-nyc-config` to YAML 4. Its
+  configuration reader uses the retained `load()` API; configuration inheritance,
+  lists, malformed YAML and merge limits have regression coverage. Other YAML 4
+  and YAML 5 consumers retain their respective majors. The selector parser moves
+  to 7.1.6 because no fixed 6.x release exists; cover its CSS minifier consumers
+  with regression tests and the complete asset build/style lint. KaTeX is pinned
+  to the patched 0.18.2 release to retain its Node 20-compatible CLI dependency.
+- Review and report the complete development audit, not only the runtime audit.
+  The additional [braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+  currently has no upstream patched version and remains in the WordPress
+  development toolchain. It is not an audit exemption or a passing full audit.
+  Do not downgrade WordPress UI packages, suppress advisories or weaken release
+  gates to hide this finding. Revisit it when an upstream-compatible fix exists.
+- All first-party npm dependencies remain development-only. Verify the production
+  ZIP excludes `node_modules` and includes rebuilt assets, and run the unchanged
+  exact-package OAuth, compatibility and release proof gates. Dependabot's open
+  alert status follows the default branch, not a release-branch-only push.
+
 ## Extension Lifecycle Changes
 
 - Static lane: `composer analyse:mcp:extensions`; module and gateway checks remain

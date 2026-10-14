@@ -19,6 +19,7 @@ use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Server;
 
@@ -29,7 +30,6 @@ final class AuthorizationController {
 
 	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize_identity_v2';
 	private const CONSENT_REQUEST_PARAM = 'request_token';
-	private const CONSENT_REQUEST_TTL   = 600;
 	private const OAUTH_PARAMS          = array(
 		'response_type',
 		'client_id',
@@ -115,10 +115,14 @@ final class AuthorizationController {
 			$request
 		);
 
-		$context     = $this->authorization_context( $params, false, $request );
-		$consent_url = $this->admin_consent_url(
-			$this->store_consent_request( $context['params'] )
-		);
+		$context       = $this->authorization_context( $params, false, $request );
+		$request_token = $this->store_consent_request( $context['params'] );
+		if ( $request_token instanceof WP_Error ) {
+			$retry_after = absint( $request_token->get_error_data()['retry_after'] ?? ConsentRequestStore::TTL );
+			header( 'Retry-After: ' . max( 1, $retry_after ) );
+			$this->render_error( 'Try again later', 'Too many connection requests. Please try again shortly.', 429 );
+		}
+		$consent_url = $this->admin_consent_url( $request_token );
 		if ( ! AuthorizationBrowserSession::is_logged_in( null !== $request ) ) {
 			( new Logger() )->info(
 				'authorize.login_redirect',
@@ -893,20 +897,8 @@ final class AuthorizationController {
 	 *
 	 * @param array<string, string> $params Authorization parameters.
 	 */
-	private function store_consent_request( array $params ): string {
-		$token      = bin2hex( random_bytes( 16 ) );
-		$expires_at = time() + self::CONSENT_REQUEST_TTL;
-		set_transient(
-			$this->consent_request_transient_key( $token ),
-			array(
-				'params'     => $this->persisted_params( $params ),
-				'user_id'    => get_current_user_id(),
-				'expires_at' => $expires_at,
-			),
-			self::CONSENT_REQUEST_TTL
-		);
-
-		return $token;
+	private function store_consent_request( array $params ): string|WP_Error {
+		return ( new ConsentRequestStore() )->store( $this->persisted_params( $params ) );
 	}
 
 	/**
@@ -1091,7 +1083,7 @@ final class AuthorizationController {
 	 * @param string $request_token Consent request token.
 	 */
 	private function consent_request_transient_key( string $request_token ): string {
-		return 'aculect_ai_companion_oauth_consent_' . $request_token;
+		return ConsentRequestStore::key( $request_token );
 	}
 
 	/**

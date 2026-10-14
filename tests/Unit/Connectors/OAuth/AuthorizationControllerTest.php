@@ -16,16 +16,25 @@ use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 use Aculect\AICompanion\Connectors\OAuth\IssuerBinding;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use WP_Error;
 
 /**
  * Verifies OAuth request parameters are sanitized and validated before use.
  */
 final class AuthorizationControllerTest extends TestCase {
 
+	private array $original_server = array();
+
 	protected function setUp(): void {
 		parent::setUp();
+		$this->original_server = $_SERVER;
 
 		$GLOBALS['aculect_ai_companion_test_options']         = array();
+		$GLOBALS['aculect_ai_companion_test_transients']      = array();
+		$GLOBALS['aculect_ai_companion_test_hooks']           = array(
+			'actions' => array(),
+			'filters' => array(),
+		);
 		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
 		$GLOBALS['aculect_ai_companion_test_denied_caps']     = array( 'manage_options' );
 		$GLOBALS['aculect_ai_companion_test_users']           = array(
@@ -46,6 +55,46 @@ final class AuthorizationControllerTest extends TestCase {
 		$_POST = array();
 		update_option( 'aculect_ai_companion_oauth_db_version', '2026.08.19.1', false );
 		update_option( 'aculect_ai_companion_oauth_issuer_backfill', IssuerBinding::hash(), false );
+	}
+
+	protected function tearDown(): void {
+		$_SERVER = $this->original_server;
+		parent::tearDown();
+	}
+
+	public function test_consent_request_budget_stops_new_transients_for_one_source(): void {
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.23';
+		$controller             = new AuthorizationController();
+		$params                 = array(
+			'response_type'         => 'code',
+			'client_id'             => 'client-1',
+			'redirect_uri'          => 'https://client.example/callback',
+			'code_challenge'        => str_repeat( 'a', 43 ),
+			'code_challenge_method' => 'S256',
+		);
+
+		for ( $attempt = 0; $attempt < 30; ++$attempt ) {
+			self::assertIsString( $this->invokePrivate( $controller, 'store_consent_request', array( $params ) ) );
+		}
+
+		$before = array_filter(
+			array_keys( $GLOBALS['aculect_ai_companion_test_transients'] ),
+			static fn( string $key ): bool => str_starts_with( $key, 'aculect_ai_companion_oauth_consent_' )
+		);
+		self::assertCount( 30, $before );
+
+		$limited = $this->invokePrivate( $controller, 'store_consent_request', array( $params ) );
+		self::assertInstanceOf( WP_Error::class, $limited );
+		self::assertSame( 429, $limited->get_error_data()['status'] );
+
+		$after = array_filter(
+			array_keys( $GLOBALS['aculect_ai_companion_test_transients'] ),
+			static fn( string $key ): bool => str_starts_with( $key, 'aculect_ai_companion_oauth_consent_' )
+		);
+		self::assertCount( 30, $after );
+
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.24';
+		self::assertIsString( $this->invokePrivate( $controller, 'store_consent_request', array( $params ) ) );
 	}
 
 	public function test_params_from_array_allowlists_and_sanitizes_oauth_parameters(): void {

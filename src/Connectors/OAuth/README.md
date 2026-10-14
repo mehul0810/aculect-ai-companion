@@ -70,6 +70,18 @@ information and fragments are rejected. A removed or revoked DCR client receives
 HTTP `401` with OAuth `invalid_client` from the token endpoint so it can register
 again without weakening any grant, scope, or redirect policy.
 
+The public DCR route admits 20 validated attempts per source per 24 hours by
+default. Requests rejected during controller metadata or redirect validation do
+not consume this budget. Excess validated
+attempts receive HTTP `503` with `Retry-After`; normal retries within that
+budget still create distinct clients. This does not revoke pending clients
+or live credentials, and it is not a defense against coordinated multi-source
+registration floods. Hosts may tune the `oauth_register` action through the
+documented rate-limit filters. Authorization requests have a separate 30-per-
+source, 10-minute budget before creating consent transients; exceeding it
+returns HTTP `429` with `Retry-After` while keeping login and consent unchanged
+for admitted requests.
+
 ## Rejected Refresh Activity
 
 An `invalid_grant` refresh rejection happens before OAuth establishes a

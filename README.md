@@ -379,6 +379,18 @@ Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
 default. Hosts behind a verified reverse proxy may supply a stable, non-secret
 fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`
 filter; the plugin does not trust forwarded headers automatically.
+Authorization requests are limited to 30 per source per 10 minutes before
+creating consent state; excess requests receive HTTP `429` and `Retry-After`.
+Anonymous DCR remains available, but a source may make 20 validated registration
+attempts per 24 hours by default. Requests rejected during controller metadata
+or redirect validation do not consume this budget.
+Further validated attempts receive retryable HTTP `503` with `Retry-After`,
+never a plugin-level `429`. Existing pending and active clients are not evicted.
+These limits are filterable through
+`aculect_ai_companion_rate_limit` and
+`aculect_ai_companion_rate_limit_window` for the `oauth_authorize` and
+`oauth_register` actions. Per-source budgets reduce single-source abuse but
+cannot prevent coordinated traffic from multiple sources.
 
 OAuth discovery advertises `/aculect-ai-companion/oauth/authorize` to avoid
 collisions with plugins that claim the generic `/oauth/authorize` route. The old

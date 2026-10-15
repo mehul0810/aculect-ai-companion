@@ -221,6 +221,98 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		self::assertSame( 'consumed', $this->wpdb->rows[ $id ]['status'] ?? '' );
 	}
 
+	public function test_approval_preview_preserves_exact_short_content_instead_of_lossy_summary(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$gateway = $this->gateway();
+		$before  = '<!-- wp:paragraph --><p><a href="/a">Same visible text</a></p><!-- /wp:paragraph -->';
+		$after   = '<!-- wp:paragraph --><p><a href="/b">Same visible text</a></p><!-- /wp:paragraph -->';
+		self::assertSame( strlen( $before ), strlen( $after ) );
+		wp_update_post(
+			array(
+				'ID'           => 123,
+				'post_content' => $before,
+			)
+		);
+		$request = $this->request( 'session-exact-content', 'Original title', false, array( 'content' => $after ) );
+		$pending = $this->call_app( $gateway, $request );
+		self::assertSame( 'approval_pending', $pending->data['result']['status'] ?? '' );
+		$id     = max( array_keys( $this->wpdb->rows ) );
+		$record = ( new PendingOperationApprovalStore() )->find_pending_for_current_actor( $id );
+		self::assertIsArray( $record );
+		$content_change = array_values( array_filter( $record['review_summary']['changes'], static fn ( array $change ): bool => 'content' === $change['label'] ) )[0] ?? null;
+		self::assertIsArray( $content_change );
+		self::assertSame( $before, $content_change['before'] );
+		self::assertSame( $after, $content_change['after'] );
+		ob_start();
+		try {
+			( new McpApprovalQueue() )->render();
+			$html = (string) ob_get_contents();
+		} finally {
+			ob_end_clean();
+		}
+		self::assertStringContainsString( '&lt;a href=&quot;/b&quot;&gt;Same visible text&lt;/a&gt;', $html );
+		self::assertStringNotContainsString( '<a href="/b">Same visible text</a>', $html );
+	}
+
+	public function test_oversized_content_cannot_be_approved_from_a_lossy_summary(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$long_before = '<!-- wp:paragraph --><p>' . str_repeat( 'first-word ', 200 ) . '<a href="/before">old</a>' . str_repeat( ' tail-before', 100 ) . '</p><!-- /wp:paragraph -->';
+		$long_after  = '<!-- wp:paragraph --><p>' . str_repeat( 'first-word ', 200 ) . '<a href="/after">new</a>' . str_repeat( ' tail-after', 100 ) . '</p><!-- /wp:paragraph -->';
+		wp_update_post(
+			array(
+				'ID'           => 123,
+				'post_content' => $long_before,
+			)
+		);
+		$result = $this->call_app( $this->gateway(), $this->request( 'session-oversized-content', 'Original title', false, array( 'content' => $long_after ) ) );
+		self::assertSame( 'approval_unsupported', $result->data['result']['error'] ?? '' );
+		self::assertTrue( $result->data['result']['no_write'] ?? false );
+		self::assertSame( array(), $this->wpdb->rows );
+		self::assertSame( $long_before, get_post( 123 )->post_content );
+	}
+
+	public function test_content_tail_after_sixty_words_is_exact_in_the_approval_record(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$before = '<!-- wp:paragraph --><p>' . str_repeat( 'same-word ', 70 ) . 'tail-before</p><!-- /wp:paragraph -->';
+		$after  = '<!-- wp:paragraph --><p>' . str_repeat( 'same-word ', 70 ) . 'tail-after</p><!-- /wp:paragraph -->';
+		wp_update_post(
+			array(
+				'ID'           => 123,
+				'post_content' => $before,
+			)
+		);
+		$pending = $this->call_app( $this->gateway(), $this->request( 'session-content-tail', 'Original title', false, array( 'content' => $after ) ) );
+		self::assertSame( 'approval_pending', $pending->data['result']['status'] ?? '' );
+		$id     = max( array_keys( $this->wpdb->rows ) );
+		$record = ( new PendingOperationApprovalStore() )->find_pending_for_current_actor( $id );
+		self::assertIsArray( $record );
+		$content_change = array_values( array_filter( $record['review_summary']['changes'], static fn ( array $change ): bool => 'content' === $change['label'] ) )[0] ?? null;
+		self::assertIsArray( $content_change );
+		self::assertSame( $before, $content_change['before'] );
+		self::assertSame( $after, $content_change['after'] );
+	}
+
 	public function test_all_no_op_fields_do_not_create_an_approval(): void {
 		$result = $this->call_app(
 			$this->gateway(),
@@ -231,6 +323,128 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		self::assertTrue( $result->data['result']['no_write'] ?? false );
 		self::assertSame( array(), $this->wpdb->rows );
 		self::assertSame( 'Original title', $this->post_title() );
+	}
+
+	public function test_empty_title_is_not_presented_as_the_literal_word_empty(): void {
+		$this->set_post_title( 'Empty' );
+		$result = $this->call_app( $this->gateway(), $this->request( 'empty-title', '', false ) );
+		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
+		$changes = $result->data['result']['changes'];
+		self::assertSame( 'Empty', $changes[0]['before'] );
+		self::assertSame( '', $changes[0]['after'] );
+	}
+
+	public function test_literal_entities_remain_distinct_from_markup_in_rendered_review(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$before = '<!-- wp:paragraph --><p>&lt;strong&gt;x&lt;/strong&gt;</p><!-- /wp:paragraph -->';
+		$after  = '<!-- wp:paragraph --><p><strong>x</strong></p><!-- /wp:paragraph -->';
+		wp_update_post(
+			array(
+				'ID'           => 123,
+				'post_content' => $before,
+			)
+		);
+		$result = $this->call_app( $this->gateway(), $this->request( 'entity-review', 'Original title', false, array( 'content' => $after ) ) );
+		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
+		ob_start();
+		try {
+			( new McpApprovalQueue() )->render();
+			$html = (string) ob_get_contents();
+		} finally {
+			ob_end_clean();
+		}
+		preg_match_all( '/<pre>(.*?)<\/pre>/s', $html, $matches );
+		self::assertSame( array( $before, $after ), array_map( static fn ( string $value ): string => html_entity_decode( $value, ENT_QUOTES, 'UTF-8' ), $matches[1] ) );
+	}
+
+	public function test_exact_content_budget_accepts_2048_bytes_and_rejects_2049(): void {
+		\WP_Block_Type_Registry::get_instance()->register(
+			'core/paragraph',
+			array(
+				'title'    => 'Paragraph',
+				'category' => 'text',
+				'supports' => array( 'inserter' => true ),
+			)
+		);
+		$prefix  = '<!-- wp:paragraph --><p>';
+		$suffix  = '</p><!-- /wp:paragraph -->';
+		$content = $prefix . str_repeat( 'x', 2048 - strlen( $prefix . $suffix ) ) . $suffix;
+		$result  = $this->call_app( $this->gateway(), $this->request( 'exact-budget', 'Original title', false, array( 'content' => $content ) ) );
+		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
+		self::assertSame( $content, $result->data['result']['changes'][0]['after'] );
+		$oversized_content = $prefix . 'x' . substr( $content, strlen( $prefix ) );
+		$oversized         = $this->call_app( $this->gateway(), $this->request( 'over-budget', 'Original title', false, array( 'content' => $oversized_content ) ) );
+		self::assertSame( 'approval_unsupported', $oversized->data['result']['error'] ?? '' );
+		self::assertCount( 1, $this->wpdb->rows );
+		self::assertSame( 'Original content', get_post( 123 )->post_content );
+	}
+
+	public function test_actual_legacy_policy_approval_cannot_execute_after_preview_policy_change(): void {
+		$registry = new AbilitiesRegistry();
+		$safety   = new ToolSafety( new InMemoryExecutionClaimStore() );
+		$args     = array(
+			'id'    => 123,
+			'title' => 'Approved title',
+		);
+		$groups   = $safety->confirmation_groups();
+		$scopes   = $registry->required_scopes( 'content_workflow.update_post' );
+		sort( $groups );
+		sort( $scopes );
+		$legacy_policy = hash(
+			'sha256',
+			(string) wp_json_encode(
+				array(
+					'version'             => 'wordpress-human-approval.v1',
+					'tool'                => 'content_workflow.update_post',
+					'risk_level'          => AbilityExecutionGateway::tool_risk_level( 'content_workflow.update_post', $args ),
+					'confirmation_groups' => array_values( $groups ),
+					'required_scopes'     => array_values( $scopes ),
+					'enabled_abilities'   => $registry->enabled_ids(),
+					'role_policy_enabled' => \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::is_editing_enabled(),
+					'role_policies'       => get_option( \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES, array() ),
+					'capability'          => 'edit_post',
+				)
+			)
+		);
+		$store         = new PendingOperationApprovalStore();
+		$id            = $store->create(
+			'content_workflow.update_post',
+			$args,
+			array(
+				'operation'       => 'Update WordPress content',
+				'target'          => 'Post #123',
+				'target_id'       => 123,
+				'target_version'  => '2026-09-25 10:00:00',
+				'risk_level'      => 'update',
+				'risk_categories' => array(),
+				'changes'         => array(
+					array(
+						'label'  => 'title',
+						'before' => 'Original title',
+						'after'  => 'Approved title',
+					),
+				),
+			),
+			'approval-gateway-client',
+			'edit_post',
+			array( 123 ),
+			'legacy-policy',
+			$legacy_policy
+		);
+		self::assertIsInt( $id );
+		$this->approve_pending_request();
+		$result = $this->call_app( $this->gateway(), $this->request( 'legacy-policy', 'Approved title', false ) );
+		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
+		self::assertSame( 'Original title', $this->post_title() );
+		self::assertSame( 'approved', $this->wpdb->rows[ $id ]['status'] );
+		self::assertCount( 2, $this->wpdb->rows );
 	}
 
 	public function test_unsupported_metadata_stays_blocked_even_with_a_changed_title(): void {

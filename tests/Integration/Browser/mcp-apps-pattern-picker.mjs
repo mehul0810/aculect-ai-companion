@@ -44,6 +44,31 @@ async function hostSend( method, params ) {
 		{ method, params }
 	);
 }
+async function selectionRequests() {
+	return page.evaluate( () =>
+		window.hostMessages.filter(
+			( message ) => message.method === 'ui/update-model-context'
+		)
+	);
+}
+async function settleSelection( request, response ) {
+	await page.evaluate(
+		( { id, reply } ) =>
+			document
+				.querySelector( '#app' )
+				.contentWindow.postMessage(
+					{ jsonrpc: '2.0', id, ...reply },
+					'*'
+				),
+		{ id: request.id, reply: response }
+	);
+	await page
+		.frameLocator( '#app' )
+		.locator( 'body' )
+		.evaluate(
+			() => new Promise( ( resolve ) => setTimeout( resolve, 0 ) )
+		);
+}
 
 try {
 	await page.goto( 'about:blank' );
@@ -168,6 +193,15 @@ try {
 			( message ) => message.method === 'ui/update-model-context'
 		)
 	);
+	assert.equal( await choice.getAttribute( 'aria-disabled' ), 'true' );
+	assert.equal(
+		await choice.evaluate(
+			( button ) => button === button.ownerDocument.activeElement
+		),
+		true
+	);
+	await choice.press( 'Enter' );
+	assert.equal( ( await selectionRequests() ).length, 1 );
 	const selection = await page.evaluate( () =>
 		window.hostMessages.find(
 			( message ) => message.method === 'ui/update-model-context'
@@ -230,6 +264,121 @@ try {
 		rejected.id
 	);
 	await app.getByText( /could not accept this selection/ ).waitFor();
+	assert.equal(
+		await app
+			.getByRole( 'button', { name: 'Selected Pattern theme/feature' } )
+			.evaluate(
+				( button ) => button === button.ownerDocument.activeElement
+			),
+		true
+	);
+
+	// An old host reply must not write into a newer discovery lifecycle.
+	const chooseFeature = app.getByRole( 'button', {
+		name: 'Selected Pattern theme/feature',
+	} );
+	await chooseFeature.press( 'Enter' );
+	await page.waitForFunction(
+		() =>
+			window.hostMessages.filter(
+				( message ) => message.method === 'ui/update-model-context'
+			).length === 3
+	);
+	const staleSuccess = ( await selectionRequests() )[ 2 ];
+	await hostSend(
+		'ui/notifications/tool-result',
+		result( [ candidate( 'core/newer' ) ] )
+	);
+	await app.locator( '#search' ).fill( '' );
+	await app
+		.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+		.waitFor();
+	await settleSelection( staleSuccess, { result: {} } );
+	assert.equal(
+		await app.locator( '#notice' ).innerText(),
+		'Choose a compatible pattern to share its identifier with the assistant.'
+	);
+	assert.equal(
+		await app
+			.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+			.isEnabled(),
+		true
+	);
+
+	await app
+		.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+		.click();
+	await page.waitForFunction(
+		() =>
+			window.hostMessages.filter(
+				( message ) => message.method === 'ui/update-model-context'
+			).length === 4
+	);
+	const staleFailure = ( await selectionRequests() )[ 3 ];
+	await hostSend( 'ui/notifications/tool-input', {} );
+	await app.getByText( /Waiting for available patterns/ ).waitFor();
+	await settleSelection( staleFailure, {
+		error: { code: -32000, message: 'Declined' },
+	} );
+	assert.match(
+		await app.locator( '#notice' ).innerText(),
+		/Waiting for available patterns/
+	);
+	await hostSend(
+		'ui/notifications/tool-result',
+		result( [ candidate( 'core/newer' ) ] )
+	);
+	await app
+		.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+		.waitFor();
+
+	await app
+		.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+		.click();
+	await page.waitForFunction(
+		() =>
+			window.hostMessages.filter(
+				( message ) => message.method === 'ui/update-model-context'
+			).length === 5
+	);
+	const cancelledSuccess = ( await selectionRequests() )[ 4 ];
+	await hostSend( 'ui/notifications/tool-cancelled', {} );
+	await app.getByText( /discovery was cancelled/ ).waitFor();
+	await settleSelection( cancelledSuccess, { result: {} } );
+	assert.match(
+		await app.locator( '#notice' ).innerText(),
+		/discovery was cancelled/
+	);
+	let requestCount = 5;
+	for ( const response of [
+		{ result: {} },
+		{ error: { code: -32000, message: 'Declined' } },
+	] ) {
+		await hostSend(
+			'ui/notifications/tool-result',
+			result( [ candidate( 'core/newer' ) ] )
+		);
+		await app
+			.getByRole( 'button', { name: 'Choose Pattern core/newer' } )
+			.click();
+		requestCount++;
+		await page.waitForFunction(
+			( count ) =>
+				window.hostMessages.filter(
+					( message ) => message.method === 'ui/update-model-context'
+				).length === count,
+			requestCount
+		);
+		const obsolete = ( await selectionRequests() )[ requestCount - 1 ];
+		await hostSend( 'ui/notifications/tool-input-partial', {} );
+		await app.getByText( /Waiting for available patterns/ ).waitFor();
+		await settleSelection( obsolete, response );
+		assert.match(
+			await app.locator( '#notice' ).innerText(),
+			/Waiting for available patterns/
+		);
+	}
+	await hostSend( 'ui/notifications/tool-result', payload );
 
 	await app.locator( '#search' ).fill( 'no matching pattern' );
 	await app.getByText( /No patterns match/ ).waitFor();
@@ -320,6 +469,25 @@ try {
 		violations.violations.map( ( item ) => item.id ),
 		[]
 	);
+	await app
+		.getByRole( 'button', { name: 'Choose Pattern theme/feature' } )
+		.click();
+	await page.waitForFunction(
+		() =>
+			window.hostMessages.filter(
+				( message ) => message.method === 'ui/update-model-context'
+			).length === 8
+	);
+	await hostSend( 'ui/resource-teardown', {} );
+	await app.getByText( /interactive picker is unavailable/ ).waitFor();
+	await frame.evaluate(
+		() => new Promise( ( resolve ) => setTimeout( resolve, 0 ) )
+	);
+	assert.match(
+		await app.locator( '#notice' ).innerText(),
+		/interactive picker is unavailable/
+	);
+	assert.equal( await app.locator( '#picker' ).isHidden(), true );
 	assert.deepEqual( errors, [] );
 	assert.deepEqual( remoteRequests, [] );
 	process.stdout.write( 'PASS sandboxed pattern picker fixture\n' );

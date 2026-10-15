@@ -2122,7 +2122,7 @@ if ( ! function_exists( 'esc_html' ) ) {
 	 * @param string $text Raw text.
 	 */
 	function esc_html( string $text ): string {
-		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8', false );
 	}
 }
 

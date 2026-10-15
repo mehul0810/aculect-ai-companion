@@ -64,6 +64,15 @@ identifier during the TTL, the old approval is not transferable. A resubmission
 under the new token safely requires a new approval; the old record remains
 unusable until its short TTL expires.
 
+Human review displays complete server-authored field values as escaped text,
+including serialized block markup and attributes. Each before/after value is
+limited to 2,048 bytes. Summaries without a bounded exact value cannot create an
+approval; oversized changes fail closed rather than silently truncating the
+decision surface. Existing general dry-run summaries remain available, with an
+additional `exact_value` for summarized values within that limit. The exact-value
+approval policy has a new fingerprint, so decisions created under the earlier
+summary-only policy do not authorize execution under this policy.
+
 The consume operation performs a second full target-state digest check after
 its one-use database compare-and-set. WordPress core post writes do not provide
 an atomic compare-and-set across post fields, taxonomies, and media

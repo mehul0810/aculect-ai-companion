@@ -43,6 +43,7 @@
 	let selected = '';
 	let pending = '';
 	let selectionError = '';
+	let selectionRevision = 0;
 
 	function element( tag, className, value ) {
 		const node = doc.createElement( tag );
@@ -109,10 +110,9 @@
 			`${ selected === item.id ? 'Selected' : 'Choose' } ${ item.title }`
 		);
 		button.setAttribute( 'aria-pressed', String( selected === item.id ) );
+		button.setAttribute( 'aria-disabled', String( Boolean( pending ) ) );
 		button.disabled =
-			item.compatibility !== 'compatible' ||
-			Boolean( pending ) ||
-			! bridge.isConnected();
+			item.compatibility !== 'compatible' || ! bridge.isConnected();
 		article.append( button );
 		return article;
 	}
@@ -204,11 +204,20 @@
 		el.count.textContent = `${ items.length } matching pattern${
 			items.length === 1 ? '' : 's'
 		} in this response${ countSuffix }`;
+		const focusedId = doc.activeElement?.dataset?.id;
 		el.cards.replaceChildren(
 			...items
 				.slice( ( page - 1 ) * PAGE_SIZE, page * PAGE_SIZE )
 				.map( card )
 		);
+		if ( focusedId ) {
+			[ ...el.cards.querySelectorAll( 'button[data-id]' ) ]
+				.find(
+					( button ) =>
+						button.dataset.id === focusedId && ! button.disabled
+				)
+				?.focus();
+		}
 		el.empty.hidden = items.length !== 0;
 		el.previous.disabled = page <= 1;
 		el.next.disabled = page >= pages;
@@ -221,20 +230,31 @@
 			case 'host-context':
 				context = { ...context, ...event.context };
 				break;
+			case 'tool-input-partial':
 			case 'tool-input':
+				selectionRevision++;
+				pending = '';
 				data = { state: 'loading', items: [] };
 				selected = '';
 				break;
 			case 'tool-result':
+				selectionRevision++;
+				pending = '';
 				data = contract.parse( event.params );
 				selected = '';
 				page = 1;
 				sources();
 				break;
 			case 'tool-cancelled':
+				selectionRevision++;
+				pending = '';
+				selected = '';
 				data = { state: 'cancelled', items: [] };
 				break;
 			case 'closed':
+				selectionRevision++;
+				pending = '';
+				selected = '';
 				data = { state: 'disabled', items: [] };
 				break;
 		}
@@ -253,6 +273,7 @@
 			return;
 		}
 		pending = id;
+		const revision = selectionRevision;
 		selectionError = '';
 		render();
 		try {
@@ -262,17 +283,19 @@
 					pattern_id: id,
 				},
 			} );
-			selected = id;
+			if ( revision === selectionRevision ) {
+				selected = id;
+			}
 		} catch {
-			selectionError =
-				'The host could not accept this selection. Nothing was inserted. Try again or use the text list.';
+			if ( revision === selectionRevision ) {
+				selectionError =
+					'The host could not accept this selection. Nothing was inserted. Try again or use the text list.';
+			}
 		} finally {
-			pending = '';
-			render();
-			const active = [
-				...el.cards.querySelectorAll( 'button[data-id]' ),
-			].find( ( button ) => button.dataset.id === id );
-			active?.focus();
+			if ( revision === selectionRevision ) {
+				pending = '';
+				render();
+			}
 		}
 	}
 
@@ -304,6 +327,9 @@
 	} );
 	scope.AculectPatternPickerFixture = Object.freeze( {
 		showResult( result ) {
+			selectionRevision++;
+			pending = '';
+			selectionError = '';
 			data = contract.parse( result );
 			selected = '';
 			page = 1;

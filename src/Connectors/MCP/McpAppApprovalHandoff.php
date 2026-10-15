@@ -431,18 +431,17 @@ final class McpAppApprovalHandoff {
 			return null;
 		}
 		$value = $entry['value'];
-		if ( is_array( $value ) && is_string( $value['summary'] ?? null ) ) {
-			$text = $value['summary'];
-			if ( is_int( $value['length'] ?? null ) ) {
-				$text .= sprintf( ' (%d bytes; bounded summary)', $value['length'] );
-			}
+		if ( is_array( $value ) && is_string( $value['exact_value'] ?? null ) && 2048 >= strlen( $value['exact_value'] ) ) {
+			$text = $value['exact_value'];
 		} elseif ( is_scalar( $value ) || null === $value ) {
 			$text = is_bool( $value ) ? ( $value ? 'Yes' : 'No' ) : ( null === $value ? 'Empty' : (string) $value );
 		} else {
 			return null;
 		}
-		$text = sanitize_textarea_field( $text );
-		return '' === $text ? 'Empty' : substr( $text, 0, 2048 );
+		if ( 2048 < strlen( $text ) ) {
+			return null;
+		}
+		return $text;
 	}
 
 	/**
@@ -479,7 +478,7 @@ final class McpAppApprovalHandoff {
 		sort( $groups );
 		sort( $scopes );
 		$policy = array(
-			'version'             => 'wordpress-human-approval.v1',
+			'version'             => 'wordpress-human-approval.v2-exact-preview-values',
 			'tool'                => $tool,
 			'risk_level'          => AbilityExecutionGateway::tool_risk_level( $tool, $args ),
 			'confirmation_groups' => array_values( $groups ),

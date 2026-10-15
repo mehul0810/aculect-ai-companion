@@ -187,7 +187,8 @@ final class McpApprovalQueue {
 				<thead><tr><th><?php echo esc_html__( 'Change', 'aculect-ai-companion' ); ?></th><th><?php echo esc_html__( 'Before', 'aculect-ai-companion' ); ?></th><th><?php echo esc_html__( 'Proposed', 'aculect-ai-companion' ); ?></th></tr></thead>
 				<tbody>
 					<?php foreach ( $summary['changes'] as $change ) : ?>
-						<tr><th scope="row"><?php echo esc_html( $change['label'] ); ?></th><td><pre><?php echo esc_html( $change['before'] ); ?></pre></td><td><pre><?php echo esc_html( $change['after'] ); ?></pre></td></tr>
+						<?php // Preserve literal entity syntax as well as markup in the exact review values. ?>
+						<tr><th scope="row"><?php echo esc_html( $change['label'] ); ?></th><td><pre><?php echo esc_textarea( $change['before'] ); ?></pre></td><td><pre><?php echo esc_textarea( $change['after'] ); ?></pre></td></tr>
 					<?php endforeach; ?>
 				</tbody>
 			</table>

@@ -13,12 +13,12 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.8.2` remains the latest published production release; its release tag points to commit `1abc6adb2e233e016528d97919f81348322aea48`.
-- `0.8.3` is the security maintenance candidate, with `2026-10-12` as its planned publication date. A changelog date records the plan, not a completed release.
-- The candidate prevents self-reported Dynamic Client Registration names and stored provider attribution from becoming trusted OAuth consent identity. Consent derives any verified provider label from the selected, validated, exact provider-controlled callback and shows the callback, client ID, and declared name to the approving user.
-- Preserve the reviewed 0.8.2 OAuth issuer, public DCR, PKCE, token, scope, redirect, and client-storage contracts. Generic and native clients remain functional and are presented as unverified when their callback cannot prove a provider identity.
-- Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.3.
-- Candidate package metadata may target `0.8.3`; production remains `0.8.2` until the approved release workflow successfully publishes the exact validated commit. Never imply that candidate metadata means production was released.
+- `0.8.3` is the latest published production release. Its tag points to `eb3c770d99f7f5db78c8e1fd981a57e4f9099c26` on `main`, and the production workflow reported a successful WordPress.org deployment on 2026-10-12.
+- `0.9.0` is the active release candidate on `release/0.9.0`. Its changelog date is a candidate-preparation date, not evidence of beta or production publication.
+- The candidate adds opt-in MCP Apps presentation, authenticated MCP Skills, site-local custom Skill administration, and read-only Agent Readiness diagnostics. The owner chose a private, schema-neutral Agent Skills discovery foundation for 0.9.0 and deferred the public index and experience to 1.0.0. Do not publish an experimental endpoint merely for a scanner mark.
+- Preserve the reviewed 0.8.2 final OAuth redirect boundary and 0.8.3 consent identity disclosures alongside the issuer, DCR, authorization, PKCE, token, refresh, revocation, scope, and client-storage contracts. Generic and native clients remain functional. Consent treats every registering client identity as unverified; a documented provider callback identifies only the return destination. Any failing OAuth contract blocks release, and a flow change needs separate explicit owner approval.
+- Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta on a suitable hostname. Local fixtures and a loopback WordPress site cannot claim Cloudflare compatibility. Record these as beta validation gaps; do not mark them passed or silently remove them from the 0.9.0 milestone.
+- Candidate package metadata may target `0.9.0`; production remains `0.8.3` until the owner explicitly approves the exact production merge, tag, and publication workflow. Never imply that a planned date or candidate metadata means production was released.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.

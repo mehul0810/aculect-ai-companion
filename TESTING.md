@@ -15,6 +15,36 @@
 - Diff hygiene: `git diff --check`
 - Modularity budgets and dependency boundaries: `composer check:modularity`. For the pull-request ratchet (legacy files may not grow), run `php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from=origin/<base-branch>`.
 
+## Development Dependency Updates
+
+- Keep Node 24/npm 11 for dependency installation and asset checks. The hosted
+  WordPress fixtures still switch to Node 20 after installation; do not raise
+  that fixture requirement or change the supported WordPress/PHP matrix to
+  accommodate a development dependency update.
+- Run `node --test tests/js/development-dependencies.test.mjs`, `npm ls --all`,
+  and `npm audit --package-lock-only` as well as the existing local/release gates.
+  The regression tests inspect every locked copy, reject the unpatched
+  `sprintf-js` chain, and exercise the affected YAML, shell quoting, CSS minifier
+  and Markdown math APIs. A manifest override alone is not proof: npm can retain
+  stale nested lock entries, so verify a fresh `npm ci` and the installed tree.
+- The Istanbul override moves only `@istanbuljs/load-nyc-config` to YAML 4. Its
+  configuration reader uses the retained `load()` API; configuration inheritance,
+  lists, malformed YAML and merge limits have regression coverage. Other YAML 4
+  and YAML 5 consumers retain their respective majors. The selector parser moves
+  to 7.1.6 because no fixed 6.x release exists; cover its CSS minifier consumers
+  with regression tests and the complete asset build/style lint. KaTeX is pinned
+  to the patched 0.18.2 release to retain its Node 20-compatible CLI dependency.
+- Review and report the complete development audit, not only the runtime audit.
+  The additional [braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+  currently has no upstream patched version and remains in the WordPress
+  development toolchain. It is not an audit exemption or a passing full audit.
+  Do not downgrade WordPress UI packages, suppress advisories or weaken release
+  gates to hide this finding. Revisit it when an upstream-compatible fix exists.
+- All first-party npm dependencies remain development-only. Verify the production
+  ZIP excludes `node_modules` and includes rebuilt assets, and run the unchanged
+  exact-package OAuth, compatibility and release proof gates. Dependabot's open
+  alert status follows the default branch, not a release-branch-only push.
+
 ## Extension Lifecycle Changes
 
 - Static lane: `composer analyse:mcp:extensions`; module and gateway checks remain
@@ -45,7 +75,7 @@
 ## WordPress Abilities Integration
 
 The PHPUnit suite deliberately uses WordPress-light stubs and cannot prove the
-native Abilities API lifecycle. `.github/workflows/wordpress-abilities.yml`
+native Abilities API lifecycle. `.github/workflows/compatibility.yml`
 runs `tests/Integration/WordPressAbilities/contract.php` in `wp-env` against
 the latest three maintained WordPress releases (6.9, 7.0, and 7.1). The contract verifies native
 registration, object schemas, public exposure metadata, permission callback
@@ -63,10 +93,12 @@ without `wp_get_abilities()` report an explicit skip.
 - Routine PR CI keeps Quality/package on the minimum PHP 8.2 (including WPCS), PHP 8.3/8.4/8.5 compatibility, packaged OAuth, and Required CI. Relevant changes add database and WordPress 6.9/7.0/7.1 proofs. Release integration PRs and full validation run the complete hosted matrix. Branch pushes do not duplicate PR runs; manual full validation is available for branches without a PR.
 - `Required CI` rejects failed, cancelled, missing and unexpectedly skipped applicable jobs. Workflow configuration is not proof that GitHub branch protection is enabled; owner approval and repository settings remain separate.
 - Broad Semgrep PHP and CodeQL analysis run in the full release gate and on their documented schedules/on demand. Secrets scanning remains part of routine Quality.
+- `package-proof.yml` always requires exact-ZIP OAuth proof when CI creates a required package. Its separate release job adds Plugin Check, guarded memory rollback/migration/replay and bounded admin/removed-route browser proof when `release-proof: true`. Both publishers pass that input through full CI; manual CI exposes the same read-only option. The release checks share one disposable localhost:8882 environment, isolated from OAuth on localhost:8884. Broad responsive/admin UI smoke remains the separate local command.
+- Compatibility and security retain independent matrix/scanner jobs inside their consolidated workflows. Every workflow family has an `always()` result gate; the stable outer `Required CI` gate rejects unsuccessful selected families. `bin/ci-required.mjs` rejects incomplete selectors and missing, failed, cancelled or unexpectedly skipped jobs. The Semgrep Wednesday and CodeQL Monday schedules retain their individual weekly frequency.
 - If `phpstan-baseline.neon` changes, the PR body must include a non-empty `PHPStan baseline justification:` line that explains the reviewed reason for the baseline delta.
 
 ## Release and Proof Checks
-- Protected OAuth contract: see `docs/oauth-contract.md`. `npm run smoke:oauth-browser` uses a disposable WordPress fixture, synthetic credentials and a local callback. `.github/workflows/oauth-contract.yml` verifies the canonical ZIP digest before installation; both release publishers depend on its success. This does not prove hosted ChatGPT/Claude connectivity or Cloudflare compatibility.
+- Protected OAuth contract: see `docs/oauth-contract.md`. `npm run smoke:oauth-browser` uses a disposable WordPress fixture, synthetic credentials and a local callback. The OAuth job in `.github/workflows/package-proof.yml` verifies the canonical ZIP digest before installation; both release publishers depend on its success. This does not prove hosted ChatGPT/Claude connectivity or Cloudflare compatibility.
 - An OAuth failure is a release blocker. Do not automatically retry the contract, weaken an assertion, skip a check or change the flow. Report redacted stage evidence and request explicit owner approval before any OAuth behavior/test-contract change.
 - OAuth login/consent routing: `composer smoke:oauth` with disposable-site `ACULECT_SMOKE_BASE_URL` and locally supplied `ACULECT_SMOKE_COOKIE_HEADER`. The smoke checks repeated DCR and logged-in/logged-out redirects on both `/aculect-ai-companion/oauth/authorize` and the REST authorization entry, without a REST nonce. The legacy `/oauth/authorize` alias remains available but may be claimed by another OAuth provider. Never paste cookies into chat. A valid session must reach admin consent directly; missing or invalid sessions must log in first with an admin-consent return target. Cookie inspection for redirect selection must never authenticate the REST request or bypass consent checks.
 - OAuth retry/persistence regressions: `vendor/bin/phpunit --filter 'OAuthDcrSqlitePersistenceTest|OAuthRepositoryTest'`. Repeated registrations must preserve pending clients, including at capacity; duplicate cleanup must retain live credentials and only remove registrations older than the existing stale-client threshold (24 hours by default). Failed access-token insertion must stop issuance before superseded-session revocation. These repository tests do not prove an end-to-end hosted OAuth exchange or transactional refresh rollback.

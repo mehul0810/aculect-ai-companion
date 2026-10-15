@@ -1,0 +1,100 @@
+name: Security
+
+on:
+  workflow_call:
+    inputs:
+      php:
+        type: boolean
+        required: true
+      codeql:
+        type: boolean
+        required: true
+  workflow_dispatch:
+    inputs:
+      php:
+        description: Run the PHP security scan
+        type: boolean
+        default: true
+      codeql:
+        description: Run CodeQL JavaScript analysis
+        type: boolean
+        default: true
+  schedule:
+    - cron: "42 3 * * 3"
+    - cron: "24 3 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  php:
+    name: Semgrep PHP Security
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '42 3 * * 3') ||
+      (github.event_name != 'schedule' && inputs.php)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    container:
+      image: semgrep/semgrep:1.176.0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Run Semgrep PHP security scan
+        run: semgrep scan --config p/php --config p/secrets --exclude vendor --exclude node_modules --exclude release --sarif --output semgrep.sarif --error .
+
+      - name: Upload SARIF to GitHub code scanning
+        if: always() && hashFiles('semgrep.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          sarif_file: semgrep.sarif
+          category: /tool:semgrep/language:php
+
+  codeql:
+    name: Analyze JavaScript
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '24 3 * * 1') ||
+      (github.event_name != 'schedule' && inputs.codeql)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: codeql-${{ github.ref }}-${{ github.event_name }}-analysis
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - javascript-typescript
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  required:
+    name: Required security checks
+    if: always()
+    needs: [php, codeql]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Require every selected security scan to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          CI_EXPECTED: >-
+            {"php":${{ (github.event_name == 'schedule' && github.event.schedule == '42 3 * * 3') || (github.event_name != 'schedule' && inputs.php) }},"codeql":${{ (github.event_name == 'schedule' && github.event.schedule == '24 3 * * 1') || (github.event_name != 'schedule' && inputs.codeql) }}}
+        run: node bin/ci-required.mjs

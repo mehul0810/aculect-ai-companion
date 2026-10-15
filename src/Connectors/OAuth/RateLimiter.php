@@ -1,6 +1,6 @@
 <?php
 /**
- * Fixed-window rate limiting for unauthenticated OAuth endpoints.
+ * Fixed-window rate limiting for public OAuth endpoints.
  *
  * @package Aculect\AICompanion\Connectors\OAuth
  */
@@ -12,7 +12,7 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 use WP_Error;
 
 /**
- * Throttles unauthenticated OAuth requests per client fingerprint.
+ * Throttles public OAuth requests per client fingerprint.
  *
  * Uses transient-backed fixed windows so limits work on default WordPress
  * installs without external infrastructure. Limits are filterable for hosts
@@ -20,7 +20,8 @@ use WP_Error;
  */
 final class RateLimiter {
 
-	public const ERROR_CODE = 'aculect_ai_companion_rate_limited';
+	public const ERROR_CODE           = 'aculect_ai_companion_rate_limited';
+	public const ADMISSION_ERROR_CODE = 'aculect_ai_companion_registration_temporarily_unavailable';
 
 	/**
 	 * Check and consume one request against a fixed-window limit.
@@ -67,10 +68,10 @@ final class RateLimiter {
 	}
 
 	/**
-	 * Add a Retry-After header to rate-limited REST responses.
+	 * Add a Retry-After header to rate-limited OAuth REST responses.
 	 *
 	 * Registered once from route registration; applies only to this plugin's
-	 * limiter error code so other 429 responses are untouched.
+	 * limiter error codes so unrelated error responses are untouched.
 	 */
 	public static function register_retry_after_header(): void {
 		if ( function_exists( 'has_filter' ) && false !== has_filter( 'rest_post_dispatch', array( self::class, 'filter_retry_after_header' ) ) ) {
@@ -82,18 +83,24 @@ final class RateLimiter {
 	}
 
 	/**
-	 * Attach Retry-After to limiter-generated 429 responses.
+	 * Attach Retry-After to OAuth limiter-generated 429 and 503 responses.
 	 *
 	 * @param mixed $response Dispatch result.
 	 * @return mixed
 	 */
 	public static function filter_retry_after_header( mixed $response ): mixed {
-		if ( ! $response instanceof \WP_REST_Response || 429 !== $response->get_status() ) {
+		if ( ! $response instanceof \WP_REST_Response ) {
 			return $response;
 		}
 
 		$data = $response->get_data();
-		if ( ! is_array( $data ) || self::ERROR_CODE !== ( $data['code'] ?? '' ) ) {
+		if ( ! is_array( $data ) ) {
+			return $response;
+		}
+
+		$code   = $data['code'] ?? '';
+		$status = $response->get_status();
+		if ( ! ( 429 === $status && self::ERROR_CODE === $code ) && ! ( 503 === $status && self::ADMISSION_ERROR_CODE === $code ) ) {
 			return $response;
 		}
 

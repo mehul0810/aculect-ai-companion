@@ -22,7 +22,7 @@ final class TokenValidatorTest extends TestCase {
 		$header = TokenValidator::www_authenticate_header( 'content:draft', 'insufficient_scope' );
 
 		self::assertStringStartsWith( 'Bearer ', $header );
-		self::assertStringContainsString( 'resource_metadata="https://example.com/.well-known/oauth-protected-resource"', $header );
+		self::assertStringContainsString( 'resource_metadata="https://example.com/.well-known/oauth-protected-resource/wp-json/aculect-ai-companion/v1/mcp"', $header );
 		self::assertStringContainsString( 'scope="content:draft"', $header );
 		self::assertStringContainsString( 'error="insufficient_scope"', $header );
 	}

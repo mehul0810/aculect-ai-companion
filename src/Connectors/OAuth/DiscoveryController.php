@@ -188,6 +188,73 @@ final class DiscoveryController {
 	}
 
 	/**
+	 * Resolve a root-level well-known URL to the matching blog in one network.
+	 *
+	 * WordPress boots /.well-known/... on the main blog even when an RFC-derived
+	 * metadata URL contains a subsite path. Only an exact active subsite's own
+	 * resource or issuer is returned after switching its WordPress context.
+	 *
+	 * @param string $document Metadata document name.
+	 * @param string $requested_path Path suffix from the well-known URL.
+	 */
+	public function well_known_metadata_response( string $document, string $requested_path = '' ): WP_REST_Response {
+		if ( ! in_array( $document, array( Helpers::PROTECTED_RESOURCE_METADATA, Helpers::AUTHORIZATION_METADATA ), true ) ) {
+			return new WP_REST_Response( array( 'error' => 'invalid_document' ), 404 );
+		}
+
+		$requested_path = untrailingslashit( $requested_path );
+		$current_path   = Helpers::PROTECTED_RESOURCE_METADATA === $document
+			? Helpers::resource_path()
+			: untrailingslashit( (string) wp_parse_url( Helpers::issuer(), PHP_URL_PATH ) );
+		if ( ! is_multisite() || '' === $requested_path || $requested_path === $current_path ) {
+			return $this->metadata_for_current_site( $document, $requested_path );
+		}
+
+		$network = get_network();
+		if ( ! $network instanceof \WP_Network || '' === $network->domain || 0 >= (int) $network->id ) {
+			return $this->metadata_for_current_site( $document, $requested_path );
+		}
+		if ( isset( $_SERVER['HTTP_HOST'] ) ) {
+			$request_host   = is_string( $_SERVER['HTTP_HOST'] ) ? (string) wp_parse_url( 'http://' . $_SERVER['HTTP_HOST'], PHP_URL_HOST ) : '';
+			$canonical_host = (string) wp_parse_url( Helpers::issuer(), PHP_URL_HOST );
+			if ( '' === $request_host || '' === $canonical_host || 0 !== strcasecmp( $request_host, $canonical_host ) ) {
+				return $this->metadata_for_current_site( $document, $requested_path );
+			}
+		}
+		$site = get_site_by_path( $network->domain, $requested_path );
+		// phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Both WordPress blog IDs are runtime values.
+		if ( ! $site instanceof \WP_Site || (int) $site->site_id !== (int) $network->id || (int) $site->blog_id === get_current_blog_id() || 0 >= (int) $site->blog_id || 0 !== (int) $site->deleted || 0 !== (int) $site->archived || 0 !== (int) $site->spam ) {
+			return $this->metadata_for_current_site( $document, $requested_path );
+		}
+
+		switch_to_blog( (int) $site->blog_id );
+		try {
+			$basename       = plugin_basename( ACULECT_AI_COMPANION_PLUGIN_FILE );
+			$active_plugins = get_option( 'active_plugins', array() );
+			$network_active = get_site_option( 'active_sitewide_plugins', array() );
+			if ( ( ! is_array( $active_plugins ) || ! in_array( $basename, $active_plugins, true ) ) && ( ! is_array( $network_active ) || ! isset( $network_active[ $basename ] ) ) ) {
+				return new WP_REST_Response( array( 'error' => Helpers::PROTECTED_RESOURCE_METADATA === $document ? 'invalid_target' : 'invalid_issuer' ), 404 );
+			}
+
+			return $this->metadata_for_current_site( $document, $requested_path );
+		} finally {
+			restore_current_blog();
+		}
+	}
+
+	/**
+	 * Render one document for the currently selected WordPress blog.
+	 *
+	 * @param string $document Metadata document name.
+	 * @param string $requested_path Path suffix from the well-known URL.
+	 */
+	private function metadata_for_current_site( string $document, string $requested_path ): WP_REST_Response {
+		return Helpers::PROTECTED_RESOURCE_METADATA === $document
+			? $this->protected_resource_metadata( $requested_path )
+			: $this->authorization_server_metadata( $requested_path );
+	}
+
+	/**
 	 * Render well-known metadata for non-REST root-level requests.
 	 */
 	public function render_well_known_metadata(): void {
@@ -211,9 +278,10 @@ final class DiscoveryController {
 			return;
 		}
 
-		$response = Helpers::PROTECTED_RESOURCE_METADATA === $document
-			? $this->protected_resource_metadata( $resource_path )
-			: $this->authorization_server_metadata( $issuer_path );
+		$response = $this->well_known_metadata_response(
+			$document,
+			Helpers::PROTECTED_RESOURCE_METADATA === $document ? $resource_path : $issuer_path
+		);
 
 		status_header( $response->get_status() );
 		header( 'Content-Type: application/json; charset=' . get_option( 'blog_charset' ) );

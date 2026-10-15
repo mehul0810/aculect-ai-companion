@@ -11,6 +11,8 @@ node_modules/
 tests/
 docs/
 scripts/
+widgets/
+assets/mcp-apps/runtime/
 vendor/bin/
 vendor/paragonie/random_compat/build-phar.sh
 vendor/paragonie/random_compat/other/build_phar.php

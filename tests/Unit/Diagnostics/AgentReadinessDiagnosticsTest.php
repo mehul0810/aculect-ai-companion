@@ -100,6 +100,8 @@ final class AgentReadinessDiagnosticsTest extends TestCase {
 		self::assertSame( 'pass', $this->item( $result, 'oauth_discovery' )['status'], (string) wp_json_encode( $this->item( $result, 'oauth_discovery' ) ) );
 		self::assertSame( 'pass', $this->item( $result, 'oauth_authorization_metadata' )['status'] );
 		self::assertSame( 'owner_decision_required', $this->item( $result, 'content_signals' )['status'] );
+		self::assertSame( 'warning', $this->item( $result, 'skills_index' )['status'] );
+		self::assertStringContainsString( 'deferred to 1.0.0', $this->item( $result, 'skills_index' )['message'] );
 		self::assertCount( 8, $requests );
 		self::assertStringNotContainsString( 'private.example', $stored );
 		self::assertStringNotContainsString( 'private-header-value', $stored );

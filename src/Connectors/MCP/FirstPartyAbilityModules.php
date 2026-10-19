@@ -28,7 +28,7 @@ final class FirstPartyAbilityModules {
 	public function all(): array {
 		$fixed_workflows = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
 		$modules         = array(
-			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\MemorySyncAbilityModules( $this->module_factory ) )->all() ),
+			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\SupplementalAbilityModules( $this->module_factory ) )->all() ),
 			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\SiteOperationsAbilityModules( $this->module_factory ) )->all() ),
 			$this->module(
 				'search',

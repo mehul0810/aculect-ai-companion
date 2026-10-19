@@ -27,20 +27,17 @@
 	};
 	const descriptions = {
 		loading: 'Waiting for the update result.',
-		success:
-			'Update completed. Verify the current WordPress status before sharing.',
+		success: 'Update completed. Check WordPress status before sharing.',
 		partial:
-			'The update may have completed, but some result details are missing. Check WordPress before making another change.',
-		stale: 'This result is out of date. Check the current content in WordPress before making another change.',
+			'The update may have completed, but details are missing. Check WordPress before changing it again.',
+		stale: 'This result is out of date. Check WordPress before changing the content again.',
 		unavailable:
-			'The updated content is no longer available or your access has changed.',
-		error: 'The update result could not be displayed. Check WordPress before retrying.',
+			'Updated content is unavailable or your access has changed.',
+		error: 'This result could not be displayed. Check WordPress before retrying.',
 		approval_pending:
-			'Waiting for your WordPress decision; no update has run.',
-		cancelled:
-			'The update result was cancelled. Check WordPress before retrying.',
-		disabled:
-			'This result view is unavailable. Use the text result in your host.',
+			'Waiting for a WordPress decision; no update has run.',
+		cancelled: 'Cancelled. Check WordPress before retrying.',
+		disabled: 'This view is unavailable. Use the host text result.',
 	};
 	let result = { outcome: 'loading' };
 	let context = {};
@@ -60,7 +57,8 @@
 		elements.message.textContent =
 			linkError || descriptions[ outcome ] || descriptions.error;
 		const isApproval = outcome === 'approval_pending';
-		const hasContent = Boolean( result.title ) && ! isApproval;
+		const hasContent =
+			! isApproval && ( outcome === 'success' || !! result.title );
 		elements.content.hidden = ! hasContent;
 		elements.approval.hidden = ! isApproval;
 		elements.approvalRisk.textContent = isApproval
@@ -81,7 +79,9 @@
 		elements.approvalChanges.textContent = isApproval
 			? result.changedFields
 			: '';
-		elements.title.textContent = hasContent ? result.title : '';
+		elements.title.textContent = hasContent
+			? result.title || 'Untitled'
+			: '';
 		const fields = {
 			type: result.contentType,
 			postStatus: result.status,
@@ -110,33 +110,28 @@
 		}
 		elements.undo.hidden = ! hasContent;
 		elements.undoHint.textContent = result.undo
-			? 'Open the prior revision to review it in WordPress; opening it does not restore anything. Recheck the current post before acting. Native Restore may change revisioned metadata and does not undo status, terms, or featured images. Aculect content-only recovery needs a fresh comparison and separate confirmation. This card changes nothing.'
-			: 'A verified prior-revision handoff is unavailable. Review current content and revision history in WordPress before making another change.';
+			? 'Open the prior revision in WordPress; opening it does not restore anything. Recheck current content first. Native Restore can change revisioned metadata, not status, terms, or featured images. Aculect content-only recovery needs fresh comparison and separate confirmation. This card changes nothing.'
+			: 'A verified prior-revision handoff is unavailable. Review current content and revisions in WordPress first.';
 	}
 
 	function receive( event ) {
-		switch ( event.type ) {
-			case 'ready':
-			case 'host-context':
-				context = { ...context, ...event.context };
-				break;
-			case 'tool-input':
-				linkError = '';
-				result = { outcome: 'loading' };
-				break;
-			case 'tool-result':
-				linkError = '';
-				result = contract.parse( event.params );
-				break;
-			case 'tool-cancelled':
-				linkError = '';
-				result = { outcome: 'cancelled' };
-				break;
-			case 'closed':
-				linkError = '';
-				result = { outcome: 'disabled' };
-				break;
+		if ( event.type === 'ready' || event.type === 'host-context' ) {
+			context = { ...context, ...event.context };
+			render();
+			return;
 		}
+		const outcome = {
+			'tool-input': 'loading',
+			'tool-input-partial': 'loading',
+			'tool-cancelled': 'cancelled',
+			closed: 'disabled',
+		}[ event.type ];
+		if ( ! outcome && event.type !== 'tool-result' ) {
+			return;
+		}
+		linkBusy = false;
+		linkError = '';
+		result = outcome ? { outcome } : contract.parse( event.params );
 		render();
 	}
 
@@ -149,16 +144,21 @@
 			return;
 		}
 		linkBusy = true;
+		const openedForResult = result;
 		linkError = '';
 		render();
 		try {
 			await bridge.openLink( url );
 		} catch {
-			linkError =
-				'The host could not open that link. Use the text result or WordPress directly.';
+			if ( openedForResult === result ) {
+				linkError =
+					'The host could not open that link. Use the text result or WordPress directly.';
+			}
 		} finally {
-			linkBusy = false;
-			render();
+			if ( openedForResult === result ) {
+				linkBusy = false;
+				render();
+			}
 		}
 	}
 
@@ -171,8 +171,9 @@
 	// Test fixture only.
 	scope.AculectPostUpdateFixture = Object.freeze( {
 		showResult( value ) {
-			linkError = '';
 			result = contract.parse( value );
+			linkBusy = false;
+			linkError = '';
 			render();
 		},
 	} );

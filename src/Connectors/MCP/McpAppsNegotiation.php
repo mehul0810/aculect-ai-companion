@@ -14,6 +14,7 @@ final class McpAppsNegotiation {
 	public const SITE_INFO_URI      = 'ui://aculect/site-info/v1.html';
 	public const POST_UPDATE_URI    = 'ui://aculect/post-update/v1.html';
 	public const PATTERN_PICKER_URI = 'ui://aculect/pattern-picker/v1.html';
+	public const IMAGE_UPLOAD_URI   = 'ui://aculect/image-upload/v1.html';
 
 	private const SESSION_PURPOSE        = 'aculect.mcp-apps-session.v1';
 	private const SESSION_TTL            = 86400;
@@ -227,6 +228,11 @@ final class McpAppsNegotiation {
 		} elseif ( $apps_enabled && 'intelligence.patterns.list_available' === $ability_id ) {
 			$metadata['ui'] = array(
 				'resourceUri' => self::PATTERN_PICKER_URI,
+				'visibility'  => array( 'model' ),
+			);
+		} elseif ( $apps_enabled && 'media.open_upload_handoff' === $ability_id ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::IMAGE_UPLOAD_URI,
 				'visibility'  => array( 'model' ),
 			);
 		}

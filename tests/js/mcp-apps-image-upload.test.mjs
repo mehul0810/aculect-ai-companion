@@ -38,6 +38,13 @@ const resource = readFileSync(
 	),
 	'utf8'
 );
+const handoff = readFileSync(
+	new URL(
+		'../../src/Connectors/MCP/MediaUploadHandoff.php',
+		import.meta.url
+	),
+	'utf8'
+);
 
 test( 'image upload app is a credential-free, explicit WordPress human handoff', () => {
 	assert.match( template, /Open WordPress upload/ );
@@ -53,14 +60,26 @@ test( 'image upload app is a credential-free, explicit WordPress human handoff',
 		/do not share your sign-in details with the assistant/
 	);
 	assert.match( html, /application\/json/ );
-	assert.match( resource, /current_user_can\( 'upload_files' \)/ );
-	assert.match( resource, /admin_url\( 'admin\.php\?page=' \./ );
+	assert.match(
+		resource,
+		/\$handoff = \( new MediaUploadHandoff\(\) \)->result\(\)/
+	);
+	assert.match(
+		resource,
+		/if \( isset\( \$handoff\['error'\] \) \) \{\s*return \$handoff;/
+	);
+	assert.ok(
+		resource.indexOf( 'return $handoff;' ) <
+			resource.indexOf( 'file_get_contents(' )
+	);
+	assert.match( handoff, /current_user_can\( 'upload_files' \)/ );
+	assert.match( handoff, /admin_url\( 'admin\.php\?page=' \./ );
 	assert.match(
 		resource,
 		/JSON_HEX_TAG \| JSON_HEX_AMP \| JSON_HEX_APOS \| JSON_HEX_QUOT/
 	);
 	assert.doesNotMatch(
-		resource,
+		resource + handoff,
 		/wp_create_nonce|oauth|access_token|refresh_token/i
 	);
 	assert.doesNotMatch( html, /fetch\s*\(|XMLHttpRequest|form action/i );

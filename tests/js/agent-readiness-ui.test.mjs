@@ -56,6 +56,17 @@ test( 'maps all six statuses and plugin, site, and not-applicable ownership', ()
 	);
 } );
 
+test( 'public Skills Index guidance reflects the approved deferral', () => {
+	const [ row ] = agentReadinessRows( {
+		items: [ { id: 'skills_index', status: 'warning' } ],
+	} );
+	assert.equal( row.status, 'warning' );
+	assert.equal( row.owner, 'Aculect' );
+	assert.match( row.guidance, /not implemented in 0\.9\.0/ );
+	assert.match( row.guidance, /deferred to 1\.0\.0/ );
+	assert.match( row.guidance, /No site-owner action is required/ );
+} );
+
 test( 'keeps empty, malformed, and unknown results safe', () => {
 	assert.deepEqual( agentReadinessRows( null ), [] );
 	assert.deepEqual( agentReadinessRows( { items: 'not an array' } ), [] );

@@ -105,7 +105,7 @@
 		}
 		if (
 			outcome === 'success' &&
-			( ! projection.title ||
+			( typeof content.title !== 'string' ||
 				! projection.contentType ||
 				! projection.status ||
 				! projection.completedAt )

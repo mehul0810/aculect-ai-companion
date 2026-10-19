@@ -152,6 +152,37 @@ try {
 			.count(),
 		1
 	);
+	await hostSend( 'ui/notifications/tool-result', {
+		structuredContent: {
+			...update.structuredContent,
+			content: { ...update.structuredContent.content, title: '' },
+		},
+	} );
+	await app.getByRole( 'heading', { name: 'Untitled' } ).waitFor();
+	assert.equal(
+		await app.locator( '#status' ).getAttribute( 'data-state' ),
+		'success'
+	);
+	assert.equal( await app.locator( '#content' ).isVisible(), true );
+	assert.equal(
+		await app
+			.getByRole( 'button', { name: 'Review prior revision' } )
+			.isVisible(),
+		true
+	);
+	await hostSend( 'ui/notifications/tool-input-partial', {
+		arguments: { title: 'New update in progress' },
+	} );
+	await app.locator( '#status[data-state="loading"]' ).waitFor();
+	assert.equal( await app.locator( '#content' ).isHidden(), true );
+	assert.equal( await app.locator( '#actions' ).isHidden(), true );
+	assert.equal( await app.locator( '#undo' ).isHidden(), true );
+	await hostSend( 'ui/notifications/tool-result', update );
+	await app
+		.getByRole( 'heading', {
+			name: update.structuredContent.content.title,
+		} )
+		.waitFor();
 	if ( process.env.ACULECT_POST_UPDATE_SCREENSHOT ) {
 		await frame.evaluate(
 			( payload ) =>
@@ -273,6 +304,35 @@ try {
 			'*'
 		);
 	} );
+	await view.click();
+	await page.waitForFunction(
+		() =>
+			window.hostMessages.filter(
+				( item ) => item.method === 'ui/open-link'
+			).length === 4
+	);
+	await hostSend( 'ui/notifications/tool-input-partial', {
+		arguments: { title: 'Another update' },
+	} );
+	await app.locator( '#status[data-state="loading"]' ).waitFor();
+	await page.evaluate( () => {
+		const iframe = document.querySelector( '#app' );
+		const request = window.hostMessages.filter(
+			( item ) => item.method === 'ui/open-link'
+		)[ 3 ];
+		iframe.contentWindow.postMessage(
+			{
+				jsonrpc: '2.0',
+				id: request.id,
+				error: { code: -32000, message: 'Denied' },
+			},
+			'*'
+		);
+	} );
+	assert.equal(
+		await app.locator( '#message' ).innerText(),
+		'Waiting for the update result.'
+	);
 
 	for ( const outcome of [ 'partial', 'stale', 'unavailable', 'error' ] ) {
 		await frame.evaluate(

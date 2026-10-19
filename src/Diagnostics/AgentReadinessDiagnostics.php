@@ -82,7 +82,7 @@ final class AgentReadinessDiagnostics {
 			$this->mcp_challenge_item( $mcp ),
 			$this->item( 'mcp_server_card', 'owner_decision_required', 'MCP Server Card discovery is deferred pending an owner decision; no endpoint is assumed.' ),
 			$this->item( 'webmcp', 'warning', 'WebMCP is a progressive browser enhancement. Public script delivery and browser registration are not proven by this server-side check.' ),
-			$this->item( 'skills_index', 'owner_decision_required', 'A public Skills Index is not enabled; its 0.9.0 contract remains an owner decision.' ),
+			$this->item( 'skills_index', 'warning', 'A public Skills Index is not implemented in 0.9.0 and is deferred to 1.0.0. Authenticated MCP Skills discovery is a separate feature.' ),
 		);
 	}
 

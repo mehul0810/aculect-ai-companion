@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
 use Aculect\AICompanion\Connectors\MCP\McpAppsImageUploadResource;
+use Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry;
+use Aculect\AICompanion\Connectors\MCP\MediaUploadHandoff;
 use Aculect\AICompanion\Connectors\MCP\McpResourceRegistry;
 use PHPUnit\Framework\TestCase;
 
@@ -15,12 +17,16 @@ final class McpAppsImageUploadResourceTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn ( string $capability ): bool => 'upload_files' === $capability;
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']    = array(
+			'aculect_ai_companion_mcp_apps_enabled' => static fn (): bool => true,
+		);
 		$this->had_site_url                                       = array_key_exists( 'aculect_ai_companion_test_site_url', $GLOBALS );
 		$this->previous_site_url                                  = $GLOBALS['aculect_ai_companion_test_site_url'] ?? null;
 	}
 
 	protected function tearDown(): void {
 		unset( $GLOBALS['aculect_ai_companion_test_capability_callback'] );
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks'] = array();
 		if ( $this->had_site_url ) {
 			$GLOBALS['aculect_ai_companion_test_site_url'] = $this->previous_site_url;
 		} else {
@@ -54,6 +60,37 @@ final class McpAppsImageUploadResourceTest extends TestCase {
 		$result = ( new McpAppsImageUploadResource() )->read();
 
 		self::assertSame( 'handoff_unavailable', $result['error'] );
+	}
+
+	public function test_read_only_tool_returns_human_handoff_without_uploading_file_data(): void {
+		$result = ( new AbilitiesRegistry() )->execute( 'media.open_upload_handoff', array() );
+
+		self::assertSame( 'human_wordpress_upload', $result['mode'] ?? '' );
+		self::assertSame( 'https://example.com/wp-admin/admin.php?page=aculect-mcp-image-upload', $result['url'] ?? '' );
+		self::assertStringContainsString( 'attachment ID', $result['instructions'] ?? '' );
+		self::assertStringContainsString( 'No file bytes', $result['instructions'] ?? '' );
+		self::assertEquals( new \stdClass(), ( new AbilitiesRegistry() )->input_schema( 'media.open_upload_handoff' )['properties'] ?? null );
+		self::assertTrue( ( new AbilitiesRegistry() )->is_read_only( 'media.open_upload_handoff' ) );
+	}
+
+	public function test_read_only_tool_denies_users_without_upload_files(): void {
+		$GLOBALS['aculect_ai_companion_test_capability_callback'] = static fn (): bool => false;
+
+		self::assertSame( 'forbidden', ( new MediaUploadHandoff() )->result()['error'] ?? '' );
+	}
+
+	public function test_read_only_tool_does_not_offer_handoff_when_site_opted_out(): void {
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_mcp_apps_enabled'] = static fn (): bool => false;
+
+		self::assertSame( 'handoff_disabled', ( new MediaUploadHandoff() )->result()['error'] ?? '' );
+	}
+
+	public function test_read_only_tool_rejects_an_insecure_or_cross_site_handoff_url(): void {
+		$GLOBALS['aculect_ai_companion_test_site_url'] = 'https://other.example';
+
+		self::assertSame( 'handoff_unavailable', ( new MediaUploadHandoff() )->result()['error'] ?? '' );
+		$validator = new \ReflectionMethod( MediaUploadHandoff::class, 'is_secure_admin_url' );
+		self::assertFalse( $validator->invoke( new MediaUploadHandoff(), 'http://example.com/wp-admin/admin.php?page=upload' ) );
 	}
 
 	public function test_resource_is_listed_only_with_negotiated_apps_and_upload_permission(): void {

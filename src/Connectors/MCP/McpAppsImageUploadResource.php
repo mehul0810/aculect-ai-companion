@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
-use Aculect\AICompanion\Admin\McpImageUploadPage;
-
 /**
  * Provides a credential-free human handoff to the native WordPress uploader.
  */
 final class McpAppsImageUploadResource {
 
-	public const URI = 'ui://aculect/image-upload/v1.html';
+	public const URI = McpAppsNegotiation::IMAGE_UPLOAD_URI;
 
 	/**
 	 * Return the MCP resource descriptor.
@@ -33,20 +31,11 @@ final class McpAppsImageUploadResource {
 	 * @return array<string, mixed>
 	 */
 	public function read(): array {
-		if ( ! current_user_can( 'upload_files' ) ) {
-			return array(
-				'error'   => 'forbidden',
-				'message' => 'The connected WordPress user cannot upload media.',
-			);
+		$handoff = ( new MediaUploadHandoff() )->result();
+		if ( isset( $handoff['error'] ) ) {
+			return $handoff;
 		}
-
-		$url = admin_url( 'admin.php?page=' . McpImageUploadPage::PAGE_SLUG );
-		if ( ! is_string( $url ) || ! $this->is_secure_admin_url( $url ) ) {
-			return array(
-				'error'   => 'handoff_unavailable',
-				'message' => 'A secure WordPress Media Library upload handoff is unavailable.',
-			);
-		}
+		$url = (string) $handoff['url'];
 
 		$path = dirname( __DIR__, 3 ) . '/assets/mcp-apps/image-upload/v1/image-upload.html';
 		$html = is_readable( $path ) ? file_get_contents( $path ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Reads a fixed plugin-packaged asset, not a remote URL.
@@ -90,23 +79,5 @@ final class McpAppsImageUploadResource {
 				),
 			),
 		);
-	}
-
-	/**
-	 * Accept HTTPS only; the widget bridge refuses insecure external navigation.
-	 *
-	 * @param string $url Candidate admin URL.
-	 */
-	private function is_secure_admin_url( string $url ): bool {
-		$parts      = wp_parse_url( $url );
-		$site_parts = wp_parse_url( site_url( '/' ) );
-
-		return is_array( $parts )
-			&& is_array( $site_parts )
-			&& 'https' === strtolower( (string) ( $parts['scheme'] ?? '' ) )
-			&& '' !== (string) ( $parts['host'] ?? '' )
-			&& strtolower( (string) $parts['host'] ) === strtolower( (string) ( $site_parts['host'] ?? '' ) )
-			&& ! isset( $parts['user'] )
-			&& ! isset( $parts['pass'] );
 	}
 }

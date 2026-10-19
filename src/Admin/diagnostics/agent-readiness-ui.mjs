@@ -32,8 +32,8 @@ const CHECKS = [
 	[
 		'skills_index',
 		'Public Skills Index',
-		'Site owner',
-		'Review the proposed public skills contract before enabling a discovery endpoint.',
+		'Aculect',
+		'Public discovery is not implemented in 0.9.0 and is deferred to 1.0.0. No site-owner action is required; authenticated MCP Skills discovery is separate.',
 	],
 	[
 		'robots_txt',

@@ -57,6 +57,30 @@ test( 'projects a complete server-authored update result', () => {
 	);
 } );
 
+test( 'accepts a supplied empty title without weakening required content fields', () => {
+	for ( const title of [ '', '   ' ] ) {
+		const data = contract.parse(
+			result( {
+				content: { ...result().structuredContent.content, title },
+			} )
+		);
+		assert.equal( data.outcome, 'success' );
+		assert.equal( data.title, '' );
+		assert.equal( data.undo, true );
+	}
+	for ( const content of [
+		{ ...result().structuredContent.content, title: undefined },
+		{ ...result().structuredContent.content, title: null },
+		{ ...result().structuredContent.content, title: 123 },
+		{ title: '' },
+		null,
+	] ) {
+		const data = contract.parse( result( { content } ) );
+		assert.equal( data.outcome, 'partial' );
+		assert.equal( data.undo, false );
+	}
+} );
+
 test( 'projects a bounded pending-approval result without exposing decision credentials', () => {
 	const data = contract.parse( {
 		structuredContent: {

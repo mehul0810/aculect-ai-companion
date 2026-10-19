@@ -96,6 +96,7 @@ final class McpAppApprovalGatewayTest extends TestCase {
 		$request = $this->request( 'session-a', 'Approved title' );
 		$pending = $this->call_app( $gateway, $request );
 		self::assertSame( 'approval_pending', $pending->data['result']['status'] ?? '' );
+		self::assertSame( 'https://example.com/wp-admin/options-general.php?page=aculect-ai-companion&tab=approvals', $pending->data['result']['approval']['queue'] ?? '' );
 		self::assertArrayNotHasKey( 'confirmation_token', $pending->data['result'] ?? array() );
 
 		$id       = $this->approve_pending_request();

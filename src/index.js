@@ -1,4 +1,6 @@
 import { ChangelogDashboard } from './Admin/changelog/ChangelogDashboard';
+import { ApprovalTabLink } from './Admin/approval/ApprovalTabLink';
+import { tabUrl } from './admin-tab-url.mjs';
 import { MemoryRecordCard } from './Admin/memory/MemoryRecordCard';
 import { ActionForm } from './Admin/shared/ActionForm';
 import { EmptyState } from './Admin/shared/EmptyState';
@@ -264,26 +266,6 @@ function initialTabName( tabs ) {
 			: defaultTab;
 	} catch {
 		return defaultTab;
-	}
-}
-
-function tabUrl( tabName, adminPageUrl = '' ) {
-	const normalizedTabName = normalizeTabName( tabName );
-
-	try {
-		const url = new URL( adminPageUrl || window.location.href );
-		url.searchParams.set( 'page', 'aculect-ai-companion' );
-		if ( normalizedTabName === 'overview' ) {
-			url.searchParams.delete( TAB_QUERY_PARAM );
-		} else {
-			url.searchParams.set( TAB_QUERY_PARAM, normalizedTabName );
-		}
-
-		return url.toString();
-	} catch {
-		return normalizedTabName === 'overview'
-			? 'options-general.php?page=aculect-ai-companion'
-			: `options-general.php?page=aculect-ai-companion&tab=${ normalizedTabName }`;
 	}
 }
 
@@ -7121,6 +7103,9 @@ function SettingsApp() {
 							</a>
 						);
 					} ) }
+					<ApprovalTabLink
+						href={ tabUrl( 'approvals', data.adminPageUrl ) }
+					/>
 				</nav>
 				{ tabsOverflow.hasOverflow && (
 					<div className="aculect-ai-companion-tabs-controls">

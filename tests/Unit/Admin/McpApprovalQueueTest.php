@@ -5,17 +5,25 @@ declare(strict_types=1);
 namespace Aculect\AICompanion\Tests\Unit\Admin;
 
 use Aculect\AICompanion\Admin\McpApprovalQueue;
+use Aculect\AICompanion\Admin\SettingsPage;
 use Aculect\AICompanion\Connectors\MCP\PendingApprovalInstaller;
 use Aculect\AICompanion\Connectors\MCP\PendingOperationApprovalStore;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__, 2 ) . '/Support/McpApprovalWpdb.php';
 require_once dirname( __DIR__, 2 ) . '/Support/InMemoryExecutionClaimStore.php';
+require_once dirname( __DIR__, 2 ) . '/Support/AdminAssetSpies.php';
 
 // phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Focused authenticated admin action tests use the pending-store wpdb fixture.
 final class McpApprovalQueueTest extends TestCase {
 
 	private mixed $original_wpdb;
+	/**
+	 * Original routing input restored even when an assertion fails.
+	 *
+	 * @var array<string,mixed>
+	 */
+	private array $original_get = array();
 	/**
 	 * Captured global fixture values for restoration.
 	 *
@@ -26,8 +34,10 @@ final class McpApprovalQueueTest extends TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Snapshot test routing input without processing a form.
+		$this->original_get  = $_GET;
 		$this->original_wpdb = $GLOBALS['wpdb'] ?? null;
-		foreach ( array( 'aculect_ai_companion_test_options', 'aculect_ai_companion_test_current_user_id', 'aculect_ai_companion_test_blog_id', 'aculect_ai_companion_test_denied_caps', 'aculect_ai_companion_test_db_delta_callback', 'aculect_ai_companion_test_hooks', 'aculect_ai_companion_test_admin_pages', 'aculect_ai_companion_test_posts', 'aculect_ai_companion_test_transients', 'mcp_approval_test_salt' ) as $key ) {
+		foreach ( array( 'aculect_ai_companion_test_options', 'aculect_ai_companion_test_current_user_id', 'aculect_ai_companion_test_blog_id', 'aculect_ai_companion_test_denied_caps', 'aculect_ai_companion_test_db_delta_callback', 'aculect_ai_companion_test_hooks', 'aculect_ai_companion_test_admin_pages', 'aculect_ai_companion_test_admin_assets', 'aculect_ai_companion_test_posts', 'aculect_ai_companion_test_transients', 'mcp_approval_test_salt' ) as $key ) {
 			$this->original_globals[ $key ] = $GLOBALS[ $key ] ?? null;
 		}
 		$this->wpdb                                   = new \McpApprovalWpdb();
@@ -52,6 +62,11 @@ final class McpApprovalQueueTest extends TestCase {
 			'submenu' => array(),
 		);
 		$GLOBALS['aculect_ai_companion_test_transients']        = array();
+		$GLOBALS['aculect_ai_companion_test_admin_assets']      = array(
+			'scripts'   => array(),
+			'localized' => array(),
+			'styles'    => array(),
+		);
 		$GLOBALS['mcp_approval_test_salt']                      = 'test-salt-for-admin';
 		$GLOBALS['aculect_ai_companion_test_db_delta_callback'] = function (): array {
 			$this->wpdb->table_exists = true;
@@ -61,6 +76,7 @@ final class McpApprovalQueueTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		$_GET = $this->original_get;
 		if ( null === $this->original_wpdb ) {
 			unset( $GLOBALS['wpdb'] );
 		} else {
@@ -77,17 +93,14 @@ final class McpApprovalQueueTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_registers_only_logged_in_post_action_and_read_scoped_admin_queue(): void {
+	public function test_registers_only_logged_in_post_action_without_separate_settings_page(): void {
 		$queue = new McpApprovalQueue();
 		$queue->register();
-		$queue->register_page();
 
 		$hooks = array_column( $GLOBALS['aculect_ai_companion_test_hooks']['actions'], 'hook_name' );
 		self::assertContains( 'admin_post_aculect_mcp_approval_decide', $hooks );
 		self::assertNotContains( 'admin_post_nopriv_aculect_mcp_approval_decide', $hooks );
-		$page = $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0] ?? array();
-		self::assertSame( 'read', $page['capability'] ?? '' );
-		self::assertSame( McpApprovalQueue::PAGE_SLUG, $page['menu_slug'] ?? '' );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_pages']['options'] );
 	}
 
 	public function test_decision_receipt_is_actor_scoped_one_time_and_never_claims_execution(): void {
@@ -103,6 +116,48 @@ final class McpApprovalQueueTest extends TestCase {
 		self::assertStringContainsString( 'This did not execute the operation', $html );
 		self::assertStringNotContainsString( 'Operation executed successfully', $html );
 		self::assertFalse( get_transient( 'aculect_mcp_approval_notice_17' ) );
+	}
+
+	public function test_shared_admin_page_routes_read_only_actor_to_queue_without_settings_payload(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'manage_options' );
+		$_GET = array( 'page' => 'aculect-ai-companion' );
+		$page = new SettingsPage();
+		ob_start();
+		try {
+			$page->enqueue_assets( 'settings_page_aculect-ai-companion' );
+			$page->render();
+			$html = (string) ob_get_contents();
+		} finally {
+			ob_end_clean();
+		}
+		self::assertStringContainsString( 'Pending MCP approvals', $html );
+		self::assertStringNotContainsString( 'aculect-ai-companion-settings-app-root', $html );
+		self::assertStringNotContainsString( '>Overview</a>', $html );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_assets']['scripts'] );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_assets']['localized'] );
+	}
+
+	public function test_reader_cannot_force_settings_payload_and_manager_approval_tab_is_script_free(): void {
+		$page = new SettingsPage();
+		foreach ( array( 'advanced', 'approvals' ) as $tab ) {
+			$_GET = array(
+				'page' => 'aculect-ai-companion',
+				'tab'  => $tab,
+			);
+			$GLOBALS['aculect_ai_companion_test_denied_caps'] = 'advanced' === $tab ? array( 'manage_options' ) : array();
+			ob_start();
+			try {
+				$page->enqueue_assets( 'settings_page_aculect-ai-companion' );
+				$page->render();
+				$html = (string) ob_get_contents();
+			} finally {
+				ob_end_clean();
+			}
+			self::assertStringContainsString( 'Pending MCP approvals', $html );
+			self::assertStringNotContainsString( 'aculect-ai-companion-settings-app-root', $html );
+		}
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_assets']['scripts'] );
+		self::assertSame( array(), $GLOBALS['aculect_ai_companion_test_admin_assets']['localized'] );
 	}
 
 	public function test_review_page_shows_exact_escaped_operation_and_keeps_nonce_in_post_body(): void {
@@ -130,6 +185,7 @@ final class McpApprovalQueueTest extends TestCase {
 		}
 
 		self::assertStringContainsString( 'Pending MCP approvals', $html );
+		self::assertStringContainsString( 'options-general.php?page=aculect-ai-companion&tab=approvals', $html );
 		self::assertStringContainsString( 'content_update', $html );
 		self::assertStringContainsString( '&lt;script&gt;alert(1)&lt;/script&gt;', $html );
 		self::assertStringNotContainsString( '<script>alert(1)</script>', $html );

@@ -19,7 +19,12 @@ Neither the widget nor its host can approve, decline, mint a credential, or run
 the operation. Approval records consent only; a later authenticated MCP call
 must execute the operation through the existing checks.
 
-The App's pending result links only to the generic WordPress queue. The queue is
+The App's pending result links only to the generic WordPress queue at
+`options-general.php?page=aculect-ai-companion&tab=approvals`. This is a tab
+of the existing Aculect admin page, not a separate Settings page. The shared
+page is readable so the request actor can review their own queue; all other
+tabs, settings scripts and localized settings payloads remain restricted to
+`manage_options`. The queue is
 the sole human decision surface. The model/widget cannot approve, decline,
 mint a credential, or execute the operation. The existing MCP
 confirmation-token path remains in place for non-App clients. A negotiated App
@@ -135,7 +140,7 @@ clauses are either implemented safely or explicitly reconciled by the owner.
    generic WordPress admin queue URL. Do not include `confirmation_token`, WP
    nonce, secret, raw arguments, or a mutation-capable endpoint in the widget
    payload or URL. A resource read must not create or change pending state.
-4. Add an authenticated admin queue page. It lists only records bound to the
+4. Add an authenticated admin queue tab. It lists only records bound to the
    current WP user/site and performs a fresh authorization check. Require
    explicit POST actions with nonce and capability validation. Show the exact
    operation and its material effects before either Approve or Decline.

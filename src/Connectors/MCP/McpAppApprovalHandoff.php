@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
-use Aculect\AICompanion\Admin\McpApprovalQueue;
+use Aculect\AICompanion\Admin\ApprovalTab;
 use Closure;
 
 /**
@@ -309,7 +309,7 @@ final class McpAppApprovalHandoff {
 		if ( ! $post instanceof \WP_Post || ! current_user_can( 'read_post', (int) $post->ID ) || ! current_user_can( 'edit_post', (int) $post->ID ) ) {
 			return $this->blocked_payload( 'unavailable' );
 		}
-		$queue_url         = admin_url( 'options-general.php?page=' . McpApprovalQueue::PAGE_SLUG );
+		$queue_url         = ApprovalTab::url();
 		$expires_timestamp = strtotime( $expires_at . ' UTC' );
 		return array(
 			'schema'            => McpAppsPostUpdateResult::SCHEMA,

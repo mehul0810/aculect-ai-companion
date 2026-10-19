@@ -83,7 +83,7 @@ final class SettingsPageTest extends TestCase {
 		self::assertSame( 'aculect-ai-companion-oauth-consent', $GLOBALS['aculect_ai_companion_test_admin_pages']['submenu'][0]['menu_slug'] );
 		self::assertCount( 1, $GLOBALS['aculect_ai_companion_test_admin_pages']['options'] );
 		self::assertSame( 'AI Companion', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['menu_title'] );
-		self::assertSame( 'manage_options', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['capability'] );
+		self::assertSame( 'read', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['capability'] );
 		self::assertSame( 'aculect-ai-companion', $GLOBALS['aculect_ai_companion_test_admin_pages']['options'][0]['menu_slug'] );
 		self::assertContains( 'admin_enqueue_scripts', array_column( $GLOBALS['aculect_ai_companion_test_hooks']['actions'], 'hook_name' ) );
 		self::assertContains( 'parent_file', array_column( $GLOBALS['aculect_ai_companion_test_hooks']['filters'], 'hook_name' ) );

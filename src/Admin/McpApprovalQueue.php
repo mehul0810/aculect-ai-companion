@@ -16,7 +16,6 @@ use Closure;
  */
 final class McpApprovalQueue {
 
-	public const PAGE_SLUG          = 'aculect-mcp-approvals';
 	private const ADMIN_POST_ACTION = 'aculect_mcp_approval_decide';
 	private const NOTICE_TRANSIENT  = 'aculect_mcp_approval_notice_';
 
@@ -43,21 +42,9 @@ final class McpApprovalQueue {
 		};
 	}
 
-	/** Register the admin queue and logged-in POST action. */
+	/** Register the logged-in POST action. The screen lives in the plugin page. */
 	public function register(): void {
-		add_action( 'admin_menu', array( $this, 'register_page' ) );
 		add_action( 'admin_post_' . self::ADMIN_POST_ACTION, array( $this, 'handle_decision' ) );
-	}
-
-	/** Register the hidden-from-public, authenticated review screen. */
-	public function register_page(): void {
-		add_options_page(
-			__( 'Pending MCP approvals', 'aculect-ai-companion' ),
-			__( 'Pending MCP approvals', 'aculect-ai-companion' ),
-			'read',
-			self::PAGE_SLUG,
-			array( $this, 'render' )
-		);
 	}
 
 	/** Render only the current actor's site-bound pending queue. */
@@ -67,8 +54,11 @@ final class McpApprovalQueue {
 		}
 		$requests = $this->store->pending_for_current_actor();
 		?>
-		<div class="wrap">
-			<h1><?php echo esc_html__( 'Pending MCP approvals', 'aculect-ai-companion' ); ?></h1>
+		<div class="aculect-ai-companion-app-root">
+			<header class="aculect-ai-companion-app-header"><div class="aculect-ai-companion-app-heading"><h1 class="aculect-ai-companion-app-title"><?php echo esc_html__( 'AI Companion', 'aculect-ai-companion' ); ?></h1><p class="aculect-ai-companion-app-subtitle"><?php echo esc_html__( 'by Aculect', 'aculect-ai-companion' ); ?></p></div></header>
+			<?php ApprovalTab::render_navigation(); ?>
+			<div class="aculect-ai-companion-tab-panel">
+			<h2><?php echo esc_html__( 'Pending MCP approvals', 'aculect-ai-companion' ); ?></h2>
 			<p><?php echo esc_html__( 'Review each exact operation below. Approving or declining records only your decision; it does not run the operation.', 'aculect-ai-companion' ); ?></p>
 			<?php $this->render_notice(); ?>
 			<?php if ( is_wp_error( $requests ) ) : ?>
@@ -80,6 +70,7 @@ final class McpApprovalQueue {
 					<?php $this->render_request( $request ); ?>
 				<?php endforeach; ?>
 			<?php endif; ?>
+			</div>
 		</div>
 		<?php
 	}
@@ -143,10 +134,7 @@ final class McpApprovalQueue {
 		$input  = wp_unslash( $_POST );
 		$status = $this->process_decision( $input );
 		set_transient( self::NOTICE_TRANSIENT . get_current_user_id(), $status, 60 );
-		wp_safe_redirect(
-			admin_url( 'options-general.php?page=' . self::PAGE_SLUG ),
-			303
-		);
+		wp_safe_redirect( ApprovalTab::url(), 303 );
 		exit;
 	}
 

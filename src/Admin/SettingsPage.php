@@ -81,7 +81,7 @@ final class SettingsPage {
 		add_options_page(
 			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
 			__( 'AI Companion', 'aculect-ai-companion' ),
-			'manage_options',
+			'read',
 			self::PAGE_SLUG,
 			array( $this, 'render' )
 		);
@@ -140,17 +140,14 @@ final class SettingsPage {
 		return new WP_REST_Response( $this->settings_payload( $tab ) );
 	}
 
-	/**
-	 * Render the settings page shell or the OAuth consent screen.
-	 */
+	/** Render the settings shell, actor approvals, or OAuth consent. */
 	public function render(): void {
 		if ( $this->is_oauth_consent_view() ) {
 			( new AuthorizationController() )->render_admin_consent();
 			return;
 		}
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
+		if ( ApprovalTab::render_if_needed() ) {
+			return;
 		}
 
 		echo '<div class="wrap aculect-ai-companion-settings-wrap"><div id="aculect-ai-companion-settings-app-root" class="aculect-ai-companion-settings-app-root"></div></div>';
@@ -168,6 +165,9 @@ final class SettingsPage {
 
 		if ( $this->is_oauth_consent_view() ) {
 			wp_enqueue_style( 'aculect-ai-companion-oauth-consent', ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), ACULECT_AI_COMPANION_VERSION );
+			return;
+		}
+		if ( ApprovalTab::enqueue_if_needed() ) {
 			return;
 		}
 

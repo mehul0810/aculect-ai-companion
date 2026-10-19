@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Deterministic, dependency-free single-file MCP Apps fixture build.
+// Deterministic single-file MCP Apps fixture build.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { minify } from 'terser';
 
 const root = fileURLToPath( new URL( '..', import.meta.url ) );
 const runtime = join( root, 'widgets/runtime/v1' );
@@ -51,6 +52,19 @@ const widgets = [
 			join( root, 'widgets/image-upload/v1/widget.js' ),
 		],
 	},
+	...[ 'media', 'content' ].map( ( kind ) => ( {
+		source: join( root, `widgets/${ kind }-picker/v1` ),
+		target: `assets/mcp-apps/${ kind }-picker/v1/${ kind }-picker.html`,
+		template: `${ kind }-picker.template.html`,
+		css: '../../reference-picker/v1/picker.css',
+		maxJsBytes: 20 * 1024,
+		minifyJs: true,
+		js: [
+			join( runtime, 'bridge.js' ),
+			join( root, 'widgets/reference-picker/v1/contract.js' ),
+			join( root, 'widgets/reference-picker/v1/widget.js' ),
+		],
+	} ) ),
 ];
 
 for ( const widget of widgets ) {
@@ -59,9 +73,21 @@ for ( const widget of widgets ) {
 		'utf8'
 	);
 	const css = readFileSync( join( widget.source, widget.css ), 'utf8' );
-	const js = widget.js
+	let js = widget.js
 		.map( ( path ) => readFileSync( path, 'utf8' ) )
 		.join( '\n' );
+	if ( /<\/(?:script|style)/i.test( js ) || /<\/style/i.test( css ) ) {
+		throw new Error( 'Source cannot close its inline HTML element.' );
+	}
+	if ( widget.minifyJs ) {
+		js = (
+			await minify( js, {
+				compress: true,
+				mangle: true,
+				format: { comments: false },
+			} )
+		).code;
+	}
 	for ( const marker of [
 		'__ACULECT_WIDGET_CSS__',
 		'__ACULECT_WIDGET_JS__',

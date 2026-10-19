@@ -93,8 +93,20 @@ final class McpAppsControllerTest extends TestCase {
 		self::assertContains( McpAppsNegotiation::SITE_INFO_URI, $uris );
 		self::assertContains( McpAppsNegotiation::PATTERN_PICKER_URI, $uris );
 		self::assertContains( McpAppsNegotiation::IMAGE_UPLOAD_URI, $uris );
-		self::assertCount( 3, $uris );
-		self::assertTrue( $linked_tools[0]['annotations']['readOnlyHint'] );
+		self::assertEquals(
+			array(
+				McpAppsNegotiation::SITE_INFO_URI      => 1,
+				McpAppsNegotiation::PATTERN_PICKER_URI => 1,
+				McpAppsNegotiation::IMAGE_UPLOAD_URI   => 1,
+				McpAppsNegotiation::MEDIA_PICKER_URI   => 2,
+				McpAppsNegotiation::CONTENT_PICKER_URI => 3,
+			),
+			array_count_values( $uris )
+		);
+		foreach ( $linked_tools as $tool ) {
+			self::assertTrue( $tool['annotations']['readOnlyHint'] );
+			self::assertSame( array( 'model' ), $tool['_meta']['ui']['visibility'] );
+		}
 	}
 
 	public function test_pattern_picker_resource_uri_is_attached_only_to_its_negotiated_tool(): void {

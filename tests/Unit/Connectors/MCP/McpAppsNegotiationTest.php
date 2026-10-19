@@ -280,6 +280,24 @@ final class McpAppsNegotiationTest extends TestCase {
 		self::assertArrayNotHasKey( 'ui', McpAppsNegotiation::tool_metadata( 'site.get_info', array(), 'Reading…', 'Read.', false ) );
 	}
 
+	public function test_media_and_content_picker_metadata_is_opt_in_and_model_visible(): void {
+		$this->enable_feature();
+		foreach ( array( 'media.list_items', 'media.get_item' ) as $ability ) {
+			$media = McpAppsNegotiation::tool_metadata( $ability, array(), 'Reading…', 'Read.', true );
+			self::assertSame( McpAppsNegotiation::MEDIA_PICKER_URI, $media['ui']['resourceUri'] );
+			self::assertSame( array( 'model' ), $media['ui']['visibility'] );
+		}
+
+		foreach ( array( 'content.list_items', 'content.get_item', 'content_search.items' ) as $ability ) {
+			$metadata = McpAppsNegotiation::tool_metadata( $ability, array(), 'Reading…', 'Read.', true );
+			self::assertSame( McpAppsNegotiation::CONTENT_PICKER_URI, $metadata['ui']['resourceUri'] );
+			self::assertSame( array( 'model' ), $metadata['ui']['visibility'] );
+		}
+
+		self::assertArrayNotHasKey( 'ui', McpAppsNegotiation::tool_metadata( 'media.get_item', array(), 'Reading…', 'Read.', false ) );
+		self::assertArrayNotHasKey( 'ui', McpAppsNegotiation::tool_metadata( 'media.list_items', array(), 'Reading…', 'Read.', false ) );
+	}
+
 	/**
 	 * Configure the site-level feature opt-in used by the test.
 	 */

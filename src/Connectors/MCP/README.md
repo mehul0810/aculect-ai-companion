@@ -116,6 +116,18 @@ result for clients that do not render MCP Apps.
 Local unit-test target: `composer test -- --filter 'McpApps'`. The UI resource
 should also be exercised in an MCP Apps-compatible host before release.
 
+### Media and content reference pickers
+
+The same opt-in negotiation attaches selection-only views to `media.list_items`,
+`media.get_item`, `content.list_items`, `content.get_item`, and
+`content_search.items`. Media cards and content rows filter and paginate the
+loaded response; they do not search the whole site or call tools from the UI.
+Choosing an item shares its ID and type with the assistant only after the host
+accepts that selection. It does not insert, update, publish, or approve a write.
+Any later write requires a fresh object read and the existing safety checks.
+See [reference picker contracts](../../../docs/mcp-apps-reference-pickers.md)
+for image-origin restrictions, fallback behavior, and proof boundaries.
+
 ## Aculect Intelligence
 
 Aculect Intelligence is a categorized context surface and navigation guide, not

@@ -15,6 +15,8 @@ final class McpAppsNegotiation {
 	public const POST_UPDATE_URI    = 'ui://aculect/post-update/v1.html';
 	public const PATTERN_PICKER_URI = 'ui://aculect/pattern-picker/v1.html';
 	public const IMAGE_UPLOAD_URI   = 'ui://aculect/image-upload/v1.html';
+	public const MEDIA_PICKER_URI   = 'ui://aculect/media-picker/v1.html';
+	public const CONTENT_PICKER_URI = 'ui://aculect/content-picker/v1.html';
 
 	private const SESSION_PURPOSE        = 'aculect.mcp-apps-session.v1';
 	private const SESSION_TTL            = 86400;
@@ -233,6 +235,16 @@ final class McpAppsNegotiation {
 		} elseif ( $apps_enabled && 'media.open_upload_handoff' === $ability_id ) {
 			$metadata['ui'] = array(
 				'resourceUri' => self::IMAGE_UPLOAD_URI,
+				'visibility'  => array( 'model' ),
+			);
+		} elseif ( $apps_enabled && in_array( $ability_id, array( 'media.list_items', 'media.get_item' ), true ) ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::MEDIA_PICKER_URI,
+				'visibility'  => array( 'model' ),
+			);
+		} elseif ( $apps_enabled && in_array( $ability_id, array( 'content.list_items', 'content.get_item', 'content_search.items' ), true ) ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::CONTENT_PICKER_URI,
 				'visibility'  => array( 'model' ),
 			);
 		}

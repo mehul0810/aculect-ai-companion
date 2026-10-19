@@ -40,6 +40,8 @@ final class McpResourceRegistry {
 			$resources[] = ( new McpAppsSiteInfoResource() )->descriptor();
 			$resources[] = ( new McpAppsPostUpdateResource() )->descriptor();
 			$resources[] = ( new McpAppsPatternPickerResource() )->descriptor();
+			$resources[] = ( new McpAppsPickerResource( 'media' ) )->descriptor();
+			$resources[] = ( new McpAppsPickerResource( 'content' ) )->descriptor();
 			if ( current_user_can( 'upload_files' ) ) {
 				$resources[] = ( new McpAppsImageUploadResource() )->descriptor();
 			}
@@ -79,6 +81,11 @@ final class McpResourceRegistry {
 		if ( McpAppsNegotiation::PATTERN_PICKER_URI === $uri ) {
 			return $mcp_apps_enabled
 				? ( new McpAppsPatternPickerResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( McpAppsNegotiation::MEDIA_PICKER_URI === $uri || McpAppsNegotiation::CONTENT_PICKER_URI === $uri ) {
+			return $mcp_apps_enabled
+				? ( new McpAppsPickerResource( McpAppsNegotiation::MEDIA_PICKER_URI === $uri ? 'media' : 'content' ) )->read()
 				: $this->unknown_resource( $uri );
 		}
 		if ( McpAppsImageUploadResource::URI === $uri ) {

@@ -68,6 +68,8 @@ After approval, Aculect AI Companion checks the connected WordPress user's permi
 
 MCP Apps presentation is opt-in for each site and depends on support from the connected AI client. The Site Information card remains read-only. Post-update results can link to WordPress's authenticated revision review; they do not silently undo an edit. Image upload opens a WordPress-authenticated page and saves directly to that site's Media Library, not through the assistant or an Aculect relay. A later content action still needs its own permission check. Clients without MCP Apps support continue to receive the normal text result.
 
+Pattern, media, and content pickers send a selected reference to the assistant without applying a layout or inserting media. Negotiated post updates can request an exact-operation decision in WordPress. Approval records that decision; the assistant must resubmit the same request before the update can execute.
+
 Authenticated MCP Skills are guidance for compatible MCP clients, not executable tools or permission grants. Administrators can manage bounded custom Skills on their own WordPress site. Imported Skills, including replacements, stay disabled until an administrator reviews and enables them. No public Agent Skills Index is published in this version.
 
 = Supported AI Tools =
@@ -299,9 +301,11 @@ Composer dependencies for production releases are installed with:
 
 * Added opt-in MCP Apps resources and a Site Information card for compatible clients, with the existing text response preserved for other clients.
 * Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.
-* Added post-update revision review, layout and pattern selection, and a direct WordPress Media Library image-upload handoff for supported MCP Apps.
-* Added read-only Agent Readiness diagnostics and clearer Cloudflare connection guidance without claiming that edge challenges can be bypassed.
-* Included versioned MCP Apps assets and packaged core Skills in production-package verification.
+* Added post-update revision review, layout and pattern selection, and selection-only media and content reference pickers for supported MCP Apps, with text results preserved for other clients.
+* Added an exact-post-update approval handoff authenticated by the current WordPress user, plus a direct WordPress Media Library image-upload handoff.
+* Added read-only Agent Readiness diagnostics for plugin and site discovery surfaces.
+* Clarified Cloudflare connection guidance without claiming that edge challenges can be bypassed.
+* Included versioned MCP Apps assets, including both reference pickers, and packaged core Skills in production-package verification.
 
 = 0.8.3 =
 

@@ -30,6 +30,8 @@ $required_paths = array(
 	'assets/mcp-apps/site-info/v1/site-info.html',
 	'assets/mcp-apps/post-update/v1/post-update.html',
 	'assets/mcp-apps/pattern-picker/v1/pattern-picker.html',
+	'assets/mcp-apps/media-picker/v1/media-picker.html',
+	'assets/mcp-apps/content-picker/v1/content-picker.html',
 	'assets/mcp-apps/image-upload/v1/image-upload.html',
 	'src/Admin/McpApprovalQueue.php',
 	'src/Connectors/MCP/McpAppApprovalHandoff.php',

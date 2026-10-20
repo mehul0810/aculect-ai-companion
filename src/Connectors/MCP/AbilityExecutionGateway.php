@@ -386,11 +386,10 @@ final class AbilityExecutionGateway {
 	private function execute_tool_with_safety( string $tool, array $args, bool $is_intelligence_tool, array $auth ): array {
 		$is_incident_report         = $is_intelligence_tool && 'plugin.incident.report' === $tool && ! $this->intelligence->is_read_only( $tool );
 		$is_write_tool              = $is_incident_report || ( ! $is_intelligence_tool && ! $this->registry->is_read_only( $tool ) );
-		$is_approval_candidate      = $this->approval_handoff->is_candidate( $tool, $is_intelligence_tool );
 		$has_confirmation_token     = $is_write_tool && $this->safety->has_confirmation_token( $args );
 		$is_dry_run                 = $is_write_tool && $this->safety->is_dry_run( $args ) && ! $has_confirmation_token;
 		$write_permission_unblocked = $is_write_tool && $this->write_permission_unblocks_tool( $tool, $auth, $is_intelligence_tool );
-		$requires_confirmation      = $this->safety->requires_confirmation( $tool, $args ) || ( $is_approval_candidate && ! $write_permission_unblocked );
+		$requires_confirmation      = $this->safety->requires_confirmation( $tool, $args ) || ( $is_write_tool && ! $write_permission_unblocked );
 		$approval                   = $this->approval_handoff->prepare( $tool, $args, $auth, $is_intelligence_tool, $is_write_tool, $requires_confirmation, $is_dry_run, $has_confirmation_token, $write_permission_unblocked );
 		$args                       = $approval['args'];
 		if ( is_array( $approval['early_result'] ) ) {
@@ -592,9 +591,9 @@ final class AbilityExecutionGateway {
 	 * @return array<string, mixed>
 	 */
 	private function execute_tool( string $tool, array $args, bool $is_intelligence_tool, array $auth ): array {
-		return $is_intelligence_tool
+		return MetadataWritePreview::for_call( $tool, $args ) ?? ( $is_intelligence_tool
 			? $this->intelligence->execute( $tool, $args, $this->intelligence_source_from_auth( $auth ) )
-			: $this->registry->execute( $tool, $args );
+			: $this->registry->execute( $tool, $args ) );
 	}
 
 	/**

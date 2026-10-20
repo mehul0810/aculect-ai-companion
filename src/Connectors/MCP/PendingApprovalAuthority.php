@@ -28,7 +28,7 @@ final class PendingApprovalAuthority {
 		sort( $groups );
 		sort( $scopes );
 		$policy = array(
-			'version'             => 'wordpress-human-approval.v2-exact-preview-values',
+			'version'             => 'wordpress-human-approval.v3-current-authority',
 			'tool'                => $tool,
 			'risk_level'          => $risk_level,
 			'confirmation_groups' => array_values( $groups ),

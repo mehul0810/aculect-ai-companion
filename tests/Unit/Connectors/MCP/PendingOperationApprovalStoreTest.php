@@ -119,6 +119,7 @@ final class PendingOperationApprovalStoreTest extends TestCase {
 			array( 9 ),
 			'access-token-1'
 		);
+		// A distinct session keeps the canonicalization control compatible with the native unique key.
 		$second = $store->create(
 			'content_update',
 			array(
@@ -132,7 +133,7 @@ final class PendingOperationApprovalStoreTest extends TestCase {
 			'client-1',
 			'edit_post',
 			array( 9 ),
-			'access-token-1'
+			'access-token-2'
 		);
 		self::assertIsInt( $first );
 		self::assertIsInt( $second );

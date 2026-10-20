@@ -74,6 +74,11 @@ final class McpApprovalWpdb {
 		if ( ! $this->table_exists ) {
 			return false;
 		}
+		foreach ( $this->rows as $row ) {
+			if ( $row['request_key'] === $data['request_key'] ) {
+				return false;
+			}
+		}
 		$id                = $this->next_id++;
 		$this->rows[ $id ] = array_merge( array( 'id' => $id ), $data );
 		$this->insert_id   = $id;

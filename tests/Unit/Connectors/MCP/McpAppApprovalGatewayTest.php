@@ -388,32 +388,8 @@ final class McpAppApprovalGatewayTest extends TestCase {
 	}
 
 	public function test_actual_legacy_policy_approval_cannot_execute_after_preview_policy_change(): void {
-		$registry = new AbilitiesRegistry();
-		$safety   = new ToolSafety( new InMemoryExecutionClaimStore() );
-		$args     = array(
-			'id'    => 123,
-			'title' => 'Approved title',
-		);
-		$groups   = $safety->confirmation_groups();
-		$scopes   = $registry->required_scopes( 'content_workflow.update_post' );
-		sort( $groups );
-		sort( $scopes );
-		$legacy_policy = hash(
-			'sha256',
-			(string) wp_json_encode(
-				array(
-					'version'             => 'wordpress-human-approval.v1',
-					'tool'                => 'content_workflow.update_post',
-					'risk_level'          => AbilityExecutionGateway::tool_risk_level( 'content_workflow.update_post', $args ),
-					'confirmation_groups' => array_values( $groups ),
-					'required_scopes'     => array_values( $scopes ),
-					'enabled_abilities'   => $registry->enabled_ids(),
-					'role_policy_enabled' => \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::is_editing_enabled(),
-					'role_policies'       => get_option( \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES, array() ),
-					'capability'          => 'edit_post',
-				)
-			)
-		);
+		$args = array( 'id' => 123, 'title' => 'Approved title' );
+		$legacy_policy = $this->legacy_policy( $args, 'wordpress-human-approval.v1' );
 		$store         = new PendingOperationApprovalStore();
 		$id            = $store->create(
 			'content_workflow.update_post',
@@ -659,6 +635,50 @@ final class McpAppApprovalGatewayTest extends TestCase {
 			self::assertTrue( $store->decide_for_current_actor( $id, 'declined' ), $status );
 		}
 		self::assertSame( 'Original title', get_post( 123 )->post_title );
+	}
+
+	public function test_unreadable_old_pending_row_allows_immediate_fresh_preview(): void {
+		$request = $this->request( 'schema-upgrade', 'Approved title', false );
+		$this->call_app( $this->gateway(), $request );
+		$store = new PendingOperationApprovalStore();
+		$first_id = max( array_keys( $this->wpdb->rows ) );
+		$summary = $store->find_pending_for_current_actor( $first_id )['review_summary'];
+		unset( $this->wpdb->rows[ $first_id ] );
+		$args = array( 'id' => 123, 'title' => 'Approved title' );
+		$old_id = $store->create( 'content_workflow.update_post', $args, $summary, 'approval-gateway-client', 'edit_post', array( 123 ), 'schema-upgrade', $this->legacy_policy( $args, 'wordpress-human-approval.v2-exact-preview-values' ) );
+		self::assertIsInt( $old_id );
+		// Older payload schemas cannot be decoded, but their unique keys remain until expiry.
+		$this->wpdb->rows[ $old_id ]['payload_ciphertext'] = 'opaque-older-payload';
+		$result = $this->call_app( $this->gateway(), $request );
+		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
+		self::assertCount( 2, $this->wpdb->rows );
+		self::assertCount( 1, $store->pending_for_current_actor() );
+		self::assertSame( 'Original title', $this->post_title() );
+	}
+
+	private function legacy_policy( array $args, string $version ): string {
+		$registry = new AbilitiesRegistry();
+		$safety   = new ToolSafety( new InMemoryExecutionClaimStore() );
+		$groups   = $safety->confirmation_groups();
+		$scopes   = $registry->required_scopes( 'content_workflow.update_post' );
+		sort( $groups );
+		sort( $scopes );
+		return hash(
+			'sha256',
+			(string) wp_json_encode(
+				array(
+					'version'             => $version,
+					'tool'                => 'content_workflow.update_post',
+					'risk_level'          => AbilityExecutionGateway::tool_risk_level( 'content_workflow.update_post', $args ),
+					'confirmation_groups' => array_values( $groups ),
+					'required_scopes'     => array_values( $scopes ),
+					'enabled_abilities'   => $registry->enabled_ids(),
+					'role_policy_enabled' => \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::is_editing_enabled(),
+					'role_policies'       => get_option( \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES, array() ),
+					'capability'          => 'edit_post',
+				)
+			)
+		);
 	}
 
 	private function call_app( AbilityExecutionGateway $gateway, AbilityExecutionRequest $request ): \Aculect\AICompanion\Connectors\MCP\AbilityExecutionOutcome {

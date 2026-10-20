@@ -68,7 +68,7 @@ final class MediaAbilities extends AbstractAbilityService {
 		$posts  = array_values(
 			array_filter(
 				$result->posts,
-				static fn( $post ): bool => $post instanceof \WP_Post && current_user_can( 'read_post', $post->ID )
+				static fn( $post ): bool => $post instanceof \WP_Post && \Aculect\AICompanion\PostReadAccess::allows( (int) $post->ID )
 			)
 		);
 		$mapper = 'full' === $this->collection_context( $args ) ? 'map_post' : 'map_post_compact';
@@ -99,7 +99,7 @@ final class MediaAbilities extends AbstractAbilityService {
 			return $this->error( 'not_found', 'Media item not found.' );
 		}
 
-		if ( ! current_user_can( 'read_post', $attachment_id ) ) {
+		if ( ! \Aculect\AICompanion\PostReadAccess::allows( $attachment_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to read this media item.' );
 		}
 

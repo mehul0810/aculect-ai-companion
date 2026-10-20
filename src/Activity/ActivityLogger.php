@@ -18,6 +18,8 @@ final class ActivityLogger {
 	private const TIMELINE_EVENTS       = array(
 		'initialize',
 		'tools_list',
+		'resources_read',
+		'role_policy_change',
 		'oauth_consent_approval',
 		'token_exchange',
 		'token_refresh',

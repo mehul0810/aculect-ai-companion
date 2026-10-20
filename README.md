@@ -167,6 +167,11 @@ Internal-link intelligence is intentionally assistant-first. Use `content_intern
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
+Base `aculect://` resource reads require `content:read` and honor current site-wide and per-user access pauses. Resource outcomes and persisted role-policy changes produce bounded activity events without content or policy payloads. Raw post, excerpt, search, and chunk projections require native read access; password-protected bodies additionally require native edit authority because MCP does not accept post passwords. Creating private content or changing its status to private requires the post type's publishing capability.
+
+Read connection trust requires confirmation before operational tool writes even when the optional tool-group confirmation list is empty. The existing `intelligence.feedback.submit` flow continues to queue admin-reviewed learning suggestions; its proposal semantics are unchanged. Operations without a native dry-run return a non-mutating invocation preview; confirmed execution still validates current permissions and arguments. Trusted Write retains its existing mandatory confirmation exceptions. Negotiated WordPress-human approval remains limited to `content_workflow.update_post`; other writes use the existing exact-call confirmation flow. Pending human decisions recheck the original token/client, expiry, issuer, site, scopes, pauses, current role policy, and native capability. Pending records from before this binding require a fresh preview and expire within ten minutes.
+
+
 The current stateless MCP revision (`2026-07-28`) also advertises the stable
 `io.modelcontextprotocol/skills` extension. Compatible authenticated clients
 can enumerate built-in `wordpress-site-audit`, `content-optimization`, and

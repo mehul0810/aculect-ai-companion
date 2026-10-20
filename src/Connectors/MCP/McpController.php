@@ -619,7 +619,7 @@ final class McpController {
 				if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && isset( $resource['error'] ) && in_array( $resource['error'], array( 'resource_not_found', 'invalid_resource_uri', 'skill_not_found' ), true ) ) {
 					return $this->rpc_error( $id, -32602, 'Invalid params', array( 'code' => (string) $resource['error'] ) );
 				}
-				return $this->rpc_result( $id, 'resources/read', $resource );
+				return 'insufficient_scope' === ( $resource['error'] ?? '' ) ? $this->auth_challenge_response( $id, 'content:read', 403, 'insufficient_scope' ) : $this->rpc_result( $id, 'resources/read', $resource );
 
 			case 'skills/list':
 			case 'skills/get':

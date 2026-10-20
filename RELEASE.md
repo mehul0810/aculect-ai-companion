@@ -31,7 +31,7 @@
 - Routine PR checks are consolidated and risk-selected; full validation remains required for release integration and publication. The full gate must build one canonical artifact and pass that exact artifact to packaged proofs and publication. No tag/release/deployment is performed by local check commands or manual CI validation.
 - The 0.8.0 rejected-token cache-header exception is historical and does not apply to 0.8.1 or later. Every successful and rejected token response must include `Cache-Control: no-store` and `Pragma: no-cache`; every functional OAuth assertion remains mandatory.
 - The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
-- Before Beta 1 recommendation, complete the applicable current-package proof and the real ChatGPT web/mobile and fallback evidence required by #374. Local simulated hosts cannot close that gate. Cloudflare staging evidence remains a separate owner-run beta validation item as described above.
+- Before Beta 1 recommendation, complete the applicable current-package, authorization, text-fallback and package/CI proof. The owner-selected Beta 1 validation boundary below defers real-site and ChatGPT web/mobile checks until after the first beta is available; local simulated hosts do not establish host compatibility. Cloudflare staging evidence remains a separate owner-run beta validation item as described above.
 - OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.
 - Security/privacy
 - Performance
@@ -45,6 +45,12 @@
 - UI/browser proof when relevant
 
 Release briefs must summarize each gate as passed, blocked, or not applicable with a reason.
+
+## Beta 1 Owner Validation Boundary, 2026-10-20
+- The owner will test the candidate on their own site after `0.9.0-beta.1` is created and directed the agent not to use a site or ChatGPT connection for those checks. Real-site, ChatGPT web/mobile and applicable other-host validation remain unverified owner-run beta testing, not prerequisites to this first beta's technical recommendation.
+- This exception changes validation timing only for Beta 1. It does not mark #374 complete, establish host compatibility, waive a known defect, weaken OAuth/security checks, or carry forward to stable release or a later beta without a fresh decision.
+- Local rendered/browser proof remains excluded by the owner's earlier direction, not passed. VoiceOver and narration are also excluded, not passed. Available non-browser authorization, persistence, import, protocol, package and performance checks remain required.
+- Preparation and this accepted testing deferral do not authorize creating a tag/release, merging `main`, publishing or deploying. Exact owner approval remains required for those actions. MCP Apps remain disabled by default.
 
 ## Proof Model
 - Non-live fixture proof is acceptable for bounded release-gate coverage when secrets are unavailable.

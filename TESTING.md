@@ -1,5 +1,11 @@
 # Aculect AI Companion Validation Contract
 
+## Beta 1 local performance smoke
+
+Declare the exact ZIP, PHP/WordPress/database versions, fixture size, cache state, concurrency, warm-up count and quantile method before measuring. On an isolated loopback fixture, use one authenticated connection, exclude the declared warm-up calls, then retain 30 sequential samples each for `site_get_info` and a negotiated UI `resources/read`. The local smoke guardrails are zero errors, `site_get_info` p95 at most 1,500 ms and resource-read p95 at most 500 ms. Retain every failed sample: any measured error fails the zero-error guardrail, with no selective retries or sample removal. Record raw durations, p50/p95/max, sample count and payload bytes; identify any cold sample separately. These guardrails are chosen before the run and are not a public SLA, production-capacity claim or representative-site benchmark.
+
+Where practical, compare Apps-on and Apps-off site-information calls on the same fixture with the same token, dataset, warm-up, cache state and concurrency; do not create another OAuth client for each sample or retry an unsuccessful OAuth contract. The existing widget budgets remain 16 KiB inline JavaScript and 24 KiB initial HTML. Browser startup/render/interaction and actual-host performance remain unverified when browser testing is excluded, with owner-run site/host follow-up after Beta 1 under `RELEASE.md`.
+
 ## Baseline Expectations
 - Every scoped change must name the exact validation commands that prove the touched behavior.
 - Validation should scale with risk: narrow fixes get narrow checks; MCP, OAuth, release, and packaging changes need broader proof.

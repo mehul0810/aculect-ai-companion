@@ -350,7 +350,7 @@ final class PendingOperationApprovalStoreTest extends TestCase {
 	}
 
 	private function store(): PendingOperationApprovalStore {
-		return new PendingOperationApprovalStore( fn (): int => $this->now );
+		return new PendingOperationApprovalStore( fn (): int => $this->now, static fn( array $request ): bool => true );
 	}
 
 	private function create_request( PendingOperationApprovalStore $store, array $arguments, string $capability = 'edit_post', array $capability_args = array( 81 ) ): int|\WP_Error {

@@ -440,7 +440,9 @@ final class McpAppApprovalGatewayTest extends TestCase {
 			$legacy_policy
 		);
 		self::assertIsInt( $id );
-		$this->approve_pending_request();
+		self::assertFalse( $store->decide_for_current_actor( $id, 'approved' ) );
+		// Model an already approved pre-upgrade row; execution must still reject it.
+		$this->wpdb->rows[ $id ]['status'] = 'approved';
 		$result = $this->call_app( $this->gateway(), $this->request( 'legacy-policy', 'Approved title', false ) );
 		self::assertSame( 'approval_pending', $result->data['result']['status'] ?? '' );
 		self::assertSame( 'Original title', $this->post_title() );
@@ -567,6 +569,12 @@ final class McpAppApprovalGatewayTest extends TestCase {
 	}
 
 	private function request( string $session, string $title, bool $with_idempotency_key = true, array $additional_arguments = array() ): AbilityExecutionRequest {
+		$this->wpdb->oauth_tokens[ hash( 'sha256', $session ) ] = array(
+			'user_id' => 7, 'client_id' => 'approval-gateway-client', 'scopes' => '["content:read","content:draft"]',
+			'resource' => \Aculect\AICompanion\Connectors\Helpers::mcp_resource(), 'revoked' => 0,
+			'expires_at' => gmdate( 'Y-m-d H:i:s', time() + 3600 ), 'client_revoked' => 0,
+			'issuer_hash' => \Aculect\AICompanion\Connectors\OAuth\IssuerBinding::hash(),
+		);
 		$arguments = array(
 			'id'    => 123,
 			'title' => $title,
@@ -590,6 +598,67 @@ final class McpAppApprovalGatewayTest extends TestCase {
 				'access_level' => ConnectionAccessLevel::READ,
 			)
 		);
+	}
+
+	public function test_pending_decision_rechecks_pause_and_role_policy(): void {
+		$this->call_app( $this->gateway(), $this->request( 'freshness-token', 'Proposed title' ) );
+		$id = max( array_keys( $this->wpdb->rows ) );
+		$store = new PendingOperationApprovalStore();
+		\Aculect\AICompanion\Connectors\MCP\AccessLockdown::set_paused( true );
+		self::assertNull( $store->find_pending_for_current_actor( $id ) );
+		self::assertFalse( $store->decide_for_current_actor( $id, 'approved' ) );
+		\Aculect\AICompanion\Connectors\MCP\AccessLockdown::set_paused( false );
+		self::assertIsArray( $store->find_pending_for_current_actor( $id ) );
+		update_option( \Aculect\AICompanion\Connectors\MCP\RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES, array( 'editor' => array() ) );
+		self::assertNull( $store->find_pending_for_current_actor( $id ) );
+		self::assertFalse( $store->decide_for_current_actor( $id, 'approved' ) );
+		self::assertSame( 'pending', $this->wpdb->rows[ $id ]['status'] );
+		self::assertSame( 'Original title', get_post( 123 )->post_title );
+	}
+
+	public function test_pending_decision_requires_the_current_original_oauth_connection(): void {
+		$changes = array(
+			array( 'revoked', 1 ), array( 'client_revoked', 1 ), array( 'expires_at', '2000-01-01 00:00:00' ),
+			array( 'user_id', 8 ), array( 'resource', 'https://other.example.test/mcp' ),
+			array( 'issuer_hash', str_repeat( '0', 64 ) ), array( 'client_id', 'another-client' ),
+			array( 'scopes', '["content:read"]' ), array( 'scopes', 'invalid-json' ),
+		);
+		foreach ( $changes as $index => [ $field, $value ] ) {
+			$session = 'freshness-connection-' . $index;
+			$this->call_app( $this->gateway(), $this->request( $session, 'Proposed ' . $index ) );
+			$id = max( array_keys( $this->wpdb->rows ) );
+			$store = new PendingOperationApprovalStore();
+			self::assertIsArray( $store->find_pending_for_current_actor( $id ), $field );
+			$hash = hash( 'sha256', $session );
+			$original = $this->wpdb->oauth_tokens[ $hash ];
+			$this->wpdb->oauth_tokens[ $hash ][ $field ] = $value;
+			self::assertNull( $store->find_pending_for_current_actor( $id ), $field );
+			self::assertFalse( $store->decide_for_current_actor( $id, 'approved' ), $field );
+			self::assertSame( 'pending', $this->wpdb->rows[ $id ]['status'], $field );
+			$this->wpdb->oauth_tokens[ $hash ] = $original;
+			self::assertTrue( $store->decide_for_current_actor( $id, 'declined' ), $field );
+		}
+		self::assertSame( 'Original title', get_post( 123 )->post_title );
+	}
+
+	public function test_pending_decision_rechecks_operation_specific_native_capabilities(): void {
+		foreach ( array( 'private', 'publish', 'future', 'trash' ) as $status ) {
+			$args = array( 'status' => $status );
+			if ( 'future' === $status ) {
+				$args['date'] = gmdate( 'Y-m-d H:i:s', time() + 86400 );
+			}
+			$this->call_app( $this->gateway(), $this->request( 'native-cap-' . $status, 'Proposed ' . $status, false, $args ) );
+			$id = max( array_keys( $this->wpdb->rows ) );
+			$store = new PendingOperationApprovalStore();
+			self::assertIsArray( $store->find_pending_for_current_actor( $id ), $status );
+			$GLOBALS['aculect_ai_companion_test_denied_caps'] = array( 'trash' === $status ? 'delete_post' : 'publish_posts' );
+			self::assertTrue( current_user_can( 'edit_post', 123 ) );
+			self::assertNull( $store->find_pending_for_current_actor( $id ), $status );
+			self::assertFalse( $store->decide_for_current_actor( $id, 'approved' ), $status );
+			$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+			self::assertTrue( $store->decide_for_current_actor( $id, 'declined' ), $status );
+		}
+		self::assertSame( 'Original title', get_post( 123 )->post_title );
 	}
 
 	private function call_app( AbilityExecutionGateway $gateway, AbilityExecutionRequest $request ): \Aculect\AICompanion\Connectors\MCP\AbilityExecutionOutcome {

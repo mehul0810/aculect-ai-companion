@@ -310,7 +310,7 @@ final class McpApprovalQueueTest extends TestCase {
 	}
 
 	private function store(): PendingOperationApprovalStore {
-		return new PendingOperationApprovalStore( static fn (): int => 1790330400 );
+		return new PendingOperationApprovalStore( static fn (): int => 1790330400, static fn( array $request ): bool => true );
 	}
 
 	/**

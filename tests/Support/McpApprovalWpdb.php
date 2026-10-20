@@ -21,6 +21,8 @@ final class McpApprovalWpdb {
 	/** @var list<mixed> */
 	public array $last_args = array();
 	private int $next_id    = 1;
+	/** @var array<string, array<string, mixed>> */
+	public array $oauth_tokens = array();
 
 	public function prepare( string $query, mixed ...$args ): string {
 		$this->last_query = $query;
@@ -108,6 +110,10 @@ final class McpApprovalWpdb {
 	/** @return list<array<string,mixed>>|null */
 	public function get_results( string $query, mixed $output = null ): ?array {
 		unset( $query, $output );
+		if ( str_contains( $this->last_query, 'FROM %i access_tokens INNER JOIN %i clients' ) ) {
+			$row = $this->oauth_tokens[ (string) $this->last_args[2] ] ?? null;
+			return is_array( $row ) && $row['issuer_hash'] === $this->last_args[3] && empty( $row['client_revoked'] ) ? $row : null;
+		}
 		if ( ! $this->table_exists ) {
 			return null;
 		}
@@ -137,6 +143,10 @@ final class McpApprovalWpdb {
 	/** @return array<string,mixed>|null */
 	public function get_row( string $query, mixed $output = null ): ?array {
 		unset( $query, $output );
+		if ( str_contains( $this->last_query, 'FROM %i access_tokens INNER JOIN %i clients' ) ) {
+			$row = $this->oauth_tokens[ (string) $this->last_args[2] ] ?? null;
+			return is_array( $row ) && $row['issuer_hash'] === $this->last_args[3] && empty( $row['client_revoked'] ) ? $row : null;
+		}
 		if ( ! $this->table_exists ) {
 			return null;
 		}

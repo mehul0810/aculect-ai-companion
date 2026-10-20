@@ -30,15 +30,23 @@ final class PendingOperationApprovalStore {
 	 * @var Closure():int
 	 */
 	private Closure $clock;
+	/**
+	 * Current authorization boundary, independent from encrypted storage.
+	 *
+	 * @var Closure(array<string, mixed>):bool
+	 */
+	private Closure $authority;
 	private bool $cleanup_registered = false;
 
 	/**
 	 * Construct the store.
 	 *
-	 * @param Closure():int|null $clock Controlled UTC clock.
+	 * @param Closure():int|null                      $clock Controlled UTC clock.
+	 * @param Closure(array<string, mixed>):bool|null $authority Current authorization verifier; defaults to live policy and connection checks.
 	 */
-	public function __construct( ?Closure $clock = null ) {
-		$this->clock = $clock ?? static fn (): int => time();
+	public function __construct( ?Closure $clock = null, ?Closure $authority = null ) {
+		$this->clock     = $clock ?? static fn (): int => time();
+		$this->authority = $authority ?? ( new PendingApprovalAuthority() )->allows( ... );
 	}
 
 	/**
@@ -119,7 +127,10 @@ final class PendingOperationApprovalStore {
 			'operation_hash'     => $operation_fingerprint,
 			'policy_fingerprint' => $policy_fingerprint,
 			'review_summary'     => $review_summary,
-			'schema'             => 'aculect.pending-approval.v2',
+			'schema'             => 'aculect.pending-approval.v3',
+			'token_hash'         => hash( 'sha256', $session_id ),
+			'policy_risk_level'  => AbilityExecutionGateway::tool_risk_level( $tool_name, $arguments ),
+			'authorization_args' => PendingApprovalNativeAuthority::arguments( $canonical_arguments, $review_summary['target_id'] ),
 			'tool'               => $tool_name,
 		);
 		$payload_json          = $this->encode( $payload );
@@ -201,7 +212,7 @@ final class PendingOperationApprovalStore {
 		$requests = array();
 		foreach ( $rows as $row ) {
 			$request = $this->decode_row( $row );
-			if ( null !== $request && $this->target_is_current( $request ) && current_user_can( $request['capability'], ...$request['capability_args'] ) ) {
+			if ( null !== $request && $this->target_is_current( $request ) && ( $this->authority )( $request ) && current_user_can( $request['capability'], ...$request['capability_args'] ) ) {
 				$requests[] = $request;
 			}
 		}
@@ -234,7 +245,7 @@ final class PendingOperationApprovalStore {
 			ARRAY_A
 		);
 		$request = is_array( $row ) ? $this->decode_row( $row ) : null;
-		return null !== $request && $this->target_is_current( $request ) && current_user_can( $request['capability'], ...$request['capability_args'] ) ? $request : null;
+		return null !== $request && $this->target_is_current( $request ) && ( $this->authority )( $request ) && current_user_can( $request['capability'], ...$request['capability_args'] ) ? $request : null;
 	}
 
 	/**
@@ -271,7 +282,7 @@ final class PendingOperationApprovalStore {
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above; table name comes from the fixed plugin prefix and suffix.
 		$consumed = 1 === (int) $wpdb->query( $sql );
 		// A drift discovered after the one-use CAS burns the approval and fails closed.
-		return $consumed && $this->target_is_current( $request );
+		return $consumed && $this->target_is_current( $request ) && ( $this->authority )( $request );
 	}
 
 	/**
@@ -396,7 +407,7 @@ final class PendingOperationApprovalStore {
 	 */
 	public function consume_approved_operation( string $tool_name, array $arguments, string $client_id, string $session_id, string $capability, array $capability_args, string $policy_fingerprint = '' ): bool {
 		$request = $this->exact_operation_request( $tool_name, $arguments, $client_id, $session_id, $capability, $capability_args, $policy_fingerprint );
-		if ( null === $request || 'approved' !== $request['status'] || ! current_user_can( $capability, ...$capability_args ) ) {
+		if ( null === $request || 'approved' !== $request['status'] || ! ( $this->authority )( $request ) || ! current_user_can( $capability, ...$capability_args ) ) {
 			return false;
 		}
 		global $wpdb;
@@ -666,7 +677,7 @@ final class PendingOperationApprovalStore {
 		$json    = $this->decrypt( $sealed, $this->aad( $blog_id, $user_id, $client, $session, $tool, $hash ) );
 		$payload = is_string( $json ) ? json_decode( $json, true, self::MAX_JSON_DEPTH, JSON_BIGINT_AS_STRING ) : null;
 		// phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Authenticated row fields are compared with each other after decryption, not against fixed literals.
-		if ( ! is_array( $payload ) || 'aculect.pending-approval.v2' !== ( $payload['schema'] ?? null ) || $tool !== ( $payload['tool'] ?? null ) || $client !== ( $payload['client_hash'] ?? null ) || $session !== ( $payload['session_hash'] ?? null ) || $hash !== ( $payload['operation_hash'] ?? null ) || ! $this->valid_fingerprint( (string) ( $payload['policy_fingerprint'] ?? '' ) ) || ! is_array( $payload['review_summary'] ?? null ) || null === $this->normalize_summary( $payload['review_summary'] ) || ! is_string( $payload['capability'] ?? null ) || ! is_array( $payload['capability_args'] ?? null ) ) {
+		if ( ! is_array( $payload ) || 'aculect.pending-approval.v3' !== ( $payload['schema'] ?? null ) || ! is_string( $payload['token_hash'] ?? null ) || 1 !== preg_match( '/^[a-f0-9]{64}$/', $payload['token_hash'] ) || ! is_string( $payload['policy_risk_level'] ?? null ) || ! is_array( $payload['authorization_args'] ?? null ) || $tool !== ( $payload['tool'] ?? null ) || $client !== ( $payload['client_hash'] ?? null ) || $session !== ( $payload['session_hash'] ?? null ) || $hash !== ( $payload['operation_hash'] ?? null ) || ! $this->valid_fingerprint( (string) ( $payload['policy_fingerprint'] ?? '' ) ) || ! is_array( $payload['review_summary'] ?? null ) || null === $this->normalize_summary( $payload['review_summary'] ) || ! is_string( $payload['capability'] ?? null ) || ! is_array( $payload['capability_args'] ?? null ) ) {
 			return null;
 		}
 		if ( ! $this->valid_capability( $payload['capability'], $payload['capability_args'] ) ) {
@@ -685,6 +696,9 @@ final class PendingOperationApprovalStore {
 			'capability_args'       => array_values( $payload['capability_args'] ),
 			'operation_fingerprint' => $hash,
 			'policy_fingerprint'    => (string) $payload['policy_fingerprint'],
+			'token_hash'            => $payload['token_hash'],
+			'policy_risk_level'     => $payload['policy_risk_level'],
+			'authorization_args'    => $payload['authorization_args'],
 			'status'                => (string) ( $row['status'] ?? '' ),
 			'created_at'            => (string) ( $row['created_at'] ?? '' ),
 			'expires_at'            => (string) ( $row['expires_at'] ?? '' ),

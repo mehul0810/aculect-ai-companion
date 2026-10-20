@@ -473,21 +473,6 @@ final class McpAppApprovalHandoff {
 	 * @param array<string,mixed> $args Arguments.
 	 */
 	private function policy_fingerprint( string $tool, array $args ): string {
-		$groups = $this->safety->confirmation_groups();
-		$scopes = $this->registry->required_scopes( $tool );
-		sort( $groups );
-		sort( $scopes );
-		$policy = array(
-			'version'             => 'wordpress-human-approval.v2-exact-preview-values',
-			'tool'                => $tool,
-			'risk_level'          => AbilityExecutionGateway::tool_risk_level( $tool, $args ),
-			'confirmation_groups' => array_values( $groups ),
-			'required_scopes'     => array_values( $scopes ),
-			'enabled_abilities'   => $this->registry->enabled_ids(),
-			'role_policy_enabled' => RoleAbilitiesPolicy::is_editing_enabled(),
-			'role_policies'       => get_option( RoleAbilitiesPolicy::OPTION_ROLE_ABILITIES, array() ),
-			'capability'          => 'edit_post',
-		);
-		return hash( 'sha256', (string) wp_json_encode( $policy ) );
+		return PendingApprovalAuthority::fingerprint( $tool, AbilityExecutionGateway::tool_risk_level( $tool, $args ), $this->registry, $this->safety );
 	}
 }

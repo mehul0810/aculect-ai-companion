@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Tests\Unit\Connectors\MCP;
 
+use Aculect\AICompanion\Connectors\MCP\FirstPartyAbilityModules;
 use Aculect\AICompanion\Connectors\MCP\Modules\NavigationLocationAbilityModules;
 use Aculect\AICompanion\Connectors\MCP\NavigationLocationAbilities;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
@@ -275,6 +276,21 @@ final class NavigationLocationAbilitiesTest extends TestCase {
 		self::assertSame( array( 'content:draft' ), $modules[1]->required_scopes() );
 		self::assertSame( array( 'location', 'menu_id', 'expected_state' ), $modules[1]->input_schema()['required'] );
 		self::assertStringContainsString( 'explicit confirmation', $modules[1]->description() );
+	}
+
+	public function test_location_discovery_describes_the_separate_guarded_assignment_path(): void {
+		$modules = ( new FirstPartyAbilityModules() )->all();
+		$listing = $modules['navigation.list_locations'];
+
+		self::assertTrue( $listing->is_read_only() );
+		self::assertSame( array( 'content:read' ), $listing->required_scopes() );
+		self::assertStringContainsString( 'read-only', $listing->description() );
+		self::assertStringContainsString( 'navigation.read_location_context', $listing->description() );
+		self::assertStringContainsString( 'navigation.assign_location', $listing->description() );
+		self::assertStringContainsString( 'expected_state', $listing->description() );
+		self::assertStringContainsString( 'explicit confirmation', $listing->description() );
+		self::assertStringNotContainsString( 'not implemented', $listing->description() );
+		self::assertArrayHasKey( 'navigation.assign_location', $modules );
 	}
 
 	/** Build a valid assignment from the current full native state. */

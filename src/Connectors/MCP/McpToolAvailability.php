@@ -701,6 +701,7 @@ final class McpToolAvailability {
 	 */
 	private function required_capabilities( string $ability_id ): array {
 		return ExtensionLifecyclePolicy::capabilities( $ability_id ) ?? match ( $ability_id ) {
+			'media.open_upload_handoff' => array( 'upload_files' ),
 			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
 			'navigation.read_item', 'navigation.update_item', 'navigation.read_location_context', 'navigation.assign_location', 'navigation.inspect_menu_deletion', 'navigation.delete_menu' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),

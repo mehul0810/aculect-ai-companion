@@ -91,6 +91,43 @@ Keep resource payloads bounded, JSON encoded, and free of secrets. Resources are
 context surfaces, not write paths; changes to WordPress data must still go
 through tools.
 
+### Experimental MCP Apps site information view
+
+The 0.9.0 pilot can return a read-only Site Information card for `site.get_info`
+to MCP Apps clients. It is disabled by default. A site owner or developer can
+enable this experiment with a site-level filter, for example from a small
+must-use plugin:
+
+```php
+add_filter( 'aculect_ai_companion_mcp_apps_enabled', '__return_true' );
+```
+
+The server advertises `io.modelcontextprotocol/ui` only while that filter is
+enabled. It links the existing `site.get_info` tool to the static
+`ui://aculect/site-info/v1.html` resource only after the client advertises the
+`text/html;profile=mcp-app` MIME type. For older initialize-based clients,
+capability state is remembered for one day by a hashed OAuth access-token ID; the
+2026 stateless protocol evaluates per-request capability metadata directly.
+The view displays only the site name, home URL, WordPress version, active theme,
+locale, and timezone from the existing result. It makes no network requests and
+does not call tools from the UI. Every tool retains its text and structured
+result for clients that do not render MCP Apps.
+
+Local unit-test target: `composer test -- --filter 'McpApps'`. The UI resource
+should also be exercised in an MCP Apps-compatible host before release.
+
+### Media and content reference pickers
+
+The same opt-in negotiation attaches selection-only views to `media.list_items`,
+`media.get_item`, `content.list_items`, `content.get_item`, and
+`content_search.items`. Media cards and content rows filter and paginate the
+loaded response; they do not search the whole site or call tools from the UI.
+Choosing an item shares its ID and type with the assistant only after the host
+accepts that selection. It does not insert, update, publish, or approve a write.
+Any later write requires a fresh object read and the existing safety checks.
+See [reference picker contracts](../../../docs/mcp-apps-reference-pickers.md)
+for image-origin restrictions, fallback behavior, and proof boundaries.
+
 ## Aculect Intelligence
 
 Aculect Intelligence is a categorized context surface and navigation guide, not

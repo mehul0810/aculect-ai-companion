@@ -99,7 +99,7 @@ final class TokenValidator {
 	public static function www_authenticate_header( string $scope = 'content:read', string $error = 'invalid_token' ): string {
 		return sprintf(
 			'Bearer resource_metadata="%s", scope="%s", error="%s", error_description="%s"',
-			self::quote( Helpers::protected_resource_metadata_url() ),
+			self::quote( Helpers::protected_resource_metadata_url( Helpers::mcp_resource() ) ),
 			self::quote( $scope ),
 			self::quote( $error ),
 			self::quote( 'Authorize Aculect AI Companion to continue' )

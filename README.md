@@ -1,6 +1,6 @@
 # Aculect AI Companion
 
-[![CodeQL](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/codeql.yml/badge.svg)](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/codeql.yml)
+[![Security](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/security.yml/badge.svg)](https://github.com/mehul0810/aculect-ai-companion/actions/workflows/security.yml)
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4.svg)
 ![WordPress 6.5+](https://img.shields.io/badge/WordPress-6.5%2B-21759b.svg)
 ![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)
@@ -80,6 +80,10 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
+### MCP Apps
+
+To enable experimental interactive cards and pickers in compatible assistants, open **Settings > AI Companion > Advanced**, turn on **Enable MCP Apps**, and save. MCP Apps are off by default. Reconnect your assistant after enabling them. Clients without Apps support continue receiving text responses. The existing `aculect_ai_companion_mcp_apps_enabled` PHP filter can override this preference; the settings screen reports a differing effective state.
+
 ## Supported Abilities
 
 Admins can enable or disable optional abilities from `AI Companion > Abilities` after the first assistant connection is active. Baseline read/discovery abilities for core MCP guidance remain default-active and are not individually disableable, but WordPress capabilities, OAuth scopes, connection access, and execution-time policy checks still apply.
@@ -142,6 +146,7 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 
 - [Contributing guidelines](CONTRIBUTING.md)
 - [Release-candidate regression checklist](docs/release-candidate-regression-checklist.md)
+- [MCP Skills in 0.9.0](docs/mcp-skills-0.9.md)
 - [Security policy](SECURITY.md)
 
 ## Developer Notes
@@ -166,6 +171,32 @@ Internal-link intelligence is intentionally assistant-first. Use `content_intern
 
 Clients that support MCP resources can use `resources/list` and `resources/read` on the MCP endpoint for compact capability, site, Site Editor, admin menu, content, brand, workflow guide, and approved memory context.
 
+Base `aculect://` resource reads require `content:read` and honor current site-wide and per-user access pauses. Resource outcomes and persisted role-policy changes produce bounded activity events without content or policy payloads. Raw post, excerpt, search, and chunk projections require native read access; password-protected bodies additionally require native edit authority because MCP does not accept post passwords. Creating private content or changing its status to private requires the post type's publishing capability.
+
+Read connection trust requires confirmation before operational tool writes even when the optional tool-group confirmation list is empty. The existing `intelligence.feedback.submit` flow continues to queue admin-reviewed learning suggestions; its proposal semantics are unchanged. Operations without a native dry-run return a non-mutating invocation preview; confirmed execution still validates current permissions and arguments. Trusted Write retains its existing mandatory confirmation exceptions. Negotiated WordPress-human approval remains limited to `content_workflow.update_post`; other writes use the existing exact-call confirmation flow. Pending human decisions recheck the original token/client, expiry, issuer, site, scopes, pauses, current role policy, and native capability. Pending records from before this binding require a fresh preview and expire within ten minutes.
+
+
+The current stateless MCP revision (`2026-07-28`) also advertises the stable
+`io.modelcontextprotocol/skills` extension. Compatible authenticated clients
+can enumerate built-in `wordpress-site-audit`, `content-optimization`, and
+`wordpress-troubleshooting` Agent Skills with `skills/list` / `skills/get`, then
+read their packaged `SKILL.md` through `resources/read`. Their manifests carry
+the exact content SHA-256 and byte size. A skill is listed only when its
+required tools are exposed to that authenticated connection; skills are
+declarative guidance and do not create a separate execution or permission
+path. Earlier protocol revisions are unchanged. The administrator-only Skills
+tab can create, edit, enable, duplicate, delete, import, and export bounded
+site-local Markdown skills and references. Every import, including a
+replacement, lands disabled until the administrator reviews and enables it.
+Edits carry the version and digest
+of the skill that was opened, so a stale admin page cannot silently replace a
+newer edit. Active plugins may declare additional read-only Markdown skills
+through the `aculect_ai_companion_mcp_skill_providers` filter, keyed by exact
+plugin basename; malformed, conflicting, inactive, or unmet-dependency
+declarations are hidden. Neither a custom nor plugin skill can grant a tool.
+A public `.well-known` skills index is not published while its draft format
+and interoperability remain unsettled.
+
 For task-focused memory, call `memory_list` with `task`, an optional `domain`, and `budget_chars` (default 6000). This returns relevant approved site guidance with source/evidence, relevance scores and selection explanations within a bounded JSON context pack. Existing chronological listing and administrator review remain available when `task` is omitted. See [Aculect Memory architecture](docs/aculect-memory-architecture.md#task-recall) for eligibility, budgets and limitations.
 
 WordPress and Aculect capabilities are enabled by default, subject to connection scopes, role permissions and runtime safety checks. The Abilities tab lists public third-party WordPress abilities grouped by provider, with explicit enable/disable controls. Plugins adopting the WordPress Abilities API need no curated integration. The capability directory's paginated `catalog` lists available direct tools and enabled native abilities with their execution routes; Aculect mirrors appear only once. Existing third-party decisions and legacy first-party selections are retained for rollback.
@@ -174,7 +205,7 @@ WordPress and Aculect capabilities are enabled by default, subject to connection
 
 On logged-out, published, non-password-protected pages, Aculect registers one read-only WebMCP tool when the browser exposes `document.modelContext`. `aculect_get_page_context` returns a bounded summary of visible main-page content and, only when requested, up to four same-origin links. URLs exclude query strings and fragments, output is marked read-only and untrusted, and the result is capped at 1,500 characters.
 
-WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Registration is deduplicated, cleaned up on page exit, and restored when returning through the browser's back/forward cache. Registration failures are contained and retryable; navigation links require an explicit boolean opt-in. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter.
+WebMCP complements the authenticated remote MCP endpoint; it does not mirror the backend ability catalog or bypass OAuth, WordPress capabilities, role policy, confirmation, or activity logging. Browsers without WebMCP support receive no tool and keep normal page behavior. Registration is deduplicated across repeated script execution, stopped while hidden or leaving the page, and restored on return. Finite readiness checks handle late API availability; cancelled and stale calls cannot return page context. Hidden, form and editable content is excluded. Sites can disable this experimental progressive enhancement with the `aculect_ai_companion_webmcp_enabled` filter. Agent Readiness distinguishes configuration and script observation from native browser proof. See the [public WebMCP contract and validation commands](docs/webmcp-public.md).
 
 ### Public Interfaces
 
@@ -201,7 +232,7 @@ server session or deliver server-initiated notifications. The endpoint
 supports MCP `2026-07-28`, `2025-11-25`, `2025-06-18`, and `2025-03-26`.
 Requests that omit `MCP-Protocol-Version` use the `2025-03-26` compatibility
 contract. Requests using `2026-07-28` must send matching
-`MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`,
+`MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`, `skills/get`,
 `resources/read`, and `prompts/get`) `Mcp-Name` headers plus the required
 per-request protocol and client-capability metadata. `server/discover`
 advertises the supported versions. The `2026-07-28` contract does not use the
@@ -357,6 +388,18 @@ Unauthenticated OAuth rate limits use the server-provided `REMOTE_ADDR` by
 default. Hosts behind a verified reverse proxy may supply a stable, non-secret
 fingerprint with the `aculect_ai_companion_rate_limit_client_fingerprint`
 filter; the plugin does not trust forwarded headers automatically.
+Authorization requests are limited to 30 per source per 10 minutes before
+creating consent state; excess requests receive HTTP `429` and `Retry-After`.
+Anonymous DCR remains available, but a source may make 20 validated registration
+attempts per 24 hours by default. Requests rejected during controller metadata
+or redirect validation do not consume this budget.
+Further validated attempts receive retryable HTTP `503` with `Retry-After`,
+never a plugin-level `429`. Existing pending and active clients are not evicted.
+These limits are filterable through
+`aculect_ai_companion_rate_limit` and
+`aculect_ai_companion_rate_limit_window` for the `oauth_authorize` and
+`oauth_register` actions. Per-source budgets reduce single-source abuse but
+cannot prevent coordinated traffic from multiple sources.
 
 OAuth discovery advertises `/aculect-ai-companion/oauth/authorize` to avoid
 collisions with plugins that claim the generic `/oauth/authorize` route. The old

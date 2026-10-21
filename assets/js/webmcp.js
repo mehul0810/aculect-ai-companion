@@ -1,10 +1,8 @@
 ( function () {
 	'use strict';
 
-	if (
-		! document.modelContext ||
-		typeof document.modelContext.registerTool !== 'function'
-	) {
+	// The asset can be executed again by a theme or a navigation framework.
+	if ( window.aculectWebMcp?.__publicBridge === true ) {
 		return;
 	}
 
@@ -13,6 +11,32 @@
 	const MAX_NODES = 400;
 	let registration = null;
 	let registrationResult = null;
+	let pageHidden = false;
+	let state = 'unavailable';
+	let attempts = 0;
+	let failures = 0;
+	const readinessTimers = new Set();
+	const isActive = () =>
+		! pageHidden && document.visibilityState !== 'hidden';
+	const hasApi = () => {
+		try {
+			return typeof document.modelContext?.registerTool === 'function';
+		} catch {
+			return false;
+		}
+	};
+	const stopReadiness = () => {
+		for ( const timer of readinessTimers ) {
+			window.clearTimeout( timer );
+		}
+		readinessTimers.clear();
+	};
+	const stopRegistration = () => {
+		registration?.abort();
+		registration = null;
+		registrationResult = null;
+		state = 'hidden';
+	};
 
 	const cleanText = ( value, limit ) =>
 		String( value || '' )
@@ -54,6 +78,9 @@
 				node.tagName
 			) ||
 			node.hidden ||
+			node.isContentEditable === true ||
+			( node.hasAttribute?.( 'contenteditable' ) &&
+				node.getAttribute( 'contenteditable' ) !== 'false' ) ||
 			node.getAttribute( 'aria-hidden' ) === 'true' ||
 			( node.tagName === 'DETAILS' && ! node.open ) ||
 			style.display === 'none' ||
@@ -135,6 +162,7 @@
 
 			const safeUrl = publicUrl( url.href, 120 );
 			if (
+				! [ 'http:', 'https:' ].includes( url.protocol ) ||
 				url.origin !== document.location.origin ||
 				seen.has( safeUrl )
 			) {
@@ -181,6 +209,9 @@
 	};
 
 	const collectPageContext = ( input = {} ) => {
+		if ( ! isActive() ) {
+			throw new Error( 'Page context is unavailable while hidden.' );
+		}
 		input = input && typeof input === 'object' ? input : {};
 		const root =
 			document.querySelector( 'main, article, [role="main"]' ) ||
@@ -215,75 +246,145 @@
 		} );
 	};
 
+	const toolDefinition = ( controller ) => ( {
+		name: 'aculect_get_page_context',
+		title: 'Understand this WordPress page',
+		description:
+			'Returns bounded, visible context from the current public WordPress page, with optional same-origin navigation links.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				includeLinks: {
+					type: 'boolean',
+					description:
+						'Include up to four same-origin links visible in the main page content.',
+				},
+				maxLinks: {
+					type: 'integer',
+					minimum: 0,
+					maximum: MAX_LINKS,
+					description: 'Maximum same-origin links to return.',
+				},
+			},
+			additionalProperties: false,
+		},
+		annotations: {
+			readOnlyHint: true,
+			untrustedContentHint: true,
+			consequentialHint: false,
+		},
+		execute: async ( input, options ) => {
+			const unavailable = () =>
+				controller.signal.aborted ||
+				registration !== controller ||
+				options?.signal?.aborted === true ||
+				! isActive();
+			if ( unavailable() ) {
+				throw new Error( 'Page context is unavailable.' );
+			}
+			const context = collectPageContext( input );
+			if ( unavailable() ) {
+				throw new Error( 'Page context is unavailable.' );
+			}
+			return context;
+		},
+	} );
+
 	const register = () => {
+		if ( ! isActive() ) {
+			state = 'hidden';
+			return Promise.resolve( false );
+		}
+		if ( ! hasApi() ) {
+			state = 'unavailable';
+			return Promise.resolve( false );
+		}
 		if ( registrationResult ) {
 			return registrationResult;
 		}
 		const controller = new AbortController();
 		registration = controller;
+		state = 'registering';
 		// Defer invocation so synchronous browser errors use the same recovery path.
 		registrationResult = Promise.resolve()
 			.then( async () => {
-				if ( controller.signal.aborted ) {
+				if ( controller.signal.aborted || ! isActive() ) {
 					return false;
 				}
+				attempts++;
 				await document.modelContext.registerTool(
+					toolDefinition( controller ),
 					{
-						name: 'aculect_get_page_context',
-						title: 'Understand this WordPress page',
-						description:
-							'Returns bounded, visible context from the current public WordPress page, with optional same-origin navigation links.',
-						inputSchema: {
-							type: 'object',
-							properties: {
-								includeLinks: {
-									type: 'boolean',
-									description:
-										'Include up to four same-origin links visible in the main page content.',
-								},
-								maxLinks: {
-									type: 'integer',
-									minimum: 0,
-									maximum: MAX_LINKS,
-									description:
-										'Maximum same-origin links to return.',
-								},
-							},
-							additionalProperties: false,
-						},
-						annotations: {
-							readOnlyHint: true,
-							untrustedContentHint: true,
-							consequentialHint: false,
-						},
-						execute: async ( input ) => collectPageContext( input ),
-					},
-					{ signal: controller.signal }
+						signal: controller.signal,
+					}
 				);
 
-				return ! controller.signal.aborted;
+				if ( controller.signal.aborted || ! isActive() ) {
+					return false;
+				}
+				state = 'registered';
+				stopReadiness();
+				return true;
 			} )
 			.catch( () => {
+				failures++;
 				controller.abort();
 				if ( registration === controller ) {
 					registration = null;
 					registrationResult = null;
+					state = isActive() ? 'failed' : 'hidden';
 				}
 				return false;
 			} );
 		return registrationResult;
 	};
 
-	window.addEventListener( 'pagehide', () => {
-		registration?.abort();
-		registration = null;
-		registrationResult = null;
-	} );
-	window.addEventListener( 'pageshow', ( event ) => {
-		if ( event.persisted ) {
-			register();
+	// Two finite retries per lifecycle checkpoint accommodate a late browser API.
+	const scheduleReadiness = () => {
+		stopReadiness();
+		if ( ! isActive() ) {
+			return;
 		}
+		for ( const delay of [ 100, 500 ] ) {
+			const timer = window.setTimeout( () => {
+				readinessTimers.delete( timer );
+				if ( isActive() && ! registrationResult ) {
+					register();
+				}
+			}, delay );
+			readinessTimers.add( timer );
+		}
+	};
+
+	window.addEventListener( 'pagehide', () => {
+		pageHidden = true;
+		stopReadiness();
+		stopRegistration();
 	} );
-	window.aculectWebMcp = { collectPageContext, register };
-	register().catch( () => false );
+	window.addEventListener( 'pageshow', () => {
+		pageHidden = false;
+		register();
+		scheduleReadiness();
+	} );
+	window.addEventListener( 'visibilitychange', () => {
+		if ( ! isActive() ) {
+			stopReadiness();
+			stopRegistration();
+			return;
+		}
+		register();
+		scheduleReadiness();
+	} );
+	document.addEventListener( 'DOMContentLoaded', () => {
+		register();
+		scheduleReadiness();
+	} );
+	window.aculectWebMcp = {
+		__publicBridge: true,
+		collectPageContext,
+		register,
+		getStatus: () => ( { state, attempts, failures } ),
+	};
+	register();
+	scheduleReadiness();
 } )();

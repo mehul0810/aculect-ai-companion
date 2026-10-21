@@ -7,10 +7,11 @@ namespace Aculect\AICompanion\Connectors\OAuth;
 use Aculect\AICompanion\Connectors\OAuth\Entities\ClientEntity;
 
 /**
- * Resolve the client identity that is safe to present on OAuth consent.
+ * Resolve the callback destination and client details shown on OAuth consent.
  *
  * DCR client names and stored provider attribution are self-reported metadata.
- * Only the selected, validated callback can promote a client to a known label.
+ * A recognized callback identifies a return destination, not who registered
+ * or initiated the client.
  */
 final class ConsentClientIdentity {
 
@@ -22,7 +23,7 @@ final class ConsentClientIdentity {
 	 *
 	 * @var array<string, array{host: string, path: string, label: string}>
 	 */
-	private const TRUSTED_CALLBACKS = array(
+	private const RECOGNIZED_CALLBACKS = array(
 		'chatgpt' => array(
 			'host'  => 'chatgpt.com',
 			'path'  => '/connector_platform_oauth_redirect',
@@ -45,7 +46,7 @@ final class ConsentClientIdentity {
 		private readonly string $declared_name,
 		private readonly string $client_identifier,
 		private readonly string $redirect_uri,
-		private readonly bool $verified
+		private readonly bool $recognized_callback
 	) {
 	}
 
@@ -57,20 +58,20 @@ final class ConsentClientIdentity {
 	 * @param string       $redirect_uri      Selected, validated callback.
 	 */
 	public static function from_authorization( ClientEntity $client, string $client_identifier, string $redirect_uri ): self {
-		$trusted = self::trusted_callback( $redirect_uri );
-		$name    = trim( (string) $client->getName() );
+		$recognized = self::recognized_callback( $redirect_uri );
+		$name       = trim( (string) $client->getName() );
 
 		return new self(
-			null !== $trusted ? $trusted['label'] : __( 'Unverified OAuth client', 'aculect-ai-companion' ),
+			null !== $recognized ? $recognized['label'] : __( 'Unverified OAuth client', 'aculect-ai-companion' ),
 			'' !== $name ? $name : __( 'Not provided', 'aculect-ai-companion' ),
 			$client_identifier,
 			$redirect_uri,
-			null !== $trusted
+			null !== $recognized
 		);
 	}
 
 	/**
-	 * Return the identity label safe for prominent consent copy.
+	 * Return a recognized return-destination label or generic fallback.
 	 */
 	public function label(): string {
 		return $this->label;
@@ -98,19 +99,19 @@ final class ConsentClientIdentity {
 	}
 
 	/**
-	 * Return whether the callback proves a known provider destination.
+	 * Return whether the callback matches a documented provider destination.
 	 */
-	public function is_verified(): bool {
-		return $this->verified;
+	public function has_recognized_callback(): bool {
+		return $this->recognized_callback;
 	}
 
 	/**
-	 * Resolve an exact provider-owned callback without trusting DCR metadata.
+	 * Recognize an exact provider-owned callback without trusting DCR metadata.
 	 *
 	 * @param string $redirect_uri Selected callback URI.
 	 * @return array{host: string, path: string, label: string}|null
 	 */
-	private static function trusted_callback( string $redirect_uri ): ?array {
+	private static function recognized_callback( string $redirect_uri ): ?array {
 		$parts = wp_parse_url( $redirect_uri );
 		if ( ! is_array( $parts ) ) {
 			return null;
@@ -131,7 +132,7 @@ final class ConsentClientIdentity {
 			return null;
 		}
 
-		foreach ( self::TRUSTED_CALLBACKS as $callback ) {
+		foreach ( self::RECOGNIZED_CALLBACKS as $callback ) {
 			if ( hash_equals( $callback['host'], $host ) && hash_equals( $callback['path'], $path ) ) {
 				return $callback;
 			}

@@ -490,6 +490,40 @@ final class AbilityExecutionGatewayTest extends TestCase {
 		}
 	}
 
+	public function test_read_connection_requires_confirmation_with_no_content_confirmation_group(): void {
+		$safety  = new ToolSafety( new InMemoryExecutionClaimStore() );
+		$safety->save_confirmation_groups( array() );
+		$gateway = new AbilityExecutionGateway( null, null, null, $safety );
+		$auth    = array_merge( $this->trusted_write_auth( 1 ), array( 'access_level' => 'read', 'write_permission_enabled' => false ) );
+		$args    = array( 'id' => 123, 'title' => 'Confirmed read connection', 'idempotency_key' => 'read-confirmation' );
+		$preview = $gateway->execute( new AbilityExecutionRequest( array( 'name' => 'content_update_item', 'arguments' => $args ), $auth ) );
+		self::assertSame( 'confirmation_required', $preview->data['result']['status'] ?? '' );
+		self::assertSame( 'Original title', get_post( 123 )?->post_title );
+		$args['confirmation_token'] = $preview->data['result']['confirmation_token'];
+		$written = $gateway->execute( new AbilityExecutionRequest( array( 'name' => 'content_update_item', 'arguments' => $args ), $auth ) );
+		self::assertArrayNotHasKey( 'error', $written->data['result'] );
+		self::assertSame( 'Confirmed read connection', get_post( 123 )?->post_title );
+		$replay = $gateway->execute( new AbilityExecutionRequest( array( 'name' => 'content_update_item', 'arguments' => $args ), $auth ) );
+		self::assertTrue( $replay->data['result']['replayed'] );
+		self::assertSame( $written->data['result'], array_diff_key( $replay->data['result'], array( 'replayed' => true ) ) );
+	}
+
+	public function test_read_confirmation_preview_cannot_create_workflow_state(): void {
+		$gateway = new AbilityExecutionGateway( null, null, null, new ToolSafety( new InMemoryExecutionClaimStore() ) );
+		$auth = array_merge( $this->trusted_write_auth( 1 ), array( 'access_level' => 'read', 'write_permission_enabled' => false ) );
+		$args = array( 'workflow' => 'synthetic', 'idempotency_key' => 'metadata-write' );
+		$result = $gateway->execute( new AbilityExecutionRequest( array( 'name' => 'workflow_session_start', 'arguments' => $args ), $auth ) );
+		self::assertSame( 'confirmation_required', $result->data['result']['status'] ?? '' );
+		$sessions = static fn(): array => array_filter( $GLOBALS['aculect_ai_companion_test_transients'], static fn( $key ): bool => str_starts_with( (string) $key, 'aculect_ai_companion_workflow_session_' ), ARRAY_FILTER_USE_KEY );
+		self::assertSame( array(), $sessions() );
+		$args['confirmation_token'] = $result->data['result']['confirmation_token'];
+		$confirmed = $gateway->execute( new AbilityExecutionRequest( array( 'name' => 'workflow_session_start', 'arguments' => $args ), $auth ) );
+		self::assertSame( 'success', $confirmed->data['result']['status'] ?? '' );
+		self::assertCount( 1, $sessions() );
+		$gateway->execute( new AbilityExecutionRequest( array( 'name' => 'workflow_session_start', 'arguments' => $args ), $auth ) );
+		self::assertCount( 1, $sessions() );
+	}
+
 	public function test_standard_write_dry_run_confirmation_and_idempotent_replay_are_gateway_owned(): void {
 		$safety = new ToolSafety( new InMemoryExecutionClaimStore() );
 		$safety->save_confirmation_groups( array( 'Content' ) );

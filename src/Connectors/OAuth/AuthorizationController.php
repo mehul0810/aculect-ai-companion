@@ -19,6 +19,7 @@ use Aculect\AICompanion\Connectors\OAuth\Server\AuthorizationServerFactory;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogSanitizer;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Server;
 
@@ -29,7 +30,6 @@ final class AuthorizationController {
 
 	private const NONCE_ACTION          = 'aculect_ai_companion_oauth_authorize_identity_v2';
 	private const CONSENT_REQUEST_PARAM = 'request_token';
-	private const CONSENT_REQUEST_TTL   = 600;
 	private const OAUTH_PARAMS          = array(
 		'response_type',
 		'client_id',
@@ -115,10 +115,14 @@ final class AuthorizationController {
 			$request
 		);
 
-		$context     = $this->authorization_context( $params, false, $request );
-		$consent_url = $this->admin_consent_url(
-			$this->store_consent_request( $context['params'] )
-		);
+		$context       = $this->authorization_context( $params, false, $request );
+		$request_token = $this->store_consent_request( $context['params'] );
+		if ( $request_token instanceof WP_Error ) {
+			$retry_after = absint( $request_token->get_error_data()['retry_after'] ?? ConsentRequestStore::TTL );
+			header( 'Retry-After: ' . max( 1, $retry_after ) );
+			$this->render_error( 'Try again later', 'Too many connection requests. Please try again shortly.', 429 );
+		}
+		$consent_url = $this->admin_consent_url( $request_token );
 		if ( ! AuthorizationBrowserSession::is_logged_in( null !== $request ) ) {
 			( new Logger() )->info(
 				'authorize.login_redirect',
@@ -371,8 +375,7 @@ final class AuthorizationController {
 			(string) ( $params['client_id'] ?? '' ),
 			(string) ( $params['redirect_uri'] ?? '' )
 		);
-		$assistant          = $identity->label();
-		$capability_subject = $identity->is_verified() ? $assistant : __( 'this client', 'aculect-ai-companion' );
+		$return_destination = $identity->has_recognized_callback() ? $identity->label() : __( 'No documented provider match', 'aculect-ai-companion' );
 
 		nocache_headers();
 		?>
@@ -381,22 +384,14 @@ final class AuthorizationController {
 		<div class="aculect-ai-companion-oauth-brand">Aculect AI Companion</div>
 			<div class="aculect-ai-companion-oauth-eyebrow"><?php echo esc_html__( 'Connection request', 'aculect-ai-companion' ); ?></div>
 			<h1 id="aculect-ai-companion-oauth-title" class="aculect-ai-companion-oauth-title"><?php echo esc_html__( 'Review connection request', 'aculect-ai-companion' ); ?></h1>
-			<p class="aculect-ai-companion-oauth-copy">
-				<?php if ( $identity->is_verified() ) : ?>
-					<?php echo esc_html( $assistant ); ?> <?php echo esc_html__( 'is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
-				<?php else : ?>
-					<?php echo esc_html__( 'An unverified OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?>
-				<?php endif; ?>
-			</p>
+			<p class="aculect-ai-companion-oauth-copy"><?php echo esc_html__( 'An OAuth client is requesting permission to connect to your WordPress site through Aculect AI Companion.', 'aculect-ai-companion' ); ?></p>
 			<div class="aculect-ai-companion-oauth-panels">
 				<section class="aculect-ai-companion-oauth-panel">
 					<h2><?php echo esc_html__( 'Connection details', 'aculect-ai-companion' ); ?></h2>
-					<?php if ( ! $identity->is_verified() ) : ?>
-						<p class="aculect-ai-companion-oauth-warning"><strong><?php echo esc_html__( 'Unverified client identity', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'The client name is self-reported. Confirm the return URL and client ID before approving.', 'aculect-ai-companion' ); ?></span></p>
-					<?php endif; ?>
+					<p class="aculect-ai-companion-oauth-warning"><strong><?php echo esc_html__( 'Client identity is not verified', 'aculect-ai-companion' ); ?></strong><span><?php echo esc_html__( 'The client name is self-reported. A recognized provider return URL does not verify who registered this client. Confirm the return URL and client ID before approving.', 'aculect-ai-companion' ); ?></span></p>
 					<dl class="aculect-ai-companion-oauth-details">
-						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client identity', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $assistant ); ?></dd></div>
-						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Identity check', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->is_verified() ? __( 'Verified provider callback', 'aculect-ai-companion' ) : __( 'Not verified by Aculect', 'aculect-ai-companion' ) ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Recognized return destination', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $return_destination ); ?></dd></div>
+						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Return URL check', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->has_recognized_callback() ? __( 'Matches a documented provider callback', 'aculect-ai-companion' ) : __( 'No documented provider callback match', 'aculect-ai-companion' ) ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client-provided name', 'aculect-ai-companion' ); ?></dt><dd><?php echo esc_html( $identity->declared_name() ); ?></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Return URL', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->redirect_uri() ); ?></code></dd></div>
 						<div class="aculect-ai-companion-oauth-detail"><dt><?php echo esc_html__( 'Client ID', 'aculect-ai-companion' ); ?></dt><dd><code><?php echo esc_html( $identity->client_identifier() ); ?></code></dd></div>
@@ -408,8 +403,8 @@ final class AuthorizationController {
 					</dl>
 				</section>
 				<section class="aculect-ai-companion-oauth-panel">
-					<?php /* translators: %s: AI assistant name, for example ChatGPT. */ ?>
-					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), $capability_subject ) ); ?></h2>
+					<?php /* translators: %s: OAuth client reference, for example "this client". */ ?>
+					<h2><?php echo esc_html( sprintf( __( 'What %s will be able to do', 'aculect-ai-companion' ), __( 'this client', 'aculect-ai-companion' ) ) ); ?></h2>
 					<p><?php echo esc_html__( 'After connection, the assistant can use approved Aculect abilities based on the WordPress user and site settings.', 'aculect-ai-companion' ); ?></p>
 					<p class="aculect-ai-companion-oauth-scope"><?php echo esc_html( $actions ); ?></p>
 					<ul class="aculect-ai-companion-oauth-capabilities">
@@ -902,20 +897,8 @@ final class AuthorizationController {
 	 *
 	 * @param array<string, string> $params Authorization parameters.
 	 */
-	private function store_consent_request( array $params ): string {
-		$token      = bin2hex( random_bytes( 16 ) );
-		$expires_at = time() + self::CONSENT_REQUEST_TTL;
-		set_transient(
-			$this->consent_request_transient_key( $token ),
-			array(
-				'params'     => $this->persisted_params( $params ),
-				'user_id'    => get_current_user_id(),
-				'expires_at' => $expires_at,
-			),
-			self::CONSENT_REQUEST_TTL
-		);
-
-		return $token;
+	private function store_consent_request( array $params ): string|WP_Error {
+		return ( new ConsentRequestStore() )->store( $this->persisted_params( $params ) );
 	}
 
 	/**
@@ -1100,7 +1083,7 @@ final class AuthorizationController {
 	 * @param string $request_token Consent request token.
 	 */
 	private function consent_request_transient_key( string $request_token ): string {
-		return 'aculect_ai_companion_oauth_consent_' . $request_token;
+		return ConsentRequestStore::key( $request_token );
 	}
 
 	/**

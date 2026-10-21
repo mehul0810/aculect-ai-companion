@@ -66,7 +66,7 @@ final class McpResultPolicy {
 			);
 		}
 
-		if ( in_array( $method, array( 'server/discover', 'tools/list', 'resources/list', 'resources/read', 'prompts/list' ), true ) ) {
+		if ( in_array( $method, array( 'server/discover', 'tools/list', 'resources/list', 'resources/read', 'prompts/list', 'skills/list', 'skills/get' ), true ) ) {
 			return array(
 				'ttlMs'      => 0,
 				'cacheScope' => 'private',

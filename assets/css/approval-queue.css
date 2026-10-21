@@ -1,0 +1,9 @@
+.aculect-ai-companion-tab-panel .card {
+	max-width: none;
+	width: 100%;
+}
+
+.aculect-ai-companion-tab-panel .card pre {
+	white-space: pre-wrap;
+	word-break: break-word;
+}

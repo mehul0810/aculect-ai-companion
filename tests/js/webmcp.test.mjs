@@ -33,6 +33,8 @@ const textElement = ( tagName, text, extra = {} ) =>
 
 const boot = async ( { supported = true } = {} ) => {
 	const registrations = [];
+	const timers = new Map();
+	let nextTimer = 1;
 	const root = createElement( {
 		innerText: 'Public body content '.repeat( 100 ),
 		querySelectorAll: ( selector ) =>
@@ -50,6 +52,7 @@ const boot = async ( { supported = true } = {} ) => {
 				  ],
 	} );
 	const document = {
+		visibilityState: 'visible',
 		body: root,
 		documentElement: { lang: 'en-US' },
 		location: {
@@ -63,6 +66,10 @@ const boot = async ( { supported = true } = {} ) => {
 						getAttribute: () => 'A useful public page.',
 				  } )
 				: root,
+	};
+	const documentListeners = {};
+	document.addEventListener = ( name, callback ) => {
+		documentListeners[ name ] = callback;
 	};
 	append( root, [
 		textElement( 'H1', 'Overview' ),
@@ -86,6 +93,12 @@ const boot = async ( { supported = true } = {} ) => {
 		addEventListener: ( name, callback ) => {
 			listeners[ name ] = callback;
 		},
+		setTimeout: ( callback ) => {
+			const id = nextTimer++;
+			timers.set( id, callback );
+			return id;
+		},
+		clearTimeout: ( id ) => timers.delete( id ),
 	};
 	const context = vm.createContext( {
 		AbortController,
@@ -96,7 +109,24 @@ const boot = async ( { supported = true } = {} ) => {
 	vm.runInContext( source, context );
 	await new Promise( ( resolve ) => setImmediate( resolve ) );
 
-	return { registrations, window, document, root, context, listeners };
+	return {
+		registrations,
+		window,
+		document,
+		root,
+		context,
+		listeners,
+		documentListeners,
+		timers,
+		fireTimers: async () => {
+			for ( const [ id, callback ] of [ ...timers ] ) {
+				if ( timers.delete( id ) ) {
+					callback();
+				}
+			}
+			await new Promise( ( resolve ) => setImmediate( resolve ) );
+		},
+	};
 };
 
 test( 'registers one bounded read-only page-context tool when WebMCP is supported', async () => {
@@ -125,7 +155,14 @@ test( 'degrades without side effects when WebMCP is unavailable', async () => {
 	const { registrations, window } = await boot( { supported: false } );
 
 	assert.equal( registrations.length, 0 );
-	assert.equal( window.aculectWebMcp, undefined );
+	assert.deepEqual(
+		{ ...window.aculectWebMcp.getStatus() },
+		{
+			state: 'unavailable',
+			attempts: 0,
+			failures: 0,
+		}
+	);
 } );
 
 test( 'restores registration after each back-forward cache return without duplicates', async () => {
@@ -138,6 +175,7 @@ test( 'restores registration after each back-forward cache return without duplic
 	for ( let index = 0; index < 2; index++ ) {
 		listeners.pagehide();
 		assert.equal( registrations[ index ].options.signal.aborted, true );
+		assert.equal( await window.aculectWebMcp.register(), false );
 		listeners.pageshow( { persisted: true } );
 		assert.equal( await window.aculectWebMcp.register(), true );
 		assert.equal( registrations.length, index + 2 );
@@ -158,10 +196,163 @@ test( 'registration failures are contained and can be retried', async () => {
 			}
 			throw new Error( 'Unavailable' );
 		};
+		listeners.pageshow( { persisted: true } );
 		assert.equal( await window.aculectWebMcp.register(), false );
 		document.modelContext.registerTool = () => {};
 		assert.equal( await window.aculectWebMcp.register(), true );
 	}
+	assert.equal( window.aculectWebMcp.getStatus().failures, 2 );
+	assert.equal( window.aculectWebMcp.getStatus().state, 'registered' );
+} );
+
+test( 'a second asset execution preserves the single registration and listener set', async () => {
+	const { context, registrations, window } = await boot();
+	const bridge = window.aculectWebMcp;
+	vm.runInContext( source, context );
+	await new Promise( ( resolve ) => setImmediate( resolve ) );
+	assert.equal( window.aculectWebMcp, bridge );
+	assert.equal( registrations.length, 1 );
+} );
+
+test( 'late API readiness is retried finitely without exposing page content in status', async () => {
+	const { document, fireTimers, registrations, timers, window } = await boot(
+		{ supported: false }
+	);
+	document.modelContext = {
+		registerTool: ( definition, options ) =>
+			registrations.push( { definition, options } ),
+	};
+	await fireTimers();
+	assert.equal( registrations.length, 1 );
+	assert.equal( timers.size, 0 );
+	assert.deepEqual(
+		{ ...window.aculectWebMcp.getStatus() },
+		{
+			state: 'registered',
+			attempts: 1,
+			failures: 0,
+		}
+	);
+	assert.equal(
+		JSON.stringify( window.aculectWebMcp.getStatus() ).includes( 'Public' ),
+		false
+	);
+} );
+
+test( 'finite readiness retries stop without an API and resume at a checkpoint', async () => {
+	const { document, documentListeners, fireTimers, registrations, timers } =
+		await boot( { supported: false } );
+	await fireTimers();
+	assert.equal( timers.size, 0 );
+	assert.equal( registrations.length, 0 );
+	document.modelContext = {
+		registerTool: ( definition, options ) =>
+			registrations.push( { definition, options } ),
+	};
+	documentListeners.DOMContentLoaded();
+	await new Promise( ( resolve ) => setImmediate( resolve ) );
+	assert.equal( registrations.length, 1 );
+} );
+
+test( 'an inaccessible browser API getter does not break the page bridge', async () => {
+	const { document, listeners, window } = await boot();
+	listeners.pagehide();
+	Object.defineProperty( document, 'modelContext', {
+		configurable: true,
+		get: () => {
+			throw new Error( 'API unavailable' );
+		},
+	} );
+	assert.doesNotThrow( () => listeners.pageshow( { persisted: true } ) );
+	assert.equal( await window.aculectWebMcp.register(), false );
+	assert.equal( window.aculectWebMcp.getStatus().state, 'unavailable' );
+} );
+
+test( 'hidden and unloaded pages cannot provide context through old or current tools', async () => {
+	const { document, listeners, registrations, window } = await boot();
+	const oldTool = registrations[ 0 ].definition;
+	document.visibilityState = 'hidden';
+	listeners.visibilitychange();
+	assert.equal( registrations[ 0 ].options.signal.aborted, true );
+	await assert.rejects( oldTool.execute( {} ), /unavailable/ );
+	assert.throws( () => window.aculectWebMcp.collectPageContext(), /hidden/ );
+	assert.equal( await window.aculectWebMcp.register(), false );
+	document.visibilityState = 'visible';
+	listeners.visibilitychange();
+	assert.equal( await window.aculectWebMcp.register(), true );
+	assert.equal( registrations.length, 2 );
+	await assert.rejects( oldTool.execute( {} ), /unavailable/ );
+	listeners.pagehide();
+	await assert.rejects(
+		registrations[ 1 ].definition.execute( {} ),
+		/unavailable/
+	);
+} );
+
+test( 'a stale pending registration cannot restore context after pagehide', async () => {
+	let finish;
+	const { document, listeners, registrations, window } = await boot();
+	listeners.pagehide();
+	document.modelContext.registerTool = ( definition, options ) => {
+		registrations.push( { definition, options } );
+		return new Promise( ( resolve ) => {
+			finish = resolve;
+		} );
+	};
+	listeners.pageshow( { persisted: true } );
+	const pending = window.aculectWebMcp.register();
+	await new Promise( ( resolve ) => setImmediate( resolve ) );
+	const staleTool = registrations[ 1 ].definition;
+	listeners.pagehide();
+	finish();
+	assert.equal( await pending, false );
+	await assert.rejects( staleTool.execute( {} ), /unavailable/ );
+	assert.equal( window.aculectWebMcp.getStatus().state, 'hidden' );
+} );
+
+test( 'an old pending completion cannot replace a newer registration', async () => {
+	let finishOld;
+	const { document, listeners, registrations, window } = await boot();
+	listeners.pagehide();
+	document.modelContext.registerTool = ( definition, options ) => {
+		registrations.push( { definition, options } );
+		return new Promise( ( resolve ) => {
+			finishOld = resolve;
+		} );
+	};
+	listeners.pageshow( { persisted: true } );
+	const oldPending = window.aculectWebMcp.register();
+	await new Promise( ( resolve ) => setImmediate( resolve ) );
+	listeners.pagehide();
+	document.modelContext.registerTool = ( definition, options ) => {
+		registrations.push( { definition, options } );
+	};
+	listeners.pageshow( { persisted: true } );
+	assert.equal( await window.aculectWebMcp.register(), true );
+	finishOld();
+	assert.equal( await oldPending, false );
+	assert.equal( window.aculectWebMcp.getStatus().state, 'registered' );
+	await assert.rejects( registrations[ 1 ].definition.execute( {} ) );
+	assert.equal(
+		( await registrations[ 2 ].definition.execute( {} ) ).type,
+		'aculect_page_context'
+	);
+} );
+
+test( 'an aborted invocation never reads page content', async () => {
+	const { document, registrations } = await boot();
+	const controller = new AbortController();
+	controller.abort();
+	document.querySelector = () => {
+		throw new Error( 'DOM read attempted' );
+	};
+	await assert.rejects(
+		registrations[ 0 ].definition.execute(
+			{},
+			{ signal: controller.signal }
+		),
+		/unavailable/
+	);
 } );
 
 test( 'links require an explicit boolean opt-in and tolerate malformed input', async () => {
@@ -219,6 +410,32 @@ test( 'traversal is bounded and excludes hidden/form/script content', async () =
 	const result = window.aculectWebMcp.collectPageContext( {} );
 	assert.equal( result.content, '' );
 	assert.equal( result.headings.length, 0 );
+} );
+
+test( 'editable subtrees never expose user-entered text or links', async () => {
+	const { root, window } = await boot();
+	const editable = append(
+		createElement( {
+			isContentEditable: true,
+			getAttribute: ( name ) =>
+				name === 'contenteditable' ? 'true' : '',
+			hasAttribute: ( name ) => name === 'contenteditable',
+		} ),
+		[
+			textElement( 'H2', 'private draft heading' ),
+			textElement( 'P', 'private draft content' ),
+			textElement( 'A', 'private draft link', {
+				href: 'https://example.com/private',
+			} ),
+		]
+	);
+	append( root, [ textElement( 'P', 'public copy' ), editable ] );
+	const result = window.aculectWebMcp.collectPageContext( {
+		includeLinks: true,
+	} );
+	assert.match( result.content, /public copy/ );
+	assert.equal( JSON.stringify( result ).includes( 'private draft' ), false );
+	assert.equal( result.links.length, 0 );
 } );
 
 test( 'selected main content remains private under a hidden ancestor', async () => {

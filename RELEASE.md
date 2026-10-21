@@ -13,12 +13,13 @@
 - Before WordPress.org deployment and in the post-release check, fetch `origin/main`, prove `git merge-base --is-ancestor <release-tag-commit> origin/main`, and confirm the tag (minus an optional `v` prefix), tagged plugin header, and main plugin header use the same version. If it fails, keep the train open as `mainline sync missing` and reconcile the sync before the next prerelease.
 
 ## Current Pre-1.0 Train
-- `0.8.2` remains the latest published production release; its release tag points to commit `1abc6adb2e233e016528d97919f81348322aea48`.
-- `0.8.3` is the security maintenance candidate, with `2026-10-12` as its planned publication date. A changelog date records the plan, not a completed release.
-- The candidate prevents self-reported Dynamic Client Registration names and stored provider attribution from becoming trusted OAuth consent identity. Consent derives any verified provider label from the selected, validated, exact provider-controlled callback and shows the callback, client ID, and declared name to the approving user.
-- Preserve the reviewed 0.8.2 OAuth issuer, public DCR, PKCE, token, scope, redirect, and client-storage contracts. Generic and native clients remain functional and are presented as unverified when their callback cannot prove a provider identity.
-- Keep Cloudflare Bot Fight Mode compatibility, MCP Apps embedded UI, and `ui://` product scope in later milestones; do not claim them in 0.8.3.
-- Candidate package metadata may target `0.8.3`; production remains `0.8.2` until the approved release workflow successfully publishes the exact validated commit. Never imply that candidate metadata means production was released.
+- `0.8.3` is the latest published production release. Its tag points to `eb3c770d99f7f5db78c8e1fd981a57e4f9099c26` on `main`, and the production workflow reported a successful WordPress.org deployment on 2026-10-12.
+- `0.9.0` is the active release candidate on `release/0.9.0`. Its changelog date is a candidate-preparation date, not evidence of beta or production publication.
+- The intended first prerelease tag is `0.9.0-beta.1`. As with the existing `0.8.0-beta.13` convention, plugin header, runtime constant, package metadata and readme target the base train (`0.9.0`). Draft tester notes are in `docs/0.9.0-beta.1-release-notes.md`; the tag, publication date and release remain unapproved.
+- The candidate adds opt-in MCP Apps presentation, authenticated MCP Skills, site-local custom Skill administration, and read-only Agent Readiness diagnostics. The owner chose a private, schema-neutral Agent Skills discovery foundation for 0.9.0 and deferred the public index and experience to 1.0.0. Do not publish an experimental endpoint merely for a scanner mark.
+- Preserve the reviewed 0.8.2 final OAuth redirect boundary and 0.8.3 consent identity disclosures alongside the issuer, DCR, authorization, PKCE, token, refresh, revocation, scope, and client-storage contracts. Generic and native clients remain functional. Consent treats every registering client identity as unverified; a documented provider callback identifies only the return destination. Any failing OAuth contract blocks release, and a flow change needs separate explicit owner approval.
+- Cloudflare Bot Fight Mode and edge-metadata behavior must be tested by the owner with a beta on a suitable hostname. Local fixtures and a loopback WordPress site cannot claim Cloudflare compatibility. Record these as beta validation gaps; do not mark them passed or silently remove them from the 0.9.0 milestone.
+- Candidate package metadata may target `0.9.0`; production remains `0.8.3` until the owner explicitly approves the exact production merge, tag, and publication workflow. Never imply that a planned date or candidate metadata means production was released.
 
 ## Deferred Development Data
 - The deferred 0.8.0 custom Content Workflows builder/runner has no admin, MCP, native-ability, or installation surface. Earlier fixed content planning/draft tools remain supported.
@@ -30,6 +31,7 @@
 - Routine PR checks are consolidated and risk-selected; full validation remains required for release integration and publication. The full gate must build one canonical artifact and pass that exact artifact to packaged proofs and publication. No tag/release/deployment is performed by local check commands or manual CI validation.
 - The 0.8.0 rejected-token cache-header exception is historical and does not apply to 0.8.1 or later. Every successful and rejected token response must include `Cache-Control: no-store` and `Pragma: no-cache`; every functional OAuth assertion remains mandatory.
 - The exact canonical ZIP must pass the packaged OAuth contract before attaching a beta asset or deploying a production package. Failed, cancelled, missing or skipped OAuth proof is not a pass. No automatic retries of the OAuth contract are permitted.
+- Before Beta 1 recommendation, complete the applicable current-package, authorization, text-fallback and package/CI proof. The owner-selected Beta 1 validation boundary below defers real-site and ChatGPT web/mobile checks until after the first beta is available; local simulated hosts do not establish host compatibility. Cloudflare staging evidence remains a separate owner-run beta validation item as described above.
 - OAuth failures require explicit owner authorization for any flow or test-contract change. Diagnose and preserve redacted stage evidence first; unrelated work may continue. Infrastructure fixes do not authorize OAuth behavior changes.
 - Security/privacy
 - Performance
@@ -43,6 +45,12 @@
 - UI/browser proof when relevant
 
 Release briefs must summarize each gate as passed, blocked, or not applicable with a reason.
+
+## Beta 1 Owner Validation Boundary, 2026-10-20
+- The owner will test the candidate on their own site after `0.9.0-beta.1` is created and directed the agent not to use a site or ChatGPT connection for those checks. Real-site, ChatGPT web/mobile and applicable other-host validation remain unverified owner-run beta testing, not prerequisites to this first beta's technical recommendation.
+- This exception changes validation timing only for Beta 1. It does not mark #374 complete, establish host compatibility, waive a known defect, weaken OAuth/security checks, or carry forward to stable release or a later beta without a fresh decision.
+- Local rendered/browser proof remains excluded by the owner's earlier direction, not passed. VoiceOver and narration are also excluded, not passed. Available non-browser authorization, persistence, import, protocol, package and performance checks remain required.
+- Preparation and this accepted testing deferral do not authorize creating a tag/release, merging `main`, publishing or deploying. Exact owner approval remains required for those actions. MCP Apps remain disabled by default.
 
 ## Proof Model
 - Non-live fixture proof is acceptable for bounded release-gate coverage when secrets are unavailable.

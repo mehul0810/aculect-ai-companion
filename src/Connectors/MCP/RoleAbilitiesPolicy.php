@@ -166,7 +166,7 @@ final class RoleAbilitiesPolicy {
 
 		$policies          = $this->policies( $registry );
 		$policies[ $role ] = $this->sanitize_ability_ids( $ability_ids, $registry );
-		update_option( self::OPTION_ROLE_ABILITIES, $policies, false );
+		PolicyActivity::persist( self::OPTION_ROLE_ABILITIES, $policies );
 
 		return true;
 	}
@@ -208,7 +208,7 @@ final class RoleAbilitiesPolicy {
 
 		$policies = $this->policies( $registry );
 		unset( $policies[ $role ] );
-		update_option( self::OPTION_ROLE_ABILITIES, $policies, false );
+		PolicyActivity::persist( self::OPTION_ROLE_ABILITIES, $policies );
 
 		return true;
 	}
@@ -245,19 +245,19 @@ final class RoleAbilitiesPolicy {
 		}
 
 		if ( array() === $sanitized ) {
-			delete_option( self::OPTION_ROLE_ABILITIES );
+			PolicyActivity::persist( self::OPTION_ROLE_ABILITIES, null );
 			return;
 		}
 
-		update_option( self::OPTION_ROLE_ABILITIES, $sanitized, false );
+		PolicyActivity::persist( self::OPTION_ROLE_ABILITIES, $sanitized );
 	}
 
 	/**
 	 * Delete stored policy.
 	 */
 	public static function delete(): void {
-		delete_option( self::OPTION_ROLE_ABILITIES );
-		delete_option( self::OPTION_POLICY_EDITING_ENABLED );
+		PolicyActivity::persist( self::OPTION_ROLE_ABILITIES, null );
+		PolicyActivity::persist( self::OPTION_POLICY_EDITING_ENABLED, null );
 	}
 
 	/**
@@ -273,7 +273,7 @@ final class RoleAbilitiesPolicy {
 	 * @param bool $enabled Whether the editor should be visible and active.
 	 */
 	public static function set_editing_enabled( bool $enabled ): void {
-		update_option( self::OPTION_POLICY_EDITING_ENABLED, $enabled ? '1' : '0', false );
+		PolicyActivity::persist( self::OPTION_POLICY_EDITING_ENABLED, $enabled ? '1' : '0' );
 	}
 
 	/**

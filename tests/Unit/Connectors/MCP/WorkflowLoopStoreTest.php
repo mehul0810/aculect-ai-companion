@@ -244,6 +244,7 @@ final class WorkflowLoopStoreTest extends TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function content_row( int $id, string $title, int $words, bool $stale = false ): array {
+		$GLOBALS['aculect_ai_companion_test_posts'][ $id ] = new \WP_Post( array( 'ID' => $id, 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => $title ) );
 		return array(
 			'object_id'    => $id,
 			'post_type'    => 'page',

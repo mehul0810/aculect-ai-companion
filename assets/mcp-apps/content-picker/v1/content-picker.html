@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>Choose WordPress content</title><style>:root {
+	font: 16px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	color-scheme: light dark;
+	--page: #f5f7fa;
+	--surface: #fff;
+	--text: #152335;
+	--muted: #526478;
+	--border: #d7dfe8;
+	--accent: #1554a8;
+	--accent-soft: #eaf2ff;
+	--good: #17634a;
+	--bad: #9a3b31;
+}
+
+:root[data-theme="dark"] {
+	--page: #111a25;
+	--surface: #1c2836;
+	--text: #f0f5fa;
+	--muted: #b9c8d7;
+	--border: #425365;
+	--accent: #91bdff;
+	--accent-soft: #243d5a;
+	--good: #85d9b9;
+	--bad: #ffaaa0;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--page);
+	color: var(--text);
+}
+
+main {
+	max-width: 940px;
+	margin: auto;
+	padding: clamp(16px, 4vw, 32px);
+}
+
+header {
+	margin-bottom: 22px;
+}
+
+.eyebrow {
+	font-size: 0.76rem;
+	font-weight: 800;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--accent);
+	margin: 0 0 8px;
+}
+
+h1 {
+	font-size: clamp(1.5rem, 3vw, 2rem);
+	line-height: 1.2;
+	margin: 0 0 10px;
+}
+
+.intro {
+	color: var(--muted);
+	margin: 0;
+	max-width: 66ch;
+}
+
+.notice {
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+	padding: 12px 16px;
+	margin: 0 0 18px;
+}
+
+.notice[data-state="error"] {
+	border-color: var(--bad);
+}
+
+.notice[data-state="selected"] {
+	border-color: var(--good);
+}
+
+.filters {
+	display: grid;
+	grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr);
+	gap: 12px;
+	margin: 0 0 12px;
+}
+
+label {
+	display: grid;
+	gap: 5px;
+	font-size: 0.8rem;
+	font-weight: 700;
+	color: var(--muted);
+}
+
+input,
+select {
+	font: inherit;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	min-height: 42px;
+	padding: 8px 10px;
+	width: 100%;
+}
+
+button {
+	font: inherit;
+	cursor: pointer;
+	color: var(--accent);
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	min-height: 40px;
+	padding: 7px 13px;
+	font-weight: 700;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+:focus-visible {
+	outline: 3px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.count {
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin: 0 0 10px;
+}
+
+.cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+	gap: 14px;
+}
+
+.card {
+	min-width: 0;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--surface);
+	overflow: hidden;
+}
+
+.details {
+	padding: 14px;
+}
+
+.card h2 {
+	font-size: 1.08rem;
+	line-height: 1.3;
+	margin: 0 0 8px;
+	overflow-wrap: anywhere;
+}
+
+.card p {
+	margin: 0 0 9px;
+}
+
+.meta {
+	color: var(--muted);
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.url {
+	max-height: 2.8em;
+	overflow: hidden;
+}
+
+.excerpt {
+	font-size: 0.88rem;
+	max-height: 4.2em;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.card button {
+	width: 100%;
+	margin-top: 5px;
+}
+
+.card button[aria-pressed="true"] {
+	color: var(--good);
+	border-color: var(--good);
+}
+
+button:hover:not(:disabled):not([aria-disabled="true"]) {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+}
+
+.preview {
+	height: 144px;
+	background: var(--accent-soft);
+	display: grid;
+	place-items: center;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+.preview img {
+	display: block;
+	width: 100%;
+	height: 144px;
+	object-fit: contain;
+}
+
+.empty {
+	padding: 22px;
+	border: 1px dashed var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+}
+
+.paging {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	margin: 18px 0;
+}
+
+.paging span {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+:root[data-picker="content"] .cards {
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+:root[data-picker="content"] .card {
+	display: flex;
+	align-items: center;
+}
+
+:root[data-picker="content"] .details {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	column-gap: 16px;
+	width: 100%;
+	align-items: center;
+}
+
+:root[data-picker="content"] .card h2,
+:root[data-picker="content"] .card p {
+	grid-column: 1;
+}
+
+:root[data-picker="content"] .card button {
+	grid-column: 2;
+	grid-row: 1/span 4;
+	width: auto;
+	white-space: nowrap;
+}
+
+@media (max-width: 610px) {
+
+	.filters {
+		grid-template-columns: 1fr;
+	}
+
+	.cards {
+		grid-template-columns: 1fr;
+	}
+
+	main {
+		padding: 16px;
+	}
+
+	:root[data-picker="content"] .details {
+		grid-template-columns: 1fr;
+	}
+
+	:root[data-picker="content"] .card button {
+		grid-column: 1;
+		grid-row: auto;
+		width: 100%;
+	}
+}
+</style></head>
+<body><main aria-labelledby="heading"><header><p class="eyebrow">WordPress content</p><h1 id="heading">Choose content</h1><p class="intro">Review content in this result. Choosing shares its ID and type with the assistant; it does not edit or publish anything.</p></header>
+<div id="notice" class="notice" role="status" aria-live="polite">Waiting for content results.</div>
+<section id="picker" hidden aria-label="Content in this result"><div class="filters"><label>Search this loaded response<input id="search" type="search" maxlength="100" autocomplete="off" placeholder="Title, type, status…"></label><label>Type<select id="kind"><option value="">All types</option></select></label></div><p id="count" class="count" role="status" aria-live="polite"></p><div id="cards" class="cards" role="list"></div><p id="empty" class="empty" hidden>No items match this local filter. Clear it or ask the assistant for another server result.</p><div class="paging"><button id="previous" type="button">Previous</button><span id="page-label"></span><button id="next" type="button">Next</button></div></section></main>
+<script>window.AculectReferencePickerKind='content';(e=>{const t="2026-01-26",n="2.0",i=e=>null!==e&&"object"==typeof e&&!Array.isArray(e);e.AculectWidgetBridge=Object.freeze({createBridge:function(e){const a=e.windowRef,r=a.parent,s=new Set(e.readOnlyTools??[]),o=new Map;let l=1,c=!1,d=!1,u=!1,p={};const h=Math.min(3e4,Math.max(1e3,e.timeoutMs??1e4));function m(e,t){if(d||o.size>=16)return Promise.reject(new Error("Widget bridge is unavailable."));const i=l++;return new Promise((s,l)=>{const c=a.setTimeout(()=>{o.delete(i),l(new Error("Host did not respond."))},h);o.set(i,{resolve:s,reject:l,timer:c}),r.postMessage({jsonrpc:n,id:i,method:e,params:t},"*")})}function f(t){if(d||t.source!==r||!i(t.data))return;const s=t.data;if(s.jsonrpc!==n)return;if(Number.isSafeInteger(s.id)&&!Object.hasOwn(s,"method"))return void function(e){const t=o.get(e.id);t&&(o.delete(e.id),a.clearTimeout(t.timer),i(e.error)?t.reject(new Error("The host declined the request.")):Object.hasOwn(e,"result")?t.resolve(e.result):t.reject(new Error("Invalid host response.")))}(s);if(!c||"string"!=typeof s.method)return;if("ui/resource-teardown"===s.method)return(Number.isSafeInteger(s.id)||"string"==typeof s.id&&s.id.length<=128)&&r.postMessage({jsonrpc:n,id:s.id,result:{}},"*"),void g();if("ui/notifications/host-context-changed"===s.method&&i(s.params))return p={...p,...s.params},void e.onEvent({type:"host-context",context:{...p}});const l={"ui/notifications/tool-input":"tool-input","ui/notifications/tool-input-partial":"tool-input-partial","ui/notifications/tool-result":"tool-result","ui/notifications/tool-cancelled":"tool-cancelled"};Object.hasOwn(l,s.method)&&e.onEvent({type:l[s.method],params:s.params})}function g(){if(!d){d=!0,c=!1,a.removeEventListener("message",f);for(const e of o.values())a.clearTimeout(e.timer),e.reject(new Error("Widget bridge closed."));o.clear(),e.onEvent({type:"closed"})}}return Object.freeze({start:async function(){if(u||r===a)throw new Error("Widget needs a host iframe.");u=!0,a.addEventListener("message",f);try{const a=await m("ui/initialize",{protocolVersion:t,appInfo:e.appInfo,appCapabilities:{availableDisplayModes:["inline","fullscreen"]}});if(!i(a)||a.protocolVersion!==t)throw new Error("Unsupported MCP Apps host.");p=i(a.hostContext)?a.hostContext:{},c=!0,function(e,t={}){r.postMessage({jsonrpc:n,method:e,params:t},"*")}("ui/notifications/initialized"),e.onEvent({type:"ready",context:{...p}})}catch(e){throw g(),e}},close:g,callReadOnlyTool:function(e,t={}){return c&&s.has(e)&&i(t)?m("tools/call",{name:e,arguments:t}):Promise.reject(new Error("Tool call is not permitted by this widget."))},openLink:function(e){let t;try{t=new URL(e)}catch{}return c&&t&&"https:"===t.protocol?m("ui/open-link",{url:t.href}):Promise.reject(new Error("Only HTTPS links are supported."))},updateModelContext:function(e){return!c||!i(e)||JSON.stringify(e).length>16384?Promise.reject(new Error("Invalid model context update.")):m("ui/update-model-context",e)},requestDisplayMode:function(e){return c&&["inline","fullscreen"].includes(e)&&p.availableDisplayModes?.includes(e)?m("ui/request-display-mode",{mode:e}):Promise.reject(new Error("Display mode is unavailable."))},optionalOpenAI:function(){const e=a.openai;return Object.freeze({openExternal:"function"==typeof e?.openExternal?t=>e.openExternal({href:t}):null})},isConnected:()=>c,getHostContext:()=>({...p})})},PROTOCOL:t})})(globalThis),(e=>{const t=e=>null!==e&&"object"==typeof e&&!Array.isArray(e),n=(e,t=180)=>"string"==typeof e?e.trim().slice(0,t):"",i=e=>Number.isSafeInteger(e)&&e>0,a=e=>"string"==typeof e&&/^[a-z][a-z0-9_-]{0,63}$/.test(e)?e:"",r=e=>"string"==typeof e&&/^[a-z][a-z0-9_-]{0,31}$/.test(e)?e:"";function s(e){if("string"!=typeof e)return"";try{const t=new URL(e);return!["https:","http:"].includes(t.protocol)||t.username||t.password?"":t.href.slice(0,2048)}catch{return""}}e.AculectReferencePickerContract=Object.freeze({parse:function(e,o){if(!t(e)||e.isError||!t(e.structuredContent))return{state:"error",items:[]};const l=e.structuredContent;if(l.error)return{state:"error",items:[]};if(["stale","unavailable"].includes(l.status))return{state:l.status,items:[]};let c=null;if(Array.isArray(l.items)?c=l.items:i(l.id)&&(c=[l]),!c)return{state:"error",items:[]};const d=new Set,u=[];for(const e of c.slice(0,100)){if(!t(e)||!i(e.id))continue;const l=a(e.type);if(!l||"media"===o&&"attachment"!==l)continue;const c=`${l}:${e.id}`;if(d.has(c))continue;d.add(c);const p=t(e.thumbnail)&&i(e.thumbnail.width)&&i(e.thumbnail.height)?{url:s(e.thumbnail.url),width:e.thumbnail.width,height:e.thumbnail.height}:null;u.push({id:e.id,type:l,title:n(e.title)||`Untitled #${e.id}`,status:r(e.status),stale:!0===e.stale,link:s(e.link||e.permalink),excerpt:n(e.excerpt||e.summary,260),alt:n(e.alt_text,160),mime:n(e.mime_type,80),family:["image","audio","video"].includes(n(e.mime_type,80).split("/")[0])?n(e.mime_type,80).split("/")[0]:"document",thumbnail:p?.url?p:null})}return{state:"ready",items:u,truncated:c.length>100,total:Number.isSafeInteger(l.total)&&l.total>=0?l.total:null,hasMore:!0===l.has_more,page:i(l.page)?l.page:1,perPage:i(l.per_page)?l.per_page:c.length}}})})(globalThis),(e=>{const t=e.document,n=e.AculectReferencePickerKind,i="media"===n,a=e.AculectWidgetBridge.createBridge({windowRef:e,appInfo:{name:`Aculect ${i?"Media":"Content"} Picker`,version:"1.0.0"},readOnlyTools:[],onEvent:function(t){switch(t.type){case"ready":case"host-context":c={...c,...t.context};break;case"tool-input-partial":case"tool-input":p++,u="",d="",o={state:"loading",items:[]};break;case"tool-result":p++,u="",d="",o=e.AculectReferencePickerContract.parse(t.params,n),l=1,y();break;case"tool-cancelled":p++,u="",d="",o={state:"cancelled",items:[]};break;case"closed":p++,u="",d="",o={state:"disabled",items:[]}}h="",b()}}),r=Object.fromEntries(["notice","picker","search","kind","count","cards","empty","previous","next","page-label"].map(e=>[e,t.getElementById(e)])),s=i?9:12;let o={state:"loading",items:[]},l=1,c={},d="",u="",p=0,h="";function m(e,n,i){const a=t.createElement(e);return n&&(a.className=n),void 0!==i&&(a.textContent=i),a}function f(e){return`${e.type}:${e.id}`}function g(t){const r=m("article","card");if(r.setAttribute("role","listitem"),i){const n=m("div","preview"),i=e.ACULECT_MEDIA_ORIGIN;if(t.thumbnail&&i&&new URL(t.thumbnail.url).origin===i){const e=m("img");e.src=t.thumbnail.url,e.alt=t.alt||"",e.width=t.thumbnail.width,e.height=t.thumbnail.height,e.loading="lazy",n.append(e)}else n.append(m("span","placeholder","Preview unavailable"));r.append(n)}const s=m("div","details");s.append(m("h2","",t.title));const o=i?[t.mime||"Media",t.thumbnail?`${t.thumbnail.width} × ${t.thumbnail.height} preview`:"Preview dimensions unavailable"]:[t.type,t.status||"Status unavailable",...t.stale?["Stale index result; refresh before selection"]:[]];s.append(m("p","meta",o.join(" · "))),i?s.append(m("p","meta",`Alt text: ${t.alt||"Not provided"}`)):t.excerpt&&s.append(m("p","excerpt",t.excerpt)),t.link&&s.append(m("p","meta url",t.link));const l=m("button","",d===f(t)?"Selected":`Choose ${n}`);return l.type="button",l.dataset.key=f(t),l.setAttribute("aria-label",`${d===f(t)?"Selected":"Choose"} ${function(e){return`${e.title} (${e.type} #${e.id})`}(t)}`),l.setAttribute("aria-pressed",String(d===f(t))),l.setAttribute("aria-disabled",String(Boolean(u)||t.stale)),l.disabled=t.stale||!a.isConnected(),s.append(l),r.append(s),r}function y(){const e=r.kind.value;r.kind.replaceChildren(Object.assign(m("option","","All types"),{value:""}));for(const e of[...new Set(o.items.map(e=>i?e.family:e.type))].sort())r.kind.append(Object.assign(m("option","",e),{value:e}));r.kind.value=[...r.kind.options].some(t=>t.value===e)?e:""}function b(){t.documentElement.dataset.picker=n,t.documentElement.dataset.theme=["light","dark"].includes(c.theme)?c.theme:"auto";const e="ready"!==o.state||o.items.length?o.state:"empty",a={loading:`Waiting for ${n} results.`,ready:"Choose an item to share its reference with the assistant. Nothing is changed.",empty:`No ${n} items were returned. Ask the assistant to try another page or query.`,stale:"This result is stale. Ask the assistant to refresh it.",unavailable:"The result is unavailable or access has changed. Ask the assistant to retry.",error:"The result could not be displayed. Ask the assistant to retry the read.",cancelled:"The read was cancelled. Ask the assistant to try again.",disabled:"This interactive picker is unavailable. Use the text result in your host."};if(r.notice.dataset.state=e,r.notice.textContent=a[e],d&&(r.notice.textContent=`Selected ${d}. No changes were made.`),u&&(r.notice.textContent="Sharing the reference with the assistant…"),h&&(r.notice.textContent=h),d&&!h&&(r.notice.dataset.state="selected"),h&&(r.notice.dataset.state="error"),r.picker.hidden="ready"!==o.state||!o.items.length,r.picker.hidden)return;const p=function(){const e=r.search.value.trim().toLocaleLowerCase();return o.items.filter(t=>(!r.kind.value||(i?t.family:t.type)===r.kind.value)&&(!e||[t.title,t.type,t.status,t.excerpt,t.alt,t.mime,t.link].join(" ").toLocaleLowerCase().includes(e)))}(),m=Math.max(1,Math.ceil(p.length/s));l=Math.min(l,m);let f="";o.hasMore||null!==o.total&&o.total>o.page*Math.max(o.perPage,1)?f=` Ask the assistant for server page ${o.page+1} to see more.`:o.truncated&&(f=" Only the first 100 returned items are shown; ask the assistant to refine the query."),r.count.textContent=`${p.length} matching ${n} item${1===p.length?"":"s"} in this response. Search filters this loaded response only.${f}`;const y=t.activeElement?.dataset?.key;r.cards.replaceChildren(...p.slice((l-1)*s,l*s).map(g)),y&&[...r.cards.querySelectorAll("button[data-key]")].find(e=>e.dataset.key===y&&!e.disabled)?.focus(),r.empty.hidden=0!==p.length,r.previous.disabled=l<=1,r.next.disabled=l>=m,r["page-label"].textContent=`Local page ${l} of ${m}`}r.search.addEventListener("input",()=>{l=1,b()}),r.kind.addEventListener("change",()=>{l=1,b()}),r.previous.addEventListener("click",()=>{l--,b(),(r.previous.disabled?r.next:r.previous).focus()}),r.next.addEventListener("click",()=>{l++,b(),(r.next.disabled?r.previous:r.next).focus()}),r.cards.addEventListener("click",e=>{const t=e.target.closest("button[data-key]");t&&async function(e){const t=o.items.find(t=>f(t)===e);if(!t||t.stale||u||!a.isConnected())return;u=e,h="";const n=p;b();try{await a.updateModelContext({structuredContent:{schema:"aculect.reference-selection.v1",id:t.id,type:t.type}}),n===p&&(d=e)}catch{n===p&&(h="The host did not accept this reference. Nothing was changed. Try again or use the text result.")}finally{n===p&&(u="",b())}}(t.dataset.key)}),e.AculectReferencePickerFixture=Object.freeze({showResult(t){p++,u="",d="",h="",o=e.AculectReferencePickerContract.parse(t,n),l=1,y(),b()}}),b(),a.start().catch(()=>{o={state:"disabled",items:[]},b()})})(globalThis);</script></body></html>

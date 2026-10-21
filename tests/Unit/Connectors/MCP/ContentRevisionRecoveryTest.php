@@ -217,12 +217,22 @@ final class ContentRevisionRecoveryTest extends TestCase {
 		self::assertSame( 2, $GLOBALS['content_revision_recovery_test_backup_calls'] );
 	}
 
-	public function test_restore_saves_verified_preimage_and_preserves_status_and_metadata(): void {
+	public function test_restore_saves_verified_preimage_and_preserves_status_terms_and_metadata(): void {
 		$GLOBALS['aculect_ai_companion_test_posts'][100]->post_status = 'publish';
 		$GLOBALS['aculect_ai_companion_test_post_meta'][100]          = array( '_recovery_test_meta' => 'keep-me' );
-		$service  = new ContentRevisionRecovery();
-		$expected = $service->compare( $this->target_args() )['expected_state'];
-		$result   = $service->restore( $this->restore_args( $expected ) );
+		$GLOBALS['aculect_ai_companion_test_object_terms'][100]       = array(
+			new \WP_Term(
+				array(
+					'term_id'  => 71,
+					'name'     => 'Keep this term',
+					'taxonomy' => 'category',
+				)
+			),
+		);
+		$terms_before = $GLOBALS['aculect_ai_companion_test_object_terms'][100];
+		$service      = new ContentRevisionRecovery();
+		$expected     = $service->compare( $this->target_args() )['expected_state'];
+		$result       = $service->restore( $this->restore_args( $expected ) );
 
 		self::assertTrue( $result['success'] );
 		self::assertTrue( $result['changed'] );
@@ -232,6 +242,7 @@ final class ContentRevisionRecoveryTest extends TestCase {
 		self::assertSame( 'Revision excerpt', get_post( 100 )->post_excerpt );
 		self::assertSame( 'publish', get_post( 100 )->post_status );
 		self::assertSame( array( '_recovery_test_meta' => 'keep-me' ), $GLOBALS['aculect_ai_companion_test_post_meta'][100] );
+		self::assertSame( $terms_before, $GLOBALS['aculect_ai_companion_test_object_terms'][100] );
 		self::assertSame( 'Current title', get_post( $result['recovery_revision_id'] )->post_title );
 		self::assertSame( 1, $GLOBALS['content_revision_recovery_test_backup_calls'] );
 		self::assertSame( 1, $GLOBALS['content_revision_recovery_test_slash_calls'] );

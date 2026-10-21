@@ -21,14 +21,15 @@ use Aculect\AICompanion\Connectors\OAuth\Repositories\AccessTokenRepository;
 use Aculect\AICompanion\Connectors\OAuth\Repositories\ClientRepository;
 use Aculect\AICompanion\Connectors\Providers\ProviderRegistry;
 use Aculect\AICompanion\Diagnostics\ConnectionHealth;
+use Aculect\AICompanion\Diagnostics\AgentReadinessDiagnostics;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogRepository;
-use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery;
+use Aculect\AICompanion\Settings\McpAppsSettings;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -80,7 +81,7 @@ final class SettingsPage {
 		add_options_page(
 			__( 'Aculect AI Companion', 'aculect-ai-companion' ),
 			__( 'AI Companion', 'aculect-ai-companion' ),
-			'manage_options',
+			'read',
 			self::PAGE_SLUG,
 			array( $this, 'render' )
 		);
@@ -117,6 +118,7 @@ final class SettingsPage {
 				),
 			)
 		);
+		( new SkillsRestController() )->register_rest_routes();
 	}
 
 	/**
@@ -138,17 +140,14 @@ final class SettingsPage {
 		return new WP_REST_Response( $this->settings_payload( $tab ) );
 	}
 
-	/**
-	 * Render the settings page shell or the OAuth consent screen.
-	 */
+	/** Render the settings shell, actor approvals, or OAuth consent. */
 	public function render(): void {
 		if ( $this->is_oauth_consent_view() ) {
 			( new AuthorizationController() )->render_admin_consent();
 			return;
 		}
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'Insufficient permissions.', 'aculect-ai-companion' ) );
+		if ( ApprovalTab::render_if_needed() ) {
+			return;
 		}
 
 		echo '<div class="wrap aculect-ai-companion-settings-wrap"><div id="aculect-ai-companion-settings-app-root" class="aculect-ai-companion-settings-app-root"></div></div>';
@@ -166,6 +165,9 @@ final class SettingsPage {
 
 		if ( $this->is_oauth_consent_view() ) {
 			wp_enqueue_style( 'aculect-ai-companion-oauth-consent', ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/css/oauth-consent.css', array(), ACULECT_AI_COMPANION_VERSION );
+			return;
+		}
+		if ( ApprovalTab::enqueue_if_needed() ) {
 			return;
 		}
 
@@ -240,10 +242,11 @@ final class SettingsPage {
 			'version'            => ACULECT_AI_COMPANION_VERSION,
 			'pluginMetadata'     => $this->plugin_metadata(),
 			'payloadTab'         => $payload_tab,
-			'hydratedTabs'       => $this->hydrated_tabs( $payload_tab ),
+			'hydratedTabs'       => ( new SettingsTabHydration() )->hydrated_tabs( $payload_tab ),
 			'adminPageUrl'       => esc_url_raw( $this->settings_url() ),
 			'settingsPayloadUrl' => esc_url_raw( rest_url( 'aculect-ai-companion/v1/settings-payload' ) ),
 			'settingsRestNonce'  => wp_create_nonce( 'wp_rest' ),
+			'skillsApiUrl'       => esc_url_raw( rest_url( 'aculect-ai-companion/v1/skills' ) ),
 			'brandIconUrl'       => esc_url_raw(
 				ACULECT_AI_COMPANION_PLUGIN_URL . 'assets/images/aculect-icon-light.svg'
 			),
@@ -262,7 +265,9 @@ final class SettingsPage {
 			'diagnostics'        => ( new SettingsDiagnosticsPayloadBuilder( $this->settings_url() ) )->build( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
 			'roleAbilities'      => $this->role_abilities_payload(),
+			'mcpApps'            => McpAppsSettings::admin_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
+			'agentReadiness'     => ( new AgentReadinessDiagnostics() )->last_result(),
 		);
 	}
 
@@ -575,25 +580,12 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Persist advanced diagnostic settings from the admin form.
+	 * Persist advanced settings from the admin form.
 	 */
 	public function handle_save_advanced(): void {
 		$this->guard_action( 'aculect_ai_companion_save_advanced' );
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['diagnostic_logging_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['diagnostic_logging_enabled'] ) );
-
-		LogSettings::set_enabled( $enabled );
-
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$role_connections_enabled = isset( $_POST['role_connections_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_connections_enabled'] ) );
-		$role_connection_roles    = isset( $_POST['role_connection_roles'] )
-			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['role_connection_roles'] ) )
-			: array();
-		$role_abilities_enabled   = isset( $_POST['role_abilities_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_abilities_enabled'] ) );
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		RoleConnectionEntryPoint::save( $role_connections_enabled, $role_connection_roles );
-		RoleAbilitiesPolicy::set_editing_enabled( $role_abilities_enabled );
+		AdvancedSettings::save( $_POST );
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -1028,6 +1020,7 @@ final class SettingsPage {
 		$this->guard_action( 'aculect_ai_companion_run_connection_diagnostics' );
 
 		( new ConnectionHealth() )->run();
+		( new AgentReadinessDiagnostics() )->run();
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -1315,38 +1308,12 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Return tabs that have complete data in the current localized payload.
-	 *
-	 * @param string $payload_tab Normalized payload tab.
-	 * @return list<string>
-	 */
-	private function hydrated_tabs( string $payload_tab ): array {
-		$tabs = array( 'overview', 'connect', 'diagnostics', 'advanced' );
-
-		$tab_specific_payloads = array(
-			'connections',
-			'abilities',
-			'activity',
-			'learning',
-			'brand',
-			'logs',
-			'changelog',
-		);
-
-		if ( in_array( $payload_tab, $tab_specific_payloads, true ) ) {
-			$tabs[] = $payload_tab;
-		}
-
-		return array_values( array_unique( $tabs ) );
-	}
-
-	/**
 	 * Return every tab name that can be represented by localized data.
 	 *
 	 * @return list<string>
 	 */
 	private function payload_tabs(): array {
-		return array_merge( array_column( $this->settings_tabs(), 'tab' ), array( 'brand', 'logs' ) );
+		return array_merge( array_column( $this->settings_tabs(), 'tab' ), array( 'brand', 'logs', 'skills' ) );
 	}
 
 	/**

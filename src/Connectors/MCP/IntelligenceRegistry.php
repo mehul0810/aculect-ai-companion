@@ -180,6 +180,7 @@ final class IntelligenceRegistry {
 	private function build_modules(): array {
 		$context         = new IntelligenceContext();
 		$block_knowledge = new BlockKnowledgeAbilities();
+		$pattern_picker  = new PatternPickerCandidates();
 		$modules         = array(
 			$this->build_module(
 				'intelligence.capabilities.get_directory',
@@ -259,29 +260,7 @@ final class IntelligenceRegistry {
 				),
 				static fn ( array $args ): array => $block_knowledge->get_block_info( $args )
 			),
-			$this->build_module(
-				'intelligence.patterns.list_available',
-				'List Available Patterns',
-				'List registered WordPress block patterns with usage guidance. Avoid patterns that contain Custom HTML blocks.',
-				$this->object_schema(
-					array(
-						'search'     => array( 'type' => 'string' ),
-						'category'   => array( 'type' => 'string' ),
-						'block_type' => array(
-							'type'        => 'string',
-							'description' => 'Optional related block type such as core/post-content or core/query.',
-						),
-						'inserter'   => array(
-							'type'        => 'boolean',
-							'description' => 'Filter by whether the pattern is intended to appear in inserter-style selection flows.',
-						),
-						'page'       => $this->page_schema(),
-						'per_page'   => $this->per_page_schema( 100, 'Patterns per page. Defaults to 50.' ),
-						'context'    => $this->context_schema( 'Use compact for browsing or full to include bounded content previews. Defaults to compact.' ),
-					)
-				),
-				static fn ( array $args ): array => $block_knowledge->list_patterns( $args )
-			),
+			$this->pattern_list_module( $block_knowledge, $pattern_picker ),
 			$this->build_module(
 				'intelligence.patterns.get_info',
 				'Inspect a Pattern',
@@ -489,6 +468,52 @@ final class IntelligenceRegistry {
 		}
 
 		return $keyed;
+	}
+
+	/**
+	 * Build the existing pattern discovery tool with an opt-in picker projection.
+	 *
+	 * @param BlockKnowledgeAbilities $block_knowledge Pattern inventory service.
+	 * @param PatternPickerCandidates $pattern_picker Verified picker projection.
+	 */
+	private function pattern_list_module( BlockKnowledgeAbilities $block_knowledge, PatternPickerCandidates $pattern_picker ): AbilityModuleInterface {
+		$properties = array(
+			'search'       => array( 'type' => 'string' ),
+			'category'     => array( 'type' => 'string' ),
+			'source'       => array(
+				'type'        => 'string',
+				'description' => 'Optional pattern source such as theme, core, or plugin.',
+			),
+			'content_type' => array(
+				'type'        => 'string',
+				'description' => 'Registered post type to verify compatibility for, such as page or post.',
+			),
+			'for_picker'   => array(
+				'type'        => 'boolean',
+				'description' => 'Optional compatibility hint. Negotiated MCP Apps always receive verified picker metadata; other clients retain the existing inventory response.',
+			),
+			'block_type'   => array(
+				'type'        => 'string',
+				'description' => 'Optional related block type such as core/post-content or core/query.',
+			),
+			'inserter'     => array(
+				'type'        => 'boolean',
+				'description' => 'Filter by whether the pattern is intended to appear in inserter-style selection flows.',
+			),
+			'page'         => $this->page_schema(),
+			'per_page'     => $this->per_page_schema( 100, 'Patterns per page. Defaults to 50.' ),
+			'context'      => $this->context_schema( 'Use compact for browsing or full to include bounded content previews. Defaults to compact.' ),
+		);
+
+		return $this->build_module(
+			'intelligence.patterns.list_available',
+			'List Available Patterns',
+			'List registered WordPress block patterns with usage guidance. Negotiated MCP Apps receive verified picker compatibility; never apply markup from picker metadata.',
+			$this->object_schema( $properties ),
+			static fn ( array $args ): array => McpAppsNegotiation::request_enabled()
+				? $pattern_picker->list( $args )
+				: $block_knowledge->list_patterns( $args )
+		);
 	}
 
 	/**

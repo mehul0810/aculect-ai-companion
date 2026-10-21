@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aculect\AICompanion\Connectors\MCP;
 
+use Aculect\AICompanion\Settings\McpAppsSettings;
+
 /**
  * Capability negotiation and tool metadata for the experimental MCP Apps slice.
  */
@@ -52,7 +54,7 @@ final class McpAppsNegotiation {
 	 * Check whether the experimental feature has been explicitly enabled.
 	 */
 	public static function enabled(): bool {
-		return true === apply_filters( 'aculect_ai_companion_mcp_apps_enabled', false );
+		return McpAppsSettings::is_enabled();
 	}
 
 	/**

@@ -24,12 +24,12 @@ use Aculect\AICompanion\Diagnostics\ConnectionHealth;
 use Aculect\AICompanion\Diagnostics\AgentReadinessDiagnostics;
 use Aculect\AICompanion\Diagnostics\Logger;
 use Aculect\AICompanion\Diagnostics\LogRepository;
-use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Diagnostics\McpToolManifest;
 use Aculect\AICompanion\Intelligence\ContentIndexRepository;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
 use Aculect\AICompanion\Intelligence\LearningSuggestionRepository;
 use Aculect\AICompanion\Intelligence\Memory\MemoryAdminQuery;
+use Aculect\AICompanion\Settings\McpAppsSettings;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -265,6 +265,7 @@ final class SettingsPage {
 			'diagnostics'        => ( new SettingsDiagnosticsPayloadBuilder( $this->settings_url() ) )->build( 'logs' === $payload_tab ),
 			'roleConnections'    => $this->role_connections_payload(),
 			'roleAbilities'      => $this->role_abilities_payload(),
+			'mcpApps'            => McpAppsSettings::admin_payload(),
 			'connectionHealth'   => ( new ConnectionHealth() )->last_result(),
 			'agentReadiness'     => ( new AgentReadinessDiagnostics() )->last_result(),
 		);
@@ -579,25 +580,12 @@ final class SettingsPage {
 	}
 
 	/**
-	 * Persist advanced diagnostic settings from the admin form.
+	 * Persist advanced settings from the admin form.
 	 */
 	public function handle_save_advanced(): void {
 		$this->guard_action( 'aculect_ai_companion_save_advanced' );
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$enabled = isset( $_POST['diagnostic_logging_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['diagnostic_logging_enabled'] ) );
-
-		LogSettings::set_enabled( $enabled );
-
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard_action() verifies the nonce before this read.
-		$role_connections_enabled = isset( $_POST['role_connections_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_connections_enabled'] ) );
-		$role_connection_roles    = isset( $_POST['role_connection_roles'] )
-			? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['role_connection_roles'] ) )
-			: array();
-		$role_abilities_enabled   = isset( $_POST['role_abilities_enabled'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['role_abilities_enabled'] ) );
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		RoleConnectionEntryPoint::save( $role_connections_enabled, $role_connection_roles );
-		RoleAbilitiesPolicy::set_editing_enabled( $role_abilities_enabled );
+		AdvancedSettings::save( $_POST );
 
 		wp_safe_redirect(
 			add_query_arg(

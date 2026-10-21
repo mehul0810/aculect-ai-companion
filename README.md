@@ -80,6 +80,10 @@ Aculect AI Companion keeps the primary setup surface focused on:
 
 Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
+### MCP Apps
+
+To enable experimental interactive cards and pickers in compatible assistants, open **Settings > AI Companion > Advanced**, turn on **Enable MCP Apps**, and save. MCP Apps are off by default. Reconnect your assistant after enabling them. Clients without Apps support continue receiving text responses. The existing `aculect_ai_companion_mcp_apps_enabled` PHP filter can override this preference; the settings screen reports a differing effective state.
+
 ## Supported Abilities
 
 Admins can enable or disable optional abilities from `AI Companion > Abilities` after the first assistant connection is active. Baseline read/discovery abilities for core MCP guidance remain default-active and are not individually disableable, but WordPress capabilities, OAuth scopes, connection access, and execution-time policy checks still apply.

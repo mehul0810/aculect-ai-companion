@@ -50,6 +50,14 @@ final class WebMcpAssetsTest extends TestCase {
 		self::assertFalse( $method->invoke( new WebMcpAssets() ) );
 	}
 
+	public function test_enabled_filter_cannot_reenable_logged_in_request(): void {
+		$GLOBALS['aculect_ai_companion_test_filter_callbacks']['aculect_ai_companion_webmcp_enabled'] = static fn(): bool => true;
+		$GLOBALS['aculect_ai_companion_test_current_user_id'] = 7;
+		$method = new ReflectionMethod( WebMcpAssets::class, 'should_enqueue' );
+
+		self::assertFalse( $method->invoke( new WebMcpAssets() ) );
+	}
+
 	public function test_request_policy_denies_member_preview_and_private_contexts(): void {
 		$policy  = new WebMcpRequestPolicy();
 		$context = array(

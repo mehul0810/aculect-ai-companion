@@ -81,7 +81,6 @@ final class AgentReadinessDiagnostics {
 			$this->metadata_item( 'oauth_authorization_metadata', $auth, 'OAuth Authorization Server Metadata', 'authorization' ),
 			$this->mcp_challenge_item( $mcp ),
 			$this->item( 'mcp_server_card', 'owner_decision_required', 'MCP Server Card discovery is deferred pending an owner decision; no endpoint is assumed.' ),
-			$this->item( 'webmcp', 'warning', 'WebMCP is a progressive browser enhancement. Public script delivery and browser registration are not proven by this server-side check.' ),
 			$this->item( 'skills_index', 'warning', 'A public Skills Index is not implemented in 0.9.0 and is deferred to 1.0.0. Authenticated MCP Skills discovery is a separate feature.' ),
 		);
 	}
@@ -119,6 +118,7 @@ final class AgentReadinessDiagnostics {
 				)
 			),
 			$this->content_signals_item( $home ),
+			( new WebMcpReadiness() )->item( $home ),
 			$this->link_header_item( $home ),
 			$this->availability_item( 'llms_txt', $llms, 'llms.txt', array( 'text/plain', 'text/markdown' ) ),
 			$this->markdown_item( $markdown ),

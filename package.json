@@ -21,6 +21,7 @@
     "smoke:post-update-widget": "node tests/Integration/Browser/mcp-apps-post-update.mjs",
     "smoke:pattern-picker-widget": "node tests/Integration/Browser/mcp-apps-pattern-picker.mjs",
     "smoke:release-ui": "node scripts/smoke/release-ui.mjs",
+    "smoke:webmcp": "node tests/Integration/Browser/webmcp-public.mjs",
     "smoke:oauth-browser": "node tests/Integration/Browser/oauth-contract.mjs",
     "preview:playground": "node scripts/playground-preview.mjs",
     "test:js": "node --test tests/js/*.test.mjs",

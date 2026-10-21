@@ -299,6 +299,8 @@ Composer dependencies for production releases are installed with:
 
 = 0.9.0 =
 
+* Completed public WebMCP lifecycle handling and delivery diagnostics, with bounded readiness checks, cancellation protection and editable-content exclusion.
+
 * Added opt-in MCP Apps resources and a Site Information card for compatible clients, with the existing text response preserved for other clients.
 * Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.
 * Added post-update revision review, layout and pattern selection, and selection-only media and content reference pickers for supported MCP Apps, with text results preserved for other clients.

@@ -9,6 +9,7 @@
 			"Added read-only Agent Readiness diagnostics for plugin and site discovery surfaces."
 		],
 		"Improved": [
+			"Completed public WebMCP lifecycle handling and delivery diagnostics, with bounded readiness checks, cancellation protection and editable-content exclusion.",
 			"Clarified Cloudflare connection guidance without claiming that edge challenges can be bypassed."
 		],
 		"Fixed": [],

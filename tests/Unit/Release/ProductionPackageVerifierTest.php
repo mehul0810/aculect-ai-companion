@@ -107,6 +107,18 @@ final class ProductionPackageVerifierTest extends TestCase {
 		}
 	}
 
+	public function test_verifier_rejects_missing_public_webmcp_asset(): void {
+		$package = $this->package_fixture();
+		try {
+			self::assertTrue( unlink( $package . '/assets/js/webmcp.js' ) );
+			$result = $this->run_verifier( $package );
+			self::assertSame( 1, $result['status'] );
+			self::assertStringContainsString( 'Required production path is missing: assets/js/webmcp.js', $result['output'] );
+		} finally {
+			$this->remove_directory( dirname( $package ) );
+		}
+	}
+
 	public function test_distignore_excludes_generated_smoke_artifacts_from_package_staging(): void {
 		$parent  = sys_get_temp_dir() . '/aculect-package-staging-' . bin2hex( random_bytes( 8 ) );
 		$source  = $parent . '/source';
@@ -159,6 +171,10 @@ final class ProductionPackageVerifierTest extends TestCase {
 		$package = $parent . '/aculect-ai-companion';
 
 		self::assertTrue( mkdir( $package . '/build', 0755, true ) );
+		$this->write_file( $package . '/assets/js/webmcp.js', '' );
+		foreach ( array( 'src/WebMCP/WebMcpAssets.php', 'src/WebMCP/WebMcpRequestPolicy.php', 'src/Diagnostics/WebMcpReadiness.php' ) as $path ) {
+			$this->write_file( $package . '/' . $path, "<?php\n" );
+		}
 		foreach ( array( 'index.asset.php', 'index.js', 'style-index.css', 'style-index-rtl.css' ) as $asset ) {
 			$this->write_file( $package . '/build/' . $asset, '' );
 		}

@@ -45,13 +45,15 @@ Where practical, compare Apps-on and Apps-off site-information calls on the same
   with regression tests and the complete asset build/style lint. KaTeX is pinned
   to the patched 0.18.2 release to retain its Node 20-compatible CLI dependency.
 - Review and report the complete development audit, not only the runtime audit.
-  The additional [braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
-  currently has no upstream patched version and remains in the WordPress
-  development toolchain. It is not an audit exemption or a passing full audit.
-  Do not downgrade WordPress UI packages, suppress advisories or weaken release
-  gates to hide this finding. Revisit it when an upstream-compatible fix exists.
-- All first-party npm dependencies remain development-only. Verify the production
-  ZIP excludes `node_modules` and includes rebuilt assets, and run the unchanged
+  Record the current advisory URLs, owning dependency ranges and bundled-asset
+  exposure in `docs/development-dependency-advisories.md`. Older inventories,
+  including the earlier braces finding, are historical evidence and do not
+  replace a current audit. No inventory is an audit exemption or a passing full
+  audit. Do not downgrade WordPress UI packages, suppress advisories or weaken
+  release gates to hide findings. Revisit unresolved dependencies when a
+  compatible upstream fix exists.
+- All npm dependencies remain declared in devDependencies; that classification
+  does not establish runtime absence. Verify the production ZIP excludes `node_modules` and includes rebuilt assets, and run the unchanged
   exact-package OAuth, compatibility and release proof gates. Dependabot's open
   alert status follows the default branch, not a release-branch-only push.
 

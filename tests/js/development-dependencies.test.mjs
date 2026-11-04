@@ -16,19 +16,30 @@ const lock = JSON.parse(
 	readFileSync( join( root, 'package-lock.json' ), 'utf8' )
 );
 const minimums = {
-	'@modelcontextprotocol/sdk': '1.31.0',
+	'@hono/node-server': '2.1.3',
+	'@modelcontextprotocol/sdk': '1.32.2',
+	'@puppeteer/browsers': '3.2.6',
 	axios: '1.20.0',
 	colord: '2.9.4',
 	compression: '1.8.2',
-	joi: '18.2.9',
+	'fast-uri': '3.1.9',
+	'follow-redirects': '1.16.2',
+	hono: '4.13.11',
+	'ip-address': '10.7.4',
+	joi: '18.3.1',
 	katex: '0.18.2',
-	'markdown-it': '14.3.1',
+	'launch-editor': '2.14.2',
+	'markdown-it': '14.3.3',
 	moment: '2.31.0',
 	'postcss-selector-parser': '7.1.6',
 	'proxy-addr': '2.0.8',
+	'puppeteer-core': '25.16.0',
+	qs: '6.16.1',
+	'serialize-javascript': '7.1.3',
 	'shell-quote': '1.11.0',
 	'smol-toml': '1.9.0',
 	'source-map-js': '1.2.2',
+	zod: '4.6.6',
 };
 
 function copies( packages, name ) {
@@ -67,6 +78,13 @@ function assertPatchedCopies( packages ) {
 		}
 	}
 	assert.equal( copies( packages, 'sprintf-js' ).length, 0 );
+	for ( const [ path, entry ] of copies( packages, 'body-parser' ) ) {
+		const minimum = { 1: '1.20.9', 2: '2.4.0' }[
+			entry.version.split( '.' )[ 0 ]
+		];
+		assert.ok( minimum, `${ path } must retain a supported parser major` );
+		assertMinimum( entry.version, minimum, path );
+	}
 	const yamlCopies = copies( packages, 'js-yaml' );
 	assert.ok(
 		yamlCopies.length,
@@ -87,6 +105,31 @@ function assertPatchedCopies( packages ) {
 test( 'every locked copy meets the development dependency security floors', () => {
 	assertPatchedCopies( lock.packages );
 	assert.deepEqual( lock.packages[ '' ].dependencies ?? {}, {} );
+} );
+
+test( 'installed tooling copies match the audited lockfile', () => {
+	const names = [ ...Object.keys( minimums ), 'body-parser', 'zod' ];
+	for ( const name of names ) {
+		for ( const [ path, entry ] of copies( lock.packages, name ) ) {
+			const installed = JSON.parse(
+				readFileSync( join( root, path, 'package.json' ), 'utf8' )
+			);
+			assert.equal( installed.version, entry.version, path );
+		}
+	}
+	for ( const consumer of [
+		'@modelcontextprotocol/sdk',
+		'eslint-plugin-react-hooks',
+	] ) {
+		const consumerRequire = createRequire(
+			join( root, 'node_modules', consumer, 'package.json' )
+		);
+		assertMinimum(
+			consumerRequire( 'zod/package.json' ).version,
+			'4.6.6',
+			consumer
+		);
+	}
 } );
 
 test( 'security floors reject a vulnerable nested copy and the unpatched sprintf chain', () => {
@@ -233,4 +276,163 @@ test( 'the patched KaTeX remains compatible with the markdown math extension', a
 	assert.match( html, /math-inline/ );
 	assert.match( html, /math-display/ );
 	assert.match( html, /katex/ );
+} );
+
+test( 'patched Markdown and query parsers retain tooling input behavior', () => {
+	const MarkdownIt = toolingRequire( 'markdown-it' );
+	const markdown = new MarkdownIt( { html: true } );
+	const html = markdown.render(
+		'# Fixture\n\n[reference][target]\n\n[target]: https://example.test/docs\n\n<strong>safe fixture</strong>\n'
+	);
+	assert.match( html, /<h1>Fixture<\/h1>/ );
+	assert.match( html, /href="https:\/\/example\.test\/docs"/ );
+	assert.match( html, /<strong>safe fixture<\/strong>/ );
+	const qs = toolingRequire( 'qs' );
+	const input = { filters: { status: [ 'draft', 'publish' ] } };
+	assert.deepEqual( qs.parse( qs.stringify( input ) ), input );
+	assert.equal(
+		qs.stringify( { tags: [ 'one', 'two' ] }, { arrayFormat: 'comma' } ),
+		'tags=one%2Ctwo'
+	);
+	assert.doesNotThrow( () =>
+		qs.stringify( { tags: [ { toString: 1 } ] }, { arrayFormat: 'comma' } )
+	);
+} );
+
+test( 'schema-utils retains URI reference validation through patched fast-uri', () => {
+	const { validate } = toolingRequire( 'schema-utils' );
+	const schema = {
+		type: 'object',
+		properties: { value: { $ref: '#/definitions/value' } },
+		definitions: { value: { type: 'integer', minimum: 1 } },
+		required: [ 'value' ],
+		additionalProperties: false,
+	};
+	assert.doesNotThrow( () => validate( schema, { value: 2 } ) );
+	assert.throws( () => validate( schema, { value: 0 } ), /should be >= 1/ );
+	assert.throws( () => validate( schema, { value: '2' } ), /integer/ );
+} );
+
+test( 'wait-on validation and copy-webpack serialization retain their consumer APIs', async () => {
+	const waitOn = toolingRequire( 'wait-on' );
+	await waitOn( {
+		resources: [ join( root, 'package.json' ) ],
+		timeout: 2000,
+		interval: 10,
+		window: 20,
+	} );
+	await assert.rejects( waitOn( { resources: [ 42 ] } ), /string/ );
+	const copyRequire = createRequire(
+		toolingRequire.resolve( 'copy-webpack-plugin/package.json' )
+	);
+	const serialize = copyRequire( 'serialize-javascript' );
+	const cacheKey = serialize( {
+		content: '</script><script>fixture</script>',
+		transform: ( content ) => content.toUpperCase(),
+	} );
+	assert.doesNotMatch( cacheKey, /<\/script>/i );
+	assert.match( cacheKey, /toUpperCase/ );
+} );
+
+test( 'the patched MCP SDK initializes, discovers and calls tools over an in-memory transport', async ( t ) => {
+	const { Client } = await import(
+		pathToFileURL(
+			projectRequire.resolve(
+				'@modelcontextprotocol/sdk/client/index.js'
+			)
+		).href
+	);
+	const { Server } = await import(
+		pathToFileURL(
+			projectRequire.resolve(
+				'@modelcontextprotocol/sdk/server/index.js'
+			)
+		).href
+	);
+	const { InMemoryTransport } = projectRequire(
+		'@modelcontextprotocol/sdk/inMemory.js'
+	);
+	const { ListToolsRequestSchema, CallToolRequestSchema } = projectRequire(
+		'@modelcontextprotocol/sdk/types.js'
+	);
+	const client = new Client( {
+		name: 'dependency-fixture',
+		version: '1.0.0',
+	} );
+	const server = new Server(
+		{ name: 'dependency-fixture', version: '1.0.0' },
+		{ capabilities: { tools: {} } }
+	);
+	server.setRequestHandler( ListToolsRequestSchema, async () => ( {
+		tools: [ { name: 'fixture_echo', inputSchema: { type: 'object' } } ],
+	} ) );
+	server.setRequestHandler( CallToolRequestSchema, async ( request ) => ( {
+		content: [ { type: 'text', text: request.params.arguments.message } ],
+	} ) );
+	const [ clientTransport, serverTransport ] =
+		InMemoryTransport.createLinkedPair();
+	t.after( async () => {
+		await client.close();
+		await server.close();
+	} );
+	await server.connect( serverTransport );
+	await client.connect( clientTransport );
+	assert.equal(
+		( await client.listTools() ).tools[ 0 ].name,
+		'fixture_echo'
+	);
+	const result = await client.callTool( {
+		name: 'fixture_echo',
+		arguments: { message: 'fixture response' },
+	} );
+	assert.deepEqual( result.content, [
+		{ type: 'text', text: 'fixture response' },
+	] );
+} );
+
+test( 'WordPress can load Puppeteer and its BiDi parser accepts valid protocol inputs', async () => {
+	const { getPuppeteer } = toolingRequire(
+		'@wordpress/scripts/config/jest-environment-puppeteer/config.js'
+	);
+	const puppeteer = getPuppeteer( { browser: 'chromium' } );
+	assert.equal( typeof puppeteer.launch, 'function' );
+	assert.equal( typeof puppeteer.connect, 'function' );
+	const argumentsList = await puppeteer.defaultArgs( { headless: true } );
+	assert.ok(
+		argumentsList.some( ( argument ) =>
+			argument.startsWith( '--headless' )
+		)
+	);
+	const bidiUrl = pathToFileURL( projectRequire.resolve( 'chromium-bidi' ) );
+	const { BrowsingContext, Script, Session } = await import(
+		new URL( './protocol-parser/protocol-parser.js', bidiUrl ).href
+	);
+	const navigation = {
+		context: 'fixture-context',
+		url: 'https://example.test/fixture',
+		wait: 'complete',
+	};
+	assert.deepEqual(
+		BrowsingContext.parseNavigateParams( navigation ),
+		navigation
+	);
+	assert.throws( () =>
+		BrowsingContext.parseNavigateParams( { ...navigation, context: 42 } )
+	);
+	const evaluation = {
+		expression: '1 + 1',
+		target: { context: 'fixture-context' },
+		awaitPromise: true,
+		userActivation: false,
+	};
+	assert.deepEqual( Script.parseEvaluateParams( evaluation ), evaluation );
+	assert.throws( () =>
+		Script.parseEvaluateParams( { ...evaluation, awaitPromise: 'yes' } )
+	);
+	const subscription = { events: [ 'browsingContext.load' ] };
+	assert.deepEqual(
+		Session.parseSubscribeParams( subscription ),
+		subscription
+	);
+	assert.throws( () => Session.parseSubscribeParams( { events: [ 42 ] } ) );
 } );

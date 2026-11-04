@@ -77,6 +77,8 @@ final class AgentReadinessDiagnostics {
 		$mcp = LogSettings::is_enabled() ? null : $this->http_probe->request( Helpers::mcp_resource(), 'POST', array(), Helpers::mcp_resource() );
 
 		return array(
+			( new McpFeatureReadiness() )->item(),
+			( new CloudflareReadiness() )->item( $resource, $auth, $mcp ),
 			$this->metadata_item( 'oauth_discovery', $resource, 'OAuth Protected Resource Metadata', 'resource' ),
 			$this->metadata_item( 'oauth_authorization_metadata', $auth, 'OAuth Authorization Server Metadata', 'authorization' ),
 			$this->mcp_challenge_item( $mcp ),

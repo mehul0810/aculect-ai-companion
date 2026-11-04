@@ -5,7 +5,21 @@ description: Review WordPress posts and pages for clarity, structure, search int
 
 # Content Optimization
 
+## Purpose
+
 Help the user improve a specific WordPress content item without treating an optimization review as permission to edit or publish it.
+
+## Tools
+
+Use available `content_search_items` and `content_get_item` tools. Optional intelligence context tools can supply site and brand guidance. Never assume a tool is available merely because this guidance names it.
+
+## Evidence
+
+Report the observed facts, their source tool, uncertainty, and a concrete next step. Configured URLs do not prove external reachability or successful OAuth. Missing or stale cached information does not establish healthy status. Distinguish a proposed change from a verified result.
+
+## Confirmation
+
+A request to review or diagnose authorizes relevant reads. Before a write, show the exact proposed change and its effect, obtain user direction when not already authorized, and follow the existing tool preview and confirmation flow. Guidance never grants capabilities or bypasses policy.
 
 ## Workflow
 

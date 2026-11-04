@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
+import { minify } from 'terser';
 
 const source = ( name ) =>
 	readFileSync(
@@ -55,6 +56,40 @@ test( 'projects a complete server-authored update result', () => {
 		data.links.undo,
 		'https://site.example/wp-admin/revision.php?revision=40'
 	);
+} );
+
+test( 'does not label previews, pending decisions or failed writes as completed', () => {
+	for ( const fields of [
+		{ dry_run: true },
+		{ status: 'approval_pending' },
+		{ status: 'partial', error: 'partial_write' },
+		{ error: 'approval_declined' },
+	] ) {
+		const data = contract.parse( result( fields ) );
+		assert.equal( data.outcome, 'error' );
+		assert.equal( data.undo, false );
+		assert.equal( Object.values( data.links ).some( Boolean ), false );
+	}
+} );
+
+test( 'pending decisions never carry completion or recovery actions from an old result', () => {
+	const data = contract.parse(
+		result( {
+			outcome: 'approval_pending',
+			approval_target: 'Page #123: Example',
+			approval: {
+				expires_at: '2026-11-04T10:10:00Z',
+				queue: 'https://site.example/wp-admin/options-general.php?page=approvals',
+			},
+			changes: [ { label: 'title', before: 'Old', after: 'New' } ],
+		} )
+	);
+	assert.equal( data.outcome, 'approval_pending' );
+	assert.equal( data.completedAt, '' );
+	assert.equal( data.revision, '' );
+	assert.equal( data.undo, false );
+	assert.equal( data.links.view, undefined );
+	assert.equal( data.links.compare, undefined );
 } );
 
 test( 'accepts a supplied empty title without weakening required content fields', () => {
@@ -226,16 +261,21 @@ test( 'unavailable and error results cannot expose stale content links', () => {
 	}
 } );
 
-test( 'packaged HTML is deterministic, inline, and denies remote resources', () => {
+test( 'packaged HTML is deterministic, inline, and denies remote resources', async () => {
 	const template = source( 'post-update.template.html' );
 	const css = source( 'post-update.css' );
 	const bridge = readFileSync(
 		new URL( '../../widgets/runtime/v1/bridge.js', import.meta.url ),
 		'utf8'
 	);
-	const js = [ bridge, source( 'contract.js' ), source( 'widget.js' ) ].join(
-		'\n'
-	);
+	const js = (
+		await minify(
+			[ bridge, source( 'contract.js' ), source( 'widget.js' ) ].join(
+				'\n'
+			),
+			{ compress: true, mangle: true, format: { comments: false } }
+		)
+	).code;
 	const artifact = readFileSync(
 		new URL(
 			'../../assets/mcp-apps/post-update/v1/post-update.html',

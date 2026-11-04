@@ -14,6 +14,7 @@ final class McpAppsNegotiation {
 	public const EXTENSION          = 'io.modelcontextprotocol/ui';
 	public const MIME_TYPE          = 'text/html;profile=mcp-app';
 	public const SITE_INFO_URI      = 'ui://aculect/site-info/v1.html';
+	public const SITE_AUDIT_URI     = 'ui://aculect/site-audit/v1/site-audit.html';
 	public const POST_UPDATE_URI    = 'ui://aculect/post-update/v1.html';
 	public const PATTERN_PICKER_URI = 'ui://aculect/pattern-picker/v1.html';
 	public const IMAGE_UPLOAD_URI   = 'ui://aculect/image-upload/v1.html';
@@ -222,6 +223,11 @@ final class McpAppsNegotiation {
 		if ( $apps_enabled && 'site.get_info' === $ability_id ) {
 			$metadata['ui'] = array(
 				'resourceUri' => self::SITE_INFO_URI,
+				'visibility'  => array( 'model' ),
+			);
+		} elseif ( $apps_enabled && 'site_workflow.audit' === $ability_id ) {
+			$metadata['ui'] = array(
+				'resourceUri' => self::SITE_AUDIT_URI,
 				'visibility'  => array( 'model' ),
 			);
 		} elseif ( $apps_enabled && 'content_workflow.update_post' === $ability_id ) {

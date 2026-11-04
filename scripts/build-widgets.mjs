@@ -9,6 +9,17 @@ const root = fileURLToPath( new URL( '..', import.meta.url ) );
 const runtime = join( root, 'widgets/runtime/v1' );
 const widgets = [
 	{
+		source: join( root, 'widgets/site-audit/v1' ),
+		target: 'assets/mcp-apps/site-audit/v1/site-audit.html',
+		template: 'site-audit.template.html',
+		css: 'site-audit.css',
+		minifyJs: true,
+		js: [
+			join( runtime, 'bridge.js' ),
+			join( root, 'widgets/site-audit/v1/widget.js' ),
+		],
+	},
+	{
 		source: runtime,
 		target: 'assets/mcp-apps/runtime/v1/fixture.html',
 		template: 'fixture.template.html',
@@ -24,6 +35,7 @@ const widgets = [
 		target: 'assets/mcp-apps/post-update/v1/post-update.html',
 		template: 'post-update.template.html',
 		css: 'post-update.css',
+		minifyJs: true,
 		js: [
 			join( runtime, 'bridge.js' ),
 			join( root, 'widgets/post-update/v1/contract.js' ),

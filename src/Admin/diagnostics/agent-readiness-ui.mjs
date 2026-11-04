@@ -1,5 +1,17 @@
 const CHECKS = [
 	[
+		'mcp_features',
+		'MCP features and negotiation',
+		'Aculect',
+		'Check saved and effective Apps settings separately. Skills require protocol 2026-07-28. Enable diagnostic logging and inspect mcp.capabilities events for actual request negotiation; reconnect after changing settings. Text fallback remains available. Server observations do not verify host rendering.',
+	],
+	[
+		'cloudflare_connector',
+		'Cloudflare connector verification',
+		'Site owner',
+		'Verify discovery, registration, consent, token exchange, refresh and authenticated MCP calls on the approved hostname with its actual protections enabled. Public probes and absent Cloudflare headers cannot verify a working connection. Review redacted Security Events for requests that did not reach WordPress.',
+	],
+	[
 		'oauth_discovery',
 		'OAuth resource discovery',
 		'Aculect',
@@ -118,6 +130,27 @@ export const AGENT_READINESS_STATUSES = [
 ];
 
 const SAFE_EVIDENCE = {
+	mcp_features: [
+		'appsSavedEnabled',
+		'appsEffectiveEnabled',
+		'skillsProtocolAvailable',
+		'textFallbackAvailable',
+		'clientNegotiationVerified',
+		'clientRenderingVerified',
+		'diagnosticLoggingEnabled',
+	],
+	cloudflare_connector: [
+		'cloudflareDetected',
+		'endpointBlocked',
+		'publicProbeObserved',
+		'connectorReachabilityVerified',
+	],
+	webmcp: [
+		'featureEnabled',
+		'assetPresentLocally',
+		'publicScriptObserved',
+		'nativeBrowserRegistrationVerified',
+	],
 	oauth_discovery: [ 'httpStatus', 'jsonContentType', 'expectedShape' ],
 	oauth_authorization_metadata: [
 		'httpStatus',
@@ -134,6 +167,21 @@ const SAFE_EVIDENCE = {
 };
 
 const EVIDENCE_LABELS = {
+	appsSavedEnabled: 'Apps preference enabled',
+	appsEffectiveEnabled: 'Apps enabled after site filters',
+	skillsProtocolAvailable: 'Skills protocol supported',
+	textFallbackAvailable: 'Text fallback available',
+	clientNegotiationVerified: 'Client negotiation verified by this check',
+	clientRenderingVerified: 'Host rendering verified',
+	diagnosticLoggingEnabled: 'Diagnostic logging enabled',
+	cloudflareDetected: 'Cloudflare response signals observed',
+	endpointBlocked: 'Public endpoint blocked',
+	publicProbeObserved: 'Public probe performed',
+	connectorReachabilityVerified: 'End-to-end connector verified',
+	featureEnabled: 'Public WebMCP enabled',
+	assetPresentLocally: 'Local script present',
+	publicScriptObserved: 'Public executable script observed',
+	nativeBrowserRegistrationVerified: 'Native browser registration verified',
 	httpStatus: 'HTTP status',
 	jsonContentType: 'JSON content type',
 	expectedShape: 'Expected JSON shape',

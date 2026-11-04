@@ -15,7 +15,7 @@ final class McpToolResultPresenter {
 	 * @return array<string, mixed>
 	 */
 	public function present( array $result ): array {
-		$text = (string) wp_json_encode( $result );
+		$text = McpAppsSiteAuditResult::text_fallback( $result ) ?? (string) wp_json_encode( $result );
 		if ( McpAppsPostUpdateResult::SCHEMA === ( $result['schema'] ?? null ) ) {
 			$fallback = McpAppsPostUpdateResult::text_fallback( $result );
 			if ( null !== $fallback ) {

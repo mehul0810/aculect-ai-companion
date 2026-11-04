@@ -156,6 +156,7 @@ final class AgentReadinessHttpProbe {
 			'body'                   => $body,
 			'content_type'           => strtolower( $content_type ),
 			'edge_challenge'         => $this->is_edge_challenge( $response, $body, $content_type ),
+			'cloudflare_detected'    => '' !== $this->response_header( $response, 'cf-ray' ) || 'cloudflare' === strtolower( trim( $this->response_header( $response, 'server' ) ) ),
 			'bearer_challenge_valid' => 1 === preg_match( '/^\s*Bearer\b/i', $challenge )
 				&& str_contains( $challenge, 'resource_metadata="' . Helpers::protected_resource_metadata_url( Helpers::mcp_resource() ) . '"' ),
 			'link_header_present'    => '' !== $this->response_header( $response, 'link' ),

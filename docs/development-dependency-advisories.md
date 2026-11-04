@@ -2,7 +2,24 @@
 
 This register covers advisories in the Node.js dependency tree used for development and frontend asset builds. The production plugin ZIP excludes `node_modules`; built-asset exposure requires separate review. `npm audit --omit=dev` must remain at zero findings.
 
-## Beta 2 preparation — 2026-11-04
+## Beta 2 readiness follow-up — 2026-11-04
+
+Supported owning-package and in-range updates resolve **24 of the 26 distinct advisories** in the earlier checkpoint. A fresh locked install and complete audit now report **54 affected package records: 0 high, 43 moderate, 11 low**, representing these **two unresolved advisories**:
+
+| Dependency | Advisory | Current evidence and safe remaining path |
+| --- | --- | --- |
+| `deepmerge` 4.3.1 | [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4), low | npm's latest remains 4.3.1; `@wordpress/dataviews` pins it exactly. It is bundled into the shipped admin chunk through DataViews. A supported patched upstream release or separately reviewed mitigation is required; npm's suggested DataViews downgrade is not a compatible fix. |
+| `minimatch` 3.1.5 / 10.2.5 / 10.2.6 | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), moderate | The fixed version starts at 11.0.1, outside the owning 3.x/10.x dependency ranges. It is absent from the emitted production module graph but remains in repository lint/config/coverage tooling. Update supported owning packages or independently validate the major migration; no forced global override was applied. |
+
+The full audit still fails. `npm audit --omit=dev` returns zero, but cannot clear shipped frontend dependencies. Neither advisory is suppressed or accepted as a release exception. All regenerated production build files match the prior candidate ZIP byte for byte; the earlier emitted-module mapping therefore still establishes the bundled deepmerge boundary.
+
+Key fixes include MCP SDK 1.32.2, supported Puppeteer 25.16.0 / Chromium BiDi 157.0.8090-0 / Zod 4.6.7, Hono, body-parser, fast-uri, follow-redirects, ip-address, Joi, launch-editor, Markdown, qs, and serialize-javascript. The Puppeteer owning update removes the last Zod 3 copy without forcing Zod 4 into a consumer that declares only Zod 3. WordPress UI packages and Playwright 1.64.1 remain unchanged.
+
+Fresh `npm ci`, `npm ls --all`, 13 dependency consumer tests, all 208 JS tests, build, JS/CSS lint and modularity pass. Node 20.19.0 passes the SDK fixture tests and Playwright CLI/import checks. Puppeteer retains its existing Node >=22.12 requirement and is checked under the Node 24 tooling runtime; this does not raise the Node 20 hosted fixture requirement. No browser or local OAuth execution was performed. Parser/CLI checks do not establish browser interoperability.
+
+Exact old/new versions, owning ranges, registry queries, first failure logs and raw audit results are retained with the candidate evidence. Composer's current advisory audit remains blocked by local access to `packagist.org`; the unchanged lock and passing platform requirements do not substitute for a current audit.
+
+## Earlier Beta 2 checkpoint — 7c24d53, 2026-11-04
 
 A fresh Node 24/npm 11 install of the release candidate with Playwright 1.64.1 passes `npm ls --all`. The full `npm audit --package-lock-only` exits 1: **71 affected package records (10 high, 48 moderate, 13 low), representing 26 distinct advisories**. `npm audit --omit=dev` reports zero findings. No finding names the three updated Playwright packages; all implicated package lock records are unchanged from `f1276ea681268b00d648700bdc031a21d46126d1`.
 

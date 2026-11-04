@@ -53,18 +53,53 @@ final class SiteWorkflowAbilitiesTest extends TestCase {
 		);
 	}
 
-	public function test_site_audit_returns_healthy_bounded_findings(): void {
+	public function test_site_audit_does_not_treat_zero_cached_counts_as_verified_healthy(): void {
 		$result = ( new SiteWorkflowAbilities() )->audit();
 
 		self::assertSame( 'ready', $result['status'] );
 		self::assertSame( 'site_workflow_audit', $result['workflow'] );
-		self::assertSame( 'healthy', $result['summary']['overall_severity'] );
+		self::assertSame( 'warning', $result['summary']['overall_severity'] );
 		self::assertSame( 0, $result['summary']['counts']['critical'] );
-		self::assertSame( 0, $result['summary']['counts']['warning'] );
+		self::assertSame( 1, $result['summary']['counts']['warning'] );
+		$updates = array_column( $result['findings'], null, 'id' )['updates'];
+		self::assertSame( 0, $updates['evidence']['total'] );
+		self::assertSame( 'unverified', $updates['evidence']['cache_availability'] );
+		self::assertSame( 'unknown', $updates['evidence']['freshness'] );
+		self::assertStringContainsString( 'unavailable cache data can also produce zero', $updates['recommended_action'] );
 		self::assertCount( 8, $result['findings'] );
 		self::assertSame( array( 'site_get_health' ), array_column( $result['next_actions'], 'tool' ) );
 		self::assertArrayHasKey( 'site_get_info', $result['operation_entries'] );
 		self::assertArrayHasKey( 'site_get_health', $result['operation_entries'] );
+	}
+
+	public function test_configured_endpoints_do_not_claim_reachability(): void {
+		$result   = ( new SiteWorkflowAbilities() )->audit();
+		$findings = array_column( $result['findings'], null, 'id' );
+		foreach ( array( 'rest_api', 'connector_readiness' ) as $id ) {
+			self::assertSame( 'not_tested', $findings[ $id ]['evidence']['reachability'] );
+			self::assertStringContainsString( 'configured', $findings[ $id ]['recommended_action'] );
+			self::assertStringContainsString( 'not tested', $findings[ $id ]['recommended_action'] );
+		}
+	}
+
+	public function test_missing_or_malformed_update_counts_are_not_healthy(): void {
+		$method = new \ReflectionMethod( SiteWorkflowAbilities::class, 'updates_finding' );
+		foreach ( array(
+			null,
+			array(),
+			array( 'total' => 0 ),
+			array(
+				'core'    => 0,
+				'plugins' => 0,
+				'themes'  => 0,
+				'total'   => -1,
+			),
+		) as $counts ) {
+			$finding = $method->invoke( new SiteWorkflowAbilities(), array( 'checks' => array( 'updates' => array( 'counts' => $counts ) ) ) );
+			self::assertSame( 'warning', $finding['severity'] );
+			self::assertFalse( $finding['evidence']['counts_available'] );
+			self::assertSame( 'unknown', $finding['evidence']['freshness'] );
+		}
 	}
 
 	public function test_site_audit_reports_warning_findings(): void {

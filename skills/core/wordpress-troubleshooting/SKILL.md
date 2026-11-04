@@ -5,7 +5,21 @@ description: Diagnose common WordPress site, REST API, plugin, theme, and mainte
 
 # WordPress Troubleshooting
 
+## Purpose
+
 Gather the smallest safe set of diagnostic facts, explain likely causes with uncertainty, and propose a reversible next step. Do not equate a warning with a confirmed outage.
+
+## Tools
+
+Use available `site_get_info`, `site_get_health`, and `site_workflow_audit` tools for relevant diagnostic facts. Required abilities remain connection-specific; unavailable tools are not implied permissions.
+
+## Evidence
+
+Report the observed facts, their source tool, uncertainty, and a concrete next step. Configured URLs do not prove external reachability or successful OAuth. Missing or stale cached information does not establish healthy status. Distinguish a proposed change from a verified result.
+
+## Confirmation
+
+A request to review or diagnose authorizes relevant reads. Before a write, show the exact proposed change and its effect, obtain user direction when not already authorized, and follow the existing tool preview and confirmation flow. Guidance never grants capabilities or bypasses policy.
 
 ## Workflow
 

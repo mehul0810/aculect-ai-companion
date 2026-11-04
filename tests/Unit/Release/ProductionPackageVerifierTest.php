@@ -178,7 +178,7 @@ final class ProductionPackageVerifierTest extends TestCase {
 		foreach ( array( 'index.asset.php', 'index.js', 'style-index.css', 'style-index-rtl.css' ) as $asset ) {
 			$this->write_file( $package . '/build/' . $asset, '' );
 		}
-		foreach ( array( 'site-info/v1/site-info.html', 'post-update/v1/post-update.html', 'pattern-picker/v1/pattern-picker.html', 'media-picker/v1/media-picker.html', 'content-picker/v1/content-picker.html', 'image-upload/v1/image-upload.html' ) as $asset ) {
+		foreach ( array( 'site-info/v1/site-info.html', 'site-audit/v1/site-audit.html', 'post-update/v1/post-update.html', 'pattern-picker/v1/pattern-picker.html', 'media-picker/v1/media-picker.html', 'content-picker/v1/content-picker.html', 'image-upload/v1/image-upload.html' ) as $asset ) {
 			$this->write_file( $package . '/assets/mcp-apps/' . $asset, '' );
 		}
 		foreach ( array( 'wordpress-site-audit', 'content-optimization', 'wordpress-troubleshooting' ) as $skill ) {

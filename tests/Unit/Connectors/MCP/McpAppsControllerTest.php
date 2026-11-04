@@ -96,6 +96,7 @@ final class McpAppsControllerTest extends TestCase {
 		self::assertEquals(
 			array(
 				McpAppsNegotiation::SITE_INFO_URI      => 1,
+				McpAppsNegotiation::SITE_AUDIT_URI     => 1,
 				McpAppsNegotiation::PATTERN_PICKER_URI => 1,
 				McpAppsNegotiation::IMAGE_UPLOAD_URI   => 1,
 				McpAppsNegotiation::MEDIA_PICKER_URI   => 2,

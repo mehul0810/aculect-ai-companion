@@ -534,7 +534,7 @@ final class McpController {
 		}
 
 		$method                    = (string) ( $body['method'] ?? '' );
-		$this->mcp_apps_ui_enabled = McpAppsNegotiation::enabled_for_request( $method, $body, $this->request_protocol_version, $this->request_auth, (string) $request->get_header( 'mcp-session-id' ) );
+		$this->mcp_apps_ui_enabled = McpRequestCapabilities::apps_enabled( $method, $body, $this->request_protocol_version, $this->request_auth, $request );
 		if ( self::PROTOCOL_VERSION_CURRENT === $this->request_protocol_version && 'notifications/initialized' === $method ) {
 			return new WP_REST_Response( $this->rpc_error( $id, -32601, 'Method not found' ), 404 );
 		}

@@ -38,6 +38,9 @@ final class McpResourceRegistry {
 		);
 		if ( $mcp_apps_enabled ) {
 			$resources[] = ( new McpAppsSiteInfoResource() )->descriptor();
+			if ( current_user_can( 'manage_options' ) ) {
+				$resources[] = ( new McpAppsSiteAuditResource() )->descriptor();
+			}
 			$resources[] = ( new McpAppsPostUpdateResource() )->descriptor();
 			$resources[] = ( new McpAppsPatternPickerResource() )->descriptor();
 			$resources[] = ( new McpAppsPickerResource( 'media' ) )->descriptor();
@@ -71,6 +74,11 @@ final class McpResourceRegistry {
 		if ( McpAppsNegotiation::SITE_INFO_URI === $uri ) {
 			return $mcp_apps_enabled
 				? ( new McpAppsSiteInfoResource() )->read()
+				: $this->unknown_resource( $uri );
+		}
+		if ( McpAppsNegotiation::SITE_AUDIT_URI === $uri ) {
+			return $mcp_apps_enabled && current_user_can( 'manage_options' )
+				? ( new McpAppsSiteAuditResource() )->read()
 				: $this->unknown_resource( $uri );
 		}
 		if ( McpAppsNegotiation::POST_UPDATE_URI === $uri ) {

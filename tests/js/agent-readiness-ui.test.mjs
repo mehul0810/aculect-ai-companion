@@ -10,6 +10,49 @@ import {
 	agentReadinessStatusLabel,
 } from '../../src/Admin/diagnostics/agent-readiness-ui.mjs';
 
+test( 'feature, public browser and edge evidence never expose identifiers or imply verified clients', () => {
+	const report = agentReadinessExportText( {
+		items: [
+			{
+				id: 'mcp_features',
+				status: 'warning',
+				evidence: {
+					appsSavedEnabled: true,
+					appsEffectiveEnabled: false,
+					clientNegotiationVerified: false,
+					clientRenderingVerified: false,
+					client_id: 'private-client',
+					token: 'private-token',
+				},
+			},
+			{
+				id: 'cloudflare_connector',
+				status: 'externally_blocked',
+				evidence: {
+					cloudflareDetected: true,
+					endpointBlocked: true,
+					connectorReachabilityVerified: false,
+					ray: 'private-ray',
+				},
+			},
+			{
+				id: 'webmcp',
+				status: 'warning',
+				evidence: {
+					publicScriptObserved: true,
+					nativeBrowserRegistrationVerified: false,
+				},
+			},
+		],
+	} );
+	assert.match( report, /Apps preference enabled: Yes/ );
+	assert.match( report, /Apps enabled after site filters: No/ );
+	assert.match( report, /Host rendering verified: No/ );
+	assert.match( report, /End-to-end connector verified: No/ );
+	assert.match( report, /Native browser registration verified: No/ );
+	assert.doesNotMatch( report, /private-client|private-token|private-ray/ );
+} );
+
 test( 'maps all six statuses and plugin, site, and not-applicable ownership', () => {
 	const statuses = AGENT_READINESS_STATUSES.map( ( item ) => item.id );
 	const rows = agentReadinessRows( {

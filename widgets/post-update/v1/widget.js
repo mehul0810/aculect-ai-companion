@@ -53,12 +53,13 @@
 			: 'auto';
 		elements.status.dataset.state = outcome;
 		elements.status.textContent =
-			outcome === 'success' ? 'Updated' : outcome.replace( /-/g, ' ' );
+			outcome === 'success' ? 'Updated' : outcome.replace( /[-_]/g, ' ' );
 		elements.message.textContent =
 			linkError || descriptions[ outcome ] || descriptions.error;
 		const isApproval = outcome === 'approval_pending';
 		const hasContent =
-			! isApproval && ( outcome === 'success' || !! result.title );
+			[ 'success', 'partial', 'stale' ].includes( outcome ) &&
+			( outcome === 'success' || !! result.title );
 		elements.content.hidden = ! hasContent;
 		elements.approval.hidden = ! isApproval;
 		elements.approvalRisk.textContent = isApproval

@@ -6,13 +6,19 @@
 			"Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.",
 			"Added post-update revision review, layout and pattern selection, and selection-only media and content reference pickers for supported MCP Apps, with text results preserved for other clients.",
 			"Added an exact-post-update approval handoff authenticated by the current WordPress user, plus a direct WordPress Media Library image-upload handoff.",
-			"Added read-only Agent Readiness diagnostics for plugin and site discovery surfaces."
+			"Added read-only Agent Readiness diagnostics for plugin and site discovery surfaces.",
+			"Added a read-only Site Audit App with severity, evidence, recommended next steps, and a complete text fallback."
 		],
 		"Improved": [
 			"Completed public WebMCP lifecycle handling and delivery diagnostics, with bounded readiness checks, cancellation protection and editable-content exclusion.",
-			"Clarified Cloudflare connection guidance without claiming that edge challenges can be bypassed."
+			"Clarified Cloudflare connection guidance without claiming that edge challenges can be bypassed.",
+			"Added a review of current and proposed custom Skill content, references, dependencies, version and digest before saving or importing.",
+			"Separated enabled MCP features, observed request negotiation, public WebMCP delivery, and unverified host rendering in diagnostics.",
+			"Kept Cloudflare compatibility unverified until connection testing is completed on the intended hostname."
 		],
-		"Fixed": [],
+		"Fixed": [
+			"Prevented pending or contradictory post-update results from displaying completion details or completed-action links."
+		],
 		"Reliability": [
 			"Included versioned MCP Apps assets, including both reference pickers, and packaged core Skills in production-package verification."
 		]
@@ -133,194 +139,194 @@
 			"Added a production release guard that blocks deployment unless the exact release tag is already on main and the versions match.",
 			"Updated prerelease packaging so a published draft prerelease triggers its build, package verification, Plugin Check, and artifact upload."
 		]
-  },
-  "0.6.0": {
-    "date": "2026-06-16",
-    "New": [
-      "Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Cursor, Gemini, generic MCP clients, and OpenAI-compatible integrations.",
-      "Added canonical MCP search and fetch tools for citation-friendly WordPress content retrieval.",
-      "Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
-      "Added a site audit workflow for safe site-management readiness checks.",
-      "Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.",
-      "Added Site Editor and Admin Menu intelligence so assistants can inspect Appearance > Editor surfaces, admin navigation, and registered settings metadata without file-level changes or raw option access.",
-      "Added a plugin_incident_report tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails."
-    ],
-    "Improved": [
-      "Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Cursor, Gemini, and generic client compatibility.",
-      "Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.",
-      "Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.",
-      "Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.",
-      "Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers."
-    ],
-    "Reliability": [
-      "Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.",
-      "Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.",
-      "Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
-      "Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.",
-      "Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.",
-      "Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published.",
-      "Fixed duplicate active connection rows by revoking older refreshable sessions when the same assistant provider reconnects for the same WordPress user and resource."
-    ]
-  },
-  "0.5.3": {
-    "date": "2026-06-12",
-    "Improved": [
-      "Improved MCP workflow discovery so content and SEO workflows are derived from the enabled atomic abilities instead of requiring separate workflow toggles.",
-      "Improved read-only intelligence discovery so site, content, developer, brand, and capability context tools are available by default when OAuth read access allows them."
-    ],
-    "New": [
-      "Added an MCP capability help directory so assistants can discover available abilities, workflows, intelligence surfaces, blockers, prompts, and suggested next actions."
-    ],
-    "Reliability": [
-      "Hardened durable intelligence memory writes so direct memory saves require review controls and normal learning suggestions use feedback submission."
-    ]
-  },
-  "0.5.2": {
-    "date": "2026-06-11",
-    "Fixed": [
-      "Fixed MCP content scheduling so future post status and date metadata persist correctly.",
-      "Fixed missing or roleless MCP users so they resolve to a safe read-only ability policy.",
-      "Fixed MCP tool availability so OAuth scope blockers are reported before exposing tools unavailable to the connected client."
-    ],
-    "Improved": [
-      "Added Cloudflare compatibility diagnostics for Bot Fight Mode and Flexible SSL/TLS connector issues.",
-      "Updated GitHub Actions for the Node 24 runtime.",
-      "Resolved an npm development dependency security alert."
-    ],
-    "Reliability": [
-      "Added an OAuth connector smoke gate for dynamic client registration and authorization redirects.",
-      "Bounded MCP PHPStan analysis into focused groups so release-readiness static analysis remains reliable."
-    ]
-  },
-  "0.5.1": {
-    "date": "2026-06-10",
-    "Improved": [
-      "Improved OAuth secret storage so sites without ACULECT_AI_COMPANION_ENCRYPTION_KEY automatically use a generated database-managed encryption key instead of blocking assistant authorization.",
-      "Updated diagnostics to warn, not fail, when OAuth secrets are encrypted with the database-managed fallback key.",
-      "Kept ACULECT_AI_COMPANION_ENCRYPTION_KEY as the strongest production option for storing the encryption key outside the database."
-    ]
-  },
-  "0.5.0": {
-    "date": "2026-06-10",
-    "New": [
-      "Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
-      "Added AI Activity logging.",
-      "Added role-specific MCP ability policy controls and per-user access pause controls.",
-      "Added per-connection write permission controls for trusted assistants that should run write actions without confirmation blockers.",
-      "Added Intelligence Layer.",
-      "Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.",
-      "Added settings import, export, and reset actions for safer configuration transfer and recovery.",
-      "Added an authenticated MCP tool manifest export for diagnosing client-specific tool discovery differences.",
-      "Added guided MCP content workflow tools for long-form post planning, draft creation, section-based post updates, and Rank Math SEO updates.",
-      "Added reviewed learning suggestions so assistants can report improvement opportunities for admin review."
-    ],
-    "Improved": [
-      "Reduced unnecessary admin payload work for tab-specific data.",
-      "Removed statistics card rows from settings tabs so each screen stays focused on actions, filters, and operational state.",
-      "Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.",
-      "Refined Connections and Abilities list views with tighter columns, assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.",
-      "Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.",
-      "Polished the connection access modal logo and form spacing.",
-      "Updated workflow tool availability so workflows only appear when the required underlying global abilities, role policy, and OAuth scopes allow them."
-    ],
-    "Reliability": [
-      "Added provider compatibility guards for Claude, ChatGPT, OpenAI, and Codex MCP tool descriptors and input schemas.",
-      "Expanded cleanup coverage for full uninstall data removal.",
-      "Expanded unit coverage for workflow tools, content intelligence indexing, activity logging, OAuth error handling, tool safety, and cleanup."
-    ]
-  },
-  "0.4.0": {
-    "date": "2026-05-26",
-    "New": [
-      "Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.",
-      "Added taxonomy term image assignment for supported content groups.",
-      "Expanded media workflows with media read, update, trash, attachment relationship, and safe physical filename rename actions.",
-      "Added role-based MCP connection entry points for non-admin users.",
-      "Added Codex connector setup guidance."
-    ],
-    "Improved": [
-      "Expanded comment workflows with richer filters and bulk moderation.",
-      "Added safe site health summaries and broader site management visibility.",
-      "Added policy-controlled bridging for public WordPress Abilities registered by WordPress and other plugins.",
-      "Improved MCP list payloads with compact defaults and sparse field controls for lower-volume responses.",
-      "Modularized MCP tool definitions, schemas, scopes, read-only hints, and handlers to reduce drift as more tools are added."
-    ],
-    "Reliability": [
-      "Added dry-run previews and confirmation gates for higher-risk write actions.",
-      "Expanded test and CI coverage for MCP tools, permissions, safety controls, media workflows, and release packaging."
-    ]
-  },
-  "0.3.0": {
-    "date": "2026-05-22",
-    "New": [
-      "Added an AI Activity tab for reviewing write actions requested by connected AI assistants.",
-      "Added a Connections control to temporarily pause or resume AI access without disconnecting assistants.",
-      "Added connection diagnostics that check endpoint, OAuth, and MCP readiness from the settings screen."
-    ],
-    "Improved": [
-      "Refreshed the settings screen header with Aculect branding and clearer AI agent connection messaging.",
-      "Added WordPress.org plugin icon, banner, branded screenshots, and a Playground preview blueprint for the plugin listing.",
-      "Improved action permission controls so AI tools only expose and run enabled, authorized abilities."
-    ],
-    "Reliability": [
-      "Added OAuth storage maintenance to clean up expired connection data.",
-      "Hardened media uploads from public URLs with stricter sideload safeguards.",
-      "Expanded connector flow, activity log, access control, media, OAuth, and diagnostics test coverage.",
-      "Fixed the Active Connections screen so the active access notice does not appear when no assistants are connected."
-    ]
-  },
-  "0.2.1": {
-    "date": "2026-05-20",
-    "Fixed": [
-      "Fixed diagnostics logging when the logs table is missing but the saved diagnostics database version is current.",
-      "Added automatic repair for the diagnostics logs table during plugin boot."
-    ],
-    "Improved": [
-      "Added Cloudflare troubleshooting guidance for Bot Fight Mode and Flexible SSL/TLS connection issues.",
-      "Clarified that Cloudflare Bot Fight Mode should remain disabled for the hostname used by the MCP connection URL because it can block setup and later tool calls."
-    ],
-    "Reliability": [
-      "Added unit coverage for diagnostics log table repair."
-    ]
-  },
-  "0.2.0": {
-    "date": "2026-05-18",
-    "New": [
-      "Added opt-in diagnostic logging for AI assistant connection flows.",
-      "Added an Advanced setting to enable diagnostics and a Logs tab that appears only when logging is enabled.",
-      "Added newest-first log pagination, clear-log controls, 30-day retention, and automatic pruning."
-    ],
-    "Improved": [
-      "Dynamic client registration, OAuth discovery, authorization, token exchange, and MCP authorization checks now emit sanitized lifecycle and error events when diagnostics are enabled.",
-      "Diagnostic context now identifies ChatGPT, Claude, and other MCP clients without storing tokens, secrets, raw request bodies, raw query strings, cookies, authorization headers, nonces, passwords, or client secrets."
-    ],
-    "Reliability": [
-      "Hardened OAuth consent and authorization request handling with allowlisted, context-aware sanitization.",
-      "Added stricter validation for response type, resource, PKCE, scopes, redirect URI, and consent decisions.",
-      "Added unit coverage for diagnostic logging, redaction, repository behavior, and OAuth authorization parameter handling."
-    ]
-  },
-  "0.1.0": {
-    "date": "2026-05-15",
-    "New": [
-      "Connect a supported AI assistant by copying one connection URL from WordPress.",
-      "Approve each AI assistant in WordPress before it can access your site.",
-      "See connected AI assistants and disconnect them whenever needed.",
-      "Choose which abilities your AI assistant can use after it is connected."
-    ],
-    "Improved": [
-      "Setup instructions now focus on the steps users need, not technical details.",
-      "Copy buttons make connection details easier to use.",
-      "The About page now explains Aculect AI Companion in plain language.",
-      "WordPress notices now appear below the Aculect AI Companion header so the page is easier to read.",
-      "AI assistant connections now work more reliably.",
-      "Aculect AI Companion can now help with comments, media, site information, plugins, and themes."
-    ],
-    "Reliability": [
-      "Added extra checks to catch problems before test releases are shared.",
-      "Added connection checks to reduce setup issues.",
-      "Prepared release downloads so they include only the files users need.",
-      "Added clear privacy and external service notes for WordPress users."
-    ]
-  }
+	},
+	"0.6.0": {
+		"date": "2026-06-16",
+		"New": [
+			"Added a provider registry with setup guidance for ChatGPT, Claude, Codex, Cursor, Gemini, generic MCP clients, and OpenAI-compatible integrations.",
+			"Added canonical MCP search and fetch tools for citation-friendly WordPress content retrieval.",
+			"Added workflow guide discovery so assistants can choose repeatable content, SEO, site audit, and troubleshooting workflows before calling write tools.",
+			"Added a site audit workflow for safe site-management readiness checks.",
+			"Added WordPress Abilities API diagnostics and read-only Aculect Intelligence registrations.",
+			"Added Site Editor and Admin Menu intelligence so assistants can inspect Appearance > Editor surfaces, admin navigation, and registered settings metadata without file-level changes or raw option access.",
+			"Added a plugin_incident_report tool that stores local sanitized incident reports and prepares public GitHub issue drafts when the plugin or MCP workflow fails."
+		],
+		"Improved": [
+			"Improved MCP input schemas and descriptors for stricter ChatGPT, Claude, Codex, Cursor, Gemini, and generic client compatibility.",
+			"Improved workflow and read-only intelligence availability so first-party workflow/help tools remain available without separate admin ability toggles when OAuth scope allows them.",
+			"Improved content workflows so assistants infer article, page, landing page, service page, product page, case study, or visual layout mode from the brief and return matching block and pattern plans.",
+			"Improved role ability settings by keeping role-specific policy controls behind the Advanced opt-in.",
+			"Improved OAuth and connector diagnostics for authorization methods, provider matching, and tool availability blockers."
+		],
+		"Reliability": [
+			"Added public Dynamic Client Registration auth profiles for better compatibility with clients that do not use client secrets.",
+			"Added MCP metadata fingerprint diagnostics to help detect stale connector tool metadata.",
+			"Added intelligence index diagnostics for freshness, refresh jobs, and search readiness.",
+			"Added atomic block validation for direct content create and update tools so invalid block markup and Custom HTML blocks are rejected earlier.",
+			"Added layout-aware validation warnings when visual page requests produce paragraph-only block markup.",
+			"Fixed MCP scheduled post validation so future status rejects missing or past dates before WordPress can normalize the post to published.",
+			"Fixed duplicate active connection rows by revoking older refreshable sessions when the same assistant provider reconnects for the same WordPress user and resource."
+		]
+	},
+	"0.5.3": {
+		"date": "2026-06-12",
+		"Improved": [
+			"Improved MCP workflow discovery so content and SEO workflows are derived from the enabled atomic abilities instead of requiring separate workflow toggles.",
+			"Improved read-only intelligence discovery so site, content, developer, brand, and capability context tools are available by default when OAuth read access allows them."
+		],
+		"New": [
+			"Added an MCP capability help directory so assistants can discover available abilities, workflows, intelligence surfaces, blockers, prompts, and suggested next actions."
+		],
+		"Reliability": [
+			"Hardened durable intelligence memory writes so direct memory saves require review controls and normal learning suggestions use feedback submission."
+		]
+	},
+	"0.5.2": {
+		"date": "2026-06-11",
+		"Fixed": [
+			"Fixed MCP content scheduling so future post status and date metadata persist correctly.",
+			"Fixed missing or roleless MCP users so they resolve to a safe read-only ability policy.",
+			"Fixed MCP tool availability so OAuth scope blockers are reported before exposing tools unavailable to the connected client."
+		],
+		"Improved": [
+			"Added Cloudflare compatibility diagnostics for Bot Fight Mode and Flexible SSL/TLS connector issues.",
+			"Updated GitHub Actions for the Node 24 runtime.",
+			"Resolved an npm development dependency security alert."
+		],
+		"Reliability": [
+			"Added an OAuth connector smoke gate for dynamic client registration and authorization redirects.",
+			"Bounded MCP PHPStan analysis into focused groups so release-readiness static analysis remains reliable."
+		]
+	},
+	"0.5.1": {
+		"date": "2026-06-10",
+		"Improved": [
+			"Improved OAuth secret storage so sites without ACULECT_AI_COMPANION_ENCRYPTION_KEY automatically use a generated database-managed encryption key instead of blocking assistant authorization.",
+			"Updated diagnostics to warn, not fail, when OAuth secrets are encrypted with the database-managed fallback key.",
+			"Kept ACULECT_AI_COMPANION_ENCRYPTION_KEY as the strongest production option for storing the encryption key outside the database."
+		]
+	},
+	"0.5.0": {
+		"date": "2026-06-10",
+		"New": [
+			"Refreshed the AI Companion admin experience with clearer navigation, connection guidance, diagnostics, activity, and changelog surfaces.",
+			"Added AI Activity logging.",
+			"Added role-specific MCP ability policy controls and per-user access pause controls.",
+			"Added per-connection write permission controls for trusted assistants that should run write actions without confirmation blockers.",
+			"Added Intelligence Layer.",
+			"Added block and pattern knowledge so assistants can understand available WordPress blocks and patterns without relying on custom HTML blocks.",
+			"Added settings import, export, and reset actions for safer configuration transfer and recovery.",
+			"Added an authenticated MCP tool manifest export for diagnosing client-specific tool discovery differences.",
+			"Added guided MCP content workflow tools for long-form post planning, draft creation, section-based post updates, and Rank Math SEO updates.",
+			"Added reviewed learning suggestions so assistants can report improvement opportunities for admin review."
+		],
+		"Improved": [
+			"Reduced unnecessary admin payload work for tab-specific data.",
+			"Removed statistics card rows from settings tabs so each screen stays focused on actions, filters, and operational state.",
+			"Hardened OAuth storage maintenance so repeated dynamic client registration is bounded without blocking valid connector retries.",
+			"Refined Connections and Abilities list views with tighter columns, assigned-abilities modals, access-level controls, and desktop-friendly DataViews layouts.",
+			"Polished settings header spacing, tab navigation, Advanced layout, admin notices, loading states, and connector branding.",
+			"Polished the connection access modal logo and form spacing.",
+			"Updated workflow tool availability so workflows only appear when the required underlying global abilities, role policy, and OAuth scopes allow them."
+		],
+		"Reliability": [
+			"Added provider compatibility guards for Claude, ChatGPT, OpenAI, and Codex MCP tool descriptors and input schemas.",
+			"Expanded cleanup coverage for full uninstall data removal.",
+			"Expanded unit coverage for workflow tools, content intelligence indexing, activity logging, OAuth error handling, tool safety, and cleanup."
+		]
+	},
+	"0.4.0": {
+		"date": "2026-05-26",
+		"New": [
+			"Added featured image, author, taxonomy, and supported SEO metadata controls to content workflows.",
+			"Added taxonomy term image assignment for supported content groups.",
+			"Expanded media workflows with media read, update, trash, attachment relationship, and safe physical filename rename actions.",
+			"Added role-based MCP connection entry points for non-admin users.",
+			"Added Codex connector setup guidance."
+		],
+		"Improved": [
+			"Expanded comment workflows with richer filters and bulk moderation.",
+			"Added safe site health summaries and broader site management visibility.",
+			"Added policy-controlled bridging for public WordPress Abilities registered by WordPress and other plugins.",
+			"Improved MCP list payloads with compact defaults and sparse field controls for lower-volume responses.",
+			"Modularized MCP tool definitions, schemas, scopes, read-only hints, and handlers to reduce drift as more tools are added."
+		],
+		"Reliability": [
+			"Added dry-run previews and confirmation gates for higher-risk write actions.",
+			"Expanded test and CI coverage for MCP tools, permissions, safety controls, media workflows, and release packaging."
+		]
+	},
+	"0.3.0": {
+		"date": "2026-05-22",
+		"New": [
+			"Added an AI Activity tab for reviewing write actions requested by connected AI assistants.",
+			"Added a Connections control to temporarily pause or resume AI access without disconnecting assistants.",
+			"Added connection diagnostics that check endpoint, OAuth, and MCP readiness from the settings screen."
+		],
+		"Improved": [
+			"Refreshed the settings screen header with Aculect branding and clearer AI agent connection messaging.",
+			"Added WordPress.org plugin icon, banner, branded screenshots, and a Playground preview blueprint for the plugin listing.",
+			"Improved action permission controls so AI tools only expose and run enabled, authorized abilities."
+		],
+		"Reliability": [
+			"Added OAuth storage maintenance to clean up expired connection data.",
+			"Hardened media uploads from public URLs with stricter sideload safeguards.",
+			"Expanded connector flow, activity log, access control, media, OAuth, and diagnostics test coverage.",
+			"Fixed the Active Connections screen so the active access notice does not appear when no assistants are connected."
+		]
+	},
+	"0.2.1": {
+		"date": "2026-05-20",
+		"Fixed": [
+			"Fixed diagnostics logging when the logs table is missing but the saved diagnostics database version is current.",
+			"Added automatic repair for the diagnostics logs table during plugin boot."
+		],
+		"Improved": [
+			"Added Cloudflare troubleshooting guidance for Bot Fight Mode and Flexible SSL/TLS connection issues.",
+			"Clarified that Cloudflare Bot Fight Mode should remain disabled for the hostname used by the MCP connection URL because it can block setup and later tool calls."
+		],
+		"Reliability": [
+			"Added unit coverage for diagnostics log table repair."
+		]
+	},
+	"0.2.0": {
+		"date": "2026-05-18",
+		"New": [
+			"Added opt-in diagnostic logging for AI assistant connection flows.",
+			"Added an Advanced setting to enable diagnostics and a Logs tab that appears only when logging is enabled.",
+			"Added newest-first log pagination, clear-log controls, 30-day retention, and automatic pruning."
+		],
+		"Improved": [
+			"Dynamic client registration, OAuth discovery, authorization, token exchange, and MCP authorization checks now emit sanitized lifecycle and error events when diagnostics are enabled.",
+			"Diagnostic context now identifies ChatGPT, Claude, and other MCP clients without storing tokens, secrets, raw request bodies, raw query strings, cookies, authorization headers, nonces, passwords, or client secrets."
+		],
+		"Reliability": [
+			"Hardened OAuth consent and authorization request handling with allowlisted, context-aware sanitization.",
+			"Added stricter validation for response type, resource, PKCE, scopes, redirect URI, and consent decisions.",
+			"Added unit coverage for diagnostic logging, redaction, repository behavior, and OAuth authorization parameter handling."
+		]
+	},
+	"0.1.0": {
+		"date": "2026-05-15",
+		"New": [
+			"Connect a supported AI assistant by copying one connection URL from WordPress.",
+			"Approve each AI assistant in WordPress before it can access your site.",
+			"See connected AI assistants and disconnect them whenever needed.",
+			"Choose which abilities your AI assistant can use after it is connected."
+		],
+		"Improved": [
+			"Setup instructions now focus on the steps users need, not technical details.",
+			"Copy buttons make connection details easier to use.",
+			"The About page now explains Aculect AI Companion in plain language.",
+			"WordPress notices now appear below the Aculect AI Companion header so the page is easier to read.",
+			"AI assistant connections now work more reliably.",
+			"Aculect AI Companion can now help with comments, media, site information, plugins, and themes."
+		],
+		"Reliability": [
+			"Added extra checks to catch problems before test releases are shared.",
+			"Added connection checks to reduce setup issues.",
+			"Prepared release downloads so they include only the files users need.",
+			"Added clear privacy and external service notes for WordPress users."
+		]
+	}
 }

@@ -1,17 +1,12 @@
+import { SkillEditor } from './SkillEditor';
+import { SkillImport } from './SkillImport';
 import { useCallback, useEffect, useState } from '@wordpress/element';
-import {
-	Button,
-	Modal,
-	Notice,
-	TextareaControl,
-	TextControl,
-	ToggleControl,
-} from '@wordpress/components';
+import { Button, Modal, Notice, TextControl } from '@wordpress/components';
 
 const EMPTY_SKILL = {
 	id: 'custom-new-skill',
 	skill_md:
-		'---\nname: custom-new-skill\ndescription: Describe when this guidance applies\n---\n\n# Workflow\n\nDescribe the steps to take using the abilities available to this connection.\n',
+		'---\nname: custom-new-skill\ndescription: Describe when this guidance applies\n---\n\n## Purpose\n\nDescribe the task and intended outcome.\n\n## Tools\n\nUse only tools available to this connection. Declare required abilities below.\n\n## Evidence\n\nReport observations, sources, and unknowns before recommendations.\n\n## Confirmation\n\nReview proposed changes with the user and follow existing tool confirmation requirements. This guidance grants no permissions.\n',
 	references: {},
 	abilitiesText: '',
 	pluginsText: '',
@@ -37,97 +32,6 @@ function errorMessage( payload, fallback ) {
 	return payload?.message || payload?.error || fallback;
 }
 
-function ReferenceEditor( { references, onChange } ) {
-	const entries = Object.entries( references || {} );
-	const [ pathError, setPathError ] = useState( '' );
-	return (
-		<div className="aculect-skills-references">
-			<div className="aculect-skills-references__heading">
-				<h3>Markdown references</h3>
-				<Button
-					variant="secondary"
-					onClick={ () => {
-						const next = { ...references };
-						let index = entries.length + 1;
-						while ( next[ `references/reference-${ index }.md` ] ) {
-							index += 1;
-						}
-						next[ `references/reference-${ index }.md` ] = '';
-						onChange( next );
-					} }
-				>
-					Add reference
-				</Button>
-			</div>
-			<p>
-				References are Markdown files packaged with this skill. They are
-				instructions, not executable code.
-			</p>
-			{ pathError && (
-				<Notice status="warning" isDismissible={ false }>
-					{ pathError }
-				</Notice>
-			) }
-			{ entries.map( ( [ path, content ], index ) => (
-				<div className="aculect-skills-reference" key={ index }>
-					<TextControl
-						label={ `Reference ${ index + 1 } path` }
-						help="Use a relative path such as references/checklist.md."
-						value={ path }
-						onChange={ ( nextPath ) => {
-							if (
-								nextPath !== path &&
-								Object.prototype.hasOwnProperty.call(
-									references,
-									nextPath
-								)
-							) {
-								setPathError(
-									'A different reference already uses that path.'
-								);
-								return;
-							}
-							setPathError( '' );
-							const next = Object.fromEntries(
-								entries.map(
-									(
-										[ itemPath, itemContent ],
-										itemIndex
-									) => [
-										itemIndex === index
-											? nextPath
-											: itemPath,
-										itemContent,
-									]
-								)
-							);
-							onChange( next );
-						} }
-					/>
-					<TextareaControl
-						label={ `Reference ${ index + 1 } Markdown` }
-						value={ content }
-						onChange={ ( nextContent ) =>
-							onChange( { ...references, [ path ]: nextContent } )
-						}
-					/>
-					<Button
-						variant="tertiary"
-						isDestructive
-						onClick={ () => {
-							const next = { ...references };
-							delete next[ path ];
-							onChange( next );
-						} }
-					>
-						Remove reference
-					</Button>
-				</div>
-			) ) }
-		</div>
-	);
-}
-
 export function SkillsDashboard( { apiUrl, nonce } ) {
 	const [ skills, setSkills ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
@@ -136,8 +40,6 @@ export function SkillsDashboard( { apiUrl, nonce } ) {
 	const [ editor, setEditor ] = useState( null );
 	const [ deleting, setDeleting ] = useState( null );
 	const [ importing, setImporting ] = useState( false );
-	const [ importFile, setImportFile ] = useState( null );
-	const [ replaceImport, setReplaceImport ] = useState( false );
 	const [ duplicate, setDuplicate ] = useState( null );
 	const [ duplicateId, setDuplicateId ] = useState( '' );
 
@@ -223,6 +125,7 @@ export function SkillsDashboard( { apiUrl, nonce } ) {
 			);
 			setEditor( {
 				...payload.skill,
+				original: payload.skill,
 				abilitiesText: commaSeparated(
 					payload.skill.required_abilities
 				),
@@ -288,46 +191,6 @@ export function SkillsDashboard( { apiUrl, nonce } ) {
 		} finally {
 			setBusy( false );
 		}
-	}
-
-	async function importSkill() {
-		if ( ! importFile ) {
-			return;
-		}
-		if ( importFile.size > 270336 ) {
-			setNotice( {
-				status: 'error',
-				message: 'The package is too large. The limit is 264 KB.',
-			} );
-			return;
-		}
-		await perform( async () => {
-			const fileText = await importFile.text();
-			let packageData;
-			try {
-				packageData = JSON.parse( fileText );
-			} catch {
-				throw new Error( 'Skill package must be valid JSON.' );
-			}
-			const existing = skills.find(
-				( skill ) =>
-					skill.provider === 'custom' &&
-					skill.id === packageData?.skill?.id
-			);
-			await request( '/import', 'POST', {
-				package: fileText,
-				replace: replaceImport,
-				...( replaceImport && existing
-					? {
-							expected_version: existing.version,
-							expected_digest: existing.digest,
-					  }
-					: {} ),
-			} );
-			setImporting( false );
-			setImportFile( null );
-			setReplaceImport( false );
-		}, 'Skill imported as disabled. Review it before enabling.' );
 	}
 
 	return (
@@ -494,94 +357,14 @@ export function SkillsDashboard( { apiUrl, nonce } ) {
 				</div>
 			) }
 			{ editor && (
-				<Modal
-					title={
-						editor.isNew ? 'Create skill' : `Edit ${ editor.id }`
-					}
-					onRequestClose={ () => setEditor( null ) }
-					shouldCloseOnClickOutside={ false }
-					className="aculect-skills__editor"
-				>
-					<p>
-						Only declarative Markdown and bounded reference files
-						are accepted. Use existing WordPress abilities; this
-						does not create a new action channel.
-					</p>
-					<TextControl
-						label="Skill ID"
-						help="Start with custom- and use lowercase letters, numbers, and hyphens. This ID cannot be changed after creation."
-						value={ editor.id }
-						disabled={ ! editor.isNew }
-						onChange={ ( id ) =>
-							setEditor( {
-								...editor,
-								id,
-								skill_md: editor.skill_md.replace(
-									`name: ${ editor.id }\n`,
-									`name: ${ id }\n`
-								),
-							} )
-						}
-					/>
-					<TextareaControl
-						label="SKILL.md"
-						help="Include name and description frontmatter, followed by instructions and declared dependencies."
-						value={ editor.skill_md || '' }
-						onChange={ ( content ) =>
-							setEditor( { ...editor, skill_md: content } )
-						}
-						rows={ 16 }
-					/>
-					<ReferenceEditor
-						references={ editor.references || {} }
-						onChange={ ( references ) =>
-							setEditor( { ...editor, references } )
-						}
-					/>
-					<TextControl
-						label="Required abilities"
-						help="Optional comma-separated Aculect ability IDs, such as site.get_info. A skill is hidden from connections without every required ability."
-						value={ editor.abilitiesText }
-						onChange={ ( value ) =>
-							setEditor( { ...editor, abilitiesText: value } )
-						}
-					/>
-					<TextControl
-						label="Required plugins"
-						help="Optional comma-separated WordPress plugin basenames, such as example/example.php. A skill is hidden until each plugin is active."
-						value={ editor.pluginsText }
-						onChange={ ( value ) =>
-							setEditor( { ...editor, pluginsText: value } )
-						}
-					/>
-					{ editor.isNew && (
-						<ToggleControl
-							label="Enabled"
-							checked={ Boolean( editor.enabled ) }
-							onChange={ ( enabled ) =>
-								setEditor( { ...editor, enabled } )
-							}
-						/>
-					) }
-					<div className="aculect-skills__modal-actions">
-						<Button
-							variant="secondary"
-							onClick={ () => setEditor( null ) }
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="primary"
-							isBusy={ busy }
-							disabled={
-								busy || ! editor.id || ! editor.skill_md
-							}
-							onClick={ saveEditor }
-						>
-							Save skill
-						</Button>
-					</div>
-				</Modal>
+				<SkillEditor
+					notice={ notice }
+					editor={ editor }
+					setEditor={ setEditor }
+					busy={ busy }
+					saveEditor={ saveEditor }
+					onClose={ () => setEditor( null ) }
+				/>
 			) }
 			{ duplicate && (
 				<Modal
@@ -668,55 +451,14 @@ export function SkillsDashboard( { apiUrl, nonce } ) {
 				</Modal>
 			) }
 			{ importing && (
-				<Modal
-					title="Import skill"
-					onRequestClose={ () => setImporting( false ) }
-					shouldCloseOnClickOutside={ false }
-				>
-					<p>
-						Choose an Aculect skill JSON package. Import validates
-						every field and reference before saving it to this site.
-						The imported skill stays disabled until you review and
-						enable it. Replacing a skill also disables it. No file
-						is sent to Aculect.
-					</p>
-					<label
-						className="aculect-skills__file-label"
-						htmlFor="aculect-skill-import-file"
-					>
-						Skill package (.json)
-					</label>
-					<input
-						id="aculect-skill-import-file"
-						type="file"
-						accept=".json,application/json"
-						onChange={ ( event ) =>
-							setImportFile( event.target.files?.[ 0 ] || null )
-						}
-					/>
-					<ToggleControl
-						label="Replace an existing custom skill with the same ID"
-						checked={ replaceImport }
-						onChange={ setReplaceImport }
-						help="Leave off to reject an ID conflict without changing the existing skill."
-					/>
-					<div className="aculect-skills__modal-actions">
-						<Button
-							variant="secondary"
-							onClick={ () => setImporting( false ) }
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="primary"
-							disabled={ busy || ! importFile }
-							isBusy={ busy }
-							onClick={ importSkill }
-						>
-							Import skill
-						</Button>
-					</div>
-				</Modal>
+				<SkillImport
+					notice={ notice }
+					request={ request }
+					perform={ perform }
+					skills={ skills }
+					busy={ busy }
+					onClose={ () => setImporting( false ) }
+				/>
 			) }
 		</section>
 	);

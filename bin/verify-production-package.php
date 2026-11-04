@@ -32,6 +32,7 @@ $required_paths = array(
 	'src/WebMCP/WebMcpRequestPolicy.php',
 	'src/Diagnostics/WebMcpReadiness.php',
 	'assets/mcp-apps/site-info/v1/site-info.html',
+	'assets/mcp-apps/site-audit/v1/site-audit.html',
 	'assets/mcp-apps/post-update/v1/post-update.html',
 	'assets/mcp-apps/pattern-picker/v1/pattern-picker.html',
 	'assets/mcp-apps/media-picker/v1/media-picker.html',

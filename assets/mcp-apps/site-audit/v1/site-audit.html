@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+	<title>WordPress site audit</title>
+	<style>:root {
+	color-scheme: light dark;
+	font-family: system-ui, sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	color: var(--color-text-primary, #1e1e1e);
+	background: var(--color-background-primary, #fff);
+}
+
+main {
+	padding: 16px;
+	max-width: 800px;
+	margin: auto;
+	overflow-wrap: anywhere;
+}
+
+h1 {
+	font-size: 1.4rem;
+	margin-top: 0;
+}
+
+h2 {
+	font-size: 1.1rem;
+}
+
+p,
+li,
+dd,
+dt {
+	font-size: 0.9rem;
+	line-height: 1.5;
+}
+
+article {
+	border: 1px solid #949494;
+	border-left: 4px solid #757575;
+	border-radius: 4px;
+	padding: 12px;
+	margin: 12px 0;
+}
+
+article[data-severity="critical"] {
+	border-left-color: #b32d2e;
+}
+
+article[data-severity="warning"] {
+	border-left-color: #996800;
+}
+
+dl {
+	margin: 0;
+}
+
+dt {
+	font-weight: 600;
+}
+
+dd {
+	margin: 0 0 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+
+	body {
+		color: var(--color-text-primary, #f0f0f0);
+		background: var(--color-background-primary, #1e1e1e);
+	}
+}
+</style>
+</head>
+<body>
+	<main aria-labelledby="heading">
+		<h1 id="heading">WordPress site audit</h1>
+		<p>Read-only configuration and cached signals. External reachability, OAuth connectivity, and update freshness were not verified.</p>
+		<p id="status" role="status" aria-live="polite">Waiting for the audit result…</p>
+		<div id="findings"></div>
+		<section aria-labelledby="next-heading"><h2 id="next-heading">Recommended next steps</h2><ul id="next-actions"></ul></section>
+		<p>No changes were made. Review proposed changes separately using the existing tool confirmation flow.</p>
+	</main>
+	<script>(e=>{const t="2026-01-26",n="2.0",o=e=>null!==e&&"object"==typeof e&&!Array.isArray(e);e.AculectWidgetBridge=Object.freeze({createBridge:function(e){const r=e.windowRef,i=r.parent,s=new Set(e.readOnlyTools??[]),a=new Map;let l=1,c=!1,d=!1,u=!1,p={};const f=Math.min(3e4,Math.max(1e3,e.timeoutMs??1e4));function h(e,t){if(d||a.size>=16)return Promise.reject(new Error("Widget bridge is unavailable."));const o=l++;return new Promise((s,l)=>{const c=r.setTimeout(()=>{a.delete(o),l(new Error("Host did not respond."))},f);a.set(o,{resolve:s,reject:l,timer:c}),i.postMessage({jsonrpc:n,id:o,method:e,params:t},"*")})}function m(t){if(d||t.source!==i||!o(t.data))return;const s=t.data;if(s.jsonrpc!==n)return;if(Number.isSafeInteger(s.id)&&!Object.hasOwn(s,"method"))return void function(e){const t=a.get(e.id);t&&(a.delete(e.id),r.clearTimeout(t.timer),o(e.error)?t.reject(new Error("The host declined the request.")):Object.hasOwn(e,"result")?t.resolve(e.result):t.reject(new Error("Invalid host response.")))}(s);if(!c||"string"!=typeof s.method)return;if("ui/resource-teardown"===s.method)return(Number.isSafeInteger(s.id)||"string"==typeof s.id&&s.id.length<=128)&&i.postMessage({jsonrpc:n,id:s.id,result:{}},"*"),void y();if("ui/notifications/host-context-changed"===s.method&&o(s.params))return p={...p,...s.params},void e.onEvent({type:"host-context",context:{...p}});const l={"ui/notifications/tool-input":"tool-input","ui/notifications/tool-input-partial":"tool-input-partial","ui/notifications/tool-result":"tool-result","ui/notifications/tool-cancelled":"tool-cancelled"};Object.hasOwn(l,s.method)&&e.onEvent({type:l[s.method],params:s.params})}function y(){if(!d){d=!0,c=!1,r.removeEventListener("message",m);for(const e of a.values())r.clearTimeout(e.timer),e.reject(new Error("Widget bridge closed."));a.clear(),e.onEvent({type:"closed"})}}return Object.freeze({start:async function(){if(u||i===r)throw new Error("Widget needs a host iframe.");u=!0,r.addEventListener("message",m);try{const r=await h("ui/initialize",{protocolVersion:t,appInfo:e.appInfo,appCapabilities:{availableDisplayModes:["inline","fullscreen"]}});if(!o(r)||r.protocolVersion!==t)throw new Error("Unsupported MCP Apps host.");p=o(r.hostContext)?r.hostContext:{},c=!0,function(e,t={}){i.postMessage({jsonrpc:n,method:e,params:t},"*")}("ui/notifications/initialized"),e.onEvent({type:"ready",context:{...p}})}catch(e){throw y(),e}},close:y,callReadOnlyTool:function(e,t={}){return c&&s.has(e)&&o(t)?h("tools/call",{name:e,arguments:t}):Promise.reject(new Error("Tool call is not permitted by this widget."))},openLink:function(e){let t;try{t=new URL(e)}catch{}return c&&t&&"https:"===t.protocol?h("ui/open-link",{url:t.href}):Promise.reject(new Error("Only HTTPS links are supported."))},updateModelContext:function(e){return!c||!o(e)||JSON.stringify(e).length>16384?Promise.reject(new Error("Invalid model context update.")):h("ui/update-model-context",e)},requestDisplayMode:function(e){return c&&["inline","fullscreen"].includes(e)&&p.availableDisplayModes?.includes(e)?h("ui/request-display-mode",{mode:e}):Promise.reject(new Error("Display mode is unavailable."))},optionalOpenAI:function(){const e=r.openai;return Object.freeze({openExternal:"function"==typeof e?.openExternal?t=>e.openExternal({href:t}):null})},isConnected:()=>c,getHostContext:()=>({...p})})},PROTOCOL:t})})(globalThis),(e=>{const t=e.document,n=t.getElementById("status"),o=t.getElementById("findings"),r=t.getElementById("next-actions"),i=e=>e&&"object"==typeof e&&!Array.isArray(e),s=e=>"boolean"==typeof e?e?"yes":"no":["string","number"].includes(typeof e)?String(e).slice(0,2e3):"unknown";function a(e,n,o){const r=t.createElement(n);return r.textContent=s(o),e.appendChild(r),r}function l(e){o.replaceChildren(),r.replaceChildren(),n.textContent=e}e.AculectWidgetBridge.createBridge({windowRef:e,appInfo:{name:"Aculect Site Audit",version:"1.0.0"},readOnlyTools:[],onEvent(e){"tool-result"===e.type?function(e){l("The audit result is unavailable. Use the tool’s text response.");const c=e?.structuredContent;!e?.isError&&i(c)&&"ready"===c.status&&!c.error&&"site_workflow_audit"===c.workflow&&Array.isArray(c.findings)&&c.findings.length&&(n.textContent=`Overall severity: ${s(c.summary?.overall_severity)}. These are configuration signals only.`,c.findings.slice(0,20).filter(i).forEach(e=>{const n=t.createElement("article"),r=["healthy","warning","critical"].includes(e.severity)?e.severity:"unknown";n.dataset.severity=r,a(n,"h2",`${s(e.title)} — ${r}`);const l=t.createElement("dl");Object.entries(i(e.evidence)?e.evidence:{}).slice(0,20).forEach(([e,t])=>{a(l,"dt",e.replaceAll("_"," ")),a(l,"dd",t)}),n.appendChild(l),a(n,"p",`Next step: ${s(e.recommended_action)}`),a(n,"p",`Suggested read tool: ${s(e.required_tool)}`),o.appendChild(n)}),(Array.isArray(c.next_actions)?c.next_actions:[]).slice(0,20).filter(i).forEach(e=>{a(r,"li",`${s(e.action)} (${s(e.tool)})`)}))}(e.params):["tool-input","tool-input-partial"].includes(e.type)?l("Waiting for the audit result…"):["closed","tool-cancelled"].includes(e.type)&&l("The audit view is unavailable. Use the tool’s text response.")}}).start().catch(()=>l("This host could not show the audit. Use the tool’s text response."))})(globalThis);</script>
+</body>
+</html>

@@ -82,6 +82,8 @@ Your AI tool must be able to reach your WordPress site over HTTPS to connect.
 
 ### MCP Apps
 
+Beta 2 preparation adds a read-only Site Audit card for `site_workflow_audit`, with evidence, severity and recommended read tools. The same result remains available as text. Configured URLs and cached update signals do not prove external reachability or fresh update status. See [Beta 2 preparation and remaining gates](docs/0.9.0-beta.2-release-notes.md).
+
 To enable experimental interactive cards and pickers in compatible assistants, open **Settings > AI Companion > Advanced**, turn on **Enable MCP Apps**, and save. MCP Apps are off by default. Reconnect your assistant after enabling them. Clients without Apps support continue receiving text responses. The existing `aculect_ai_companion_mcp_apps_enabled` PHP filter can override this preference; the settings screen reports a differing effective state.
 
 ## Supported Abilities
@@ -188,7 +190,7 @@ path. Earlier protocol revisions are unchanged. The administrator-only Skills
 tab can create, edit, enable, duplicate, delete, import, and export bounded
 site-local Markdown skills and references. Every import, including a
 replacement, lands disabled until the administrator reviews and enables it.
-Edits carry the version and digest
+Saving and importing first show current and proposed instructions, references, dependencies and enabled state. The review shows the current version and digest. Edits carry the version and digest
 of the skill that was opened, so a stale admin page cannot silently replace a
 newer edit. Active plugins may declare additional read-only Markdown skills
 through the `aculect_ai_companion_mcp_skill_providers` filter, keyed by exact
@@ -200,6 +202,8 @@ and interoperability remain unsettled.
 For task-focused memory, call `memory_list` with `task`, an optional `domain`, and `budget_chars` (default 6000). This returns relevant approved site guidance with source/evidence, relevance scores and selection explanations within a bounded JSON context pack. Existing chronological listing and administrator review remain available when `task` is omitted. See [Aculect Memory architecture](docs/aculect-memory-architecture.md#task-recall) for eligibility, budgets and limitations.
 
 WordPress and Aculect capabilities are enabled by default, subject to connection scopes, role permissions and runtime safety checks. The Abilities tab lists public third-party WordPress abilities grouped by provider, with explicit enable/disable controls. Plugins adopting the WordPress Abilities API need no curated integration. The capability directory's paginated `catalog` lists available direct tools and enabled native abilities with their execution routes; Aculect mirrors appear only once. Existing third-party decisions and legacy first-party selections are retained for rollback.
+
+Agent Readiness separates the saved and effective MCP Apps settings from client negotiation and rendering. When existing diagnostic logging is enabled, authenticated discovery/tool/resource requests record bounded `mcp.capabilities` events with the protocol, Apps negotiation, Skills protocol support and text fallback. These observations exclude request content and credentials and do not prove host rendering. Cloudflare header detection and public probes do not establish a successful connection.
 
 ### WebMCP Progressive Enhancement
 

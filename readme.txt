@@ -299,14 +299,18 @@ Composer dependencies for production releases are installed with:
 
 = 0.9.0 =
 
-* Completed public WebMCP lifecycle handling and delivery diagnostics, with bounded readiness checks, cancellation protection and editable-content exclusion.
-
 * Added opt-in MCP Apps resources and a Site Information card for compatible clients, with the existing text response preserved for other clients.
 * Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.
 * Added post-update revision review, layout and pattern selection, and selection-only media and content reference pickers for supported MCP Apps, with text results preserved for other clients.
 * Added an exact-post-update approval handoff authenticated by the current WordPress user, plus a direct WordPress Media Library image-upload handoff.
 * Added read-only Agent Readiness diagnostics for plugin and site discovery surfaces.
+* Added a read-only Site Audit App with severity, evidence, recommended next steps, and a complete text fallback.
+* Completed public WebMCP lifecycle handling and delivery diagnostics, with bounded readiness checks, cancellation protection and editable-content exclusion.
 * Clarified Cloudflare connection guidance without claiming that edge challenges can be bypassed.
+* Added a review of current and proposed custom Skill content, references, dependencies, version and digest before saving or importing.
+* Separated enabled MCP features, observed request negotiation, public WebMCP delivery, and unverified host rendering in diagnostics.
+* Kept Cloudflare compatibility unverified until connection testing is completed on the intended hostname.
+* Prevented pending or contradictory post-update results from displaying completion details or completed-action links.
 * Included versioned MCP Apps assets, including both reference pickers, and packaged core Skills in production-package verification.
 
 = 0.8.3 =

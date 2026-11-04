@@ -400,7 +400,8 @@ final class ConnectionHealthTest extends TestCase {
 		$result = $this->invokePrivate( new ConnectionHealth(), 'check_cloudflare_compatibility' );
 
 		self::assertSame( 'cloudflare_compatibility', $result['id'] );
-		self::assertSame( 'pass', $result['status'] );
+		self::assertSame( 'warn', $result['status'] );
+		self::assertStringContainsString( 'Compatibility remains unverified', $result['remediation'] );
 		self::assertFalse( $result['details']['detected'] );
 		self::assertStringContainsString( '/wp-json/aculect-ai-companion/v1/', $result['details']['rule_expression'] );
 	}

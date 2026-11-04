@@ -1,8 +1,45 @@
-# Development dependency advisory exceptions
+# Development dependency advisories
 
-This register covers advisories that remain in the repository-only Node.js toolchain after applying non-breaking lockfile updates. These packages are not included in the production plugin ZIP, and `npm audit --omit=dev` must remain at zero findings.
+This register covers advisories in the Node.js dependency tree used for development and frontend asset builds. The production plugin ZIP excludes `node_modules`; built-asset exposure requires separate review. `npm audit --omit=dev` must remain at zero findings.
 
-## Current inventory
+## Beta 2 preparation — 2026-11-04
+
+A fresh Node 24/npm 11 install of the release candidate with Playwright 1.64.1 passes `npm ls --all`. The full `npm audit --package-lock-only` exits 1: **71 affected package records (10 high, 48 moderate, 13 low), representing 26 distinct advisories**. `npm audit --omit=dev` reports zero findings. No finding names the three updated Playwright packages; all implicated package lock records are unchanged from `f1276ea681268b00d648700bdc031a21d46126d1`.
+
+This is an unresolved readiness issue, not an accepted exception or a passing full audit. The production ZIP excludes `node_modules`, but that alone does not establish whether an affected frontend dependency is bundled into built assets. Exposure and compatible remediations need review before Beta 2 recommendation. npm proposes breaking WordPress package downgrades for some aggregate findings; those suggestions have not been applied. The MCP SDK remains 1.31.0 in this scoped Playwright reconciliation; its newly reported advisories are included below.
+
+| Package | Severity | Advisory |
+| --- | --- | --- |
+| `@hono/node-server` | moderate | [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f) |
+| `@modelcontextprotocol/sdk` | high | [GHSA-22jm-h49p-29qw](https://github.com/advisories/GHSA-22jm-h49p-29qw) |
+| `@modelcontextprotocol/sdk` | high | [GHSA-46jr-4wx8-v453](https://github.com/advisories/GHSA-46jr-4wx8-v453) |
+| `@modelcontextprotocol/sdk` | moderate | [GHSA-6prh-2h8m-c8cw](https://github.com/advisories/GHSA-6prh-2h8m-c8cw) |
+| `@modelcontextprotocol/sdk` | moderate | [GHSA-rvq5-wwqv-78pq](https://github.com/advisories/GHSA-rvq5-wwqv-78pq) |
+| `body-parser` | high | [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828) |
+| `deepmerge` | low | [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) |
+| `fast-uri` | low | [GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp) |
+| `fast-uri` | moderate | [GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg) |
+| `fast-uri` | moderate | [GHSA-wjr9-j795-jxcr](https://github.com/advisories/GHSA-wjr9-j795-jxcr) |
+| `fast-uri` | low | [GHSA-xhq7-xmqj-769h](https://github.com/advisories/GHSA-xhq7-xmqj-769h) |
+| `follow-redirects` | high | [GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c) |
+| `follow-redirects` | high | [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) |
+| `follow-redirects` | high | [GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) |
+| `hono` | moderate | [GHSA-5r4p-p66f-jhc7](https://github.com/advisories/GHSA-5r4p-p66f-jhc7) |
+| `ip-address` | moderate | [GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5) |
+| `joi` | high | [GHSA-4528-x5fx-h6hg](https://github.com/advisories/GHSA-4528-x5fx-h6hg) |
+| `launch-editor` | high | [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm) |
+| `launch-editor` | moderate | [GHSA-698v-4r3x-3vcv](https://github.com/advisories/GHSA-698v-4r3x-3vcv) |
+| `launch-editor` | moderate | [GHSA-r825-w8mm-5pxw](https://github.com/advisories/GHSA-r825-w8mm-5pxw) |
+| `markdown-it` | high | [GHSA-gfr2-rv44-r23c](https://github.com/advisories/GHSA-gfr2-rv44-r23c) |
+| `markdown-it` | low | [GHSA-vfgh-jcmw-g37q](https://github.com/advisories/GHSA-vfgh-jcmw-g37q) |
+| `minimatch` | moderate | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) |
+| `qs` | moderate | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) |
+| `serialize-javascript` | low | [GHSA-m5mm-p8h7-m29v](https://github.com/advisories/GHSA-m5mm-p8h7-m29v) |
+| `zod` | high | [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) |
+
+The older inventory below is retained as historical evidence and does not waive the current findings. Raw current audit output is retained with the candidate validation artifacts.
+
+## Historical inventory — 2026-08-19
 
 - Last verified: 2026-08-19 with Node 24.16 and npm 11.
 - Full development tree: 12 advisory packages (10 high, 2 moderate).

@@ -35,7 +35,15 @@
 		if ( ! isRecord( data ) || data.schema !== SCHEMA ) {
 			return { outcome: 'error' };
 		}
-		const outcome = OUTCOMES.has( data.outcome ) ? data.outcome : 'error';
+		let outcome = OUTCOMES.has( data.outcome ) ? data.outcome : 'error';
+		if (
+			outcome === 'success' &&
+			( data.dry_run === true ||
+				data.error ||
+				( data.status !== undefined && data.status !== 'success' ) )
+		) {
+			outcome = 'error';
+		}
 		const content = isRecord( data.content ) ? data.content : {};
 		const links = isRecord( data.links ) ? data.links : {};
 		const timestamp = bounded( content.completed_at, 40 );
@@ -94,6 +102,13 @@
 					.filter( Boolean )
 					.join( ', ' )
 			: '';
+		if ( outcome === 'approval_pending' ) {
+			projection.completedAt = '';
+			projection.revision = '';
+			projection.links = {
+				approval_queue: projection.links.approval_queue,
+			};
+		}
 		if (
 			outcome === 'approval_pending' &&
 			( ! projection.approvalExpiresAt ||
@@ -113,6 +128,8 @@
 			projection.outcome = 'partial';
 		}
 		if ( [ 'unavailable', 'error' ].includes( projection.outcome ) ) {
+			projection.completedAt = '';
+			projection.revision = '';
 			projection.links = { view: '', edit: '', compare: '', undo: '' };
 		}
 		projection.undo =

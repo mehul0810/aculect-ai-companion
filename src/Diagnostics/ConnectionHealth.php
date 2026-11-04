@@ -440,9 +440,9 @@ final class ConnectionHealth {
 
 		return $this->item(
 			'cloudflare_compatibility',
-			'pass',
+			'warn',
 			'Cloudflare was not detected from this WordPress request.',
-			'This is a best-effort check. If OAuth or MCP failures produce no WordPress diagnostic logs, review CDN, WAF, and Cloudflare rules for Aculect connector routes.',
+			'Compatibility remains unverified. Header absence is not proof of a direct connection. If OAuth or MCP failures produce no WordPress diagnostic logs, review CDN, WAF, and Cloudflare rules for Aculect connector routes.',
 			$details
 		);
 	}

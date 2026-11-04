@@ -87,6 +87,29 @@ final class NavigationItemWriteAbilitiesTest extends TestCase {
 		self::assertSame( 'nav_menu', $GLOBALS['navigation_fixture_query']['tax_query'][0]['taxonomy'] );
 	}
 
+	public function test_native_zero_order_requires_an_explicit_previewed_position_for_changes(): void {
+		$GLOBALS['navigation_fixture_posts'][101]->menu_order = 0;
+		$args = $this->args();
+		self::assertSame( 'unsupported_order', $this->service->update_item( $args + array( 'dry_run' => true ) )['error'] );
+		self::assertSame( 0, $GLOBALS['navigation_fixture_writes'] );
+		$args['changes']['order'] = 1;
+		$preview = $this->service->update_item( $args + array( 'dry_run' => true ) );
+		self::assertSame( 'preview', $preview['status'] );
+		self::assertSame( array( 'field' => 'order', 'from' => 0, 'to' => 1 ), $preview['changes'][1] );
+		self::assertSame( 0, $GLOBALS['navigation_fixture_writes'] );
+		self::assertTrue( $this->service->update_item( $args )['success'] );
+		self::assertSame( 1, $GLOBALS['navigation_fixture_writes'] );
+	}
+
+	public function test_failed_zero_order_repair_does_not_attempt_automatic_native_repositioning(): void {
+		$GLOBALS['navigation_fixture_posts'][101]->menu_order = 0;
+		$GLOBALS['navigation_fixture_mode'] = 'partial';
+		$result = $this->service->update_item( $this->args( array( 'label' => 'Updated', 'order' => 1 ) ) );
+		self::assertSame( 'partial_write', $result['error'] );
+		self::assertTrue( $result['terminal'] );
+		self::assertSame( 1, $GLOBALS['navigation_fixture_writes'] );
+	}
+
 	public function test_write_sanitizes_and_preserves_uneditable_fields(): void {
 		$GLOBALS['navigation_fixture_posts'][101]->post_date     = '2026-01-02 12:00:00';
 		$GLOBALS['navigation_fixture_posts'][101]->post_date_gmt = '2026-01-02 06:30:00';

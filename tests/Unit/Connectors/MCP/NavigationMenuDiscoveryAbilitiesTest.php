@@ -131,7 +131,7 @@ final class NavigationMenuDiscoveryAbilitiesTest extends TestCase {
 		$result   = $this->abilities->get_context();
 		$policy   = $result['write_support'];
 		$registry = new \Aculect\AICompanion\Connectors\MCP\AbilitiesRegistry();
-		foreach ( array( 'read_before_write', 'update_tool', 'location_read_tool', 'location_update_tool', 'block_read_tool', 'block_update_tool', 'block_recovery_tool', 'block_deletion_tool', 'menu_deletion_read_tool', 'menu_deletion_tool' ) as $key ) {
+		foreach ( array( 'read_before_write', 'update_tool', 'location_read_tool', 'location_update_tool', 'block_item_read_tool', 'block_item_update_tool', 'block_read_tool', 'block_update_tool', 'block_recovery_tool', 'block_deletion_tool', 'menu_deletion_read_tool', 'menu_deletion_tool' ) as $key ) {
 			self::assertArrayHasKey( $registry->internal_id( $policy[ $key ] ), $registry->definitions() );
 		}
 		self::assertTrue( $result['read_only'] );
@@ -140,7 +140,7 @@ final class NavigationMenuDiscoveryAbilitiesTest extends TestCase {
 		self::assertStringContainsString( 'Explicit confirmation required', $policy['deletion_policy'] );
 		self::assertFalse( $policy['preserve_unknown_custom_blocks_attrs'] );
 		self::assertFalse( $result['safety']['preserve_unknown_blocks_for_future_writes'] );
-		self::assertSame( 'existing_database_record_native_block_allowlist', $policy['block_navigation_write_model'] );
+		self::assertSame( 'targeted_items_or_existing_database_record_native_block_allowlist', $policy['block_navigation_write_model'] );
 		self::assertStringContainsString( 'not permissions', $policy['authorization'] );
 		self::assertStringNotContainsString( 'writes are unsupported', implode( ' ', $result['next_actions'] ) );
 		self::assertSame( $policy, $this->abilities->list_menus()['summary']['write_support'] );
@@ -159,6 +159,27 @@ final class NavigationMenuDiscoveryAbilitiesTest extends TestCase {
 		self::assertSame( 'Home', $result['items'][0]['label'] );
 		self::assertSame( 102, $result['items'][2]['parent_id'] );
 		self::assertSame( 'explicit_only', $result['summary']['future_reassignment_policy'] );
+	}
+
+	public function test_native_submenus_have_editable_paths_and_both_surfaces_remain_discoverable(): void {
+		$GLOBALS['aculect_ai_companion_test_posts'][501] = array(
+			'ID'           => 501,
+			'post_type'    => 'wp_navigation',
+			'post_status'  => 'publish',
+			'post_title'   => 'Hybrid navigation',
+			'post_content' => '<!-- wp:navigation-submenu {"label":"Docs"} --><!-- wp:navigation-link {"label":"API","url":"/api"} /--><!-- /wp:navigation-submenu -->',
+		);
+		$context = $this->abilities->get_context();
+		self::assertSame( 'hybrid_theme', $context['navigation']['theme_mode'] );
+		self::assertSame( array( 'classic_menu', 'wp_navigation' ), $context['navigation']['available_surfaces'] );
+		$items = $this->abilities->list_items( array( 'navigation_id' => 501 ) );
+		self::assertSame( 'core/navigation-submenu', $items['items'][0]['type'] );
+		self::assertSame( '0', $items['items'][0]['block_path'] );
+		self::assertSame( '0.0', $items['items'][1]['block_path'] );
+		self::assertSame( 'block:0', $items['items'][1]['parent_id'] );
+		self::assertSame( 'parsed', $items['summary']['parse_status'] );
+		$GLOBALS['aculect_ai_companion_test_is_block_theme'] = true;
+		self::assertSame( array( 'classic_menu', 'wp_navigation' ), $this->abilities->get_context()['navigation']['available_surfaces'] );
 	}
 
 	public function test_list_items_for_wp_navigation_returns_bounded_block_navigation_inventory(): void {

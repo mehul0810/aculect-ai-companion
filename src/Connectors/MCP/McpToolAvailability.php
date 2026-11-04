@@ -436,6 +436,8 @@ final class McpToolAvailability {
 				'list_items'            => 'navigation.list_items',
 				'read_item'             => 'navigation.read_item',
 				'update_item'           => 'navigation.update_item',
+				'read_block_item'       => 'navigation.read_block_item',
+				'update_block_item'     => 'navigation.update_block_item',
 				'read_location_context' => 'navigation.read_location_context',
 				'assign_location'       => 'navigation.assign_location',
 				'inspect_menu_deletion' => 'navigation.inspect_menu_deletion',
@@ -703,7 +705,7 @@ final class McpToolAvailability {
 		return ExtensionLifecyclePolicy::capabilities( $ability_id ) ?? match ( $ability_id ) {
 			'media.open_upload_handoff' => array( 'upload_files' ),
 			'settings.private_targets', 'settings.private_input', 'settings.private_status' => array( 'manage_options' ),
-			'navigation.read_item', 'navigation.update_item', 'navigation.read_location_context', 'navigation.assign_location', 'navigation.inspect_menu_deletion', 'navigation.delete_menu' => array( 'edit_theme_options' ),
+			'navigation.read_item', 'navigation.update_item', 'navigation.read_block_item', 'navigation.update_block_item', 'navigation.read_location_context', 'navigation.assign_location', 'navigation.inspect_menu_deletion', 'navigation.delete_menu' => array( 'edit_theme_options' ),
 			'maintenance.clean_post_cache', 'maintenance.flush_rewrite_rules' => array( 'manage_options' ),
 			'integrity.check_core' => array( 'update_core' ),
 			'integrity.check_plugin' => array( 'update_plugins' ),

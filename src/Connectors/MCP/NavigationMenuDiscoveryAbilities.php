@@ -60,7 +60,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'Use navigation_list_menus to inventory readable classic menus and wp_navigation entities.',
 				'Use navigation_list_locations to inspect registered classic menu locations before planning any explicit reassignment.',
 				'Use navigation_list_items with menu_id, navigation_id, or location for bounded item-level inventory only.',
-				'Use navigation_read_item then navigation_update_item for existing classic items; navigation_read_location_context then navigation_assign_location for locations; site_editor_read_record then site_editor_update_record or site_editor_restore_record for existing database navigation. Writes require fresh state, permission and confirmation; consult capabilities before calling.',
+				'Use navigation_read_item then navigation_update_item for existing classic items; navigation_read_location_context then navigation_assign_location for locations; navigation_read_block_item then navigation_update_block_item for database navigation links/submenus; site_editor_read_record for whole-record recovery. Writes require fresh state, permission and confirmation; consult capabilities before calling.',
 			),
 			'read_only'     => true,
 		);
@@ -456,6 +456,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 		return array(
 			'theme_mode'                  => $theme_mode,
 			'primary_surface'             => $primary_surface,
+			'available_surfaces'          => array_values( array_filter( array( $has_classic || $has_locations ? 'classic_menu' : null, $has_navigation ? 'wp_navigation' : null ) ) ),
 			'classic_menu_support'        => $classic_support,
 			'registered_location_count'   => count( $classic_locations ),
 			'classic_menu_count'          => count( $classic_menus ),
@@ -663,7 +664,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				'unsupported_block_count'  => $unsupported_count,
 				'unsupported_blocks'       => $unsupported_blocks,
 				'unknown_blocks_preserved' => true,
-				'parse_status'             => 0 === $navigation_blocks && '' !== trim( (string) $post->post_content ) ? 'no_navigation_blocks_found' : 'parsed',
+				'parse_status'             => 0 === $navigation_blocks && array() === $items && '' !== trim( (string) $post->post_content ) ? 'no_navigation_blocks_found' : 'parsed',
 			),
 		);
 	}
@@ -715,7 +716,7 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 				continue;
 			}
 
-			if ( 'core/navigation-link' === $block_name ) {
+			if ( in_array( $block_name, array( 'core/navigation-link', 'core/navigation-submenu' ), true ) ) {
 				$item_id = 'block:' . $block_path;
 				$attrs   = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : array();
 				$item    = array(
@@ -728,7 +729,8 @@ final class NavigationMenuDiscoveryAbilities extends AbstractAbilityService {
 					'parent_id'        => $parent_item_id,
 					'order'            => ++$order,
 					'status'           => 'parsed',
-					'type'             => 'core/navigation-link',
+					'type'             => $block_name,
+					'block_path'       => $block_path,
 					'kind'             => sanitize_key( (string) ( $attrs['kind'] ?? '' ) ),
 					'object'           => sanitize_key( (string) ( $attrs['type'] ?? '' ) ),
 					'object_id'        => absint( $attrs['id'] ?? 0 ),

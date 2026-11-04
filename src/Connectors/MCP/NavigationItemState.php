@@ -98,7 +98,7 @@ final class NavigationItemState {
 	 * @param array<string, mixed> $item Raw native item.
 	 */
 	private function roundtrippable( array $item ): bool {
-		if ( ! in_array( $item['status'], array( 'publish', 'draft' ), true ) || $item['order'] < 1 || ! is_array( $item['classes'] ) || ! array_is_list( $item['classes'] ) ) {
+		if ( ! in_array( $item['status'], array( 'publish', 'draft' ), true ) || $item['order'] < 0 || ! is_array( $item['classes'] ) || ! array_is_list( $item['classes'] ) ) {
 			return false;
 		}
 		foreach ( $item['classes'] as $class ) {

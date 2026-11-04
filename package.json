@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.64.1",
     "@wordpress/components": "^33.1.0",
     "@wordpress/dataviews": "^14.3.0",
     "@wordpress/element": "^6.46.0",

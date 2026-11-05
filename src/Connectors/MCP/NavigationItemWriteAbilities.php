@@ -68,6 +68,9 @@ final class NavigationItemWriteAbilities extends AbstractAbilityService {
 			return $changes;
 		}
 		$after = array_replace( $before['item'], $changes );
+		if ( 0 === $after['order'] && $after !== $before['item'] ) {
+			return $this->error( 'unsupported_order', 'This item has native order zero. Include an explicit positive order in the preview; WordPress would otherwise choose its position automatically.' );
+		}
 		try {
 			$state = new NavigationItemState();
 			$items = $state->read( $args['menu_id'] );
@@ -204,12 +207,15 @@ final class NavigationItemWriteAbilities extends AbstractAbilityService {
 			}
 		} catch ( \Throwable ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Native hooks can throw after partial persistence; compensation follows.
 		}
-		try {
-			$state->save( $menu_id, $item_id, $before[ $item_id ] );
-			if ( $state->read( $menu_id ) === $before ) {
-				return $this->error( 'write_failed', 'Navigation update failed and original state was restored.' );
+		// Native zero means automatic placement, so it cannot restore an exact zero-order preimage.
+		if ( 0 !== $before[ $item_id ]['order'] ) {
+			try {
+				$state->save( $menu_id, $item_id, $before[ $item_id ] );
+				if ( $state->read( $menu_id ) === $before ) {
+					return $this->error( 'write_failed', 'Navigation update failed and original state was restored.' );
+				}
+			} catch ( \Throwable ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Unverifiable restoration is the terminal partial_write below.
 			}
-		} catch ( \Throwable ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Unverifiable restoration is the terminal partial_write below.
 		}
 		return array_merge(
 			$this->error( 'partial_write', 'Navigation state could not be restored. Inspect it manually; do not retry this operation.' ),

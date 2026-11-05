@@ -25,6 +25,23 @@ Where practical, compare Apps-on and Apps-off site-information calls on the same
 - Diff hygiene: `git diff --check`
 - Modularity budgets and dependency boundaries: `composer check:modularity`. For the pull-request ratchet (legacy files may not grow), run `php bin/check-modularity.php --config=.codex/modularity-rules.php --changed-from=origin/<base-branch>`.
 
+## Navigation editing
+
+- Run the classic navigation, discovery and tool-surface PHPUnit suites after
+  navigation changes. `composer analyse:mcp:site-operations` includes the targeted
+  block item service and transformer; module/gateway/availability lanes remain
+  required for changed contracts.
+- `tests/Integration/Navigation/block-tree.php` exercises native block parsing and
+  serialization using synthetic strings only. `tests/Integration/Navigation/contract.php`
+  exercises synthetic classic menus, locations and database navigation through the
+  execution gateway, including confirmation, stale state and replay. Run the latter
+  only in a disposable local WordPress site, with `wp --user=<fixture-admin>
+  eval-file .../contract.php disposable-loopback source-checkout`.
+- Both contracts run in the hosted WordPress matrix. The gateway contract must
+  restore theme state and remove its synthetic menus/posts; it does not exercise
+  OAuth endpoints, browser rendering or real host interoperability. Do not run it
+  against production content or treat source-checkout proof as exact-package proof.
+
 ## Development Dependency Updates
 
 - Keep Node 24/npm 11 for dependency installation and asset checks. The hosted

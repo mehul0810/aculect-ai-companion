@@ -281,6 +281,7 @@ final class ToolSafety {
 			'revisions.restore_content',
 			'content.restore_trashed',
 			'navigation.assign_location',
+			'navigation.update_block_item',
 			'navigation.delete_menu',
 			'site_editor.delete_record',
 			'site_editor.update_record',

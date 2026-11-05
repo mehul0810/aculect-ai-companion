@@ -103,6 +103,7 @@ Admins can enable or disable optional abilities from `AI Companion > Abilities` 
 
 - Inspect classic and block navigation sources.
 - Read and update existing classic-menu item labels, custom-link URLs, parent, order, target and rel with state checks and confirmation.
+- Edit existing native block-navigation links and submenus with item previews, explicit confirmation and a recovery revision. Classic, hybrid and block themes use their detected navigation sources; [compatibility and limits](docs/0.9.0-navigation-editing.md) apply.
 
 ### Content Groups
 

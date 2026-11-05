@@ -89,6 +89,14 @@ test( 'memory integration-only edits remain in the quality lane', () => {
 	assert.equal( result.quality, true );
 } );
 
+test( 'navigation integration edits select the native WordPress matrix', () => {
+	const result = classifyChanges( [
+		'tests/Integration/Navigation/contract.php',
+	] );
+	assert.equal( result.quality, true );
+	assert.equal( result.wordpress, true );
+} );
+
 test( 'release package proof keeps the guarded memory runtime and locked browser dependencies', () => {
 	const workflow = readFileSync(
 		new URL( '../../.github/workflows/package-proof.yml', import.meta.url ),

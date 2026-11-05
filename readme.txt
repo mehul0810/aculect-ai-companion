@@ -299,6 +299,8 @@ Composer dependencies for production releases are installed with:
 
 = 0.9.0 =
 
+* Added confirmed editing of existing navigation links and submenus across classic, hybrid and block theme sources, with state checks and recovery revisions for block edits. Dynamic/custom navigation, inline template navigation and menu/item creation remain unsupported by the item tools.
+* Made native zero-order classic menu items readable and required an explicitly previewed positive position before editing, without automatic repositioning after an uncertain write.
 * Added opt-in MCP Apps resources and a Site Information card for compatible clients, with the existing text response preserved for other clients.
 * Added authenticated MCP Skills discovery with three packaged core guides and site-local custom Skills managed in WordPress. Imported Skills remain disabled until reviewed and enabled.
 * Added post-update revision review, layout and pattern selection, and selection-only media and content reference pickers for supported MCP Apps, with text results preserved for other clients.

@@ -100,6 +100,7 @@ jobs:
             "core": "https://wordpress.org/wordpress-${WP_VERSION}.zip",
             "port": 8880,
             "testsEnvironment": false,
+            "config": { "WP_ENVIRONMENT_TYPE": "local" },
             "plugins": [],
             "mappings": {
               "wp-content/plugins/aculect-ai-companion": "${GITHUB_WORKSPACE}"
@@ -115,6 +116,12 @@ jobs:
 
       - name: Run native Abilities contract
         run: wp-env run cli wp eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/WordPressAbilities/contract.php
+
+      - name: Run native navigation parsing contract
+        run: wp-env run cli wp eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/Navigation/block-tree.php
+
+      - name: Run guarded navigation editing contract
+        run: wp-env run cli wp --user=1 eval-file wp-content/plugins/aculect-ai-companion/tests/Integration/Navigation/contract.php disposable-loopback source-checkout
 
       - name: Stop WordPress
         if: always()

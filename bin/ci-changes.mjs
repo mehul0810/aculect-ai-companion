@@ -34,7 +34,7 @@ const rules = [
 		checks: [ 'oauth' ],
 	},
 	{
-		test: /^tests\/Integration\/WordPressAbilities\//i,
+		test: /^tests\/Integration\/(?:WordPressAbilities|Navigation)\//i,
 		checks: [ 'wordpress' ],
 	},
 	{

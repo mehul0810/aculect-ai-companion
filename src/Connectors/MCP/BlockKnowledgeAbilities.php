@@ -486,8 +486,15 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	private function registered_patterns(): array {
 		$registry = \WP_Block_Patterns_Registry::get_instance();
 		$patterns = $registry->get_all_registered();
+		$by_name  = array();
+		foreach ( $patterns as $pattern ) {
+			if ( ! is_array( $pattern ) || ! is_string( $pattern['name'] ?? null ) || '' === $pattern['name'] ) {
+				continue;
+			}
+			$by_name[ $pattern['name'] ] = $pattern;
+		}
 
-		return array_filter( $patterns, 'is_array' );
+		return $by_name;
 	}
 
 	/**
@@ -681,38 +688,7 @@ final class BlockKnowledgeAbilities extends AbstractAbilityService {
 	 * @param array<string, mixed> $args    Tool arguments.
 	 */
 	private function pattern_matches_filters( array $pattern, array $args ): bool {
-		$category = sanitize_key( (string) ( $args['category'] ?? '' ) );
-		if ( '' !== $category && ! in_array( $category, (array) $pattern['categories'], true ) ) {
-			return false;
-		}
-
-		$block_type = $this->sanitize_identifier( (string) ( $args['block_type'] ?? '' ) );
-		if ( '' !== $block_type && ! in_array( $block_type, (array) $pattern['block_types'], true ) ) {
-			return false;
-		}
-
-		if ( array_key_exists( 'inserter', $args ) && (bool) $args['inserter'] !== (bool) $pattern['inserter'] ) {
-			return false;
-		}
-
-		$search = strtolower( $this->clean_text( (string) ( $args['search'] ?? '' ) ) );
-		if ( '' === $search ) {
-			return true;
-		}
-
-		$haystack = strtolower(
-			implode(
-				' ',
-				array_merge(
-					array( $pattern['name'], $pattern['title'], $pattern['description'], $pattern['guidance'] ),
-					(array) $pattern['categories'],
-					(array) $pattern['keywords'],
-					(array) $pattern['use_cases']
-				)
-			)
-		);
-
-		return str_contains( $haystack, $search );
+		return PatternPickerFilter::matches( $pattern, $args );
 	}
 
 	/**

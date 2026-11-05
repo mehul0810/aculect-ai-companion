@@ -961,15 +961,23 @@ abstract class AbstractAbilityService {
 	 */
 	private function normalize_diff_value( string $field, mixed $value ): mixed {
 		if ( 'content' === $field && is_string( $value ) ) {
-			return $this->content_diff_summary( $value );
+			$summary = $this->content_diff_summary( $value );
+			if ( 2048 >= strlen( $value ) ) {
+				$summary['exact_value'] = $value;
+			}
+			return $summary;
 		}
 
 		if ( is_string( $value ) && strlen( $value ) > 500 ) {
-			return array(
+			$summary = array(
 				'summary'   => wp_trim_words( wp_strip_all_tags( $value ), 60, '...' ),
 				'length'    => strlen( $value ),
 				'truncated' => true,
 			);
+			if ( 2048 >= strlen( $value ) ) {
+				$summary['exact_value'] = $value;
+			}
+			return $summary;
 		}
 
 		return $value;

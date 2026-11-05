@@ -733,7 +733,7 @@ final class ContentWorkflowAbilities extends AbstractAbilityService {
 	 */
 	private function with_workflow_session( array $response, array $args, string $state, string $tool ): array {
 		$session_id = is_scalar( $args['workflow_session_id'] ?? null ) ? (string) $args['workflow_session_id'] : '';
-		if ( '' === $session_id ) {
+		if ( '' === $session_id || $this->is_dry_run( $args ) ) {
 			return $response;
 		}
 

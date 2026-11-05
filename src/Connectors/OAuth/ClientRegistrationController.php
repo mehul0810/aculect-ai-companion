@@ -23,6 +23,7 @@ final class ClientRegistrationController {
 	 * Register the client registration REST endpoint.
 	 */
 	public function register_routes(): void {
+		RateLimiter::register_retry_after_header();
 		register_rest_route(
 			Helpers::REST_NAMESPACE,
 			'/oauth/register',
@@ -39,9 +40,9 @@ final class ClientRegistrationController {
 	 *
 	 * RFC 7591 DCR is intentionally unauthenticated: AI clients (Claude,
 	 * ChatGPT, Codex) register themselves before any credential exists.
-	 * Valid connector retries must not fail behind a plugin-level 429. Abuse is
-	 * bounded by redirect URI validation, duplicate-client pruning, and the
-	 * active-client cap enforced in register_client().
+	 * Valid connector retries must not fail behind a plugin-level 429.
+	 * Validated registrations are subject to a source-scoped admission budget
+	 * inside register_client() before client storage is allocated.
 	 *
 	 * @return true
 	 */
@@ -126,27 +127,16 @@ final class ClientRegistrationController {
 			return new WP_Error( 'invalid_redirect_uri', 'At least one valid redirect URI is required.', array( 'status' => 400 ) );
 		}
 
+		$admission_error = $this->registration_admission_error();
+		if ( $admission_error instanceof WP_Error ) {
+			return $admission_error;
+		}
+
 		$result = ( new ClientRepository() )->create_client_result( $client_name, $redirect_uris, TokenEndpointAuthMethod::is_confidential( $auth_method ), null, $application_type );
 		$client = $result->client();
 
 		if ( ClientRegistrationResult::CAPACITY_EXCEEDED === $result->status() ) {
-			$logger->warning(
-				'dcr.capacity_exceeded',
-				'Dynamic client registration capacity is exhausted.',
-				array(
-					'provider'           => $provider,
-					'error_code'         => 'registration_capacity_exceeded',
-					'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
-					'redirect_uri_count' => count( $redirect_uris ),
-				),
-				$request,
-				503
-			);
-			return new WP_Error(
-				'registration_capacity_exceeded',
-				'OAuth client registration capacity is currently unavailable. Ask a site administrator to review stale connections.',
-				array( 'status' => 503 )
-			);
+			return $this->capacity_exceeded_error( $logger, $sanitizer, $provider, $redirect_uris, $request );
 		}
 
 		if ( ClientRegistrationResult::INVALID_METADATA === $result->status() ) {
@@ -212,6 +202,55 @@ final class ClientRegistrationController {
 		}
 
 		return new WP_REST_Response( $response, 201 );
+	}
+
+	/**
+	 * Reject excess valid registrations without charging malformed requests.
+	 */
+	private function registration_admission_error(): ?WP_Error {
+		$admission = ( new RateLimiter() )->check( 'oauth_register', 20, 24 * HOUR_IN_SECONDS );
+		if ( ! $admission instanceof WP_Error ) {
+			return null;
+		}
+
+		return new WP_Error(
+			RateLimiter::ADMISSION_ERROR_CODE,
+			'OAuth client registration is temporarily unavailable. Try again later.',
+			array(
+				'status'      => 503,
+				'retry_after' => absint( $admission->get_error_data()['retry_after'] ?? HOUR_IN_SECONDS ),
+			)
+		);
+	}
+
+	/**
+	 * Preserve the established capacity response and sanitized diagnostic event.
+	 *
+	 * @param Logger          $logger        OAuth logger.
+	 * @param LogSanitizer    $sanitizer     Diagnostic sanitizer.
+	 * @param string          $provider      Resolved provider label.
+	 * @param string[]        $redirect_uris Validated redirect URIs.
+	 * @param WP_REST_Request $request       Registration request.
+	 */
+	private function capacity_exceeded_error( Logger $logger, LogSanitizer $sanitizer, string $provider, array $redirect_uris, WP_REST_Request $request ): WP_Error {
+		$logger->warning(
+			'dcr.capacity_exceeded',
+			'Dynamic client registration capacity is exhausted.',
+			array(
+				'provider'           => $provider,
+				'error_code'         => 'registration_capacity_exceeded',
+				'redirect_hosts'     => $sanitizer->redirect_hosts( $redirect_uris ),
+				'redirect_uri_count' => count( $redirect_uris ),
+			),
+			$request,
+			503
+		);
+
+		return new WP_Error(
+			'registration_capacity_exceeded',
+			'OAuth client registration capacity is currently unavailable. Ask a site administrator to review stale connections.',
+			array( 'status' => 503 )
+		);
 	}
 
 	/**

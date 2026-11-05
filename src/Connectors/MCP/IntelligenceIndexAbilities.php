@@ -2400,7 +2400,7 @@ final class IntelligenceIndexAbilities extends AbstractAbilityService {
 	 * @param int $post_id Post ID.
 	 */
 	private function can_read_post( int $post_id ): bool {
-		return $post_id > 0 && ( ! function_exists( 'current_user_can' ) || current_user_can( 'read_post', $post_id ) );
+		return \Aculect\AICompanion\PostReadAccess::allows( $post_id );
 	}
 
 	/**

@@ -3,10 +3,21 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      release-proof:
+        description: Validate release package proofs without publishing
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       full:
-        description: Run every proof before publication
+        description: Run every compatibility, database and security check
+        required: false
+        default: false
+        type: boolean
+      release-proof:
+        description: Require Plugin Check, memory and packaged admin proof
         required: false
         default: false
         type: boolean
@@ -52,7 +63,7 @@ jobs:
       - name: Classify complete event diff
         id: scope
         env:
-          CI_FULL: ${{ inputs.full }}
+          CI_FULL: ${{ inputs.full || inputs.release-proof }}
         run: node bin/ci-changes.mjs
 
       - name: Setup PHP
@@ -143,51 +154,42 @@ jobs:
       claims: ${{ needs.quality.outputs.claims == 'true' }}
       oauth: ${{ needs.quality.outputs.oauth == 'true' }}
 
-  wordpress:
-    name: Native WordPress contract
+  compatibility:
+    name: PHP and WordPress compatibility
     needs: quality
-    if: needs.quality.outputs.wordpress == 'true'
-    uses: ./.github/workflows/wordpress-abilities.yml
-
-  php-compatibility:
-    name: PHP compatibility
-    needs: quality
-    if: needs.quality.outputs.quality == 'true'
-    uses: ./.github/workflows/php-compatibility.yml
+    if: needs.quality.outputs.quality == 'true' || needs.quality.outputs.wordpress == 'true'
+    uses: ./.github/workflows/compatibility.yml
+    with:
+      php: ${{ needs.quality.outputs.quality == 'true' }}
+      wordpress: ${{ needs.quality.outputs.wordpress == 'true' }}
 
   security:
-    name: PHP security scan
+    name: PHP and JavaScript security
     needs: quality
-    if: needs.quality.outputs.security == 'true'
+    if: needs.quality.outputs.security == 'true' || needs.quality.outputs.codeql == 'true'
     permissions:
       actions: read
       contents: read
       security-events: write
-    uses: ./.github/workflows/php-security.yml
+    uses: ./.github/workflows/security.yml
+    with:
+      php: ${{ needs.quality.outputs.security == 'true' }}
+      codeql: ${{ needs.quality.outputs.codeql == 'true' }}
 
-  oauth-contract:
-    name: Packaged OAuth proof
+  package-proof:
+    name: Exact package proofs
     needs: quality
     if: needs.quality.outputs.quality == 'true'
-    uses: ./.github/workflows/oauth-contract.yml
+    uses: ./.github/workflows/package-proof.yml
     with:
       package-sha256: ${{ needs.quality.outputs.sha256 }}
       package-artifact-name: ${{ needs.quality.outputs.artifact-name }}
-
-  codeql:
-    name: JavaScript security analysis
-    needs: quality
-    if: needs.quality.outputs.codeql == 'true'
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: ./.github/workflows/codeql.yml
+      release-proof: ${{ inputs.release-proof || false }}
 
   required:
     name: Required CI
     if: always()
-    needs: [quality, database, wordpress, php-compatibility, security, codeql, oauth-contract]
+    needs: [quality, database, compatibility, security, package-proof]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

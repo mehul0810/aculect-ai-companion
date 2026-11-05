@@ -594,6 +594,7 @@ final class IntelligenceIndexAbilitiesTest extends TestCase {
 			'Internal link strategy already linked from the source.',
 			array( 'content' )
 		);
+		$GLOBALS['aculect_ai_companion_test_posts'][303] = new \WP_Post( array( 'ID' => 303, 'post_type' => 'page', 'post_status' => 'publish' ) );
 		$this->wpdb->linked_target_ids[101] = array( 303 );
 		$this->wpdb->link_stats             = array(
 			101 => array(

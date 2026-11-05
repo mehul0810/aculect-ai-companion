@@ -21,6 +21,7 @@ use Aculect\AICompanion\Connectors\MCP\UserAccessControl;
 use Aculect\AICompanion\Connectors\MCP\WordPressAbilitiesPolicy;
 use Aculect\AICompanion\Diagnostics\LogSettings;
 use Aculect\AICompanion\Intelligence\ContentIndexer;
+use Aculect\AICompanion\Settings\McpAppsSettings;
 
 /**
  * Owns the sanitized JSON contract for settings transfer actions.
@@ -63,6 +64,7 @@ final class SettingsTransfer {
 					'retentionDays'  => LogSettings::retention_days(),
 				),
 				'brandProfile'                    => ( new BrandProfile() )->saved(),
+				'mcpAppsEnabled'                  => McpAppsSettings::saved_enabled(),
 			),
 		);
 	}
@@ -104,6 +106,9 @@ final class SettingsTransfer {
 		$this->import_role_connections( $settings['roleConnections'] ?? null );
 		$this->import_diagnostics( $settings['diagnostics'] ?? null );
 		$this->import_brand_profile( $settings['brandProfile'] ?? null );
+		if ( array_key_exists( 'mcpAppsEnabled', $settings ) ) {
+			McpAppsSettings::set_enabled( $this->boolean_value( $settings['mcpAppsEnabled'] ) );
+		}
 
 		return true;
 	}
@@ -118,6 +123,7 @@ final class SettingsTransfer {
 		RoleAbilitiesPolicy::delete();
 		RoleConnectionEntryPoint::delete();
 		LogSettings::delete_options();
+		McpAppsSettings::delete();
 		BrandProfile::delete();
 		AccessLockdown::delete();
 		UserAccessControl::delete();

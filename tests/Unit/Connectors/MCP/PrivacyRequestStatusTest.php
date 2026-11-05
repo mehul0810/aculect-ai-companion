@@ -24,6 +24,13 @@ final class PrivacyRequestStatusTest extends TestCase {
 		unset( $GLOBALS['aculect_ai_companion_test_capability_callback'] );
 	}
 
+	protected function tearDown(): void {
+		$GLOBALS['aculect_ai_companion_test_denied_caps'] = array();
+		unset( $GLOBALS['aculect_ai_companion_test_capability_callback'] );
+
+		parent::tearDown();
+	}
+
 	public function test_capability_denial_precedes_request_access_for_each_action(): void {
 		$actions = array(
 			'export_personal_data' => 'export_others_personal_data',

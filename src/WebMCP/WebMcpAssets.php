@@ -64,6 +64,13 @@ final class WebMcpAssets {
 			return false;
 		}
 
+		return self::is_enabled();
+	}
+
+	/**
+	 * Return the configured feature state without bypassing request safety gates.
+	 */
+	public static function is_enabled(): bool {
 		/**
 		 * Filter whether public, read-only WebMCP page context is enabled.
 		 *

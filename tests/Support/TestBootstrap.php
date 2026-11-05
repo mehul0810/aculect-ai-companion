@@ -10,6 +10,17 @@ declare(strict_types=1);
 require_once __DIR__ . '/InMemoryExecutionClaimStore.php';
 require_once __DIR__ . '/WordPressWriteTestStubs.php';
 
+if ( ! function_exists( 'esc_textarea' ) ) {
+	/**
+	 * Escape exact text, including literal entities, as WordPress core does.
+	 *
+	 * @param string $text Raw text.
+	 */
+	function esc_textarea( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
 if ( ! function_exists( 'is_main_site' ) ) {
 	/**
 	 * Return whether the current test site is the network main site.

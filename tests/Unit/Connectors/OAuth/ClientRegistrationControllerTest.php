@@ -30,14 +30,17 @@ use WP_REST_Response;
  */
 final class ClientRegistrationControllerTest extends TestCase {
 
-	private mixed $original_wpdb = null;
+	private mixed $original_wpdb   = null;
+	private array $original_server = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->original_wpdb                          = $GLOBALS['wpdb'] ?? null;
-		$GLOBALS['aculect_ai_companion_test_options'] = array();
-		$GLOBALS['aculect_ai_companion_test_hooks']   = array(
+		$this->original_server                           = $_SERVER;
+		$this->original_wpdb                             = $GLOBALS['wpdb'] ?? null;
+		$GLOBALS['aculect_ai_companion_test_options']    = array();
+		$GLOBALS['aculect_ai_companion_test_transients'] = array();
+		$GLOBALS['aculect_ai_companion_test_hooks']      = array(
 			'actions' => array(),
 			'filters' => array(),
 		);
@@ -46,6 +49,7 @@ final class ClientRegistrationControllerTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		$_SERVER = $this->original_server;
 		if ( null === $this->original_wpdb ) {
 			unset( $GLOBALS['wpdb'] );
 		} else {
@@ -59,6 +63,51 @@ final class ClientRegistrationControllerTest extends TestCase {
 		$controller = new ClientRegistrationController();
 
 		self::assertTrue( $controller->check_registration_permission() );
+	}
+
+	public function test_registration_admission_budget_prevents_one_source_filling_global_capacity(): void {
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.25';
+		$controller             = new ClientRegistrationController();
+		$GLOBALS['wpdb']        = new FakeDcrWpdb();
+
+		for ( $attempt = 0; $attempt < 20; ++$attempt ) {
+			$invalid = $controller->register_client( new WP_REST_Request( array(), array(), array( 'redirect_uris' => array() ) ) );
+			self::assertInstanceOf( WP_Error::class, $invalid );
+			self::assertSame( 'invalid_redirect_uri', $invalid->get_error_code() );
+		}
+
+		for ( $attempt = 0; $attempt < 20; ++$attempt ) {
+			$response = $controller->register_client(
+				new WP_REST_Request(
+					array(),
+					array(),
+					array(
+						'client_name'                => 'Budget Test Client',
+						'redirect_uris'              => array( 'https://client.example/callback/' . $attempt ),
+						'token_endpoint_auth_method' => TokenEndpointAuthMethod::NONE,
+					)
+				)
+			);
+			self::assertInstanceOf( WP_REST_Response::class, $response );
+			self::assertSame( 201, $response->get_status() );
+		}
+
+		$next_request = new WP_REST_Request(
+			array(),
+			array(),
+			array(
+				'client_name'                => 'Budget Test Client',
+				'redirect_uris'              => array( 'https://client.example/callback/next' ),
+				'token_endpoint_auth_method' => TokenEndpointAuthMethod::NONE,
+			)
+		);
+		$limited      = $controller->register_client( $next_request );
+		self::assertInstanceOf( WP_Error::class, $limited );
+		self::assertSame( 503, $limited->get_error_data()['status'] );
+		self::assertGreaterThan( 0, $limited->get_error_data()['retry_after'] );
+
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.26';
+		self::assertSame( 201, $controller->register_client( $next_request )->get_status() );
 	}
 
 	public function test_redirect_uris_are_validated_deduplicated_and_limited_to_safe_schemes(): void {
@@ -225,7 +274,7 @@ final class ClientRegistrationControllerTest extends TestCase {
 			'https://attacker.lab.example/oauth/callback'
 		);
 
-		self::assertFalse( $identity->is_verified() );
+		self::assertFalse( $identity->has_recognized_callback() );
 		self::assertSame( 'Unverified OAuth client', $identity->label() );
 		self::assertSame( 'ChatGPT', $identity->declared_name() );
 		self::assertSame( 'https://attacker.lab.example/oauth/callback', $identity->redirect_uri() );

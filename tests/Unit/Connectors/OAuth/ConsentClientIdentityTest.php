@@ -28,7 +28,7 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://CHATGPT.com/connector_platform_oauth_redirect'
 		);
 
-		self::assertTrue( $identity->is_verified() );
+		self::assertTrue( $identity->has_recognized_callback() );
 		self::assertSame( 'ChatGPT', $identity->label() );
 		self::assertSame( 'Attacker-controlled name', $identity->declared_name() );
 		self::assertSame( 'client-1', $identity->client_identifier() );
@@ -41,7 +41,7 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://attacker.example/oauth/callback'
 		);
 
-		self::assertFalse( $identity->is_verified() );
+		self::assertFalse( $identity->has_recognized_callback() );
 		self::assertSame( 'Unverified OAuth client', $identity->label() );
 		self::assertSame( 'ChatGPT', $identity->declared_name() );
 		self::assertSame( 'https://attacker.example/oauth/callback', $identity->redirect_uri() );
@@ -61,7 +61,7 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://attacker.example/oauth/callback'
 		);
 
-		self::assertFalse( $identity->is_verified(), $name );
+		self::assertFalse( $identity->has_recognized_callback(), $name );
 		self::assertSame( 'Unverified OAuth client', $identity->label(), $name );
 		self::assertSame( $name, $identity->declared_name(), $name );
 	}
@@ -96,7 +96,7 @@ final class ConsentClientIdentityTest extends TestCase {
 			$redirect_uri
 		);
 
-		self::assertFalse( $identity->is_verified(), $redirect_uri );
+		self::assertFalse( $identity->has_recognized_callback(), $redirect_uri );
 		self::assertSame( 'Unverified OAuth client', $identity->label(), $redirect_uri );
 	}
 
@@ -133,9 +133,9 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://www.cursor.com/agents/mcp/oauth/callback'
 		);
 
-		self::assertTrue( $claude->is_verified() );
+		self::assertTrue( $claude->has_recognized_callback() );
 		self::assertSame( 'Claude', $claude->label() );
-		self::assertTrue( $cursor->is_verified() );
+		self::assertTrue( $cursor->has_recognized_callback() );
 		self::assertSame( 'Cursor', $cursor->label() );
 	}
 
@@ -146,7 +146,7 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://editor.example/oauth/callback'
 		);
 
-		self::assertFalse( $identity->is_verified() );
+		self::assertFalse( $identity->has_recognized_callback() );
 		self::assertSame( 'Internal editorial agent', $identity->declared_name() );
 		self::assertSame( 'https://editor.example/oauth/callback', $identity->redirect_uri() );
 	}
@@ -171,9 +171,9 @@ final class ConsentClientIdentityTest extends TestCase {
 			'https://chatgpt.com/connector_platform_oauth_redirect'
 		);
 
-		self::assertFalse( $attacker->is_verified() );
+		self::assertFalse( $attacker->has_recognized_callback() );
 		self::assertSame( 'Unverified OAuth client', $attacker->label() );
-		self::assertTrue( $provider->is_verified() );
+		self::assertTrue( $provider->has_recognized_callback() );
 		self::assertSame( 'ChatGPT', $provider->label() );
 	}
 

@@ -58,6 +58,7 @@ if ( file_exists( $aculect_ai_companion_autoload ) ) {
 \Aculect\AICompanion\Connectors\MCP\RoleConnectionEntryPoint::delete();
 \Aculect\AICompanion\Connectors\MCP\SiteEditorAbilities::delete();
 \Aculect\AICompanion\Connectors\MCP\AdminMenuAbilities::delete();
+\Aculect\AICompanion\Settings\McpAppsSettings::delete();
 
 delete_option( 'aculect_ai_companion_remove_data_on_uninstall' );
 delete_option( 'aculect_ai_companion_rewrite_version' );

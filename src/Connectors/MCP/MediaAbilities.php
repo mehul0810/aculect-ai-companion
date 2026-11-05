@@ -68,13 +68,18 @@ final class MediaAbilities extends AbstractAbilityService {
 		$posts  = array_values(
 			array_filter(
 				$result->posts,
-				static fn( $post ): bool => $post instanceof \WP_Post && current_user_can( 'read_post', $post->ID )
+				static fn( $post ): bool => $post instanceof \WP_Post && \Aculect\AICompanion\PostReadAccess::allows( (int) $post->ID )
 			)
 		);
 		$mapper = 'full' === $this->collection_context( $args ) ? 'map_post' : 'map_post_compact';
 
+		$items = array_map( array( $this, $mapper ), $posts );
+		if ( McpAppsNegotiation::request_enabled() ) {
+			$items = ( new MediaPickerMetadata() )->add_thumbnails( $items );
+		}
+
 		return array(
-			'items'    => array_map( array( $this, $mapper ), $posts ),
+			'items'    => $items,
 			'total'    => (int) $result->found_posts,
 			'page'     => $page,
 			'per_page' => $per_page,
@@ -94,12 +99,18 @@ final class MediaAbilities extends AbstractAbilityService {
 			return $this->error( 'not_found', 'Media item not found.' );
 		}
 
-		if ( ! current_user_can( 'read_post', $attachment_id ) ) {
+		if ( ! \Aculect\AICompanion\PostReadAccess::allows( $attachment_id ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to read this media item.' );
 		}
 
 		$state = ( new MediaExpectedState() )->token( $attachment );
-		return $this->map_post( $attachment ) + ( null === $state ? array() : array( 'expected_state' => $state ) );
+		$item  = $this->map_post( $attachment ) + ( null === $state ? array() : array( 'expected_state' => $state ) );
+		if ( McpAppsNegotiation::request_enabled() ) {
+			$items = ( new MediaPickerMetadata() )->add_thumbnails( array( $item ) );
+			$item  = $items[0] ?? $item;
+		}
+
+		return $item;
 	}
 
 	/**

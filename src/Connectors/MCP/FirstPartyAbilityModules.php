@@ -28,7 +28,7 @@ final class FirstPartyAbilityModules {
 	public function all(): array {
 		$fixed_workflows = ( new FixedWorkflowAbilityModules( $this->module_factory ) )->all();
 		$modules         = array(
-			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\MemorySyncAbilityModules( $this->module_factory ) )->all() ),
+			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\SupplementalAbilityModules( $this->module_factory ) )->all() ),
 			...array_values( ( new \Aculect\AICompanion\Connectors\MCP\Modules\SiteOperationsAbilityModules( $this->module_factory ) )->all() ),
 			$this->module(
 				'search',
@@ -237,7 +237,7 @@ final class FirstPartyAbilityModules {
 			$this->module(
 				'navigation.list_locations',
 				'List Navigation Locations',
-				'List registered classic menu locations and assignments for classic or hybrid themes. Future location reassignment must remain explicit-only and is not implemented here.',
+				'List registered classic menu locations and assignments for classic or hybrid themes. This is read-only discovery. To assign or unassign an existing menu, use navigation.read_location_context then navigation.assign_location with fresh expected_state and explicit confirmation.',
 				'Navigation Intelligence',
 				'content:read',
 				true,

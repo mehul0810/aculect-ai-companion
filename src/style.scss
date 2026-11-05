@@ -4251,7 +4251,7 @@ td:first-child
 	font-weight: 700;
 }
 
-@include meta.load-css("styles/changelog");
+@include meta.load-css("styles/tab-panels");
 
 .aculect-ai-companion-diagnostics {
 	display: grid;

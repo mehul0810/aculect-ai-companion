@@ -130,6 +130,16 @@ final class TokenControllerTest extends TestCase {
 		$unrelated = new WP_REST_Response( array( 'code' => 'unrelated' ), 429 );
 		self::assertSame( $unrelated, \Aculect\AICompanion\Connectors\OAuth\RateLimiter::filter_retry_after_header( $unrelated ) );
 		self::assertNotSame( 'no-store', $unrelated->header( 'Cache-Control' ) );
+		$dcr_response = new WP_REST_Response(
+			array(
+				'code' => \Aculect\AICompanion\Connectors\OAuth\RateLimiter::ADMISSION_ERROR_CODE,
+				'data' => array( 'retry_after' => 3600 ),
+			),
+			503
+		);
+		$dcr_result   = \Aculect\AICompanion\Connectors\OAuth\RateLimiter::filter_retry_after_header( $dcr_response );
+		self::assertSame( '3600', $dcr_result->header( 'Retry-After' ) );
+		self::assertSame( 'no-store', $dcr_result->header( 'Cache-Control' ) );
 	}
 
 	public function test_server_error_description_does_not_expose_exception_details(): void {

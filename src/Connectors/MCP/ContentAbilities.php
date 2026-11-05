@@ -69,7 +69,7 @@ final class ContentAbilities extends AbstractAbilityService {
 		$posts = array_values(
 			array_filter(
 				$query->posts,
-				static fn( $post ): bool => $post instanceof \WP_Post && current_user_can( 'read_post', $post->ID )
+				static fn( $post ): bool => $post instanceof \WP_Post && \Aculect\AICompanion\PostReadAccess::allows( (int) $post->ID )
 			)
 		);
 
@@ -102,7 +102,7 @@ final class ContentAbilities extends AbstractAbilityService {
 		}
 
 		$post_type_object = get_post_type_object( $post->post_type );
-		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! current_user_can( 'read_post', $post_id ) ) {
+		if ( ! $post_type_object instanceof \WP_Post_Type || ! $this->is_supported_post_type( $post_type_object ) || ! \Aculect\AICompanion\PostReadAccess::allows( $post_id ) ) {
 			return array();
 		}
 
@@ -135,7 +135,7 @@ final class ContentAbilities extends AbstractAbilityService {
 			return $this->error( 'invalid_status', 'Content cannot be created directly in the trash.' );
 		}
 
-		if ( in_array( $status, array( 'future', 'publish' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
+		if ( in_array( $status, array( 'future', 'publish', 'private' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 			return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 		}
 
@@ -320,7 +320,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				}
 
 				if ( $this->is_dry_run( $data ) ) {
-					$can_read_before = current_user_can( 'read_post', $post_id );
+					$can_read_before = \Aculect\AICompanion\PostReadAccess::allows( $post_id );
 					return $this->preview_response(
 						'content.update_item',
 						$data,
@@ -354,7 +354,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				return $item;
 			}
 
-			if ( in_array( $status, array( 'future', 'publish' ), true ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
+			if ( ( in_array( $status, array( 'future', 'publish' ), true ) || ( 'private' === $status && $status !== $post->post_status ) ) && ! current_user_can( $post_type_object->cap->publish_posts ) ) {
 				return $this->error( 'forbidden', 'You do not have permission to publish this post type.' );
 			}
 			$requested_status      = $status;
@@ -408,7 +408,7 @@ final class ContentAbilities extends AbstractAbilityService {
 				'post_date'     => $post->post_date,
 				'post_date_gmt' => $post->post_date_gmt,
 			);
-			$can_read_before    = current_user_can( 'read_post', $post_id );
+			$can_read_before    = \Aculect\AICompanion\PostReadAccess::allows( $post_id );
 			$changes_from       = $can_read_before ? $from : array();
 			$additional_changes = array_merge(
 				$this->taxonomy_assignment_changes( $taxonomy_assignments, $can_read_before ? $post_id : 0 ),

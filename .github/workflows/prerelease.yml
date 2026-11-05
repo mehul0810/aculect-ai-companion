@@ -22,15 +22,10 @@ jobs:
       security-events: write
     with:
       full: true
-  plugin-check:
-    needs: package
-    uses: ./.github/workflows/plugin-check.yml
-    with:
-      package-sha256: ${{ needs.package.outputs.sha256 }}
-      package-artifact-name: ${{ needs.package.outputs.artifact-name }}
+      release-proof: true
   publish:
     name: Attach verified prerelease artifact
-    needs: [package, plugin-check]
+    needs: [package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -492,7 +492,6 @@ final class ContentAbilitiesTest extends TestCase {
 	 */
 	private function postDatePayload( string $date ): array {
 		$reflection = new ReflectionMethod( ContentAbilities::class, 'post_date_payload_from_data' );
-		$reflection->setAccessible( true );
 
 		return $reflection->invoke( new ContentAbilities(), array( 'date' => $date ) );
 	}
@@ -504,7 +503,6 @@ final class ContentAbilitiesTest extends TestCase {
 	 */
 	private function writableStatus( string $status ): string {
 		$reflection = new ReflectionMethod( ContentAbilities::class, 'writable_status' );
-		$reflection->setAccessible( true );
 
 		return (string) $reflection->invoke( new ContentAbilities(), $status );
 	}

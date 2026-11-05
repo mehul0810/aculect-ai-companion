@@ -42,7 +42,7 @@ final class NavigationItemAbilityModules {
 		foreach ( $modules as $module ) {
 			$result[ $module->id() ] = $module;
 		}
-		return $result;
+		return $result + ( new NavigationBlockAbilityModules( $this->factory ) )->all();
 	}
 
 	/**

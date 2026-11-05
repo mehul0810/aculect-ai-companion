@@ -25,14 +25,7 @@ test( 'OAuth fixture and unit-contract edits cannot skip packaged proof', () => 
 
 test( 'every canonical package requires OAuth proof in the aggregate', () => {
 	const flags = classifyChanges( [ 'src/Connectors/Helpers.php' ] );
-	const names = [
-		'database',
-		'wordpress',
-		'php-compatibility',
-		'security',
-		'codeql',
-		'oauth-contract',
-	];
+	const names = [ 'database', 'compatibility', 'security', 'package-proof' ];
 	const needs = {
 		quality: {
 			result: 'success',
@@ -50,8 +43,8 @@ test( 'every canonical package requires OAuth proof in the aggregate', () => {
 	assert.deepEqual( failedChecks( needs ), [] );
 	for ( const result of [ 'failure', 'cancelled', 'skipped', undefined ] ) {
 		assert.deepEqual(
-			failedChecks( { ...needs, 'oauth-contract': { result } } ),
-			[ 'oauth-contract' ]
+			failedChecks( { ...needs, 'package-proof': { result } } ),
+			[ 'package-proof' ]
 		);
 	}
 } );
@@ -65,13 +58,18 @@ test( 'both release publishers depend on exact-package OAuth proof', () => {
 		);
 		const publishing = content.slice( content.indexOf( '\n  publish:' ) );
 		assert.match( publishing, /needs: \[[^\]\n]*package[^\]\n]*\]/ );
+		assert.match( content, /full: true\n      release-proof: true/ );
 	}
 	const ci = workflow( 'ci.yml' );
 	assert.match(
 		ci,
-		/oauth-contract:\n    name: Packaged OAuth proof\n    needs: quality\n    if: needs\.quality\.outputs\.quality == 'true'\n    uses: \.\/\.github\/workflows\/oauth-contract\.yml/
+		/package-proof:\n    name: Exact package proofs\n    needs: quality\n    if: needs\.quality\.outputs\.quality == 'true'\n    uses: \.\/\.github\/workflows\/package-proof\.yml/
 	);
-	assert.match( ci, /needs: \[[^\]\n]*oauth-contract[^\]\n]*\]/ );
+	assert.match( ci, /needs: \[[^\]\n]*package-proof[^\]\n]*\]/ );
+	assert.match(
+		ci,
+		/release-proof: \$\{\{ inputs\.release-proof \|\| false \}\}/
+	);
 	assert.match(
 		ci,
 		/package-sha256: \$\{\{ needs\.quality\.outputs\.sha256 \}\}/
@@ -80,7 +78,7 @@ test( 'both release publishers depend on exact-package OAuth proof', () => {
 		ci,
 		/package-artifact-name: \$\{\{ needs\.quality\.outputs\.artifact-name \}\}/
 	);
-	const content = workflow( 'oauth-contract.yml' );
+	const content = workflow( 'package-proof.yml' );
 	assert.match(
 		content,
 		/sha256sum --check aculect-ai-companion\.zip\.sha256/
@@ -90,6 +88,11 @@ test( 'both release publishers depend on exact-package OAuth proof', () => {
 		/node tests\/Integration\/Browser\/oauth-contract\.mjs/
 	);
 	assert.match( content, /explicit owner approval is required/ );
+	assert.match( content, /needs: \[oauth, release\]/ );
+	assert.match(
+		content,
+		/CI_EXPECTED: '\{"oauth":true,"release":\$\{\{ inputs\.release-proof \}\}\}'/
+	);
 	assert.doesNotMatch(
 		content,
 		/continue-on-error: true|retry@|upload-artifact/

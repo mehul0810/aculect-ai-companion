@@ -34,7 +34,7 @@ The 0.8.1 candidate removes the version-limited cache-header exception: successf
 
 ## Enforcement and scope
 
-`oauth-contract.yml` tests the canonical ZIP in disposable WordPress using synthetic users and a local callback. CI's Required CI aggregate rejects missing/failed/cancelled/skipped OAuth proof whenever a package is required. Both beta asset attachment and production deployment depend directly on the same exact-package proof.
+The OAuth job in `package-proof.yml` tests the canonical ZIP in disposable WordPress using synthetic users and a local callback. Its family result gate rejects missing/failed/cancelled/skipped OAuth proof whenever the workflow runs; the outer Required CI aggregate requires this family whenever a package is required. Both beta asset attachment and production deployment depend on full CI with `release-proof: true`, which additionally requires the isolated Plugin Check/memory/admin job. Manual CI can exercise those same release proofs without publishing.
 
 The fixture setup and browser runner require `ACULECT_OAUTH_FIXTURE_OPT_IN=1` and an HTTP loopback site. Do not point these tools at a live site. Setup installs test-only MU hooks, and the suite creates synthetic clients and cycles plugin activation. Use only disposable data. The workflow supplies these inputs explicitly; credentials must never be pasted into chat.
 

@@ -124,6 +124,7 @@ final class McpControllerTransportHeadersTest extends TestCase {
 		$headers = McpTransportResponsePolicy::filter_exposed_cors_headers( array( 'Link' ) );
 
 		self::assertContains( 'MCP-Protocol-Version', $headers );
+		self::assertContains( 'MCP-Session-Id', $headers );
 		self::assertContains( 'WWW-Authenticate', $headers );
 		self::assertContains( 'X-Aculect-MCP-Request-ID', $headers );
 		self::assertContains( 'Link', $headers );

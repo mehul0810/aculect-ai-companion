@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
+	<title>Connected site</title>
+	<style>
+		:root {
+			color-scheme: light dark;
+			font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+			font-size: 15px;
+			line-height: 1.5;
+			--card-bg: var(--color-background-primary, #fff);
+			--card-fg: var(--color-text-primary, #1d2327);
+			--muted-fg: var(--color-text-secondary, #646970);
+			--card-border: var(--color-border-primary, #dcdcde);
+		}
+		:root[data-theme="dark"] {
+			color-scheme: dark;
+			--card-bg: var(--color-background-primary, #1d2327);
+			--card-fg: var(--color-text-primary, #f0f0f1);
+			--muted-fg: var(--color-text-secondary, #c3c4c7);
+			--card-border: var(--color-border-primary, #50575e);
+		}
+		:root[data-theme="light"] { color-scheme: light; }
+		* { box-sizing: border-box; }
+		body { margin: 0; padding: 8px; color: var(--card-fg); background: transparent; }
+		.card {
+			width: 100%;
+			max-width: 560px;
+			margin: 0 auto;
+			padding: clamp(16px, 4vw, 24px);
+			border: 1px solid var(--card-border);
+			border-radius: var(--border-radius-lg, 14px);
+			background: var(--card-bg);
+		}
+		.eyebrow { margin: 0 0 5px; color: var(--muted-fg); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+		h1 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.45rem); line-height: 1.25; }
+		#site-url { margin: 5px 0 0; color: var(--muted-fg); overflow-wrap: anywhere; }
+		#status { margin: 16px 0 0; color: var(--muted-fg); font-size: 0.9rem; }
+		#status[data-state="error"] { color: var(--color-text-danger, #b32d2e); }
+		dl { display: grid; grid-template-columns: minmax(105px, 0.65fr) minmax(0, 1.35fr); gap: 0; margin: 16px 0 0; border-top: 1px solid var(--card-border); }
+		dt, dd { margin: 0; padding: 11px 0; border-bottom: 1px solid var(--card-border); }
+		dt { color: var(--muted-fg); }
+		dd { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+		[hidden] { display: none !important; }
+		@media (max-width: 360px) {
+			dl { grid-template-columns: 1fr; }
+			dt { padding-bottom: 2px; border-bottom: 0; }
+			dd { padding-top: 0; }
+		}
+	</style>
+</head>
+<body>
+	<main class="card" aria-labelledby="title">
+		<header>
+		<p class="eyebrow">WordPress site</p>
+		<h1 id="title">Connected site</h1>
+		<p id="site-url" hidden></p>
+		</header>
+		<p id="status" role="status" aria-live="polite">Waiting for site information…</p>
+		<dl id="site-details" aria-label="Site details" hidden>
+			<dt>WordPress</dt><dd data-field="wordpress"></dd>
+			<dt>Theme</dt><dd data-field="theme"></dd>
+			<dt>Locale</dt><dd data-field="locale"></dd>
+			<dt>Time zone</dt><dd data-field="timezone"></dd>
+		</dl>
+	</main>
+	<script>
+		(() => {
+			const status = document.getElementById('status');
+			const details = document.getElementById('site-details');
+			const siteUrl = document.getElementById('site-url');
+			let initialized = false;
+			const initializeId = 1;
+
+			function send(message) {
+				window.parent.postMessage(message, '*');
+			}
+
+			function setStatus(message, state) {
+				status.textContent = message;
+				status.dataset.state = state || 'info';
+			}
+
+			function textValue(value) {
+				return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+			}
+
+			function render(result) {
+				if (!result || result.isError) {
+					setStatus('Could not load site information. Run the site information tool again.', 'error');
+					details.hidden = true;
+					return;
+				}
+
+				let data = result.structuredContent;
+				if ((!data || typeof data !== 'object') && Array.isArray(result.content)) {
+					const textBlock = result.content.find((item) => item && item.type === 'text' && typeof item.text === 'string');
+					if (textBlock) {
+						try { data = JSON.parse(textBlock.text); } catch { data = null; }
+					}
+				}
+				if (!data || typeof data !== 'object') {
+					setStatus('Site information was not available in this response.', 'error');
+					details.hidden = true;
+					return;
+				}
+
+				const fields = {
+					wordpress: data.wordpress && data.wordpress.version,
+					theme: data.active_theme && data.active_theme.name,
+					locale: data.locale,
+					timezone: data.timezone,
+				};
+				Object.entries(fields).forEach(([key, value]) => {
+					const field = details.querySelector(`[data-field="${key}"]`);
+					field.textContent = textValue(value) || 'Not available';
+				});
+				const name = textValue(data.name);
+				document.getElementById('title').textContent = name || 'Connected site';
+				const url = textValue(data.home_url);
+				siteUrl.textContent = url;
+				siteUrl.hidden = !url;
+				details.hidden = false;
+				setStatus('Site information loaded.', 'success');
+			}
+
+			window.addEventListener('message', (event) => {
+				if (event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
+				const message = event.data;
+				if (message.method === 'ui/notifications/tool-input') {
+					setStatus('Checking the connected site…');
+				}
+				if (message.method === 'ui/notifications/tool-result') render(message.params);
+				if (message.method === 'ui/notifications/tool-cancelled') {
+					details.hidden = true;
+					setStatus('The site information request was cancelled.', 'error');
+				}
+				if (message.method === 'ui/notifications/host-context-changed' && message.params && ['light', 'dark'].includes(message.params.theme)) {
+					document.documentElement.dataset.theme = message.params.theme;
+				}
+				if (message.method === 'ui/resource-teardown' && Object.prototype.hasOwnProperty.call(message, 'id')) {
+					send({ jsonrpc: '2.0', id: message.id, result: {} });
+				}
+				if (message.id === initializeId && !initialized && message.error) {
+					initialized = true;
+					setStatus('The host could not start the Site Information view.', 'error');
+				}
+				if (message.id === initializeId && message.result && !initialized) {
+					initialized = true;
+					const theme = message.result.hostContext && message.result.hostContext.theme;
+					if (['light', 'dark'].includes(theme)) document.documentElement.dataset.theme = theme;
+					send({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} });
+				}
+			});
+
+			setStatus('Connecting to the host…');
+			send({
+				jsonrpc: '2.0',
+				id: initializeId,
+				method: 'ui/initialize',
+				params: {
+					protocolVersion: '2026-01-26',
+					appInfo: { name: 'Aculect Site Information', version: '0.9.0' },
+					appCapabilities: { availableDisplayModes: ['inline'] },
+				},
+			});
+		})();
+	</script>
+</body>
+</html>

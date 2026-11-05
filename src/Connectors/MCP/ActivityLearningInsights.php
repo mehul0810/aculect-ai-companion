@@ -27,6 +27,16 @@ final class ActivityLearningInsights {
 	public function inspect( array $args ): array {
 		global $wpdb;
 
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 || ! current_user_can( 'read' ) ) {
+			return array(
+				'status'  => 'error',
+				'error'   => 'forbidden',
+				'message' => 'You do not have permission to inspect MCP activity.',
+				'items'   => array(),
+			);
+		}
+
 		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'get_results' ) ) {
 			return array(
 				'status'       => 'unavailable',
@@ -42,6 +52,9 @@ final class ActivityLearningInsights {
 		$filters = array(
 			'per_page' => min( self::MAX_ROWS, max( 1, absint( $args['per_page'] ?? 25 ) ) ),
 		);
+		if ( ! current_user_can( 'manage_options' ) ) {
+			$filters['user_id'] = $user_id;
+		}
 		if ( 'all' !== $status ) {
 			$filters['status'] = $status;
 		}

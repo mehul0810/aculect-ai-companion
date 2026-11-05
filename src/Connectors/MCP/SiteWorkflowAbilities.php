@@ -105,12 +105,13 @@ final class SiteWorkflowAbilities extends AbstractAbilityService {
 
 		return $this->finding(
 			'rest_api',
-			'REST API',
+			'REST API Configuration',
 			'' === $rest_url ? 'critical' : 'healthy',
 			array(
 				'rest_url_present' => '' !== $rest_url,
+				'reachability'     => 'not_tested',
 			),
-			'' === $rest_url ? 'Restore REST API availability before connecting assistant clients.' : 'REST API discovery is available for connector and site checks.',
+			'' === $rest_url ? 'No REST API URL is configured; inspect routing before connecting assistant clients.' : 'A REST API URL is configured. External reachability and authentication were not tested.',
 			'site_get_info'
 		);
 	}
@@ -191,27 +192,35 @@ final class SiteWorkflowAbilities extends AbstractAbilityService {
 	 * @return array<string, mixed>
 	 */
 	private function updates_finding( array $health ): array {
-		$counts = is_array( $health['checks']['updates']['counts'] ?? null )
-			? $health['checks']['updates']['counts']
-			: array(
-				'core'    => 0,
-				'plugins' => 0,
-				'themes'  => 0,
-				'total'   => 0,
+		$counts = $health['checks']['updates']['counts'] ?? null;
+		if ( ! is_array( $counts ) || count( array_filter( array_intersect_key( $counts, array_flip( array( 'core', 'plugins', 'themes', 'total' ) ) ), static fn ( $value ): bool => is_int( $value ) && 0 <= $value ) ) !== 4 ) {
+			return $this->finding(
+				'updates',
+				'Cached Updates',
+				'warning',
+				array(
+					'counts_available' => false,
+					'freshness'        => 'unknown',
+				),
+				'Cached update counts are unavailable or incomplete. Inspect update status before planning maintenance; no healthy result can be inferred.',
+				'site_get_health'
 			);
-		$total  = (int) ( $counts['total'] ?? 0 );
+		}
+		$total = $counts['total'];
 
 		return $this->finding(
 			'updates',
 			'Cached Updates',
-			0 === $total ? 'healthy' : 'warning',
+			'warning',
 			array(
-				'core'    => (int) ( $counts['core'] ?? 0 ),
-				'plugins' => (int) ( $counts['plugins'] ?? 0 ),
-				'themes'  => (int) ( $counts['themes'] ?? 0 ),
-				'total'   => $total,
+				'cache_availability' => 'unverified',
+				'freshness'          => 'unknown',
+				'core'               => (int) $counts['core'],
+				'plugins'            => (int) ( $counts['plugins'] ?? 0 ),
+				'themes'             => (int) ( $counts['themes'] ?? 0 ),
+				'total'              => $total,
 			),
-			0 === $total ? 'Cached update data does not report pending updates.' : 'Review available updates before planning maintenance or compatibility work.',
+			0 === $total ? 'The cached summary reports zero updates, but unavailable cache data can also produce zero. Verify update status in WordPress before concluding no updates are pending.' : 'Review available updates and verify cache freshness before planning maintenance or compatibility work.',
 			'site_get_health'
 		);
 	}
@@ -262,14 +271,15 @@ final class SiteWorkflowAbilities extends AbstractAbilityService {
 
 		return $this->finding(
 			'connector_readiness',
-			'Connector Readiness',
+			'Connector Configuration',
 			$severity,
 			array(
 				'mcp_endpoint_present' => '' !== $endpoint,
 				'mcp_endpoint_scheme'  => $scheme,
 				'abilities_api'        => function_exists( 'wp_get_abilities' ),
+				'reachability'         => 'not_tested',
 			),
-			'https' === $scheme ? 'MCP endpoint is available over HTTPS.' : 'Use a reachable HTTPS MCP endpoint for remote assistant clients.',
+			'https' === $scheme ? 'An HTTPS MCP endpoint is configured. External reachability and OAuth connectivity were not tested.' : 'Use a reachable HTTPS MCP endpoint for remote assistant clients.',
 			'site_get_info'
 		);
 	}

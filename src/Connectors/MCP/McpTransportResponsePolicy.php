@@ -38,6 +38,7 @@ final class McpTransportResponsePolicy {
 	 */
 	private const CORS_RESPONSE_HEADERS = array(
 		'MCP-Protocol-Version',
+		'MCP-Session-Id',
 		'WWW-Authenticate',
 		'X-Aculect-MCP-Request-ID',
 	);
